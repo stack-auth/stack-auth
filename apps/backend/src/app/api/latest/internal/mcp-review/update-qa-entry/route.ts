@@ -13,7 +13,10 @@ export const POST = createSmartRouteHandler({
       project: adaptSchema,
     }).defined(),
     body: yupObject({
-      correlationId: yupString().defined(),
+      qaId: yupString().defined(),
+      question: yupString().defined(),
+      answer: yupString().defined(),
+      publish: yupBoolean().defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -25,13 +28,14 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
-    assertIsAiChatReviewer(auth.user);
+    const user = auth.user;
+    assertIsAiChatReviewer(user);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await callReducerStrict("unmark_human_reviewed", [
-      token,
-      body.correlationId,
-    ]);
+    const editor = user.display_name ?? user.primary_email ?? user.id;
+    const qaId = BigInt(body.qaId);
+    await callReducerStrict("update_qa_entry", [token, qaId, body.question, body.answer, editor]);
+    await callReducerStrict("set_qa_published", [token, qaId, body.publish]);
 
     return {
       statusCode: 200,

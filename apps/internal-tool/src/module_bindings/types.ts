@@ -30,7 +30,10 @@ export const AiQueryLog = __t.object("AiQueryLog", {
   inputTokens: __t.option(__t.u32()),
   outputTokens: __t.option(__t.u32()),
   cachedInputTokens: __t.option(__t.u32()),
+  cacheCreationTokens: __t.option(__t.u32()),
   costUsd: __t.option(__t.f64()),
+  cacheDiscountUsd: __t.option(__t.f64()),
+  openrouterGenerationId: __t.option(__t.string()),
   stepCount: __t.u32(),
   durationMs: __t.u64(),
   errorMessage: __t.option(__t.string()),
@@ -80,6 +83,9 @@ export type MyVisibleAiQueryLog = __Infer<typeof MyVisibleAiQueryLog>;
 export const MyVisibleMcpCallLog = __t.object("MyVisibleMcpCallLog", {});
 export type MyVisibleMcpCallLog = __Infer<typeof MyVisibleMcpCallLog>;
 
+export const MyVisibleQaEntries = __t.object("MyVisibleQaEntries", {});
+export type MyVisibleQaEntries = __Infer<typeof MyVisibleQaEntries>;
+
 export const Operators = __t.object("Operators", {
   identity: __t.identity(),
   addedAt: __t.timestamp(),
@@ -88,11 +94,30 @@ export const Operators = __t.object("Operators", {
 });
 export type Operators = __Infer<typeof Operators>;
 
-export const PublishedQa = __t.object("PublishedQa", {
+export const PublishedQa = __t.object("PublishedQa", {});
+export type PublishedQa = __Infer<typeof PublishedQa>;
+
+export const PublishedQaRow = __t.object("PublishedQaRow", {
   id: __t.u64(),
   question: __t.string(),
   answer: __t.string(),
   publishedAt: __t.option(__t.timestamp()),
 });
-export type PublishedQa = __Infer<typeof PublishedQa>;
+export type PublishedQaRow = __Infer<typeof PublishedQaRow>;
+
+export const QaEntries = __t.object("QaEntries", {
+  id: __t.u64(),
+  shard: __t.u8(),
+  sourceMcpCorrelationId: __t.option(__t.string()),
+  question: __t.string(),
+  answer: __t.string(),
+  createdBy: __t.string(),
+  createdAt: __t.timestamp(),
+  lastEditedBy: __t.string(),
+  lastEditedAt: __t.timestamp(),
+  published: __t.bool(),
+  firstPublishedAt: __t.option(__t.timestamp()),
+  lastPublishedAt: __t.option(__t.timestamp()),
+});
+export type QaEntries = __Infer<typeof QaEntries>;
 

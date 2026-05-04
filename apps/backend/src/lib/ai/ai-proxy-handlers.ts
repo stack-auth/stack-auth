@@ -1,4 +1,4 @@
-import { logAiQuery } from "@/lib/ai/ai-query-logger";
+import { buildProxyLogRow, scheduleProxyLog } from "@/lib/ai/loggers/ai-proxy-logger";
 import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
 import { extractOpenRouterUsage, scanSseForUsage, type UsageFields } from "@/lib/ai/openrouter-usage";
 import { preprocessProxyBody } from "@/private";
@@ -8,7 +8,7 @@ import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/e
 export const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 
 export type SanitizedBody = {
-  parsed: Record<string, unknown>,
+  parsed: { model: string } & Record<string, unknown>,
   bytes: Uint8Array,
 };
 
@@ -33,68 +33,8 @@ export function sanitizeBody(raw: ArrayBuffer): SanitizedBody {
     parsed.metadata.user_id = parsed.metadata.user_id.slice(0, 128);
   }
 
-  const processed = preprocessProxyBody({ parsedBody: parsed }) as Record<string, unknown>;
+  const processed = preprocessProxyBody({ parsedBody: parsed }) as { model: string } & Record<string, unknown>;
   return { parsed: processed, bytes: new TextEncoder().encode(JSON.stringify(processed)) };
-}
-
-type ProxyLogFields = {
-  correlationId: string,
-  parsed: Record<string, unknown>,
-  apiKey: string,
-  durationMs: bigint,
-  responseStatus: number,
-  usage?: UsageFields,
-};
-
-function buildProxyLogRow(fields: ProxyLogFields) {
-  const { parsed, apiKey, durationMs, responseStatus, usage, correlationId } = fields;
-  const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
-  const toolNames = tools
-    .map(t => (t && typeof t === "object" && "name" in t) ? (t as { name: unknown }).name : null)
-    .filter((n): n is string => typeof n === "string");
-  const rawMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
-  const messages = typeof parsed.system === "string" && parsed.system.length > 0
-    ? [{ role: "system", content: parsed.system }, ...rawMessages]
-    : rawMessages;
-  return {
-    correlationId,
-    mode: parsed.stream === true ? "stream" : "generate",
-    systemPromptId: apiKey === "stack-auth-proxy" ? "stack-cli" : apiKey,
-    quality: "unknown",
-    speed: "unknown",
-    modelId: String(parsed.model ?? OPENROUTER_DEFAULT_MODEL),
-    isAuthenticated: false,
-    projectId: undefined,
-    userId: undefined,
-    requestedToolsJson: JSON.stringify(toolNames),
-    messagesJson: JSON.stringify(messages),
-    stepsJson: "[]",
-    finalText: "",
-    inputTokens: usage?.inputTokens,
-    outputTokens: usage?.outputTokens,
-    cachedInputTokens: usage?.cachedInputTokens,
-    costUsd: usage?.costUsd,
-    stepCount: 0,
-    durationMs,
-    errorMessage: responseStatus >= 400 ? `upstream ${responseStatus}` : undefined,
-    mcpCorrelationId: undefined,
-    conversationId: undefined,
-  };
-}
-
-function scheduleLog(row: ReturnType<typeof buildProxyLogRow>) {
-  try {
-    const safe = (async () => {
-      try {
-        await logAiQuery(row);
-      } catch (e) {
-        captureError("ai-proxy-log-async", e);
-      }
-    })();
-    runAsynchronouslyAndWaitUntil(safe);
-  } catch (e) {
-    captureError("ai-proxy-log-sync", e);
-  }
 }
 
 export async function observeAndLog(args: {
@@ -112,12 +52,16 @@ export async function observeAndLog(args: {
     const [clientStream, observerStream] = response.body.tee();
     runAsynchronouslyAndWaitUntil((async () => {
       let usage: UsageFields = {};
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120_000);
       try {
-        usage = (await scanSseForUsage(observerStream)) ?? {};
-      } catch {
-        // usage stays empty
+        usage = (await scanSseForUsage(observerStream, controller.signal)) ?? {};
+      } catch (err) {
+        captureError("ai-proxy-scan-sse", err);
+      } finally {
+        clearTimeout(timeoutId);
       }
-      scheduleLog(buildProxyLogRow({
+      scheduleProxyLog(buildProxyLogRow({
         correlationId,
         parsed: sanitizedBody.parsed,
         apiKey: callerApiKey,
@@ -136,7 +80,7 @@ export async function observeAndLog(args: {
   } catch {
     parsedBody = undefined;
   }
-  scheduleLog(buildProxyLogRow({
+  scheduleProxyLog(buildProxyLogRow({
     correlationId,
     parsed: sanitizedBody.parsed,
     apiKey: callerApiKey,

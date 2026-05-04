@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from "react";
 import type { Identity } from "spacetimedb";
 import { envOrDevDefault } from "../lib/env";
 import { DbConnection, type ErrorContext, type EventContext, type SubscriptionEventContext } from "../module_bindings";
-import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow } from "../types";
+import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow, QaEntriesRow } from "../types";
 
 export type EnsureEnrolled = (identity: Identity) => Promise<void>;
 
@@ -29,12 +29,9 @@ type TableBinding<Row extends { id: bigint }> = {
   iter: (ctx: SubscriptionEventContext) => Iterable<Row>,
   onInsert: (conn: DbConnection, cb: (row: Row) => void) => void,
   onDelete: (conn: DbConnection, cb: (row: Row) => void) => void,
+  onUpdate?: (conn: DbConnection, cb: (row: Row) => void) => void,
 };
 
-// Each hook call opens its own DbConnection. With only two subscriptions
-// per reviewer (mcp_call_log + ai_query_log), the extra WS handshake is
-// negligible, and keeping hooks self-contained avoids a shared-connection
-// context with subscription refcounting. Revisit if subscription count grows.
 function useTableSubscription<Row extends { id: bigint }>(
   binding: TableBinding<Row>,
   ensureEnrolled?: EnsureEnrolled,
@@ -132,6 +129,17 @@ function useTableSubscription<Row extends { id: bigint }>(
             if (cancelled) return;
             setRows(prev => prev.filter(r => r.id !== row.id));
           });
+
+          binding.onUpdate?.(connInstance, (row) => {
+            if (cancelled) return;
+            setRows(prev => {
+              const idx = prev.findIndex(r => r.id === row.id);
+              if (idx < 0) return [row, ...prev];
+              const updated = [...prev];
+              updated[idx] = row;
+              return updated;
+            });
+          });
         })
         .onConnectError((_ctx: unknown, err: unknown) => {
           if (cancelled) return;
@@ -174,6 +182,9 @@ const mcpBinding: TableBinding<McpCallLogRow> = {
   onDelete: (conn, cb) => {
     conn.db.myVisibleMcpCallLog.onDelete((_ctx: EventContext, row: McpCallLogRow) => cb(row));
   },
+  onUpdate: (conn, cb) => {
+    conn.db.myVisibleMcpCallLog.onUpdate((_ctx: EventContext, _old: McpCallLogRow, row: McpCallLogRow) => cb(row));
+  },
 };
 
 const aiQueryBinding: TableBinding<AiQueryLogRow> = {
@@ -185,6 +196,9 @@ const aiQueryBinding: TableBinding<AiQueryLogRow> = {
   onDelete: (conn, cb) => {
     conn.db.myVisibleAiQueryLog.onDelete((_ctx: EventContext, row: AiQueryLogRow) => cb(row));
   },
+  onUpdate: (conn, cb) => {
+    conn.db.myVisibleAiQueryLog.onUpdate((_ctx: EventContext, _old: AiQueryLogRow, row: AiQueryLogRow) => cb(row));
+  },
 };
 
 const publishedQaBinding: TableBinding<PublishedQaRow> = {
@@ -195,6 +209,20 @@ const publishedQaBinding: TableBinding<PublishedQaRow> = {
   },
   onDelete: (conn, cb) => {
     conn.db.publishedQa.onDelete((_ctx: EventContext, row: PublishedQaRow) => cb(row));
+  },
+};
+
+const qaEntriesBinding: TableBinding<QaEntriesRow> = {
+  tableName: "my_visible_qa_entries",
+  iter: (ctx) => ctx.db.myVisibleQaEntries.iter(),
+  onInsert: (conn, cb) => {
+    conn.db.myVisibleQaEntries.onInsert((_ctx: EventContext, row: QaEntriesRow) => cb(row));
+  },
+  onDelete: (conn, cb) => {
+    conn.db.myVisibleQaEntries.onDelete((_ctx: EventContext, row: QaEntriesRow) => cb(row));
+  },
+  onUpdate: (conn, cb) => {
+    conn.db.myVisibleQaEntries.onUpdate((_ctx: EventContext, _old: QaEntriesRow, row: QaEntriesRow) => cb(row));
   },
 };
 
@@ -213,4 +241,14 @@ export function useAiQueryLogs(ensureEnrolled?: EnsureEnrolled) {
  */
 export function usePublishedQa() {
   return useTableSubscription(publishedQaBinding);
+}
+
+/**
+ * Reviewer-only. Subscribes to the curated Q&A entries table (separate from
+ * mcp_call_log telemetry). Use this for the editorial surface — every row
+ * here is a Q&A pair, either tied to a real MCP call (sourceMcpCorrelationId
+ * non-null) or a manual entry (null).
+ */
+export function useQaEntries(ensureEnrolled?: EnsureEnrolled) {
+  return useTableSubscription(qaEntriesBinding, ensureEnrolled);
 }

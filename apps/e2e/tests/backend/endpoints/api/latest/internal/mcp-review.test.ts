@@ -31,8 +31,13 @@ const endpoints = [
     invalidBody: { question: "q" },
   },
   {
+    path: "/api/latest/internal/mcp-review/update-qa-entry",
+    validBody: { qaId: "1", question: "q", answer: "a", publish: false },
+    invalidBody: { qaId: "1", publish: "yes" as unknown as boolean },
+  },
+  {
     path: "/api/latest/internal/mcp-review/delete",
-    validBody: { correlationId: "abc123" },
+    validBody: { qaId: "1" },
     invalidBody: {},
   },
 ] as const;

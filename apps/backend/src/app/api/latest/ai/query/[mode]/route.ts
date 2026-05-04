@@ -2,14 +2,13 @@ import {
   assertProjectAccess,
   handleGenerateMode,
   handleStreamMode,
-  type CommonLogFields,
-  type ModeContext,
 } from "@/lib/ai/ai-query-handlers";
+import type { CommonLogFields, ModeContext } from "@/lib/ai/types";
 import { selectModel } from "@/lib/ai/models";
-import { getFullSystemPrompt } from "@/lib/ai/prompts";
+import { getFullSystemPrompt, type SystemPromptId } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools, validateToolNames } from "@/lib/ai/tools";
-import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
+import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
@@ -18,6 +17,29 @@ import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/sc
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ModelMessage } from "ai";
+
+function getStepLimit(systemPromptId: SystemPromptId, hasTools: boolean): number {
+  if (!hasTools) return 1;
+  if (systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai") return 50;
+  if (systemPromptId === "create-dashboard") return 12;
+  return 5;
+}
+
+async function buildSystemPrompt(systemPromptId: SystemPromptId): Promise<string> {
+  let systemPrompt = getFullSystemPrompt(systemPromptId);
+  const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
+  if (isDocsOrSearch) {
+    // Stuffing the entire verified QA corpus into the system prompt on every
+    // request is intentionally naive — it grows monotonically with each new
+    // QA pair and re-fetches/re-sends content that's unchanged across
+    // requests. Once the corpus is large enough to matter we should swap to
+    // a retriever based system (maybe something like an embedding-based retriever
+    // (top-k by query similarity)) and/or cache the assembled context,
+    // but for the current corpus size this is fine and lets the model see everything
+    systemPrompt += await getVerifiedQaContext();
+  }
+  return systemPrompt;
+}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -60,31 +82,10 @@ export const POST = createSmartRouteHandler({
       ? getEnvVariable("STACK_OPENROUTER_AUTHENTICATED_API_KEY", "")
       : "";
     const model = selectModel(quality, speed, isAuthenticated, authenticatedApiKey || undefined);
-    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
-    let systemPrompt = getFullSystemPrompt(systemPromptId);
-    if (isDocsOrSearch) {
-      // Stuffing the entire verified QA corpus into the system prompt on every
-      // request is intentionally naive — it grows monotonically with each new
-      // QA pair and re-fetches/re-sends content that's unchanged across
-      // requests. Once the corpus is large enough to matter we should swap to
-      // a retriever based system (maybe something like an embedding-based retriever
-      // (top-k by query similarity)) and/or cache the assembled context,
-      // but for the current corpus size this is fine and lets the model see everything
-      systemPrompt += await getVerifiedQaContext();
-    }
+    const systemPrompt = await buildSystemPrompt(systemPromptId);
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const isCreateDashboard = systemPromptId === "create-dashboard";
-    const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
-    const stepLimit = toolsArg == null
-      ? 1
-      : isDocsOrSearch
-        ? 50
-        : isCreateDashboard
-          ? 12
-          : isBuildAnalyticsQuery
-            ? 5
-            : 5;
+    const stepLimit = getStepLimit(systemPromptId, toolsArg != null);
 
     const correlationId = crypto.randomUUID();
     const conversationIdForLog = body.mcpCallMetadata
@@ -114,22 +115,24 @@ export const POST = createSmartRouteHandler({
       role: "system",
       content: systemPrompt,
       ...(isAnthropic && {
-        providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } },
+        providerOptions: {
+          openrouter: { cacheControl: { type: "ephemeral" } },
+        },
       }),
     };
     const cachedMessages: ModelMessage[] = [systemMessage, ...(messages as ModelMessage[])];
 
     const ctx: ModeContext = { model, cachedMessages, toolsArg, stepLimit, common, startedAt };
-
-    if (mode === "stream") {
-      return handleStreamMode(ctx);
-    }
-    return await handleGenerateMode({
-      ...ctx,
+    const extras = {
       messages,
       mcpCallMetadata: body.mcpCallMetadata ?? undefined,
       correlationId,
       conversationIdForLog,
-    });
+    };
+
+    if (mode === "stream") {
+      return handleStreamMode({ ...ctx, ...extras });
+    }
+    return await handleGenerateMode({ ...ctx, ...extras });
   },
 });

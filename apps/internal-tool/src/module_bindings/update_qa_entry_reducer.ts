@@ -13,4 +13,7 @@ import {
 export default {
   token: __t.string(),
   qaId: __t.u64(),
+  question: __t.string(),
+  answer: __t.string(),
+  editedBy: __t.string(),
 };

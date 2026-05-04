@@ -12,5 +12,9 @@ import {
 
 export default {
   token: __t.string(),
-  qaId: __t.u64(),
+  correlationId: __t.string(),
+  question: __t.string(),
+  answer: __t.string(),
+  publish: __t.bool(),
+  editedBy: __t.string(),
 };

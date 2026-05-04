@@ -5,7 +5,6 @@
 
 export type MintedIdentity = {
   token: string,
-  /** 64-hex identity string, without the "0x" prefix the WS SDK sometimes prints. */
   identity: string,
 };
 
@@ -51,7 +50,6 @@ export async function mintIdentity(): Promise<MintedIdentity> {
   const res = await fetch(`${baseUrl}/v1/identity`, { method: "POST" });
   if (!res.ok) throw new Error(`mintIdentity failed: HTTP ${res.status}`);
   const body = await res.json() as { token: string, identity: string };
-  // SpacetimeDB sometimes returns the identity with a leading "0x"; normalize it off.
   const identity = body.identity.startsWith("0x") ? body.identity.slice(2) : body.identity;
   return { token: body.token, identity };
 }
@@ -115,6 +113,53 @@ export async function findCorrelationIdByQuestion(
 }
 
 /**
+ * Look up the qa_entries primary key (qaId, a u64 bigint) for a row whose
+ * `sourceMcpCorrelationId` matches the given correlationId. Returns undefined
+ * if no qa_entries row exists yet (the call hasn't been curated).
+ */
+export async function findQaEntryIdBySource(
+  token: string,
+  correlationId: string,
+): Promise<bigint | undefined> {
+  const { rows } = await sqlQuery(token, "SELECT * FROM my_visible_qa_entries");
+  const match = rows.find(r => {
+    const src = r.source_mcp_correlation_id ?? r.sourceMcpCorrelationId;
+    if (src == null || typeof src !== "object") return false;
+    const opt = src as { some?: string } | { none?: unknown };
+    return "some" in opt && opt.some === correlationId;
+  });
+  if (!match) return undefined;
+  return coerceBigInt(match.id);
+}
+
+/**
+ * Look up a manually-added qa_entries row (sourceMcpCorrelationId is none) by
+ * its question text. Used by test cleanup to find rows inserted by add_manual_qa.
+ */
+export async function findManualQaEntryIdByQuestion(
+  token: string,
+  question: string,
+): Promise<bigint | undefined> {
+  const { rows } = await sqlQuery(token, "SELECT * FROM my_visible_qa_entries");
+  const match = rows.find(r => {
+    if (r.question !== question) return false;
+    const src = r.source_mcp_correlation_id ?? r.sourceMcpCorrelationId;
+    if (src == null) return true;
+    if (typeof src === "object" && "none" in src) return true;
+    return false;
+  });
+  if (!match) return undefined;
+  return coerceBigInt(match.id);
+}
+
+function coerceBigInt(raw: unknown): bigint | undefined {
+  if (typeof raw === "string") return BigInt(raw);
+  if (typeof raw === "number") return BigInt(raw);
+  if (typeof raw === "bigint") return raw;
+  return undefined;
+}
+
+/**
  * Per-test collector for anything these tests drop into SpacetimeDB so
  * `afterEach` can wipe it. Without this, each CI run would accumulate
  * stale operators, mcp_call_log rows, and ai_query_log rows against the
@@ -144,17 +189,12 @@ export function createCleanupScope(): CleanupScope {
     async cleanup() {
       const { logToken } = getSpacetimedbConfig();
       if (!logToken) {
-        // Without the log token we can't call any deletion reducer. Leaving
-        // state is fine here — the tests that actually write data skip in
-        // the same configuration.
         identities.clear();
         questions.clear();
         aiQueryCorrelationIds.clear();
         return;
       }
 
-      // Enroll a throwaway operator so findCorrelationIdByQuestion (which
-      // reads my_visible_mcp_call_log) returns rows we can match on.
       const caller = await mintIdentity().catch(() => null);
       if (caller == null) return;
 
@@ -169,7 +209,15 @@ export function createCleanupScope(): CleanupScope {
         for (const question of questions) {
           const cid = await findCorrelationIdByQuestion(caller.token, question).catch(() => undefined);
           if (cid) {
-            await callReducer(caller.token, "delete_qa_entry", [logToken, cid]).catch(() => undefined);
+            const qaId = await findQaEntryIdBySource(caller.token, cid).catch(() => undefined);
+            if (qaId != null) {
+              await callReducer(caller.token, "delete_qa_entry", [logToken, qaId]).catch(() => undefined);
+            }
+            await callReducer(caller.token, "delete_mcp_call_log", [logToken, cid]).catch(() => undefined);
+          }
+          const manualQaId = await findManualQaEntryIdByQuestion(caller.token, question).catch(() => undefined);
+          if (manualQaId != null) {
+            await callReducer(caller.token, "delete_qa_entry", [logToken, manualQaId]).catch(() => undefined);
           }
         }
 

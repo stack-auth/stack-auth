@@ -1,6 +1,6 @@
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { callSql } from "./mcp-logger";
+import { callSql } from "../spacetimedb-client";
 
 type VerifiedRow = {
   question: string,

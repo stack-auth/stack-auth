@@ -5,7 +5,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { useState, useEffect } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { McpCallLogRow } from "../types";
+import type { McpCallLogRow, QaEntriesRow } from "../types";
 import { toDate } from "../utils";
 import { ConversationReplay } from "./ConversationReplay";
 import { markdownComponents } from "./markdown-components";
@@ -33,14 +33,16 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Main Component ────────────────────────────────────
 
-export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkReviewed, onUnmarkReviewed }: {
+export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrection, onMarkReviewed, onUnmarkReviewed }: {
   row: McpCallLogRow;
   allRows: McpCallLogRow[];
+  qaEntries: QaEntriesRow[];
   onClose: () => void;
   onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
   onMarkReviewed?: (correlationId: string) => Promise<void> | void;
   onUnmarkReviewed?: (correlationId: string) => Promise<void> | void;
 }) {
+  const linkedQa = qaEntries.find(q => q.sourceMcpCorrelationId === row.correlationId);
   const [showReplay, setShowReplay] = useState(false);
   // Optimistic override while the mark/unmark roundtrip is in flight. Cleared
   // once the real subscription update catches up.
@@ -136,7 +138,7 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkR
       <QaReviewCard row={row} />
 
       {/* Card 3: Human Correction */}
-      <HumanCorrectionCard row={row} onSave={onSaveCorrection} />
+      <HumanCorrectionCard row={row} qa={linkedQa} onSave={onSaveCorrection} />
     </div>
   );
 }
@@ -422,20 +424,26 @@ async function fetchDeepWikiAnswer(questionText: string): Promise<string> {
     .join("\n\n") ?? "(no response)";
 }
 
-function HumanCorrectionCard({ row, onSave }: {
+function HumanCorrectionCard({ row, qa, onSave }: {
   row: McpCallLogRow;
+  qa: QaEntriesRow | undefined;
   onSave?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
 }) {
-  const [question, setQuestion] = useState(row.humanCorrectedQuestion ?? "");
-  const [answer, setAnswer] = useState(row.humanCorrectedAnswer ?? "");
+  const persistedQuestion = qa?.question ?? "";
+  const persistedAnswer = qa?.answer ?? "";
+  const isPublished = qa?.published === true;
+  const hasDraft = qa != null;
+
+  const [question, setQuestion] = useState(persistedQuestion);
+  const [answer, setAnswer] = useState(persistedAnswer);
   const [lastAction, setLastAction] = useState<"published" | "saved" | "deepwiki-error" | "error" | null>(null);
   const [deepWikiLoading, setDeepWikiLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setQuestion(row.humanCorrectedQuestion ?? "");
-    setAnswer(row.humanCorrectedAnswer ?? "");
-  }, [row.humanCorrectedQuestion, row.humanCorrectedAnswer, row.correlationId]);
+    setQuestion(persistedQuestion);
+    setAnswer(persistedAnswer);
+  }, [persistedQuestion, persistedAnswer, row.correlationId]);
 
   const handleSave = async (publish: boolean) => {
     if (isSaving) return;
@@ -453,12 +461,12 @@ function HumanCorrectionCard({ row, onSave }: {
   };
 
   const hasUnsavedChanges =
-    question !== (row.humanCorrectedQuestion ?? "") ||
-    answer !== (row.humanCorrectedAnswer ?? "");
+    question !== persistedQuestion ||
+    answer !== persistedAnswer;
 
-  const cardStyle = row.publishedToQa
+  const cardStyle = isPublished
     ? "bg-green-50/50 border-green-200"
-    : row.humanCorrectedAnswer
+    : hasDraft
       ? "bg-amber-50/50 border-amber-200"
       : "bg-white border-gray-200";
 
@@ -468,24 +476,24 @@ function HumanCorrectionCard({ row, onSave }: {
       <div className="px-4 py-2.5 border-b border-inherit flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Human Correction</h3>
-          {row.publishedToQa ? (
+          {isPublished ? (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">
               &#10003; Published
             </span>
-          ) : row.humanCorrectedAnswer ? (
+          ) : hasDraft ? (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-800">
               Draft
             </span>
           ) : null}
         </div>
         <div className="flex items-center gap-2 text-[10px] text-gray-400">
-          {row.publishedAt && (
-            <span>{format(toDate(row.publishedAt), "MMM d, yyyy")}</span>
+          {qa?.lastPublishedAt && (
+            <span>{format(toDate(qa.lastPublishedAt), "MMM d, yyyy")}</span>
           )}
-          {row.humanReviewedBy && (
-            <span>by {row.humanReviewedBy}</span>
+          {qa?.lastEditedBy && (
+            <span>by {qa.lastEditedBy}</span>
           )}
-          {row.publishedToQa && (
+          {isPublished && (
             <button
               onClick={() => void handleSave(false)}
               className="text-red-500 hover:text-red-700"
@@ -582,7 +590,7 @@ function HumanCorrectionCard({ row, onSave }: {
               onClick={() => void handleSave(true)}
               className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
             >
-              {row.publishedToQa ? "Update & Publish" : "Save & Publish"}
+              {isPublished ? "Update & Publish" : "Save & Publish"}
             </button>
           </div>
         </div>

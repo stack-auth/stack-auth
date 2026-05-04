@@ -48,7 +48,14 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
       publish: boolean;
     }) => post("add-manual", body, authHeaders),
 
-    delete: (body: { correlationId: string }) =>
+    updateQaEntry: (body: {
+      qaId: string;
+      question: string;
+      answer: string;
+      publish: boolean;
+    }) => post("update-qa-entry", body, authHeaders),
+
+    delete: (body: { qaId: string }) =>
       post("delete", body, authHeaders),
   };
 }

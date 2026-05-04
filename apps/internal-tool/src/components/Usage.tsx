@@ -7,7 +7,7 @@ type TimeRange = "24h" | "7d" | "30d" | "all";
 type AuthFilter = "all" | "authed" | "anon";
 type ModeFilter = "all" | "stream" | "generate";
 type StatusFilter = "all" | "ok" | "error";
-type SortKey = "createdAt" | "systemPromptId" | "modelId" | "mode" | "inputTokens" | "outputTokens" | "cachedInputTokens" | "costUsd" | "durationMs" | "status";
+type SortKey = "createdAt" | "systemPromptId" | "modelId" | "mode" | "inputTokens" | "outputTokens" | "cachedInputTokens" | "cacheCreationTokens" | "cacheSavingsUsd" | "costUsd" | "durationMs" | "status";
 type SortDir = "asc" | "desc";
 const PAGE_SIZES = [25, 50, 100, 500] as const;
 type PageSize = typeof PAGE_SIZES[number];
@@ -130,6 +130,16 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
           bv = b.cachedInputTokens ?? -1;
           break;
         }
+        case "cacheCreationTokens": {
+          av = a.cacheCreationTokens ?? -1;
+          bv = b.cacheCreationTokens ?? -1;
+          break;
+        }
+        case "cacheSavingsUsd": {
+          av = a.cacheDiscountUsd ?? Number.NEGATIVE_INFINITY;
+          bv = b.cacheDiscountUsd ?? Number.NEGATIVE_INFINITY;
+          break;
+        }
         case "costUsd": {
           av = a.costUsd ?? -1;
           bv = b.costUsd ?? -1;
@@ -177,6 +187,8 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
     const inputTokens = filtered.reduce((a, r) => a + (r.inputTokens ?? 0), 0);
     const outputTokens = filtered.reduce((a, r) => a + (r.outputTokens ?? 0), 0);
     const cachedInputTokens = filtered.reduce((a, r) => a + (r.cachedInputTokens ?? 0), 0);
+    const cacheCreationTokens = filtered.reduce((a, r) => a + (r.cacheCreationTokens ?? 0), 0);
+    const cacheSavingsUsd = filtered.reduce((a, r) => a + (r.cacheDiscountUsd ?? 0), 0);
     const totalCost = filtered.reduce((a, r) => a + (r.costUsd ?? 0), 0);
     const durations = filtered.map(r => Number(r.durationMs)).filter(d => d > 0).sort((a, b) => a - b);
     const avgDuration = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
@@ -279,7 +291,7 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
     const maxLatencyBucket = Math.max(...latencyBuckets.map(b => b.count), 1);
 
     return {
-      totalCalls, errorCalls, inputTokens, outputTokens, cachedInputTokens, totalCost,
+      totalCalls, errorCalls, inputTokens, outputTokens, cachedInputTokens, cacheCreationTokens, cacheSavingsUsd, totalCost,
       avgDuration, p95Duration,
       timeBuckets, maxCalls, maxTokenTotal, maxInputTokens,
       sysPromptDist, modelDist, toolDist,
@@ -414,19 +426,55 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-8 gap-3">
-        <MetricCard label="Total Calls" value={stats.totalCalls.toLocaleString()} />
-        <MetricCard label="Errors" value={stats.errorCalls.toLocaleString()} valueClass={stats.errorCalls > 0 ? "text-red-600" : undefined} />
-        <MetricCard label="Input Tokens" value={stats.inputTokens.toLocaleString()} />
-        <MetricCard label="Output Tokens" value={stats.outputTokens.toLocaleString()} />
+      <div className="grid grid-cols-9 gap-3">
+        <MetricCard
+          label="Total Calls"
+          value={stats.totalCalls.toLocaleString()}
+          tooltip="Number of AI requests in the filtered window. Counts every row visible after filters are applied."
+        />
+        <MetricCard
+          label="Errors"
+          value={stats.errorCalls.toLocaleString()}
+          valueClass={stats.errorCalls > 0 ? "text-red-600" : undefined}
+          tooltip="Requests that failed. Counted as rows where errorMessage is non-empty (upstream provider error, timeout, or client abort)."
+        />
+        <MetricCard
+          label="Input Tokens"
+          value={stats.inputTokens.toLocaleString()}
+          tooltip="Sum of prompt tokens across all filtered requests. Includes fresh + cached + written tokens."
+        />
+        <MetricCard
+          label="Output Tokens"
+          value={stats.outputTokens.toLocaleString()}
+          tooltip="Sum of generated tokens across all filtered requests."
+        />
         <MetricCard
           label="Cache Hit %"
           value={stats.inputTokens > 0 ? `${Math.round((stats.cachedInputTokens / stats.inputTokens) * 100)}%` : "—"}
           valueClass={stats.inputTokens > 0 && stats.cachedInputTokens / stats.inputTokens > 0.5 ? "text-green-600" : undefined}
+          tooltip="Share of input tokens served from cache vs. processed fresh. Computed as sum(cachedInputTokens) / sum(inputTokens). Higher = caching is doing its job."
         />
-        <MetricCard label="Total Cost" value={formatUsd(stats.totalCost)} />
-        <MetricCard label="Avg Duration" value={`${stats.avgDuration.toLocaleString()}ms`} />
-        <MetricCard label="p95 Duration" value={`${stats.p95Duration.toLocaleString()}ms`} />
+        <MetricCard
+          label="Total Cost"
+          value={formatUsd(stats.totalCost)}
+          tooltip="Sum of dollar costs across all filtered requests."
+        />
+        <MetricCard
+          label="Cache Savings"
+          value={`${stats.cacheSavingsUsd >= 0 ? "+" : "−"}${formatUsd(Math.abs(stats.cacheSavingsUsd))}`}
+          valueClass={stats.cacheSavingsUsd >= 0 ? "text-green-600" : "text-red-600"}
+          tooltip="Sum of cache_discount values across filtered requests. Positive (green) means caching net-saved money; negative (red) means cold-start writes outweighed reads. Filter by systemPromptId to judge whether caching is worth keeping on a specific flow."
+        />
+        <MetricCard
+          label="Avg Duration"
+          value={`${stats.avgDuration.toLocaleString()}ms`}
+          tooltip="Mean wall-clock time per request, in milliseconds."
+        />
+        <MetricCard
+          label="p95 Duration"
+          value={`${stats.p95Duration.toLocaleString()}ms`}
+          tooltip="95th percentile request duration. 95% of requests completed faster than this. Useful for spotting tail latency."
+        />
       </div>
 
       {/* Time-series charts */}
@@ -552,16 +600,18 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
           <table className="w-full text-xs">
             <thead className="text-[10px] uppercase text-gray-400 font-medium tracking-wider">
               <tr className="border-b border-gray-200">
-                <SortHeader align="left" active={sortKey === "createdAt"} dir={sortDir} onClick={() => toggleSort("createdAt")}>Time</SortHeader>
-                <SortHeader align="left" active={sortKey === "systemPromptId"} dir={sortDir} onClick={() => toggleSort("systemPromptId")}>System Prompt</SortHeader>
-                <SortHeader align="left" active={sortKey === "modelId"} dir={sortDir} onClick={() => toggleSort("modelId")}>Model</SortHeader>
-                <SortHeader align="left" active={sortKey === "mode"} dir={sortDir} onClick={() => toggleSort("mode")}>Mode</SortHeader>
-                <SortHeader align="right" active={sortKey === "inputTokens"} dir={sortDir} onClick={() => toggleSort("inputTokens")}>In tok</SortHeader>
-                <SortHeader align="right" active={sortKey === "outputTokens"} dir={sortDir} onClick={() => toggleSort("outputTokens")}>Out tok</SortHeader>
-                <SortHeader align="right" active={sortKey === "cachedInputTokens"} dir={sortDir} onClick={() => toggleSort("cachedInputTokens")}>Cached</SortHeader>
-                <SortHeader align="right" active={sortKey === "costUsd"} dir={sortDir} onClick={() => toggleSort("costUsd")}>Cost</SortHeader>
-                <SortHeader align="right" active={sortKey === "durationMs"} dir={sortDir} onClick={() => toggleSort("durationMs")}>Duration</SortHeader>
-                <SortHeader align="left" active={sortKey === "status"} dir={sortDir} onClick={() => toggleSort("status")}>Status</SortHeader>
+                <SortHeader align="left" active={sortKey === "createdAt"} dir={sortDir} onClick={() => toggleSort("createdAt")} tooltip="When the request was logged.">Time</SortHeader>
+                <SortHeader align="left" active={sortKey === "systemPromptId"} dir={sortDir} onClick={() => toggleSort("systemPromptId")} tooltip="Which app flow triggered the AI call (e.g. create-dashboard, docs-ask-ai).">System Prompt</SortHeader>
+                <SortHeader align="left" active={sortKey === "modelId"} dir={sortDir} onClick={() => toggleSort("modelId")} tooltip="Which LLM processed the request.">Model</SortHeader>
+                <SortHeader align="left" active={sortKey === "mode"} dir={sortDir} onClick={() => toggleSort("mode")} tooltip="stream — tokens streamed as generated (streamText). generate — single JSON response after completion (generateText).">Mode</SortHeader>
+                <SortHeader align="right" active={sortKey === "inputTokens"} dir={sortDir} onClick={() => toggleSort("inputTokens")} tooltip="Total prompt tokens sent to the model">In tok</SortHeader>
+                <SortHeader align="right" active={sortKey === "outputTokens"} dir={sortDir} onClick={() => toggleSort("outputTokens")} tooltip="Tokens the model generated in its response.">Out tok</SortHeader>
+                <SortHeader align="right" active={sortKey === "cachedInputTokens"} dir={sortDir} onClick={() => toggleSort("cachedInputTokens")} tooltip="Prompt tokens served from Anthropic's prompt cache. Higher = caching is paying off.">Cached</SortHeader>
+                <SortHeader align="right" active={sortKey === "cacheCreationTokens"} dir={sortDir} onClick={() => toggleSort("cacheCreationTokens")} tooltip="Prompt tokens written to cache on this request. High on cold-start; should be near zero on warm hits.">Cache W</SortHeader>
+                <SortHeader align="right" active={sortKey === "cacheSavingsUsd"} dir={sortDir} onClick={() => toggleSort("cacheSavingsUsd")} tooltip="Dollars saved by caching on this request, computed by OpenRouter.">Cache $</SortHeader>
+                <SortHeader align="right" active={sortKey === "costUsd"} dir={sortDir} onClick={() => toggleSort("costUsd")} tooltip="Total dollar cost of this request, billed by OpenRouter. Includes prompt, completion, cache reads, and cache writes.">Cost</SortHeader>
+                <SortHeader align="right" active={sortKey === "durationMs"} dir={sortDir} onClick={() => toggleSort("durationMs")} tooltip="Total wall-clock time from request start to onFinish, in milliseconds. Measured via performance.now() in the backend handler.">Duration</SortHeader>
+                <SortHeader align="left" active={sortKey === "status"} dir={sortDir} onClick={() => toggleSort("status")} tooltip="ok = success. error = upstream provider returned an error, the request was aborted, or the AI SDK threw.">Status</SortHeader>
               </tr>
             </thead>
             <tbody>
@@ -609,6 +659,22 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono text-gray-600">
+                      {row.cacheCreationTokens != null && row.cacheCreationTokens > 0 ? (
+                        <span className="text-orange-600">{row.cacheCreationTokens.toLocaleString()}</span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono text-gray-600">
+                      {(() => {
+                        const savings = row.cacheDiscountUsd;
+                        if (savings == null) return <span className="text-gray-400">—</span>;
+                        const sign = savings >= 0 ? "+" : "−";
+                        const color = savings >= 0 ? "text-green-600" : "text-red-600";
+                        return <span className={color}>{sign}{formatUsd(Math.abs(savings))}</span>;
+                      })()}
                     </td>
                     <td className="py-2 pr-3 text-right font-mono text-gray-600">{row.costUsd != null ? formatUsd(row.costUsd) : "—"}</td>
                     <td className="py-2 pr-3 text-right font-mono text-gray-600">{Number(row.durationMs).toLocaleString()}ms</td>
@@ -675,20 +741,22 @@ function SortHeader({
   active,
   dir,
   onClick,
+  tooltip,
 }: {
   children: React.ReactNode,
   align: "left" | "right",
   active: boolean,
   dir: SortDir,
   onClick: () => void,
+  tooltip?: string,
 }) {
   return (
-    <th className={clsx("py-2 pr-3", align === "left" ? "text-left" : "text-right")}>
+    <th className={clsx("py-2 pr-3 relative group", align === "left" ? "text-left" : "text-right")}>
       <button
         onClick={onClick}
         className={clsx(
           "inline-flex items-center gap-1 hover:text-gray-700",
-          active ? "text-gray-700" : "text-gray-400"
+          active ? "text-gray-700" : "text-gray-400",
         )}
       >
         <span>{children}</span>
@@ -696,6 +764,19 @@ function SortHeader({
           {active ? (dir === "asc" ? "▲" : "▼") : "↕"}
         </span>
       </button>
+      {tooltip != null && (
+        <div
+          className={clsx(
+            "absolute z-50 invisible group-hover:visible",
+            "top-full mt-1 w-64 px-2.5 py-2 rounded-md shadow-lg",
+            "bg-gray-900 text-white text-[11px] font-normal normal-case leading-snug whitespace-normal",
+            "pointer-events-none",
+            align === "right" ? "right-0" : "left-0",
+          )}
+        >
+          {tooltip}
+        </div>
+      )}
     </th>
   );
 }
@@ -705,11 +786,23 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`;
 }
 
-function MetricCard({ label, value, valueClass }: { label: string, value: string, valueClass?: string }) {
+function MetricCard({ label, value, valueClass, tooltip }: { label: string, value: string, valueClass?: string, tooltip?: string }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-3">
+    <div className="relative group bg-white border border-gray-200 rounded-lg p-3">
       <p className="text-[10px] uppercase text-gray-400 font-medium tracking-wider mb-1">{label}</p>
       <p className={clsx("text-xl font-bold", valueClass ?? "text-gray-900")}>{value}</p>
+      {tooltip != null && (
+        <div
+          className={clsx(
+            "absolute z-50 invisible group-hover:visible",
+            "top-full left-0 mt-1 w-72 px-2.5 py-2 rounded-md shadow-lg",
+            "bg-gray-900 text-white text-[11px] font-normal normal-case leading-snug whitespace-normal",
+            "pointer-events-none",
+          )}
+        >
+          {tooltip}
+        </div>
+      )}
     </div>
   );
 }

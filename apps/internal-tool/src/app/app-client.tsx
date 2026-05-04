@@ -9,7 +9,7 @@ import { CallLogList } from "../components/CallLogList";
 import { KnowledgeBase } from "../components/KnowledgeBase";
 import { Usage } from "../components/Usage";
 import { UsageDetail } from "../components/UsageDetail";
-import { useAiQueryLogs, useMcpCallLogs } from "../hooks/useSpacetimeDB";
+import { useAiQueryLogs, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
 import { enrollSpacetimeReviewer, makeMcpReviewApi } from "../lib/mcp-review-api";
 import type { AiQueryLogRow, McpCallLogRow } from "../types";
 
@@ -70,6 +70,7 @@ export default function App() {
 
   const { rows, connectionState } = useMcpCallLogs(memoizedEnsureEnrolled);
   const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs(memoizedEnsureEnrolled);
+  const { rows: qaRows } = useQaEntries(memoizedEnsureEnrolled);
 
   if (!user) {
     return (
@@ -208,6 +209,7 @@ export default function App() {
                 <CallLogDetail
                   row={currentSelectedRow}
                   allRows={rows}
+                  qaEntries={qaRows}
                   onClose={() => setSelectedRow(null)}
                   onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) =>
                     getApi().then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish }))
@@ -228,12 +230,12 @@ export default function App() {
           <main className="flex-1 overflow-y-auto">
             <div className="p-6 max-w-4xl mx-auto">
               <KnowledgeBase
-                rows={rows}
-                onSave={(correlationId, question, answer, publish) =>
-                  getApi().then(api => api.updateCorrection({ correlationId, correctedQuestion: question, correctedAnswer: answer, publish }))
+                rows={qaRows}
+                onSave={(qaId, question, answer, publish) =>
+                  getApi().then(api => api.updateQaEntry({ qaId: qaId.toString(), question, answer, publish }))
                 }
-                onDelete={(correlationId) =>
-                  getApi().then(api => api.delete({ correlationId }))
+                onDelete={(qaId) =>
+                  getApi().then(api => api.delete({ qaId: qaId.toString() }))
                 }
               />
             </div>

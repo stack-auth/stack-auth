@@ -99,11 +99,24 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
             {toDate(row.createdAt).toLocaleString()}
             {" · "}{Number(row.durationMs).toLocaleString()}ms
             {" · "}in {row.inputTokens?.toLocaleString() ?? "?"} tok
-            {row.cachedInputTokens != null && row.cachedInputTokens > 0 && (
-              <> (cached {row.cachedInputTokens.toLocaleString()})</>
-            )}
+            {(() => {
+              const r = row.cachedInputTokens ?? 0;
+              const w = row.cacheCreationTokens ?? 0;
+              if (r === 0 && w === 0) return null;
+              const parts: string[] = [];
+              if (r > 0) parts.push(`r ${r.toLocaleString()}`);
+              if (w > 0) parts.push(`w ${w.toLocaleString()}`);
+              return <> (cache {parts.join(", ")})</>;
+            })()}
             {" · "}out {row.outputTokens?.toLocaleString() ?? "?"} tok
             {row.costUsd != null && <>{" · "}${row.costUsd.toFixed(4)}</>}
+            {(() => {
+              const savings = row.cacheDiscountUsd;
+              if (savings == null) return null;
+              const sign = savings >= 0 ? "+" : "−";
+              const color = savings >= 0 ? "text-green-600" : "text-red-600";
+              return <>{" · "}<span className={color}>cache {sign}${Math.abs(savings).toFixed(4)}</span></>;
+            })()}
           </p>
         </div>
         <button

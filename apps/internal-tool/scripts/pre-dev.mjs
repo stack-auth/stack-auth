@@ -27,9 +27,25 @@ if (publish.status !== 0) {
   process.exit(publish.status ?? 1);
 }
 
-// Provision the backend's SpacetimeDB service token if missing or stale.
-// Backend's mcp-logger.ts requires STACK_SPACETIMEDB_SERVICE_TOKEN to function.
 await provisionServiceToken();
+await runQaEntriesBackfill();
+
+async function runQaEntriesBackfill() {
+  const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "stack-auth-llm";
+  const logToken = process.env.STACK_MCP_LOG_TOKEN ?? "";
+  if (!logToken) {
+    console.warn("[internal-tool] STACK_MCP_LOG_TOKEN not set; skipping qa_entries backfill.");
+    return;
+  }
+  const result = spawnSync(
+    "spacetime",
+    ["call", dbName, "backfill_qa_entries", JSON.stringify(logToken)],
+    { stdio: "inherit" },
+  );
+  if (result.status !== 0) {
+    console.warn(`[internal-tool] backfill_qa_entries returned ${result.status}; ignoring (may already be migrated).`);
+  }
+}
 
 async function provisionServiceToken() {
   const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
@@ -38,15 +54,12 @@ async function provisionServiceToken() {
   const backendEnvLocal = resolve("../backend/.env.development.local");
   const backendEnvDev = resolve("../backend/.env.development");
 
-  // Check if the token is already configured in any env file the backend loads.
+
   const existingToken =
     readEnvVar(backendEnvLocal, "STACK_SPACETIMEDB_SERVICE_TOKEN") ||
     readEnvVar(backendEnvDev, "STACK_SPACETIMEDB_SERVICE_TOKEN");
 
   if (existingToken) {
-    // Probe the token against the running SpacetimeDB. If it works, keep it.
-    // If SpacetimeDB signing keys rotated (e.g. after OrbStack restart), the
-    // token is dead — strip it from the env file and mint a fresh one.
     const stillValid = await probeToken(spacetimeHttpUrl, dbName, existingToken);
     if (stillValid) {
       return;
@@ -88,8 +101,6 @@ async function provisionServiceToken() {
 
 async function probeToken(spacetimeHttpUrl, dbName, token) {
   try {
-    // Cheapest valid request: a SQL query that the module owner / any identity
-    // can run. Returns HTTP 200 if token signature is valid, 401 if not.
     const res = await fetch(`${spacetimeHttpUrl}/v1/database/${encodeURIComponent(dbName)}/sql`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${token}` },
@@ -97,11 +108,8 @@ async function probeToken(spacetimeHttpUrl, dbName, token) {
     });
     if (res.status === 401) return false;
     if (res.ok) return true;
-    // Any other status: be conservative, assume token is fine — we don't want
-    // to wipe a valid token on a transient network error.
     return true;
   } catch {
-    // Network error: can't confirm staleness; keep the existing token.
     return true;
   }
 }
@@ -118,7 +126,6 @@ function readEnvVar(filePath, key) {
 function removeEnvVar(filePath, key) {
   if (!existsSync(filePath)) return;
   const content = readFileSync(filePath, "utf8");
-  // Strip the env var line AND the auto-provisioning comment immediately above it.
   const pattern = new RegExp(
     `(^# Auto-provisioned by apps/internal-tool/scripts/pre-dev\\.mjs\\n)?^${key}=.*\\n?`,
     "m",

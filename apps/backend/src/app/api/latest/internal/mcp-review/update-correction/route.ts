@@ -1,5 +1,5 @@
-import { callReducerStrict } from "@/lib/ai/mcp-logger";
-import { assertIsAiChatReviewer } from "@/lib/ai/reviewer-auth";
+import { callReducerStrict } from "@/lib/ai/spacetimedb-client";
+import { assertIsAiChatReviewer } from "@/lib/ai/qa/reviewer-auth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -32,7 +32,7 @@ export const POST = createSmartRouteHandler({
     assertIsAiChatReviewer(user);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await callReducerStrict("update_human_correction", [
+    await callReducerStrict("upsert_qa_from_call", [
       token,
       body.correlationId,
       body.correctedQuestion,

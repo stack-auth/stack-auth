@@ -23,7 +23,6 @@ const mcpCallLog = table(
     durationMs: t.u64(),
     modelId: t.string(),
     errorMessage: t.string().optional(),
-    // QA review fields (populated asynchronously after initial log)
     qaReviewedAt: t.timestamp().optional(),
     qaNeedsHumanReview: t.bool().optional(),
     qaAnswerCorrect: t.bool().optional(),
@@ -34,10 +33,8 @@ const mcpCallLog = table(
     qaReviewModelId: t.string().optional(),
     qaConversationJson: t.string().optional(),
     qaErrorMessage: t.string().optional(),
-    // Human review
     humanReviewedAt: t.timestamp().optional(),
     humanReviewedBy: t.string().optional(),
-    // Human corrections & publishing
     humanCorrectedQuestion: t.string().optional(),
     humanCorrectedAnswer: t.string().optional(),
     publishedToQa: t.bool().index('btree'),
@@ -67,7 +64,10 @@ const aiQueryLog = table(
     inputTokens: t.u32().optional(),
     outputTokens: t.u32().optional(),
     cachedInputTokens: t.u32().optional(),
+    cacheCreationTokens: t.u32().optional(),
     costUsd: t.f64().optional(),
+    cacheDiscountUsd: t.f64().optional(),
+    openrouterGenerationId: t.string().optional(),
     stepCount: t.u32(),
     durationMs: t.u64(),
     errorMessage: t.string().optional(),
@@ -86,20 +86,29 @@ const operators = table(
   }
 );
 
-const spacetimedb = schema({ mcpCallLog, aiQueryLog, operators });
-export default spacetimedb;
+const qaEntries = table(
+  { name: 'qa_entries', public: false },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    shard: t.u8().index('btree'),
+    sourceMcpCorrelationId: t.string().optional(),
+    question: t.string(),
+    answer: t.string(),
+    createdBy: t.string(),
+    createdAt: t.timestamp(),
+    lastEditedBy: t.string(),
+    lastEditedAt: t.timestamp(),
+    published: t.bool().index('btree'),
+    firstPublishedAt: t.timestamp().optional(),
+    lastPublishedAt: t.timestamp().optional(),
+  }
+);
 
-// Operators can only see their own row in the operators table.
+const spacetimedb = schema({ mcpCallLog, aiQueryLog, operators, qaEntries });
+export default spacetimedb;
 export const operatorsVisibility = spacetimedb.clientVisibilityFilter.sql(
   'SELECT * FROM operators WHERE identity = :sender'
 );
-
-// Reviewers subscribe to these views instead of the raw (private) log tables.
-// Each view gates on operator-table membership; non-operators see zero rows.
-// The `.shard.filter(0)` call returns every row — all rows have `shard = 0`
-// and the btree index on `shard` covers them. Views cannot use `.iter()` and
-// primary keys don't expose `.filter()`, so a sentinel non-primary index is
-// required for full-table traversal.
 export const myVisibleMcpCallLog = spacetimedb.view(
   { name: 'my_visible_mcp_call_log', public: true },
   t.array(mcpCallLog.rowType),
@@ -114,6 +123,14 @@ export const myVisibleAiQueryLog = spacetimedb.view(
   (ctx) => {
     if (ctx.db.operators.identity.find(ctx.sender) == null) return [];
     return Array.from(ctx.db.aiQueryLog.shard.filter(0));
+  }
+);
+export const myVisibleQaEntries = spacetimedb.view(
+  { name: 'my_visible_qa_entries', public: true },
+  t.array(qaEntries.rowType),
+  (ctx) => {
+    if (ctx.db.operators.identity.find(ctx.sender) == null) return [];
+    return Array.from(ctx.db.qaEntries.shard.filter(0));
   }
 );
 
@@ -139,12 +156,12 @@ export const publishedQa = spacetimedb.anonymousView(
       answer: string,
       publishedAt: Timestamp | undefined,
     }> = [];
-    for (const row of ctx.db.mcpCallLog.publishedToQa.filter(true)) {
+    for (const row of ctx.db.qaEntries.published.filter(true)) {
       out.push({
         id: row.id,
-        question: row.humanCorrectedQuestion ?? row.question,
-        answer: row.humanCorrectedAnswer ?? row.response,
-        publishedAt: row.publishedAt,
+        question: row.question,
+        answer: row.answer,
+        publishedAt: row.lastPublishedAt,
       });
     }
     return out;
@@ -161,6 +178,9 @@ export const add_operator = spacetimedb.reducer(
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
+    }
+    if (/^__.*__$/.test(args.stackUserId)) {
+      throw new SenderError('stackUserId pattern __*__ is reserved');
     }
     const existing = ctx.db.operators.identity.find(args.identity);
     if (existing != null) {
@@ -348,32 +368,56 @@ export const unmark_human_reviewed = spacetimedb.reducer(
   }
 );
 
-export const update_human_correction = spacetimedb.reducer(
+export const upsert_qa_from_call = spacetimedb.reducer(
   {
     token: t.string(),
     correlationId: t.string(),
-    correctedQuestion: t.string(),
-    correctedAnswer: t.string(),
+    question: t.string(),
+    answer: t.string(),
     publish: t.bool(),
-    reviewedBy: t.string(),
+    editedBy: t.string(),
   },
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
-    if (row == null) {
+    if (ctx.db.mcpCallLog.correlationId.find(args.correlationId) == null) {
       throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
-    ctx.db.mcpCallLog.id.update({
-      ...row,
-      humanCorrectedQuestion: args.correctedQuestion,
-      humanCorrectedAnswer: args.correctedAnswer,
-      humanReviewedAt: row.humanReviewedAt ?? ctx.timestamp,
-      humanReviewedBy: row.humanReviewedBy ?? args.reviewedBy,
-      publishedToQa: args.publish,
-      publishedAt: args.publish ? (row.publishedAt ?? ctx.timestamp) : undefined,
-    });
+    let existing = null;
+    for (const row of ctx.db.qaEntries.shard.filter(0)) {
+      if (row.sourceMcpCorrelationId === args.correlationId) {
+        existing = row;
+        break;
+      }
+    }
+    if (existing != null) {
+      ctx.db.qaEntries.id.update({
+        ...existing,
+        question: args.question,
+        answer: args.answer,
+        lastEditedBy: args.editedBy,
+        lastEditedAt: ctx.timestamp,
+        published: args.publish,
+        firstPublishedAt: args.publish ? (existing.firstPublishedAt ?? ctx.timestamp) : existing.firstPublishedAt,
+        lastPublishedAt: args.publish ? ctx.timestamp : existing.lastPublishedAt,
+      });
+      return;
+    }
+    ctx.db.qaEntries.insert({
+      id: 0n,
+      shard: 0,
+      sourceMcpCorrelationId: args.correlationId,
+      question: args.question,
+      answer: args.answer,
+      createdBy: args.editedBy,
+      createdAt: ctx.timestamp,
+      lastEditedBy: args.editedBy,
+      lastEditedAt: ctx.timestamp,
+      published: args.publish,
+      firstPublishedAt: args.publish ? ctx.timestamp : undefined,
+      lastPublishedAt: args.publish ? ctx.timestamp : undefined,
+    } as Parameters<typeof ctx.db.qaEntries.insert>[0]);
   }
 );
 
@@ -383,52 +427,141 @@ export const add_manual_qa = spacetimedb.reducer(
     question: t.string(),
     answer: t.string(),
     publish: t.bool(),
-    reviewedBy: t.string(),
+    createdBy: t.string(),
   },
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    ctx.db.mcpCallLog.insert({
+    ctx.db.qaEntries.insert({
       id: 0n,
       shard: 0,
-      correlationId: ctx.newUuidV4().toString(),
-      createdAt: ctx.timestamp,
-      toolName: "manual",
-      reason: "Manually added Q&A",
-      userPrompt: "",
+      sourceMcpCorrelationId: undefined,
       question: args.question,
-      response: "",
-      stepCount: 0,
-      innerToolCallsJson: "[]",
-      durationMs: 0n,
-      modelId: "human",
-      humanCorrectedQuestion: args.question,
-      humanCorrectedAnswer: args.answer,
-      humanReviewedAt: ctx.timestamp,
-      humanReviewedBy: args.reviewedBy,
-      publishedToQa: args.publish,
-      publishedAt: args.publish ? ctx.timestamp : undefined,
-    } as Parameters<typeof ctx.db.mcpCallLog.insert>[0]);
+      answer: args.answer,
+      createdBy: args.createdBy,
+      createdAt: ctx.timestamp,
+      lastEditedBy: args.createdBy,
+      lastEditedAt: ctx.timestamp,
+      published: args.publish,
+      firstPublishedAt: args.publish ? ctx.timestamp : undefined,
+      lastPublishedAt: args.publish ? ctx.timestamp : undefined,
+    } as Parameters<typeof ctx.db.qaEntries.insert>[0]);
   }
 );
 
 export const delete_qa_entry = spacetimedb.reducer(
   {
     token: t.string(),
-    correlationId: t.string(),
+    qaId: t.u64(),
   },
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    const row = ctx.db.qaEntries.id.find(args.qaId);
     if (row == null) {
-      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+      throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
     }
-    ctx.db.mcpCallLog.id.delete(row.id);
+    ctx.db.qaEntries.id.delete(row.id);
   }
 );
+
+// Pure publish state transition. Same firstPublishedAt / lastPublishedAt
+// semantics as upsert_qa_from_call.
+export const set_qa_published = spacetimedb.reducer(
+  {
+    token: t.string(),
+    qaId: t.u64(),
+    publish: t.bool(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const row = ctx.db.qaEntries.id.find(args.qaId);
+    if (row == null) {
+      throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
+    }
+    ctx.db.qaEntries.id.update({
+      ...row,
+      published: args.publish,
+      firstPublishedAt: args.publish ? (row.firstPublishedAt ?? ctx.timestamp) : row.firstPublishedAt,
+      lastPublishedAt: args.publish ? ctx.timestamp : row.lastPublishedAt,
+    });
+  }
+);
+
+// Text-only edit. Doesn't touch publish state.
+export const update_qa_entry = spacetimedb.reducer(
+  {
+    token: t.string(),
+    qaId: t.u64(),
+    question: t.string(),
+    answer: t.string(),
+    editedBy: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const row = ctx.db.qaEntries.id.find(args.qaId);
+    if (row == null) {
+      throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
+    }
+    ctx.db.qaEntries.id.update({
+      ...row,
+      question: args.question,
+      answer: args.answer,
+      lastEditedBy: args.editedBy,
+      lastEditedAt: ctx.timestamp,
+    });
+  }
+);
+
+export const backfill_qa_entries = spacetimedb.reducer(
+  {
+    token: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    for (const call of ctx.db.mcpCallLog.shard.filter(0)) {
+      const hasEditorialContent =
+        call.humanCorrectedQuestion != null ||
+        call.humanCorrectedAnswer != null ||
+        call.publishedToQa === true ||
+        call.toolName === 'manual';
+      if (!hasEditorialContent) continue;
+      let alreadyMigrated = false;
+      for (const existing of ctx.db.qaEntries.shard.filter(0)) {
+        if (existing.sourceMcpCorrelationId === call.correlationId) {
+          alreadyMigrated = true;
+          break;
+        }
+      }
+      if (alreadyMigrated) continue;
+      const reviewerId = call.humanReviewedBy ?? '__backfill__';
+      const reviewedAt = call.humanReviewedAt ?? call.createdAt;
+      ctx.db.qaEntries.insert({
+        id: 0n,
+        shard: 0,
+        sourceMcpCorrelationId: call.toolName === 'manual' ? undefined : call.correlationId,
+        question: call.humanCorrectedQuestion ?? call.question,
+        answer: call.humanCorrectedAnswer ?? call.response,
+        createdBy: reviewerId,
+        createdAt: reviewedAt,
+        lastEditedBy: reviewerId,
+        lastEditedAt: reviewedAt,
+        published: call.publishedToQa,
+        firstPublishedAt: call.publishedToQa ? (call.publishedAt ?? reviewedAt) : undefined,
+        lastPublishedAt: call.publishedToQa ? (call.publishedAt ?? reviewedAt) : undefined,
+      } as Parameters<typeof ctx.db.qaEntries.insert>[0]);
+    }
+  }
+);
+
 
 export const log_ai_query = spacetimedb.reducer(
   {
@@ -449,7 +582,10 @@ export const log_ai_query = spacetimedb.reducer(
     inputTokens: t.u32().optional(),
     outputTokens: t.u32().optional(),
     cachedInputTokens: t.u32().optional(),
+    cacheCreationTokens: t.u32().optional(),
     costUsd: t.f64().optional(),
+    cacheDiscountUsd: t.f64().optional(),
+    openrouterGenerationId: t.string().optional(),
     stepCount: t.u32(),
     durationMs: t.u64(),
     errorMessage: t.string().optional(),
@@ -480,13 +616,56 @@ export const log_ai_query = spacetimedb.reducer(
       inputTokens: args.inputTokens,
       outputTokens: args.outputTokens,
       cachedInputTokens: args.cachedInputTokens,
+      cacheCreationTokens: args.cacheCreationTokens,
       costUsd: args.costUsd,
+      cacheDiscountUsd: args.cacheDiscountUsd,
+      openrouterGenerationId: args.openrouterGenerationId,
       stepCount: args.stepCount,
       durationMs: args.durationMs,
       errorMessage: args.errorMessage,
       mcpCorrelationId: args.mcpCorrelationId,
       conversationId: args.conversationId,
     } as Parameters<typeof ctx.db.aiQueryLog.insert>[0]);
+  }
+);
+
+export const update_ai_query_cost = spacetimedb.reducer(
+  {
+    token: t.string(),
+    correlationId: t.string(),
+    costUsd: t.f64().optional(),
+    cacheDiscountUsd: t.f64().optional(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const row = ctx.db.aiQueryLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('AI query log not found for correlationId: ' + args.correlationId);
+    }
+    ctx.db.aiQueryLog.id.update({
+      ...row,
+      costUsd: args.costUsd ?? row.costUsd,
+      cacheDiscountUsd: args.cacheDiscountUsd ?? row.cacheDiscountUsd,
+    });
+  }
+);
+
+export const delete_mcp_call_log = spacetimedb.reducer(
+  {
+    token: t.string(),
+    correlationId: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    }
+    ctx.db.mcpCallLog.id.delete(row.id);
   }
 );
 

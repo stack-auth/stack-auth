@@ -12,5 +12,7 @@ import {
 
 export default {
   token: __t.string(),
-  qaId: __t.u64(),
+  correlationId: __t.string(),
+  costUsd: __t.option(__t.f64()),
+  cacheDiscountUsd: __t.option(__t.f64()),
 };

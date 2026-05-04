@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
 import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { createCleanupScope, findCorrelationIdByQuestion, isSpacetimedbReachable, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
+import { createCleanupScope, findManualQaEntryIdByQuestion, isSpacetimedbReachable, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 
@@ -47,7 +47,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(await publishedQaContains(marker)).toBe(false);
   });
 
-  it("removes a row from published_qa when update-correction sets publish:false", async ({ expect }) => {
+  it("removes a row from published_qa when update-qa-entry sets publish:false", async ({ expect }) => {
     const reviewer = await mintIdentity();
     scope.trackIdentity(reviewer.identity);
     await AiChatReviewer.createReviewer();
@@ -68,16 +68,16 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(add.status).toBe(200);
     expect(await publishedQaContains(marker)).toBe(true);
 
-    const correlationId = await findCorrelationIdByQuestion(reviewer.token, marker);
-    expect(correlationId).toBeDefined();
+    const qaId = await findManualQaEntryIdByQuestion(reviewer.token, marker);
+    expect(qaId).toBeDefined();
 
-    const update = await niceBackendFetch("/api/latest/internal/mcp-review/update-correction", {
+    const update = await niceBackendFetch("/api/latest/internal/mcp-review/update-qa-entry", {
       method: "POST",
       accessType: "client",
       body: {
-        correlationId,
-        correctedQuestion: marker,
-        correctedAnswer: "x",
+        qaId: qaId!.toString(),
+        question: marker,
+        answer: "x",
         publish: false,
       },
     });
@@ -107,13 +107,13 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(add.status).toBe(200);
     expect(await publishedQaContains(marker)).toBe(true);
 
-    const correlationId = await findCorrelationIdByQuestion(reviewer.token, marker);
-    expect(correlationId).toBeDefined();
+    const qaId = await findManualQaEntryIdByQuestion(reviewer.token, marker);
+    expect(qaId).toBeDefined();
 
     const del = await niceBackendFetch("/api/latest/internal/mcp-review/delete", {
       method: "POST",
       accessType: "client",
-      body: { correlationId },
+      body: { qaId: qaId!.toString() },
     });
     expect(del.status).toBe(200);
 
@@ -142,8 +142,8 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(add.status).toBe(200);
     expect(await publishedQaContains(marker)).toBe(true);
 
-    const correlationId = await findCorrelationIdByQuestion(reviewerA.token, marker);
-    expect(correlationId).toBeDefined();
+    const qaId = await findManualQaEntryIdByQuestion(reviewerA.token, marker);
+    expect(qaId).toBeDefined();
 
     // B deletes. fastSignUp re-points backendContext.userAuth to B; subsequent calls use B's auth.
     const reviewerB = await mintIdentity();
@@ -159,7 +159,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     const del = await niceBackendFetch("/api/latest/internal/mcp-review/delete", {
       method: "POST",
       accessType: "client",
-      body: { correlationId },
+      body: { qaId: qaId!.toString() },
     });
     expect(del.status).toBe(200);
 

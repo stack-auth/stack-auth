@@ -1,4 +1,5 @@
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ToolSet } from "ai";
 import { patchDashboardTool, updateDashboardTool } from "./create-dashboard";
 import { createEmailDraftTool } from "./create-email-draft";
@@ -36,10 +37,7 @@ export async function getTools(
       }
 
       case "sql-query": {
-        const sqlTool = createSqlQueryTool(context.auth, context.targetProjectId);
-        if (sqlTool != null) {
-          tools["queryAnalytics"] = sqlTool;
-        }
+        tools["queryAnalytics"] = createSqlQueryTool(context.auth, context.targetProjectId);
         break;
       }
 
@@ -69,9 +67,8 @@ export async function getTools(
       }
 
       default: {
-        // TypeScript will ensure this is unreachable if we handle all cases
         const _exhaustive: never = toolName;
-        console.warn(`Unknown tool name: ${_exhaustive}`);
+        captureError("ai-tools-getTools", new StackAssertionError(`Unknown tool name: ${_exhaustive as string}`));
       }
     }
   }

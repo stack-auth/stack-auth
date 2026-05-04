@@ -12,7 +12,6 @@ async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ 
   const params = await options.params;
   const subpath = params.path?.join("/") ?? "";
 
-  const contentType = req.headers.get("Content-Type");
   const sanitized = req.method !== "GET" && req.method !== "HEAD"
     ? sanitizeBody(await req.arrayBuffer())
     : undefined;
@@ -31,13 +30,13 @@ async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ 
       "Authorization": `Bearer ${apiKey}`,
       "anthropic-version": "2023-06-01",
     };
-  if (contentType) forwardHeaders["Content-Type"] = contentType;
+  if (body) forwardHeaders["Content-Type"] = "application/json";
 
   const response = await fetch(targetUrl, { method: req.method, headers: forwardHeaders, body });
 
   const responseHeaders = {
     "Content-Type": response.headers.get("Content-Type") ?? "application/json",
-    "Cache-Control": "no-cache",
+    "Cache-Control": "no-store",
   };
 
   const passthrough = () => new Response(response.body, { status: response.status, headers: responseHeaders });

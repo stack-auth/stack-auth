@@ -1,28 +1,11 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-
-export type McpLogEntry = {
-  correlationId: string,
-  toolName: string,
-  reason: string,
-  userPrompt: string,
-  conversationId: string | undefined,
-  question: string,
-  response: string,
-  stepCount: number,
-  innerToolCallsJson: string,
-  durationMs: bigint,
-  modelId: string,
-  errorMessage: string | undefined,
-};
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 function httpBase(): string | null {
   return getEnvVariable("STACK_SPACETIMEDB_URL", "") || null;
 }
 
-// Cap every HTTP call to SpacetimeDB so a wedged host can't hang a request path
-// (e.g. a reviewer UI mutation) indefinitely. 10s is generous for local reducer
-// calls and SQL queries while still surfacing a real failure in bounded time.
+// Cap each individual fetch to SpacetimeDB at 10s
 const SPACETIMEDB_FETCH_TIMEOUT_MS = 10_000;
 
 let enrollmentPromise: Promise<void> | null = null;
@@ -72,8 +55,16 @@ async function rawCallReducer(token: string, reducer: string, args: unknown[]): 
   });
   if (!res.ok) {
     const preview = (await res.text()).slice(0, 200);
-    throw new StackAssertionError(`Reducer ${reducer} failed (${res.status}): ${preview}`);
+    throw spacetimeDbError(`Reducer ${reducer} failed`, res.status, preview);
   }
+}
+
+
+function spacetimeDbError(label: string, status: number, preview: string): Error {
+  const detail = `${label} (${status}): ${preview}`;
+  if (status >= 400 && status < 500) return new StatusError(status, detail);
+  if (status >= 500) return new StatusError(StatusError.BadGateway, `${label} (upstream ${status}): ${preview}`);
+  return new StackAssertionError(detail);
 }
 
 export async function callReducer(reducer: string, args: unknown[]): Promise<void> {
@@ -122,7 +113,7 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
   });
   if (!res.ok) {
     const preview = (await res.text()).slice(0, 200);
-    throw new StackAssertionError(`SQL query failed (${res.status}): ${preview}`);
+    throw spacetimeDbError("SQL query failed", res.status, preview);
   }
   const parsed = await res.json() as Array<{
     schema: { elements: Array<{ name: { some?: string } | null }> },
@@ -140,24 +131,3 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
   });
 }
 
-export async function logMcpCall(entry: McpLogEntry): Promise<void> {
-  const logToken = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
-  // Positional args per reducer schema: token, correlationId, conversationId, toolName,
-  // reason, userPrompt, question, response, stepCount, innerToolCallsJson, durationMs,
-  // modelId, errorMessage
-  await callReducer("log_mcp_call", [
-    logToken,
-    entry.correlationId,
-    opt(entry.conversationId),
-    entry.toolName,
-    entry.reason,
-    entry.userPrompt,
-    entry.question,
-    entry.response,
-    entry.stepCount,
-    entry.innerToolCallsJson,
-    entry.durationMs,
-    entry.modelId,
-    opt(entry.errorMessage),
-  ]);
-}

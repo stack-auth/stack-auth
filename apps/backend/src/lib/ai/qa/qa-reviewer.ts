@@ -2,8 +2,8 @@ import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateText, stepCountIs } from "ai";
-import { callReducer, opt } from "./mcp-logger";
-import { createOpenRouterProvider } from "./models";
+import { callReducer, opt } from "../spacetimedb-client";
+import { createOpenRouterProvider } from "../models";
 import { getVerifiedQaContext } from "./verified-qa";
 
 const QA_SYSTEM_PROMPT = `You are a QA reviewer for Stack Auth's AI documentation assistant.
@@ -95,6 +95,11 @@ export async function reviewMcpCall(entry: {
     const openrouter = createOpenRouterProvider();
     const model = openrouter(REVIEW_MODEL_ID);
 
+    const MAX_RESPONSE_CHARS = 12_000;
+    const truncatedResponse = entry.response.length > MAX_RESPONSE_CHARS
+      ? `${entry.response.slice(0, MAX_RESPONSE_CHARS)}\n\n[...truncated ${entry.response.length - MAX_RESPONSE_CHARS} chars]`
+      : entry.response;
+
     const userMessage = [
       "## Question",
       entry.question,
@@ -103,7 +108,7 @@ export async function reviewMcpCall(entry: {
       entry.reason,
       "",
       "## AI Response",
-      entry.response,
+      truncatedResponse,
     ].join("\n");
 
     const verifiedQa = await getVerifiedQaContext();
@@ -115,6 +120,7 @@ export async function reviewMcpCall(entry: {
       stopWhen: stepCountIs(10),
       messages: [{ role: "user", content: userMessage }],
       abortSignal: controller.signal,
+      maxOutputTokens: 2000,
     });
 
     const conversation = result.steps.map((step, i) => {
@@ -141,7 +147,8 @@ export async function reviewMcpCall(entry: {
       typeof raw.answerCorrect !== "boolean" ||
       typeof raw.answerRelevant !== "boolean" ||
       !Array.isArray(raw.flags) ||
-      typeof raw.overallScore !== "number"
+      typeof raw.overallScore !== "number" ||
+      !Number.isFinite(raw.overallScore)
     ) {
       throw new StackAssertionError(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
     }
@@ -154,9 +161,11 @@ export async function reviewMcpCall(entry: {
       overallScore: number,
     };
     parsed.overallScore = Math.max(0, Math.min(100, Math.round(parsed.overallScore)));
+    const hasCriticalFlag = parsed.flags.some(f => f.severity === "critical");
+    const needsHumanReview = parsed.needsHumanReview || parsed.overallScore < 50 || hasCriticalFlag;
 
     update = {
-      qaNeedsHumanReview: parsed.needsHumanReview,
+      qaNeedsHumanReview: needsHumanReview,
       qaAnswerCorrect: parsed.answerCorrect,
       qaAnswerRelevant: parsed.answerRelevant,
       qaFlagsJson: JSON.stringify(parsed.flags),
@@ -166,7 +175,7 @@ export async function reviewMcpCall(entry: {
       qaErrorMessage: undefined,
     };
   } catch (err) {
-    captureError("qa-reviewer", err);
+    captureError("qa-reviewer-review-failed", err);
     update = failureUpdate(err);
   } finally {
     clearTimeout(timeoutId);
@@ -176,7 +185,7 @@ export async function reviewMcpCall(entry: {
     try {
       await mcpClient.close();
     } catch (err) {
-      captureError("qa-reviewer", err);
+      captureError("qa-reviewer-mcp-client-close", err);
     }
   }
 
@@ -196,18 +205,10 @@ export async function reviewMcpCall(entry: {
       opt(update.qaErrorMessage),
     ]);
   } catch (err) {
-    captureError("qa-reviewer", err);
+    captureError("qa-reviewer-update-reducer-failed", err);
   }
 }
 
-/**
- * Best-effort JSON object extraction from an LLM response. Handles:
- * - Pure JSON (whole response is the object).
- * - JSON wrapped in a ```json ... ``` markdown fence.
- * - JSON surrounded by prose, by finding the largest balanced { ... } block.
- *
- * Returns the parsed object, or null if no valid JSON can be recovered.
- */
 function extractJsonObject(text: string): Record<string, unknown> | null {
   const tryParse = (s: string): Record<string, unknown> | null => {
     try {

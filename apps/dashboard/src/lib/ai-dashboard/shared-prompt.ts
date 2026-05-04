@@ -110,7 +110,6 @@ export function buildDashboardMessages(
         text: cachedText,
         providerOptions: {
           openrouter: { cacheControl: { type: "ephemeral" } },
-          anthropic: { cacheControl: { type: "ephemeral" } },
         },
       },
     ],

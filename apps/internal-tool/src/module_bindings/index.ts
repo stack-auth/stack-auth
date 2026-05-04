@@ -36,21 +36,28 @@ import {
 // Import all reducer arg schemas
 import AddManualQaReducer from "./add_manual_qa_reducer";
 import AddOperatorReducer from "./add_operator_reducer";
+import BackfillQaEntriesReducer from "./backfill_qa_entries_reducer";
+import DeleteAiQueryLogReducer from "./delete_ai_query_log_reducer";
+import DeleteMcpCallLogReducer from "./delete_mcp_call_log_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
 import EnrollServiceReducer from "./enroll_service_reducer";
 import LogAiQueryReducer from "./log_ai_query_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
 import RemoveOperatorReducer from "./remove_operator_reducer";
+import SetQaPublishedReducer from "./set_qa_published_reducer";
 import UnmarkHumanReviewedReducer from "./unmark_human_reviewed_reducer";
-import UpdateHumanCorrectionReducer from "./update_human_correction_reducer";
+import UpdateAiQueryCostReducer from "./update_ai_query_cost_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
+import UpdateQaEntryReducer from "./update_qa_entry_reducer";
+import UpsertQaFromCallReducer from "./upsert_qa_from_call_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
 import MyVisibleAiQueryLogRow from "./my_visible_ai_query_log_table";
 import MyVisibleMcpCallLogRow from "./my_visible_mcp_call_log_table";
+import MyVisibleQaEntriesRow from "./my_visible_qa_entries_table";
 import OperatorsRow from "./operators_table";
 import PublishedQaRow from "./published_qa_table";
 
@@ -83,6 +90,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyVisibleMcpCallLogRow),
+  myVisibleQaEntries: __table({
+    name: 'my_visible_qa_entries',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleQaEntriesRow),
   publishedQa: __table({
     name: 'published_qa',
     indexes: [
@@ -96,15 +110,21 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("add_manual_qa", AddManualQaReducer),
   __reducerSchema("add_operator", AddOperatorReducer),
+  __reducerSchema("backfill_qa_entries", BackfillQaEntriesReducer),
+  __reducerSchema("delete_ai_query_log", DeleteAiQueryLogReducer),
+  __reducerSchema("delete_mcp_call_log", DeleteMcpCallLogReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
   __reducerSchema("enroll_service", EnrollServiceReducer),
   __reducerSchema("log_ai_query", LogAiQueryReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
   __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
   __reducerSchema("remove_operator", RemoveOperatorReducer),
+  __reducerSchema("set_qa_published", SetQaPublishedReducer),
   __reducerSchema("unmark_human_reviewed", UnmarkHumanReviewedReducer),
-  __reducerSchema("update_human_correction", UpdateHumanCorrectionReducer),
+  __reducerSchema("update_ai_query_cost", UpdateAiQueryCostReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
+  __reducerSchema("update_qa_entry", UpdateQaEntryReducer),
+  __reducerSchema("upsert_qa_from_call", UpsertQaFromCallReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
