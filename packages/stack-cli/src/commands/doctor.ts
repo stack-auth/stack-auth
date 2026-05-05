@@ -124,12 +124,20 @@ type PackageJsonRead =
   | { kind: "missing" }
   | { kind: "invalid", error: string };
 
+function isPackageJson(value: unknown): value is PackageJson {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function readPackageJson(projectDir: string): PackageJsonRead {
   const pkgPath = path.join(projectDir, "package.json");
   if (!fs.existsSync(pkgPath)) return { kind: "missing" };
   const raw = fs.readFileSync(pkgPath, "utf-8");
   try {
-    return { kind: "ok", value: JSON.parse(raw) as PackageJson };
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPackageJson(parsed)) {
+      return { kind: "invalid", error: "package.json must be a JSON object." };
+    }
+    return { kind: "ok", value: parsed };
   } catch (error) {
     if (error instanceof SyntaxError) {
       return { kind: "invalid", error: error.message };
