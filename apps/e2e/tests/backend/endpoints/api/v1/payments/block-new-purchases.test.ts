@@ -233,16 +233,10 @@ it("should block switch endpoint when blockNewPurchases is enabled", async ({ ex
 
   const { userId } = await Auth.fastSignUp();
 
-  // Grant planA ownership via server so the switch would otherwise have a valid
-  // source subscription — without this, the endpoint could reject for an unrelated
-  // reason and the test would pass by accident if the block check ever moved.
-  const grantResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
-    method: "POST",
-    accessType: "server",
-    body: { product_id: "planA" },
-  });
-  expect(grantResponse.status).toBe(200);
-
+  // Note: we don't pre-grant a source subscription here. A server-grant would create
+  // a row with stripeSubscriptionId=null, which the switch endpoint rejects on its own
+  // (route.ts ~line 143), so it wouldn't actually exercise the "would otherwise proceed"
+  // path. The genuine fallthrough scenario is covered by the $0-plan test below.
   const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
     method: "POST",
     accessType: "client",

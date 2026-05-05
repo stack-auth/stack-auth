@@ -146,7 +146,9 @@ export const POST = createSmartRouteHandler({
     // Free-plan fallthrough: if the customer claims to be switching "from" a free product
     // but actually holds a different active subscription in the same product line, reject —
     // otherwise the new paid subscription would coexist with the existing one.
-    if (!existingSub && fromIsFreePlan && fromProduct.productLineId) {
+    // (`fromProduct.productLineId` is guaranteed truthy here — the same-product-line check
+    // ~80 lines above already throws when it isn't.)
+    if (!existingSub && fromIsFreePlan) {
       const competingSub = Object.values(subMap).find(
         s => s.productId !== body.from_product_id
           && isActiveSubscription(s)
