@@ -89,7 +89,7 @@ function loadState(): DevToolState {
       const parsed = JSON.parse(stored);
       // Migrate old 'components' tab name to 'customize'
       if (parsed.activeTab === 'components') parsed.activeTab = 'customize';
-      return { ...DEFAULT_STATE, ...parsed };
+      return { ...DEFAULT_STATE, ...parsed, isOpen: false };
     }
   } catch {}
   return { ...DEFAULT_STATE };
@@ -97,7 +97,8 @@ function loadState(): DevToolState {
 
 function saveState(state: DevToolState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Keep layout preferences across pages, but do not reopen the panel automatically on remount.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, isOpen: false }));
   } catch {}
 }
 
