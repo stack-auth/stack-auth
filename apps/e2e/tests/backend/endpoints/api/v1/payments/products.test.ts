@@ -412,6 +412,84 @@ it("should cancel all stackable subscription quantities", async ({ expect }) => 
   `);
 });
 
+it("stackable add-on in the same product line accumulates across grants instead of being replaced", async ({ expect }) => {
+  // Regression test: before the fix, granting a stackable add-on twice while
+  // the customer already owned a base plan in the same product line caused
+  // the second grant to treat the first as a "conflict in the plans line",
+  // canceling the first sub and replacing its quantity instead of adding
+  // another sub alongside. The bug only surfaced when the stackable product
+  // had a `productLineId` AND another product in that line was owned —
+  // stackable products without a productLineId, or without siblings in the
+  // line, already accumulated correctly (see the sibling test above).
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    productLines: {
+      plans: { displayName: "Plans", customerType: "team" },
+    },
+    products: {
+      "base-plan": {
+        displayName: "Base Plan",
+        customerType: "team",
+        productLineId: "plans",
+        serverOnly: false,
+        stackable: false,
+        prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+        includedItems: {},
+      },
+      "extra-seats": {
+        displayName: "Extra Seats",
+        customerType: "team",
+        productLineId: "plans",
+        serverOnly: false,
+        stackable: true,
+        isAddOnTo: { "base-plan": true },
+        prices: { monthly: { USD: "100", interval: [1, "month"] } },
+        includedItems: {},
+      },
+    },
+  });
+
+  await Auth.fastSignUp();
+  const { teamId } = await Team.createWithCurrentAsCreator({ accessType: "server" });
+
+  // Base plan first so the add-on's isAddOnTo prerequisite is satisfied.
+  const baseResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "base-plan" },
+  });
+  expect(baseResponse.status).toBe(200);
+
+  const firstAddOnResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "extra-seats", quantity: 1 },
+  });
+  expect(firstAddOnResponse.status).toBe(200);
+
+  const secondAddOnResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "extra-seats", quantity: 2 },
+  });
+  expect(secondAddOnResponse.status).toBe(200);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    accessType: "server",
+  });
+  expect(listResponse.status).toBe(200);
+  const items = (listResponse.body as { items: Array<{ id: string, quantity: number }> }).items;
+  const extraSeats = items.find((i) => i.id === "extra-seats");
+  const basePlan = items.find((i) => i.id === "base-plan");
+  // Base plan untouched by the add-on grants.
+  expect(basePlan?.quantity).toBe(1);
+  // Add-on quantities accumulate: 1 (first grant) + 2 (second grant) = 3.
+  // Before the fix this came out as 2 (the second grant's quantity, because
+  // the first sub was canceled as a "conflict" and replaced).
+  expect(extraSeats?.quantity).toBe(3);
+});
+
 it("should reject canceling a one-time purchase product", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();

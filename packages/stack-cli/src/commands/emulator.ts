@@ -1,9 +1,10 @@
 import { Command } from "commander";
-import { execFileSync, spawn } from "child_process";
+import { execFileSync, execSync, spawn } from "child_process";
 import extract from "extract-zip";
 import { chmodSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
+import { createInterface } from "readline";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { fileURLToPath } from "url";
@@ -14,6 +15,7 @@ const DEFAULT_EMULATOR_BACKEND_PORT = 26701;
 const DEFAULT_EMULATOR_DASHBOARD_PORT = 26700;
 const DEFAULT_EMULATOR_MINIO_PORT = 26702;
 const DEFAULT_EMULATOR_INBUCKET_PORT = 26703;
+const DEFAULT_EMULATOR_MOCK_OAUTH_PORT = 26704;
 const DEFAULT_PORT_PREFIX = "81";
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_REPO = "stack-auth/stack-auth";
@@ -188,6 +190,7 @@ function prepareRuntimeConfigIso(): void {
   const backendPort = envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
   const minioPort = envPort("EMULATOR_MINIO_PORT", DEFAULT_EMULATOR_MINIO_PORT);
   const inbucketPort = envPort("EMULATOR_INBUCKET_PORT", DEFAULT_EMULATOR_INBUCKET_PORT);
+  const mockOAuthPort = envPort("EMULATOR_MOCK_OAUTH_PORT", DEFAULT_EMULATOR_MOCK_OAUTH_PORT);
 
   const runtimeEnv = [
     `STACK_EMULATOR_PORT_PREFIX=${portPrefix}`,
@@ -195,6 +198,7 @@ function prepareRuntimeConfigIso(): void {
     `STACK_EMULATOR_BACKEND_HOST_PORT=${backendPort}`,
     `STACK_EMULATOR_MINIO_HOST_PORT=${minioPort}`,
     `STACK_EMULATOR_INBUCKET_HOST_PORT=${inbucketPort}`,
+    `STACK_EMULATOR_MOCK_OAUTH_HOST_PORT=${mockOAuthPort}`,
     `STACK_EMULATOR_VM_DIR_HOST=${vmDir}`,
     "",
   ].join("\n");
@@ -386,7 +390,7 @@ export function formatDuration(seconds: number): string {
 
 // --- Dependency preflight ---------------------------------------------------
 
-type BinarySpec = { name: string, install: string };
+type BinarySpec = { name: string, linuxPkg: string, macPkg: string };
 
 function commandExists(bin: string): boolean {
   try {
@@ -412,13 +416,17 @@ export function platformInstallHint(linuxPkg: string, macPkg: string): string {
 }
 
 function bin(name: string, linuxPkg: string, macPkg: string): BinarySpec {
-  return { name, install: platformInstallHint(linuxPkg, macPkg) };
+  return { name, linuxPkg, macPkg };
+}
+
+function installHint(b: BinarySpec): string {
+  return platformInstallHint(b.linuxPkg, b.macPkg);
 }
 
 function requireBinaries(commandName: string, bins: BinarySpec[]): void {
   const missing = bins.filter((b) => !commandExists(b.name));
   if (missing.length === 0) return;
-  const lines = missing.map((b) => `  - ${b.name}  →  ${b.install}`);
+  const lines = missing.map((b) => `  - ${b.name}  →  ${installHint(b)}`);
   throw new CliError(
     `\`stack emulator ${commandName}\` requires the following missing binaries:\n${lines.join("\n")}`,
   );
@@ -428,8 +436,108 @@ function warnIfMissing(commandName: string, bins: BinarySpec[]): void {
   const missing = bins.filter((b) => !commandExists(b.name));
   if (missing.length === 0) return;
   for (const b of missing) {
-    console.warn(`[stack emulator ${commandName}] optional dep '${b.name}' missing — feature degraded. Install: ${b.install}`);
+    console.warn(`[stack emulator ${commandName}] optional dep '${b.name}' missing — feature degraded. Install: ${installHint(b)}`);
   }
+}
+
+async function confirmPrompt(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    throw new CliError("Cannot prompt for confirmation: stdin is not a TTY. Install the missing dependencies manually and retry.");
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return await new Promise((resolvePromise) => {
+    rl.question(`${question} [y/N] `, (answer) => {
+      rl.close();
+      resolvePromise(/^y(es)?$/i.test(answer.trim()));
+    });
+  });
+}
+
+async function ensureDepsForPull(arch: "arm64" | "amd64"): Promise<void> {
+  const allBins = [archSpecificQemuBin(arch), ...commonVmBins(), bin("zstd", "zstd", "zstd")];
+  const missingBins = allBins.filter((b) => !commandExists(b.name));
+  const firmwareMissing = arch === "arm64" && !aarch64FirmwareAvailable();
+  if (missingBins.length === 0 && !firmwareMissing) return;
+
+  const platform = process.platform;
+  // Auto-install targets macOS (brew) and Debian/Ubuntu-family Linux
+  // (apt-get). On other distros or platforms, fall back to the standard
+  // per-binary install hints.
+  const linuxHasApt = platform === "linux" && commandExists("apt-get");
+  if (platform !== "darwin" && !linuxHasApt) {
+    preflightForVmStart("pull", arch);
+    return;
+  }
+
+  // In non-interactive environments (CI, piped stdin) we cannot prompt, so
+  // surface the standard per-binary install hints instead of erroring with
+  // only a TTY complaint.
+  if (!process.stdin.isTTY) {
+    preflightForVmStart("pull", arch);
+    return;
+  }
+
+  console.log("The emulator needs the following dependencies that aren't installed:");
+  for (const b of missingBins) console.log(`  - ${b.name}`);
+  if (firmwareMissing) console.log("  - aarch64 UEFI firmware");
+  console.log();
+
+  const pkgs = new Set<string>();
+  for (const b of missingBins) {
+    pkgs.add(platform === "darwin" ? b.macPkg : b.linuxPkg);
+  }
+  // macOS qemu formula bundles the aarch64 firmware; Linux needs a separate package.
+  if (firmwareMissing && platform === "linux") pkgs.add("qemu-efi-aarch64");
+  // Edge case: on macOS arm64, firmware can be missing while all binaries
+  // are present (e.g. a partial qemu install). Reinstalling `qemu` recreates
+  // the bundled firmware files.
+  if (firmwareMissing && platform === "darwin") pkgs.add("qemu");
+  const pkgList = Array.from(pkgs).sort();
+  if (pkgList.length === 0) {
+    preflightForVmStart("pull", arch);
+    return;
+  }
+
+  const brewMissing = platform === "darwin" && !commandExists("brew");
+  console.log("Proposed install plan:");
+  if (brewMissing) {
+    console.log("  - install Homebrew by running the official installer:");
+    console.log("      /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"");
+    console.log("    (executes remote code from raw.githubusercontent.com — review https://brew.sh if unsure)");
+  }
+  if (platform === "darwin") console.log(`  - brew install ${pkgList.join(" ")}`);
+  else console.log(`  - sudo apt-get update && sudo apt-get install -y ${pkgList.join(" ")}`);
+  console.log();
+
+  const ok = await confirmPrompt("Proceed with install?");
+  if (!ok) {
+    throw new CliError("Dependency install declined. Install the missing packages manually and retry.");
+  }
+
+  if (brewMissing) {
+    console.log("\nInstalling Homebrew...");
+    execSync('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', {
+      stdio: "inherit",
+    });
+  }
+
+  console.log("\nInstalling packages...");
+  if (platform === "darwin") {
+    // After a fresh Homebrew bootstrap, `brew` lives at /opt/homebrew/bin
+    // (Apple Silicon) or /usr/local/bin (Intel); the installer only updates
+    // shell profiles, not the current process's PATH, so resolve it by
+    // absolute path when needed.
+    const brewBin = commandExists("brew")
+      ? "brew"
+      : existsSync("/opt/homebrew/bin/brew")
+        ? "/opt/homebrew/bin/brew"
+        : "/usr/local/bin/brew";
+    execFileSync(brewBin, ["install", ...pkgList], { stdio: "inherit" });
+  } else {
+    execFileSync("sudo", ["apt-get", "update"], { stdio: "inherit" });
+    execFileSync("sudo", ["apt-get", "install", "-y", ...pkgList], { stdio: "inherit" });
+  }
+  console.log();
 }
 
 function aarch64FirmwareAvailable(): boolean {
@@ -509,6 +617,9 @@ export function registerEmulatorCommand(program: Command) {
     .option("--skip-snapshot", "Download only the qcow2; skip the one-time local snapshot capture")
     .action(async (opts: { arch?: string, repo?: string, branch?: string, tag?: string, pr?: string, run?: string, skipSnapshot?: boolean }) => {
       const arch = resolveArch(opts.arch);
+      if (!opts.skipSnapshot) {
+        await ensureDepsForPull(arch);
+      }
       const repo = opts.repo ?? DEFAULT_REPO;
 
       if (opts.run || opts.pr) {

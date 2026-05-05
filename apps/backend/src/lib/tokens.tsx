@@ -15,6 +15,7 @@ import { turnstileResultValues } from '@stackframe/stack-shared/dist/utils/turns
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
+import { getBillingTeamId } from './plan-entitlements';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
@@ -248,31 +249,37 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
   // Get end user IP info for session tracking and event logging
   const ipInfo = await getEndUserIpInfoForEvent();
 
-  await Promise.all([
-    prisma.projectUser.update({
-      where: {
-        tenancyId_projectUserId: {
-          tenancyId: options.tenancy.id,
-          projectUserId: options.refreshTokenObj.projectUserId,
-        },
-      },
-      data: withExternalDbSyncUpdate({
-        lastActiveAt: now,
-      }),
+  // updateMany (instead of update) so a concurrent sign-out / session revocation
+  // that deletes the row between the caller's read and this write does not
+  // surface as a P2025 500. Update the refresh-token row first so a revoked
+  // session stops before touching projectUser.lastActiveAt.
+  const refreshTokenUpdate = await globalPrismaClient.projectUserRefreshToken.updateMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      id: options.refreshTokenObj.id,
+    },
+    data: withExternalDbSyncUpdate({
+      lastActiveAt: now,
+      lastActiveAtIpInfo: ipInfo ?? undefined,
     }),
-    globalPrismaClient.projectUserRefreshToken.update({
-      where: {
-        tenancyId_id: {
-          tenancyId: options.tenancy.id,
-          id: options.refreshTokenObj.id,
-        },
-      },
-      data: withExternalDbSyncUpdate({
-        lastActiveAt: now,
-        lastActiveAtIpInfo: ipInfo ?? undefined,
-      }),
+  });
+  if (refreshTokenUpdate.count === 0) return null;
+
+  const projectUserUpdate = await prisma.projectUser.updateMany({
+    where: {
+      tenancyId: options.tenancy.id,
+      projectUserId: options.refreshTokenObj.projectUserId,
+    },
+    data: withExternalDbSyncUpdate({
+      lastActiveAt: now,
     }),
-  ]);
+  });
+  if (projectUserUpdate.count === 0) return null;
+
+  // Token refresh runs on every access-token roll, so skip the per-event
+  // billing-team DB lookup by threading it through from the tenancy we
+  // already have.
+  const billingTeamId = getBillingTeamId(options.tenancy.project);
 
   // Log session activity event (used for metrics, geo info, etc.)
   await logEvent(
@@ -284,6 +291,9 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
       teamId: undefined,
+    },
+    {
+      billingTeamId,
     }
   );
 
@@ -301,6 +311,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     },
     {
       refreshTokenId: options.refreshTokenObj.id,
+      billingTeamId,
     }
   );
 

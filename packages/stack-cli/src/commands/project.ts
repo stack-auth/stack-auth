@@ -1,22 +1,7 @@
 import { Command } from "commander";
-import * as readline from "readline";
 import { resolveSessionAuth } from "../lib/auth.js";
 import { getInternalUser } from "../lib/app.js";
-import { isNonInteractiveEnv } from "../lib/interactive.js";
-import { CliError } from "../lib/errors.js";
-
-function prompt(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
-}
+import { createProjectInteractively } from "../lib/create-project.js";
 
 export function registerProjectCommand(program: Command) {
   const project = program
@@ -54,25 +39,8 @@ export function registerProjectCommand(program: Command) {
       const auth = resolveSessionAuth(flags);
       const user = await getInternalUser(auth);
 
-      let displayName: string = opts.displayName;
-      if (!displayName) {
-        if (isNonInteractiveEnv()) {
-          throw new CliError("--display-name is required in non-interactive environments (CI).");
-        }
-        displayName = await prompt("Project display name: ");
-        if (!displayName.trim()) {
-          throw new CliError("Display name cannot be empty.");
-        }
-      }
-
-      const teams = await user.listTeams();
-      if (teams.length === 0) {
-        throw new CliError("No teams found. You need a team to create a project.");
-      }
-
-      const newProject = await user.createProject({
-        displayName,
-        teamId: teams[0].id,
+      const newProject = await createProjectInteractively(user, {
+        displayName: opts.displayName,
       });
 
       if (program.opts().json) {

@@ -5,7 +5,7 @@ import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { useMetricsUserCountsOrThrow } from "@/lib/stack-app-internals";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
@@ -26,14 +26,14 @@ function captureUsersMetricsErrorOnce(error: Error) {
 
 function TotalUsersDisplay() {
   const stackAdminApp = useAdminApp();
-  const metrics = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(false);
-  const metricsIncludingAnonymous = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(true);
+  const metrics = useMetricsUserCountsOrThrow(stackAdminApp);
 
-  const anonymousUsersCount = metricsIncludingAnonymous.total_users - metrics.total_users;
+  const anonymousUsersCount = metrics.anonymous_users;
+  const nonAnonymousUsersCount = metrics.total_users - anonymousUsersCount;
 
   return (
     <>
-      {metrics.total_users}
+      {nonAnonymousUsersCount}
       {anonymousUsersCount > 0 ? (
         <>
           {" "}(+ {anonymousUsersCount}{" "}

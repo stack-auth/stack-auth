@@ -3,6 +3,9 @@ import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDelivery
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { getStackServerApp } from "@/stack";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
@@ -97,7 +100,7 @@ export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => 
 
   const sendPlan = await withTraceSpan("runEmailQueueStep-prepareSendPlan", prepareSendPlan)(deltaSeconds);
   await withTraceSpan("runEmailQueueStep-processSendPlan", processSendPlan)(sendPlan);
-  await withTraceSpan("runEmailQueueStep-logEmailsStuckInSending", logEmailsStuckInSending)();
+  await withTraceSpan("runEmailQueueStep-failEmailsStuckInSending", failEmailsStuckInSending)();
   const sendEnd = performance.now();
 
   if (sendPlan.length > 0 || queuedCount > 0 || pendingRender.length > 0) {
@@ -134,24 +137,72 @@ async function retryEmailsStuckInRendering(): Promise<void> {
   }
 }
 
-async function logEmailsStuckInSending(): Promise<void> {
-  const res = await globalPrismaClient.emailOutbox.findMany({
-    where: {
-      startedSendingAt: {
-        lte: new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS),
-      },
-      finishedSendingAt: null,
-      skippedReason: null,
-      isPaused: false,
+/**
+ * Mark rows stuck in SENDING for longer than STUCK_EMAIL_TIMEOUT_MS as failed (terminal server error).
+ *
+ * These rows can happen when sending hangs or fails after `startedSendingAt` was set but before
+ * the send attempt was finalized. We deliberately do NOT retry automatically: the upstream send
+ * may have actually been accepted by the SMTP/provider, and retrying would risk a duplicate
+ * delivery. Instead, we mark the row as a terminal server error with delivery status unknown,
+ * and emit a Sentry signal so a human can investigate if desired.
+ */
+async function failEmailsStuckInSending(additionalWhere?: Prisma.EmailOutboxWhereInput): Promise<void> {
+  const stuckCutoff = new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS);
+  const failedAt = new Date();
+  const externalMessage = "Email sending timed out before we could confirm whether it was delivered.";
+  const internalDetails: Prisma.InputJsonObject = {
+    errorType: "stuck-in-sending-marked-failed",
+    stuckTimeoutMs: STUCK_EMAIL_TIMEOUT_MS,
+    failedAt: failedAt.toISOString(),
+  };
+  const externalDetails: Prisma.InputJsonObject = {
+    errorType: "stuck-in-sending-marked-failed",
+  };
+
+  const baseWhere: Prisma.EmailOutboxWhereInput = {
+    startedSendingAt: { lte: stuckCutoff },
+    finishedSendingAt: null,
+    skippedReason: null,
+    isPaused: false,
+  };
+
+  const failed = await globalPrismaClient.emailOutbox.updateManyAndReturn({
+    where: additionalWhere == null ? baseWhere : { AND: [baseWhere, additionalWhere] },
+    data: {
+      finishedSendingAt: failedAt,
+      // canHaveDeliveryInfo must be non-null when finishedSendingAt is set (see schema).
+      // We set it to false because we have no webhook/provider signal we can correlate: delivery
+      // status is effectively unknown, and treating it as "no delivery info available" is the
+      // honest representation.
+      canHaveDeliveryInfo: false,
+      sendServerErrorExternalMessage: externalMessage,
+      sendServerErrorExternalDetails: externalDetails,
+      sendServerErrorInternalMessage: `Email was stuck in sending (startedSendingAt <= ${stuckCutoff.toISOString()}) and was marked as a terminal server error by the email queue step (delivery status unknown). Not retried to avoid duplicate delivery.`,
+      sendServerErrorInternalDetails: internalDetails,
+      nextSendRetryAt: null,
+      // Do not append to sendAttemptErrors here: this path did not observe a provider response
+      // or application error for this attempt, and the terminal server-error fields already
+      // record the failure without duplicating potentially sensitive details.
+      shouldUpdateSequenceId: true,
     },
-    select: { id: true, tenancyId: true, startedSendingAt: true, to: true, sentAt: true, sendAttemptErrors: true },
+    select: { id: true, tenancyId: true, startedSendingAt: true },
   });
-  if (res.length > 0) {
-    captureError("email-queue-step-stuck-in-sending", new StackAssertionError(`${res.length} emails stuck in sending! This should never happen. It was NOT correctly marked as an error! Manual intervention is required.`, {
-      emails: res,
-    }));
+
+  if (failed.length > 0) {
+    captureError(
+      "email-queue-step-stuck-in-sending",
+      new StackAssertionError(
+        `${failed.length} emails were stuck in sending and were marked as failed (terminal server errors; delivery status unknown, not retried to avoid duplicate sends). Manual investigation is recommended.`,
+        { emails: failed.map(({ id, tenancyId, startedSendingAt }) => ({ id, tenancyId, startedSendingAt })) },
+      ),
+    );
   }
 }
+
+export const _forTesting = {
+  failEmailsStuckInSending,
+  STUCK_EMAIL_TIMEOUT_MS,
+};
 
 async function updateLastExecutionTime(): Promise<number> {
   const key = "EMAIL_QUEUE_METADATA_KEY";
@@ -556,6 +607,7 @@ type TenancyProcessingContext = {
   tenancy: Tenancy,
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   emailConfig: Awaited<ReturnType<typeof getEmailConfig>>,
+  billingTeamId: string | null,
 };
 
 async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
@@ -563,11 +615,13 @@ async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
 
   const prisma = await getPrismaClientForTenancy(tenancy);
   const emailConfig = await getEmailConfig(tenancy);
+  const billingTeamId = getBillingTeamId(tenancy.project);
 
   const context: TenancyProcessingContext = {
     tenancy,
     prisma,
     emailConfig,
+    billingTeamId,
   };
 
   const promises = batch.rows.map((row) => processSingleEmail(context, row));
@@ -636,6 +690,48 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           });
           return;
         }
+      }
+    }
+
+    if (context.billingTeamId != null && row.sendRetries === 0) {
+      const app = getStackServerApp();
+      const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
+      const isDebited = await emailItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        const errorMessage = "Monthly email sending limit exceeded for your plan. Please upgrade your plan or wait until next month.";
+        // Intentionally do NOT increment sendRetries or append to
+        // sendAttemptErrors. sendRetries tracks SMTP attempts, and a quota
+        // rejection never reaches SMTP; the DB-level
+        // EmailOutbox_sendAttemptErrors_requires_failure CHECK also forbids
+        // non-null sendAttemptErrors while sendRetries is 0. All the
+        // debugging info is captured in sendServerError* below. Keeping
+        // sendRetries at 0 means that if a future admin flow ever
+        // un-finalises this row (clearing finishedSendingAt), the
+        // `sendRetries === 0` quota gate above re-fires instead of being
+        // silently skipped.
+        await globalPrismaClient.emailOutbox.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: row.tenancyId,
+              id: row.id,
+            },
+            finishedSendingAt: null,
+          },
+          data: {
+            finishedSendingAt: new Date(),
+            canHaveDeliveryInfo: false,
+            sendServerErrorExternalMessage: errorMessage,
+            sendServerErrorExternalDetails: { errorType: "monthly-email-limit-exceeded" },
+            sendServerErrorInternalMessage: errorMessage,
+            sendServerErrorInternalDetails: {
+              errorType: "monthly-email-limit-exceeded",
+              remainingQuota: emailItem.quantity,
+              billingTeamId: context.billingTeamId,
+            },
+            shouldUpdateSequenceId: true,
+          },
+        });
+        return;
       }
     }
 
@@ -748,6 +844,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           shouldUpdateSequenceId: true,
         },
       });
+
     }
   } catch (error) {
     captureError("email-queue-step-sending-single-error", error);
