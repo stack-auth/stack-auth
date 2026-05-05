@@ -21,6 +21,13 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   inheritsFrom?: StackClientApp<any, any>,
 
   /**
+   * Whether to show the Stack Auth dev tool indicator in browser-like development environments.
+   *
+   * Defaults to true.
+   */
+  devTool?: boolean,
+
+  /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
    * constructed. This improves the performance of your app, but will create network requests that are unnecessary if
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
