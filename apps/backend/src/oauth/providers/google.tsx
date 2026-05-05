@@ -24,6 +24,7 @@ export class GoogleProvider extends OAuthBaseProvider {
       baseScope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
       authorizationExtraParams: {
         prompt: "consent",
+        access_type: "offline",
         include_granted_scopes: "true",
       },
       ...options,
