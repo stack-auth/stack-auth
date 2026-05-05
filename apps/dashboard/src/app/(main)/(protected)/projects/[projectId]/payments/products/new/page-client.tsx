@@ -42,6 +42,7 @@ import { PricingSection } from "../pricing-section";
 import { ProductCardPreview } from "../product-card-preview";
 import {
   createFreePrice,
+  isFreePrices,
   type Price,
   type Product,
 } from "../utils";
@@ -786,7 +787,7 @@ ${Object.entries(prices).map(([id, price]) => {
                 hasError={!!errors.prices}
                 errorMessage={errors.prices}
                 variant="form"
-                isFree={Object.keys(prices).length === 1 && Object.values(prices)[0].USD === '0.00'}
+                isFree={isFreePrices(prices)}
                 onMakeFree={() => {
                   setPrices(createFreePrice());
                 }}

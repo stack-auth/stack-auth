@@ -59,7 +59,7 @@ import {
   priceToEditingPrice,
   type EditingPrice,
 } from "../price-edit-dialog";
-import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, shortIntervalLabel, type Price, type Product } from "../utils";
+import { createFreePrice, DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, isFreePrices, shortIntervalLabel, type Price, type Product } from "../utils";
 
 const CUSTOMER_TYPE_COLORS = {
   user: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/30',
@@ -878,11 +878,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
   };
 
   const priceEntries = typedEntries(prices);
-  const isFree = priceEntries.length === 1
-    && (priceEntries[0][1].USD === '0' || priceEntries[0][1].USD === '0.00')
-    && !priceEntries[0][1].interval
-    && !priceEntries[0][1].freeTrial
-    && !priceEntries[0][1].serverOnly;
+  const isFree = isFreePrices(prices);
   const hasNoPrices = priceEntries.length === 0;
 
   const handleMakePaid = () => {
@@ -891,10 +887,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
   };
 
   const handleMakeFree = () => {
-    const newPriceId = generateUniqueId('price');
-    onPricesChange({
-      [newPriceId]: { USD: '0', serverOnly: false },
-    });
+    onPricesChange(createFreePrice());
   };
 
   const listContent = (

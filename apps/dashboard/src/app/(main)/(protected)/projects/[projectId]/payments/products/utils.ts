@@ -129,6 +129,26 @@ export function createFreePrice(): { [priceId: string]: Price } {
   return { [generateUniqueId('price')]: { USD: '0.00', serverOnly: false } };
 }
 
+/**
+ * Returns true if `prices` represents a "free" product: exactly one price entry
+ * whose USD amount is `'0'` or `'0.00'` and which has no interval, free-trial, or
+ * server-only flag set (any of those would change the semantics meaningfully).
+ *
+ * We accept both `'0'` and `'0.00'` for backward-compatibility with rows written
+ * before we standardized on `createFreePrice()` (which emits `'0.00'`). All three
+ * product pages (list, edit, create) call this so the "Free" indicator and the
+ * "Make free" / "Make paid" toggles stay in sync.
+ */
+export function isFreePrices(prices: PricesObject): boolean {
+  const entries = Object.values(prices);
+  if (entries.length !== 1) return false;
+  const [price] = entries;
+  return (price.USD === '0' || price.USD === '0.00')
+    && !price.interval
+    && !price.freeTrial
+    && !price.serverOnly;
+}
+
 // ============================================================================
 // ID Validation & Generation
 // ============================================================================
