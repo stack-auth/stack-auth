@@ -15,7 +15,9 @@ import {
 } from "@/components/vibe-coding";
 import { ToolCallContent, type DashboardChip, type DashboardPatchFailure, type DashboardPatchSnapshot } from "@/components/vibe-coding/chat-adapters";
 import { patchSnapshotKey, registerPatchSnapshot } from "@/components/vibe-coding/dashboard-tool-components";
+import type { AppId } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
+import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import {
   ChatCircleIcon,
@@ -26,14 +28,12 @@ import {
   WarningIcon,
   XIcon,
 } from "@phosphor-icons/react";
+import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import type { AppId } from "@/lib/apps-frontend";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { getPublicEnvVar } from "@/lib/env";
-import { useUser } from "@stackframe/stack";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
@@ -443,7 +443,7 @@ function DashboardDetailContent({
     <PageLayout fillWidth noPadding>
       {/* Both panels are always in the DOM so the iframe never unmounts/reloads.
           The chat panel animates its width; the dashboard panel adjusts via flex-1. */}
-      <div data-full-bleed className="flex h-full">
+      <div data-full-bleed className="flex h-[calc(100vh-4.5rem)] dark:h-[calc(100vh-5.75rem)]">
         {/* Dashboard iframe panel */}
         <div
           className={cn(
