@@ -55,6 +55,8 @@ type DevToolState = {
 
 const STORAGE_KEY = '__stack-dev-tool-state';
 const TRIGGER_POS_KEY = 'stack-devtool-trigger-position';
+const ROOT_ID = '__stack-dev-tool-root';
+const GLOBAL_INSTANCE_KEY = '__stack-dev-tool-instance';
 const MAX_LOG_ENTRIES = 500;
 const DRAG_THRESHOLD = 5;
 
@@ -135,6 +137,29 @@ type LogStore = {
   clear(): void;
   subscribe(fn: () => void): () => void;
 };
+
+type DevToolGlobalInstance = {
+  cleanup: () => void;
+};
+
+function isDevToolGlobalInstance(value: unknown): value is DevToolGlobalInstance {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'cleanup') === 'function';
+}
+
+function getGlobalDevToolInstance(): DevToolGlobalInstance | null {
+  if (typeof window === 'undefined') return null;
+  const value: unknown = Reflect.get(window, GLOBAL_INSTANCE_KEY);
+  return isDevToolGlobalInstance(value) ? value : null;
+}
+
+function setGlobalDevToolInstance(instance: DevToolGlobalInstance | null) {
+  if (typeof window === 'undefined') return;
+  if (instance === null) {
+    Reflect.deleteProperty(window, GLOBAL_INSTANCE_KEY);
+  } else {
+    Reflect.set(window, GLOBAL_INSTANCE_KEY, instance);
+  }
+}
 
 function getGlobalLogStore(): LogStore {
   const g = globalThis as any;
@@ -2287,8 +2312,15 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   const body = Reflect.get(document, 'body');
   if (!hasAppendChild(body)) return () => {};
 
+  getGlobalDevToolInstance()?.cleanup();
+  let existingRoot = document.getElementById(ROOT_ID);
+  while (existingRoot !== null) {
+    existingRoot.remove();
+    existingRoot = document.getElementById(ROOT_ID);
+  }
+
   const root = document.createElement('div');
-  root.id = '__stack-dev-tool-root';
+  root.id = ROOT_ID;
   body.appendChild(root);
 
   const wrapper = h('div', { className: 'stack-devtool' });
@@ -2363,13 +2395,26 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     }
   });
 
+  let didCleanup = false;
+  const instance: DevToolGlobalInstance = {
+    cleanup: () => {
+      if (didCleanup) return;
+      didCleanup = true;
+      if (getGlobalDevToolInstance() === instance) {
+        setGlobalDevToolInstance(null);
+      }
+      trigger.cleanup();
+      removeRequestListener();
+      panel?.cleanup();
+      if (root.parentNode) {
+        root.parentNode.removeChild(root);
+      }
+    },
+  };
+  setGlobalDevToolInstance(instance);
+
   return () => {
-    trigger.cleanup();
-    removeRequestListener();
-    panel?.cleanup();
-    if (root.parentNode) {
-      root.parentNode.removeChild(root);
-    }
+    instance.cleanup();
   };
 }
 
