@@ -32,14 +32,17 @@ export const POST = createSmartRouteHandler({
     assertIsAiChatReviewer(user);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
+    const reviewer = user.display_name ?? user.primary_email ?? user.id;
+    
     await callReducerStrict("upsert_qa_from_call", [
       token,
       body.correlationId,
       body.correctedQuestion,
       body.correctedAnswer,
       body.publish,
-      user.display_name ?? user.primary_email ?? user.id,
+      reviewer,
     ]);
+    await callReducerStrict("mark_human_reviewed", [token, body.correlationId, reviewer]);
 
     return {
       statusCode: 200,
