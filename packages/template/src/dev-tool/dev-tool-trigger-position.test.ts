@@ -51,6 +51,12 @@ describe("corner position resolution", () => {
     const pos = resolveTriggerPosition({ corner: "top-left" }, triggerSize, viewport);
     expect(pos.left).toBe(pos.top);
   });
+
+  it("keeps the trigger on-screen when the viewport is smaller than the margin and trigger", () => {
+    const tinyViewport = { width: 40, height: 40 };
+    const pos = resolveTriggerPosition({ corner: "bottom-right" }, triggerSize, tinyViewport);
+    expect(pos).toEqual({ left: 4, top: 4 });
+  });
 });
 
 describe("resize anchor regression", () => {

@@ -364,11 +364,6 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
   // Measured lazily after the element is appended to the DOM.
   let triggerSize = { width: 36, height: 36 };
 
-  const defaultPos = (): Position => ({
-    left: window.innerWidth - triggerSize.width - 16,
-    top: window.innerHeight - triggerSize.height - 16,
-  });
-
   function isPosition(value: unknown): value is Position {
     if (typeof value !== 'object' || value === null) return false;
     return typeof Reflect.get(value, 'left') === 'number' && typeof Reflect.get(value, 'top') === 'number';
@@ -682,8 +677,14 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return true;
     }
+    if (error instanceof TypeError) {
+      return true;
+    }
     if (error instanceof Error) {
-      return error.message.includes('Failed to fetch') || error.message.includes('NetworkError');
+      return error.message.includes('Failed to fetch')
+        || error.message.includes('NetworkError')
+        || error.message.includes('Load failed')
+        || error.message.includes('network connection');
     }
     return false;
   }
@@ -824,12 +825,17 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     authGrid.appendChild(h('div', { className: 'sdt-ov-method sdt-ov-skeleton-pill' }));
   }
   methodsCard.appendChild(authGrid);
+  let hasActiveAuthMethod: boolean | null = null;
 
   async function loadAuthMethods() {
     try {
       const project = await app.getProject();
       authGrid.innerHTML = '';
       const config = project.config;
+      hasActiveAuthMethod = config.credentialEnabled
+        || config.magicLinkEnabled
+        || config.passkeyEnabled
+        || config.oauthProviders.length > 0;
       const methods = [
         { label: 'Password', enabled: config.credentialEnabled },
         { label: 'Magic Link', enabled: config.magicLinkEnabled },
@@ -850,11 +856,14 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
         pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, 'Sign-up off'));
         authGrid.appendChild(pill);
       }
+      buildChecklist();
     } catch (error) {
+      authGrid.innerHTML = '<div style="font-size:11px;color:var(--sdt-text-tertiary)">Could not load auth methods</div>';
+      hasActiveAuthMethod = null;
+      buildChecklist();
       if (!isBestEffortOverviewError(error)) {
         throw error;
       }
-      authGrid.innerHTML = '<div style="font-size:11px;color:var(--sdt-text-tertiary)">Could not load auth methods</div>';
     }
   }
 
@@ -870,7 +879,7 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     checksCard.innerHTML = '';
     const checks = [
       { ok: !!projectId && projectId !== 'default', label: 'Project configured', hint: null },
-      { ok: true, label: 'Auth method active', hint: null },
+      { ok: hasActiveAuthMethod === true, label: 'Auth method active', hint: hasActiveAuthMethod === null ? 'Still checking project config' : null },
       { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' },
     ];
     const passCount = checks.filter((c) => c.ok).length;
@@ -915,30 +924,36 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
   async function refreshUser() {
     try {
       currentUser = await app.getUser();
+
+      if (currentUser) {
+        const initials = (currentUser.displayName || currentUser.primaryEmail || '?')
+          .split(' ').map((s: string) => s[0]).join('').slice(0, 2).toUpperCase();
+        avatar.className = 'sdt-ov-avatar sdt-ov-avatar-active';
+        if (currentUser.profileImageUrl) {
+          avatar.innerHTML = `<img src="${escapeHtml(currentUser.profileImageUrl)}" alt="" />`;
+        } else {
+          avatar.textContent = initials;
+        }
+        userName.textContent = currentUser.displayName || 'Anonymous';
+        userEmail.textContent = currentUser.primaryEmail || 'No email';
+        authIndicator.style.display = '';
+      } else {
+        avatar.className = 'sdt-ov-avatar';
+        avatar.textContent = '?';
+        userName.textContent = 'No user signed in';
+        userEmail.textContent = 'Sign in to test auth flows';
+        authIndicator.style.display = 'none';
+      }
     } catch (error) {
+      avatar.className = 'sdt-ov-avatar';
+      avatar.textContent = '?';
+      userName.textContent = 'Could not load user';
+      userEmail.textContent = 'Check your local Stack backend';
+      authIndicator.style.display = 'none';
+      currentUser = null;
       if (!isBestEffortOverviewError(error)) {
         throw error;
       }
-      currentUser = null;
-    }
-    if (currentUser) {
-      const initials = (currentUser.displayName || currentUser.primaryEmail || '?')
-        .split(' ').map((s: string) => s[0]).join('').slice(0, 2).toUpperCase();
-      avatar.className = 'sdt-ov-avatar sdt-ov-avatar-active';
-      if (currentUser.profileImageUrl) {
-        avatar.innerHTML = `<img src="${escapeHtml(currentUser.profileImageUrl)}" alt="" />`;
-      } else {
-        avatar.textContent = initials;
-      }
-      userName.textContent = currentUser.displayName || 'Anonymous';
-      userEmail.textContent = currentUser.primaryEmail || 'No email';
-      authIndicator.style.display = '';
-    } else {
-      avatar.className = 'sdt-ov-avatar';
-      avatar.textContent = '?';
-      userName.textContent = 'No user signed in';
-      userEmail.textContent = 'Sign in to test auth flows';
-      authIndicator.style.display = 'none';
     }
     rebuildActions();
     buildChecklist();
@@ -2340,7 +2355,6 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   let panel: { element: HTMLElement, cleanup: () => void } | null = null;
 
   function closePanelAndPersistClosed() {
-    state.update({ isOpen: false });
     closePanel();
   }
 
@@ -2367,7 +2381,6 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   function togglePanel() {
     if (state.get().isOpen) {
-      state.update({ isOpen: false });
       closePanel();
     } else {
       state.update({ isOpen: true });

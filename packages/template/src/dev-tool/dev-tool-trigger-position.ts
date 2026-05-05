@@ -21,6 +21,22 @@ export type TriggerViewport = {
 
 export const TRIGGER_EDGE_MARGIN = 16;
 
+function getSnapBounds(
+  triggerSize: TriggerSize,
+  viewport: TriggerViewport,
+) {
+  const maxLeft = Math.max(0, viewport.width - triggerSize.width);
+  const maxTop = Math.max(0, viewport.height - triggerSize.height);
+  const minLeft = Math.min(TRIGGER_EDGE_MARGIN, maxLeft);
+  const minTop = Math.min(TRIGGER_EDGE_MARGIN, maxTop);
+  return {
+    minLeft,
+    maxLeft: Math.max(minLeft, maxLeft - TRIGGER_EDGE_MARGIN),
+    minTop,
+    maxTop: Math.max(minTop, maxTop - TRIGGER_EDGE_MARGIN),
+  };
+}
+
 /**
  * Clamps a position so the trigger stays fully within the viewport.
  * Used during drag to prevent the pill from leaving the screen.
@@ -30,9 +46,11 @@ export function clampTriggerPosition(
   triggerSize: TriggerSize,
   viewport: TriggerViewport,
 ): TriggerPosition {
+  const maxLeft = Math.max(0, viewport.width - triggerSize.width);
+  const maxTop = Math.max(0, viewport.height - triggerSize.height);
   return {
-    left: Math.max(0, Math.min(position.left, viewport.width - triggerSize.width)),
-    top: Math.max(0, Math.min(position.top, viewport.height - triggerSize.height)),
+    left: Math.max(0, Math.min(position.left, maxLeft)),
+    top: Math.max(0, Math.min(position.top, maxTop)),
   };
 }
 
@@ -45,21 +63,25 @@ export function resolveTriggerPosition(
   triggerSize: TriggerSize,
   viewport: TriggerViewport,
 ): TriggerPosition {
-  const m = TRIGGER_EDGE_MARGIN;
-  switch (placement.corner) {
-    case 'top-left': {
-      return { left: m, top: m };
+  const bounds = getSnapBounds(triggerSize, viewport);
+  const position = (() => {
+    switch (placement.corner) {
+      case 'top-left': {
+        return { left: bounds.minLeft, top: bounds.minTop };
+      }
+      case 'top-right': {
+        return { left: bounds.maxLeft, top: bounds.minTop };
+      }
+      case 'bottom-left': {
+        return { left: bounds.minLeft, top: bounds.maxTop };
+      }
+      case 'bottom-right': {
+        return { left: bounds.maxLeft, top: bounds.maxTop };
+      }
     }
-    case 'top-right': {
-      return { left: viewport.width - triggerSize.width - m, top: m };
-    }
-    case 'bottom-left': {
-      return { left: m, top: viewport.height - triggerSize.height - m };
-    }
-    case 'bottom-right': {
-      return { left: viewport.width - triggerSize.width - m, top: viewport.height - triggerSize.height - m };
-    }
-  }
+  })();
+
+  return clampTriggerPosition(position, triggerSize, viewport);
 }
 
 /**

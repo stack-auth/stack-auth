@@ -411,3 +411,6 @@ A: Do not keep top-level Feedback/Feature Request subtabs unless the backend sup
 
 ## Q: Which tab should the Stack Auth dev tool show when opened?
 A: Opening the dev tool should always reset `activeTab` to `overview` before creating the panel. Other preferences like size can persist, but each fresh open should start on Overview instead of the last-used tab.
+
+## Q: How should Stack Auth dev tool PR review comments around Overview and trigger behavior be handled?
+A: Keep trigger corner resolution on-screen even in tiny viewports by snapping to bounded edge positions, remove unused trigger-position helpers, treat browser fetch `TypeError`s such as Safari's `Load failed` as best-effort Overview hydration errors, replace auth-method skeletons with a fallback on every load failure, and compute the `Auth method active` checklist row from loaded project config instead of hard-coding it as passing.
