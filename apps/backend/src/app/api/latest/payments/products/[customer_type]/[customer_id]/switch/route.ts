@@ -9,6 +9,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -133,8 +134,17 @@ export const POST = createSmartRouteHandler({
     const existingSub = Object.values(subMap).find(
       s => s.productId === body.from_product_id && isActiveSubscription(s)
     ) ?? null;
+    // A price counts as "free" only if EVERY supported currency is either absent or zero.
+    // Checking USD alone would misclassify a price that's only set in another supported
+    // currency (e.g. EUR-only) as free, and would let the customer switch from it without
+    // an existing subscription row — bypassing intended billing.
+    const isPriceFree = (price: typeof fromPriceEntries[number][1]) =>
+      SUPPORTED_CURRENCIES.every(c => {
+        const amount = (price as Record<string, unknown>)[c.code];
+        return amount == null || Number(amount) === 0;
+      });
     const fromIsFreePlan = fromPriceEntries.length === 0
-      || fromPriceEntries.every(([, p]) => p.USD == null || Number(p.USD) === 0);
+      || fromPriceEntries.every(([, p]) => isPriceFree(p));
     if (!existingSub && !fromIsFreePlan) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }

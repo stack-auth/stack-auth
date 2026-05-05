@@ -454,7 +454,11 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
 
   // BEGIN 2026-04-21: `include-by-default` product prices are no longer supported. Rewrite to an empty price map so legacy configs continue to load.
   if (isBranchOrHigher) {
-    res = mapProperty(res, p => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "prices", (value) => {
+    // Match `payments.products.<productId>.prices` regardless of how many segments the
+    // product-ID portion contributes. mapProperty splits dot-notation override keys on
+    // ".", so a product whose ID itself contains "." (e.g. "my.product") would produce
+    // a path with >4 segments and silently miss an exact-length match.
+    res = mapProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "prices", (value) => {
       if (value === "include-by-default") return {};
       return value;
     });
@@ -498,17 +502,22 @@ import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) =>
 
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
 
-  // The include-by-default migration uses a 4-segment path predicate against dot-notation keys:
-  // `payments.products.X.prices`. Verify it matches whether the override is fully nested, dot-notation
-  // at the root, or a mix.
+  // The include-by-default migration uses a prefix/suffix path predicate against dot-notation
+  // keys: `payments.products.<productId>.prices`, where the product-ID portion may be one or
+  // more segments (since override keys are dot-paths and a product ID may itself contain ".").
+  // Verify it matches whether the override is fully nested, dot-notation at the root, a mix,
+  // or contains a dotted product ID.
   const sentinelToEmpty = (v: any) => v === "include-by-default" ? {} : v;
-  const sentinelPred = (p: string[]) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "prices";
+  const sentinelPred = (p: string[]) => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "prices";
   expect(mapProperty({ "payments.products.x.prices": "include-by-default" }, sentinelPred, sentinelToEmpty))
     .toEqual({ "payments.products.x.prices": {} });
   expect(mapProperty({ payments: { products: { x: { prices: "include-by-default" } } } }, sentinelPred, sentinelToEmpty))
     .toEqual({ payments: { products: { x: { prices: {} } } } });
   expect(mapProperty({ "payments.products": { x: { prices: "include-by-default" } } }, sentinelPred, sentinelToEmpty))
     .toEqual({ "payments.products": { x: { prices: {} } } });
+  // Dotted product ID: "my.product" expands to two path segments, total 5.
+  expect(mapProperty({ "payments.products.my.product.prices": "include-by-default" }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products.my.product.prices": {} });
 });
 
 function renameProperty(obj: Record<string, any>, oldPath: string | ((path: string[]) => boolean), newName: string | ((path: string[]) => string)): any {
