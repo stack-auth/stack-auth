@@ -4,6 +4,7 @@ import { DesignCategoryTabs, DesignEditableGrid, DesignMenu, type DesignCategory
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
+import { Link } from "@/components/link";
 import { MetadataSection } from "@/components/metadata-editor";
 import {
   Accordion,
@@ -33,13 +34,13 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
-import { Link } from "@/components/link";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
 import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
 import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, PlusIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
@@ -48,7 +49,6 @@ import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -111,7 +111,7 @@ function UserHeader({ user }: UserHeaderProps) {
           }}/>
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
-      <div>
+      <div className="shrink-0 mr-8">
         <DesignMenu
           variant="actions"
           trigger="icon"
@@ -1340,13 +1340,13 @@ const ACTIVITY_GRID_CELLS = ACTIVITY_GRID_COLUMNS * ACTIVITY_GRID_ROWS;
 const ACTIVITY_CELL_SIZE_PX = 8;
 const ACTIVITY_GRID_GAP_PX = 2;
 const ACTIVITY_WEEKDAY_LABELS = [
+  { label: "", ariaLabel: null },
   { label: "M", ariaLabel: "Monday" },
   { label: "", ariaLabel: null },
   { label: "W", ariaLabel: "Wednesday" },
   { label: "", ariaLabel: null },
   { label: "F", ariaLabel: "Friday" },
   { label: "", ariaLabel: null },
-  { label: "S", ariaLabel: "Sunday" },
 ] as const;
 
 // Activity heatmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
@@ -1403,17 +1403,17 @@ function formatActivityIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function getMondayWeekStart(date: Date): Date {
+function getSundayWeekStart(date: Date): Date {
   const weekStart = new Date(date);
   weekStart.setUTCHours(0, 0, 0, 0);
-  const dayIndex = (weekStart.getUTCDay() + 6) % 7;
+  const dayIndex = weekStart.getUTCDay();
   weekStart.setUTCDate(weekStart.getUTCDate() - dayIndex);
   return weekStart;
 }
 
 function ActivityShell({ children }: { children: ReactNode }) {
   return (
-    <div className="hidden xl:flex flex-col items-end gap-1.5 shrink-0 pt-1">
+    <div className="hidden xl:flex flex-col items-center gap-1.5 shrink-0 pt-1">
       <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
       <div
         className="grid text-[9px] leading-none text-muted-foreground/70"
@@ -1477,12 +1477,14 @@ function ActivityGraph({ userId }: { userId: string }) {
     const latestDate = dataPoints.length > 0
       ? parseActivityDate(dataPoints[dataPoints.length - 1].date)
       : new Date();
-    const startDate = getMondayWeekStart(latestDate);
-    startDate.setUTCDate(startDate.getUTCDate() - (ACTIVITY_GRID_ROWS - 1) * ACTIVITY_GRID_COLUMNS);
-
+    // GitHub-style: weeks start on Sunday; grid rows go top → bottom from newest week
+    // to oldest; within each row, columns are Sun → Sat.
+    const week0Sunday = getSundayWeekStart(latestDate);
     return Array.from({ length: ACTIVITY_GRID_CELLS }, (_, index) => {
-      const date = new Date(startDate);
-      date.setUTCDate(startDate.getUTCDate() + index);
+      const row = Math.floor(index / ACTIVITY_GRID_COLUMNS);
+      const col = index % ACTIVITY_GRID_COLUMNS;
+      const date = new Date(week0Sunday);
+      date.setUTCDate(week0Sunday.getUTCDate() - row * ACTIVITY_GRID_COLUMNS + col);
       const isoDate = formatActivityIsoDate(date);
       return {
         date: isoDate,
@@ -1567,7 +1569,7 @@ function UserPage({ user }: { user: ServerUser }) {
 
   return (
     <PageLayout>
-      <div className="relative flex flex-col gap-6 xl:pr-24">
+      <div className="relative flex flex-col gap-6 xl:pr-36">
         <RestrictionBanner user={user} />
         <div className="absolute right-0 top-0 z-[100] hidden xl:block">
           <Suspense fallback={<ActivityLoadingFallback />}>
