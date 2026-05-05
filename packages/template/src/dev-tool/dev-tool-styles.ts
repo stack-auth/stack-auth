@@ -25,6 +25,7 @@ export const devToolCSS = `
     --sdt-error-muted: rgba(239, 68, 68, 0.15);
     --sdt-info: #3b82f6;
     --sdt-info-muted: rgba(59, 130, 246, 0.15);
+    --sdt-overlay-bg: rgba(17, 17, 19, 0.92);
     --sdt-radius: 8px;
     --sdt-radius-sm: 4px;
     --sdt-radius-lg: 12px;
@@ -196,7 +197,7 @@ export const devToolCSS = `
     left: 8px;
     right: 8px;
     z-index: 2;
-    background: rgba(17, 17, 19, 0.92);
+    background: var(--sdt-overlay-bg);
     border: 1px solid var(--sdt-border);
     border-radius: var(--sdt-radius);
     box-shadow: var(--sdt-trigger-shadow);
@@ -1223,7 +1224,7 @@ export const devToolCSS = `
     align-items: center;
     min-height: 28px;
     padding: 0 10px;
-    background: rgba(10, 10, 11, 0.88);
+    background: var(--sdt-overlay-bg);
     border: 1px solid var(--sdt-border);
     border-radius: var(--sdt-radius-sm);
     color: var(--sdt-accent-hover);
@@ -1954,6 +1955,7 @@ export const devToolCSS = `
       --sdt-error-muted: rgba(220, 38, 38, 0.1);
       --sdt-info: #2563eb;
       --sdt-info-muted: rgba(37, 99, 235, 0.1);
+      --sdt-overlay-bg: rgba(255, 255, 255, 0.92);
       --sdt-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
       --sdt-trigger-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
     }
@@ -2718,6 +2720,7 @@ export const devToolCSS = `
     --sdt-error-muted: rgba(220, 38, 38, 0.1);
     --sdt-info: #2563eb;
     --sdt-info-muted: rgba(37, 99, 235, 0.1);
+    --sdt-overlay-bg: rgba(255, 255, 255, 0.92);
     --sdt-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
     --sdt-trigger-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
   }
@@ -2744,6 +2747,7 @@ export const devToolCSS = `
     --sdt-error-muted: rgba(239, 68, 68, 0.15);
     --sdt-info: #3b82f6;
     --sdt-info-muted: rgba(59, 130, 246, 0.15);
+    --sdt-overlay-bg: rgba(17, 17, 19, 0.92);
     --sdt-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
     --sdt-trigger-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.08);
   }

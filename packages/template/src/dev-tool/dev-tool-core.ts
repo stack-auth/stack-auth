@@ -627,8 +627,7 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
     }
     const retryBtn = h('button', { className: 'sdt-iframe-error-btn' }, 'Retry');
     retryBtn.addEventListener('click', () => {
-      container.innerHTML = '';
-      container.appendChild(createIframeTab(src, title, loadingMsg, errorMsg, errorDetail));
+      container.replaceWith(createIframeTab(src, title, loadingMsg, errorMsg, errorDetail, openExternallyLabel));
     });
     errDiv.appendChild(retryBtn);
     const link = h('a', { href: src, target: '_blank', rel: 'noopener noreferrer', style: { color: 'var(--sdt-accent)', fontSize: '12px', textDecoration: 'none' } }, 'Open in new tab');

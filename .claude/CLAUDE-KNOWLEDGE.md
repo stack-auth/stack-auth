@@ -357,7 +357,7 @@ Then restart the dev server. This rebuilds all packages and generates the necess
 A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.
 
 ## Q: How does the Stack Auth template dev tool decide whether to iframe the dashboard?
-A: The dev tool's Dashboard tab uses `envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true'` as the gate. Outside the local emulator it shows an "Open Dashboard in New Tab" link instead of trying to iframe the dashboard.
+A: The dev tool always iframes the Dashboard tab and provides an "Open in New Tab" escape hatch for auth or framing issues.
 ## Q: How does `/api/v1/ai/query/generate` reject invalid AI tool names?
 A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/src/lib/ai/schema.ts` via `yupString().oneOf(TOOL_NAMES)`, so the endpoint returns a structured `SCHEMA_ERROR` object mentioning `body.tools[n]` rather than a custom `"Invalid tool names"` string from handler logic.
 
