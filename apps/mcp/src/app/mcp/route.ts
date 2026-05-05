@@ -11,7 +11,7 @@ export function GET(req: Request) {
     return handler(req);
   }
 
-  return new Response(renderSetupPageHtml(), {
+  return new Response(renderSetupPageHtml(new URL("/mcp", req.url).toString()), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
     },

@@ -164,6 +164,7 @@ it("MCP service root should redirect GET and POST to /mcp", async ({ expect }) =
 });
 
 it("MCP setup page should show client installation instructions", async ({ expect }) => {
+  const mcpUrl = new URL("/mcp", STACK_MCP_BASE_URL).toString();
   const response = await niceFetch(new URL("/mcp", STACK_MCP_BASE_URL), {
     method: "GET",
     headers: {
@@ -178,8 +179,9 @@ it("MCP setup page should show client installation instructions", async ({ expec
   expect(response.body).toContain("Codex");
   expect(response.body).toContain("Claude Code");
   expect(response.body).toContain("VS Code");
-  expect(response.body).toContain("codex mcp add stack-auth --url https://mcp.stack-auth.com/mcp");
-  expect(response.body).toContain("https://mcp.stack-auth.com/mcp");
+  expect(response.body).toContain(`codex mcp add stack-auth --url ${mcpUrl}`);
+  expect(response.body).toContain(mcpUrl);
+  expect(response.body).not.toContain("https://mcp.stack-auth.com/mcp");
   expect(response.body).not.toContain("Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code assistance in your development environment.");
   expect(response.body).toContain("<details class=\"markdown-section\">");
   expect(response.body).not.toContain("<details class=\"markdown-section\" open>");

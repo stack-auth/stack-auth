@@ -1,8 +1,3 @@
-const mcpUrl = "https://mcp.stack-auth.com/mcp";
-
-const cursorInstallUrl = "cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS9tY3AifQ==";
-const vsCodeInstallUrl = "https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2Fmcp%22%7D";
-
 type SetupTab = {
   id: string,
   label: string,
@@ -25,84 +20,103 @@ function codeBlock(language: string, value: string): string {
   </div>`;
 }
 
-const tabs: SetupTab[] = [
-  {
-    id: "cursor",
-    label: "Cursor",
-    content: `<p>Configure Stack Auth MCP in Cursor IDE for enhanced code assistance.</p>
-      <p><a class="button" href="${escapeHtml(cursorInstallUrl)}"><span class="button-icon">C</span>Add to Cursor</a></p>
-      <h2>Manual Installation</h2>
-      <p>Add the following to your <code>mcp.json</code> file:</p>
-      ${codeBlock("mcp.json", `{
+function getCursorInstallUrl(mcpUrl: string): string {
+  const url = new URL("cursor://anysphere.cursor-deeplink/mcp/install");
+  url.searchParams.set("name", "stack-auth");
+  url.searchParams.set("config", Buffer.from(JSON.stringify({ url: mcpUrl })).toString("base64url"));
+  return url.toString();
+}
+
+function getVsCodeInstallUrl(mcpUrl: string): string {
+  const url = new URL("https://insiders.vscode.dev/redirect");
+  const installPayload = JSON.stringify({
+    type: "http",
+    name: "stack-auth",
+    url: mcpUrl,
+  });
+  url.searchParams.set("url", `vscode:mcp/install?${encodeURIComponent(installPayload)}`);
+  return url.toString();
+}
+
+function getTabs(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: string): SetupTab[] {
+  return [
+    {
+      id: "cursor",
+      label: "Cursor",
+      content: `<p>Configure Stack Auth MCP in Cursor IDE for enhanced code assistance.</p>
+        <p><a class="button" href="${escapeHtml(cursorInstallUrl)}"><span class="button-icon">C</span>Add to Cursor</a></p>
+        <h2>Manual Installation</h2>
+        <p>Add the following to your <code>mcp.json</code> file:</p>
+        ${codeBlock("mcp.json", `{
   "mcpServers": {
     "stack-auth": {
       "url": "${mcpUrl}"
     }
   }
 }`)}`,
-  },
-  {
-    id: "vscode",
-    label: "VS Code",
-    content: `<p>Configure Stack Auth MCP in VS Code for enhanced code assistance.</p>
-      <p><a class="button" href="${escapeHtml(vsCodeInstallUrl)}"><span class="button-icon">VS</span>Add to VS Code</a></p>
-      <h2>Manual Installation</h2>
-      <p>Open a terminal and run the following command:</p>
-      ${codeBlock("Terminal", `code --add-mcp '{"type":"http","name":"stack-auth","url":"${mcpUrl}"}'`)}
-      <p>Then, from inside VS Code, open the <code>.vscode/mcp.json</code> file and click "Start server".</p>`,
-  },
-  {
-    id: "codex",
-    label: "Codex",
-    content: `<p>Configure Stack Auth MCP in Codex CLI and the Codex IDE extension. The configuration is shared between both.</p>
-      <p>Open a terminal and run the following command:</p>
-      ${codeBlock("Terminal", `codex mcp add stack-auth --url ${mcpUrl}`)}
-      <p>Verify it is configured:</p>
-      ${codeBlock("Terminal", "codex mcp list")}
-      <h2>Manual Installation</h2>
-      <p>Alternatively, add the following to <code>~/.codex/config.toml</code>:</p>
-      ${codeBlock("config.toml", `[mcp_servers.stack-auth]
+    },
+    {
+      id: "vscode",
+      label: "VS Code",
+      content: `<p>Configure Stack Auth MCP in VS Code for enhanced code assistance.</p>
+        <p><a class="button" href="${escapeHtml(vsCodeInstallUrl)}"><span class="button-icon">VS</span>Add to VS Code</a></p>
+        <h2>Manual Installation</h2>
+        <p>Open a terminal and run the following command:</p>
+        ${codeBlock("Terminal", `code --add-mcp '{"type":"http","name":"stack-auth","url":"${mcpUrl}"}'`)}
+        <p>Then, from inside VS Code, open the <code>.vscode/mcp.json</code> file and click "Start server".</p>`,
+    },
+    {
+      id: "codex",
+      label: "Codex",
+      content: `<p>Configure Stack Auth MCP in Codex CLI and the Codex IDE extension. The configuration is shared between both.</p>
+        <p>Open a terminal and run the following command:</p>
+        ${codeBlock("Terminal", `codex mcp add stack-auth --url ${mcpUrl}`)}
+        <p>Verify it is configured:</p>
+        ${codeBlock("Terminal", "codex mcp list")}
+        <h2>Manual Installation</h2>
+        <p>Alternatively, add the following to <code>~/.codex/config.toml</code>:</p>
+        ${codeBlock("config.toml", `[mcp_servers.stack-auth]
 url = "${mcpUrl}"`)}`,
-  },
-  {
-    id: "claudecode",
-    label: "Claude Code",
-    content: `<p>Open a terminal and run the following command:</p>
-      ${codeBlock("Terminal", `claude mcp add --transport http stack-auth ${mcpUrl}`)}
-      <p>From within Claude Code, you can use the <code>/mcp</code> command to get more information about the server.</p>`,
-  },
-  {
-    id: "claudedesktop",
-    label: "Claude Desktop",
-    content: `<p>Open Claude Desktop and navigate to Settings &gt; Connectors &gt; Add Custom Connector.</p>
-      <p>Enter the name as <code>stack-auth</code> and the remote MCP server URL as <code>${escapeHtml(mcpUrl)}</code>.</p>`,
-  },
-  {
-    id: "windsurf",
-    label: "Windsurf",
-    content: `<p>Copy the following JSON to your Windsurf MCP config file:</p>
-      ${codeBlock("mcp.json", `{
+    },
+    {
+      id: "claudecode",
+      label: "Claude Code",
+      content: `<p>Open a terminal and run the following command:</p>
+        ${codeBlock("Terminal", `claude mcp add --transport http stack-auth ${mcpUrl}`)}
+        <p>From within Claude Code, you can use the <code>/mcp</code> command to get more information about the server.</p>`,
+    },
+    {
+      id: "claudedesktop",
+      label: "Claude Desktop",
+      content: `<p>Open Claude Desktop and navigate to Settings &gt; Connectors &gt; Add Custom Connector.</p>
+        <p>Enter the name as <code>stack-auth</code> and the remote MCP server URL as <code>${escapeHtml(mcpUrl)}</code>.</p>`,
+    },
+    {
+      id: "windsurf",
+      label: "Windsurf",
+      content: `<p>Copy the following JSON to your Windsurf MCP config file:</p>
+        ${codeBlock("mcp.json", `{
   "mcpServers": {
     "stack-auth": {
       "serverUrl": "${mcpUrl}"
     }
   }
 }`)}`,
-  },
-  {
-    id: "chatgpt",
-    label: "ChatGPT",
-    content: `<div class="info">In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission to set this.</div>
-      <p>Navigate to <strong>Settings &gt; Connectors</strong>.</p>
-      <p>Add a custom connector with the server URL: <code>${escapeHtml(mcpUrl)}</code></p>
-      <p>After this, it should be visible in Composer &gt; Deep Research Tool.</p>
-      <div class="info">Connectors can only be used with <strong>Deep Research</strong>.</div>`,
-  },
-  {
-    id: "gemini",
-    label: "Gemini CLI",
-    content: `<p>Add the following JSON to your Gemini CLI configuration file (<code>~/.gemini/settings.json</code>):</p>
-      ${codeBlock("settings.json", `{
+    },
+    {
+      id: "chatgpt",
+      label: "ChatGPT",
+      content: `<div class="info">In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission to set this.</div>
+        <p>Navigate to <strong>Settings &gt; Connectors</strong>.</p>
+        <p>Add a custom connector with the server URL: <code>${escapeHtml(mcpUrl)}</code></p>
+        <p>After this, it should be visible in Composer &gt; Deep Research Tool.</p>
+        <div class="info">Connectors can only be used with <strong>Deep Research</strong>.</div>`,
+    },
+    {
+      id: "gemini",
+      label: "Gemini CLI",
+      content: `<p>Add the following JSON to your Gemini CLI configuration file (<code>~/.gemini/settings.json</code>):</p>
+        ${codeBlock("settings.json", `{
   "mcpServers": {
     "stack-auth": {
       "httpUrl": "${mcpUrl}",
@@ -112,10 +126,12 @@ url = "${mcpUrl}"`)}`,
     }
   }
 }`)}`,
-  },
-];
+    },
+  ];
+}
 
-const markdownInstructions = `<details name="mcp-install-instructions">
+function getMarkdownInstructions(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: string): string {
+  return `<details name="mcp-install-instructions">
 <summary>Cursor</summary>
 
 #### Installation Link
@@ -236,8 +252,9 @@ Add the following JSON to your Gemini CLI configuration file (\`~/.gemini/settin
 </details>
 
 by [![Hypr MCP](https://hyprmcp.com/hyprmcp_20px.svg)](https://hyprmcp.com/)`;
+}
 
-function renderTabs(): string {
+function renderTabs(tabs: SetupTab[]): string {
   const tabButtons = tabs.map((tab, index) => `<button class="tab-trigger${index === 0 ? " active" : ""}" type="button" role="tab" aria-selected="${index === 0 ? "true" : "false"}" aria-controls="panel-${escapeHtml(tab.id)}" id="tab-${escapeHtml(tab.id)}" data-tab="${escapeHtml(tab.id)}">${escapeHtml(tab.label)}</button>`).join("");
   const tabPanels = tabs.map((tab, index) => `<section class="tab-panel${index === 0 ? " active" : ""}" role="tabpanel" id="panel-${escapeHtml(tab.id)}" aria-labelledby="tab-${escapeHtml(tab.id)}" data-panel="${escapeHtml(tab.id)}">${tab.content}</section>`).join("");
   return `<div class="tabs">
@@ -246,7 +263,12 @@ function renderTabs(): string {
   </div>`;
 }
 
-export function renderSetupPageHtml(): string {
+export function renderSetupPageHtml(mcpUrl: string): string {
+  const cursorInstallUrl = getCursorInstallUrl(mcpUrl);
+  const vsCodeInstallUrl = getVsCodeInstallUrl(mcpUrl);
+  const tabs = getTabs(mcpUrl, cursorInstallUrl, vsCodeInstallUrl);
+  const markdownInstructions = getMarkdownInstructions(mcpUrl, cursorInstallUrl, vsCodeInstallUrl);
+
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -637,7 +659,7 @@ export function renderSetupPageHtml(): string {
         <div class="mcp-icon">MCP</div>
       </div>
 
-      ${renderTabs()}
+      ${renderTabs(tabs)}
 
       <details class="markdown-section">
         <summary>
