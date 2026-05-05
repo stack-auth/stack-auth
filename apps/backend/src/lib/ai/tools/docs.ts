@@ -22,8 +22,11 @@ function getDocsToolsBaseUrl(): string {
 
 async function postDocsToolAction(action: Record<string, unknown>): Promise<string> {
   const base = getDocsToolsBaseUrl();
+
+  // Network/transport errors — wrap and throw so the AI SDK surfaces a tool-output-error event
+  let res: Response;
   try {
-    const res = await fetch(`${base}/api/internal/docs-tools`, {
+    res = await fetch(`${base}/api/internal/docs-tools`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -32,28 +35,36 @@ async function postDocsToolAction(action: Record<string, unknown>): Promise<stri
       },
       body: JSON.stringify(action),
     });
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
-      return "Stack Auth docs tools returned an error. Please try again later.";
-    }
-
-    const data = (await res.json()) as DocsToolHttpResult;
-    const text = data.content
-      ?.filter((c): c is { type: "text", text: string } => c.type === "text" && typeof c.text === "string")
-      .map((c) => c.text)
-      .join("\n") ?? "";
-
-    if (data.isError === true) {
-      return text || "Unknown docs tool error";
-    }
-
-    return text;
   } catch (err) {
     captureError("docs-tools-transport-error", err instanceof Error ? err : new Error(String(err)));
-    return "Stack Auth docs tools are temporarily unavailable. Please try again later.";
+    throw new Error("Stack Auth docs tools are temporarily unavailable. Please try again later.");
   }
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
+    throw new Error(`Stack Auth docs tools returned an error (${res.status}). Please try again later.`);
+  }
+
+  let data: DocsToolHttpResult;
+  try {
+    data = (await res.json()) as DocsToolHttpResult;
+  } catch (err) {
+    captureError("docs-tools-parse-error", err instanceof Error ? err : new Error(String(err)));
+    throw new Error("Stack Auth docs tools returned an invalid response. Please try again later.");
+  }
+
+  const text = data.content
+    ?.filter((c): c is { type: "text", text: string } => c.type === "text" && typeof c.text === "string")
+    .map((c) => c.text)
+    .join("\n") ?? "";
+
+  if (data.isError === true) {
+    captureError("docs-tools-api-error", new Error(text || "Unknown docs tool error"));
+    throw new Error(text || "Unknown docs tool error");
+  }
+
+  return text;
 }
 
 /**
