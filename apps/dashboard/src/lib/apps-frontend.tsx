@@ -220,7 +220,6 @@ export const ALL_APPS_FRONTEND = {
     href: "conversations",
     navigationItems: [
       { displayName: "Conversations", href: "." },
-      { displayName: "Support Settings", href: "../support-settings" },
     ],
     screenshots: getScreenshots('support', 0),
     storeDescription: (

@@ -3,7 +3,7 @@ import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write"
 import { createFreePlanSubscriptionRow } from "@/lib/payments/ensure-free-plan";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
-import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
@@ -17,20 +17,6 @@ import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { addUserToTeam } from "../team-memberships/crud";
 
-
-async function clearConversationsForDeletedTeam(tx: PrismaClientTransaction, options: {
-  tenancyId: string,
-  teamId: string,
-}) {
-  await tx.$executeRaw(Prisma.sql`
-    UPDATE "Conversation"
-    SET
-      "teamId" = NULL,
-      "updatedAt" = NOW()
-    WHERE "tenancyId" = ${options.tenancyId}::uuid
-      AND "teamId" = ${options.teamId}::uuid
-  `);
-}
 
 export function teamPrismaToCrud(prisma: Prisma.TeamGetPayload<{}>) {
   return {
@@ -257,11 +243,6 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
       await recordExternalDbSyncDeletion(tx, {
         tableName: "Team",
-        tenancyId: auth.tenancy.id,
-        teamId: params.team_id,
-      });
-
-      await clearConversationsForDeletedTeam(tx, {
         tenancyId: auth.tenancy.id,
         teamId: params.team_id,
       });

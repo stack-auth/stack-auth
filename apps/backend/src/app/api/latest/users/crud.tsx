@@ -62,42 +62,6 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 
 const personalTeamDefaultDisplayName = "Personal Team";
 
-async function anonymizeConversationsForDeletedProjectUser(tx: PrismaClientTransaction, options: {
-  tenancyId: string,
-  projectUserId: string,
-}) {
-  const conversationRows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
-    SELECT id
-    FROM "Conversation"
-    WHERE "tenancyId" = ${options.tenancyId}::uuid
-      AND "projectUserId" = ${options.projectUserId}::uuid
-  `);
-  const conversationIds = conversationRows.map((row) => row.id);
-
-  await tx.$executeRaw(Prisma.sql`
-    UPDATE "ConversationMessage"
-    SET
-      "senderId" = NULL,
-      "senderDisplayName" = NULL,
-      "senderPrimaryEmail" = NULL
-    WHERE "tenancyId" = ${options.tenancyId}::uuid
-      AND "senderType" = 'user'
-      AND (
-        "senderId" = ${options.projectUserId}
-        ${conversationIds.length > 0 ? Prisma.sql`OR "conversationId" IN (${Prisma.join(conversationIds.map((id) => Prisma.sql`${id}::uuid`))})` : Prisma.empty}
-      )
-  `);
-
-  await tx.$executeRaw(Prisma.sql`
-    UPDATE "Conversation"
-    SET
-      "projectUserId" = NULL,
-      "updatedAt" = NOW()
-    WHERE "tenancyId" = ${options.tenancyId}::uuid
-      AND "projectUserId" = ${options.projectUserId}::uuid
-  `);
-}
-
 function getSignedUpAtMillis(signedUpAt: Date): number {
   return signedUpAt.getTime();
 }
@@ -1358,11 +1322,6 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           tenancyId: auth.tenancy.id,
           projectUserId: params.user_id,
         },
-      });
-
-      await anonymizeConversationsForDeletedProjectUser(tx, {
-        tenancyId: auth.tenancy.id,
-        projectUserId: params.user_id,
       });
 
       await tx.projectUser.delete({

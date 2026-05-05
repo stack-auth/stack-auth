@@ -18,13 +18,13 @@ import {
   type ConversationSummary,
 } from "@/lib/conversation-types";
 import { listManagedProjectIds } from "@/lib/projects";
-import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { computeFirstResponseDueAt, computeNextResponseDueAt, resolveSupportSla, type SupportSlaConfig } from "@stackframe/stack-shared/dist/helpers/support-sla";
+import { computeFirstResponseDueAt, computeNextResponseDueAt, DEFAULT_SUPPORT_SLA } from "@stackframe/stack-shared/dist/helpers/support-sla";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { yupArray, yupMixed, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 const tagsSchema = yupArray(yupString().defined()).defined();
@@ -556,14 +556,6 @@ export async function getConversationDetail(options: {
   };
 }
 
-async function loadSupportSlaConfig(tenancyId: string): Promise<SupportSlaConfig> {
-  const tenancy = await getTenancy(tenancyId);
-  if (tenancy == null) {
-    throw new StackAssertionError(`Tenancy ${tenancyId} not found when loading support SLA config`);
-  }
-  return resolveSupportSla(tenancy.config.support);
-}
-
 export async function createConversation(options: {
   tenancyId: string,
   userId: string | null,
@@ -586,9 +578,8 @@ export async function createConversation(options: {
   const isUserMessage = sender.type === "user";
   const isAgentMessage = sender.type === "agent";
 
-  const sla = await loadSupportSlaConfig(options.tenancyId);
   const firstResponseDueAt = isUserMessage
-    ? computeFirstResponseDueAt(now, sla)
+    ? computeFirstResponseDueAt(now, DEFAULT_SUPPORT_SLA)
     : null;
 
   await retryTransaction(globalPrismaClient, async (tx) => {
@@ -768,11 +759,10 @@ export async function appendConversationMessage(options: {
     currentStatus: conversation.status,
   });
 
-  const sla = await loadSupportSlaConfig(options.tenancyId);
   const shouldSetNextResponseDueAt = shouldTrackReplies && sender.type === "user" && autoStatus === "open";
   const shouldClearNextResponseDueAt = shouldTrackReplies && sender.type === "agent";
   const nextResponseDueAt = shouldSetNextResponseDueAt
-    ? computeNextResponseDueAt(now, sla)
+    ? computeNextResponseDueAt(now, DEFAULT_SUPPORT_SLA)
     : null;
 
   await retryTransaction(globalPrismaClient, async (tx) => {
