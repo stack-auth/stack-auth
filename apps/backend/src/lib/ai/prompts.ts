@@ -1138,7 +1138,7 @@ FIRST and re-run the list.
 
 All five pass → emit the tool call. Any fail → fix, re-check, emit.
 
-You MUST call the updateDashboard tool with the complete source code. NEVER output code directly in the chat.
+You MUST call patchDashboard or updateDashboard per the tool-choice rules above (local edit → patchDashboard; structural/layout change → updateDashboard, with full source). NEVER output code directly in the chat.
 `,
 
   "run-query": `
