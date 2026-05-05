@@ -1,10 +1,12 @@
 import { STACK_BACKEND_BASE_URL, it, niceFetch } from "../../../../helpers";
 import { Auth, InternalProjectKeys, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
+const supportConversationsPath = "/api/v1/internal/dogfood/support/conversations";
+
 it("current user can create and reply to a conversation", async ({ expect }) => {
   await Auth.Otp.signIn();
 
-  const createResponse = await niceBackendFetch("/api/v1/conversations", {
+  const createResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
     method: "POST",
     body: {
@@ -20,7 +22,7 @@ it("current user can create and reply to a conversation", async ({ expect }) => 
     }
   `);
 
-  const listResponse = await niceBackendFetch("/api/v1/conversations", {
+  const listResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
   });
   listResponse.body.conversations[0].last_activity_at = "<stripped ISO>";
@@ -56,12 +58,13 @@ it("current user can create and reply to a conversation", async ({ expect }) => 
             "user_profile_image_url": null,
           },
         ],
+        "has_more": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
-  const detailResponse = await niceBackendFetch(`/api/v1/conversations/${createResponse.body.conversation_id}`, {
+  const detailResponse = await niceBackendFetch(`${supportConversationsPath}/${createResponse.body.conversation_id}`, {
     accessType: "client",
   });
   detailResponse.body.conversation.last_activity_at = "<stripped ISO>";
@@ -126,7 +129,7 @@ it("current user can create and reply to a conversation", async ({ expect }) => 
     }
   `);
 
-  const replyResponse = await niceBackendFetch(`/api/v1/conversations/${createResponse.body.conversation_id}`, {
+  const replyResponse = await niceBackendFetch(`${supportConversationsPath}/${createResponse.body.conversation_id}`, {
     accessType: "client",
     method: "PATCH",
     body: {
@@ -220,7 +223,7 @@ it("current user can create and reply to a conversation", async ({ expect }) => 
 it("users cannot access conversations owned by another user", async ({ expect }) => {
   await Auth.Otp.signIn();
 
-  const createResponse = await niceBackendFetch("/api/v1/conversations", {
+  const createResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
     method: "POST",
     body: {
@@ -232,18 +235,21 @@ it("users cannot access conversations owned by another user", async ({ expect })
   await bumpEmailAddress();
   await Auth.Otp.signIn();
 
-  const listResponse = await niceBackendFetch("/api/v1/conversations", {
+  const listResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
   });
   expect(listResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "conversations": [] },
+      "body": {
+        "conversations": [],
+        "has_more": false,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
-  const detailResponse = await niceBackendFetch(`/api/v1/conversations/${createResponse.body.conversation_id}`, {
+  const detailResponse = await niceBackendFetch(`${supportConversationsPath}/${createResponse.body.conversation_id}`, {
     accessType: "client",
   });
   expect(detailResponse).toMatchInlineSnapshot(`
@@ -255,7 +261,7 @@ it("users cannot access conversations owned by another user", async ({ expect })
   `);
 });
 
-it("deleting a user preserves and anonymizes their conversations", async ({ expect }) => {
+it("deleting a user preserves their conversations with historical user IDs", async ({ expect }) => {
   const { projectId, adminAccessToken } = await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
@@ -269,12 +275,12 @@ it("deleting a user preserves and anonymizes their conversations", async ({ expe
   const userId = userResponse.body.id;
   const userEmail = userResponse.body.primary_email;
 
-  const createResponse = await niceBackendFetch("/api/v1/conversations", {
+  const createResponse = await niceBackendFetch(supportConversationsPath, {
     accessType: "client",
     method: "POST",
     body: {
       subject: "Please preserve this conversation",
-      message: "This user-identifying sender snapshot should be redacted.",
+      message: "This user-identifying sender snapshot should be preserved.",
     },
   });
   expect(createResponse.status).toBe(200);
@@ -311,7 +317,7 @@ it("deleting a user preserves and anonymizes their conversations", async ({ expe
   expect(detailResponse.status).toBe(200);
   expect(detailResponse.body.conversation).toMatchObject({
     conversationId,
-    userId: null,
+    userId,
     userDisplayName: null,
     userPrimaryEmail: null,
     subject: "Please preserve this conversation",
@@ -319,15 +325,15 @@ it("deleting a user preserves and anonymizes their conversations", async ({ expe
   expect(detailResponse.body.messages).toHaveLength(1);
   expect(detailResponse.body.messages[0]).toMatchObject({
     conversationId,
-    userId: null,
-    body: "This user-identifying sender snapshot should be redacted.",
+    userId,
+    body: "This user-identifying sender snapshot should be preserved.",
     sender: {
       type: "user",
-      id: null,
+      id: userId,
       displayName: null,
-      primaryEmail: null,
+      primaryEmail: userEmail,
     },
   });
-  expect(JSON.stringify(detailResponse.body)).not.toContain(userId);
-  expect(JSON.stringify(detailResponse.body)).not.toContain(userEmail);
+  expect(JSON.stringify(detailResponse.body)).toContain(userId);
+  expect(JSON.stringify(detailResponse.body)).toContain(userEmail);
 });
