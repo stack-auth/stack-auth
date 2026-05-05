@@ -13,7 +13,7 @@ export const POST = createSmartRouteHandler({
       project: adaptSchema,
     }).defined(),
     body: yupObject({
-      qaId: yupString().defined(),
+      qaId: yupString().matches(/^\d+$/, "qaId must be a non-negative decimal integer").defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
