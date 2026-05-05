@@ -68,7 +68,8 @@ export default function PageClient() {
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
-  const [projectDau, setProjectDau] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
+  const [projectWeeklyUsers, setProjectWeeklyUsers] = useState<Map<string, number>>(new Map());
+  const [projectWeeklyUsersChart, setProjectWeeklyUsersChart] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
   const router = useRouter();
 
   useEffect(() => {
@@ -124,32 +125,48 @@ export default function PageClient() {
     let cancelled = false;
     runAsynchronously(async () => {
       try {
-        const response = await appInternals.sendRequest("/internal/projects-dau", {}, "client");
+        const response = await appInternals.sendRequest("/internal/projects-weekly-users", {}, "client");
         if (!response.ok) {
-          console.warn("[projects-dau] request failed", response.status, await response.text());
+          console.warn("[projects-weekly-users] request failed", response.status, await response.text());
           return;
         }
         const body = await response.json();
         if (body == null || typeof body !== "object" || !("projects" in body) || body.projects == null || typeof body.projects !== "object") {
-          console.warn("[projects-dau] unexpected body", body);
+          console.warn("[projects-weekly-users] unexpected body", body);
           return;
         }
-        const map = new Map<string, { date: string, activity: number }[]>();
-        for (const [projectId, series] of Object.entries(body.projects as Record<string, unknown>)) {
-          if (!Array.isArray(series)) continue;
+        const weeklyUsersMap = new Map<string, number>();
+        const weeklyUsersChartMap = new Map<string, { date: string, activity: number }[]>();
+        for (const [projectId, value] of Object.entries(body.projects)) {
+          if (value == null || typeof value !== "object") {
+            continue;
+          }
+          const weeklyUsers = "weekly_users" in value ? value.weekly_users : undefined;
+          if (typeof weeklyUsers === "number") {
+            weeklyUsersMap.set(projectId, weeklyUsers);
+          }
+          const dailyUsers = "daily_users" in value ? value.daily_users : undefined;
+          if (!Array.isArray(dailyUsers)) {
+            continue;
+          }
           const points: { date: string, activity: number }[] = [];
-          for (const point of series) {
-            if (point != null && typeof point === "object" && "date" in point && "activity" in point && typeof (point as any).date === "string" && typeof (point as any).activity === "number") {
-              points.push({ date: (point as any).date, activity: (point as any).activity });
+          for (const point of dailyUsers) {
+            if (point != null && typeof point === "object" && "date" in point && "activity" in point) {
+              const date = point.date;
+              const activity = point.activity;
+              if (typeof date === "string" && typeof activity === "number") {
+                points.push({ date, activity });
+              }
             }
           }
-          map.set(projectId, points);
+          weeklyUsersChartMap.set(projectId, points);
         }
         if (!cancelled) {
-          setProjectDau(map);
+          setProjectWeeklyUsers(weeklyUsersMap);
+          setProjectWeeklyUsersChart(weeklyUsersChartMap);
         }
       } catch (e) {
-        console.warn("[projects-dau] fetch error", e);
+        console.warn("[projects-weekly-users] fetch error", e);
       }
     });
     return () => {
@@ -355,7 +372,8 @@ export default function PageClient() {
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
-                    dau={projectDau.get(project.id)}
+                    weeklyUsers={projectWeeklyUsers.get(project.id)}
+                    weeklyUsersChart={projectWeeklyUsersChart.get(project.id)}
                   />
                 );
               })}
