@@ -1,7 +1,7 @@
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { Auth, bumpEmailAddress, niceBackendFetch, Payments, Project } from "../../../backend-helpers";
+import { Auth, bumpEmailAddress, niceBackendFetch, Payments, Project, Team } from "../../../backend-helpers";
 import { getOutboxEmails } from "./emails/email-helpers";
 
 async function waitForOutboxEmail(subject: string) {
@@ -746,4 +746,90 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   });
   expect(afterRemove.status).toBe(200);
   expect(afterRemove.body.quantity).toBe(0);
+});
+
+
+it("does NOT auto-grant `free` when a non-internal tenancy's sub is canceled via webhook", async ({ expect }) => {
+  // Guard test for the `tenancy.project.id === "internal"` gate: a customer
+  // project's own Stripe cancellations must never cause a `free` sub to
+  // appear in their tenancy.
+  await Project.createAndSwitch();
+  await Payments.setup();
+
+  const customProductId = "customer-product";
+  const customItemId = "customer-seat";
+  const customProduct = {
+    displayName: "Customer Product",
+    customerType: "team",
+    productLineId: "customer-plans",
+    serverOnly: false,
+    stackable: false,
+    prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+    includedItems: { [customItemId]: { quantity: 1, expires: "when-purchase-expires" } },
+  };
+  await Project.updateConfig({
+    payments: {
+      productLines: { "customer-plans": { displayName: "Customer Plans", customerType: "team" } },
+      items: { [customItemId]: { displayName: "Customer Seat", customerType: "team" } },
+      products: { [customProductId]: customProduct },
+    },
+  });
+
+  await Auth.fastSignUp();
+  const { teamId } = await Team.createWithCurrentAsCreator({ accessType: "server" });
+
+  const accountInfo = await niceBackendFetch(
+    "/api/latest/internal/payments/stripe/account-info",
+    { accessType: "admin" },
+  );
+  const accountId = accountInfo.body.account_id;
+  const createUrlResponse = await niceBackendFetch(
+    "/api/latest/payments/purchases/create-purchase-url",
+    {
+      method: "POST",
+      accessType: "client",
+      body: { customer_type: "team", customer_id: teamId, product_id: customProductId },
+    },
+  );
+  const projectTenancyId = (createUrlResponse.body as { url: string }).url
+    .split("/purchase/")[1].split("_")[0];
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const webhookResponse = await Payments.sendStripeWebhook({
+    id: "evt_customer_cancel",
+    type: "customer.subscription.deleted",
+    account: accountId,
+    data: {
+      object: {
+        customer: "cus_customer_cancel",
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId: projectTenancyId } },
+          "customers.retrieve": { metadata: { customerId: teamId, customerType: "TEAM" } },
+          "subscriptions.list": { data: [{
+            id: "sub_customer_cancel",
+            status: "canceled",
+            items: { data: [{
+              quantity: 1,
+              current_period_start: nowSec - 2 * 60,
+              current_period_end: nowSec - 60,
+            }] },
+            metadata: { productId: customProductId, product: JSON.stringify(customProduct), priceId: "monthly" },
+            cancel_at_period_end: false,
+          }] },
+        },
+      },
+    },
+  });
+  expect(webhookResponse.status).toBe(200);
+  await wait(2000);
+
+  // Guard: no `free` product should ever appear in a customer-project tenancy's
+  // ownedProducts, since the gate short-circuits before we touch anything here.
+  const subsResponse = await niceBackendFetch(
+    `/api/v1/payments/products/team/${teamId}`,
+    { accessType: "server" },
+  );
+  expect(subsResponse.status).toBe(200);
+  const items = (subsResponse.body as { items: Array<{ id: string | null }> }).items;
+  expect(items.map((i) => i.id)).not.toContain("free");
 });

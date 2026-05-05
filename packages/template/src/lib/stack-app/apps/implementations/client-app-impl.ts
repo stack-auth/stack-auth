@@ -2540,7 +2540,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._interface.verifyPasswordResetCode(code);
   }
 
-  async verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
+  async verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>> {
     return await this._interface.acceptTeamInvitation({
       type: 'check',
       code,
@@ -2548,7 +2548,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     });
   }
 
-  async acceptTeamInvitation(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
+  async acceptTeamInvitation(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>> {
     const result = await this._interface.acceptTeamInvitation({
       type: 'use',
       code,
@@ -2562,7 +2562,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  async getTeamInvitationDetails(code: string): Promise<Result<{ teamDisplayName: string }, KnownErrors["VerificationCodeError"]>> {
+  async getTeamInvitationDetails(code: string): Promise<Result<{ teamDisplayName: string }, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>> {
     const result = await this._interface.acceptTeamInvitation({
       type: 'details',
       code,
