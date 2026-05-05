@@ -75,7 +75,7 @@ export type DashboardPatchSnapshot = {
 };
 
 export function applyDashboardPatches(source: string, edits: DashboardPatchEdit[]): DashboardPatchResult {
-  let running = source;
+  let draft = source;
   let applied = 0;
   const failures: DashboardPatchFailure[] = [];
 
@@ -84,8 +84,8 @@ export function applyDashboardPatches(source: string, edits: DashboardPatchEdit[
 
     const matches: number[] = [];
     let from = 0;
-    while (from <= running.length) {
-      const at = running.indexOf(edit.oldText, from);
+    while (from <= draft.length) {
+      const at = draft.indexOf(edit.oldText, from);
       if (at === -1) break;
       matches.push(at);
       from = at + Math.max(edit.oldText.length, 1);
@@ -114,11 +114,14 @@ export function applyDashboardPatches(source: string, edits: DashboardPatchEdit[
       chosenIndex = matches[0];
     }
 
-    running = running.slice(0, chosenIndex) + edit.newText + running.slice(chosenIndex + edit.oldText.length);
+    draft = draft.slice(0, chosenIndex) + edit.newText + draft.slice(chosenIndex + edit.oldText.length);
     applied += 1;
   });
 
-  return { updatedSource: running, applied, failures };
+  if (failures.length > 0) {
+    return { updatedSource: source, applied: 0, failures };
+  }
+  return { updatedSource: draft, applied, failures };
 }
 
 function parsePatchEdits(args: unknown): DashboardPatchEdit[] | null {
