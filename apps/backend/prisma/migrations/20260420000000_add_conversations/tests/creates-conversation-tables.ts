@@ -6,6 +6,7 @@ export const preMigration = async (sql: Sql) => {
   const projectId = `test-${randomUUID()}`;
   const tenancyId = randomUUID();
   const projectUserId = randomUUID();
+  const teamId = randomUUID();
 
   await sql`
     INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode")
@@ -19,8 +20,12 @@ export const preMigration = async (sql: Sql) => {
     INSERT INTO "ProjectUser" ("projectUserId", "tenancyId", "mirroredProjectId", "mirroredBranchId", "createdAt", "updatedAt", "lastActiveAt")
     VALUES (${projectUserId}::uuid, ${tenancyId}::uuid, ${projectId}, 'main', NOW(), NOW(), NOW())
   `;
+  await sql`
+    INSERT INTO "Team" ("teamId", "tenancyId", "mirroredProjectId", "mirroredBranchId", "createdAt", "updatedAt", "displayName")
+    VALUES (${teamId}::uuid, ${tenancyId}::uuid, ${projectId}, 'main', NOW(), NOW(), 'Conversation Team')
+  `;
 
-  return { tenancyId, projectUserId };
+  return { tenancyId, projectUserId, teamId };
 };
 
 export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof preMigration>>) => {
@@ -289,4 +294,62 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       NOW()
     )
   `).rejects.toThrow(/ConversationMessage_senderType_check/);
+
+  await sql`
+    DELETE FROM "ProjectUser"
+    WHERE "tenancyId" = ${ctx.tenancyId}::uuid
+      AND "projectUserId" = ${ctx.projectUserId}::uuid
+  `;
+
+  const userConversationRows = await sql`
+    SELECT "projectUserId"
+    FROM "Conversation"
+    WHERE "tenancyId" = ${ctx.tenancyId}::uuid
+      AND "id" = ${conversationId}::uuid
+  `;
+  expect(userConversationRows).toHaveLength(1);
+  expect(userConversationRows[0].projectUserId).toBe(ctx.projectUserId);
+
+  const teamConversationId = randomUUID();
+  await sql`
+    INSERT INTO "Conversation" (
+      "id",
+      "tenancyId",
+      "teamId",
+      "subject",
+      "status",
+      "priority",
+      "source",
+      "createdAt",
+      "updatedAt",
+      "lastMessageAt"
+    )
+    VALUES (
+      ${teamConversationId}::uuid,
+      ${ctx.tenancyId}::uuid,
+      ${ctx.teamId}::uuid,
+      'Team conversation',
+      'open',
+      'normal',
+      'chat',
+      NOW(),
+      NOW(),
+      NOW()
+    )
+  `;
+
+  await sql`
+    DELETE FROM "Team"
+    WHERE "tenancyId" = ${ctx.tenancyId}::uuid
+      AND "teamId" = ${ctx.teamId}::uuid
+  `;
+
+  const teamConversationRows = await sql`
+    SELECT "teamId"
+    FROM "Conversation"
+    WHERE "tenancyId" = ${ctx.tenancyId}::uuid
+      AND "id" = ${teamConversationId}::uuid
+  `;
+  expect(teamConversationRows).toHaveLength(1);
+  expect(teamConversationRows[0].teamId).toBe(ctx.teamId);
 };

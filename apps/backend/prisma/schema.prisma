@@ -188,7 +188,6 @@ model Team {
 
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
-  conversations Conversation[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -327,7 +326,6 @@ model ProjectUser {
   projectId                  String?
   userNotificationPreference UserNotificationPreference[]
   sessionReplays             SessionReplay[]
-  conversations              Conversation[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -1166,10 +1164,6 @@ model Conversation {
   closedAt      DateTime?
 
   tenancy     Tenancy                @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  // The DB migration uses PostgreSQL column-scoped ON DELETE SET NULL for the nullable ID only.
-  // Prisma cannot model that for tenant-scoped composite FKs because tenancyId is required.
-  projectUser ProjectUser?           @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: NoAction)
-  team        Team?                  @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: NoAction)
   messages    ConversationMessage[]
   entryPoints ConversationEntryPoint[]
 

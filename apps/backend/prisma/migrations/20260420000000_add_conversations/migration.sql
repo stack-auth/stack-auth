@@ -27,9 +27,7 @@ CREATE TABLE "Conversation" (
     CONSTRAINT "Conversation_status_check" CHECK ("status" IN ('open', 'pending', 'closed')),
     CONSTRAINT "Conversation_priority_check" CHECK ("priority" IN ('low', 'normal', 'high', 'urgent')),
     CONSTRAINT "Conversation_source_check" CHECK ("source" IN ('manual', 'chat', 'email', 'api')),
-    CONSTRAINT "Conversation_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "Conversation_projectUser_fkey" FOREIGN KEY ("tenancyId", "projectUserId") REFERENCES "ProjectUser"("tenancyId", "projectUserId") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "Conversation_team_fkey" FOREIGN KEY ("tenancyId", "teamId") REFERENCES "Team"("tenancyId", "teamId") ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT "Conversation_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE "ConversationEntryPoint" (
