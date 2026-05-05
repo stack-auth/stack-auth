@@ -2,15 +2,13 @@ import type { StackClientAppConstructorOptions, StackServerAppConstructorOptions
 import { AdminProjectCreateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
-import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
+import { SDK_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
 const testExtraRequestHeaders = {
   "x-stack-disable-artificial-development-delay": "yes",
 };
 
-// When STACK_TEST_SDK_FALLBACK is set, omit explicit baseUrl so the SDK resolves
-// from NEXT_PUBLIC_STACK_API_URL and exercises its fallback logic
-const sdkBaseUrl = process.env.STACK_TEST_SDK_FALLBACK ? undefined : STACK_BACKEND_BASE_URL;
+const sdkBaseUrl = SDK_BASE_URL;
 
 export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'displayName' | 'teamId'> & { displayName?: string }) {
   const internalApp = new StackAdminApp({

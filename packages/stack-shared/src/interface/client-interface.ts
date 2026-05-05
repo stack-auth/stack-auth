@@ -1107,7 +1107,7 @@ export class StackClientInterface {
     code: string,
     session: InternalSession,
     type: T,
-  }): Promise<Result<T extends 'details' ? { team_display_name: string } : undefined, KnownErrors["VerificationCodeError"]>> {
+  }): Promise<Result<T extends 'details' ? { team_display_name: string } : undefined, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       options.type === 'check' ?
         "/team-invitations/accept/check-code" :
@@ -1124,7 +1124,7 @@ export class StackClientInterface {
         }),
       },
       options.session,
-      [KnownErrors.VerificationCodeError]
+      [KnownErrors.VerificationCodeError, KnownErrors.TeamInvitationEmailMismatch]
     );
 
     if (res.status === "error") {
