@@ -22,7 +22,7 @@ const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF
 
 function stripLoneSurrogates(value: unknown): unknown {
   if (typeof value === "string") {
-    return value.replace(LONE_SURROGATE_RE, "�");
+    return value.replace(LONE_SURROGATE_RE, "\uFFFD");
   }
   if (Array.isArray(value)) {
     return value.map(stripLoneSurrogates);
