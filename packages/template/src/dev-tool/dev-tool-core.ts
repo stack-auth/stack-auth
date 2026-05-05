@@ -10,14 +10,14 @@ import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/st
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 import { getPagePrompt } from "../lib/stack-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
-import type { TriggerPlacement } from "./dev-tool-trigger-position";
+import type { TriggerCorner, TriggerPlacement } from "./dev-tool-trigger-position";
 import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPosition } from "./dev-tool-trigger-position";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'components' | 'ai' | 'docs' | 'dashboard' | 'console' | 'support';
+type TabId = 'overview' | 'customize' | 'ai' | 'docs' | 'dashboard' | 'console' | 'support';
 
 type TabResult = { element: HTMLElement, cleanup?: () => void };
 
@@ -60,7 +60,7 @@ const DRAG_THRESHOLD = 5;
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
-  { id: 'components', label: 'Components', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+  { id: 'customize', label: 'Customize', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
   { id: 'ai', label: 'AI', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
   { id: 'console', label: 'Console', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
   { id: 'docs', label: 'Docs', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' },
@@ -86,7 +86,10 @@ function loadState(): DevToolState {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return { ...DEFAULT_STATE, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored);
+      // Migrate old 'components' tab name to 'customize'
+      if (parsed.activeTab === 'components') parsed.activeTab = 'customize';
+      return { ...DEFAULT_STATE, ...parsed };
     }
   } catch {}
   return { ...DEFAULT_STATE };
@@ -329,17 +332,19 @@ function appendInlineMarkdown(container: HTMLElement, text: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Trigger button (draggable pill)
+// Trigger button (draggable pill — corner-snapping, icon only)
 // ---------------------------------------------------------------------------
 
-function createTrigger(onClick: () => void): HTMLElement {
+function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: () => void } {
   type Position = { left: number; top: number };
   type Placement = TriggerPlacement;
-  const triggerSize = { width: 76, height: 36 };
+
+  // Measured lazily after the element is appended to the DOM.
+  let triggerSize = { width: 36, height: 36 };
 
   const defaultPos = (): Position => ({
-    left: window.innerWidth - 76 - 16,
-    top: window.innerHeight - 36 - 16,
+    left: window.innerWidth - triggerSize.width - 16,
+    top: window.innerHeight - triggerSize.height - 16,
   });
 
   function isPosition(value: unknown): value is Position {
@@ -349,8 +354,8 @@ function createTrigger(onClick: () => void): HTMLElement {
 
   function isPlacement(value: unknown): value is Placement {
     if (typeof value !== 'object' || value === null) return false;
-    const side = Reflect.get(value, 'side');
-    return ['left', 'right', 'top', 'bottom'].includes(String(side)) && typeof Reflect.get(value, 'offset') === 'number';
+    const corner = Reflect.get(value, 'corner');
+    return ['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(String(corner));
   }
 
   function loadPlacement(): Placement | null {
@@ -358,7 +363,24 @@ function createTrigger(onClick: () => void): HTMLElement {
       const raw = localStorage.getItem(TRIGGER_POS_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
+
       if (isPlacement(parsed)) return parsed;
+
+      // Migrate old side-based placement { side, offset } to nearest corner.
+      if (typeof parsed === 'object' && parsed !== null && 'side' in parsed && 'offset' in parsed) {
+        const side = String(Reflect.get(parsed, 'side'));
+        const offset = Number(Reflect.get(parsed, 'offset'));
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let corner: TriggerCorner;
+        if (side === 'right')  corner = offset < vh / 2 ? 'top-right'   : 'bottom-right';
+        else if (side === 'left')   corner = offset < vh / 2 ? 'top-left'    : 'bottom-left';
+        else if (side === 'top')    corner = offset < vw / 2 ? 'top-left'    : 'top-right';
+        else                        corner = offset < vw / 2 ? 'bottom-left' : 'bottom-right';
+        return { corner };
+      }
+
+      // Migrate old absolute position.
       if (isPosition(parsed)) {
         return getSnappedTriggerPlacement(parsed, triggerSize, { width: window.innerWidth, height: window.innerHeight });
       }
@@ -382,11 +404,22 @@ function createTrigger(onClick: () => void): HTMLElement {
   const logoSpan = h('span', { className: 'sdt-trigger-logo' });
   setHtml(logoSpan, STACK_LOGO_SVG);
   btn.appendChild(logoSpan);
-  btn.appendChild(h('span', { className: 'sdt-trigger-text' }, 'DEV'));
 
-  let placement = loadPlacement() ?? getSnappedTriggerPlacement(defaultPos(), triggerSize, { width: window.innerWidth, height: window.innerHeight });
+  let placement = loadPlacement() ?? { corner: 'bottom-right' as TriggerCorner };
   let pos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
   applyPos(pos);
+
+  // After mount, measure the actual rendered size and re-snap if needed.
+  requestAnimationFrame(() => {
+    const rect = btn.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      triggerSize = { width: rect.width, height: rect.height };
+      const measured = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
+      if (measured.left !== pos.left || measured.top !== pos.top) {
+        applyPos(measured);
+      }
+    }
+  });
 
   let dragState: { startX: number; startY: number; startLeft: number; startTop: number; didDrag: boolean } | null = null;
 
@@ -423,16 +456,23 @@ function createTrigger(onClick: () => void): HTMLElement {
     }
   });
 
-  window.addEventListener('resize', () => {
+  // On viewport resize, reapply the existing corner placement to the new dimensions.
+  // Placement (corner) only changes when the user drags.
+  function onResize() {
     const resizedPos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
     if (resizedPos.left !== pos.left || resizedPos.top !== pos.top) {
       applyPos(resizedPos);
-      placement = getSnappedTriggerPlacement(pos, triggerSize, { width: window.innerWidth, height: window.innerHeight });
-      savePlacement(placement);
     }
-  });
+  }
 
-  return btn;
+  window.addEventListener('resize', onResize);
+
+  return {
+    element: btn,
+    cleanup: () => {
+      window.removeEventListener('resize', onResize);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -562,9 +602,8 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
 
 function createOverviewTab(app: StackClientApp<true>): TabResult {
   const container = h('div', { className: 'sdt-ov' });
-  const apiBaseUrl = resolveApiBaseUrl(app);
 
-  // -- User hero card --
+  // ── Identity card ──────────────────────────────────────────────────────────
   const heroCard = h('div', { className: 'sdt-ov-card sdt-ov-card-hero' });
   heroCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Identity'));
 
@@ -585,6 +624,16 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
   const emailBtn = h('button', null);
   setHtml(emailBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>');
   emailRow.append(emailInput, emailBtn);
+
+  function isBestEffortOverviewError(error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return true;
+    }
+    if (error instanceof Error) {
+      return error.message.includes('Failed to fetch') || error.message.includes('NetworkError');
+    }
+    return false;
+  }
 
   function showToast(msg: string, type: 'success' | 'error') {
     toast.textContent = msg;
@@ -712,10 +761,111 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     }
   });
 
+  heroCard.append(actions, toast);
+
+  // ── Auth methods card ──────────────────────────────────────────────────────
+  const methodsCard = h('div', { className: 'sdt-ov-card sdt-ov-card-auth' });
+  methodsCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Auth Methods'));
+  const authGrid = h('div', { className: 'sdt-ov-auth-grid' });
+  for (let i = 0; i < 3; i++) {
+    authGrid.appendChild(h('div', { className: 'sdt-ov-method sdt-ov-skeleton-pill' }));
+  }
+  methodsCard.appendChild(authGrid);
+
+  async function loadAuthMethods() {
+    try {
+      const project = await app.getProject();
+      authGrid.innerHTML = '';
+      const config = project.config;
+      const methods = [
+        { label: 'Password', enabled: config.credentialEnabled },
+        { label: 'Magic Link', enabled: config.magicLinkEnabled },
+        { label: 'Passkey', enabled: config.passkeyEnabled },
+      ];
+      for (const m of methods) {
+        const pill = h('div', { className: `sdt-ov-method ${m.enabled ? 'sdt-ov-method-on' : 'sdt-ov-method-off'}` });
+        pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, m.label));
+        authGrid.appendChild(pill);
+      }
+      for (const p of config.oauthProviders) {
+        const pill = h('div', { className: 'sdt-ov-method sdt-ov-method-on sdt-ov-method-oauth' });
+        pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, p.id));
+        authGrid.appendChild(pill);
+      }
+      if (!config.signUpEnabled) {
+        const pill = h('div', { className: 'sdt-ov-method sdt-ov-method-warn' });
+        pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, 'Sign-up off'));
+        authGrid.appendChild(pill);
+      }
+    } catch (error) {
+      if (!isBestEffortOverviewError(error)) {
+        throw error;
+      }
+      authGrid.innerHTML = '<div style="font-size:11px;color:var(--sdt-text-tertiary)">Could not load auth methods</div>';
+    }
+  }
+
+  // Overview hydration is best-effort while the local Stack backend is still booting.
+  runAsynchronously(loadAuthMethods());
+
+  // ── Setup checklist (only shown when something is incomplete) ──────────────
+  const checksCard = h('div', { className: 'sdt-ov-card sdt-ov-card-checks' });
+  const projectId = app.projectId;
+  let checksCardMounted = false;
+
+  function buildChecklist() {
+    checksCard.innerHTML = '';
+    const checks = [
+      { ok: !!projectId && projectId !== 'default', label: 'Project configured', hint: null },
+      { ok: true, label: 'Auth method active', hint: null },
+      { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' },
+    ];
+    const passCount = checks.filter((c) => c.ok).length;
+    const allGood = passCount === checks.length;
+
+    if (allGood) {
+      if (checksCardMounted && checksCard.parentElement) {
+        container.removeChild(checksCard);
+        checksCardMounted = false;
+      }
+      return;
+    }
+
+    if (!checksCardMounted) {
+      container.appendChild(checksCard);
+      checksCardMounted = true;
+    }
+
+    const titleRow = h('div', { className: 'sdt-ov-checks-header' });
+    const titleLabel = h('div', { className: 'sdt-ov-label', style: { marginBottom: '0', color: 'var(--sdt-warning)' } }, 'Setup');
+    const badge = h('span', { className: 'sdt-ov-checks-badge sdt-ov-checks-badge-warn' }, `${passCount}\u200a/\u200a${checks.length}`);
+    titleRow.append(titleLabel, badge);
+    checksCard.appendChild(titleRow);
+
+    const bar = h('div', { className: 'sdt-ov-checks-bar' });
+    const fill = h('div', { className: 'sdt-ov-checks-bar-fill' });
+    fill.style.width = `${(passCount / checks.length) * 100}%`;
+    bar.appendChild(fill);
+    checksCard.appendChild(bar);
+
+    for (const c of checks) {
+      const row = h('div', { className: 'sdt-ov-setup-row' });
+      row.appendChild(h('span', { className: `sdt-ov-setup-dot ${c.ok ? 'sdt-ov-setup-dot-ok' : 'sdt-ov-setup-dot-warn'}` }));
+      row.appendChild(h('span', { className: 'sdt-ov-setup-label' }, c.label));
+      if (!c.ok && c.hint) {
+        row.appendChild(h('span', { className: 'sdt-ov-setup-hint' }, c.hint));
+      }
+      checksCard.appendChild(row);
+    }
+  }
+
   async function refreshUser() {
     try {
       currentUser = await app.getUser();
-    } catch {
+    } catch (error) {
+      if (!isBestEffortOverviewError(error)) {
+        throw error;
+      }
       currentUser = null;
     }
     if (currentUser) {
@@ -741,267 +891,12 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     buildChecklist();
   }
 
-  heroCard.append(actions, toast);
+  container.append(heroCard, methodsCard);
+  buildChecklist();
   runAsynchronously(refreshUser());
   const userPoll = setInterval(() => {
     runAsynchronously(refreshUser());
   }, 3000);
-
-  // -- Project info card --
-  const projectCard = h('div', { className: 'sdt-ov-card sdt-ov-card-project' });
-  projectCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Project'));
-  const projectRows = h('div', { className: 'sdt-ov-project-rows' });
-
-  const sdkVersion = app.version;
-  const projectId = app.projectId;
-
-  function addProjectRow(key: string, val: string | HTMLElement) {
-    const row = h('div', { className: 'sdt-ov-project-row' });
-    row.appendChild(h('span', { className: 'sdt-ov-project-key' }, key));
-    const valEl = h('span', { className: 'sdt-ov-project-val' });
-    if (typeof val === 'string') {
-      valEl.textContent = val;
-    } else {
-      valEl.appendChild(val);
-    }
-    row.appendChild(valEl);
-    projectRows.appendChild(row);
-  }
-
-  const sdkValSpan = h('span', null, sdkVersion || '?');
-  addProjectRow('SDK', sdkValSpan);
-
-  // Check latest version
-  const parsed = sdkVersion.match(/(@[\w-]+\/[\w-]+)@(\d+\.\d+\.\d+)/);
-  if (parsed) {
-    runAsynchronously(
-      fetch(`https://registry.npmjs.org/${parsed[1]}/latest`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.version) {
-            const pa = parsed[2].split('.').map(Number);
-            const pb = data.version.split('.').map(Number);
-            let outdated = false;
-            for (let i = 0; i < 3; i++) {
-              if (pa[i] !== pb[i]) {
-                outdated = pa[i] < pb[i];
-                break;
-              }
-            }
-            if (outdated) {
-              const badge = h('span', { className: 'sdt-ov-sdk-badge', title: `Latest: ${data.version}` }, 'Outdated');
-              sdkValSpan.parentElement!.appendChild(badge);
-            }
-          }
-        })
-    );
-  }
-
-  const idValSpan = h('span', { className: 'sdt-ov-project-val-mono' }, projectId || 'N/A');
-  addProjectRow('Project ID', idValSpan);
-
-  const envVal = h('span', { className: 'sdt-ov-env-val' });
-  const dot = h('span', { className: 'sdt-ov-pulse-dot' });
-  envVal.append(dot, h('span', null, 'Development'));
-  addProjectRow('Environment', envVal);
-
-  projectCard.appendChild(projectRows);
-
-  // -- Auth config card --
-  const authCard = h('div', { className: 'sdt-ov-card sdt-ov-card-auth' });
-  authCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Config'));
-  const authGrid = h('div', { className: 'sdt-ov-auth-grid' });
-  for (let i = 0; i < 3; i++) {
-    authGrid.appendChild(h('div', { className: 'sdt-ov-method sdt-ov-skeleton-pill' }));
-  }
-  authCard.appendChild(authGrid);
-
-  runAsynchronously(
-    app.getProject().then((project: any) => {
-      authGrid.innerHTML = '';
-      const config = project.config;
-      const methods = [
-        { label: 'Password', enabled: config.credentialEnabled },
-        { label: 'Magic Link', enabled: config.magicLinkEnabled },
-        { label: 'Passkey', enabled: config.passkeyEnabled },
-      ];
-      for (const m of methods) {
-        const pill = h('div', { className: `sdt-ov-method ${m.enabled ? 'sdt-ov-method-on' : 'sdt-ov-method-off'}` });
-        pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, m.label));
-        authGrid.appendChild(pill);
-      }
-      for (const p of config.oauthProviders) {
-        const pill = h('div', { className: 'sdt-ov-method sdt-ov-method-on sdt-ov-method-oauth' });
-        pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, p.id));
-        authGrid.appendChild(pill);
-      }
-      if (!config.signUpEnabled) {
-        const pill = h('div', { className: 'sdt-ov-method sdt-ov-method-warn' });
-        pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, 'Sign-up off'));
-        authGrid.appendChild(pill);
-      }
-    }).catch(() => {
-      authGrid.innerHTML = '<div style="font-size:11px;color:var(--sdt-text-tertiary)">Could not load config</div>';
-    })
-  );
-
-  // -- Checklist card --
-  const checksCard = h('div', { className: 'sdt-ov-card sdt-ov-card-checks' });
-  function buildChecklist() {
-    checksCard.innerHTML = '';
-    const checks = [
-      { ok: !!projectId && projectId !== 'default', label: 'Project' },
-      { ok: true, label: 'Provider' },
-      { ok: !!currentUser, label: 'Auth' },
-    ];
-    const passCount = checks.filter((c) => c.ok).length;
-    const allGood = passCount === checks.length;
-    if (allGood) {
-      checksCard.classList.add('sdt-ov-card-checks-ok');
-    } else {
-      checksCard.classList.remove('sdt-ov-card-checks-ok');
-    }
-
-    const header = h('div', { className: 'sdt-ov-checks-header' });
-    header.appendChild(h('div', { className: 'sdt-ov-label', style: { marginBottom: '0' } }, 'Setup'));
-    header.appendChild(h('span', { className: `sdt-ov-checks-badge ${allGood ? 'sdt-ov-checks-badge-ok' : 'sdt-ov-checks-badge-warn'}` }, allGood ? 'All good' : `${passCount}/${checks.length}`));
-    checksCard.appendChild(header);
-
-    const bar = h('div', { className: 'sdt-ov-checks-bar' });
-    const fill = h('div', { className: 'sdt-ov-checks-bar-fill' });
-    fill.style.width = `${(passCount / checks.length) * 100}%`;
-    bar.appendChild(fill);
-    checksCard.appendChild(bar);
-
-    const checksRow = h('div', { className: 'sdt-ov-checks' });
-    for (const c of checks) {
-      const check = h('div', { className: `sdt-ov-check ${c.ok ? 'sdt-ov-check-ok' : 'sdt-ov-check-warn'}` });
-      check.appendChild(h('span', { className: 'sdt-ov-check-icon' }, c.ok ? '\u2713' : '!'));
-      check.appendChild(h('span', { className: 'sdt-ov-check-label' }, c.label));
-      checksRow.appendChild(check);
-    }
-    checksCard.appendChild(checksRow);
-  }
-  buildChecklist();
-
-  // -- Changelog card --
-  const changelogCard = h('div', { className: 'sdt-ov-card sdt-ov-card-changelog' });
-  changelogCard.appendChild(h('div', { className: 'sdt-ov-label' }, "What's New"));
-
-  const changelogPath = '/api/latest/internal/changelog';
-  const changelogContent = h('div', { className: 'sdt-ov-changelog-content' });
-  changelogContent.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Loading changelog...</div>';
-  changelogCard.appendChild(changelogContent);
-
-  runAsynchronously((async () => {
-    let entries: any[] = [];
-    try {
-      const res = await fetch(apiBaseUrl + changelogPath);
-      if (res.ok) {
-        const data = await res.json();
-        entries = data.entries ?? [];
-      }
-    } catch {}
-    if (entries.length === 0) {
-      try {
-        const res = await fetch('https://api.stack-auth.com' + changelogPath);
-        if (res.ok) {
-          const data = await res.json();
-          entries = data.entries ?? [];
-        }
-      } catch {}
-    }
-
-    changelogContent.innerHTML = '';
-    if (entries.length === 0) {
-      changelogContent.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Could not load changelog.</div>';
-      return;
-    }
-
-    const changelogDiv = h('div', { className: 'sdt-ov-changelog' });
-    let expandedVersion: string | null = entries[0]?.version ?? null;
-
-    function renderEntries() {
-      changelogDiv.innerHTML = '';
-      for (const entry of entries.slice(0, 5)) {
-        const isExpanded = expandedVersion === entry.version;
-        const release = h('div', { className: 'sdt-ov-release' });
-        const head = h('div', { className: 'sdt-ov-release-head', style: { cursor: 'pointer' } });
-        head.textContent = entry.version;
-        if (entry.releasedAt) {
-          head.appendChild(h('span', { className: 'sdt-ov-release-date' }, entry.releasedAt));
-        }
-        const arrow = h('span', { style: { marginLeft: 'auto', fontSize: '10px', color: 'var(--sdt-text-tertiary)' } }, isExpanded ? '\u25B2' : '\u25BC');
-        head.appendChild(arrow);
-        head.addEventListener('click', () => {
-          expandedVersion = isExpanded ? null : entry.version;
-          renderEntries();
-        });
-        release.appendChild(head);
-
-        if (isExpanded && entry.markdown) {
-          const body = h('div', { className: 'sdt-ov-release-body', style: { padding: '4px 0 8px' } });
-          const lines = entry.markdown.split('\n');
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine === '') continue;
-
-            const image = parseMarkdownImage(trimmedLine);
-            if (image) {
-              const figure = h('figure', { className: 'sdt-ov-release-image-figure' });
-              const imageLink = h('a', {
-                className: 'sdt-ov-release-image-link',
-                href: image.src,
-                target: '_blank',
-                rel: 'noopener noreferrer',
-              });
-              imageLink.appendChild(h('img', {
-                className: 'sdt-ov-release-image',
-                src: image.src,
-                alt: image.alt,
-                loading: 'lazy',
-                decoding: 'async',
-              }));
-              figure.appendChild(imageLink);
-              if (image.alt !== '') {
-                figure.appendChild(h('figcaption', { className: 'sdt-ov-release-image-caption' }, image.alt));
-              }
-              body.appendChild(figure);
-              continue;
-            }
-
-            const headingMatch = line.match(/^###\s+(.+)/);
-            if (headingMatch) {
-              const heading = h('div', { style: { fontWeight: '600', color: 'var(--sdt-text)', marginTop: '8px', marginBottom: '4px', fontSize: '12px' } });
-              appendInlineMarkdown(heading, headingMatch[1]);
-              body.appendChild(heading);
-              continue;
-            }
-            if (line.startsWith('- ')) {
-              const li = h('div', { style: { fontSize: '12px', color: 'var(--sdt-text-secondary)', lineHeight: '1.6', paddingLeft: '12px' } });
-              li.appendChild(document.createTextNode('\u2022 '));
-              appendInlineMarkdown(li, line.slice(2));
-              body.appendChild(li);
-              continue;
-            }
-            const paragraph = h('div', { style: { fontSize: '12px', color: 'var(--sdt-text-secondary)', lineHeight: '1.6' } });
-            appendInlineMarkdown(paragraph, line);
-            body.appendChild(paragraph);
-          }
-          release.appendChild(body);
-        }
-        changelogDiv.appendChild(release);
-      }
-    }
-    renderEntries();
-    changelogContent.appendChild(changelogDiv);
-  })());
-
-  const allReleasesLink = h('a', { className: 'sdt-ov-all-releases', href: 'https://github.com/stack-auth/stack/releases', target: '_blank', rel: 'noopener noreferrer' });
-  setHtml(allReleasesLink, 'All releases <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>');
-  changelogCard.appendChild(allReleasesLink);
-
-  container.append(heroCard, projectCard, authCard, checksCard, changelogCard);
 
   return { element: container, cleanup: () => clearInterval(userPoll) };
 }
@@ -1038,6 +933,8 @@ function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: 
 
   const contentArea = h('div', { className: 'sdt-tab-content-fade', style: { flex: '1', overflow: 'auto' } });
   container.appendChild(contentArea);
+
+  let renderConfigVersion = 0;
 
   function renderLogs() {
     contentArea.innerHTML = '';
@@ -1080,8 +977,10 @@ function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: 
 
   function renderConfig() {
     contentArea.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Loading config...</div>';
+    const renderVersion = ++renderConfigVersion;
     runAsynchronously(
       app.getProject().then((project: any) => {
+        if (renderVersion !== renderConfigVersion) return;
         contentArea.innerHTML = '';
         const table = h('table', { className: 'sdt-config-table' });
         const tbody = h('tbody', null);
@@ -1115,6 +1014,7 @@ function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: 
         table.appendChild(tbody);
         contentArea.appendChild(table);
       }).catch(() => {
+        if (renderVersion !== renderConfigVersion) return;
         contentArea.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Could not load config.</div>';
       })
     );
@@ -2282,7 +2182,7 @@ function createPanel(
         mountTab(pane, createOverviewTab(app));
         break;
       }
-      case 'components': {
+      case 'customize': {
         mountTab(pane, createComponentsTab(app));
         break;
       }
@@ -2409,6 +2309,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   function closePanel() {
     if (!panel) return;
+    state.update({ isOpen: false });
     const closing = panel;
     panel = null;
     closing.cleanup();
@@ -2431,7 +2332,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   }
 
   const trigger = createTrigger(togglePanel);
-  wrapper.appendChild(trigger);
+  wrapper.appendChild(trigger.element);
 
   if (state.get().isOpen) {
     openPanel();
@@ -2456,6 +2357,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   });
 
   return () => {
+    trigger.cleanup();
     removeRequestListener();
     panel?.cleanup();
     if (root.parentNode) {

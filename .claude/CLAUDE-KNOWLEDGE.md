@@ -355,3 +355,6 @@ Then restart the dev server. This rebuilds all packages and generates the necess
 
 ## Q: How is backwards compatibility for the offer→product rename handled in the payments purchase APIs?
 A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.
+
+## Q: How does the Stack Auth template dev tool decide whether to iframe the dashboard?
+A: The dev tool's Dashboard tab uses `envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true'` as the gate. Outside the local emulator it shows an "Open Dashboard in New Tab" link instead of trying to iframe the dashboard.

@@ -53,22 +53,18 @@ export const devToolCSS = `
     z-index: 99999;
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    width: 36px;
     height: 36px;
-    padding: 0 12px 0 8px;
+    padding: 0;
     background: var(--sdt-bg-elevated);
     border: 1px solid var(--sdt-border);
-    border-radius: 20px;
+    border-radius: 10px;
     cursor: grab;
     box-shadow: var(--sdt-trigger-shadow);
     transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     user-select: none;
     touch-action: none;
-    font-family: var(--sdt-font);
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--sdt-text);
-    letter-spacing: 0.5px;
   }
 
   .stack-devtool .sdt-trigger:hover {
@@ -82,23 +78,15 @@ export const devToolCSS = `
   }
 
   .stack-devtool .sdt-trigger-logo {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
     background: var(--sdt-accent);
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
     line-height: 0;
-  }
-
-  .stack-devtool .sdt-trigger-text {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--sdt-text-secondary);
   }
 
   /* Panel overlay */
@@ -298,17 +286,14 @@ export const devToolCSS = `
     border-radius: 3px;
   }
 
-  /* ===== Overview tab — MSN bento grid ===== */
+  /* ===== Overview tab — single column ===== */
 
   .stack-devtool .sdt-ov {
-    margin: -16px;
-    padding: 8px;
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    grid-template-rows: auto auto 1fr;
-    gap: 8px;
-    height: calc(100% + 32px);
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 660px;
+    margin: 0 auto;
   }
 
   /* Card base */
@@ -319,14 +304,14 @@ export const devToolCSS = `
     padding: 16px;
     display: flex;
     flex-direction: column;
+    gap: 0;
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
     overflow: hidden;
     min-width: 0;
   }
 
-  .stack-devtool .sdt-ov-card:hover {
-    border-color: var(--sdt-border);
-    box-shadow: 0 0 0 1px rgba(99,102,241,0.12);
+  .stack-devtool .sdt-ov-card-hero {
+    background: linear-gradient(135deg, rgba(99,102,241,0.04) 0%, transparent 50%), var(--sdt-bg-elevated);
   }
 
   .stack-devtool .sdt-ov-label {
@@ -336,11 +321,6 @@ export const devToolCSS = `
     letter-spacing: 1.2px;
     color: var(--sdt-text-tertiary);
     margin-bottom: 10px;
-  }
-
-  /* --- User hero card (span 2 cols) --- */
-  .stack-devtool .sdt-ov-card-hero {
-    background: linear-gradient(135deg, rgba(99,102,241,0.04) 0%, transparent 50%), var(--sdt-bg-elevated);
   }
 
   .stack-devtool .sdt-ov-user-row {
@@ -428,7 +408,7 @@ export const devToolCSS = `
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: auto;
+    margin-top: 4px;
   }
 
   .stack-devtool .sdt-ov-btn {
@@ -519,183 +499,9 @@ export const devToolCSS = `
   .stack-devtool .sdt-ov-toast-success { background: var(--sdt-success-muted); color: var(--sdt-success); }
   .stack-devtool .sdt-ov-toast-error { background: var(--sdt-error-muted); color: var(--sdt-error); }
 
-  /* --- Project info card (stacked key-value rows) --- */
-  .stack-devtool .sdt-ov-card-project {
-  }
-
-  .stack-devtool .sdt-ov-project-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    flex: 1;
-  }
-
-  .stack-devtool .sdt-ov-project-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--sdt-border-subtle);
-  }
-
-  .stack-devtool .sdt-ov-project-row:last-child { border-bottom: none; }
-
-  .stack-devtool .sdt-ov-project-key {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--sdt-text-tertiary);
-    flex-shrink: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-
-  .stack-devtool .sdt-ov-project-val {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--sdt-text);
-    text-align: right;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .stack-devtool .sdt-ov-project-val-mono {
-    font-family: var(--sdt-font-mono);
-    font-size: 12px;
-  }
-
-  .stack-devtool .sdt-ov-sdk-badge {
-    font-size: 9px;
-    font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--sdt-warning-muted);
-    color: var(--sdt-warning);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    flex-shrink: 0;
-  }
-
-  .stack-devtool .sdt-ov-sdk-badge-error {
-    background: var(--sdt-error-muted);
-    color: var(--sdt-error);
-  }
-
-  .stack-devtool .sdt-ov-env-val {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .stack-devtool .sdt-ov-pulse-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--sdt-success);
-    flex-shrink: 0;
-    display: inline-block;
-    animation: sdt-ov-pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes sdt-ov-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
-    50% { box-shadow: 0 0 0 5px rgba(34,197,94,0); }
-  }
-
-  /* --- Setup checklist card --- */
-  .stack-devtool .sdt-ov-card-checks {
-    padding: 12px 14px;
-  }
-
-  .stack-devtool .sdt-ov-card-checks-ok {
-    border-color: rgba(34, 197, 94, 0.15);
-  }
-
-  .stack-devtool .sdt-ov-checks-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .stack-devtool .sdt-ov-checks-badge {
-    font-size: 10px;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 4px;
-  }
-
-  .stack-devtool .sdt-ov-checks-badge-ok {
-    background: var(--sdt-success-muted);
-    color: var(--sdt-success);
-  }
-
-  .stack-devtool .sdt-ov-checks-badge-warn {
-    background: var(--sdt-warning-muted);
-    color: var(--sdt-warning);
-  }
-
-  .stack-devtool .sdt-ov-checks-bar {
-    height: 3px;
-    border-radius: 2px;
-    background: var(--sdt-border-subtle);
-    margin-bottom: 10px;
-    overflow: hidden;
-  }
-
-  .stack-devtool .sdt-ov-checks-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    background: var(--sdt-success);
-    transition: width 0.4s ease;
-  }
-
-  .stack-devtool .sdt-ov-checks {
-    display: flex;
-    gap: 6px;
-  }
-
-  .stack-devtool .sdt-ov-check {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-
-  .stack-devtool .sdt-ov-check-icon {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    flex-shrink: 0;
-  }
-
-  .stack-devtool .sdt-ov-check-ok .sdt-ov-check-icon {
-    background: var(--sdt-success-muted);
-    color: var(--sdt-success);
-  }
-
-  .stack-devtool .sdt-ov-check-warn .sdt-ov-check-icon {
-    background: var(--sdt-warning-muted);
-    color: var(--sdt-warning);
-  }
-
-  .stack-devtool .sdt-ov-check-ok .sdt-ov-check-label { color: var(--sdt-text); }
-  .stack-devtool .sdt-ov-check-warn .sdt-ov-check-label { color: var(--sdt-text-secondary); }
-
   /* --- Auth methods card --- */
   .stack-devtool .sdt-ov-card-auth {
-    padding: 12px 14px;
+    padding: 14px 16px;
   }
 
   .stack-devtool .sdt-ov-auth-grid {
@@ -752,134 +558,83 @@ export const devToolCSS = `
     50% { opacity: 0.7; }
   }
 
-  /* --- Changelog card (span 2 cols) --- */
-  .stack-devtool .sdt-ov-card-changelog {
-    grid-column: span 2;
+  /* --- Setup checklist card (only shown when something is incomplete) --- */
+  .stack-devtool .sdt-ov-card-checks {
+    padding: 14px 16px;
+    border-color: rgba(234, 179, 8, 0.25);
   }
 
-  .stack-devtool .sdt-ov-changelog-content {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-  }
-
-  .stack-devtool .sdt-ov-changelog-content::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .stack-devtool .sdt-ov-changelog-content::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .stack-devtool .sdt-ov-changelog-content::-webkit-scrollbar-thumb {
-    background: var(--sdt-border);
-    border-radius: 3px;
-  }
-
-  .stack-devtool .sdt-ov-changelog {
+  .stack-devtool .sdt-ov-checks-header {
     display: flex;
-    flex-direction: column;
-    gap: 0;
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    padding-right: 4px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
   }
 
-  .stack-devtool .sdt-ov-release + .sdt-ov-release {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px dotted var(--sdt-border-subtle);
-  }
-
-  .stack-devtool .sdt-ov-release-head {
-    font-size: 13px;
+  .stack-devtool .sdt-ov-checks-badge {
+    font-size: 10px;
     font-weight: 700;
-    color: var(--sdt-text);
-    margin-bottom: 5px;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .stack-devtool .sdt-ov-checks-badge-ok {
+    background: var(--sdt-success-muted);
+    color: var(--sdt-success);
+  }
+
+  .stack-devtool .sdt-ov-checks-badge-warn {
+    background: var(--sdt-warning-muted);
+    color: var(--sdt-warning);
+  }
+
+  .stack-devtool .sdt-ov-checks-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--sdt-border-subtle);
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+
+  .stack-devtool .sdt-ov-checks-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--sdt-warning);
+    transition: width 0.4s ease;
+  }
+
+  .stack-devtool .sdt-ov-setup-row {
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-
-  .stack-devtool .sdt-ov-release-date {
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--sdt-text-tertiary);
-  }
-
-  .stack-devtool .sdt-ov-release-line {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
+    padding: 6px 0;
     font-size: 12px;
-    color: var(--sdt-text-secondary);
-    line-height: 1.5;
-    padding: 1px 0;
+    border-bottom: 1px solid var(--sdt-border-subtle);
   }
 
-  .stack-devtool .sdt-ov-release-text {
-    min-width: 0;
-  }
+  .stack-devtool .sdt-ov-setup-row:last-child { border-bottom: none; }
 
-  .stack-devtool .sdt-ov-release-image-figure {
-    margin: 10px 0 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .stack-devtool .sdt-ov-release-image-link {
-    display: block;
-    width: 45%;
-    max-width: 100%;
-    overflow: hidden;
-    border-radius: 10px;
-    border: 1px solid var(--sdt-border-subtle);
-    background: var(--sdt-bg-subtle);
-  }
-
-  .stack-devtool .sdt-ov-release-image {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-  }
-
-  .stack-devtool .sdt-ov-release-image-caption {
-    font-size: 11px;
-    color: var(--sdt-text-tertiary);
-    line-height: 1.4;
-  }
-
-  .stack-devtool .sdt-ov-tag {
-    font-size: 9px;
-    font-weight: 700;
+  .stack-devtool .sdt-ov-setup-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
     flex-shrink: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    margin-top: 2px;
   }
-  .stack-devtool .sdt-ov-tag-feature { background: var(--sdt-accent-muted); color: var(--sdt-accent-hover); }
-  .stack-devtool .sdt-ov-tag-fix { background: var(--sdt-error-muted); color: var(--sdt-error); }
-  .stack-devtool .sdt-ov-tag-breaking { background: var(--sdt-error-muted); color: var(--sdt-error); }
-  .stack-devtool .sdt-ov-tag-improvement { background: var(--sdt-success-muted); color: var(--sdt-success); }
 
-  .stack-devtool .sdt-ov-all-releases {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--sdt-text-tertiary);
-    text-decoration: none;
-    font-family: var(--sdt-font);
-    transition: color 0.15s ease;
+  .stack-devtool .sdt-ov-setup-dot-ok { background: var(--sdt-success); }
+  .stack-devtool .sdt-ov-setup-dot-warn { background: var(--sdt-warning); }
+
+  .stack-devtool .sdt-ov-setup-label {
+    color: var(--sdt-text);
+    font-size: 12px;
   }
-  .stack-devtool .sdt-ov-all-releases:hover { color: var(--sdt-accent); }
+
+  .stack-devtool .sdt-ov-setup-hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--sdt-text-tertiary);
+  }
 
   /* Status badges (shared across tabs) */
   .stack-devtool .sdt-badge {
@@ -1346,8 +1101,8 @@ export const devToolCSS = `
 
   /* Iframe tabs (Docs, Dashboard) */
   .stack-devtool .sdt-iframe-container {
-    height: calc(100% + 32px);
-    margin: -16px;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
   }
