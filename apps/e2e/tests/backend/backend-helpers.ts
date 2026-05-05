@@ -141,6 +141,9 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   if (body !== undefined && rawBody !== undefined) {
     throw new StackAssertionError("niceBackendFetch: pass either body or rawBody, not both");
   }
+  if (rawContentType !== undefined && rawBody === undefined) {
+    throw new StackAssertionError("niceBackendFetch: rawContentType only makes sense with rawBody");
+  }
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
   }

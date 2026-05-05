@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
@@ -218,6 +218,30 @@ it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
     NiceResponse {
       "status": 400,
       "body": "Invalid encoded analytics body",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a binary body larger than the compressed size cap", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  // Random bytes don't compress, so even before gunzip the byteLength check
+  // fires. 1.1 MB > the 1 MB MAX_COMPRESSED_BYTES cap.
+  const oversized = new Uint8Array(randomBytes(Math.floor(1.1 * 1024 * 1024)));
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: oversized,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Encoded analytics body too large",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
