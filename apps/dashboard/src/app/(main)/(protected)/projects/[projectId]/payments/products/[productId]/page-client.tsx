@@ -6,6 +6,7 @@ import { Link, StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
 import {
   ActionCell,
+  Alert,
   AvatarCell,
   Badge,
   Button,
@@ -277,6 +278,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // ===== LOCAL STATE FOR DEFERRED SAVE =====
   // Track all pending changes. undefined means "use original value"
   const [pendingChanges, setPendingChanges] = useState<PendingProductChanges>({});
+  // Inline validation error shown above the editable grid. We avoid `window.alert()`
+  // (jarring/blocking) and `toast()` (per AGENTS.md, blocking errors are easily
+  // missed as toasts) in favor of a destructive Alert in the design system.
+  const [saveValidationError, setSaveValidationError] = useState<string | null>(null);
 
   // Computed local values (pending change or original)
   const localDisplayName = pendingChanges.displayName !== undefined ? pendingChanges.displayName : (product.displayName || '');
@@ -308,6 +313,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // Discard all pending changes
   const handleDiscard = () => {
     setPendingChanges({});
+    setSaveValidationError(null);
     // Reset add-on dialog state
     setIsAddOn(product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
     setSelectedAddOnProducts(
@@ -321,9 +327,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const handleSave = async () => {
     const effectivePrices = pendingChanges.prices ?? product.prices;
     if (Object.keys(effectivePrices).length === 0) {
-      alert("A product must have at least one price. Add a price option or make the product free before saving.");
+      setSaveValidationError("A product must have at least one price. Add a price option or make the product free before saving.");
       return;
     }
+    setSaveValidationError(null);
 
     const configUpdate: Record<string, any> = {};
 
@@ -538,6 +545,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // ===== PRICES HANDLERS (for deferred save) =====
   const handlePricesChange = (newPrices: Product['prices']) => {
+    // Clear the "needs at least one price" error as soon as the user adds one back.
+    if (Object.keys(newPrices).length > 0) {
+      setSaveValidationError(null);
+    }
     // Deep compare to see if we're back to original
     const originalPrices = product.prices;
     if (JSON.stringify(newPrices) === JSON.stringify(originalPrices)) {
@@ -731,6 +742,11 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   return (
     <>
+      {saveValidationError && (
+        <Alert variant="destructive" className="mb-4">
+          {saveValidationError}
+        </Alert>
+      )}
       <DesignEditableGrid
         items={gridItems}
         columns={2}

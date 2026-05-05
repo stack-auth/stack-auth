@@ -170,9 +170,18 @@ const writeResponseSchema = yupObject({
 
 function findIncludeByDefaultPath(value: unknown, path: string[] = []): string | null {
   if (value === "include-by-default") {
-    // Only flag the deprecated sentinel when it sits at `payments.products.*.prices`;
-    // anywhere else it's just a string literal that happens to match.
-    if (path.length === 4 && path[0] === "payments" && path[1] === "products" && path[3] === "prices") {
+    // Only flag the deprecated sentinel when it sits at `payments.products.<id>.prices`;
+    // anywhere else it's just a string literal that happens to match. The product-ID
+    // segment can itself contain dots (override keys are dot-paths and we split on
+    // ".", which fragments dotted IDs into multiple path entries), so we anchor on
+    // the leading `payments.products` prefix and the trailing `prices` suffix
+    // instead of an exact path length.
+    if (
+      path.length >= 4
+      && path[0] === "payments"
+      && path[1] === "products"
+      && path[path.length - 1] === "prices"
+    ) {
       return path.join(".");
     }
     return null;
