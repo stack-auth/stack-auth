@@ -366,3 +366,15 @@ A: The `/api/v1/internal/metrics` response now intentionally includes `analytics
 
 ## Q: Why can environment config override writes fail with a product/product-line customer type warning after creating a preview project?
 A: The environment override endpoint validates the new environment override against the rendered branch config. Preview dummy payments data must therefore be internally coherent: products assigned to a product line need the same `customerType` as that product line, otherwise unrelated environment patches can fail with warnings like `Product "growth" has customer type "user" but its product line "workspace" has customer type "team"`.
+
+## Q: How do you keep the Stack Auth dev tool from reopening automatically after navigation or reload?
+A: Treat `isOpen` as mount-local state in `packages/template/src/dev-tool/dev-tool-core.ts`: load persisted preferences with `isOpen: false`, and save state back to localStorage with `isOpen: false` so tab/size preferences persist without reopening the panel on the next mount.
+
+## Q: How should the Stack Auth dev tool indicator avoid being hidden by other dev indicators?
+A: Do not dynamically reflow around framework indicators; that makes pointer interaction brittle. Keep the trigger anchored to its saved corner and give `.sdt-trigger` a max practical z-index (`2147483647`) so the Stack indicator renders above Next/Turbo overlays.
+
+## Q: How should Stack Auth dev tool trigger movement feel?
+A: Dragging should remain instant/direct, but programmatic moves like snap-to-corner after drag, resize reposition, and post-measurement correction should use a short snappy left/top transition. In `dev-tool-core.ts`, toggle a dedicated animation class only for those programmatic updates and remove it shortly after.
+
+## Q: How do you prevent duplicate Stack Auth dev tool indicators from multiple package/module instances?
+A: `createDevTool` in `packages/template/src/dev-tool/dev-tool-core.ts` should register a browser-wide singleton instance on `window` with an idempotent cleanup function, call any previous global cleanup before mounting, and remove leftover `#__stack-dev-tool-root` nodes as a fallback for older instances that did not register cleanup.

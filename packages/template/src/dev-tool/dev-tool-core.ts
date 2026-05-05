@@ -420,13 +420,35 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
     } catch {}
   }
 
-  function applyPos(nextPos: Position) {
+  let animationTimeout: number | null = null;
+
+  function setPositionAnimation(isAnimated: boolean) {
+    if (animationTimeout !== null) {
+      window.clearTimeout(animationTimeout);
+      animationTimeout = null;
+    }
+    btn.classList.toggle('sdt-trigger-position-animated', isAnimated);
+    if (isAnimated) {
+      animationTimeout = window.setTimeout(() => {
+        animationTimeout = null;
+        btn.classList.remove('sdt-trigger-position-animated');
+      }, 180);
+    }
+  }
+
+  function applyPos(nextPos: Position, options?: { animate?: boolean }) {
+    setPositionAnimation(options?.animate === true);
     pos = nextPos;
     btn.style.left = pos.left + 'px';
     btn.style.top = pos.top + 'px';
   }
 
-  const btn = h('button', { className: 'sdt-trigger', 'aria-label': 'Toggle Stack Auth Dev Tools', title: 'Stack Auth Dev Tools' });
+  const btn = h('button', {
+    className: 'sdt-trigger',
+    'aria-label': 'Toggle Stack Auth Dev Tools',
+    'data-stack-devtool-trigger': 'true',
+    title: 'Stack Auth Dev Tools',
+  });
   const logoSpan = h('span', { className: 'sdt-trigger-logo' });
   setHtml(logoSpan, STACK_LOGO_SVG);
   btn.appendChild(logoSpan);
@@ -435,6 +457,8 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
   let pos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
   applyPos(pos);
 
+  let dragState: { startX: number; startY: number; startLeft: number; startTop: number; didDrag: boolean } | null = null;
+
   // After mount, measure the actual rendered size and re-snap if needed.
   requestAnimationFrame(() => {
     const rect = btn.getBoundingClientRect();
@@ -442,15 +466,14 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
       triggerSize = { width: rect.width, height: rect.height };
       const measured = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
       if (measured.left !== pos.left || measured.top !== pos.top) {
-        applyPos(measured);
+        applyPos(measured, { animate: true });
       }
     }
   });
 
-  let dragState: { startX: number; startY: number; startLeft: number; startTop: number; didDrag: boolean } | null = null;
-
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    setPositionAnimation(false);
     btn.setPointerCapture(e.pointerId);
     dragState = { startX: e.clientX, startY: e.clientY, startLeft: pos.left, startTop: pos.top, didDrag: false };
   });
@@ -475,7 +498,7 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
     btn.releasePointerCapture(e.pointerId);
     if (ds.didDrag) {
       placement = getSnappedTriggerPlacement(pos, triggerSize, { width: window.innerWidth, height: window.innerHeight });
-      applyPos(resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight }));
+      applyPos(resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight }), { animate: true });
       savePlacement(placement);
     } else {
       onClick();
@@ -487,7 +510,7 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
   function onResize() {
     const resizedPos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
     if (resizedPos.left !== pos.left || resizedPos.top !== pos.top) {
-      applyPos(resizedPos);
+      applyPos(resizedPos, { animate: true });
     }
   }
 
@@ -496,6 +519,9 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
   return {
     element: btn,
     cleanup: () => {
+      if (animationTimeout !== null) {
+        window.clearTimeout(animationTimeout);
+      }
       window.removeEventListener('resize', onResize);
     },
   };

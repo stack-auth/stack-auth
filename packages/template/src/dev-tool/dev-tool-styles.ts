@@ -50,7 +50,7 @@ export const devToolCSS = `
   /* Trigger pill */
   .stack-devtool .sdt-trigger {
     position: fixed;
-    z-index: 99999;
+    z-index: 2147483647;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -65,6 +65,10 @@ export const devToolCSS = `
     transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     user-select: none;
     touch-action: none;
+  }
+
+  .stack-devtool .sdt-trigger-position-animated {
+    transition: left 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .stack-devtool .sdt-trigger:hover {
