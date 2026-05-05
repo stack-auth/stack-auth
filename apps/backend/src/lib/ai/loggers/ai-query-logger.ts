@@ -108,20 +108,25 @@ export async function logAiQuery(entry: AiQueryLogEntry): Promise<void> {
 }
 
 function serializeSteps(steps: ReadonlyArray<StepResult<ToolSet>>): string {
-  return JSON.stringify(steps.map((step, i) => ({
-    step: i,
-    text: step.text || undefined,
-    toolCalls: step.toolCalls.map(tc => ({
-      toolName: tc.toolName,
-      toolCallId: tc.toolCallId,
-      args: tc.input,
-    })),
-    toolResults: step.toolResults.map(tr => ({
-      toolName: tr.toolName,
-      toolCallId: tr.toolCallId,
-      result: truncateLargeToolResult(tr.toolName, tr.output),
-    })),
-  })));
+  try {
+    return JSON.stringify(steps.map((step, i) => ({
+      step: i,
+      text: step.text || undefined,
+      toolCalls: step.toolCalls.map(tc => ({
+        toolName: tc.toolName,
+        toolCallId: tc.toolCallId,
+        args: tc.input,
+      })),
+      toolResults: step.toolResults.map(tr => ({
+        toolName: tr.toolName,
+        toolCallId: tr.toolCallId,
+        result: truncateLargeToolResult(tr.toolName, tr.output),
+      })),
+    })));
+  } catch (e) {
+    captureError("ai-query-steps-serialize", e);
+    return JSON.stringify({ _serializationFailed: true, stepCount: steps.length });
+  }
 }
 
 export function logAiQuerySuccess(args: {
@@ -134,22 +139,27 @@ export function logAiQuerySuccess(args: {
   openrouterGenerationId: string | undefined,
 }): void {
   const { common, startedAt, steps, text, usage, providerMetadata, openrouterGenerationId } = args;
-  const rawCost = extractCostFromUsage(usage);
-  runAsynchronouslyAndWaitUntil(logAiQuery({
-    ...common,
-    stepsJson: serializeSteps(steps),
-    finalText: text,
-    inputTokens: usage.inputTokens ?? undefined,
-    outputTokens: usage.outputTokens ?? undefined,
-    cachedInputTokens: extractCachedTokens(providerMetadata),
-    cacheCreationTokens: usage.inputTokenDetails.cacheWriteTokens ?? undefined,
-    costUsd: rawCost.costUsd ?? extractOpenRouterCost(providerMetadata),
-    cacheDiscountUsd: undefined, // backfilled by refineGenerationCost below
-    openrouterGenerationId,
-    stepCount: steps.length,
-    durationMs: BigInt(Math.round(performance.now() - startedAt)),
-    errorMessage: undefined,
-  }));
+  // Build the row inside the async task so any throw (serialization,
+  // metadata extraction, etc.) is contained by the async boundary instead
+  // of bubbling up into the user-facing success path.
+  runAsynchronouslyAndWaitUntil(async () => {
+    const rawCost = extractCostFromUsage(usage);
+    await logAiQuery({
+      ...common,
+      stepsJson: serializeSteps(steps),
+      finalText: text,
+      inputTokens: usage.inputTokens ?? undefined,
+      outputTokens: usage.outputTokens ?? undefined,
+      cachedInputTokens: extractCachedTokens(providerMetadata),
+      cacheCreationTokens: usage.inputTokenDetails.cacheWriteTokens ?? undefined,
+      costUsd: rawCost.costUsd ?? extractOpenRouterCost(providerMetadata),
+      cacheDiscountUsd: undefined, // backfilled by refineGenerationCost below
+      openrouterGenerationId,
+      stepCount: steps.length,
+      durationMs: BigInt(Math.round(performance.now() - startedAt)),
+      errorMessage: undefined,
+    });
+  });
   if (openrouterGenerationId != null) {
     runAsynchronouslyAndWaitUntil(refineGenerationCost({
       generationId: openrouterGenerationId,
@@ -166,19 +176,21 @@ export function logAiQueryFailure(args: {
 }): void {
   const { common, startedAt, err, partialSteps } = args;
   captureError("ai-query-upstream", err);
-  runAsynchronouslyAndWaitUntil(logAiQuery({
-    ...common,
-    stepsJson: partialSteps && partialSteps.length > 0 ? serializeSteps(partialSteps) : "[]",
-    finalText: "",
-    inputTokens: undefined,
-    outputTokens: undefined,
-    cachedInputTokens: undefined,
-    cacheCreationTokens: undefined,
-    costUsd: undefined,
-    cacheDiscountUsd: undefined,
-    openrouterGenerationId: undefined,
-    stepCount: partialSteps?.length ?? 0,
-    durationMs: BigInt(Math.round(performance.now() - startedAt)),
-    errorMessage: formatErrorForLog(err),
-  }));
+  runAsynchronouslyAndWaitUntil(async () => {
+    await logAiQuery({
+      ...common,
+      stepsJson: partialSteps && partialSteps.length > 0 ? serializeSteps(partialSteps) : "[]",
+      finalText: "",
+      inputTokens: undefined,
+      outputTokens: undefined,
+      cachedInputTokens: undefined,
+      cacheCreationTokens: undefined,
+      costUsd: undefined,
+      cacheDiscountUsd: undefined,
+      openrouterGenerationId: undefined,
+      stepCount: partialSteps?.length ?? 0,
+      durationMs: BigInt(Math.round(performance.now() - startedAt)),
+      errorMessage: formatErrorForLog(err),
+    });
+  });
 }

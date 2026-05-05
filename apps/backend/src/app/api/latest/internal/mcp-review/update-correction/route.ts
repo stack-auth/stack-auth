@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     const reviewer = user.display_name ?? user.primary_email ?? user.id;
-    
+
     await callReducerStrict("upsert_qa_from_call", [
       token,
       body.correlationId,
