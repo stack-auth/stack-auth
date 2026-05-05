@@ -378,3 +378,33 @@ A: Dragging should remain instant/direct, but programmatic moves like snap-to-co
 
 ## Q: How do you prevent duplicate Stack Auth dev tool indicators from multiple package/module instances?
 A: `createDevTool` in `packages/template/src/dev-tool/dev-tool-core.ts` should register a browser-wide singleton instance on `window` with an idempotent cleanup function, call any previous global cleanup before mounting, and remove leftover `#__stack-dev-tool-root` nodes as a fallback for older instances that did not register cleanup.
+
+## Q: How should the Stack Auth dev tool handle Dashboard tab sizing?
+A: Keep the user's default panel width/height in state for normal tabs, but apply a transient fullscreen class while the active tab is `dashboard`. The fullscreen class should override fixed dimensions and hide resize handles, then remove itself and restore the saved default dimensions when any other tab is selected.
+
+## Q: How should the Stack Auth dev tool animate Dashboard fullscreen transitions?
+A: Add a short-lived geometry animation class only around tab-driven switches into or out of Dashboard fullscreen. Animate `width`, `height`, `right`, `bottom`, and radius for the mode change, then remove the class so manual dragging/resizing remains direct and does not lag.
+
+## Q: Should the Stack Auth dev tool Dashboard tab be gated on local emulator mode?
+A: No. The Dashboard tab should always render the dashboard URL in an iframe inside the dev tool, and should also show an "Open in New Tab" link so users can escape iframe/auth/framing issues without losing the embedded view.
+
+## Q: How should the Dashboard iframe use space in the Stack Auth dev tool?
+A: In Dashboard fullscreen mode, the panel should cover the full viewport with no inset or rounded frame, and the iframe should fill all available content space. Put auxiliary actions like "Open in New Tab" in a top-edge overlay below the tab bar so they do not reserve layout height from the iframe.
+
+## Q: How do you maximize iframe tabs inside the Stack Auth dev tool panel?
+A: Mark Docs/Dashboard panes with an iframe-specific class, remove the normal 16px tab-pane padding, hide pane overflow, and give the iframe container explicit `width: 100%` and `height: 100%`. Keep toolbar actions as absolute overlays so they do not reduce iframe layout space.
+
+## Q: How should docs access work in the Stack Auth dev tool?
+A: Docs should not be an iframe-backed tab. Keep docs as a top-bar external link to `https://docs.stack-auth.com` with an up-right arrow icon, and migrate any persisted `activeTab: "docs"` value back to `overview`.
+
+## Q: How should the Stack Auth dev tool Console tab handle large log volumes?
+A: Keep the full log history in the shared log store, but render only the newest 100 entries initially. When the log scroll area nears the bottom, increase the visible count by another 100 and rerender. The Console tab should be a single logs view with Copy, Export, and Clear buttons in the header rather than nested Logs/Config subtabs.
+
+## Q: How should the Stack Auth dev tool Customize page detail show page metadata?
+A: Avoid repeated page-type badges like `Handler` in page tiles or detail headers. Keep actionable badges such as `Outdated`, show the compact route path next to the page title, use `Open` for the page action, and phrase the customization prompt as "Want to customize this page? Paste this prompt into your coding agent." with a `Copy prompt` button below it.
+
+## Q: How should the Stack Auth dev tool Customize page Open action behave?
+A: The page detail `Open` action should be a taller button matching the redirect code chip height, include a small up-right arrow icon, and always open the selected page in a new tab.
+
+## Q: How should the Stack Auth dev tool Support tab be structured?
+A: Do not keep top-level Feedback/Feature Request subtabs unless the backend supports them. The Support tab should mount the feedback form directly, show Discord/Email/GitHub links at the top, keep only Feedback and Bug Report choices in the form, and use a Submit button with a right-arrow icon after the text.

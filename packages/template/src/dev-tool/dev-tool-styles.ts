@@ -112,6 +112,26 @@ export const devToolCSS = `
     overflow: visible;
   }
 
+  .stack-devtool .sdt-panel-geometry-animated {
+    transition: width 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+                height 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+                right 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+                bottom 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-radius 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-color 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .stack-devtool .sdt-panel-fullscreen {
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    max-width: none;
+    height: 100vh;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+  }
+
   .stack-devtool .sdt-panel-inner {
     display: flex;
     flex-direction: column;
@@ -120,6 +140,14 @@ export const devToolCSS = `
     overflow: hidden;
     border-radius: var(--sdt-radius-lg);
     animation: sdt-panel-enter 0.2s ease-out;
+  }
+
+  .stack-devtool .sdt-panel-fullscreen .sdt-panel-inner {
+    border-radius: 0;
+  }
+
+  .stack-devtool .sdt-panel-fullscreen .sdt-resize-handle {
+    display: none;
   }
 
   @keyframes sdt-panel-enter {
@@ -160,6 +188,18 @@ export const devToolCSS = `
     flex-shrink: 0;
     gap: 2px;
     overflow-x: auto;
+  }
+
+  .stack-devtool .sdt-panel-fullscreen .sdt-tabbar {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 2;
+    background: rgba(17, 17, 19, 0.92);
+    border: 1px solid var(--sdt-border);
+    border-radius: var(--sdt-radius);
+    box-shadow: var(--sdt-trigger-shadow);
   }
 
   .stack-devtool .sdt-tab-indicator {
@@ -217,6 +257,42 @@ export const devToolCSS = `
     flex: 1;
   }
 
+  .stack-devtool .sdt-tabbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .stack-devtool .sdt-docs-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 8px;
+    color: var(--sdt-text-secondary);
+    border-radius: var(--sdt-radius-sm);
+    font-family: var(--sdt-font);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+
+  .stack-devtool .sdt-docs-link:hover {
+    color: var(--sdt-text);
+    background: var(--sdt-bg-hover);
+  }
+
+  .stack-devtool .sdt-docs-link-icon {
+    display: flex;
+    width: 13px;
+    height: 13px;
+    line-height: 0;
+  }
+
   .stack-devtool .sdt-close-btn {
     display: flex;
     align-items: center;
@@ -245,6 +321,13 @@ export const devToolCSS = `
     min-height: 0;
   }
 
+  .stack-devtool .sdt-panel-fullscreen .sdt-content {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
   .stack-devtool .sdt-tab-layers {
     position: absolute;
     inset: 0;
@@ -258,6 +341,11 @@ export const devToolCSS = `
     padding: 16px;
     visibility: hidden;
     pointer-events: none;
+  }
+
+  .stack-devtool .sdt-tab-pane-iframe {
+    padding: 0;
+    overflow: hidden;
   }
 
   .stack-devtool .sdt-tab-pane-active {
@@ -778,9 +866,6 @@ export const devToolCSS = `
     line-height: 1;
   }
 
-  .stack-devtool .sdt-pg-badge-handler { background: var(--sdt-info-muted); color: var(--sdt-info); }
-  .stack-devtool .sdt-pg-badge-hosted { background: var(--sdt-info-muted); color: var(--sdt-info); }
-  .stack-devtool .sdt-pg-badge-custom { background: var(--sdt-success-muted); color: var(--sdt-success); }
   .stack-devtool .sdt-pg-badge-outdated { background: var(--sdt-warning-muted); color: var(--sdt-warning); }
 
   /* --- Empty state --- */
@@ -838,6 +923,7 @@ export const devToolCSS = `
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
   }
 
   .stack-devtool .sdt-pg-title {
@@ -845,6 +931,22 @@ export const devToolCSS = `
     font-weight: 700;
     margin: 0;
     color: var(--sdt-text);
+  }
+
+  .stack-devtool .sdt-pg-title-url {
+    min-width: 0;
+    max-width: 280px;
+    color: var(--sdt-text-tertiary);
+    font-family: var(--sdt-font-mono);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .stack-devtool .sdt-pg-title-url:hover {
+    color: var(--sdt-accent);
   }
 
   .stack-devtool .sdt-pg-subtitle {
@@ -861,6 +963,8 @@ export const devToolCSS = `
   }
 
   .stack-devtool .sdt-pg-code {
+    flex: 1;
+    min-width: 0;
     font-family: var(--sdt-font-mono);
     font-size: 12px;
     color: var(--sdt-accent);
@@ -868,36 +972,6 @@ export const devToolCSS = `
     border-radius: 6px;
     padding: 6px 10px;
     border: 1px solid var(--sdt-border-subtle);
-  }
-
-  .stack-devtool .sdt-pg-url-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .stack-devtool .sdt-pg-url-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--sdt-text-tertiary);
-    flex-shrink: 0;
-  }
-
-  .stack-devtool .sdt-pg-url {
-    font-family: var(--sdt-font-mono);
-    font-size: 11px;
-    color: var(--sdt-text-tertiary);
-    text-decoration: none;
-    transition: color 0.12s ease;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .stack-devtool .sdt-pg-url:hover {
-    color: var(--sdt-accent);
   }
 
   /* --- Copy button --- */
@@ -915,6 +989,20 @@ export const devToolCSS = `
     transition: all 0.12s ease;
     flex-shrink: 0;
     white-space: nowrap;
+  }
+
+  .stack-devtool .sdt-pg-open-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 32px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  .stack-devtool .sdt-pg-open-btn svg {
+    flex-shrink: 0;
   }
 
   .stack-devtool .sdt-pg-copy-btn:hover {
@@ -992,11 +1080,9 @@ export const devToolCSS = `
   }
 
   .stack-devtool .sdt-pg-section-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--sdt-text-tertiary);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--sdt-text-secondary);
     margin-bottom: 8px;
   }
 
@@ -1103,20 +1189,63 @@ export const devToolCSS = `
     color: var(--sdt-text-secondary);
   }
 
-  /* Iframe tabs (Docs, Dashboard) */
+  /* Iframe tabs */
   .stack-devtool .sdt-iframe-container {
+    position: relative;
     flex: 1;
     min-height: 0;
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
   }
 
+  .stack-devtool .sdt-iframe-toolbar {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+  }
+
+  .stack-devtool .sdt-panel-fullscreen .sdt-iframe-toolbar {
+    top: 60px;
+    right: 12px;
+  }
+
+  .stack-devtool .sdt-iframe-open-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    background: rgba(10, 10, 11, 0.88);
+    border: 1px solid var(--sdt-border);
+    border-radius: var(--sdt-radius-sm);
+    color: var(--sdt-accent-hover);
+    font-family: var(--sdt-font);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: none;
+  }
+
+  .stack-devtool .sdt-iframe-open-link:hover {
+    color: var(--sdt-text);
+  }
+
   .stack-devtool .sdt-iframe-container iframe {
     flex: 1;
+    min-height: 0;
     width: 100%;
+    height: 100%;
     border: none;
     background: white;
-    border-radius: 0 0 var(--sdt-radius-lg) var(--sdt-radius-lg);
+    border-radius: 0;
   }
 
   .stack-devtool .sdt-iframe-loading {
@@ -1162,6 +1291,72 @@ export const devToolCSS = `
   }
 
   /* Console tab */
+  .stack-devtool .sdt-console-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .stack-devtool .sdt-console-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+  }
+
+  .stack-devtool .sdt-console-title {
+    color: var(--sdt-text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .stack-devtool .sdt-console-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .stack-devtool .sdt-console-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 9px;
+    background: var(--sdt-bg-elevated);
+    border: 1px solid var(--sdt-border);
+    border-radius: var(--sdt-radius-sm);
+    color: var(--sdt-text-secondary);
+    cursor: pointer;
+    font-family: var(--sdt-font);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .stack-devtool .sdt-console-action-btn:hover {
+    color: var(--sdt-text);
+    background: var(--sdt-bg-hover);
+    border-color: var(--sdt-border);
+  }
+
+  .stack-devtool .sdt-console-action-btn svg {
+    flex-shrink: 0;
+  }
+
+  .stack-devtool .sdt-console-log-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
   .stack-devtool .sdt-console-tabs {
     position: relative;
     display: flex;
@@ -1213,6 +1408,14 @@ export const devToolCSS = `
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .stack-devtool .sdt-log-load-hint {
+    padding: 8px 10px;
+    color: var(--sdt-text-tertiary);
+    font-family: var(--sdt-font);
+    font-size: 12px;
+    text-align: center;
   }
 
   .stack-devtool .sdt-log-item {
@@ -1460,43 +1663,10 @@ export const devToolCSS = `
     margin: -16px;
   }
 
-  .stack-devtool .sdt-support-tab > .sdt-console-tabs {
-    margin: 12px 12px 0;
-    flex: none;
-  }
-
-  .stack-devtool .sdt-support-content {
-    flex: 1;
-    min-height: 0;
-    position: relative;
-  }
-
-  .stack-devtool .sdt-support-pane {
-    position: absolute;
-    inset: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-
-  .stack-devtool .sdt-tab-pane-active .sdt-support-pane-active {
-    visibility: visible;
-    pointer-events: auto;
-    animation: sdt-tab-fade-in 0.15s ease-out;
-  }
-
   .stack-devtool .sdt-support-feedback-pane {
     padding: 20px;
     height: 100%;
     overflow-y: auto;
-  }
-
-  .stack-devtool .sdt-support-iframe-pane {
-    height: 100%;
-  }
-
-  .stack-devtool .sdt-support-iframe-pane .sdt-iframe-container {
-    height: 100%;
-    margin: 0;
   }
 
   /* Form layout */
