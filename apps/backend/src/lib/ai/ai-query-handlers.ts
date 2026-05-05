@@ -51,7 +51,7 @@ export function handleStreamMode(ctx: ModeContext & {
         text,
         usage,
         providerMetadata,
-        openrouterGenerationId: response?.id,
+        openrouterGenerationId: response.id,
       });
       logIfMcpToolCall({
         mcpCallMetadata,
@@ -142,7 +142,7 @@ export async function handleGenerateMode(ctx: ModeContext & {
     text: result.text,
     usage: result.usage,
     providerMetadata: result.providerMetadata,
-    openrouterGenerationId: result.response?.id,
+    openrouterGenerationId: result.response.id,
   });
 
   const responseConversationId = mcpCallMetadata != null ? conversationIdForLog : undefined;

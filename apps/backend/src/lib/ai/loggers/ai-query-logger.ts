@@ -142,7 +142,7 @@ export function logAiQuerySuccess(args: {
     inputTokens: usage.inputTokens ?? undefined,
     outputTokens: usage.outputTokens ?? undefined,
     cachedInputTokens: extractCachedTokens(providerMetadata),
-    cacheCreationTokens: usage.inputTokenDetails?.cacheWriteTokens ?? undefined,
+    cacheCreationTokens: usage.inputTokenDetails.cacheWriteTokens ?? undefined,
     costUsd: rawCost.costUsd ?? extractOpenRouterCost(providerMetadata),
     cacheDiscountUsd: undefined, // backfilled by refineGenerationCost below
     openrouterGenerationId,
