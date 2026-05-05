@@ -408,3 +408,6 @@ A: The page detail `Open` action should be a taller button matching the redirect
 
 ## Q: How should the Stack Auth dev tool Support tab be structured?
 A: Do not keep top-level Feedback/Feature Request subtabs unless the backend supports them. The Support tab should mount the feedback form directly, show Discord/Email/GitHub links at the top, keep only Feedback and Bug Report choices in the form, and use a Submit button with a right-arrow icon after the text.
+
+## Q: Which tab should the Stack Auth dev tool show when opened?
+A: Opening the dev tool should always reset `activeTab` to `overview` before creating the panel. Other preferences like size can persist, but each fresh open should start on Overview instead of the last-used tab.

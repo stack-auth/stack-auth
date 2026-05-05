@@ -2346,6 +2346,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   function openPanel() {
     if (panel) return;
+    state.update({ activeTab: 'overview' });
     panel = createPanel(app, state, logStore, closePanelAndPersistClosed);
     wrapper.appendChild(panel.element);
   }
