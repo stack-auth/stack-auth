@@ -98,7 +98,11 @@ export function applyDashboardPatches(source: string, edits: DashboardPatchEdit[
 
     let chosenIndex: number;
     if (edit.occurrenceIndex != null) {
-      if (edit.occurrenceIndex < 0 || edit.occurrenceIndex >= matches.length) {
+      if (
+        !Number.isInteger(edit.occurrenceIndex)
+        || edit.occurrenceIndex < 0
+        || edit.occurrenceIndex >= matches.length
+      ) {
         failures.push({ index, reason: "not-found", oldTextPreview: preview });
         return;
       }
