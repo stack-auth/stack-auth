@@ -33,12 +33,13 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
+import { Link } from "@/components/link";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
 import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
-import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, PlusIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
@@ -1596,6 +1597,22 @@ function UserPage({ user }: { user: ServerUser }) {
             showBadge={false}
             size="sm"
             glassmorphic={false}
+            trailing={(
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-8 justify-center gap-1.5 rounded-lg bg-transparent px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none"
+              >
+                <Link
+                  href={`/projects/${encodeURIComponent(stackAdminApp.projectId)}/apps`}
+                  className="inline-flex items-center justify-center"
+                >
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  <span>Install apps</span>
+                </Link>
+              </Button>
+            )}
           />
         )}
         {activeTab === "authentication" && (
