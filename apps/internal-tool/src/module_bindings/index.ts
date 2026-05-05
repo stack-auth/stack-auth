@@ -50,6 +50,7 @@ import UnmarkHumanReviewedReducer from "./unmark_human_reviewed_reducer";
 import UpdateAiQueryCostReducer from "./update_ai_query_cost_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
 import UpdateQaEntryReducer from "./update_qa_entry_reducer";
+import UpdateQaEntryWithPublishReducer from "./update_qa_entry_with_publish_reducer";
 import UpsertQaFromCallReducer from "./upsert_qa_from_call_reducer";
 
 // Import all procedure arg schemas
@@ -124,6 +125,7 @@ const reducersSchema = __reducers(
   __reducerSchema("update_ai_query_cost", UpdateAiQueryCostReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
   __reducerSchema("update_qa_entry", UpdateQaEntryReducer),
+  __reducerSchema("update_qa_entry_with_publish", UpdateQaEntryWithPublishReducer),
   __reducerSchema("upsert_qa_from_call", UpsertQaFromCallReducer),
 );
 

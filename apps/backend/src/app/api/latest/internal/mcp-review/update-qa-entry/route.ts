@@ -34,8 +34,14 @@ export const POST = createSmartRouteHandler({
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     const editor = user.display_name ?? user.primary_email ?? user.id;
     const qaId = BigInt(body.qaId);
-    await callReducerStrict("update_qa_entry", [token, qaId, body.question, body.answer, editor]);
-    await callReducerStrict("set_qa_published", [token, qaId, body.publish]);
+    await callReducerStrict("update_qa_entry_with_publish", [
+      token,
+      qaId,
+      body.question,
+      body.answer,
+      body.publish,
+      editor,
+    ]);
 
     return {
       statusCode: 200,

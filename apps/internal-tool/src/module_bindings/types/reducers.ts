@@ -22,6 +22,7 @@ import UnmarkHumanReviewedReducer from "../unmark_human_reviewed_reducer";
 import UpdateAiQueryCostReducer from "../update_ai_query_cost_reducer";
 import UpdateMcpQaReviewReducer from "../update_mcp_qa_review_reducer";
 import UpdateQaEntryReducer from "../update_qa_entry_reducer";
+import UpdateQaEntryWithPublishReducer from "../update_qa_entry_with_publish_reducer";
 import UpsertQaFromCallReducer from "../upsert_qa_from_call_reducer";
 
 export type AddManualQaParams = __Infer<typeof AddManualQaReducer>;
@@ -40,5 +41,6 @@ export type UnmarkHumanReviewedParams = __Infer<typeof UnmarkHumanReviewedReduce
 export type UpdateAiQueryCostParams = __Infer<typeof UpdateAiQueryCostReducer>;
 export type UpdateMcpQaReviewParams = __Infer<typeof UpdateMcpQaReviewReducer>;
 export type UpdateQaEntryParams = __Infer<typeof UpdateQaEntryReducer>;
+export type UpdateQaEntryWithPublishParams = __Infer<typeof UpdateQaEntryWithPublishReducer>;
 export type UpsertQaFromCallParams = __Infer<typeof UpsertQaFromCallReducer>;
 

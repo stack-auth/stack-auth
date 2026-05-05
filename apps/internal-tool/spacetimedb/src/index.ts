@@ -491,6 +491,36 @@ export const set_qa_published = spacetimedb.reducer(
   }
 );
 
+export const update_qa_entry_with_publish = spacetimedb.reducer(
+  {
+    token: t.string(),
+    qaId: t.u64(),
+    question: t.string(),
+    answer: t.string(),
+    publish: t.bool(),
+    editedBy: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const row = ctx.db.qaEntries.id.find(args.qaId);
+    if (row == null) {
+      throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
+    }
+    ctx.db.qaEntries.id.update({
+      ...row,
+      question: args.question,
+      answer: args.answer,
+      lastEditedBy: args.editedBy,
+      lastEditedAt: ctx.timestamp,
+      published: args.publish,
+      firstPublishedAt: args.publish ? (row.firstPublishedAt ?? ctx.timestamp) : row.firstPublishedAt,
+      lastPublishedAt: args.publish ? ctx.timestamp : row.lastPublishedAt,
+    });
+  }
+);
+
 // Text-only edit. Doesn't touch publish state.
 export const update_qa_entry = spacetimedb.reducer(
   {
