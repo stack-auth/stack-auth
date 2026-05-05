@@ -88,6 +88,7 @@ function UserHeader({ user }: UserHeaderProps) {
   const nameFallback = user.primaryEmail ?? user.id;
   const name = user.displayName ?? nameFallback;
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const stackAdminApp = useAdminApp();
 
@@ -142,6 +143,11 @@ function UserHeader({ user }: UserHeaderProps) {
               },
             }] satisfies DesignMenuActionItem[] : [],
             {
+              id: "restriction",
+              label: "User restriction",
+              onClick: () => { setRestrictionDialogOpen(true); },
+            },
+            {
               id: "delete",
               label: "Delete",
               itemVariant: "destructive" as const,
@@ -149,6 +155,7 @@ function UserHeader({ user }: UserHeaderProps) {
             },
           ]}
         />
+        <RestrictionDialog user={user} open={restrictionDialogOpen} onOpenChange={setRestrictionDialogOpen} />
         <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${stackAdminApp.projectId}/users`} />
         <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       </div>
@@ -341,12 +348,6 @@ function RestrictionBanner({ user }: { user: ServerUser }) {
 }
 
 function UserDetails({ user }: { user: ServerUser }) {
-  const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
-
-  const isRestricted = user.isRestricted;
-  const reasonText = getRestrictionReasonText(user);
-  const restrictedDisplayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
-
   const items = useMemo<DesignEditableGridItem[]>(() => [
     {
       type: "text",
@@ -398,6 +399,20 @@ function UserDetails({ user }: { user: ServerUser }) {
       value: user.signedUpAt.toDateString(),
       readOnly: true,
     },
+  ], [user]);
+
+  return (
+    <DesignEditableGrid
+      items={items}
+      columns={2}
+      size="sm"
+      deferredSave={false}
+    />
+  );
+}
+
+function FraudSection({ user }: { user: ServerUser }) {
+  const items = useMemo<DesignEditableGridItem[]>(() => [
     {
       type: "text",
       icon: <ShieldIcon size={14} />,
@@ -411,19 +426,6 @@ function UserDetails({ user }: { user: ServerUser }) {
               freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
             },
           },
-        });
-      },
-    },
-    {
-      type: "text",
-      icon: <GlobeIcon size={14} />,
-      name: "Sign-up country code",
-      value: user.countryCode ?? "",
-      placeholder: "-",
-      normalizeInput: (value) => value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2),
-      onUpdate: async (newValue) => {
-        await user.update({
-          countryCode: newValue.length > 0 ? normalizeCountryCode(newValue) : null,
         });
       },
     },
@@ -444,28 +446,32 @@ function UserDetails({ user }: { user: ServerUser }) {
       },
     },
     {
-      type: "custom-button",
-      icon: <ProhibitIcon size={14} />,
-      name: "Restricted",
-      children: restrictedDisplayValue,
-      onClick: () => setRestrictionDialogOpen(true),
+      type: "text",
+      icon: <GlobeIcon size={14} />,
+      name: "Sign-up country code",
+      value: user.countryCode ?? "",
+      placeholder: "-",
+      normalizeInput: (value) => value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2),
+      onUpdate: async (newValue) => {
+        await user.update({
+          countryCode: newValue.length > 0 ? normalizeCountryCode(newValue) : null,
+        });
+      },
     },
-  ], [user, restrictedDisplayValue]);
+  ], [user]);
 
   return (
-    <>
+    <section className="flex flex-col gap-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Fraud
+      </h2>
       <DesignEditableGrid
         items={items}
         columns={2}
         size="sm"
         deferredSave={false}
       />
-      <RestrictionDialog
-        user={user}
-        open={restrictionDialogOpen}
-        onOpenChange={setRestrictionDialogOpen}
-      />
-    </>
+    </section>
   );
 }
 
@@ -1596,6 +1602,7 @@ function UserPage({ user }: { user: ServerUser }) {
           <div className="flex flex-col gap-6">
             <ContactChannelsSection user={user} />
             <OAuthProvidersSection user={user} />
+            <FraudSection user={user} />
           </div>
         )}
         {activeTab === "teams" && <UserTeamsSection user={user} />}
