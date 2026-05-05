@@ -1186,6 +1186,9 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
 
   for (const [key, value] of Object.entries(configOverride)) {
     if (value === undefined) continue;
+    if (/^payments\.products\.[^.]+\.prices$/.test(key) && value === "include-by-default") {
+      return Result.error(`${key} must not be one of the following values: include-by-default`);
+    }
     const subSchema = getSubSchema(schema, key);
     if (!subSchema) {
       // find smallest key prefix that is invalid

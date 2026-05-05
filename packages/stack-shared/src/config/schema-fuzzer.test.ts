@@ -369,3 +369,9 @@ import.meta.vitest?.test("fuzz schemas", async ({ expect }) => {
     }
   }
 });
+
+import.meta.vitest?.test("rejects include-by-default product prices in config overrides", async ({ expect }) => {
+  await expect(assertNoConfigOverrideErrors(branchConfigSchema, {
+    "payments.products.free.prices": "include-by-default",
+  })).rejects.toThrow(/payments\.products\.free\.prices must not be one of the following values: include-by-default/);
+});
