@@ -1,5 +1,3 @@
-import type { CompleteConfig } from "../config/schema";
-
 export type SupportSlaConfig = {
   enabled: boolean,
   firstResponseMinutes: number | null,
@@ -11,20 +9,6 @@ export const DEFAULT_SUPPORT_SLA: SupportSlaConfig = {
   firstResponseMinutes: null,
   nextResponseMinutes: null,
 };
-
-/**
- * Resolves the SLA config from a rendered project config, filling in safe
- * defaults for any missing fields. Always returns a fully-populated object.
- */
-export function resolveSupportSla(supportConfig: CompleteConfig["support"] | undefined | null): SupportSlaConfig {
-  const sla = supportConfig?.sla;
-  if (sla == null) return DEFAULT_SUPPORT_SLA;
-  return {
-    enabled: sla.enabled ?? DEFAULT_SUPPORT_SLA.enabled,
-    firstResponseMinutes: sla.firstResponseMinutes ?? null,
-    nextResponseMinutes: sla.nextResponseMinutes ?? null,
-  };
-}
 
 function addMinutesOrNull(now: Date, minutes: number | null): Date | null {
   if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;

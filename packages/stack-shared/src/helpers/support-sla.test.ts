@@ -3,8 +3,6 @@ import {
   computeFirstResponseDueAt,
   computeNextResponseDueAt,
   computeSlaUrgency,
-  DEFAULT_SUPPORT_SLA,
-  resolveSupportSla,
   SLA_URGENT_THRESHOLD_MS,
   SLA_WARNING_THRESHOLD_MS,
   type SupportSlaConfig,
@@ -15,25 +13,6 @@ const enabledSla: SupportSlaConfig = {
   firstResponseMinutes: 60,
   nextResponseMinutes: 120,
 };
-
-describe("resolveSupportSla", () => {
-  it("returns DEFAULT_SUPPORT_SLA when the input is nullish", () => {
-    expect(resolveSupportSla(null)).toEqual(DEFAULT_SUPPORT_SLA);
-    expect(resolveSupportSla(undefined)).toEqual(DEFAULT_SUPPORT_SLA);
-    expect(resolveSupportSla({} as any)).toEqual(DEFAULT_SUPPORT_SLA);
-  });
-
-  it("fills in missing fields with safe defaults", () => {
-    const resolved = resolveSupportSla({
-      sla: { enabled: true, firstResponseMinutes: 30 },
-    } as any);
-    expect(resolved).toEqual({
-      enabled: true,
-      firstResponseMinutes: 30,
-      nextResponseMinutes: null,
-    });
-  });
-});
 
 describe("computeFirstResponseDueAt", () => {
   const now = new Date("2026-04-22T12:00:00.000Z");
