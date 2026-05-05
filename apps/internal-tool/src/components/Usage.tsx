@@ -642,7 +642,7 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
                       <span className="inline-flex px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[10px]">
                         {row.systemPromptId}
                       </span>
-                      {row.mcpCorrelationId != null && (
+                      {row.conversationId != null && (
                         <span className="ml-1 inline-flex px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">MCP</span>
                       )}
                       {!row.isAuthenticated && (

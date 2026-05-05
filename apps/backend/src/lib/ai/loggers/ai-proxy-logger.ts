@@ -46,7 +46,6 @@ export function buildProxyLogRow(fields: ProxyLogFields): AiQueryLogEntry {
     stepCount: 0,
     durationMs,
     errorMessage: responseStatus >= 400 ? `upstream ${responseStatus}` : undefined,
-    mcpCorrelationId: undefined,
     conversationId: undefined,
   };
 }

@@ -37,6 +37,5 @@ export default __t.row({
   stepCount: __t.u32().name("step_count"),
   durationMs: __t.u64().name("duration_ms"),
   errorMessage: __t.option(__t.string()).name("error_message"),
-  mcpCorrelationId: __t.option(__t.string()).name("mcp_correlation_id"),
   conversationId: __t.option(__t.string()).name("conversation_id"),
 });

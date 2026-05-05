@@ -71,7 +71,6 @@ const aiQueryLog = table(
     stepCount: t.u32(),
     durationMs: t.u64(),
     errorMessage: t.string().optional(),
-    mcpCorrelationId: t.string().optional(),
     conversationId: t.string().optional(),
   }
 );
@@ -589,7 +588,6 @@ export const log_ai_query = spacetimedb.reducer(
     stepCount: t.u32(),
     durationMs: t.u64(),
     errorMessage: t.string().optional(),
-    mcpCorrelationId: t.string().optional(),
     conversationId: t.string().optional(),
   },
   (ctx, args) => {
@@ -623,7 +621,6 @@ export const log_ai_query = spacetimedb.reducer(
       stepCount: args.stepCount,
       durationMs: args.durationMs,
       errorMessage: args.errorMessage,
-      mcpCorrelationId: args.mcpCorrelationId,
       conversationId: args.conversationId,
     } as Parameters<typeof ctx.db.aiQueryLog.insert>[0]);
   }

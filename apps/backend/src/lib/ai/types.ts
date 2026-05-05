@@ -34,7 +34,6 @@ export type CommonLogFields = {
   userId: string | undefined,
   requestedToolsJson: string,
   messagesJson: string,
-  mcpCorrelationId: string | undefined,
   conversationId: string | undefined,
 };
 

@@ -73,7 +73,6 @@ export type AiQueryLogEntry = {
   stepCount: number,
   durationMs: bigint,
   errorMessage: string | undefined,
-  mcpCorrelationId: string | undefined,
   conversationId: string | undefined,
 };
 
@@ -104,7 +103,6 @@ export async function logAiQuery(entry: AiQueryLogEntry): Promise<void> {
     sanitizeRequiredNumber("stepCount", entry.stepCount),
     entry.durationMs,
     opt(entry.errorMessage),
-    opt(entry.mcpCorrelationId),
     opt(entry.conversationId),
   ]);
 }

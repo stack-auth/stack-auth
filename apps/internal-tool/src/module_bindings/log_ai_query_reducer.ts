@@ -35,6 +35,5 @@ export default {
   stepCount: __t.u32(),
   durationMs: __t.u64(),
   errorMessage: __t.option(__t.string()),
-  mcpCorrelationId: __t.option(__t.string()),
   conversationId: __t.option(__t.string()),
 };

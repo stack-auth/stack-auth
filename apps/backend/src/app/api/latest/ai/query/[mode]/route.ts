@@ -97,7 +97,6 @@ export const POST = createSmartRouteHandler({
       userId: fullReq.auth?.user?.id,
       requestedToolsJson: JSON.stringify(toolNames),
       messagesJson: JSON.stringify(messages),
-      mcpCorrelationId: body.mcpCallMetadata ? correlationId : undefined,
       conversationId: conversationIdForLog,
     };
     const startedAt = performance.now();

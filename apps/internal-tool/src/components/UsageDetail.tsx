@@ -91,7 +91,7 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
             {isError && (
               <span className="inline-flex px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px]">error</span>
             )}
-            {row.mcpCorrelationId != null && (
+            {row.conversationId != null && (
               <span className="inline-flex px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">MCP</span>
             )}
           </div>
@@ -142,7 +142,6 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
           {row.projectId && <MetaRow label="Project" value={row.projectId} />}
           {row.userId && <MetaRow label="User" value={row.userId} />}
           {row.conversationId && <MetaRow label="Conversation" value={row.conversationId} />}
-          {row.mcpCorrelationId && <MetaRow label="MCP Correlation" value={row.mcpCorrelationId} />}
           <MetaRow label="Steps" value={String(row.stepCount)} />
           <MetaRow label="Tools requested" value={requestedTools.length > 0 ? requestedTools.join(", ") : "—"} />
         </div>
