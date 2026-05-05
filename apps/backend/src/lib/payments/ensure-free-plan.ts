@@ -65,8 +65,7 @@ export async function createFreePlanSubscriptionRow(options: {
   // First price, same as validatePurchaseSession's default when no priceId
   // is supplied. The `length` check is needed because TS types `[0]` as
   // non-undefined (no noUncheckedIndexedAccess in our tsconfig).
-  const prices = freePlanProduct.prices === "include-by-default" ? {} : freePlanProduct.prices;
-  const priceEntries = typedEntries(prices);
+  const priceEntries = typedEntries(freePlanProduct.prices);
   if (priceEntries.length === 0) {
     throw new StackAssertionError("Free plan has no prices configured");
   }
