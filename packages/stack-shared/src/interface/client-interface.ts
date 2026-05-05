@@ -136,13 +136,9 @@ async function encodeAnalyticsBody(jsonBody: string): Promise<{ body: BodyInit, 
   if (typeof CompressionStreamCtor !== "function" || typeof Blob === "undefined" || typeof Response === "undefined") {
     return { body: jsonBody, contentType: "application/json" };
   }
-  try {
-    const stream = new Blob([jsonBody]).stream().pipeThrough(new CompressionStreamCtor("gzip"));
-    const buffer = await new Response(stream).arrayBuffer();
-    return { body: new Uint8Array(buffer), contentType: "application/octet-stream" };
-  } catch {
-    return { body: jsonBody, contentType: "application/json" };
-  }
+  const stream = new Blob([jsonBody]).stream().pipeThrough(new CompressionStreamCtor("gzip"));
+  const buffer = await new Response(stream).arrayBuffer();
+  return { body: new Uint8Array(buffer), contentType: "application/octet-stream" };
 }
 
 export class StackClientInterface {

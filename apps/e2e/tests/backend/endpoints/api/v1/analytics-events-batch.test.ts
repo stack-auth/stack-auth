@@ -214,7 +214,36 @@ it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
     rawBody: new Uint8Array([0, 1, 2, 3, 4, 5]),
   });
 
-  expect(res.status).toBe(400);
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid encoded analytics body",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a gzipped body that decompresses past the server size cap", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  // 9 MB of zeros gzips to ~9 KB but decompresses past the 8 MB server cap.
+  const bomb = gzipSync(Buffer.alloc(9 * 1024 * 1024));
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: bomb,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid encoded analytics body",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("handles click event data containing a truncated surrogate pair (lone high surrogate)", async ({ expect }) => {
