@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { CustomerType, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideBranchConfigOverride } from '@/lib/config';
 import {
   LOCAL_EMULATOR_ADMIN_EMAIL,
@@ -15,8 +16,11 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenanc
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/dist/plans';
+import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
+
+const MONTHLY_REPEAT: DayInterval = [1, "month"];
 
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 
@@ -159,9 +163,10 @@ export async function seed() {
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.free.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.free.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.free.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.free.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.free.analyticsEvents, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.free.sessionReplays, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
             },
           },
           team: {
@@ -173,16 +178,18 @@ export async function seed() {
             prices: {
               monthly: {
                 USD: "49",
-                interval: [1, "month"] as any,
+                interval: MONTHLY_REPEAT,
                 serverOnly: false,
               },
             },
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.team.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.team.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.team.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.team.sessionReplays, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.onboardingCall]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
           },
           growth: {
@@ -194,16 +201,18 @@ export async function seed() {
             prices: {
               monthly: {
                 USD: "299",
-                interval: [1, "month"] as any,
+                interval: MONTHLY_REPEAT,
                 serverOnly: false,
               },
             },
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.growth.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.growth.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.growth.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.growth.sessionReplays, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.onboardingCall]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
           },
           "extra-seats": {
@@ -215,7 +224,7 @@ export async function seed() {
             prices: {
               monthly: {
                 USD: "29",
-                interval: [1, "month"] as any,
+                interval: MONTHLY_REPEAT,
                 serverOnly: false,
               },
             },
@@ -234,6 +243,8 @@ export async function seed() {
           [ITEM_IDS.emailsPerMonth]: { displayName: "Emails per Month", customerType: "team" as const },
           [ITEM_IDS.analyticsTimeoutSeconds]: { displayName: "Analytics Timeout (seconds)", customerType: "team" as const },
           [ITEM_IDS.analyticsEvents]: { displayName: "Analytics Events", customerType: "team" as const },
+          [ITEM_IDS.sessionReplays]: { displayName: "Session Replays", customerType: "team" as const },
+          [ITEM_IDS.onboardingCall]: { displayName: "Onboarding Call", customerType: "team" as const },
         },
       },
       apps: {
@@ -290,6 +301,60 @@ export async function seed() {
       },
     });
     console.log('Internal team created');
+  }
+
+  // The team-create CRUD path auto-grants the free plan to every team in the
+  // internal project, but the internal team itself is written directly above
+  // (bypassing that code path), so it would otherwise end up with zero
+  // entitlements and trip the plan-limit enforcement. Grant it the Growth plan
+  // so Stack Auth employees using the dashboard get full quotas. Idempotent —
+  // skipped if an active Growth subscription already exists.
+  //
+  // We create the subscription with raw Prisma (matching seed-dummy-data.ts)
+  // rather than grantProductToCustomer because bulldozer storage tables
+  // aren't initialized at this point in the seed yet. The Bulldozer init
+  // call right below this block ingresses the row into the ledger.
+  const growthProduct = updatedInternalTenancy.config.payments.products.growth;
+  if (growthProduct.customerType === 'team') {
+    const existingGrowthSub = await internalPrisma.subscription.findFirst({
+      where: {
+        tenancyId: internalTenancy.id,
+        customerId: internalTeamId,
+        customerType: CustomerType.TEAM,
+        productId: 'growth',
+        status: SubscriptionStatus.active,
+      },
+    });
+    if (!existingGrowthSub) {
+      const growthPrices = growthProduct.prices === 'include-by-default' ? {} : growthProduct.prices;
+      const firstPriceId = Object.keys(growthPrices)[0] ?? null;
+      const now = new Date();
+      // Clone to ensure the stored JSON snapshot is independent of the config object
+      // (mirrors the pattern used in seed-dummy-data.ts).
+      const storedProduct = JSON.parse(JSON.stringify(growthProduct)) as Prisma.InputJsonValue;
+      // Mirror what a real Stripe checkout would produce, based on whether
+      // the internal project is running in test mode.
+      const creationSource = updatedInternalTenancy.config.payments.testMode
+        ? PurchaseCreationSource.TEST_MODE
+        : PurchaseCreationSource.PURCHASE_PAGE;
+      await internalPrisma.subscription.create({
+        data: {
+          tenancyId: internalTenancy.id,
+          customerId: internalTeamId,
+          customerType: CustomerType.TEAM,
+          status: SubscriptionStatus.active,
+          productId: 'growth',
+          priceId: firstPriceId,
+          product: storedProduct,
+          quantity: 1,
+          currentPeriodStart: now,
+          currentPeriodEnd: new Date('2099-12-31T23:59:59Z'),
+          cancelAtPeriodEnd: false,
+          creationSource,
+        },
+      });
+      console.log('Granted Growth plan to internal team');
+    }
   }
 
   // Upsert the internal API key set before any flake-prone work (dummy-project
