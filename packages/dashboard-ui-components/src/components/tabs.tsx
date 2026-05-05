@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { cn, Spinner } from "@stackframe/stack-ui";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
@@ -13,6 +13,7 @@ export type DesignCategoryTabItem = {
   label: string,
   count?: number,
   badgeCount?: number,
+  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>,
 };
 
 export type DesignCategoryTabsProps = Omit<React.ComponentProps<"div">, "onSelect"> & {
@@ -23,6 +24,8 @@ export type DesignCategoryTabsProps = Omit<React.ComponentProps<"div">, "onSelec
   size?: DesignTabsSize,
   glassmorphic?: boolean,
   gradient?: DesignTabsGradient,
+  /** Renders inside the tab bar after the tab buttons (not a tab). */
+  trailing?: ReactNode,
 };
 
 type TabSizeClass = {
@@ -108,6 +111,7 @@ export function DesignCategoryTabs({
   size = "sm",
   glassmorphic: glassmorphicProp,
   gradient = "blue",
+  trailing,
   className,
   ...props
 }: DesignCategoryTabsProps) {
@@ -129,7 +133,7 @@ export function DesignCategoryTabs({
   return (
     <div
       className={cn(
-        "flex items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
+        "flex w-full min-w-0 items-center gap-2",
         glassmorphic
           ? "rounded-xl bg-black/[0.08] dark:bg-white/[0.04] p-1 backdrop-blur-sm"
           : "border-b border-gray-300 dark:border-gray-800",
@@ -137,60 +141,74 @@ export function DesignCategoryTabs({
       )}
       {...props}
     >
-      {categories.map((category) => {
-        const isActive = selectedCategory === category.id;
-        const badgeValue = category.badgeCount ?? category.count;
-        const shouldShowBadge = showBadge && badgeValue !== undefined;
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
+        )}
+      >
+        {categories.map((category) => {
+          const isActive = selectedCategory === category.id;
+          const badgeValue = category.badgeCount ?? category.count;
+          const shouldShowBadge = showBadge && badgeValue !== undefined;
 
-        return (
-          <button
-            key={category.id}
-            onClick={() => handleSelect(category.id)}
-            disabled={loadingCategoryId !== null}
-            className={cn(
-              "font-medium transition-all duration-150 hover:transition-none relative flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap",
-              "hover:text-gray-900 dark:hover:text-gray-100",
-              sizeClass.button,
-              glassmorphic ? "rounded-lg" : "",
-              isActive
-                ? cn(
-                  gradientClass.activeText,
-                  glassmorphic && "bg-background shadow-sm ring-1 ring-black/[0.12] dark:ring-white/[0.06]"
-                )
-                : "text-gray-700 dark:text-gray-400"
-            )}
-          >
-            {loadingCategoryId === category.id && (
-              <Spinner
-                size={12}
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-              />
-            )}
-            <span className={cn(
-              "flex items-center gap-2",
-              loadingCategoryId === category.id && "invisible"
-            )}>
-              {category.label}
-              {shouldShowBadge && (
-                <span
-                  className={cn(
-                    "rounded-full",
-                    sizeClass.badge,
-                    isActive
-                      ? gradientClass.activeBadge
-                      : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
-                  )}
-                >
-                  {badgeValue}
-                </span>
+          return (
+            <button
+              key={category.id}
+              onClick={() => handleSelect(category.id)}
+              disabled={loadingCategoryId !== null}
+              className={cn(
+                "font-medium transition-all duration-150 hover:transition-none relative flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap",
+                "hover:text-gray-900 dark:hover:text-gray-100",
+                sizeClass.button,
+                glassmorphic ? "rounded-lg" : "",
+                isActive
+                  ? cn(
+                    gradientClass.activeText,
+                    glassmorphic && "bg-background shadow-sm ring-1 ring-black/[0.12] dark:ring-white/[0.06]"
+                  )
+                  : "text-gray-700 dark:text-gray-400"
               )}
-            </span>
-            {!glassmorphic && isActive && (
-              <div className={cn("absolute bottom-0 left-0 right-0 h-0.5", gradientClass.underline)} />
-            )}
-          </button>
-        );
-      })}
+            >
+              {loadingCategoryId === category.id && (
+                <Spinner
+                  size={12}
+                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                />
+              )}
+              <span className={cn(
+                "flex items-center gap-2",
+                loadingCategoryId === category.id && "invisible"
+              )}>
+                {category.icon && (
+                  <category.icon className="h-4 w-4 shrink-0" aria-hidden />
+                )}
+                {category.label}
+                {shouldShowBadge && (
+                  <span
+                    className={cn(
+                      "rounded-full",
+                      sizeClass.badge,
+                      isActive
+                        ? gradientClass.activeBadge
+                        : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+                    )}
+                  >
+                    {badgeValue}
+                  </span>
+                )}
+              </span>
+              {!glassmorphic && isActive && (
+                <div className={cn("absolute bottom-0 left-0 right-0 h-0.5", gradientClass.underline)} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {trailing != null ? (
+        <div className="flex shrink-0 items-center">
+          {trailing}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import {
   type MetricsResponse,
   type MetricsUserCounts,
+  type UserActivityResponse,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -23,6 +24,7 @@ export type {
   MetricsTopReferrer,
   MetricsTopRegion,
   MetricsUserCounts,
+  UserActivityResponse,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 
 /**
@@ -45,6 +47,26 @@ export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): 
   }
 
   return useMetrics(includeAnonymous) as MetricsResponse;
+}
+
+/**
+ * Pulls the typed `useUserActivity` hook out of the admin app via the internals
+ * symbol. Returns the daily event counts for a single user (backed by
+ * `GET /internal/user-activity`) in the same `{ date, activity }` shape the
+ * metrics endpoints use.
+ */
+export function useUserActivityOrThrow(adminApp: object, userId: string): UserActivityResponse {
+  const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
+  if (typeof internals !== "object" || internals == null || !("useUserActivity" in internals)) {
+    throw new StackAssertionError("Admin app internals are unavailable: missing useUserActivity");
+  }
+
+  const useUserActivity = internals.useUserActivity;
+  if (typeof useUserActivity !== "function") {
+    throw new StackAssertionError("Admin app internals are unavailable: useUserActivity is not callable");
+  }
+
+  return useUserActivity(userId) as UserActivityResponse;
 }
 
 export function useMetricsUserCountsOrThrow(adminApp: object): MetricsUserCounts {
