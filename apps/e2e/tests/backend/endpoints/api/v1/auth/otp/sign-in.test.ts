@@ -382,6 +382,33 @@ it("should use the send-sign-in-code request context when creating a new OTP use
   expect(userResponse.body.country_code).toBe("CA");
 });
 
+it("should mint exactly one refresh token when the same code is redeemed in parallel", async ({ expect }) => {
+  // Guards the verification-code TOCTOU fix. Before the fix, the read-then-write pattern
+  // in verification-code-handler.tsx let N concurrent requests with the same OTP each pass
+  // the `if (usedAt) throw` check and each call createAuthTokens, minting N independent
+  // refresh tokens from one code. That enabled session-persistence: revoking one token
+  // didn't kill the others (no bulk-revoke exists for passwordless users short of a
+  // password change). The fix claims the code with a conditional updateMany and errors all
+  // losing racers with VERIFICATION_CODE_ALREADY_USED.
+  const sendSignInCodeRes = await Auth.Otp.sendSignInCode();
+  const signInCode = await Auth.Otp.getSignInCodeFromMailbox(sendSignInCodeRes.sendSignInCodeResponse.body.nonce);
+
+  const parallelCount = 5;
+  const responses = await Promise.all(
+    Array.from({ length: parallelCount }, () => niceBackendFetch("/api/v1/auth/otp/sign-in", {
+      method: "POST",
+      accessType: "client",
+      body: { code: signInCode },
+    })),
+  );
+
+  const successes = responses.filter(r => r.status === 200);
+  const alreadyUsed = responses.filter(r => r.status === 409 && (r.body as any)?.code === "VERIFICATION_CODE_ALREADY_USED");
+
+  expect(successes).toHaveLength(1);
+  expect(successes.length + alreadyUsed.length).toBe(parallelCount);
+});
+
 it.todo("should not sign in if e-mail's usedForAuth status has changed since sign-in code was sent");
 
 it.todo("should not sign in if account's otpEnabled status has changed since sign-in code was sent");
