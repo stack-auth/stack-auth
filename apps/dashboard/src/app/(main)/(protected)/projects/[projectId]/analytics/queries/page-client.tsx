@@ -35,6 +35,7 @@ import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import {
+  AnalyticsEventLimitBanner,
   ErrorDisplay,
   FolderWithId,
   RowData,
@@ -838,6 +839,7 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout fillWidth noPadding>
+        <AnalyticsEventLimitBanner />
         <QueriesContent />
       </PageLayout>
     </AppEnabledGuard>
