@@ -723,12 +723,15 @@ export class StackClientInterface {
       throw e;
     }
 
+    const preprocessedRes = await this._preprocessResponse(rawRes);
+
     if (this._requestListeners.size > 0) {
-      const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), status: rawRes.status, duration: Math.round(performance.now() - startTime) };
+      const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), status: preprocessedRes.status, duration: Math.round(performance.now() - startTime) };
       this._requestListeners.forEach((l) => l(entry));
     }
 
-    const processedRes = await this._processResponse(rawRes);
+    const processedRes = await this._processResponse(preprocessedRes);
+
     if (processedRes.status === "error") {
       // If the access token is invalid, reset it and retry
       if (KnownErrors.InvalidAccessToken.isInstance(processedRes.error)) {
@@ -786,7 +789,7 @@ export class StackClientInterface {
     }
   }
 
-  private async _processResponse(rawRes: Response): Promise<Result<Response, KnownError>> {
+  private async _preprocessResponse(rawRes: Response): Promise<Response> {
     let res = rawRes;
     if (rawRes.headers.has("x-stack-actual-status")) {
       const actualStatus = Number(rawRes.headers.get("x-stack-actual-status"));
@@ -796,7 +799,10 @@ export class StackClientInterface {
         headers: rawRes.headers,
       });
     }
+    return res;
+  }
 
+  private async _processResponse(res: Response): Promise<Result<Response, KnownError>> {
     // Handle known errors
     if (res.headers.has("x-stack-known-error")) {
       const errorJson = await res.json();
