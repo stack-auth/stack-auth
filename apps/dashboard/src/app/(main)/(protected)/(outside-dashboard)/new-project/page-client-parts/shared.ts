@@ -81,7 +81,10 @@ export function normalizeProjectOnboardingState(
   value: ProjectOnboardingState,
   options?: { localEmulator: boolean },
 ): ProjectOnboardingState {
-  const selectedApps = ALL_APP_IDS.filter((appId) => value.selected_apps.some((selectedAppId) => selectedAppId === appId));
+  const selectedApps = ALL_APP_IDS.filter((appId) => (
+    value.selected_apps.some((selectedAppId) => selectedAppId === appId)
+    || REQUIRED_APP_IDS.some((requiredAppId) => requiredAppId === appId)
+  ));
   const selectedSignInMethods = SIGN_IN_METHODS
     .map((method) => method.id)
     .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));

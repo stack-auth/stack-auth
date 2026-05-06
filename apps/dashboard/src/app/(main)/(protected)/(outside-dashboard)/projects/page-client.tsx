@@ -213,7 +213,7 @@ export default function PageClient() {
       }
       const onboardingStatus = "onboarding_status" in responseBody
         ? responseBody.onboarding_status
-        : "completed";
+        : undefined;
       if (!isProjectOnboardingStatus(onboardingStatus)) {
         throw new Error("Local emulator endpoint returned an invalid onboarding status.");
       }

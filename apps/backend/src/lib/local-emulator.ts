@@ -82,7 +82,13 @@ async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorC
 
   const evalFilename = /\.[cm]?tsx?$/.test(filePath) ? filePath : `${filePath}.ts`;
   const jiti = createJiti(import.meta.url, { cache: false });
-  const mod = jiti.evalModule(content, { filename: evalFilename }) as Record<string, unknown>;
+  let mod: Record<string, unknown>;
+  try {
+    mod = jiti.evalModule(content, { filename: evalFilename }) as Record<string, unknown>;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);
+  }
   const config = mod.config;
   if (config === LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE) {
     return config;

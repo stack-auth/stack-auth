@@ -672,9 +672,8 @@ Use `useUser()` to get `CurrentUser` (client). Use `stackServerApp.getUser()` to
 <CurrentUserSection type="currentUser" property="getAuthorizationHeader" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
-      Returns the HTTP `Authorization` header value in `Bearer stackauth_&lt;base64(getAuthJson())&gt;` format for authenticated requests.
+      Returns the HTTP `Authorization` header value in `Bearer stackauth_...` format for authenticated requests.
       Returns `null` if the user is not signed in.
-      If you are not using HTTP, use `getAuthJson()` instead.
 
       <MethodReturns type="Promise<string | null>" />
     </MethodContent>
@@ -693,7 +692,7 @@ Use `useUser()` to get `CurrentUser` (client). Use `stackServerApp.getUser()` to
 <CurrentUserSection type="currentUser" property="useAuthorizationHeader" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
-      React hook that returns the HTTP `Authorization` header value in `Bearer stackauth_&lt;base64(getAuthJson())&gt;` format.
+      React hook that returns the HTTP `Authorization` header value in `Bearer stackauth_...` format.
       Returns `null` if the user is not signed in.
 
       <MethodReturns type='string | null' />

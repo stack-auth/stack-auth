@@ -306,19 +306,19 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, `Config file not found: ${absoluteFilePath}`);
     }
 
-    // If the file is empty, write the onboarding sentinel config.
     const fileContent = await fs.readFile(resolvedFilePath, "utf-8");
-    if (fileContent.trim() === "") {
-      await writeShowOnboardingConfigToFile(absoluteFilePath);
-    }
+    const shouldWriteShowOnboardingConfig = fileContent.trim() === "";
 
     await assertLocalEmulatorOwnerTeamReadiness();
 
     const { projectId } = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
-    const showOnboarding = await isLocalEmulatorOnboardingEnabledInConfig(absoluteFilePath);
+    const showOnboarding = shouldWriteShowOnboardingConfig || await isLocalEmulatorOnboardingEnabledInConfig(absoluteFilePath);
     const onboardingStatus = await syncLocalEmulatorOnboardingStatus(projectId, showOnboarding);
     const credentials = await getOrCreateCredentials(projectId);
     const fileConfig = await readConfigFromFile(absoluteFilePath);
+    if (shouldWriteShowOnboardingConfig) {
+      await writeShowOnboardingConfigToFile(absoluteFilePath);
+    }
 
     return {
       statusCode: 200 as const,

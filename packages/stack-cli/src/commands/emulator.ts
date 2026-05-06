@@ -107,19 +107,21 @@ async function fetchEmulatorCredentials(pck: string, backendPort: number, config
     onboarding_status: string,
     onboarding_outstanding: boolean,
   };
-  if (typeof data.project_id !== "string" || typeof data.publishable_client_key !== "string" || typeof data.secret_server_key !== "string") {
+  if (
+    typeof data.project_id !== "string"
+    || typeof data.publishable_client_key !== "string"
+    || typeof data.secret_server_key !== "string"
+    || typeof data.onboarding_status !== "string"
+    || typeof data.onboarding_outstanding !== "boolean"
+  ) {
     throw new CliError("Local emulator project endpoint returned an invalid credentials response.");
   }
-  const onboardingStatus = typeof data.onboarding_status === "string" ? data.onboarding_status : "completed";
-  const onboardingOutstanding = typeof data.onboarding_outstanding === "boolean"
-    ? data.onboarding_outstanding
-    : onboardingStatus !== "completed";
   return {
     project_id: data.project_id,
     publishable_client_key: data.publishable_client_key,
     secret_server_key: data.secret_server_key,
-    onboarding_status: onboardingStatus,
-    onboarding_outstanding: onboardingOutstanding,
+    onboarding_status: data.onboarding_status,
+    onboarding_outstanding: data.onboarding_outstanding,
   };
 }
 

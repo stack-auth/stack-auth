@@ -115,7 +115,7 @@ function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: strin
     const decodedAuthJson = new TextDecoder().decode(decodeBase64(encodedAuthJson));
     parsed = JSON.parse(decodedAuthJson);
   } catch (e) {
-    throw new Error(`Invalid stackauth authorization header: ${authorizationHeaderValue}`, { cause: e });
+    throw new Error("Invalid stackauth authorization header.", { cause: e });
   }
 
   if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -1076,7 +1076,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               if (typeof parsed !== "object") throw new Error("x-stack-auth header must be a JSON object");
               if (parsed === null) throw new Error("x-stack-auth header must not be null");
             } catch (e) {
-              throw new Error(`Invalid x-stack-auth header: ${stackAuthHeader}`, { cause: e });
+              throw new Error("Invalid x-stack-auth header.", { cause: e });
             }
             return this._getOrCreateTokenStore(cookieHelper, {
               accessToken: parsed.accessToken ?? null,

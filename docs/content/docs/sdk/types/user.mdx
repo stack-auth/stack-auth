@@ -1377,6 +1377,55 @@ code={`type CurrentUser = {
   </MethodLayout>
 </CollapsibleTypesSection>
 
+<CollapsibleTypesSection type="currentUser" property="useAuthorizationHeader" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook equivalent of `getAuthorizationHeader()`.
+
+      Returns the value for the HTTP `Authorization` header for authenticated requests to external servers,
+      or `null` if the user is not signed in. Use it when a React component needs to call an API on a
+      different origin and same-origin cookies are not enough.
+
+      ### Parameters
+
+      No parameters.
+
+      ### Returns
+
+      `string | null`: A `Bearer stackauth_...` authorization header value, or `null` if not signed in.
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useAuthorizationHeader(): string | null;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```tsx Passing an authorization header from React
+      function ExternalApiButton() {
+        const authorizationHeader = user.useAuthorizationHeader();
+
+        return (
+          <button
+            onClick={async () => {
+              await fetch("https://api.example.com", {
+                headers: {
+                  ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
+                },
+              });
+            }}
+          >
+            Call API
+          </button>
+        );
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
 <CollapsibleTypesSection type="currentUser" property="getAuthHeaders" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>

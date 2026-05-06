@@ -274,16 +274,17 @@ it("getAuthorizationHeader should return a Bearer token that works for authentic
   await signIn(clientApp);
 
   const authorizationHeader = await clientApp.getAuthorizationHeader();
-  expect(authorizationHeader).toBeDefined();
-  expect(authorizationHeader).not.toBeNull();
+  if (authorizationHeader == null) {
+    throw new Error("Expected authorization header for signed-in user.");
+  }
   expect(authorizationHeader).toMatch(/^Bearer\s+stackauth_.+/);
-  const parsedAuthorizationHeader = parseAuthorizationHeaderValue(authorizationHeader!);
+  const parsedAuthorizationHeader = parseAuthorizationHeaderValue(authorizationHeader);
   const authJson = await clientApp.getAuthJson();
   expect(parsedAuthorizationHeader).toEqual(authJson);
 
   const requestLike = {
     headers: new Headers({
-      authorization: authorizationHeader!,
+      authorization: authorizationHeader,
     }),
   };
   const serverUser = await serverApp.getUser({ tokenStore: requestLike });
@@ -368,10 +369,11 @@ it("clientApp.getAuthorizationHeader should return Bearer header value", async (
   await signIn(clientApp);
 
   const authorizationHeader = await clientApp.getAuthorizationHeader();
-  expect(authorizationHeader).toBeDefined();
-  expect(authorizationHeader).not.toBeNull();
+  if (authorizationHeader == null) {
+    throw new Error("Expected authorization header for signed-in user.");
+  }
   expect(authorizationHeader).toMatch(/^Bearer\s+stackauth_.+/);
-  expect(parseAuthorizationHeaderValue(authorizationHeader!)).toEqual(await clientApp.getAuthJson());
+  expect(parseAuthorizationHeaderValue(authorizationHeader)).toEqual(await clientApp.getAuthJson());
 });
 
 it("clientApp.getAuthorizationHeader should return null when not signed in", async ({ expect }) => {
@@ -386,10 +388,11 @@ it("clientApp.getAuthorizationHeader should work with tokenStore option", async 
   await signIn(clientApp);
 
   const authorizationHeader = await clientApp.getAuthorizationHeader({ tokenStore: "memory" });
-  expect(authorizationHeader).toBeDefined();
-  expect(authorizationHeader).not.toBeNull();
+  if (authorizationHeader == null) {
+    throw new Error("Expected authorization header for signed-in user.");
+  }
   expect(authorizationHeader).toMatch(/^Bearer\s+stackauth_.+/);
-  expect(parseAuthorizationHeaderValue(authorizationHeader!)).toEqual(await clientApp.getAuthJson({ tokenStore: "memory" }));
+  expect(parseAuthorizationHeaderValue(authorizationHeader)).toEqual(await clientApp.getAuthJson({ tokenStore: "memory" }));
 });
 
 it("clientApp.getAuthHeaders should return x-stack-auth header", async ({ expect }) => {

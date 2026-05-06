@@ -287,6 +287,7 @@ writeFileSyncIfChanged(
     export const GeneratedSetupPromptText = ({ className }) => (
       <textarea
         readOnly
+        aria-label="Generated setup prompt"
         value={generatedSetupPromptText}
         className={className}
       />
@@ -312,8 +313,12 @@ writeFileSyncIfChanged(
 
     export const copyGeneratedSetupPrompt = async (event) => {
       const button = event.currentTarget;
-      await navigator.clipboard.writeText(generatedSetupPromptText);
-      button.textContent = "Copied";
+      try {
+        await navigator.clipboard.writeText(generatedSetupPromptText);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Copy failed";
+      }
       window.setTimeout(() => {
         button.textContent = "Copy prompt";
       }, 1300);

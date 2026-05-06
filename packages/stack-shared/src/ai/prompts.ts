@@ -285,7 +285,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             \`\`\`tsx src/App.tsx
             import { StackProvider, StackTheme } from "${packageName}";
-            import { stackClientApp } from "@/stack/client";
+            import { stackClientApp } from "./stack/client";
 
             export default function App() {
               return (
@@ -328,17 +328,17 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ${!isDefinitelyNextjs ? deindent`
             The easiest way to do this is to just wrap your entire app in a \`Suspense\` component:
 
-            \`\`\`tsx src/app/layout.tsx
+            \`\`\`tsx src/App.tsx
             import { Suspense } from "react";
             import { StackProvider, StackTheme } from "${packageName}";
-            import { stackServerApp } from "@/stack/server";
+            import { stackClientApp } from "./stack/client";
 
-            export default function RootLayout({ children }: { children: React.ReactNode }) {
+            export default function App() {
               return (
                 <Suspense fallback={<div>Loading...</div>}>
-                  <StackProvider app={stackServerApp}>
+                  <StackProvider app={stackClientApp}>
                     <StackTheme>
-                      {children}
+                      {/* your app content */}
                     </StackTheme>
                   </StackProvider>
                 </Suspense>
@@ -367,13 +367,14 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         <Step title="${!isDefinitelyBackend ? "Backend: " : ""}Update callers with header & get user">
           You are now ready to use the Stack Auth SDK. If you have any frontends calling your backend endpoints, you may want to pass along the Stack Auth tokens in a header such that you can access the same user object on your backend.
 
-          The most ergonomic way to do this is to pass the result of \`stackClientApp.getAuthorizationHeader()\` as the \`Authorization\` header into your backend endpoints:
+          The most ergonomic way to do this is to pass the result of \`stackClientApp.getAuthorizationHeader()\` as the \`Authorization\` header into your backend endpoints when the user is signed in:
 
           \`\`\`ts
           // NOTE: This is your frontend's code
+          const authorizationHeader = await stackClientApp.getAuthorizationHeader();
           const response = await fetch("/my-backend-endpoint", {
             headers: {
-              "Authorization": await stackClientApp.getAuthorizationHeader(),
+              ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
             },
           });
           // ...
