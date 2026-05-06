@@ -145,6 +145,367 @@
         }
       }
     },
+    "/team-api-keys": {
+      "get": {
+        "summary": "List team API keys",
+        "description": "List all team API keys for the project with their metadata and status",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "API Keys"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "expires_at_millis": {
+                            "type": "number"
+                          },
+                          "manually_revoked_at_millis": {
+                            "type": "number"
+                          },
+                          "created_at_millis": {
+                            "type": "number"
+                          },
+                          "is_public": {
+                            "type": "boolean"
+                          },
+                          "value": {
+                            "type": "object",
+                            "properties": {
+                              "last_four": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "last_four"
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "team_id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "description",
+                          "created_at_millis",
+                          "is_public",
+                          "value",
+                          "type",
+                          "team_id"
+                        ]
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "next_cursor": {
+                          "type": "string",
+                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
+                          "description": "The cursor to fetch the next page of results. null if there is no next page."
+                        }
+                      },
+                      "required": []
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create team API key",
+        "description": "Create a new API key for a user or team",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "expires_at_millis": {
+                    "type": "number"
+                  },
+                  "is_public": {
+                    "type": "boolean"
+                  },
+                  "team_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "description",
+                  "team_id"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "API Keys"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "expires_at_millis": {
+                      "type": "number"
+                    },
+                    "manually_revoked_at_millis": {
+                      "type": "number"
+                    },
+                    "created_at_millis": {
+                      "type": "number"
+                    },
+                    "is_public": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "team_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "id",
+                    "description",
+                    "created_at_millis",
+                    "is_public",
+                    "type",
+                    "team_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team-api-keys/{api_key_id}": {
+      "get": {
+        "summary": "Get team API key details",
+        "description": "Get details of a specific team API key",
+        "parameters": [
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "API Keys"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys/{api_key_id}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "expires_at_millis": {
+                      "type": "number"
+                    },
+                    "manually_revoked_at_millis": {
+                      "type": "number"
+                    },
+                    "created_at_millis": {
+                      "type": "number"
+                    },
+                    "is_public": {
+                      "type": "boolean"
+                    },
+                    "value": {
+                      "type": "object",
+                      "properties": {
+                        "last_four": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "last_four"
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "team_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "created_at_millis",
+                    "is_public",
+                    "value",
+                    "type",
+                    "team_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update team API key",
+        "description": "Update an team API key",
+        "parameters": [
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "revoked": {
+                    "type": "boolean"
+                  }
+                },
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "API Keys"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys/{api_key_id}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "expires_at_millis": {
+                      "type": "number"
+                    },
+                    "manually_revoked_at_millis": {
+                      "type": "number"
+                    },
+                    "created_at_millis": {
+                      "type": "number"
+                    },
+                    "is_public": {
+                      "type": "boolean"
+                    },
+                    "value": {
+                      "type": "object",
+                      "properties": {
+                        "last_four": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "last_four"
+                      ]
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "team_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "description",
+                    "created_at_millis",
+                    "is_public",
+                    "value",
+                    "type",
+                    "team_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/user-api-keys": {
       "get": {
         "summary": "List user API keys",
@@ -341,194 +702,6 @@
         }
       }
     },
-    "/team-api-keys": {
-      "get": {
-        "summary": "List team API keys",
-        "description": "List all team API keys for the project with their metadata and status",
-        "parameters": [
-          {
-            "name": "team_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "tags": [
-          "API Keys"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "description": {
-                            "type": "string"
-                          },
-                          "expires_at_millis": {
-                            "type": "number"
-                          },
-                          "manually_revoked_at_millis": {
-                            "type": "number"
-                          },
-                          "created_at_millis": {
-                            "type": "number"
-                          },
-                          "is_public": {
-                            "type": "boolean"
-                          },
-                          "value": {
-                            "type": "object",
-                            "properties": {
-                              "last_four": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "last_four"
-                            ]
-                          },
-                          "type": {
-                            "type": "string"
-                          },
-                          "team_id": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "description",
-                          "created_at_millis",
-                          "is_public",
-                          "value",
-                          "type",
-                          "team_id"
-                        ]
-                      }
-                    },
-                    "pagination": {
-                      "type": "object",
-                      "properties": {
-                        "next_cursor": {
-                          "type": "string",
-                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
-                          "description": "The cursor to fetch the next page of results. null if there is no next page."
-                        }
-                      },
-                      "required": []
-                    }
-                  },
-                  "required": [
-                    "items"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Create team API key",
-        "description": "Create a new API key for a user or team",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "description": {
-                    "type": "string"
-                  },
-                  "expires_at_millis": {
-                    "type": "number"
-                  },
-                  "is_public": {
-                    "type": "boolean"
-                  },
-                  "team_id": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "description",
-                  "team_id"
-                ],
-                "example": {}
-              }
-            }
-          }
-        },
-        "tags": [
-          "API Keys"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "value": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "expires_at_millis": {
-                      "type": "number"
-                    },
-                    "manually_revoked_at_millis": {
-                      "type": "number"
-                    },
-                    "created_at_millis": {
-                      "type": "number"
-                    },
-                    "is_public": {
-                      "type": "boolean"
-                    },
-                    "type": {
-                      "type": "string"
-                    },
-                    "team_id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "value",
-                    "id",
-                    "description",
-                    "created_at_millis",
-                    "is_public",
-                    "type",
-                    "team_id"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/user-api-keys/{api_key_id}": {
       "get": {
         "summary": "Get user API key details",
@@ -706,179 +879,6 @@
         }
       }
     },
-    "/team-api-keys/{api_key_id}": {
-      "get": {
-        "summary": "Get team API key details",
-        "description": "Get details of a specific team API key",
-        "parameters": [
-          {
-            "name": "api_key_id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "tags": [
-          "API Keys"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys/{api_key_id}",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "expires_at_millis": {
-                      "type": "number"
-                    },
-                    "manually_revoked_at_millis": {
-                      "type": "number"
-                    },
-                    "created_at_millis": {
-                      "type": "number"
-                    },
-                    "is_public": {
-                      "type": "boolean"
-                    },
-                    "value": {
-                      "type": "object",
-                      "properties": {
-                        "last_four": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "last_four"
-                      ]
-                    },
-                    "type": {
-                      "type": "string"
-                    },
-                    "team_id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "description",
-                    "created_at_millis",
-                    "is_public",
-                    "value",
-                    "type",
-                    "team_id"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "summary": "Update team API key",
-        "description": "Update an team API key",
-        "parameters": [
-          {
-            "name": "api_key_id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "description": {
-                    "type": "string"
-                  },
-                  "revoked": {
-                    "type": "boolean"
-                  }
-                },
-                "example": {}
-              }
-            }
-          }
-        },
-        "tags": [
-          "API Keys"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys/{api_key_id}",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "expires_at_millis": {
-                      "type": "number"
-                    },
-                    "manually_revoked_at_millis": {
-                      "type": "number"
-                    },
-                    "created_at_millis": {
-                      "type": "number"
-                    },
-                    "is_public": {
-                      "type": "boolean"
-                    },
-                    "value": {
-                      "type": "object",
-                      "properties": {
-                        "last_four": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "last_four"
-                      ]
-                    },
-                    "type": {
-                      "type": "string"
-                    },
-                    "team_id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "description",
-                    "created_at_millis",
-                    "is_public",
-                    "value",
-                    "type",
-                    "team_id"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/auth/cli": {
       "post": {
         "summary": "Initiate CLI authentication",
@@ -930,6 +930,63 @@
                     "polling_code",
                     "login_code",
                     "expires_at"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/cli/complete": {
+      "post": {
+        "summary": "Complete CLI authentication",
+        "description": "Inspect, claim, or complete a CLI authentication session",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "login_code": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "default": "complete"
+                  },
+                  "refresh_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "login_code"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "CLI Authentication"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/cli/complete",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
                   ]
                 }
               }
@@ -1004,63 +1061,6 @@
                   },
                   "required": [
                     "status"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/cli/complete": {
-      "post": {
-        "summary": "Complete CLI authentication",
-        "description": "Inspect, claim, or complete a CLI authentication session",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "login_code": {
-                    "type": "string"
-                  },
-                  "mode": {
-                    "type": "string",
-                    "default": "complete"
-                  },
-                  "refresh_token": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "login_code"
-                ],
-                "example": {}
-              }
-            }
-          }
-        },
-        "tags": [
-          "CLI Authentication"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/cli/complete",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "success"
                   ]
                 }
               }
@@ -1452,6 +1452,60 @@
         }
       }
     },
+    "/contact-channels/verify/check-code": {
+      "post": {
+        "summary": "Check email verification code",
+        "description": "Check if an email verification code is valid without using it",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
+                    "description": "A 45 character code"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "example": {
+                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Contact Channels"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/verify/check-code",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "is_code_valid": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "is_code_valid"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/contact-channels/{user_id}/{contact_channel_id}": {
       "get": {
         "summary": "Get a contact channel",
@@ -1783,60 +1837,6 @@
         }
       }
     },
-    "/contact-channels/verify/check-code": {
-      "post": {
-        "summary": "Check email verification code",
-        "description": "Check if an email verification code is valid without using it",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
-                    "description": "A 45 character code"
-                  }
-                },
-                "required": [
-                  "code"
-                ],
-                "example": {
-                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Contact Channels"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/verify/check-code",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "is_code_valid": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "is_code_valid"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/contact-channels/{user_id}/{contact_channel_id}/send-verification-code": {
       "post": {
         "summary": "Send contact channel verification code",
@@ -2075,66 +2075,6 @@
         }
       }
     },
-    "/internal/feedback": {
-      "post": {
-        "summary": "Submit support feedback",
-        "description": "Send a support feedback message to the internal Stack Auth inbox. Auth is optional — works from both the dashboard (authenticated) and the dev tool (unauthenticated).",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "email": {
-                    "type": "string"
-                  },
-                  "message": {
-                    "type": "string"
-                  },
-                  "feedback_type": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "email",
-                  "message"
-                ],
-                "example": {}
-              }
-            }
-          }
-        },
-        "tags": [
-          "Internal"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/feedback",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "success"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/internal/feature-requests": {
       "get": {
         "summary": "Get feature requests",
@@ -2282,49 +2222,6 @@
         }
       }
     },
-    "/internal/preview/create-project": {
-      "post": {
-        "summary": "Create a preview project",
-        "description": "Creates a new project pre-filled with dummy data for the preview environment. Only available when NEXT_PUBLIC_STACK_IS_PREVIEW=true.",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {},
-                "example": {}
-              }
-            }
-          }
-        },
-        "tags": [
-          "Internal"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/preview/create-project",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "project_id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "project_id"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/internal/feature-requests/{featureRequestId}/upvote": {
       "post": {
         "summary": "Toggle upvote on feature request",
@@ -2374,6 +2271,434 @@
                     "success"
                   ]
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/feedback": {
+      "post": {
+        "summary": "Submit support feedback",
+        "description": "Send a support feedback message to the internal Stack Auth inbox. Auth is optional — works from both the dashboard (authenticated) and the dev tool (unauthenticated).",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "feedback_type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "message"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Internal"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/feedback",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/preview/create-project": {
+      "post": {
+        "summary": "Create a preview project",
+        "description": "Creates a new project pre-filled with dummy data for the preview environment. Only available when NEXT_PUBLIC_STACK_IS_PREVIEW=true.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Internal"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/preview/create-project",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "project_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "project_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/oauth/authorize/{provider_id}": {
+      "get": {
+        "summary": "OAuth authorize endpoint",
+        "description": "This endpoint is used to initiate the OAuth authorization flow. there are two purposes for this endpoint: 1. Authenticate a user with an OAuth provider. 2. Link an existing user with an OAuth provider.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "authenticate"
+            },
+            "required": false
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": ""
+            },
+            "required": false
+          },
+          {
+            "name": "provider_scope",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "error_redirect_uri",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "after_callback_redirect_url",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "stack_response_mode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "redirect"
+            },
+            "required": false
+          },
+          {
+            "name": "bot_challenge_token",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "bot_challenge_phase",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "bot_challenge_unavailable",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "client_secret",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "grant_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "code_challenge",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "code_challenge_method",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "response_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "provider_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Oauth"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/authorize/{provider_id}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "location"
+                  ]
+                }
+              }
+            }
+          },
+          "307": {
+            "description": "Successful response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/oauth/cross-domain/authorize": {
+      "post": {
+        "summary": "Create cross-domain auth handoff redirect",
+        "description": "Creates a one-time OAuth authorization code redirect for cross-domain sign-in handoff using PKCE.",
+        "parameters": [
+          {
+            "name": "x-stack-publishable-client-key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "x-stack-refresh-token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "redirect_uri": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "code_challenge": {
+                    "type": "string"
+                  },
+                  "code_challenge_method": {
+                    "type": "string",
+                    "default": "S256"
+                  },
+                  "after_callback_redirect_url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "redirect_uri",
+                  "state",
+                  "code_challenge"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Oauth"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/cross-domain/authorize",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "redirect_url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "redirect_url"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/oauth/token": {
+      "post": {
+        "summary": "OAuth token endpoints",
+        "description": "This endpoint is used to exchange an authorization code or refresh token for an access token.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "grant_type"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Oauth"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/token",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }
@@ -2723,331 +3048,6 @@
                     "allow_sign_in",
                     "allow_connected_accounts"
                   ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/oauth/token": {
-      "post": {
-        "summary": "OAuth token endpoints",
-        "description": "This endpoint is used to exchange an authorization code or refresh token for an access token.",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "grant_type": {
-                    "type": "string"
-                  },
-                  "client_id": {
-                    "type": "string"
-                  },
-                  "client_secret": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "grant_type"
-                ],
-                "example": {}
-              }
-            }
-          }
-        },
-        "tags": [
-          "Oauth"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/token",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/oauth/cross-domain/authorize": {
-      "post": {
-        "summary": "Create cross-domain auth handoff redirect",
-        "description": "Creates a one-time OAuth authorization code redirect for cross-domain sign-in handoff using PKCE.",
-        "parameters": [
-          {
-            "name": "x-stack-publishable-client-key",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "x-stack-refresh-token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "redirect_uri": {
-                    "type": "string"
-                  },
-                  "state": {
-                    "type": "string"
-                  },
-                  "code_challenge": {
-                    "type": "string"
-                  },
-                  "code_challenge_method": {
-                    "type": "string",
-                    "default": "S256"
-                  },
-                  "after_callback_redirect_url": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "redirect_uri",
-                  "state",
-                  "code_challenge"
-                ],
-                "example": {}
-              }
-            }
-          }
-        },
-        "tags": [
-          "Oauth"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/cross-domain/authorize",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "redirect_url": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "redirect_url"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/oauth/authorize/{provider_id}": {
-      "get": {
-        "summary": "OAuth authorize endpoint",
-        "description": "This endpoint is used to initiate the OAuth authorization flow. there are two purposes for this endpoint: 1. Authenticate a user with an OAuth provider. 2. Link an existing user with an OAuth provider.",
-        "parameters": [
-          {
-            "name": "type",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "default": "authenticate"
-            },
-            "required": false
-          },
-          {
-            "name": "token",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "default": ""
-            },
-            "required": false
-          },
-          {
-            "name": "provider_scope",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "error_redirect_uri",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "after_callback_redirect_url",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "stack_response_mode",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "default": "redirect"
-            },
-            "required": false
-          },
-          {
-            "name": "bot_challenge_token",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "bot_challenge_phase",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "bot_challenge_unavailable",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "client_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "client_secret",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "redirect_uri",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "scope",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "state",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "grant_type",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "code_challenge",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "code_challenge_method",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "response_type",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "provider_id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "tags": [
-          "Oauth"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/authorize/{provider_id}",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "location": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "location"
-                  ]
-                }
-              }
-            }
-          },
-          "307": {
-            "description": "Successful response",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
                 }
               }
             }
@@ -3412,6 +3412,88 @@
         }
       }
     },
+    "/auth/mfa/sign-in": {
+      "post": {
+        "summary": "MFA sign in",
+        "description": "Complete multi-factor authorization to sign in, with a TOTP and an MFA attempt code",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "totp": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string",
+                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
+                    "description": "A 45 character code"
+                  }
+                },
+                "required": [
+                  "type",
+                  "totp",
+                  "code"
+                ],
+                "example": {
+                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "OTP"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/mfa/sign-in",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "refresh_token": {
+                      "type": "string",
+                      "example": "i8ns3aq2...14y",
+                      "description": "Long-lived refresh token that can be used to obtain a new access token"
+                    },
+                    "access_token": {
+                      "type": "string",
+                      "example": "eyJhmMiJB2TO...diI4QT",
+                      "description": "Short-lived access token that can be used to authenticate the user"
+                    },
+                    "is_new_user": {
+                      "type": "boolean",
+                      "example": true,
+                      "description": "Whether the user is a new user"
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
+                      "description": "The unique identifier of the user"
+                    }
+                  },
+                  "required": [
+                    "refresh_token",
+                    "access_token",
+                    "is_new_user",
+                    "user_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/otp/send-sign-in-code": {
       "post": {
         "summary": "Send sign-in code",
@@ -3558,88 +3640,6 @@
         }
       }
     },
-    "/auth/mfa/sign-in": {
-      "post": {
-        "summary": "MFA sign in",
-        "description": "Complete multi-factor authorization to sign in, with a TOTP and an MFA attempt code",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string"
-                  },
-                  "totp": {
-                    "type": "string"
-                  },
-                  "code": {
-                    "type": "string",
-                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
-                    "description": "A 45 character code"
-                  }
-                },
-                "required": [
-                  "type",
-                  "totp",
-                  "code"
-                ],
-                "example": {
-                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "OTP"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/mfa/sign-in",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "refresh_token": {
-                      "type": "string",
-                      "example": "i8ns3aq2...14y",
-                      "description": "Long-lived refresh token that can be used to obtain a new access token"
-                    },
-                    "access_token": {
-                      "type": "string",
-                      "example": "eyJhmMiJB2TO...diI4QT",
-                      "description": "Short-lived access token that can be used to authenticate the user"
-                    },
-                    "is_new_user": {
-                      "type": "boolean",
-                      "example": true,
-                      "description": "Whether the user is a new user"
-                    },
-                    "user_id": {
-                      "type": "string",
-                      "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
-                      "description": "The unique identifier of the user"
-                    }
-                  },
-                  "required": [
-                    "refresh_token",
-                    "access_token",
-                    "is_new_user",
-                    "user_id"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/auth/otp/sign-in/check-code": {
       "post": {
         "summary": "Check sign in code",
@@ -3694,20 +3694,11 @@
         }
       }
     },
-    "/auth/password/update": {
+    "/auth/password/reset": {
       "post": {
-        "summary": "Update password",
-        "description": "Update the password of the current user, requires the old password",
-        "parameters": [
-          {
-            "name": "x-stack-refresh-token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          }
-        ],
+        "summary": "Reset password with a code",
+        "description": "Reset password with a code",
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -3715,18 +3706,22 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "old_password": {
+                  "password": {
                     "type": "string"
                   },
-                  "new_password": {
-                    "type": "string"
+                  "code": {
+                    "type": "string",
+                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
+                    "description": "A 45 character code"
                   }
                 },
                 "required": [
-                  "old_password",
-                  "new_password"
+                  "password",
+                  "code"
                 ],
-                "example": {}
+                "example": {
+                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+                }
               }
             }
           }
@@ -3734,7 +3729,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/update",
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/reset",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3747,6 +3742,114 @@
                       "type": "boolean",
                       "description": "Always equal to true.",
                       "example": true
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/reset/check-code": {
+      "post": {
+        "summary": "Check reset password code",
+        "description": "Check if a reset password code is valid without using it",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
+                    "description": "A 45 character code"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "example": {
+                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Password"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/reset/check-code",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "is_code_valid": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "is_code_valid"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/send-reset-code": {
+      "post": {
+        "summary": "Send reset password code",
+        "description": "Send a code to the user's email address for resetting the password.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "callback_url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "callback_url"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Password"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/send-reset-code",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -3954,11 +4057,20 @@
         }
       }
     },
-    "/auth/password/send-reset-code": {
+    "/auth/password/update": {
       "post": {
-        "summary": "Send reset password code",
-        "description": "Send a code to the user's email address for resetting the password.",
-        "parameters": [],
+        "summary": "Update password",
+        "description": "Update the password of the current user, requires the old password",
+        "parameters": [
+          {
+            "name": "x-stack-refresh-token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3966,16 +4078,16 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "email": {
+                  "old_password": {
                     "type": "string"
                   },
-                  "callback_url": {
+                  "new_password": {
                     "type": "string"
                   }
                 },
                 "required": [
-                  "email",
-                  "callback_url"
+                  "old_password",
+                  "new_password"
                 ],
                 "example": {}
               }
@@ -3985,65 +4097,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/send-reset-code",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "success"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/password/reset": {
-      "post": {
-        "summary": "Reset password with a code",
-        "description": "Reset password with a code",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "password": {
-                    "type": "string"
-                  },
-                  "code": {
-                    "type": "string",
-                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
-                    "description": "A 45 character code"
-                  }
-                },
-                "required": [
-                  "password",
-                  "code"
-                ],
-                "example": {
-                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Password"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/reset",
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/update",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4068,38 +4122,49 @@
         }
       }
     },
-    "/auth/password/reset/check-code": {
-      "post": {
-        "summary": "Check reset password code",
-        "description": "Check if a reset password code is valid without using it",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
-                    "description": "A 45 character code"
-                  }
-                },
-                "required": [
-                  "code"
-                ],
-                "example": {
-                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
-                }
-              }
-            }
+    "/payments/items/{customer_type}/{customer_id}/{item_id}": {
+      "get": {
+        "summary": "Get Item",
+        "description": "Retrieves information about a specific item (credits, quotas, etc.) for a customer.",
+        "parameters": [
+          {
+            "name": "customer_type",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "example": "user",
+              "description": "The type of customer"
+            },
+            "description": "The type of customer",
+            "required": true
+          },
+          {
+            "name": "customer_id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "example": "user_1234567890abcdef",
+              "description": "The ID of the customer"
+            },
+            "description": "The ID of the customer",
+            "required": true
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "example": "credits",
+              "description": "The ID of the item to retrieve"
+            },
+            "description": "The ID of the item to retrieve",
+            "required": true
           }
-        },
-        "tags": [
-          "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/reset/check-code",
+        "tags": [
+          "Payments"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/payments/items/{customer_type}/{customer_id}/{item_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4108,12 +4173,234 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "is_code_valid": {
-                      "type": "boolean"
+                    "id": {
+                      "type": "string",
+                      "example": "credits",
+                      "description": "The ID of the item"
+                    },
+                    "display_name": {
+                      "type": "string",
+                      "example": "API Credits",
+                      "description": "The human-readable name of the item"
+                    },
+                    "quantity": {
+                      "type": "number",
+                      "example": 1000,
+                      "description": "The current quantity of the item (can be negative)"
                     }
                   },
                   "required": [
-                    "is_code_valid"
+                    "id",
+                    "display_name",
+                    "quantity"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/purchases/create-purchase-url": {
+      "post": {
+        "summary": "Create Purchase URL",
+        "description": "Creates a secure checkout URL for purchasing a product.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customer_type": {
+                    "type": "string",
+                    "example": "user",
+                    "description": "The type of customer making the purchase"
+                  },
+                  "customer_id": {
+                    "type": "string",
+                    "example": "user_1234567890abcdef",
+                    "description": "The ID of the customer (user ID, team ID, or custom customer ID)"
+                  },
+                  "product_id": {
+                    "type": "string",
+                    "example": "prod_premium_monthly",
+                    "description": "The ID of the product to purchase. Either this or product_inline should be given."
+                  },
+                  "product_inline": {
+                    "type": "object",
+                    "properties": {
+                      "display_name": {
+                        "type": "string"
+                      },
+                      "customer_type": {
+                        "type": "string"
+                      },
+                      "free_trial": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "server_only": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "stackable": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "prices": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                      },
+                      "included_items": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                      },
+                      "client_metadata": {
+                        "type": "object",
+                        "example": {
+                          "featureFlag": true,
+                          "source": "marketing-campaign"
+                        },
+                        "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                      },
+                      "client_read_only_metadata": {
+                        "type": "object",
+                        "example": {
+                          "featureFlag": true,
+                          "source": "marketing-campaign"
+                        },
+                        "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
+                      },
+                      "server_metadata": {
+                        "type": "object",
+                        "example": {
+                          "featureFlag": true,
+                          "source": "marketing-campaign"
+                        },
+                        "description": "Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the product here."
+                      }
+                    },
+                    "required": [
+                      "display_name",
+                      "customer_type"
+                    ],
+                    "description": "Inline product definition. Either this or product_id should be given."
+                  },
+                  "return_url": {
+                    "type": "string",
+                    "example": "https://myapp.com/purchase-success",
+                    "description": "URL to redirect to after purchase completion. Must be configured as a trusted domain in the project configuration."
+                  }
+                },
+                "required": [
+                  "customer_type",
+                  "customer_id"
+                ],
+                "example": {
+                  "customer_type": "user",
+                  "customer_id": "user_1234567890abcdef",
+                  "product_id": "prod_premium_monthly",
+                  "return_url": "https://myapp.com/purchase-success"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Payments"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/payments/purchases/create-purchase-url",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "The secure checkout URL for completing the purchase"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/purchases/purchase-session": {
+      "post": {
+        "summary": "Create Purchase Session",
+        "description": "Creates a purchase session for completing a purchase.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "full_code": {
+                    "type": "string",
+                    "example": "proj_abc123_def456ghi789",
+                    "description": "The verification code, given as a query parameter in the purchase URL"
+                  },
+                  "price_id": {
+                    "type": "string",
+                    "example": "price_1234567890abcdef",
+                    "description": "The Stack auth price ID to purchase"
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "example": 1,
+                    "description": "The quantity to purchase",
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "full_code",
+                  "price_id"
+                ],
+                "example": {
+                  "full_code": "proj_abc123_def456ghi789",
+                  "price_id": "price_1234567890abcdef",
+                  "quantity": 1
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Payments"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/payments/purchases/purchase-session",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "client_secret": {
+                      "type": "string",
+                      "example": "1234567890abcdef_secret_xyz123",
+                      "description": "The Stripe client secret for completing the payment"
+                    }
+                  },
+                  "required": [
+                    "client_secret"
                   ]
                 }
               }
@@ -4283,257 +4570,49 @@
         }
       }
     },
-    "/payments/purchases/purchase-session": {
-      "post": {
-        "summary": "Create Purchase Session",
-        "description": "Creates a purchase session for completing a purchase.",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "full_code": {
-                    "type": "string",
-                    "example": "proj_abc123_def456ghi789",
-                    "description": "The verification code, given as a query parameter in the purchase URL"
-                  },
-                  "price_id": {
-                    "type": "string",
-                    "example": "price_1234567890abcdef",
-                    "description": "The Stack auth price ID to purchase"
-                  },
-                  "quantity": {
-                    "type": "number",
-                    "example": 1,
-                    "description": "The quantity to purchase",
-                    "default": 1
-                  }
-                },
-                "required": [
-                  "full_code",
-                  "price_id"
-                ],
-                "example": {
-                  "full_code": "proj_abc123_def456ghi789",
-                  "price_id": "price_1234567890abcdef",
-                  "quantity": 1
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Payments"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/purchases/purchase-session",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "client_secret": {
-                      "type": "string",
-                      "example": "1234567890abcdef_secret_xyz123",
-                      "description": "The Stripe client secret for completing the payment"
-                    }
-                  },
-                  "required": [
-                    "client_secret"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/payments/purchases/create-purchase-url": {
-      "post": {
-        "summary": "Create Purchase URL",
-        "description": "Creates a secure checkout URL for purchasing a product.",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "customer_type": {
-                    "type": "string",
-                    "example": "user",
-                    "description": "The type of customer making the purchase"
-                  },
-                  "customer_id": {
-                    "type": "string",
-                    "example": "user_1234567890abcdef",
-                    "description": "The ID of the customer (user ID, team ID, or custom customer ID)"
-                  },
-                  "product_id": {
-                    "type": "string",
-                    "example": "prod_premium_monthly",
-                    "description": "The ID of the product to purchase. Either this or product_inline should be given."
-                  },
-                  "product_inline": {
-                    "type": "object",
-                    "properties": {
-                      "display_name": {
-                        "type": "string"
-                      },
-                      "customer_type": {
-                        "type": "string"
-                      },
-                      "free_trial": {
-                        "type": "array",
-                        "items": {
-                          "type": "number"
-                        }
-                      },
-                      "server_only": {
-                        "type": "boolean",
-                        "default": true
-                      },
-                      "stackable": {
-                        "type": "boolean",
-                        "default": false
-                      },
-                      "prices": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                      },
-                      "included_items": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                      },
-                      "client_metadata": {
-                        "type": "object",
-                        "example": {
-                          "featureFlag": true,
-                          "source": "marketing-campaign"
-                        },
-                        "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
-                      },
-                      "client_read_only_metadata": {
-                        "type": "object",
-                        "example": {
-                          "featureFlag": true,
-                          "source": "marketing-campaign"
-                        },
-                        "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
-                      },
-                      "server_metadata": {
-                        "type": "object",
-                        "example": {
-                          "featureFlag": true,
-                          "source": "marketing-campaign"
-                        },
-                        "description": "Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the product here."
-                      }
-                    },
-                    "required": [
-                      "display_name",
-                      "customer_type"
-                    ],
-                    "description": "Inline product definition. Either this or product_id should be given."
-                  },
-                  "return_url": {
-                    "type": "string",
-                    "example": "https://myapp.com/purchase-success",
-                    "description": "URL to redirect to after purchase completion. Must be configured as a trusted domain in the project configuration."
-                  }
-                },
-                "required": [
-                  "customer_type",
-                  "customer_id"
-                ],
-                "example": {
-                  "customer_type": "user",
-                  "customer_id": "user_1234567890abcdef",
-                  "product_id": "prod_premium_monthly",
-                  "return_url": "https://myapp.com/purchase-success"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Payments"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/purchases/create-purchase-url",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "url": {
-                      "type": "string",
-                      "description": "The secure checkout URL for completing the purchase"
-                    }
-                  },
-                  "required": [
-                    "url"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/payments/items/{customer_type}/{customer_id}/{item_id}": {
+    "/project-permissions": {
       "get": {
-        "summary": "Get Item",
-        "description": "Retrieves information about a specific item (credits, quotas, etc.) for a customer.",
+        "summary": "List project permissions",
+        "description": "List global permissions of the current user. `user_id=me` must be set for client requests. `(user_id, permission_id)` together uniquely identify a permission.",
         "parameters": [
           {
-            "name": "customer_type",
-            "in": "path",
+            "name": "user_id",
+            "in": "query",
             "schema": {
               "type": "string",
-              "example": "user",
-              "description": "The type of customer"
+              "example": "me",
+              "description": "Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`"
             },
-            "description": "The type of customer",
-            "required": true
+            "description": "Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`",
+            "required": false
           },
           {
-            "name": "customer_id",
-            "in": "path",
+            "name": "permission_id",
+            "in": "query",
             "schema": {
               "type": "string",
-              "example": "user_1234567890abcdef",
-              "description": "The ID of the customer"
+              "example": "16399452-c4f3-4554-8e44-c2d67bb60360",
+              "description": "Filter with the permission ID. If set, only the permissions with this specific ID will be returned"
             },
-            "description": "The ID of the customer",
-            "required": true
+            "description": "Filter with the permission ID. If set, only the permissions with this specific ID will be returned",
+            "required": false
           },
           {
-            "name": "item_id",
-            "in": "path",
+            "name": "recursive",
+            "in": "query",
             "schema": {
               "type": "string",
-              "example": "credits",
-              "description": "The ID of the item to retrieve"
+              "example": "true",
+              "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed."
             },
-            "description": "The ID of the item to retrieve",
-            "required": true
+            "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed.",
+            "required": false
           }
         ],
         "tags": [
-          "Payments"
+          "Permissions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/items/{customer_type}/{customer_id}/{item_id}",
+        "x-full-url": "https://api.stack-auth.com/api/v1/project-permissions",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4542,26 +4621,42 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": {
-                      "type": "string",
-                      "example": "credits",
-                      "description": "The ID of the item"
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "read_secret_info",
+                            "description": "The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, `:`, and `_` characters, or one of the system permissions: `$update_team`, `$delete_team`, `$read_members`, `$remove_members`, `$invite_members`, `$manage_api_keys`"
+                          },
+                          "user_id": {
+                            "type": "string",
+                            "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
+                            "description": "The unique identifier of the user"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "user_id"
+                        ]
+                      }
                     },
-                    "display_name": {
-                      "type": "string",
-                      "example": "API Credits",
-                      "description": "The human-readable name of the item"
-                    },
-                    "quantity": {
-                      "type": "number",
-                      "example": 1000,
-                      "description": "The current quantity of the item (can be negative)"
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "next_cursor": {
+                          "type": "string",
+                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
+                          "description": "The cursor to fetch the next page of results. null if there is no next page."
+                        }
+                      },
+                      "required": []
                     }
                   },
                   "required": [
-                    "id",
-                    "display_name",
-                    "quantity"
+                    "items"
                   ]
                 }
               }
@@ -4657,101 +4752,6 @@
                           "id",
                           "user_id",
                           "team_id"
-                        ]
-                      }
-                    },
-                    "pagination": {
-                      "type": "object",
-                      "properties": {
-                        "next_cursor": {
-                          "type": "string",
-                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
-                          "description": "The cursor to fetch the next page of results. null if there is no next page."
-                        }
-                      },
-                      "required": []
-                    }
-                  },
-                  "required": [
-                    "items"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/project-permissions": {
-      "get": {
-        "summary": "List project permissions",
-        "description": "List global permissions of the current user. `user_id=me` must be set for client requests. `(user_id, permission_id)` together uniquely identify a permission.",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "me",
-              "description": "Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`"
-            },
-            "description": "Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`",
-            "required": false
-          },
-          {
-            "name": "permission_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "16399452-c4f3-4554-8e44-c2d67bb60360",
-              "description": "Filter with the permission ID. If set, only the permissions with this specific ID will be returned"
-            },
-            "description": "Filter with the permission ID. If set, only the permissions with this specific ID will be returned",
-            "required": false
-          },
-          {
-            "name": "recursive",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "true",
-              "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed."
-            },
-            "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed.",
-            "required": false
-          }
-        ],
-        "tags": [
-          "Permissions"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/project-permissions",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "example": "read_secret_info",
-                            "description": "The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, `:`, and `_` characters, or one of the system permissions: `$update_team`, `$delete_team`, `$read_members`, `$remove_members`, `$invite_members`, `$manage_api_keys`"
-                          },
-                          "user_id": {
-                            "type": "string",
-                            "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
-                            "description": "The unique identifier of the user"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "user_id"
                         ]
                       }
                     },
@@ -4961,6 +4961,46 @@
         }
       }
     },
+    "/auth/sessions/current/refresh": {
+      "post": {
+        "summary": "Refresh access token",
+        "description": "Get a new access token using a refresh token",
+        "parameters": [
+          {
+            "name": "x-stack-refresh-token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Sessions"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/auth/sessions/current/refresh",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "access_token"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/sessions/{id}": {
       "delete": {
         "summary": "Delete session",
@@ -5006,327 +5046,6 @@
                   },
                   "required": [
                     "success"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/sessions/current/refresh": {
-      "post": {
-        "summary": "Refresh access token",
-        "description": "Get a new access token using a refresh token",
-        "parameters": [
-          {
-            "name": "x-stack-refresh-token",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "tags": [
-          "Sessions"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/sessions/current/refresh",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "access_token": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "access_token"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/team-member-profiles": {
-      "get": {
-        "summary": "List team members profiles",
-        "description": "List team members profiles. You always need to specify a `team_id` that your are a member of on the client. You can always filter for your own profile by setting `me` as the `user_id` in the path parameters. If you want list all the profiles in a team, you need to have the `$read_members` permission in that team.",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "team_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          }
-        ],
-        "tags": [
-          "Teams"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-member-profiles",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "team_id": {
-                            "type": "string",
-                            "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
-                            "description": "The unique identifier of the team"
-                          },
-                          "user_id": {
-                            "type": "string",
-                            "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
-                            "description": "The unique identifier of the user"
-                          },
-                          "display_name": {
-                            "type": "string",
-                            "example": "John Doe",
-                            "description": "Human-readable team member display name. This is not a unique identifier. Note that this is separate from the display_name of the user."
-                          },
-                          "profile_image_url": {
-                            "type": "string",
-                            "example": "https://example.com/image.jpg",
-                            "description": "URL of the profile image for team member. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
-                          }
-                        },
-                        "required": [
-                          "team_id",
-                          "user_id"
-                        ]
-                      }
-                    },
-                    "pagination": {
-                      "type": "object",
-                      "properties": {
-                        "next_cursor": {
-                          "type": "string",
-                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
-                          "description": "The cursor to fetch the next page of results. null if there is no next page."
-                        }
-                      },
-                      "required": []
-                    }
-                  },
-                  "required": [
-                    "items"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/teams": {
-      "get": {
-        "summary": "List teams",
-        "description": "List all the teams that the current user is a member of. `user_id=me` must be passed in the query parameters.",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "me",
-              "description": "Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API"
-            },
-            "description": "Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API",
-            "required": false
-          }
-        ],
-        "tags": [
-          "Teams"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
-                            "description": "The unique identifier of the team"
-                          },
-                          "display_name": {
-                            "type": "string",
-                            "example": "My Team",
-                            "description": "Human-readable team display name. This is not a unique identifier."
-                          },
-                          "profile_image_url": {
-                            "type": "string",
-                            "example": "https://example.com/image.jpg",
-                            "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
-                          },
-                          "client_metadata": {
-                            "type": "object",
-                            "example": {
-                              "key": "value"
-                            },
-                            "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
-                          },
-                          "client_read_only_metadata": {
-                            "type": "object",
-                            "example": {
-                              "key": "value"
-                            },
-                            "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "display_name"
-                        ]
-                      }
-                    },
-                    "pagination": {
-                      "type": "object",
-                      "properties": {
-                        "next_cursor": {
-                          "type": "string",
-                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
-                          "description": "The cursor to fetch the next page of results. null if there is no next page."
-                        }
-                      },
-                      "required": []
-                    }
-                  },
-                  "required": [
-                    "items"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Create a team",
-        "description": "Create a new team and optionally add the current user as a member.",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "display_name": {
-                    "type": "string",
-                    "example": "My Team",
-                    "description": "Human-readable team display name. This is not a unique identifier."
-                  },
-                  "creator_user_id": {
-                    "type": "string",
-                    "example": "me",
-                    "description": "The ID of the creator of the team. If not specified, the user will not be added to the team. Can be either \"me\" or the ID of the user. Only used on the client side."
-                  },
-                  "profile_image_url": {
-                    "type": "string",
-                    "example": "https://example.com/image.jpg",
-                    "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
-                  },
-                  "client_metadata": {
-                    "type": "object",
-                    "example": {
-                      "key": "value"
-                    },
-                    "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
-                  }
-                },
-                "required": [
-                  "display_name"
-                ],
-                "example": {
-                  "display_name": "My Team",
-                  "creator_user_id": "me",
-                  "profile_image_url": "https://example.com/image.jpg",
-                  "client_metadata": {
-                    "key": "value"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Teams"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams",
-        "responses": {
-          "201": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
-                      "description": "The unique identifier of the team"
-                    },
-                    "display_name": {
-                      "type": "string",
-                      "example": "My Team",
-                      "description": "Human-readable team display name. This is not a unique identifier."
-                    },
-                    "profile_image_url": {
-                      "type": "string",
-                      "example": "https://example.com/image.jpg",
-                      "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
-                    },
-                    "client_metadata": {
-                      "type": "object",
-                      "example": {
-                        "key": "value"
-                      },
-                      "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
-                    },
-                    "client_read_only_metadata": {
-                      "type": "object",
-                      "example": {
-                        "key": "value"
-                      },
-                      "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "display_name"
                   ]
                 }
               }
@@ -5427,125 +5146,11 @@
         }
       }
     },
-    "/teams/{team_id}": {
-      "get": {
-        "summary": "Get a team",
-        "description": "Get a team that the current user is a member of.",
-        "parameters": [
-          {
-            "name": "team_id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "tags": [
-          "Teams"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
-                      "description": "The unique identifier of the team"
-                    },
-                    "display_name": {
-                      "type": "string",
-                      "example": "My Team",
-                      "description": "Human-readable team display name. This is not a unique identifier."
-                    },
-                    "profile_image_url": {
-                      "type": "string",
-                      "example": "https://example.com/image.jpg",
-                      "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
-                    },
-                    "client_metadata": {
-                      "type": "object",
-                      "example": {
-                        "key": "value"
-                      },
-                      "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
-                    },
-                    "client_read_only_metadata": {
-                      "type": "object",
-                      "example": {
-                        "key": "value"
-                      },
-                      "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "display_name"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete a team",
-        "description": "Delete a team. Only allowed if the current user is a member of the team and has the `$delete_team` permission.",
-        "parameters": [
-          {
-            "name": "team_id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "tags": [
-          "Teams"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "description": "Always equal to true.",
-                      "example": true
-                    }
-                  },
-                  "required": [
-                    "success"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "summary": "Update a team",
-        "description": "Update the team information. Only allowed if the current user is a member of the team and has the `$update_team` permission.",
-        "parameters": [
-          {
-            "name": "team_id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
+    "/team-invitations/accept": {
+      "post": {
+        "summary": "Accept the team invitation",
+        "description": "Accept invitation and add user to the team",
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -5553,30 +5158,17 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "display_name": {
+                  "code": {
                     "type": "string",
-                    "example": "My Team",
-                    "description": "Human-readable team display name. This is not a unique identifier."
-                  },
-                  "profile_image_url": {
-                    "type": "string",
-                    "example": "https://example.com/image.jpg",
-                    "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
-                  },
-                  "client_metadata": {
-                    "type": "object",
-                    "example": {
-                      "key": "value"
-                    },
-                    "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
+                    "description": "A 45 character code"
                   }
                 },
+                "required": [
+                  "code"
+                ],
                 "example": {
-                  "display_name": "My Team",
-                  "profile_image_url": "https://example.com/image.jpg",
-                  "client_metadata": {
-                    "key": "value"
-                  }
+                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
                 }
               }
             }
@@ -5585,7 +5177,54 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team-invitations/accept/check-code": {
+      "post": {
+        "summary": "Check if a team invitation code is valid",
+        "description": "Check if a team invitation code is valid without using it",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
+                    "description": "A 45 character code"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "example": {
+                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Teams"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept/check-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5594,39 +5233,70 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": {
-                      "type": "string",
-                      "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
-                      "description": "The unique identifier of the team"
-                    },
-                    "display_name": {
-                      "type": "string",
-                      "example": "My Team",
-                      "description": "Human-readable team display name. This is not a unique identifier."
-                    },
-                    "profile_image_url": {
-                      "type": "string",
-                      "example": "https://example.com/image.jpg",
-                      "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
-                    },
-                    "client_metadata": {
-                      "type": "object",
-                      "example": {
-                        "key": "value"
-                      },
-                      "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
-                    },
-                    "client_read_only_metadata": {
-                      "type": "object",
-                      "example": {
-                        "key": "value"
-                      },
-                      "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
+                    "is_code_valid": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
-                    "id",
-                    "display_name"
+                    "is_code_valid"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team-invitations/accept/details": {
+      "post": {
+        "summary": "Get team invitation details",
+        "description": "Get additional information about a team invitation code",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
+                    "description": "A 45 character code"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "example": {
+                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Teams"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept/details",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "team_id": {
+                      "type": "string"
+                    },
+                    "team_display_name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "team_id",
+                    "team_display_name"
                   ]
                 }
               }
@@ -5759,38 +5429,35 @@
         }
       }
     },
-    "/team-invitations/accept": {
+    "/team-invitations/{id}/accept": {
       "post": {
-        "summary": "Accept the team invitation",
-        "description": "Accept invitation and add user to the team",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
-                    "description": "A 45 character code"
-                  }
-                },
-                "required": [
-                  "code"
-                ],
-                "example": {
-                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
-                }
-              }
-            }
+        "summary": "Accept a team invitation by ID",
+        "description": "Accepts a team invitation for the specified user. The user must have a verified email matching the invitation's recipient email. This marks the invitation as used and adds the user to the team.",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
+              "description": "The ID of the user, or the special value `me` for the currently authenticated user"
+            },
+            "description": "The ID of the user, or the special value `me` for the currently authenticated user",
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
           }
-        },
+        ],
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept",
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/{id}/accept",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5799,6 +5466,94 @@
                 "schema": {
                   "type": "object",
                   "properties": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/team-member-profiles": {
+      "get": {
+        "summary": "List team members profiles",
+        "description": "List team members profiles. You always need to specify a `team_id` that your are a member of on the client. You can always filter for your own profile by setting `me` as the `user_id` in the path parameters. If you want list all the profiles in a team, you need to have the `$read_members` permission in that team.",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "tags": [
+          "Teams"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/team-member-profiles",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "team_id": {
+                            "type": "string",
+                            "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
+                            "description": "The unique identifier of the team"
+                          },
+                          "user_id": {
+                            "type": "string",
+                            "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
+                            "description": "The unique identifier of the user"
+                          },
+                          "display_name": {
+                            "type": "string",
+                            "example": "John Doe",
+                            "description": "Human-readable team member display name. This is not a unique identifier. Note that this is separate from the display_name of the user."
+                          },
+                          "profile_image_url": {
+                            "type": "string",
+                            "example": "https://example.com/image.jpg",
+                            "description": "URL of the profile image for team member. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                          }
+                        },
+                        "required": [
+                          "team_id",
+                          "user_id"
+                        ]
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "next_cursor": {
+                          "type": "string",
+                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
+                          "description": "The cursor to fetch the next page of results. null if there is no next page."
+                        }
+                      },
+                      "required": []
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
                 }
               }
             }
@@ -6021,24 +5776,206 @@
         }
       }
     },
-    "/team-invitations/{id}/accept": {
-      "post": {
-        "summary": "Accept a team invitation by ID",
-        "description": "Accepts a team invitation for the specified user. The user must have a verified email matching the invitation's recipient email. This marks the invitation as used and adds the user to the team.",
+    "/teams": {
+      "get": {
+        "summary": "List teams",
+        "description": "List all the teams that the current user is a member of. `user_id=me` must be passed in the query parameters.",
         "parameters": [
           {
             "name": "user_id",
             "in": "query",
             "schema": {
               "type": "string",
-              "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
-              "description": "The ID of the user, or the special value `me` for the currently authenticated user"
+              "example": "me",
+              "description": "Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API"
             },
-            "description": "The ID of the user, or the special value `me` for the currently authenticated user",
-            "required": true
-          },
+            "description": "Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API",
+            "required": false
+          }
+        ],
+        "tags": [
+          "Teams"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/teams",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
+                            "description": "The unique identifier of the team"
+                          },
+                          "display_name": {
+                            "type": "string",
+                            "example": "My Team",
+                            "description": "Human-readable team display name. This is not a unique identifier."
+                          },
+                          "profile_image_url": {
+                            "type": "string",
+                            "example": "https://example.com/image.jpg",
+                            "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                          },
+                          "client_metadata": {
+                            "type": "object",
+                            "example": {
+                              "key": "value"
+                            },
+                            "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                          },
+                          "client_read_only_metadata": {
+                            "type": "object",
+                            "example": {
+                              "key": "value"
+                            },
+                            "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "display_name"
+                        ]
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "next_cursor": {
+                          "type": "string",
+                          "example": "b3d396b8-c574-4c80-97b3-50031675ceb2",
+                          "description": "The cursor to fetch the next page of results. null if there is no next page."
+                        }
+                      },
+                      "required": []
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a team",
+        "description": "Create a new team and optionally add the current user as a member.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "display_name": {
+                    "type": "string",
+                    "example": "My Team",
+                    "description": "Human-readable team display name. This is not a unique identifier."
+                  },
+                  "creator_user_id": {
+                    "type": "string",
+                    "example": "me",
+                    "description": "The ID of the creator of the team. If not specified, the user will not be added to the team. Can be either \"me\" or the ID of the user. Only used on the client side."
+                  },
+                  "profile_image_url": {
+                    "type": "string",
+                    "example": "https://example.com/image.jpg",
+                    "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                  },
+                  "client_metadata": {
+                    "type": "object",
+                    "example": {
+                      "key": "value"
+                    },
+                    "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                  }
+                },
+                "required": [
+                  "display_name"
+                ],
+                "example": {
+                  "display_name": "My Team",
+                  "creator_user_id": "me",
+                  "profile_image_url": "https://example.com/image.jpg",
+                  "client_metadata": {
+                    "key": "value"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Teams"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/teams",
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
+                      "description": "The unique identifier of the team"
+                    },
+                    "display_name": {
+                      "type": "string",
+                      "example": "My Team",
+                      "description": "Human-readable team display name. This is not a unique identifier."
+                    },
+                    "profile_image_url": {
+                      "type": "string",
+                      "example": "https://example.com/image.jpg",
+                      "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                    },
+                    "client_metadata": {
+                      "type": "object",
+                      "example": {
+                        "key": "value"
+                      },
+                      "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                    },
+                    "client_read_only_metadata": {
+                      "type": "object",
+                      "example": {
+                        "key": "value"
+                      },
+                      "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "display_name"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/teams/{team_id}": {
+      "get": {
+        "summary": "Get a team",
+        "description": "Get a team that the current user is a member of.",
+        "parameters": [
           {
-            "name": "id",
+            "name": "team_id",
             "in": "path",
             "schema": {
               "type": "string"
@@ -6049,54 +5986,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/{id}/accept",
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {}
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/team-invitations/accept/details": {
-      "post": {
-        "summary": "Get team invitation details",
-        "description": "Get additional information about a team invitation code",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
-                    "description": "A 45 character code"
-                  }
-                },
-                "required": [
-                  "code"
-                ],
-                "example": {
-                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Teams"
-        ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept/details",
+        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6105,56 +5995,63 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "team_id": {
-                      "type": "string"
+                    "id": {
+                      "type": "string",
+                      "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
+                      "description": "The unique identifier of the team"
                     },
-                    "team_display_name": {
-                      "type": "string"
+                    "display_name": {
+                      "type": "string",
+                      "example": "My Team",
+                      "description": "Human-readable team display name. This is not a unique identifier."
+                    },
+                    "profile_image_url": {
+                      "type": "string",
+                      "example": "https://example.com/image.jpg",
+                      "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                    },
+                    "client_metadata": {
+                      "type": "object",
+                      "example": {
+                        "key": "value"
+                      },
+                      "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                    },
+                    "client_read_only_metadata": {
+                      "type": "object",
+                      "example": {
+                        "key": "value"
+                      },
+                      "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
                     }
                   },
                   "required": [
-                    "team_id",
-                    "team_display_name"
+                    "id",
+                    "display_name"
                   ]
                 }
               }
             }
           }
         }
-      }
-    },
-    "/team-invitations/accept/check-code": {
-      "post": {
-        "summary": "Check if a team invitation code is valid",
-        "description": "Check if a team invitation code is valid without using it",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "example": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2",
-                    "description": "A 45 character code"
-                  }
-                },
-                "required": [
-                  "code"
-                ],
-                "example": {
-                  "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
-                }
-              }
-            }
+      },
+      "delete": {
+        "summary": "Delete a team",
+        "description": "Delete a team. Only allowed if the current user is a member of the team and has the `$delete_team` permission.",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
           }
-        },
+        ],
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept/check-code",
+        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6163,12 +6060,115 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "is_code_valid": {
-                      "type": "boolean"
+                    "success": {
+                      "type": "boolean",
+                      "description": "Always equal to true.",
+                      "example": true
                     }
                   },
                   "required": [
-                    "is_code_valid"
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a team",
+        "description": "Update the team information. Only allowed if the current user is a member of the team and has the `$update_team` permission.",
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "display_name": {
+                    "type": "string",
+                    "example": "My Team",
+                    "description": "Human-readable team display name. This is not a unique identifier."
+                  },
+                  "profile_image_url": {
+                    "type": "string",
+                    "example": "https://example.com/image.jpg",
+                    "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                  },
+                  "client_metadata": {
+                    "type": "object",
+                    "example": {
+                      "key": "value"
+                    },
+                    "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                  }
+                },
+                "example": {
+                  "display_name": "My Team",
+                  "profile_image_url": "https://example.com/image.jpg",
+                  "client_metadata": {
+                    "key": "value"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Teams"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "ad962777-8244-496a-b6a2-e0c6a449c79e",
+                      "description": "The unique identifier of the team"
+                    },
+                    "display_name": {
+                      "type": "string",
+                      "example": "My Team",
+                      "description": "Human-readable team display name. This is not a unique identifier."
+                    },
+                    "profile_image_url": {
+                      "type": "string",
+                      "example": "https://example.com/image.jpg",
+                      "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                    },
+                    "client_metadata": {
+                      "type": "object",
+                      "example": {
+                        "key": "value"
+                      },
+                      "description": "Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client."
+                    },
+                    "client_read_only_metadata": {
+                      "type": "object",
+                      "example": {
+                        "key": "value"
+                      },
+                      "description": "Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status."
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "display_name"
                   ]
                 }
               }
