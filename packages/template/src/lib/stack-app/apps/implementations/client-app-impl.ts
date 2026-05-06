@@ -61,6 +61,7 @@ import { TokenObject, clientVersion, createCache, createCacheBySession, createEm
 import { EventTracker } from "./event-tracker";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
+import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
 // IF_PLATFORM react-like
@@ -1080,10 +1081,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _useSession(overrideTokenStoreInit?: TokenStoreInit): InternalSession {
     const tokenStore = this._useTokenStore(overrideTokenStoreInit);
     const subscribe = useCallback((cb: () => void) => {
-      const { unsubscribe } = tokenStore.onChange(() => {
-        cb();
+      return subscribeSessionRefresh({
+        tokenStore,
+        getSession: () => this._getSessionFromTokenStore(tokenStore),
+        onTokenStoreChange: cb,
       });
-      return unsubscribe;
     }, [tokenStore]);
     const getSnapshot = useCallback(() => this._getSessionFromTokenStore(tokenStore), [tokenStore]);
     return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -1471,25 +1473,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
         // IF_PLATFORM react-like
         useTokens() {
-          const [_, setCounter] = React.useState(0);
-          React.useEffect(() => {
-            const { unsubscribe: unsubscribeRefresh } = session.startRefreshingAccessToken(30_000, 60_000);
-            const { unsubscribe: unsubscribeInvalidate } = session.onInvalidate(() => setCounter(c => c + 1));
-            const { unsubscribe: unsubscribeAccessTokenChange } = session.onAccessTokenChange(() => setCounter(c => c + 1));
+          const subscribe = useCallback((cb: () => void) => {
+            const { unsubscribe: unsubscribeInvalidate } = session.onInvalidate(cb);
+            const { unsubscribe: unsubscribeAccessTokenChange } = session.onAccessTokenChange(cb);
             return () => {
-              unsubscribeRefresh();
               unsubscribeInvalidate();
               unsubscribeAccessTokenChange();
             };
-          }, []);
+          }, [session]);
+          const getSnapshot = useCallback(() => {
+            return session.isKnownToBeInvalid()
+              ? null
+              : session.getAccessTokenIfNotExpiredYet(20_000, 75_000)?.token ?? null;
+          }, [session]);
 
-          let accessToken = session.isKnownToBeInvalid() ? null : session.getAccessTokenIfNotExpiredYet(20_000, 75_000);
-          if (accessToken === null) {
+          let accessToken = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+          if (accessToken === null && !session.isKnownToBeInvalid()) {
             // note: tokens is never actually assigned here in practice because getOrFetchLikelyValidTokens is always a fresh promise so the `use` hook always throws, but this is more idiomatic and makes the type checker happy
-            accessToken = use(session.getOrFetchLikelyValidTokens(20_000, 75_000))?.accessToken ?? null;
+            accessToken = use(session.getOrFetchLikelyValidTokens(20_000, 75_000))?.accessToken.token ?? null;
           }
           return {
-            accessToken: accessToken?.token ?? null,
+            accessToken,
             refreshToken: session.getRefreshToken()?.token ?? null,
           };
         },
