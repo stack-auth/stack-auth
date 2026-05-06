@@ -1213,7 +1213,7 @@ model ConversationMessage {
 
   tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
-  channel      ConversationEntryPoint? @relation(fields: [tenancyId, channelId], references: [tenancyId, id])
+  channel      ConversationEntryPoint? @relation(fields: [tenancyId, channelId], references: [tenancyId, id], onDelete: NoAction)
 
   @@id([tenancyId, id])
   @@index([tenancyId, conversationId, createdAt], name: "ConversationMessage_conversation_createdAt_idx")
