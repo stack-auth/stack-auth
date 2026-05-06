@@ -55,7 +55,7 @@ export function DraftProgressBar({ steps, currentStep, onStepClick, disableNavig
               </button>
 
               {!isLast && (
-                <div className="w-20 h-1 bg-muted-foreground/15 overflow-hidden">
+                <div className="w-8 sm:w-20 h-1 bg-muted-foreground/15 overflow-hidden">
                   <div
                     className={cn(
                       "h-full bg-primary transition-all duration-300",
@@ -86,7 +86,7 @@ export function DraftProgressBar({ steps, currentStep, onStepClick, disableNavig
               >
                 {step.label}
               </span>
-              {!isLast && <div className="w-20" />}
+              {!isLast && <div className="w-8 sm:w-20" />}
             </div>
           );
         })}

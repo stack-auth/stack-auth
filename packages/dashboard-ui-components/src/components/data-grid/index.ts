@@ -1,6 +1,8 @@
-export { DataGrid } from "./data-grid";
+export { DataGrid, isDataGridInteractiveRowClickTarget } from "./data-grid";
 
 export { DataGridToolbar } from "./data-grid-toolbar";
+
+export { getEffectiveMinWidth } from "./data-grid-sizing";
 
 export { useDataSource } from "./use-data-source";
 export type { UseDataSourceResult } from "./use-data-source";

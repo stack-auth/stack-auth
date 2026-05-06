@@ -8,6 +8,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
+import { isPaidPlan } from "@stackframe/stack-shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -67,6 +68,7 @@ export default function PageClient() {
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
+  const [projectDau, setProjectDau] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
   const router = useRouter();
 
   useEffect(() => {
@@ -113,6 +115,43 @@ export default function PageClient() {
       }
     });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [appInternals, rawProjects.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    runAsynchronously(async () => {
+      try {
+        const response = await appInternals.sendRequest("/internal/projects-dau", {}, "client");
+        if (!response.ok) {
+          console.warn("[projects-dau] request failed", response.status, await response.text());
+          return;
+        }
+        const body = await response.json();
+        if (body == null || typeof body !== "object" || !("projects" in body) || body.projects == null || typeof body.projects !== "object") {
+          console.warn("[projects-dau] unexpected body", body);
+          return;
+        }
+        const map = new Map<string, { date: string, activity: number }[]>();
+        for (const [projectId, series] of Object.entries(body.projects as Record<string, unknown>)) {
+          if (!Array.isArray(series)) continue;
+          const points: { date: string, activity: number }[] = [];
+          for (const point of series) {
+            if (point != null && typeof point === "object" && "date" in point && "activity" in point && typeof (point as any).date === "string" && typeof (point as any).activity === "number") {
+              points.push({ date: (point as any).date, activity: (point as any).activity });
+            }
+          }
+          map.set(projectId, points);
+        }
+        if (!cancelled) {
+          setProjectDau(map);
+        }
+      } catch (e) {
+        console.warn("[projects-dau] fetch error", e);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -315,7 +354,7 @@ export default function PageClient() {
                 <TeamAddUserDialog team={team} />
               )}
             </div>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 bg">
               {projects.map((project) => {
                 const onboardingStatus = projectStatuses.get(project.id);
                 if (!loadingProjectStatuses && onboardingStatus == null) {
@@ -331,6 +370,7 @@ export default function PageClient() {
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
+                    dau={projectDau.get(project.id)}
                   />
                 );
               })}
@@ -393,18 +433,30 @@ function TeamAddUserDialogContent(props: {
   onClose: () => void,
 }) {
   const [invitations, setInvitations] = useState<Awaited<ReturnType<typeof listInvitations>>>();
+  const [invitationsError, setInvitationsError] = useState<string | null>(null);
 
   const fetchInvitations = useCallback(async () => {
-    const invitations = await listInvitations(props.team.id);
-    setInvitations(invitations);
+    setInvitationsError(null);
+    try {
+      const invitations = await listInvitations(props.team.id);
+      setInvitations(invitations);
+    } catch (error) {
+      setInvitationsError("Failed to load invitations. Please try again.");
+    }
   }, [props.team.id]);
 
   useEffect(() => {
     let canceled = false;
     runAsynchronously(async () => {
-      const invitations = await listInvitations(props.team.id);
-      if (!canceled) {
-        setInvitations(invitations);
+      try {
+        const invitations = await listInvitations(props.team.id);
+        if (!canceled) {
+          setInvitations(invitations);
+        }
+      } catch (error) {
+        if (!canceled) {
+          setInvitationsError("Failed to load invitations. Please try again.");
+        }
       }
     });
     return () => {
@@ -414,16 +466,19 @@ function TeamAddUserDialogContent(props: {
 
   const users = props.team.useUsers();
   const admins = props.team.useItem("dashboard_admins");
+  const products = props.team.useProducts();
+  const hasPaidPlan = isPaidPlan(products);
 
   const [email, setEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
+  const invitationsLoaded = invitations != null;
   const activeSeats = users.length + (invitations?.length ?? 0);
   const seatLimit = admins.quantity;
-  const atCapacity = activeSeats >= seatLimit;
+  const atCapacity = invitationsLoaded && activeSeats >= seatLimit;
 
   const handleInvite = async () => {
-    if (atCapacity) {
+    if (!invitationsLoaded || atCapacity) {
       return;
     }
 
@@ -444,17 +499,20 @@ function TeamAddUserDialogContent(props: {
     }
   };
 
+  const handleAddSeat = async () => {
+    const checkoutUrl = await props.team.createCheckoutUrl({
+      productId: "extra-seats",
+      returnUrl: window.location.href,
+    });
+    window.location.assign(checkoutUrl);
+  };
+
   const handleUpgrade = async () => {
-    try {
-      const checkoutUrl = await props.team.createCheckoutUrl({
-        productId: "team",
-        returnUrl: window.location.href,
-      });
-      window.location.assign(checkoutUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      toast({ variant: "destructive", title: "Failed to start upgrade", description: message });
-    };
+    const checkoutUrl = await props.team.createCheckoutUrl({
+      productId: "team",
+      returnUrl: window.location.href,
+    });
+    window.location.assign(checkoutUrl);
   };
 
   return (
@@ -462,13 +520,19 @@ function TeamAddUserDialogContent(props: {
       <div className="space-y-4 py-2">
         <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
           <Typography type="label">Dashboard admin seats</Typography>
-          <Typography variant="secondary">
-            {activeSeats}/{seatLimit}
-          </Typography>
+          {invitationsLoaded ? (
+            <Typography variant="secondary">
+              {activeSeats}/{seatLimit}
+            </Typography>
+          ) : (
+            <Skeleton className="h-4 w-12" />
+          )}
         </div>
         {atCapacity && (
           <Typography variant="secondary" className="text-destructive">
-            You are at capacity. Upgrade your plan to add more admins.
+            {hasPaidPlan
+              ? "You are at capacity. Add an extra seat for $29/month."
+              : "You are at capacity. Upgrade your plan to add more admins."}
           </Typography>
         )}
         <div className="space-y-2">
@@ -482,7 +546,7 @@ function TeamAddUserDialogContent(props: {
             }}
             placeholder="Email"
             type="email"
-            disabled={atCapacity}
+            disabled={(!invitationsLoaded && !invitationsError) || atCapacity}
             autoFocus
           />
           {formError && (
@@ -494,7 +558,20 @@ function TeamAddUserDialogContent(props: {
 
         <div className="space-y-2">
           <Typography type="label">Pending invitations</Typography>
-          {invitations?.length === 0 ? (
+          {invitationsError ? (
+            <div className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2">
+              <Typography variant="secondary" className="text-destructive text-sm">
+                {invitationsError}
+              </Typography>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchInvitations}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : invitations?.length === 0 ? (
             <Typography variant="secondary">None</Typography>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -531,11 +608,17 @@ function TeamAddUserDialogContent(props: {
           Close
         </Button>
         {atCapacity ? (
-          <Button onClick={handleUpgrade} variant="default">
-            Upgrade plan
-          </Button>
+          hasPaidPlan ? (
+            <Button onClick={handleAddSeat} variant="default">
+              Add seat ($29/mo)
+            </Button>
+          ) : (
+            <Button onClick={handleUpgrade} variant="default">
+              Upgrade plan
+            </Button>
+          )
         ) : (
-          <Button onClick={handleInvite}>
+          <Button onClick={handleInvite} disabled={!invitationsLoaded && !invitationsError}>
             Invite
           </Button>
         )}

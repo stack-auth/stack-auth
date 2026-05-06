@@ -306,6 +306,23 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 export const STACK_DASHBOARD_BASE_URL = getEnvVariable("STACK_DASHBOARD_BASE_URL");
 export const STACK_BACKEND_BASE_URL = getEnvVariable("STACK_BACKEND_BASE_URL");
+
+/**
+ * The `baseUrl` to pass to SDK constructors (`StackClientApp`, `StackServerApp`,
+ * `StackAdminApp`) in JS-SDK e2e tests.
+ *
+ * Normally this is `STACK_BACKEND_BASE_URL` (single, explicit URL).
+ *
+ * In the e2e-fallback-tests workflow (`STACK_TEST_SDK_FALLBACK=true`) we leave
+ * this `undefined` so the SDK resolves the base URL from
+ * `NEXT_PUBLIC_STACK_API_URL` *and* appends its hardcoded fallback URL list,
+ * which is what the workflow exercises by running the backend only on the
+ * fallback port. Always thread this through to SDK constructors instead of
+ * hardcoding `STACK_BACKEND_BASE_URL`.
+ */
+export const SDK_BASE_URL: string | undefined = process.env.STACK_TEST_SDK_FALLBACK
+  ? undefined
+  : STACK_BACKEND_BASE_URL;
 export const STACK_INTERNAL_PROJECT_ID = getEnvVariable("STACK_INTERNAL_PROJECT_ID");
 export const STACK_INTERNAL_PROJECT_CLIENT_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_CLIENT_KEY");
 export const STACK_INTERNAL_PROJECT_SERVER_KEY = getEnvVariable("STACK_INTERNAL_PROJECT_SERVER_KEY");

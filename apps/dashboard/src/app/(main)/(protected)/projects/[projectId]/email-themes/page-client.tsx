@@ -193,7 +193,7 @@ export default function PageClient() {
                   onClick: handleSaveTheme
                 }}
               >
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {themes.map((theme) => (
                     <ThemeOption
                       key={theme.id}

@@ -104,6 +104,10 @@ export const GET = createSmartRouteHandler({
 
     const { turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(query, "oauth_authenticate", tenancy);
 
+    if (query.provider_scope && provider.isShared) {
+      throw new KnownErrors.OAuthExtraScopeNotAvailableWithSharedOAuthKeys();
+    }
+
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
     if (query.token) {
@@ -120,9 +124,6 @@ export const GET = createSmartRouteHandler({
         throw new StatusError(StatusError.Forbidden, "The access token is not valid for this branch");
       }
 
-      if (query.provider_scope && provider.isShared) {
-        throw new KnownErrors.OAuthExtraScopeNotAvailableWithSharedOAuthKeys();
-      }
       projectUserId = userId;
     }
 

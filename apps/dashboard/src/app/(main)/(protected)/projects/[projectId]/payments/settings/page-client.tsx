@@ -1,7 +1,9 @@
 "use client";
 
-import { SettingSwitch } from "@/components/settings";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
+import { cn } from "@/lib/utils";
+import { ProhibitIcon } from "@phosphor-icons/react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { PaymentMethods } from "./payment-methods";
@@ -14,6 +16,14 @@ export default function PageClient() {
   const paymentsConfig = project.useConfig().payments;
   const updateConfig = useUpdateConfig();
 
+  const handleBlockNewPurchasesToggle = async (checked: boolean) => {
+    await updateConfig({
+      adminApp,
+      configUpdate: { "payments.blockNewPurchases": checked },
+      pushable: true,
+    });
+  };
+
   return (
     <PageLayout
       title="Settings"
@@ -23,17 +33,41 @@ export default function PageClient() {
         <StripeConnectionCheck />
         <TestModeToggle />
         <PaymentMethods />
+        <Card>
+          <CardHeader>
+            <CardTitle>Block New Purchases</CardTitle>
+            <CardDescription>
+              Stops new checkouts while keeping existing subscriptions active.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                  paymentsConfig.blockNewPurchases
+                    ? "bg-red-500/15 dark:bg-red-400/15"
+                    : "bg-muted"
+                )}>
+                  <ProhibitIcon className={cn(
+                    "h-4 w-4",
+                    paymentsConfig.blockNewPurchases
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-muted-foreground"
+                  )} />
+                </div>
+                <Typography className="font-medium">
+                  Block new purchases
+                </Typography>
+              </div>
+              <Switch
+                checked={paymentsConfig.blockNewPurchases}
+                onCheckedChange={handleBlockNewPurchasesToggle}
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
-      <SettingSwitch
-        label="Block new purchases"
-        checked={paymentsConfig.blockNewPurchases}
-        onCheckedChange={async (checked) => void await updateConfig({
-          adminApp,
-          configUpdate: { "payments.blockNewPurchases": checked },
-          pushable: true,
-        })}
-        hint="Stops new checkouts while keeping existing subscriptions active."
-      />
     </PageLayout>
   );
 }

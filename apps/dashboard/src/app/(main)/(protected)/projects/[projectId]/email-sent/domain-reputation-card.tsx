@@ -247,10 +247,20 @@ export function DomainReputationCard() {
   const capacityLabel = isBoostActive ? (
     <span>
       {hourlyUsed} of{" "}
-      <span className="text-red-500 line-through">{Math.round(baseHourlyCapacity)}</span>
-      {" "}
-      <span className="text-blue-500 font-medium">{Math.round(hourlyCapacity)}</span>
-      /h max
+      <span
+        className="text-red-500 line-through"
+        title="Base hourly capacity (replaced by active boost)"
+      >
+        {Math.round(baseHourlyCapacity)}
+      </span>
+      {" \u2192 "}
+      <span
+        className="text-blue-500 font-medium"
+        title="Boosted hourly capacity"
+      >
+        {Math.round(hourlyCapacity)}
+      </span>
+      /h max <span className="text-blue-500 font-medium">(boosted)</span>
     </span>
   ) : (
     `${hourlyUsed} of ${Math.round(hourlyCapacity)}/h max`
@@ -260,7 +270,7 @@ export function DomainReputationCard() {
     <DesignCard
       gradient="default"
       glassmorphic
-      className="w-72"
+      className="w-full lg:w-72"
     >
       <div className="flex items-center gap-2 mb-3">
         <div className="p-1 rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.04]">

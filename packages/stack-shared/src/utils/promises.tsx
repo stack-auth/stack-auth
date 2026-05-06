@@ -1,4 +1,5 @@
 import { KnownError } from "..";
+import { getProcessEnv } from "./env";
 import { StackAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
 import { DependenciesMap } from "./maps";
 import { Result } from "./results";
@@ -318,10 +319,11 @@ export function runAsynchronouslyWithAlert(...args: Parameters<typeof runAsynchr
     {
       ...args[1],
       onError: error => {
-        if (KnownError.isKnownError(error) && typeof process !== "undefined" && (process.env.NODE_ENV as any)?.includes("production")) {
+        const nodeEnv = getProcessEnv("NODE_ENV");
+        if (KnownError.isKnownError(error) && nodeEnv?.includes("production")) {
           alert(error.message);
         } else {
-          alert(`An unhandled error occurred. Please ${process.env.NODE_ENV === "development" ? `check the browser console for the full error.` : "report this to the developer."}\n\n${error}`);
+          alert(`An unhandled error occurred. Please ${nodeEnv === "development" ? `check the browser console for the full error.` : "report this to the developer."}\n\n${error}`);
         }
         args[1]?.onError?.(error);
       },
