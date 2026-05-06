@@ -1,4 +1,5 @@
 import { CrudTypeOf, createCrud } from "../../crud";
+import { ALL_APPS } from "../../apps/apps-config";
 import * as schemaFields from "../../schema-fields";
 import { yupArray, yupObject, yupString } from "../../schema-fields";
 
@@ -29,6 +30,18 @@ const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_
 
 const enabledOAuthProviderSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
+});
+
+const onboardingConfigChoiceValues = ["create-new", "link-existing"] as const;
+const onboardingSignInMethodValues = ["credential", "magicLink", "passkey", "google", "github", "microsoft"] as const;
+const onboardingPaymentsCountryValues = ["US", "OTHER"] as const;
+
+const projectOnboardingStateSchema = yupObject({
+  selected_config_choice: yupString().oneOf(onboardingConfigChoiceValues).defined(),
+  selected_apps: yupArray(yupString().oneOf(Object.keys(ALL_APPS)).defined()).defined(),
+  selected_sign_in_methods: yupArray(yupString().oneOf(onboardingSignInMethodValues).defined()).defined(),
+  selected_email_theme_id: schemaFields.emailThemeSchema.nullable().defined(),
+  selected_payments_country: yupString().oneOf(onboardingPaymentsCountryValues).defined(),
 });
 
 export const emailConfigSchema = yupObject({
@@ -74,6 +87,7 @@ export const projectsCrudAdminReadSchema = yupObject({
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   owner_team_id: schemaFields.yupString().nullable().defined(),
   onboarding_status: schemaFields.projectOnboardingStatusSchema.defined(),
+  onboarding_state: projectOnboardingStateSchema.nullable().optional(),
   /** @deprecated */
   config: yupObject({
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
@@ -126,6 +140,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
   logo_full_dark_mode_url: schemaFields.projectLogoFullDarkModeUrlSchema.nullable().optional(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.optional(),
   onboarding_status: schemaFields.projectOnboardingStatusSchema.optional(),
+  onboarding_state: projectOnboardingStateSchema.nullable().optional(),
   /** @deprecated */
   config: yupObject({
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.optional(),

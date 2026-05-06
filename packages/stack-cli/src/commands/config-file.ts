@@ -7,12 +7,21 @@ import { CliError } from "../lib/errors.js";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
+const SHOW_ONBOARDING_STACK_CONFIG_VALUE = "show-onboarding";
+
 function isConfigOverride(value: unknown): value is EnvironmentConfigOverrideOverride {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function parseConfigOverride(value: unknown): EnvironmentConfigOverrideOverride | null {
+  if (value === SHOW_ONBOARDING_STACK_CONFIG_VALUE) {
+    return {};
+  }
+  return isConfigOverride(value) ? value : null;
 }
 
 type BranchConfigSourceApi =
@@ -167,10 +176,10 @@ export function registerConfigCommand(program: Command) {
       const jiti = createJiti(import.meta.url);
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
-      const config = configModule.config;
-      if (!isConfigOverride(config)) {
+      const config = parseConfigOverride(configModule.config);
+      if (config == null) {
         const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@stackframe/js";
-        throw new CliError(`Config file must export a plain \`config\` object. Example: import type { StackConfig } from "${examplePkg}"; export const config: StackConfig = { ... };`);
+        throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { StackConfig } from "${examplePkg}"; export const config: StackConfig = { ... };`);
       }
 
       const source = buildConfigPushSource(opts.configFile);
