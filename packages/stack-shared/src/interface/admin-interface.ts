@@ -5,7 +5,8 @@ import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
-import type { MetricsResponse, MetricsUserCounts } from "./admin-metrics";
+import { urlString } from "../utils/urls";
+import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -358,6 +359,17 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return (await response.json()) as MetricsResponse;
+  }
+
+  async getUserActivity(userId: string): Promise<UserActivityResponse> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/user-activity?user_id=${userId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return (await response.json()) as UserActivityResponse;
   }
 
   async getMetricsUserCounts(): Promise<MetricsUserCounts> {
@@ -802,12 +814,13 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set('cursor', params.cursor);
     if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
     if (params?.type) qs.set('type', params.type);
     if (params?.customerType) qs.set('customer_type', params.customerType);
+    if (params?.customerId) qs.set('customer_id', params.customerId);
     const response = await this.sendAdminRequest(
       `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
       { method: 'GET' },

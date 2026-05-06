@@ -1,13 +1,16 @@
 import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { getStackServerApp } from "@/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { ITEM_IDS, PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { randomUUID } from "crypto";
 
-const MAX_QUERY_TIMEOUT_MS = 120_000;
+const MAX_QUERY_TIMEOUT_MS = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
 const DEFAULT_QUERY_TIMEOUT_MS = 10_000;
 
 export const POST = createSmartRouteHandler({
@@ -36,6 +39,23 @@ export const POST = createSmartRouteHandler({
     if (body.include_all_branches) {
       throw new StackAssertionError("include_all_branches is not supported yet");
     }
+
+    let effectiveTimeoutMs = body.timeout_ms;
+    const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    if (billingTeamId != null) {
+      const app = getStackServerApp();
+      const timeoutItem = await app.getItem({ itemId: ITEM_IDS.analyticsTimeoutSeconds, teamId: billingTeamId });
+      // clickHouse treats max_execution_time=0 as
+      // "unlimited", so a customer with zero timeout entitlement (no active
+      // plan in the plans line, or a transient gap between paid-plan end
+      // and free regrant) would otherwise get unbounded query execution.
+      if (timeoutItem.quantity <= 0) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsTimeoutSeconds, billingTeamId, 1);
+      }
+      const maxAllowedMs = timeoutItem.quantity * 1000;
+      effectiveTimeoutMs = Math.min(body.timeout_ms, maxAllowedMs);
+    }
+
     const client = getClickhouseExternalClient();
     const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
     const resultSet = await Result.fromPromise(client.query({
@@ -45,7 +65,7 @@ export const POST = createSmartRouteHandler({
       clickhouse_settings: {
         SQL_project_id: auth.tenancy.project.id,
         SQL_branch_id: auth.tenancy.branchId,
-        max_execution_time: body.timeout_ms / 1000,
+        max_execution_time: effectiveTimeoutMs / 1000,
         readonly: "1",
         allow_ddl: 0,
         max_result_rows: MAX_RESULT_ROWS.toString(),

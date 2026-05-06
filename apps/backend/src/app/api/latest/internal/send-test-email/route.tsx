@@ -1,5 +1,9 @@
 import { isSecureEmailPort, lowLevelSendEmailDirectWithoutRetries } from "@/lib/emails-low-level";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { getStackServerApp } from "@/stack";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -37,6 +41,24 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ body, auth }) => {
+    // Debit the emails_per_month quota before hitting SMTP so this endpoint
+    // can't be used as an unbounded SMTP-send-through / socket-exhaustion
+    // vector (admin provides arbitrary recipient_email and email_config, so
+    // without a quota guard even a compromised/hostile project admin could
+    // spam an arbitrary recipient or pin our event loop with 10s SMTP waits).
+    // The debit is refunded on any failure below so admins iterating on an
+    // incorrect SMTP config don't burn through their monthly quota.
+    const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    const emailItem = billingTeamId == null
+      ? null
+      : await getStackServerApp().getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: billingTeamId });
+    if (emailItem != null && billingTeamId != null) {
+      const isDebited = await emailItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.emailsPerMonth, billingTeamId, 1);
+      }
+    }
+
     const resultOuter = await timeout(lowLevelSendEmailDirectWithoutRetries({
       tenancyId: auth.tenancy.id,
       emailConfig: {
@@ -76,6 +98,14 @@ export const POST = createSmartRouteHandler({
         }));
         errorMessage = "Unknown error while sending test email. Make sure the email server is running and accepting connections.";
       }
+    }
+
+    // Refund the quota if we never actually delivered to SMTP — admins
+    // iterating on a misconfigured mail server shouldn't burn through
+    // their monthly allowance. Spam prevention is preserved because a
+    // successful delivery still consumes 1 from the debit above.
+    if (result.status === 'error' && emailItem != null) {
+      await emailItem.increaseQuantity(1);
     }
 
     return {

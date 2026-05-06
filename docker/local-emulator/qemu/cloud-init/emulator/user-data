@@ -117,7 +117,7 @@ write_files:
         # Static vars from base config and runtime (e.g. API keys, feature flags)
         cat /mnt/stack-runtime/base.env
         cat /mnt/stack-runtime/runtime.env
-        printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$INTERNAL_PCK"
+        printf 'STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$INTERNAL_PCK"
         printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$INTERNAL_SSK"
         printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$INTERNAL_SAK"
         if [ -n "$EMULATOR_CRON_SECRET" ]; then
@@ -502,7 +502,7 @@ write_files:
           --network host \
           --env-file /etc/stack-build.env \
           --env-file /etc/stack-build-computed.env \
-          -e STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY="$SMOKE_PCK" \
+          -e STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY="$SMOKE_PCK" \
           -e STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY="$SMOKE_SSK" \
           -e STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY="$SMOKE_SAK" \
           -e STACK_SKIP_MIGRATIONS=true \
@@ -645,7 +645,7 @@ write_files:
       rm -f "$tmp"
 
       exec docker exec \
-        -e STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY \
+        -e STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY \
         -e STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY \
         -e STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY \
         -e CRON_SECRET \

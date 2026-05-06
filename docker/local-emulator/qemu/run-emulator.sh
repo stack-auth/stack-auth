@@ -692,7 +692,7 @@ qga_trigger_fast_rotate() {
   fresh_sak="$(openssl rand -hex 32)"
   fresh_cron="$(openssl rand -hex 32)"
   payload=$(
-    printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$fresh_pck"
+    printf 'STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$fresh_pck"
     printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$fresh_ssk"
     printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$fresh_sak"
     printf 'CRON_SECRET=%s\n' "$fresh_cron"
