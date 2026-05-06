@@ -123,7 +123,7 @@ jobs:
         with:
           run: pnpm run start:mcp --log-order=stream &
           wait-on: |
-            http://localhost:6742/health
+            http://localhost:6744/health
           tail: true
           wait-for: 30s
           log-output-if: true
