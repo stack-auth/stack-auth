@@ -1,7 +1,15 @@
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { Prisma } from "@/generated/prisma/client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+
+type CliAuthAttemptRow = {
+  id: string,
+  refreshToken: string | null,
+  expiresAt: Date,
+  usedAt: Date | null,
+};
 
 // Helper function to create response
 const createResponse = (status: 'waiting' | 'success' | 'expired' | 'used', refreshToken?: string) => ({
@@ -38,18 +46,24 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, body: { polling_code } }) {
     const prisma = await getPrismaClientForTenancy(tenancy);
+    const schema = await getPrismaSchemaForTenancy(tenancy);
 
-    // Find the CLI auth attempt
-    const cliAuth = await prisma.cliAuthAttempt.findFirst({
-      where: {
-        tenancyId: tenancy.id,
-        pollingCode: polling_code,
-      },
-    });
+    const cliAuthRows = await prisma.$queryRaw<CliAuthAttemptRow[]>(Prisma.sql`
+      SELECT
+        "id",
+        "refreshToken",
+        "expiresAt",
+        "usedAt"
+      FROM ${sqlQuoteIdent(schema)}."CliAuthAttempt"
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "pollingCode" = ${polling_code}
+      LIMIT 1
+    `);
 
-    if (!cliAuth) {
+    if (cliAuthRows.length === 0) {
       throw new KnownErrors.InvalidPollingCodeError();
     }
+    const cliAuth = cliAuthRows[0];
 
     if (cliAuth.expiresAt < new Date()) {
       return createResponse('expired');
@@ -64,17 +78,14 @@ export const POST = createSmartRouteHandler({
     }
 
     // Mark as used
-    await prisma.cliAuthAttempt.update({
-      where: {
-        tenancyId_id: {
-          tenancyId: tenancy.id,
-          id: cliAuth.id,
-        },
-      },
-      data: {
-        usedAt: new Date(),
-      },
-    });
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE ${sqlQuoteIdent(schema)}."CliAuthAttempt"
+      SET
+        "usedAt" = NOW(),
+        "updatedAt" = NOW()
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "id" = ${cliAuth.id}::UUID
+    `);
 
     return createResponse('success', cliAuth.refreshToken);
   },

@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     body: yupObject({
-      expires_in_millis: yupNumber().max(1000 * 60 * 60 * 24).default(1000 * 60 * 120), // Default: 2 hours, max: 24 hours
+      expires_in_millis: yupNumber().max(1000 * 60 * 15).default(1000 * 60 * 2), // Default: 2 minutes, max: 15 mins
       anon_refresh_token: yupString().optional(),
     }).default({}),
   }),
@@ -42,7 +42,6 @@ export const POST = createSmartRouteHandler({
     let anonRefreshToken: string | null = null;
 
     if (anon_refresh_token) {
-      // ProjectUserRefreshToken lives in the global DB (see tokens.tsx and oauth/model.tsx).
       const refreshTokenRows = await globalPrismaClient.$queryRaw<RefreshTokenRow[]>(Prisma.sql`
         SELECT "tenancyId", "projectUserId", "expiresAt"
         FROM "ProjectUserRefreshToken"
