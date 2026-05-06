@@ -362,15 +362,15 @@ export async function seed() {
   // internal project using the pck stored here, so it must land before the rest
   // of the seed even if something later fails.
   const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true';
-  const rawPck = process.env.STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY;
+  const rawPck = process.env.STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY;
   if (isLocalEmulator && !rawPck) {
     // Emulator images build before a per-VM pck is available. Runtime boots set
-    // STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY from the VM-generated
+    // STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY from the VM-generated
     // random value and re-run the seed, which upserts the internal key set then.
     console.log('Skipping internal API key set (no pck provided; emulator mode).');
   } else {
     const keySet = {
-      publishableClientKey: rawPck || throwErr('STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
+      publishableClientKey: rawPck || throwErr('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
       secretServerKey: isLocalEmulator
         ? (process.env.STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY ?? null)
         : (process.env.STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set')),

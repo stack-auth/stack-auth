@@ -37,7 +37,7 @@ if [ -n "${STACK_ROTATE_INPUT:-}" ] && [ -f "$STACK_ROTATE_INPUT" ]; then
   set +a
 fi
 
-for var in STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY \
+for var in STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY \
            STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY \
            STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY \
            CRON_SECRET; do
@@ -55,12 +55,12 @@ done
 mkdir -p "$(dirname "$OUTPUT")"
 umask 077
 {
-  printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY"
+  printf 'STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY"
   printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY"
   printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"
   printf 'CRON_SECRET=%s\n' "$CRON_SECRET"
   # Mirror these so process.env lookups in Node match env after restart.
-  printf 'NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=%s\n' "$STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY"
+  printf 'NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=%s\n' "$STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY"
   printf 'STACK_SECRET_SERVER_KEY=%s\n' "$STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY"
   printf 'STACK_SUPER_SECRET_ADMIN_KEY=%s\n' "$STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"
 } > "$OUTPUT"
@@ -71,13 +71,13 @@ log "wrote $OUTPUT"
 # container start (see /app-entrypoint.sh). Swap the placeholder hex for the
 # fresh value across the built tree. Only *.js files need patching; this
 # runs in ~1s on the standalone Next.js bundles.
-if [ "$STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY" != "$PLACEHOLDER_PCK" ]; then
+if [ "$STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY" != "$PLACEHOLDER_PCK" ]; then
   log "rewriting PCK placeholder in $WORK_DIR"
   # grep -rl narrows the find to only files that contain the placeholder, so
   # the follow-up sed doesn't walk the whole tree.
   mapfile -t files < <(grep -rl --include='*.js' "$PLACEHOLDER_PCK" "$WORK_DIR/apps" 2>/dev/null || true)
   if [ "${#files[@]}" -gt 0 ]; then
-    sed -i "s|${PLACEHOLDER_PCK}|${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}|g" "${files[@]}"
+    sed -i "s|${PLACEHOLDER_PCK}|${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}|g" "${files[@]}"
     log "patched ${#files[@]} file(s)"
   else
     log "no files contained the placeholder (already rotated?)"
@@ -91,7 +91,7 @@ if [ -n "${STACK_DATABASE_CONNECTION_STRING:-}" ]; then
   log "updating internal ApiKeySet"
   psql "$STACK_DATABASE_CONNECTION_STRING" -v ON_ERROR_STOP=1 <<SQL
 UPDATE "ApiKeySet" SET
-  "publishableClientKey" = '${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}',
+  "publishableClientKey" = '${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}',
   "secretServerKey"      = '${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY}',
   "superSecretAdminKey"  = '${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}',
   "updatedAt"            = NOW()
