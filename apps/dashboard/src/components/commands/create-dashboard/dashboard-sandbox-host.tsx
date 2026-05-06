@@ -22,9 +22,10 @@ const isDev = process.env.NODE_ENV === "development";
 
 function getEsmFallbackVersion(version: string): string {
   const parts = version.split(".");
-  const [major, minor, patchString] = parts;
-  const patch = Number(patchString);
-  return `${major}.${minor}.${patch - 1}`;
+  if (parts.length !== 3) return version;
+  const patch = Number(parts[2]);
+  if (!Number.isInteger(patch) || patch <= 0) return version;
+  return `${parts[0]}.${parts[1]}.${patch - 1}`;
 }
 
 function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, dashboardUrl: string): string {
