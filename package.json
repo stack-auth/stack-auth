@@ -77,7 +77,7 @@
     "generate-sdks": "pnpm exec tsx ./scripts/generate-sdks.ts",
     "generate-setup-prompt-docs": "pnpm exec tsx ./scripts/generate-setup-prompt-docs.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
-    "generate-openapi-docs:watch": "chokidar --silent -c 'pnpm run --filter=@stackframe/stack-docs generate-openapi-docs' './docs/openapi/{admin,client,server,webhooks}.json' --throttle 2000",
+    "generate-openapi-docs:watch": "pnpm run --filter=@stackframe/backend codegen-docs && chokidar --silent -c 'pnpm run --filter=@stackframe/backend codegen-docs' './apps/backend/src/app/api/latest/**/route.{js,jsx,ts,tsx}' './apps/backend/src/lib/openapi.ts' './packages/stack-shared/src/interface/webhooks.ts' --throttle 2000",
     "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './packages/stack-shared/src/ai/prompts.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000"
   },
   "devDependencies": {
