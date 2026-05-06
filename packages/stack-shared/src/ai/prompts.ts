@@ -363,7 +363,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         </Step>
       ` : ""}
 
-      ${isMaybeBackend ? deindent`
+      ${isMaybeBackend && !isDefinitelyNextjs ? deindent`
         <Step title="${!isDefinitelyBackend ? "Backend: " : ""}Update callers with header & get user">
           You are now ready to use the Stack Auth SDK. If you have any frontends calling your backend endpoints, you may want to pass along the Stack Auth tokens in a header such that you can access the same user object on your backend.
 

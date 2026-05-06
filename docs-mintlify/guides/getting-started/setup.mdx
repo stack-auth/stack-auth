@@ -736,49 +736,7 @@ export const onSetupToolClick = (event) => {
               
             </Step>
           
-            <Step title="Update callers with header & get user">
-              You are now ready to use the Stack Auth SDK. If you have any frontends calling your backend endpoints, you may want to pass along the Stack Auth tokens in a header such that you can access the same user object on your backend.
             
-              The most ergonomic way to do this is to pass the result of `stackClientApp.getAuthorizationHeader()` as the `Authorization` header into your backend endpoints when the user is signed in:
-            
-              ```ts
-              // NOTE: This is your frontend's code
-              const authorizationHeader = await stackClientApp.getAuthorizationHeader();
-              const response = await fetch("/my-backend-endpoint", {
-                headers: {
-                  ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
-                },
-              });
-              // ...
-              ```
-            
-              In most backend frameworks you can then access the user object by passing the request object as a `tokenStore` of the functions that access the user object:
-            
-              ```ts
-              // NOTE: This is your backend's code
-              const user = await stackServerApp.getUser({ tokenStore: request });
-              return new Response("Hello, " + user.displayName, { headers: { "Cache-Control": "private, no-store" } });
-              ```
-            
-              This will work as long as `request` is an object that follows the shape `{ headers: Record<string, string | null> | { get: (name: string) => string | null } }`.
-            
-              > Make sure that HTTP caching is disabled with `Cache-Control: private, no-store` for authenticated backend endpoints.
-            
-              If you cannot use `getAuthorizationHeader()`, for example because you are using a protocol other than HTTP, you can use `getAuthJson()` instead:
-            
-              ```ts
-              // Frontend:
-              await rpcCall("my-rpc-endpoint", {
-                data: {
-                  auth: await stackClientApp.getAuthJson(),
-                },
-              });
-            
-              // Backend:
-              const user = await stackServerApp.getUser({ tokenStore: data.auth });
-              return new RpcResponse("Hello, " + user.displayName);
-              ```
-            </Step>
           
             <Step title="Done!" />
           </Steps>
