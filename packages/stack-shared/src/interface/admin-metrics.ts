@@ -145,6 +145,13 @@ export const MetricsRecentUserSchema = yupObject({
   last_active_at_millis: yupNumber().nullable().defined(),
 }).noUnknown(false).defined();
 
+// Per-user activity heatmap — a simple list of daily event counts for a single
+// user. Backed by ClickHouse `analytics_internal.events` filtered by user_id,
+// project_id, and branch_id. See `/internal/user-activity` on the backend.
+export const UserActivityResponseBodySchema = yupObject({
+  data_points: MetricsDataPointsSchema,
+}).defined();
+
 // Sampled "currently live" users keyed by ISO country code. Populated by
 // joining a bounded ClickHouse sample (last N hours of `$token-refresh`
 // events grouped by country) with the corresponding Prisma profile rows, so
@@ -204,3 +211,4 @@ export type MetricsLoginMethodEntry = yup.InferType<typeof MetricsLoginMethodEnt
 export type MetricsRecentUser = yup.InferType<typeof MetricsRecentUserSchema>;
 export type MetricsResponse = yup.InferType<typeof MetricsResponseBodySchema>;
 export type MetricsUserCounts = yup.InferType<typeof MetricsUserCountsSchema>;
+export type UserActivityResponse = yup.InferType<typeof UserActivityResponseBodySchema>;

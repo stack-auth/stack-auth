@@ -62,13 +62,15 @@ function ComponentDemo({
   title,
   description,
   children,
+  className,
 }: {
   title: string,
   description?: string,
   children: React.ReactNode,
+  className?: string,
 }) {
   return (
-    <div className="space-y-4">
+    <div className={cn("space-y-4", className)}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <Typography type="h3" className="text-lg font-semibold">{title}</Typography>
@@ -1119,6 +1121,25 @@ export default function PageClient() {
             />
           </ComponentDemo>
 
+          <ComponentDemo
+            title="Category tabs with trailing slot"
+            description="Use `trailing` for actions that live in the tab bar but are not a tab (e.g. “Install apps”)."
+            className="pt-6"
+          >
+            <DesignCategoryTabs
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onSelect={setSelectedCategory}
+              glassmorphic={false}
+              gradient="blue"
+              trailing={(
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+                  + Example action
+                </span>
+              )}
+            />
+          </ComponentDemo>
+
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
@@ -1129,6 +1150,7 @@ export default function PageClient() {
               { name: "size", type: "'sm' | 'md'", default: "'sm'", description: "Controls padding and density." },
               { name: "glassmorphic", type: "boolean", default: "false", description: "Enable when tabs are on glass surfaces." },
               { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
+              { name: "trailing", type: "ReactNode", description: "Renders at the end of the tab bar, after all tab buttons (not a tab)." },
             ]} />
           </div>
         </DesignSection>

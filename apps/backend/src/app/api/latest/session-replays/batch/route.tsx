@@ -2,8 +2,11 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
+import { getStackServerApp } from "@/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
@@ -105,6 +108,18 @@ export const POST = createSmartRouteHandler({
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
+
+    const app = getStackServerApp();
+
+    const isNewSession = recentSession == null;
+    const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    if (isNewSession && billingTeamId != null) {
+      const replaysItem = await app.getItem({ itemId: ITEM_IDS.sessionReplays, teamId: billingTeamId });
+      const isDebited = await replaysItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.sessionReplays, billingTeamId, 1);
+      }
+    }
 
     const replayId = recentSession?.id ?? randomUUID();
     const s3Key = `session-replays/${projectId}/${branchId}/${replayId}/${batchId}.json.gz`;
