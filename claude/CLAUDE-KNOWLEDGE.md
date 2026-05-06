@@ -407,3 +407,9 @@ A: Restore the docs-style MCP setup page from Git history around commit `39b2f56
 
 Q: What copy should be visible on the standalone MCP setup page intro?
 A: The standalone `apps/mcp` setup page should show the "MCP Setup" heading and client setup tabs without the old explanatory intro paragraphs. The "Markdown Instructions" README copy block should remain available, but collapsed by default inside a native `<details class="markdown-section">` accordion.
+
+Q: Why can the metrics globe miss a currently active user's avatar even when their Last Active is recent?
+A: The overview globe uses ClickHouse `$token-refresh` events in a short live window, not the Postgres `ProjectUser.lastActiveAt` row directly. Before May 2026 it also used `groupArraySample()` per country and then sorted sampled profile rows by email, so a freshly active user could be counted as live but not chosen for the visible avatar slots. Prefer deterministic recent-token-refresh selection per country and preserve that order for avatar rendering.
+
+Q: Why can a mounted `useUser()` client not refresh an access token older than 75 seconds?
+A: `useUser()` fetches `/users/me` through `sendClientRequest`, which only requires the access token to be unexpired (`maxMillisSinceIssued = null`). The 60-75 second freshness rule only applied to `currentSession.useTokens()` / `getTokens()`. If presence depends on refresh cadence, start `session.startRefreshingAccessToken(30_000, 60_000)` from `_useSession`, so every mounted React session hook refreshes tokens instead of only `useTokens()`.

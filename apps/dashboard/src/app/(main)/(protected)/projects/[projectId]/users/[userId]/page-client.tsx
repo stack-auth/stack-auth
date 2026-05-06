@@ -1,8 +1,10 @@
 "use client";
 
+import { DesignCategoryTabs, DesignEditableGrid, DesignMenu, type DesignCategoryTabItem, type DesignEditableGridItem, type DesignMenuActionItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
+import { Link } from "@/components/link";
 import { MetadataSection } from "@/components/metadata-editor";
 import {
   Accordion,
@@ -24,54 +26,39 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   Input,
-  Separator,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   Typography,
   useToast
 } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
-import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
+import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
+import { isAppEnabled } from "@/lib/apps-utils";
+import { parseRiskScore } from "@/lib/risk-score-utils";
+import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
+import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, PlusIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { CountryCodeInput } from "@/components/country-code-select";
-import { useMemo, useState } from "react";
+import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { parseRiskScore } from "@/lib/risk-score-utils";
+import { UserAnalyticsSection } from "./user-analytics";
+import { UserPageTableSection } from "./user-page-table-section";
+import { UserPaymentsSection } from "./user-payments";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
-
-type UserInfoProps = {
-  icon: React.ReactNode,
-  children: React.ReactNode,
-  name: string,
-}
-
-function UserInfo({ icon, name, children }: UserInfoProps) {
-  return (
-    <>
-      <span className="flex gap-2 items-center">
-        <span className="opacity-75">{icon}</span>
-        <span className="font-semibold whitespace-nowrap mr-2">{name}</span>
-      </span>
-      {children}
-    </>
-  );
-}
 
 export default function PageClient({ userId }: { userId: string }) {
   const stackAdminApp = useAdminApp();
@@ -102,16 +89,17 @@ function UserHeader({ user }: UserHeaderProps) {
   const nameFallback = user.primaryEmail ?? user.id;
   const name = user.displayName ?? nameFallback;
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const stackAdminApp = useAdminApp();
 
   return (
-    <div className="flex gap-4 items-center">
-      <Avatar className="w-20 h-20">
+    <div className="flex min-w-0 flex-1 gap-4 items-center">
+      <Avatar className="w-20 h-20 shrink-0">
         <AvatarImage src={user.profileImageUrl ?? undefined} alt={name} />
         <AvatarFallback>{name.slice(0, 2)}</AvatarFallback>
       </Avatar>
-      <div className="flex-grow">
+      <div className="min-w-0 flex-1">
         <EditableInput
           value={name}
           initialEditValue={user.displayName ?? ""}
@@ -123,39 +111,52 @@ function UserHeader({ user }: UserHeaderProps) {
           }}/>
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
-      <div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <DotsThreeIcon className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={async () => {
-              const expiresInMillis = 1000 * 60 * 60 * 2;
-              const expiresAtDate = new Date(Date.now() + expiresInMillis);
-              const session = await user.createSession({ expiresInMillis });
-              const tokens = await session.getTokens();
-              setImpersonateSnippet(deindent`
-                document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
-                window.location.reload();
-              `);
-            }}>
-              <span>Impersonate</span>
-            </DropdownMenuItem>
-            {user.isMultiFactorRequired && (
-              <DropdownMenuItem onClick={async () => {
-                await user.update({ totpMultiFactorSecret: null });
-              }}>
-                <span>Remove 2FA</span>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)}>
-              <Typography className="text-destructive">Delete</Typography>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <div className="shrink-0 mr-8">
+        <DesignMenu
+          variant="actions"
+          trigger="icon"
+          triggerLabel="User actions"
+          align="end"
+          items={[
+            {
+              id: "impersonate",
+              label: "Impersonate",
+              onClick: () => {
+                runAsynchronouslyWithAlert(async () => {
+                  const expiresInMillis = 1000 * 60 * 60 * 2;
+                  const expiresAtDate = new Date(Date.now() + expiresInMillis);
+                  const session = await user.createSession({ expiresInMillis });
+                  const tokens = await session.getTokens();
+                  setImpersonateSnippet(deindent`
+                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
+                    window.location.reload();
+                  `);
+                });
+              },
+            },
+            ...user.isMultiFactorRequired ? [{
+              id: "remove-2fa",
+              label: "Remove 2FA",
+              onClick: () => {
+                runAsynchronouslyWithAlert(async () => {
+                  await user.update({ totpMultiFactorSecret: null });
+                });
+              },
+            }] satisfies DesignMenuActionItem[] : [],
+            {
+              id: "restriction",
+              label: "User restriction",
+              onClick: () => { setRestrictionDialogOpen(true); },
+            },
+            {
+              id: "delete",
+              label: "Delete",
+              itemVariant: "destructive" as const,
+              onClick: () => setIsDeleteModalOpen(true),
+            },
+          ]}
+        />
+        <RestrictionDialog user={user} open={restrictionDialogOpen} onOpenChange={setRestrictionDialogOpen} />
         <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${stackAdminApp.projectId}/users`} />
         <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       </div>
@@ -304,42 +305,6 @@ function RestrictionDialog({
   );
 }
 
-// Restriction row that looks like an editable input but opens a dialog
-function RestrictedStatusRow({ user }: { user: ServerUser }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  const isRestricted = user.isRestricted;
-  const reasonText = getRestrictionReasonText(user);
-
-  const displayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
-
-  return (
-    <>
-      <UserInfo icon={<ProhibitIcon size={16}/>} name="Restricted">
-        <div className="flex items-center relative w-full">
-          <button
-            type="button"
-            onClick={() => setDialogOpen(true)}
-            className={cn(
-              "stack-scope flex w-full items-center rounded-xl border border-black/[0.08] dark:border-white/[0.06] bg-white/80 dark:bg-foreground/[0.03] shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-              "h-8 px-3 text-sm text-left text-muted-foreground",
-              "transition-all duration-150 hover:transition-none hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
-            )}
-          >
-            <span className="truncate">{displayValue}</span>
-          </button>
-        </div>
-      </UserInfo>
-      <RestrictionDialog
-        user={user}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
-    </>
-  );
-}
-
 // Restriction banner shown at top of page when user is restricted
 function RestrictionBanner({ user }: { user: ServerUser }) {
   if (!user.isRestricted) return null;
@@ -383,89 +348,150 @@ function RestrictionBanner({ user }: { user: ServerUser }) {
   );
 }
 
-type UserDetailsProps = {
-  user: ServerUser,
-};
-
-function UserDetails({ user }: UserDetailsProps) {
-  const [newPassword, setNewPassword] = useState<string | null>(null);
-
+function UserDetails({ user }: { user: ServerUser }) {
+  const items = useMemo<DesignEditableGridItem[]>(() => [
+    {
+      type: "text",
+      icon: <HashIcon size={14} />,
+      name: "User ID",
+      value: user.id,
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <EnvelopeIcon size={14} />,
+      name: "Primary email",
+      value: user.primaryEmail ?? "",
+      placeholder: "-",
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <AtIcon size={14} />,
+      name: "Display name",
+      value: user.displayName ?? "",
+      placeholder: "-",
+      onUpdate: async (newName) => {
+        await user.setDisplayName(newName);
+      },
+    },
+    {
+      type: "text",
+      icon: <SquareIcon size={14} />,
+      name: "Password",
+      value: "",
+      placeholder: user.hasPassword ? "************" : "-",
+      onUpdate: async (newPassword) => {
+        await user.setPassword({ password: newPassword });
+      },
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "2-factor auth",
+      value: user.isMultiFactorRequired ? "Enabled" : "",
+      placeholder: "Disabled",
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <CalendarIcon size={14} />,
+      name: "Signed up at",
+      value: user.signedUpAt.toDateString(),
+      readOnly: true,
+    },
+  ], [user]);
 
   return (
-    <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
-      <UserInfo icon={<HashIcon size={16}/>} name="User ID">
-        <EditableInput value={user.id} readOnly />
-      </UserInfo>
-      <UserInfo icon={<EnvelopeIcon size={16}/>} name="Primary email">
-        <EditableInput value={user.primaryEmail ?? ""} placeholder={"-"} readOnly/>
-      </UserInfo>
-      <UserInfo icon={<AtIcon size={16}/>} name="Display name">
-        <EditableInput value={user.displayName ?? ""} placeholder={"-"} onUpdate={async (newName) => {
-          await user.setDisplayName(newName);
-        }}/>
-      </UserInfo>
-      <UserInfo icon={<SquareIcon size={16}/>} name="Password">
-        <EditableInput
-          value={""}
-          placeholder={user.hasPassword ? "************" : "-"}
-          mode="password"
-          onUpdate={async (newPassword) => {
-            await user.setPassword({ password: newPassword });
-          }}
-        />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="2-factor auth">
-        <EditableInput value={user.isMultiFactorRequired ? 'Enabled' : ''} placeholder='Disabled' readOnly />
-      </UserInfo>
-      <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
-        <EditableInput value={user.signedUpAt.toDateString()} readOnly />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
-        <EditableInput value={String(user.riskScores.signUp.bot)} onUpdate={async (newValue) => {
-          await user.update({
-            riskScores: {
-              signUp: {
-                bot: parseRiskScore(newValue),
-                freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
-              },
+    <DesignEditableGrid
+      items={items}
+      columns={2}
+      size="sm"
+      deferredSave={false}
+    />
+  );
+}
+
+function FraudSection({ user }: { user: ServerUser }) {
+  const items = useMemo<DesignEditableGridItem[]>(() => [
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "Risk score: bot",
+      value: String(user.riskScores.signUp.bot),
+      onUpdate: async (newValue) => {
+        await user.update({
+          riskScores: {
+            signUp: {
+              bot: parseRiskScore(newValue),
+              freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
             },
-          });
-        }} />
-      </UserInfo>
-      <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
-        <CountryCodeInput
-          value={user.countryCode ?? null}
-          onChange={(newValue) => {
-            runAsynchronouslyWithAlert(async () => {
-              await user.update({
-                countryCode: newValue ? normalizeCountryCode(newValue) : null,
-              });
-            });
-          }}
-          placeholder="-"
-          className="w-full h-8 text-sm"
-        />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
-        <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} onUpdate={async (newValue) => {
-          await user.update({
-            riskScores: {
-              signUp: {
-                bot: user.riskScores.signUp.bot,
-                freeTrialAbuse: parseRiskScore(newValue),
-              },
+          },
+        });
+      },
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "Risk score: free trial abuse",
+      value: String(user.riskScores.signUp.freeTrialAbuse),
+      onUpdate: async (newValue) => {
+        await user.update({
+          riskScores: {
+            signUp: {
+              bot: user.riskScores.signUp.bot,
+              freeTrialAbuse: parseRiskScore(newValue),
             },
-          });
-        }} />
-      </UserInfo>
-      <RestrictedStatusRow user={user} />
-    </div>
+          },
+        });
+      },
+    },
+    {
+      type: "text",
+      icon: <GlobeIcon size={14} />,
+      name: "Sign-up country code",
+      value: user.countryCode ?? "",
+      placeholder: "-",
+      normalizeInput: (value) => value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2),
+      onUpdate: async (newValue) => {
+        await user.update({
+          countryCode: newValue.length > 0 ? normalizeCountryCode(newValue) : null,
+        });
+      },
+    },
+  ], [user]);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Fraud
+      </h2>
+      <DesignEditableGrid
+        items={items}
+        columns={2}
+        size="sm"
+        deferredSave={false}
+      />
+    </section>
   );
 }
 
 type ContactChannelsSectionProps = {
   user: ServerUser,
 };
+
+function BooleanStatusCell({ value, showFalseIcon = true }: { value: boolean, showFalseIcon?: boolean }) {
+  return (
+    <div className="flex justify-center">
+      <span className="sr-only">{value ? "Yes" : "No"}</span>
+      {value ? (
+        <CheckIcon aria-hidden={true} className="mx-auto h-4 w-4 text-green-500" />
+      ) : showFalseIcon ? (
+        <XIcon aria-hidden={true} className="mx-auto h-4 w-4 text-muted-foreground" />
+      ) : null}
+    </div>
+  );
+}
 
 type AddEmailDialogProps = {
   user: ServerUser,
@@ -736,21 +762,106 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
     await channel.update({ isPrimary: true });
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Contact Channels</h2>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setIsAddEmailDialogOpen(true)}
-        >
-          Add E-mail
-        </Button>
-      </div>
+  const contactChannelColumns = useMemo<DataGridColumnDef<ServerContactChannel>[]>(() => [
+    {
+      id: "value",
+      accessor: "value",
+      header: "E-Mail",
+      width: 220,
+      flex: 1,
+      sortable: false,
+    },
+    {
+      id: "isPrimary",
+      header: "Primary",
+      width: 90,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.isPrimary} showFalseIcon={false} />
+      ),
+    },
+    {
+      id: "isVerified",
+      header: "Verified",
+      width: 90,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.isVerified} />
+      ),
+    },
+    {
+      id: "usedForAuth",
+      header: "Used for sign-in",
+      width: 140,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.usedForAuth} />
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => {
+        const channel = row;
+        return (
+          <div className="flex justify-end">
+            <ActionCell
+              items={[
+                {
+                  item: "Send sign-in invitation",
+                  onClick: async () => {
+                    setSendSignInInvitationDialog({ channel, isOpen: true });
+                  },
+                },
+                ...(!channel.isVerified ? [{
+                  item: "Send verification email",
+                  onClick: async () => {
+                    setSendVerificationEmailDialog({ channel, isOpen: true });
+                  },
+                }] : []),
+                ...(project.config.credentialEnabled ? [{
+                  item: "Send reset password email",
+                  onClick: async () => {
+                    setSendResetPasswordEmailDialog({ channel, isOpen: true });
+                  },
+                }] : []),
+                {
+                  item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
+                  onClick: async () => { await toggleVerified(channel); },
+                },
+                ...(!channel.isPrimary ? [{
+                  item: "Set as primary",
+                  onClick: async () => { await setPrimaryEmail(channel); },
+                }] : []),
+                {
+                  item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
+                  onClick: async () => { await toggleUsedForAuth(channel); },
+                },
+                {
+                  item: "Delete",
+                  danger: true,
+                  onClick: async () => { await channel.delete(); },
+                },
+              ]}
+            />
+          </div>
+        );
+      },
+    },
+  ], [project.config.credentialEnabled]);
 
+  return (
+    <>
       <AddEmailDialog
         user={user}
         open={isAddEmailDialogOpen}
@@ -793,249 +904,100 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
         />
       )}
 
-      {contactChannels.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
-          <p className='text-sm text-gray-500 text-center'>
-            No contact channels
-          </p>
-        </div>
-      ) : (
-        <ContactChannelsDataGrid
-          contactChannels={contactChannels}
-          project={project}
-          toggleVerified={toggleVerified}
-          toggleUsedForAuth={toggleUsedForAuth}
-          setPrimaryEmail={setPrimaryEmail}
-          onSendVerificationEmail={(channel) => setSendVerificationEmailDialog({ channel, isOpen: true })}
-          onSendResetPasswordEmail={(channel) => setSendResetPasswordEmailDialog({ channel, isOpen: true })}
-          onSendSignInInvitation={(channel) => setSendSignInInvitationDialog({ channel, isOpen: true })}
-        />
-      )}
-    </div>
+      <UserPageTableSection
+        title="Contact Channels"
+        columns={contactChannelColumns}
+        rows={contactChannels}
+        getRowId={(channel) => channel.id}
+        emptyLabel="No contact channels"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAddEmailDialogOpen(true)}
+          >
+            Add E-mail
+          </Button>
+        }
+      />
+    </>
   );
 }
 
-function ContactChannelsDataGrid({
-  contactChannels,
-  project,
-  toggleVerified,
-  toggleUsedForAuth,
-  setPrimaryEmail,
-  onSendVerificationEmail,
-  onSendResetPasswordEmail,
-  onSendSignInInvitation,
-}: {
-  contactChannels: ServerContactChannel[],
-  project: ReturnType<ReturnType<typeof useAdminApp>["useProject"]>,
-  toggleVerified: (channel: ServerContactChannel) => Promise<void>,
-  toggleUsedForAuth: (channel: ServerContactChannel) => Promise<void>,
-  setPrimaryEmail: (channel: ServerContactChannel) => Promise<void>,
-  onSendVerificationEmail: (channel: ServerContactChannel) => void,
-  onSendResetPasswordEmail: (channel: ServerContactChannel) => void,
-  onSendSignInInvitation: (channel: ServerContactChannel) => void,
-}) {
-  const columns = useMemo<DataGridColumnDef<ServerContactChannel>[]>(() => [
-    {
-      id: "email",
-      header: "E-Mail",
-      width: 200,
-      type: "string",
-      accessor: "value",
-    },
-    {
-      id: "primary",
-      header: "Primary",
-      width: 80,
-      align: "center",
-      renderCell: ({ row }) => row.isPrimary ? <CheckIcon className="h-4 w-4 text-green-500" /> : null,
-    },
-    {
-      id: "verified",
-      header: "Verified",
-      width: 80,
-      align: "center",
-      renderCell: ({ row }) => row.isVerified
-        ? <CheckIcon className="h-4 w-4 text-green-500" />
-        : <XIcon className="h-4 w-4 text-muted-foreground" />,
-    },
-    {
-      id: "usedForAuth",
-      header: "Used for sign-in",
-      width: 120,
-      align: "center",
-      renderCell: ({ row }) => row.usedForAuth
-        ? <CheckIcon className="h-4 w-4 text-green-500" />
-        : <XIcon className="h-4 w-4 text-muted-foreground" />,
-    },
-    {
-      id: "actions",
-      header: "",
-      width: 80,
-      sortable: false,
-      resizable: false,
-      renderCell: ({ row: channel }) => (
-        <ActionCell
-          items={[
-            {
-              item: "Send sign-in invitation",
-              onClick: async () => onSendSignInInvitation(channel),
-            },
-            ...(!channel.isVerified ? [{
-              item: "Send verification email",
-              onClick: async () => onSendVerificationEmail(channel),
-            }] : []),
-            ...(project.config.credentialEnabled ? [{
-              item: "Send reset password email",
-              onClick: async () => onSendResetPasswordEmail(channel),
-            }] : []),
-            {
-              item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
-              onClick: async () => { await toggleVerified(channel); },
-            },
-            ...(!channel.isPrimary ? [{
-              item: "Set as primary",
-              onClick: async () => { await setPrimaryEmail(channel); },
-            }] : []),
-            {
-              item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
-              onClick: async () => { await toggleUsedForAuth(channel); },
-            },
-            {
-              item: "Delete",
-              danger: true,
-              onClick: async () => { await channel.delete(); },
-            },
-          ]}
-        />
-      ),
-    },
-  ], [project.config.credentialEnabled, toggleVerified, toggleUsedForAuth, setPrimaryEmail, onSendVerificationEmail, onSendResetPasswordEmail, onSendSignInInvitation]);
-
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
-  const gridData = useDataSource({
-    data: contactChannels,
-    columns,
-    getRowId: (row) => row.id,
-    sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
-    pagination: gridState.pagination,
-    paginationMode: "client",
-  });
-
-  return (
-    <DataGrid
-      columns={columns}
-      rows={gridData.rows}
-      getRowId={(row) => row.id}
-      totalRowCount={gridData.totalRowCount}
-      state={gridState}
-      onChange={setGridState}
-      toolbar={false}
-      footer={false}
-    />
-  );
-}
-
-type UserTeamsSectionProps = {
-  user: ServerUser,
-};
-
-function UserTeamsSection({ user }: UserTeamsSectionProps) {
+function UserTeamsSection({ user }: { user: ServerUser }) {
   const stackAdminApp = useAdminApp();
   const teams = user.useTeams();
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Teams</h2>
-          <p className="text-sm text-muted-foreground">Teams this user belongs to</p>
-        </div>
-      </div>
-
-      {teams.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
-          <p className='text-sm text-gray-500 text-center'>
-            No teams found
-          </p>
-        </div>
-      ) : (
-        <UserTeamsDataGrid teams={teams} projectId={stackAdminApp.projectId} />
-      )}
-    </div>
-  );
-}
-
-function UserTeamsDataGrid({ teams, projectId }: { teams: Array<{ id: string, displayName: string, createdAt: Date }>, projectId: string }) {
-  const columns = useMemo<DataGridColumnDef<{ id: string, displayName: string, createdAt: Date }>[]>(() => [
+  const teamColumns = useMemo<DataGridColumnDef<ServerTeam>[]>(() => [
     {
-      id: "teamId",
-      header: "Team ID",
-      width: 150,
+      id: "id",
       accessor: "id",
+      header: "Team ID",
+      width: 180,
+      sortable: false,
       renderCell: ({ row }) => (
-        <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
+        <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[180px] truncate">
           {row.id}
         </div>
       ),
     },
     {
       id: "displayName",
-      header: "Display Name",
-      width: 200,
-      type: "string",
       accessor: "displayName",
-      renderCell: ({ row }) => <div className="font-medium">{row.displayName || '-'}</div>,
+      header: "Display Name",
+      width: 220,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="font-medium">{row.displayName || '-'}</span>
+      ),
     },
     {
       id: "createdAt",
-      header: "Created At",
-      width: 150,
-      type: "date",
       accessor: "createdAt",
+      header: "Created At",
+      width: 140,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.createdAt.toLocaleDateString()}
+        </span>
+      ),
     },
     {
       id: "actions",
       header: "",
-      width: 80,
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
       sortable: false,
+      hideable: false,
       resizable: false,
+      align: "right",
       renderCell: ({ row }) => (
-        <ActionCell
-          items={[
-            {
-              item: "View Team",
-              onClick: () => {
-                window.open(`/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(row.id)}`, '_blank', 'noopener');
+        <div className="flex justify-end">
+          <ActionCell
+            items={[
+              {
+                item: "View Team",
+                onClick: () => {
+                  window.open(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`, '_blank', 'noopener');
+                },
               },
-            },
-          ]}
-        />
+            ]}
+          />
+        </div>
       ),
     },
-  ], [projectId]);
-
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
-  const gridData = useDataSource({
-    data: teams,
-    columns,
-    getRowId: (row) => row.id,
-    sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
-    pagination: gridState.pagination,
-    paginationMode: "client",
-  });
+  ], [stackAdminApp.projectId]);
 
   return (
-    <DataGrid
-      columns={columns}
-      rows={gridData.rows}
-      getRowId={(row) => row.id}
-      totalRowCount={gridData.totalRowCount}
-      state={gridState}
-      onChange={setGridState}
-      toolbar={false}
-      footer={false}
+    <UserPageTableSection
+      title="Teams"
+      columns={teamColumns}
+      rows={teams}
+      getRowId={(team) => team.id}
+      emptyLabel="No teams found"
     />
   );
 }
@@ -1205,7 +1167,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   const [editingProvider, setEditingProvider] = useState<ServerOAuthProvider | null>(null);
   const { toast } = useToast();
 
-  const handleProviderUpdate = async (provider: ServerOAuthProvider, updates: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) => {
+  const handleProviderUpdate = useCallback(async (provider: ServerOAuthProvider, updates: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) => {
     const result = await provider.update(updates);
     if (result.status === "error") {
       if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
@@ -1235,31 +1197,106 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
         variant: "success",
       });
     }
-  };
+  }, [toast]);
 
-  const toggleAllowSignIn = async (provider: ServerOAuthProvider) => {
-    await handleProviderUpdate(provider, { allowSignIn: !provider.allowSignIn });
-  };
-
-  const toggleAllowConnectedAccounts = async (provider: ServerOAuthProvider) => {
-    await handleProviderUpdate(provider, { allowConnectedAccounts: !provider.allowConnectedAccounts });
-  };
+  const oauthColumns = useMemo<DataGridColumnDef<ServerOAuthProvider>[]>(() => [
+    {
+      id: "type",
+      accessor: "type",
+      header: "Provider",
+      width: 140,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="capitalize font-medium">{row.type}</span>
+      ),
+    },
+    {
+      id: "email",
+      accessor: "email",
+      header: "Email",
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="block max-w-full truncate text-sm text-muted-foreground" title={row.email}>
+          {row.email ?? "No email"}
+        </span>
+      ),
+    },
+    {
+      id: "accountId",
+      accessor: "accountId",
+      header: "Account ID",
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="font-mono text-xs truncate block max-w-[160px]">{row.accountId}</span>
+      ),
+    },
+    {
+      id: "allowSignIn",
+      header: "Used for sign-in",
+      width: 140,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.allowSignIn} />
+      ),
+    },
+    {
+      id: "allowConnectedAccounts",
+      header: "Used for connected accounts",
+      width: 190,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.allowConnectedAccounts} />
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => {
+        const provider = row;
+        return (
+          <div className="flex justify-end">
+            <ActionCell
+              items={[
+                {
+                  item: "Edit",
+                  onClick: () => setEditingProvider(provider),
+                },
+                {
+                  item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
+                  onClick: async () => { await handleProviderUpdate(provider, { allowSignIn: !provider.allowSignIn }); },
+                },
+                {
+                  item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
+                  onClick: async () => { await handleProviderUpdate(provider, { allowConnectedAccounts: !provider.allowConnectedAccounts }); },
+                },
+                {
+                  item: "Delete",
+                  danger: true,
+                  onClick: async () => { await provider.delete(); },
+                },
+              ]}
+            />
+          </div>
+        );
+      },
+    },
+  ], [handleProviderUpdate]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">OAuth Providers</h2>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setIsAddProviderDialogOpen(true)}
-        >
-          Add Provider
-        </Button>
-      </div>
-
+    <>
       <OAuthProviderDialog
         user={user}
         open={isAddProviderDialogOpen}
@@ -1277,158 +1314,337 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
         />
       )}
 
-      {oauthProviders.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
-          <p className='text-sm text-gray-500 text-center'>
-            No OAuth providers connected
-          </p>
-        </div>
-      ) : (
-        <OAuthProvidersDataGrid
-          providers={oauthProviders}
-          onEdit={setEditingProvider}
-          onToggleSignIn={toggleAllowSignIn}
-          onToggleConnectedAccounts={toggleAllowConnectedAccounts}
-        />
-      )}
+      <UserPageTableSection
+        title="OAuth Providers"
+        columns={oauthColumns}
+        rows={oauthProviders}
+        getRowId={(provider) => provider.id}
+        emptyLabel="No OAuth providers connected"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAddProviderDialogOpen(true)}
+          >
+            Add Provider
+          </Button>
+        }
+      />
+    </>
+  );
+}
+
+const ACTIVITY_GRID_COLUMNS = 7;
+const ACTIVITY_GRID_ROWS = 53;
+const ACTIVITY_GRID_CELLS = ACTIVITY_GRID_COLUMNS * ACTIVITY_GRID_ROWS;
+const ACTIVITY_CELL_SIZE_PX = 8;
+const ACTIVITY_GRID_GAP_PX = 2;
+const ACTIVITY_WEEKDAY_LABELS = [
+  { label: "", ariaLabel: null },
+  { label: "M", ariaLabel: "Monday" },
+  { label: "", ariaLabel: null },
+  { label: "W", ariaLabel: "Wednesday" },
+  { label: "", ariaLabel: null },
+  { label: "F", ariaLabel: "Friday" },
+  { label: "", ariaLabel: null },
+] as const;
+
+// Activity heatmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
+// intensity (buckets based on the user's own max activity over the window).
+// Tailwind needs the exact class strings at build time, so we keep them
+// enumerated here rather than building them dynamically.
+//
+// The level-0 shade uses foreground alpha (not `bg-muted`) because the user
+// header sits on top of a gradient backdrop — `bg-muted` blends into the
+// lighter top-left of that gradient in dark mode and the empty cells
+// disappear. Foreground-alpha guarantees consistent contrast against whatever
+// is behind the cells, in both themes.
+const ACTIVITY_COLORS = [
+  "bg-foreground/[0.08] dark:bg-foreground/[0.12]",
+  "bg-emerald-500/30 dark:bg-emerald-400/30",
+  "bg-emerald-500/55 dark:bg-emerald-400/55",
+  "bg-emerald-500/80 dark:bg-emerald-400/80",
+  "bg-emerald-500 dark:bg-emerald-400",
+] as const;
+
+function activityLevel(activity: number, max: number): 0 | 1 | 2 | 3 | 4 {
+  if (activity <= 0 || max <= 0) return 0;
+  const intensity = activity / max;
+  if (intensity <= 0.25) return 1;
+  if (intensity <= 0.5) return 2;
+  if (intensity <= 0.75) return 3;
+  return 4;
+}
+
+// Dates come back from ClickHouse as plain `YYYY-MM-DD` strings. Parse them as
+// UTC to match the bucket boundary the backend groups by (`toDate(event_at)`
+// in UTC), otherwise cells on the east side of the dateline would show one day
+// off in the tooltip.
+const ACTIVITY_TOOLTIP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+function formatActivityDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return ACTIVITY_TOOLTIP_DATE_FORMATTER.format(date);
+}
+
+function parseActivityDate(isoDate: string): Date {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatActivityIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getSundayWeekStart(date: Date): Date {
+  const weekStart = new Date(date);
+  weekStart.setUTCHours(0, 0, 0, 0);
+  const dayIndex = weekStart.getUTCDay();
+  weekStart.setUTCDate(weekStart.getUTCDate() - dayIndex);
+  return weekStart;
+}
+
+function ActivityShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="hidden xl:flex flex-col items-center gap-1.5 shrink-0 pt-1">
+      <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
+      <div
+        className="grid text-[9px] leading-none text-muted-foreground/70"
+        style={{
+          gap: ACTIVITY_GRID_GAP_PX,
+          gridTemplateColumns: `repeat(${ACTIVITY_GRID_COLUMNS}, ${ACTIVITY_CELL_SIZE_PX}px)`,
+        }}
+      >
+        {ACTIVITY_WEEKDAY_LABELS.map((day, index) => (
+          <span
+            key={`${day.ariaLabel ?? "spacer"}-${index}`}
+            className="flex justify-center"
+            aria-label={day.ariaLabel ?? undefined}
+            aria-hidden={day.ariaLabel == null}
+            style={{ width: ACTIVITY_CELL_SIZE_PX }}
+          >
+            {day.label}
+          </span>
+        ))}
+      </div>
+      <div
+        className="grid"
+        style={{
+          gap: ACTIVITY_GRID_GAP_PX,
+          gridTemplateColumns: `repeat(${ACTIVITY_GRID_COLUMNS}, ${ACTIVITY_CELL_SIZE_PX}px)`,
+          gridTemplateRows: `repeat(${ACTIVITY_GRID_ROWS}, ${ACTIVITY_CELL_SIZE_PX}px)`,
+          gridAutoFlow: "row",
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
 
-function OAuthProvidersDataGrid({
-  providers,
-  onEdit,
-  onToggleSignIn,
-  onToggleConnectedAccounts,
-}: {
-  providers: ServerOAuthProvider[],
-  onEdit: (provider: ServerOAuthProvider) => void,
-  onToggleSignIn: (provider: ServerOAuthProvider) => Promise<void>,
-  onToggleConnectedAccounts: (provider: ServerOAuthProvider) => Promise<void>,
-}) {
-  const columns = useMemo<DataGridColumnDef<ServerOAuthProvider>[]>(() => [
-    {
-      id: "provider",
-      header: "Provider",
-      width: 120,
-      type: "string",
-      accessor: "type",
-      renderCell: ({ row }) => <div className="capitalize font-medium">{row.type}</div>,
-    },
-    {
-      id: "email",
-      header: "Email",
-      width: 180,
-      type: "string",
-      accessor: "email",
-    },
-    {
-      id: "accountId",
-      header: "Account ID",
-      width: 150,
-      accessor: "accountId",
-      renderCell: ({ row }) => <div className="font-mono text-xs">{row.accountId}</div>,
-    },
-    {
-      id: "allowSignIn",
-      header: "Used for sign-in",
-      width: 130,
-      align: "center",
-      renderCell: ({ row }) => row.allowSignIn
-        ? <CheckIcon className="h-4 w-4 text-green-500" />
-        : <XIcon className="h-4 w-4 text-muted-foreground" />,
-    },
-    {
-      id: "allowConnectedAccounts",
-      header: "Used for connected accounts",
-      width: 180,
-      align: "center",
-      renderCell: ({ row }) => row.allowConnectedAccounts
-        ? <CheckIcon className="h-4 w-4 text-green-500" />
-        : <XIcon className="h-4 w-4 text-muted-foreground" />,
-    },
-    {
-      id: "actions",
-      header: "",
-      width: 80,
-      sortable: false,
-      resizable: false,
-      renderCell: ({ row: provider }) => (
-        <ActionCell
-          items={[
-            { item: "Edit", onClick: () => onEdit(provider) },
-            {
-              item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
-              onClick: async () => { await onToggleSignIn(provider); },
-            },
-            {
-              item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
-              onClick: async () => { await onToggleConnectedAccounts(provider); },
-            },
-            {
-              item: "Delete",
-              danger: true,
-              onClick: async () => { await provider.delete(); },
-            },
-          ]}
-        />
-      ),
-    },
-  ], [onEdit, onToggleSignIn, onToggleConnectedAccounts]);
-
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
-  const gridData = useDataSource({
-    data: providers,
-    columns,
-    getRowId: (row) => row.id + '-' + row.accountId,
-    sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
-    pagination: gridState.pagination,
-    paginationMode: "client",
-  });
-
+function ActivityLoadingFallback() {
+  const cells = useMemo(() => Array.from({ length: ACTIVITY_GRID_CELLS }), []);
   return (
-    <DataGrid
-      columns={columns}
-      rows={gridData.rows}
-      getRowId={(row) => row.id + '-' + row.accountId}
-      totalRowCount={gridData.totalRowCount}
-      state={gridState}
-      onChange={setGridState}
-      toolbar={false}
-      footer={false}
-    />
+    <ActivityShell>
+      {cells.map((_, i) => (
+        <div
+          key={i}
+          className={cn("rounded-[2px]", ACTIVITY_COLORS[0])}
+          style={{ width: ACTIVITY_CELL_SIZE_PX, height: ACTIVITY_CELL_SIZE_PX }}
+          aria-hidden
+        />
+      ))}
+    </ActivityShell>
   );
 }
 
+function ActivityGraph({ userId }: { userId: string }) {
+  const stackAdminApp = useAdminApp();
+  const { data_points: dataPoints } = useUserActivityOrThrow(stackAdminApp, userId);
+
+  const activityByDate = useMemo(
+    () => new Map(dataPoints.map((point) => [point.date, point.activity])),
+    [dataPoints],
+  );
+  const cells = useMemo(() => {
+    const latestDate = dataPoints.length > 0
+      ? parseActivityDate(dataPoints[dataPoints.length - 1].date)
+      : new Date();
+    // GitHub-style: weeks start on Sunday; grid rows go top → bottom from newest week
+    // to oldest; within each row, columns are Sun → Sat.
+    const week0Sunday = getSundayWeekStart(latestDate);
+    return Array.from({ length: ACTIVITY_GRID_CELLS }, (_, index) => {
+      const row = Math.floor(index / ACTIVITY_GRID_COLUMNS);
+      const col = index % ACTIVITY_GRID_COLUMNS;
+      const date = new Date(week0Sunday);
+      date.setUTCDate(week0Sunday.getUTCDate() - row * ACTIVITY_GRID_COLUMNS + col);
+      const isoDate = formatActivityIsoDate(date);
+      return {
+        date: isoDate,
+        activity: activityByDate.get(isoDate) ?? 0,
+      };
+    });
+  }, [activityByDate, dataPoints]);
+  const maxActivity = useMemo(
+    () => cells.reduce((acc, c) => Math.max(acc, c.activity), 0),
+    [cells],
+  );
+
+  return (
+    <ActivityShell>
+      {cells.map((cell) => {
+        const level = activityLevel(cell.activity, maxActivity);
+        return (
+          <Tooltip key={cell.date} delayDuration={0}>
+            <TooltipTrigger asChild>
+              <div
+                aria-hidden
+                className={cn(
+                  "relative rounded-[2px] transition-none hover:z-10 hover:ring-2 hover:ring-foreground",
+                  ACTIVITY_COLORS[level],
+                )}
+                style={{ width: ACTIVITY_CELL_SIZE_PX, height: ACTIVITY_CELL_SIZE_PX }}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="left" sideOffset={8} collisionPadding={8} className="z-[100] whitespace-nowrap text-xs">
+              <div className="font-medium">
+                {cell.activity} {cell.activity === 1 ? "event" : "events"}
+              </div>
+              <div className="opacity-70">{formatActivityDate(cell.date)}</div>
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </ActivityShell>
+  );
+}
+
+type UserPageTabConfig = {
+  id: string,
+  label: string,
+} & (
+  | { appId: AppId, icon?: undefined }
+  | { appId: null, icon: NonNullable<DesignCategoryTabItem["icon"]> }
+);
+
+const USER_PAGE_TABS = [
+  { id: "authentication", label: "Authentication", appId: "authentication" },
+  { id: "teams", label: "Teams", appId: "teams" },
+  { id: "payments", label: "Payments", appId: "payments" },
+  { id: "analytics", label: "Analytics", appId: "analytics" },
+  { id: "metadata", label: "Metadata", appId: null, icon: DatabaseIcon },
+] as const satisfies readonly UserPageTabConfig[];
+
+type UserPageTab = typeof USER_PAGE_TABS[number]["id"];
+
+function isUserPageTab(id: string): id is UserPageTab {
+  return USER_PAGE_TABS.some((tab) => tab.id === id);
+}
+
 function UserPage({ user }: { user: ServerUser }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+
+  const visibleTabs = useMemo(
+    () => USER_PAGE_TABS.filter((tab) => tab.appId === null || isAppEnabled(config.apps.installed, tab.appId)),
+    [config.apps.installed],
+  );
+
+  const [selectedTab, setSelectedTab] = useState<UserPageTab>(
+    () => visibleTabs[0]?.id ?? throwErr("User page has no visible tabs; metadata tab should always be visible"),
+  );
+
+  // If the currently selected tab becomes unavailable (e.g. app uninstalled), fall back to the first visible tab.
+  const activeTab: UserPageTab = visibleTabs.some((tab) => tab.id === selectedTab)
+    ? selectedTab
+    : (visibleTabs[0]?.id ?? throwErr("User page has no visible tabs; metadata tab should always be visible"));
+
   return (
     <PageLayout>
-      <div className="flex flex-col gap-6">
+      <div className="relative flex flex-col gap-6 xl:pr-36">
         <RestrictionBanner user={user} />
-        <UserHeader user={user} />
-        <Separator />
-        <UserDetails user={user} />
-        <Separator />
-        <ContactChannelsSection user={user} />
-        <UserTeamsSection user={user} />
-        <OAuthProvidersSection user={user} />
-        <MetadataSection
-          entityName="user"
-          docsUrl={userMetadataDocsUrl}
-          clientMetadata={user.clientMetadata}
-          clientReadOnlyMetadata={user.clientReadOnlyMetadata}
-          serverMetadata={user.serverMetadata}
-          onUpdateClientMetadata={async (value) => {
-            await user.setClientMetadata(value);
-          }}
-          onUpdateClientReadOnlyMetadata={async (value) => {
-            await user.setClientReadOnlyMetadata(value);
-          }}
-          onUpdateServerMetadata={async (value) => {
-            await user.setServerMetadata(value);
-          }}
-        />
+        <div className="absolute right-0 top-0 z-[100] hidden xl:block">
+          <Suspense fallback={<ActivityLoadingFallback />}>
+            <ActivityGraph userId={user.id} />
+          </Suspense>
+        </div>
+        <div className="flex items-start">
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <UserHeader user={user} />
+            <UserDetails user={user} />
+          </div>
+        </div>
+        {visibleTabs.length > 0 && (
+          <DesignCategoryTabs
+            categories={visibleTabs.map((tab) => ({
+              id: tab.id,
+              label: tab.label,
+              icon: tab.appId === null ? tab.icon : ALL_APPS_FRONTEND[tab.appId].icon,
+            }))}
+            selectedCategory={activeTab}
+            onSelect={(id) => {
+              if (!isUserPageTab(id)) {
+                throw new StackAssertionError(`Unknown user page tab selected: ${id}`);
+              }
+              setSelectedTab(id);
+            }}
+            showBadge={false}
+            size="sm"
+            glassmorphic={false}
+            trailing={(
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-8 justify-center gap-1.5 rounded-lg bg-transparent px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none"
+              >
+                <Link
+                  href={`/projects/${encodeURIComponent(stackAdminApp.projectId)}/apps`}
+                  className="inline-flex items-center justify-center"
+                >
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  <span>Install apps</span>
+                </Link>
+              </Button>
+            )}
+          />
+        )}
+        {activeTab === "authentication" && (
+          <div className="flex flex-col gap-6">
+            <ContactChannelsSection user={user} />
+            <OAuthProvidersSection user={user} />
+            <FraudSection user={user} />
+          </div>
+        )}
+        {activeTab === "teams" && <UserTeamsSection user={user} />}
+        {activeTab === "payments" && <UserPaymentsSection user={user} />}
+        {activeTab === "analytics" && <UserAnalyticsSection user={user} />}
+        {activeTab === "metadata" && (
+          <MetadataSection
+            entityName="user"
+            docsUrl={userMetadataDocsUrl}
+            clientMetadata={user.clientMetadata}
+            clientReadOnlyMetadata={user.clientReadOnlyMetadata}
+            serverMetadata={user.serverMetadata}
+            onUpdateClientMetadata={async (value) => {
+              await user.setClientMetadata(value);
+            }}
+            onUpdateClientReadOnlyMetadata={async (value) => {
+              await user.setClientReadOnlyMetadata(value);
+            }}
+            onUpdateServerMetadata={async (value) => {
+              await user.setServerMetadata(value);
+            }}
+          />
+        )}
       </div>
     </PageLayout>
   );
