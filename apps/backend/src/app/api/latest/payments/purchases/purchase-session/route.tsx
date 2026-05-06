@@ -1,6 +1,7 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { computeApplicationFeeAmount, getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -92,6 +93,7 @@ export const POST = createSmartRouteHandler({
         const existingItem = existingStripeSub.items.data[0];
         const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
+          const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
           const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
@@ -114,6 +116,7 @@ export const POST = createSmartRouteHandler({
               productVersionId,
               priceId: price_id,
             },
+            ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
           });
           const clientSecretUpdated = getClientSecretFromStripeSubscription(updated);
           await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
@@ -145,6 +148,10 @@ export const POST = createSmartRouteHandler({
     // One-time payment path after conflicts handled
     if (!selectedPrice.interval) {
       const amountCents = Number(selectedPrice.USD) * 100 * Math.max(1, quantity);
+      const applicationFeeAmount = computeApplicationFeeAmount({
+        amountStripeUnits: amountCents,
+        projectId: tenancy.project.id,
+      });
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amountCents,
         currency: "usd",
@@ -160,6 +167,7 @@ export const POST = createSmartRouteHandler({
           tenancyId: data.tenancyId,
           priceId: price_id,
         },
+        ...(applicationFeeAmount > 0 ? { application_fee_amount: applicationFeeAmount } : {}),
       });
       const clientSecret = paymentIntent.client_secret;
       if (typeof clientSecret !== "string") {
@@ -172,6 +180,7 @@ export const POST = createSmartRouteHandler({
     const product = await stripe.products.create({
       name: data.product.displayName ?? "Subscription",
     });
+    const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
     const created = await stripe.subscriptions.create({
       customer: data.stripeCustomerId,
       payment_behavior: 'default_incomplete',
@@ -194,6 +203,7 @@ export const POST = createSmartRouteHandler({
         productVersionId,
         priceId: price_id,
       },
+      ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
     });
     const clientSecret = getClientSecretFromStripeSubscription(created);
     if (typeof clientSecret !== "string") {

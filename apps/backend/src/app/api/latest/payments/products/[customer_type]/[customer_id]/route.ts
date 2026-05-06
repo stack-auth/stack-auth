@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, isAddOnProduct, productToInlineProduct } from "@/lib/payments";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -6,7 +6,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const GET = createSmartRouteHandler({
@@ -82,7 +82,7 @@ export const GET = createSmartRouteHandler({
       if (product.prices === "include-by-default") continue;
       const hasIntervalPrice = typedEntries(product.prices).some(([, price]) => price.interval);
       if (!hasIntervalPrice) continue;
-      if (product.isAddOnTo && typedKeys(product.isAddOnTo).length > 0) continue;
+      if (isAddOnProduct(product)) continue;
 
       const inlineProduct = productToInlineProduct(product);
       const intervalPrices = typedFromEntries(
