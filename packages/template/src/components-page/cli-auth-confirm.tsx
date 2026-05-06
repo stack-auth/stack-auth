@@ -28,10 +28,18 @@ async function completeCliAuthWithRefreshToken(app: StackClientApp, loginCode: s
   await ensureCliCompleteOk(result);
 }
 
-function markUrlConfirmed() {
-  const url = new URL(window.location.href);
-  url.searchParams.set("confirmed", "true");
-  window.history.replaceState({}, "", url.toString());
+const CLI_AUTH_CONFIRMED_KEY = "stack-cli-auth-confirmed";
+
+function markConfirmed(loginCode: string) {
+  sessionStorage.setItem(CLI_AUTH_CONFIRMED_KEY, loginCode);
+}
+
+function isConfirmed(loginCode: string): boolean {
+  return sessionStorage.getItem(CLI_AUTH_CONFIRMED_KEY) === loginCode;
+}
+
+function clearConfirmed() {
+  sessionStorage.removeItem(CLI_AUTH_CONFIRMED_KEY);
 }
 
 function getError(err: unknown): Error {
@@ -79,7 +87,7 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
   });
   const [confirmed] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return new URLSearchParams(window.location.search).get("confirmed") === "true";
+    return loginCode != null && isConfirmed(loginCode);
   });
 
   const completeWithCurrentUser = useCallback(async () => {
@@ -105,6 +113,7 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
       setStatus("authorizing");
       try {
         await completeWithCurrentUser();
+        clearConfirmed();
         setStatus("success");
       } catch (err) {
         setError(getError(err));
@@ -130,6 +139,7 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
       setStatus("authorizing");
       if (user) {
         await completeWithCurrentUser();
+        clearConfirmed();
         setStatus("success");
         return;
       }
@@ -158,17 +168,13 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
           accessToken,
           refreshToken,
         });
-        // Only mark the URL as confirmed once the anon session is actually
-        // bound to the browser; otherwise a failure above would leave a stale
-        // confirmed=true in the URL and the auto-complete effect would later
-        // bind the CLI to whichever user happens to be signed in.
-        markUrlConfirmed();
+        markConfirmed(loginCode);
         setStatus("redirecting");
         await app.redirectToSignUp({ replace: true });
         return;
       }
 
-      markUrlConfirmed();
+      markConfirmed(loginCode);
       setStatus("redirecting");
       await app.redirectToSignIn({ replace: true });
     } catch (err) {
