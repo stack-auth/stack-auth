@@ -85,9 +85,9 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isMaybeNextjs = isDefinitelyNextjs || mainType === "ai-prompt";
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
-  const isMaybeBackend = isDefinitelyBackend || mainType === "js";
+  const isMaybeBackend = isDefinitelyBackend || mainType === "js" || mainType === "ai-prompt";
   const isDefinitelyFrontend = isDefinitelyReact;
-  const isMaybeFrontend = isDefinitelyFrontend || mainType === "js";
+  const isMaybeFrontend = isDefinitelyFrontend || mainType === "js" || mainType === "ai-prompt";
 
   const isAiPrompt = mainType === "ai-prompt";
 
