@@ -386,3 +386,12 @@ A: Use a strict root `postinstall` script that rewrites only Next `>=16` app-pag
 
 Q: Why can Turbo-pruned Docker builds fail with `Cannot find module /app/scripts/postinstall-patch-next-async-debug-info.mjs` during `pnpm install`?
 A: In pruned builder stages, we copy `/app/out/json` and run `pnpm install` before copying `/app/out/full`. The root `package.json` still runs `postinstall: node ./scripts/postinstall-patch-next-async-debug-info.mjs`, but that script is not present yet. Fix by copying `scripts/postinstall-patch-next-async-debug-info.mjs` into the builder stage before `pnpm install` (for all Dockerfiles using the prune pattern).
+
+Q: How is the Mintlify setup prompt generated?
+A: `scripts/generate-setup-prompt-docs.ts` writes both `docs-mintlify/snippets/home-prompt-island.jsx` and `docs-mintlify/guides/getting-started/setup.mdx` from `getSdkSetupPrompt("ai-prompt", { tanstackQuery: false })`. Root `codegen` runs it once, and root dev scripts run `generate-setup-prompt-docs:watch` so edits to `packages/stack-shared/src/ai/prompts.ts` refresh the checked-in generated docs files.
+
+Q: Why should the Mintlify setup prompt page avoid a custom `SetupPromptBlock` component?
+A: Mintlify SSR ignores non-standard React components, so `docs-mintlify/guides/getting-started/setup.mdx` should render the prompt block with inline standard elements. The generated page uses a plain `<textarea defaultValue={generatedSetupPromptText} />` plus a standard `<button>` instead of `<SetupPromptBlock />`.
+
+Q: How should the generated Mintlify setup wizard filter tabs?
+A: Generate all markdown tab panels directly into `docs-mintlify/guides/getting-started/setup.mdx` so Mintlify transforms the markdown at build time, then use inline client handlers to show/hide standard tab buttons and panels based on selected `sdkSetupTools`. For tab buttons with `inline-flex`, set `style.display` explicitly when hiding; the HTML `hidden` attribute alone can be overridden by the display utility class.
