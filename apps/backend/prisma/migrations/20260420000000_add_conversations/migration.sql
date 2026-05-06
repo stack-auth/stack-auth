@@ -1,5 +1,5 @@
 CREATE TABLE "Conversation" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
     "projectUserId" UUID,
     "teamId" UUID,
@@ -17,7 +17,7 @@ CREATE TABLE "Conversation" (
     "lastAgentReplyAt" TIMESTAMP(3),
     "metadata" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     "lastMessageAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "lastInboundAt" TIMESTAMP(3),
     "lastOutboundAt" TIMESTAMP(3),
@@ -31,7 +31,7 @@ CREATE TABLE "Conversation" (
 );
 
 CREATE TABLE "ConversationEntryPoint" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
     "conversationId" UUID NOT NULL,
     "channelType" TEXT NOT NULL,
@@ -40,16 +40,16 @@ CREATE TABLE "ConversationEntryPoint" (
     "isEntryPoint" BOOLEAN NOT NULL DEFAULT FALSE,
     "metadata" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "ConversationEntryPoint_pkey" PRIMARY KEY ("tenancyId","id"),
     CONSTRAINT "ConversationEntryPoint_type_check" CHECK ("channelType" IN ('manual', 'chat', 'email', 'api')),
     CONSTRAINT "ConversationEntryPoint_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "ConversationEntryPoint_conversation_fkey" FOREIGN KEY ("tenancyId", "conversationId") REFERENCES "Conversation"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT "ConversationEntryPoint_tenancyId_conversationId_fkey" FOREIGN KEY ("tenancyId", "conversationId") REFERENCES "Conversation"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE "ConversationMessage" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
     "conversationId" UUID NOT NULL,
     "channelId" UUID,
@@ -67,8 +67,8 @@ CREATE TABLE "ConversationMessage" (
     CONSTRAINT "ConversationMessage_messageType_check" CHECK ("messageType" IN ('message', 'internal-note', 'status-change')),
     CONSTRAINT "ConversationMessage_senderType_check" CHECK ("senderType" IN ('user', 'agent', 'system')),
     CONSTRAINT "ConversationMessage_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "ConversationMessage_conversation_fkey" FOREIGN KEY ("tenancyId", "conversationId") REFERENCES "Conversation"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "ConversationMessage_channel_fkey" FOREIGN KEY ("tenancyId", "channelId") REFERENCES "ConversationEntryPoint"("tenancyId", "id") ON DELETE NO ACTION ON UPDATE CASCADE
+    CONSTRAINT "ConversationMessage_tenancyId_conversationId_fkey" FOREIGN KEY ("tenancyId", "conversationId") REFERENCES "Conversation"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "ConversationMessage_tenancyId_channelId_fkey" FOREIGN KEY ("tenancyId", "channelId") REFERENCES "ConversationEntryPoint"("tenancyId", "id") ON DELETE NO ACTION ON UPDATE CASCADE
 );
 
 CREATE INDEX "Conversation_user_lastMessageAt_idx" ON "Conversation"("tenancyId", "projectUserId", "lastMessageAt" DESC);
