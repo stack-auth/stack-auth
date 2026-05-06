@@ -467,7 +467,21 @@ Returns null if not authenticated.
 Does not error.
 
 
+### getAuthorizationHeader()
+
+Returns: string | null
+
+Returns the HTTP Authorization header value in this format:
+  Bearer stackauth_<base64({ "accessToken": "...", "refreshToken": "..." })>
+
+Returns null if not authenticated.
+
+Does not error.
+
+
 ### getAuthHeaders()
+
+@deprecated Use getAuthorizationHeader().
 
 Returns: { "x-stack-auth": string }
 

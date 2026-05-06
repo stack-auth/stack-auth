@@ -21,7 +21,6 @@ import {
   MetricsRecentUserSchema,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
@@ -123,10 +122,10 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
   );
 }
 
-// ClickHouse sample size per country. Small enough to keep the event-table
-// scan cheap, large enough for the dashboard globe to pick ~1-5 distinct
-// avatars per country based on the country's visible area.
-const ACTIVE_USERS_BY_COUNTRY_SAMPLE = 8;
+// Max live users returned per country. Small enough to keep the Postgres join
+// cheap, large enough for the dashboard globe and satellite bubbles to pick a
+// few distinct avatars per country.
+const ACTIVE_USERS_BY_COUNTRY_LIMIT = 8;
 // "Live" window used to classify users as currently active for the globe
 // ping layer. Token-refresh fires every few minutes for each open session,
 // so a 2-minute window gives a genuine "who's online right now" read while
@@ -145,27 +144,45 @@ async function loadActiveUsersByCountry(
     query: `
       SELECT
         country_code,
-        groupArraySample({sample:UInt32})(user_id) AS user_ids
+        groupArray(user_id) AS user_ids
       FROM (
         SELECT
-          user_id,
-          argMax(cc, event_at) AS country_code
+          country_code,
+          user_id
         FROM (
           SELECT
+            country_code,
             user_id,
-            event_at,
-            CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
-            coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
-          FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
+            row_number() OVER (
+              PARTITION BY country_code
+              ORDER BY last_event_at DESC, user_id ASC
+            ) AS country_rank
+          FROM (
+            SELECT
+              user_id,
+              argMax(cc, event_at) AS country_code,
+              max(event_at) AS last_event_at
+            FROM (
+              SELECT
+                user_id,
+                event_at,
+                CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
+                coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
+              FROM analytics_internal.events
+              WHERE event_type = '$token-refresh'
+                AND project_id = {projectId:String}
+                AND branch_id = {branchId:String}
+                AND user_id IS NOT NULL
+                AND event_at >= {since:DateTime}
+            )
+            WHERE cc IS NOT NULL
+              AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
+            GROUP BY user_id
+          )
+          WHERE country_code IS NOT NULL
         )
-        WHERE cc IS NOT NULL
-          AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
-        GROUP BY user_id
+        WHERE country_rank <= {limit:UInt32}
+        ORDER BY country_code ASC, country_rank ASC
       )
       WHERE country_code IS NOT NULL
       GROUP BY country_code
@@ -175,13 +192,13 @@ async function loadActiveUsersByCountry(
       branchId: tenancy.branchId,
       includeAnonymous: includeAnonymous ? 1 : 0,
       since: formatClickhouseDateTimeParam(since),
-      sample: ACTIVE_USERS_BY_COUNTRY_SAMPLE,
+      limit: ACTIVE_USERS_BY_COUNTRY_LIMIT,
     },
     format: "JSONEachRow",
   });
   const rows: { country_code: string, user_ids: string[] }[] = await res.json();
 
-  // Collect every sampled UUID once so we only hit Postgres with a single
+  // Collect every selected UUID once so we only hit Postgres with a single
   // `IN (...)` lookup, then re-attach them to their country buckets.
   const allIds = new Set<string>();
   const countryToIds = new Map<string, string[]>();
@@ -232,15 +249,6 @@ async function loadActiveUsersByCountry(
       if (user != null) users.push(user);
     }
     if (users.length > 0) {
-      // Sort so the response is stable — `groupArraySample()` returns users
-      // in random order, which is fine for the globe UI but flakes snapshot
-      // tests. Primary key is `primary_email` (stable across test runs);
-      // `id` is a tiebreaker for anonymous users where email is null. The
-      // globe doesn't rely on any particular order.
-      users.sort((a, b) => {
-        const emailCmp = stringCompare(a.primary_email ?? "", b.primary_email ?? "");
-        return emailCmp !== 0 ? emailCmp : stringCompare(a.id, b.id);
-      });
       result[country] = users;
     }
   }
