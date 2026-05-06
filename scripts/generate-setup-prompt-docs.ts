@@ -1,5 +1,5 @@
 import path from "path";
-import { aiSetupPrompt, cliSetupPrompt, convexSetupPrompt, getSdkSetupPrompt, mcpSetupPrompt, supabaseSetupPrompt } from "../packages/stack-shared/src/ai/prompts";
+import { aiSetupPrompt, cliSetupPrompt, convexSetupPrompt, getSdkSetupPrompt, supabaseSetupPrompt } from "../packages/stack-shared/src/ai/prompts";
 import { deindent } from "../packages/stack-shared/src/utils/strings";
 import { writeFileSyncIfChanged } from "./utils";
 
@@ -125,7 +125,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
     }],
     extraFeatures: [],
   },
-  mcp: {
+  /*mcp: {
     label: "MCP",
     where: ["other"],
     imageUrl: "/images/setup-tools/mcp.svg",
@@ -135,7 +135,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
       mdContent: mcpSetupPrompt,
     }],
     extraFeatures: [],
-  },
+  },*/
 };
 
 function slugify(value: string) {

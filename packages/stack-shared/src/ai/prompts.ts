@@ -18,14 +18,92 @@ export const mcpSetupPrompt = deindent`
 export const convexSetupPrompt = deindent`
   ## Convex Setup
 
-  <Note>
-    This prompt is not yet implemented.
-  </Note>
+  Follow these instructions to integrate Stack Auth with Convex.
 
   <Steps titleSize="h3">
-    <Step title="Install dependencies">
-      Install the Convex package:
+    <Step title="Create or identify the Convex app">
+      If the project does not already use Convex, initialize a Convex + Next.js app:
+
+      \`\`\`sh
+      npm create convex@latest
+      \`\`\`
+
+      When prompted, choose **Next.js** and **No auth**. Stack Auth will provide auth.
+
+      During development, run the Convex backend and the app dev server:
+
+      \`\`\`sh
+      npx convex dev
+      npm run dev
+      \`\`\`
     </Step>
+
+    <Step title="Install and configure Stack Auth">
+      Install Stack Auth in the app. If you have not already completed the SDK setup steps above, run the setup wizard:
+
+      \`\`\`sh
+      npx @stackframe/stack-cli@latest init
+      \`\`\`
+
+      Create or select a Stack Auth project in the dashboard. Copy the Stack Auth environment variables into the app's \`.env.local\` file.
+
+      Also add the same Stack Auth environment variables to the Convex deployment environment in the Convex dashboard.
+    </Step>
+
+    <Step title="Configure Convex auth providers">
+      Create or update \`convex/auth.config.ts\`:
+
+      \`\`\`ts convex/auth.config.ts
+      import { getConvexProvidersConfig } from "@stackframe/js";
+      // or: import { getConvexProvidersConfig } from "@stackframe/react";
+      // or: import { getConvexProvidersConfig } from "@stackframe/stack";
+
+      export default {
+        providers: getConvexProvidersConfig({
+          projectId: process.env.STACK_PROJECT_ID, // or process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+        }),
+      };
+      \`\`\`
+    </Step>
+
+    <Step title="Connect Convex clients to Stack Auth">
+      Update the Convex client setup so Convex receives Stack Auth tokens.
+
+      In browser JavaScript:
+
+      \`\`\`ts
+      convexClient.setAuth(stackClientApp.getConvexClientAuth({}));
+      \`\`\`
+
+      In React:
+
+      \`\`\`ts
+      convexReactClient.setAuth(stackClientApp.getConvexClientAuth({}));
+      \`\`\`
+
+      For Convex HTTP clients on the server, pass a request-like token store:
+
+      \`\`\`ts
+      convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));
+      \`\`\`
+    </Step>
+
+    <Step title="Use Stack Auth user data in Convex functions">
+      In Convex queries and mutations, use Stack Auth's Convex integration to read the current user.
+
+      \`\`\`ts convex/myFunctions.ts
+      import { query } from "./_generated/server";
+      import { stackServerApp } from "../src/stack/server";
+
+      export const myQuery = query({
+        handler: async (ctx, args) => {
+          const user = await stackServerApp.getPartialUser({ from: "convex", ctx });
+          return user;
+        },
+      });
+      \`\`\`
+    </Step>
+
     <Step title="Done!" />
   </Steps>
 `;
@@ -34,13 +112,159 @@ export const supabaseSetupPrompt = deindent`
   ## Supabase Setup
 
   <Note>
-    This prompt is not yet implemented.
+    This setup covers Supabase Row Level Security (RLS) with Stack Auth JWTs. It does not sync user data between Supabase and Stack Auth. Use Stack Auth webhooks if you need data sync.
   </Note>
 
   <Steps titleSize="h3">
-    <Step title="Install dependencies">
-      Install the Supabase package:
+    <Step title="Create Supabase RLS policies">
+      In the Supabase SQL editor, enable Row Level Security for your tables and write policies based on Supabase JWT claims.
+
+      For example, this sample table demonstrates public rows, authenticated rows, and user-owned rows:
+
+      \`\`\`sql
+      CREATE TABLE data (
+        id bigint PRIMARY KEY,
+        text text NOT NULL,
+        user_id UUID
+      );
+
+      INSERT INTO data (id, text, user_id) VALUES
+        (1, 'Everyone can see this', NULL),
+        (2, 'Only authenticated users can see this', NULL),
+        (3, 'Only user with specific id can see this', NULL);
+
+      ALTER TABLE data ENABLE ROW LEVEL SECURITY;
+
+      CREATE POLICY "Public read" ON "public"."data" TO public
+      USING (id = 1);
+
+      CREATE POLICY "Authenticated access" ON "public"."data" TO authenticated
+      USING (id = 2);
+
+      CREATE POLICY "User access" ON "public"."data" TO authenticated
+      USING (id = 3 AND auth.uid() = user_id);
+      \`\`\`
     </Step>
+
+    <Step title="Install Stack Auth and Supabase dependencies">
+      If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Stack Auth:
+
+      \`\`\`sh
+      npx create-next-app@latest -e with-supabase stack-supabase
+      cd stack-supabase
+      npx @stackframe/stack-cli@latest init
+      \`\`\`
+
+      Add the Supabase environment variables to \`.env.local\`:
+
+      \`\`\`.env .env.local
+      NEXT_PUBLIC_SUPABASE_URL=<your-supabase-url>
+      NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+      SUPABASE_JWT_SECRET=<your-supabase-jwt-secret>
+      \`\`\`
+
+      Also add the Stack Auth environment variables:
+
+      \`\`\`.env .env.local
+      NEXT_PUBLIC_STACK_PROJECT_ID=<your-stack-project-id>
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+      STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+      \`\`\`
+    </Step>
+
+    <Step title="Mint Supabase JWTs from Stack Auth users">
+      Create a server action that signs a Supabase JWT using the current Stack Auth user ID:
+
+      \`\`\`tsx utils/actions.ts
+      'use server';
+
+      import { stackServerApp } from "@/stack/server";
+      import * as jose from "jose";
+
+      export const getSupabaseJwt = async () => {
+        const user = await stackServerApp.getUser();
+
+        if (!user) {
+          return null;
+        }
+
+        const token = await new jose.SignJWT({
+          sub: user.id,
+          role: "authenticated",
+        })
+          .setProtectedHeader({ alg: "HS256" })
+          .setIssuedAt()
+          .setExpirationTime("1h")
+          .sign(new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET));
+
+        return token;
+      };
+      \`\`\`
+    </Step>
+
+    <Step title="Create a Supabase client that uses the Stack Auth JWT">
+      Create a helper that passes the server-generated JWT to Supabase:
+
+      \`\`\`tsx utils/supabase-client.ts
+      import { createBrowserClient } from "@supabase/ssr";
+      import { getSupabaseJwt } from "./actions";
+
+      export const createSupabaseClient = () => {
+        return createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { accessToken: async () => await getSupabaseJwt() || "" },
+        );
+      };
+      \`\`\`
+    </Step>
+
+    <Step title="Fetch Supabase data">
+      Use the Supabase client from your UI. The RLS policies will decide which rows the user can read based on the Stack Auth user ID embedded in the Supabase JWT.
+
+      \`\`\`tsx app/page.tsx
+      'use client';
+
+      import { createSupabaseClient } from "@/utils/supabase-client";
+      import { useStackApp, useUser } from "@stackframe/stack";
+      import Link from "next/link";
+      import { useEffect, useState } from "react";
+
+      export default function Page() {
+        const app = useStackApp();
+        const user = useUser();
+        const supabase = createSupabaseClient();
+        const [data, setData] = useState<null | any[]>(null);
+
+        useEffect(() => {
+          supabase.from("data").select().then(({ data }) => setData(data ?? []));
+        }, []);
+
+        const listContent = data === null
+          ? <p>Loading...</p>
+          : data.length === 0
+            ? <p>No notes found</p>
+            : data.map((note) => <li key={note.id}>{note.text}</li>);
+
+        return (
+          <div>
+            {user ? (
+              <>
+                <p>You are signed in</p>
+                <p>User ID: {user.id}</p>
+                <Link href={app.urls.signOut}>Sign Out</Link>
+              </>
+            ) : (
+              <Link href={app.urls.signIn}>Sign In</Link>
+            )}
+            <h3>Supabase data</h3>
+            <ul>{listContent}</ul>
+          </div>
+        );
+      }
+      \`\`\`
+    </Step>
+
     <Step title="Done!" />
   </Steps>
 `;
@@ -48,14 +272,76 @@ export const supabaseSetupPrompt = deindent`
 export const cliSetupPrompt = deindent`
   ## CLI Setup
 
-  <Note>
-    This prompt is not yet implemented.
-  </Note>
+  Follow these instructions to authenticate users in a command line application with Stack Auth.
 
   <Steps titleSize="h3">
-    <Step title="Install dependencies">
-      Install the CLI package:
+    <Step title="Add the CLI auth template">
+      Download the Stack Auth CLI authentication template and place it in your project. For Python apps, copy it as \`stack_auth_cli_template.py\`.
+
+      Example project layout:
+
+      \`\`\`text
+      my-python-app/
+      ├─ main.py
+      └─ stack_auth_cli_template.py
+      \`\`\`
     </Step>
+
+    <Step title="Prompt the user to log in">
+      Import and call \`prompt_cli_login\`. It opens the browser, lets the user authenticate, and returns a refresh token.
+
+      \`\`\`py main.py
+      from stack_auth_cli_template import prompt_cli_login
+
+      refresh_token = prompt_cli_login(
+        app_url="https://your-app-url.example.com",
+        project_id="your-project-id-here",
+        publishable_client_key="your-publishable-client-key-here",
+      )
+
+      if refresh_token is None:
+        print("User cancelled the login process. Exiting")
+        exit(1)
+      \`\`\`
+
+      You can store the refresh token in a local file or keychain and only prompt the user again when no saved refresh token exists.
+    </Step>
+
+    <Step title="Exchange the refresh token for an access token">
+      Use the refresh token with Stack Auth's REST API to get an access token.
+
+      \`\`\`py
+      def get_access_token(refresh_token):
+        access_token_response = stack_auth_request(
+          "post",
+          "/api/v1/auth/sessions/current/refresh",
+          headers={
+            "x-stack-refresh-token": refresh_token,
+          },
+        )
+
+        return access_token_response["access_token"]
+      \`\`\`
+    </Step>
+
+    <Step title="Fetch the current user">
+      Use the access token to call the Stack Auth REST API as the logged-in user.
+
+      \`\`\`py
+      def get_user_object(access_token):
+        return stack_auth_request(
+          "get",
+          "/api/v1/users/me",
+          headers={
+            "x-stack-access-token": access_token,
+          },
+        )
+
+      user = get_user_object(get_access_token(refresh_token))
+      print("The user is logged in as", user["display_name"] or user["primary_email"])
+      \`\`\`
+    </Step>
+
     <Step title="Done!" />
   </Steps>
 `;
