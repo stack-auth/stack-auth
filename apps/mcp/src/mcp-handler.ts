@@ -3,6 +3,7 @@ import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 
 import withPostHog from "@/analytics";
+import packageJson from "../package.json";
 
 function getBackendApiBaseUrl(): string {
   return (
@@ -177,7 +178,7 @@ Tool: ask_stack_auth
     {
       serverInfo: {
         name: "stack-auth-mcp",
-        version: "0.1.0",
+        version: packageJson.version,
       },
     },
     {

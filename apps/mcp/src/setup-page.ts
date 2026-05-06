@@ -249,9 +249,7 @@ Add the following JSON to your Gemini CLI configuration file (\`~/.gemini/settin
   }
 }
 \`\`\`
-</details>
-
-by [![Hypr MCP](https://hyprmcp.com/hyprmcp_20px.svg)](https://hyprmcp.com/)`;
+</details>`;
 }
 
 function renderTabs(tabs: SetupTab[]): string {
