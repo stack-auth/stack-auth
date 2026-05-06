@@ -130,6 +130,32 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
   };
 }
 
+async function encodeAnalyticsBody(
+  jsonBody: string,
+  options: { keepalive: boolean },
+): Promise<{ body: BodyInit, contentType: string }> {
+  // pagehide/visibilitychange flushes use keepalive: true. The browser must
+  // dispatch the fetch before tearing the page down — awaiting async gzip
+  // first lets the request slip past tear-down and never start.
+  if (options.keepalive) {
+    return { body: jsonBody, contentType: "application/json" };
+  }
+  const CompressionStreamCtor: typeof CompressionStream | undefined =
+    (globalVar as { CompressionStream?: typeof CompressionStream }).CompressionStream;
+  if (typeof CompressionStreamCtor !== "function" || typeof Blob === "undefined" || typeof Response === "undefined") {
+    return { body: jsonBody, contentType: "application/json" };
+  }
+  try {
+    const stream = new Blob([jsonBody]).stream().pipeThrough(new CompressionStreamCtor("gzip"));
+    const buffer = await new Response(stream).arrayBuffer();
+    return { body: new Uint8Array(buffer), contentType: "application/octet-stream" };
+  } catch {
+    // Partial/broken CompressionStream support: fall back to plain JSON so
+    // EventTracker._flush() doesn't drop the batch via Result.error.
+    return { body: jsonBody, contentType: "application/json" };
+  }
+}
+
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
   private _requestListeners = new Set<RequestListener>();
@@ -529,12 +555,13 @@ export class StackClientInterface {
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
     try {
+      const encoded = await encodeAnalyticsBody(body, { keepalive: options.keepalive });
       const response = await this.sendClientRequest(
         "/analytics/events/batch",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
+          headers: { "Content-Type": encoded.contentType },
+          body: encoded.body,
           keepalive: options.keepalive,
         },
         session,
