@@ -224,5 +224,8 @@
       "robots": "noindex"
     }
   },
+  "settings": {
+    "customScripts": ["/apps-sidebar-filter.js"]
+  },
   "redirects": []
 }

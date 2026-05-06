@@ -12,11 +12,14 @@ const validConfig = defineStackConfig({
     },
   },
 });
+const showOnboardingConfig = defineStackConfig("show-onboarding");
 
 typeAssertExtends<typeof validConfig, StackConfig>()();
+typeAssertExtends<typeof showOnboardingConfig, StackConfig>()();
 
 it("returns its input unchanged", () => {
   expect(defineStackConfig(validConfig)).toBe(validConfig);
+  expect(defineStackConfig(showOnboardingConfig)).toBe(showOnboardingConfig);
 });
 
 defineStackConfig({
