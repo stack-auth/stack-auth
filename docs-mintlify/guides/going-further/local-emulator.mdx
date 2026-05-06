@@ -4,7 +4,7 @@ description: "Run Stack Auth locally with the QEMU emulator"
 sidebarTitle: "Local Emulator"
 ---
 
-The Stack Auth local emulator runs the Stack Auth dashboard, backend, and supporting services on your machine. It is useful when you want local-first development, config-file backed projects, or an isolated Stack Auth environment for testing.
+The Stack Auth local emulator runs the Stack Auth dashboard, backend, and supporting services on your machine. It is useful when you want local-first development, config-file-backed projects, or an isolated Stack Auth environment for testing.
 
 The emulator is managed by the [Stack CLI](/guides/going-further/cli):
 
@@ -12,7 +12,7 @@ The emulator is managed by the [Stack CLI](/guides/going-further/cli):
 npx @stackframe/stack-cli@latest emulator start
 ```
 
-On first start, the CLI downloads the emulator image and captures a local fast-start snapshot. This can take a few minutes and requires several gigabytes of disk space. Later starts should be much faster.
+On first start, the CLI downloads the emulator image and captures a local fast-start snapshot (the capture step runs `zstd`). This can take a few minutes and requires several gigabytes of disk space. Later starts should be much faster.
 
 ## Requirements
 
@@ -27,8 +27,7 @@ Required tools include:
 - `nc`
 - `lsof`
 - `openssl`
-
-`zstd` is optional but recommended for compressed snapshot handling.
+- `zstd` — required on the default fresh-start path: `emulator start` captures a local snapshot using `zstd`, so installs without `zstd` hit an error instead of silently falling back to uncompressed snapshots only.
 
 <Info>
   Native architecture is fastest. Cross-architecture emulation works through QEMU software emulation but is significantly slower.
