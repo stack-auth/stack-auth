@@ -1,5 +1,5 @@
 import { isSecureEmailPort, lowLevelSendEmailDirectWithoutRetries } from "@/lib/emails-low-level";
-import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getStackServerApp } from "@/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -49,7 +49,7 @@ export const POST = createSmartRouteHandler({
     // The debit is refunded on any failure below so admins iterating on an
     // incorrect SMTP config don't burn through their monthly quota.
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
-    const emailItem = billingTeamId == null
+    const emailItem = billingTeamId == null || !arePlanLimitsEnforced()
       ? null
       : await getStackServerApp().getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: billingTeamId });
     if (emailItem != null && billingTeamId != null) {
