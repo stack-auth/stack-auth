@@ -148,7 +148,7 @@ export const GET = createSmartRouteHandler({
           query: `
             SELECT
               project_id AS projectId,
-              toDate(event_at) AS day,
+              toDate(event_at, 'UTC') AS day,
               uniqExact(assumeNotNull(user_id)) AS dailyUsers
             FROM analytics_internal.events
             WHERE event_type = '$token-refresh'
