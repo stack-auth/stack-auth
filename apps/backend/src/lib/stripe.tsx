@@ -104,7 +104,7 @@ export async function resolveProductFromStripeMetadata(options: {
           tenancyId: options.tenancyId,
           productString,
           metadata: options.metadata,
-          error,
+          cause: error,
         }
       );
     }

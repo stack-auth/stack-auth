@@ -1,5 +1,6 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
+import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
@@ -104,7 +105,7 @@ export const POST = createSmartRouteHandler({
     }
 
     await retryTransaction(prisma, async (tx) => {
-      if (auth.tenancy.project.id === "internal") {
+      if (auth.tenancy.project.id === "internal" && arePlanLimitsEnforced()) {
         const currentMemberCount = await tx.teamMember.count({
           where: {
             tenancyId: auth.tenancy.id,

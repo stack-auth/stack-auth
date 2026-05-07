@@ -1,6 +1,7 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { normalizeEmail, sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
+import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -102,7 +103,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
-    if (tenancy.project.id === "internal") {
+    if (tenancy.project.id === "internal" && arePlanLimitsEnforced()) {
       const currentMemberCount = await prisma.teamMember.count({
         where: {
           tenancyId: tenancy.id,

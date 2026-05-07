@@ -236,7 +236,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
 
   captureError(`js-execution-freestyle-failed`, new StackAssertionError(
     `JS execution freestyle engine failed, falling back to vercel sandbox engine`,
-    { error: retryResult.error, innerCode: code, innerOptions: options }
+    { cause: retryResult.error, innerCode: code, innerOptions: options }
   ));
 
   try {
@@ -245,7 +245,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
   } catch (error){
       captureError(`js-execution-vercel-sandbox-failed`, new StackAssertionError(
         `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
-        { error: error, innerCode: code, innerOptions: options }
+        { cause: error, innerCode: code, innerOptions: options }
       ));
       throw new StackAssertionError("Vercel Sandbox service unavailable", { cause: error, innerCode: code, innerOptions: options });
   }

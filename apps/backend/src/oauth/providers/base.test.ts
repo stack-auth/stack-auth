@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRetryableOAuthUserInfoError } from "./base";
+import { getOAuthAccessTokenRefreshError, getOAuthAccessTokenRefreshErrorDisposition, isRetryableOAuthUserInfoError } from "./base";
 
 describe("isRetryableOAuthUserInfoError", () => {
   it("returns true for openid-client timeout errors", () => {
@@ -50,5 +50,54 @@ describe("isRetryableOAuthUserInfoError", () => {
         status: 429,
       },
     })).toBe(true);
+  });
+});
+
+describe("getOAuthAccessTokenRefreshErrorDisposition", () => {
+  it("treats openid-client refresh timeouts as temporarily unavailable", () => {
+    expect(getOAuthAccessTokenRefreshErrorDisposition({
+      name: "RPError",
+      message: "outgoing request timed out after 3500ms",
+    })).toEqual({ type: "temporarily-unavailable" });
+  });
+
+  it("treats invalid_grant refresh failures as invalid refresh tokens", () => {
+    expect(getOAuthAccessTokenRefreshErrorDisposition({
+      error: "invalid_grant",
+    })).toEqual({
+      type: "invalid-refresh-token",
+      message: "Refresh token is invalid or expired",
+    });
+  });
+
+  it("recognizes nested OAuth provider error codes", () => {
+    expect(getOAuthAccessTokenRefreshErrorDisposition({
+      error: {
+        error: "invalid_grant",
+      },
+    })).toEqual({
+      type: "invalid-refresh-token",
+      message: "Refresh token is invalid or expired",
+    });
+  });
+});
+
+describe("getOAuthAccessTokenRefreshError", () => {
+  it("does not treat invalid_grant after an ambiguous refresh attempt as a revoked token", () => {
+    const providerError = {
+      error: "invalid_grant",
+    };
+    expect(getOAuthAccessTokenRefreshError(providerError, {
+      sawAmbiguousRefreshAttempt: true,
+      attempts: 2,
+      causes: [{ name: "RPError" }, providerError],
+    })).toEqual({
+      type: "temporarily-unavailable",
+      cause: providerError,
+      attempts: 2,
+      retryCount: 1,
+      sawAmbiguousRefreshAttempt: true,
+      causes: [{ name: "RPError" }, providerError],
+    });
   });
 });
