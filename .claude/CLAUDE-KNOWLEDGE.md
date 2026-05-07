@@ -217,6 +217,9 @@ A: Check the error location:
 - Callback endpoint (400 error) - Validation failed during callback
 - Token endpoint (400 error) - Validation failed during token exchange
 
+### Q: How should connected-account OAuth access-token refresh errors be classified?
+A: In `apps/backend/src/oauth/providers/base.tsx`, invalid/revoked refresh-token provider errors such as `invalid_grant` return `Result.error({ type: "invalid-refresh-token", ... })` so `access-token-helpers.tsx` can invalidate that stored refresh token and try another. Transient provider/network failures such as openid-client `RPError: outgoing request timed out after 3500ms` return `Result.error({ type: "temporarily-unavailable", cause })`; the connected-account helper converts that to `OAuthProviderTemporarilyUnavailable` without invalidating the refresh token. Expected refresh outcomes should be represented in the provider return type instead of thrown as known/status errors. Refresh requests use a 6s openid-client HTTP timeout and retry transient failures once. If a retry sees `invalid_grant` after an ambiguous transient failure, keep treating it as temporarily unavailable rather than invalidating the refresh token, because the first request may have reached the provider and rotated the token before our client timed out. Sentry should capture non-revocation refresh issues (temporary provider failure, invalid client, unexpected) with provider id/class, attempts, retry count, ambiguity state, final cause, and all provider errors seen during attempts; normal revoked/expired refresh tokens should not be reported.
+
 ## Git and Development Workflow
 
 ### Q: How should you format git commit messages in this project?
@@ -394,3 +397,12 @@ A: The environment override endpoint validates the new environment override agai
 
 ## Q: Why can `pnpm run dev` fail with `ERR_MODULE_NOT_FOUND` for `@stackframe/stack/dist/esm/index.js` during OpenAPI docs generation?
 A: Root `dev` starts the OpenAPI docs watcher at the same time as package `dev` watchers. If a package `dev` script removes `dist` before `tsdown --watch` recreates it, the docs generator can import `apps/backend/src/stack.tsx` while `@stackframe/stack`'s ESM entrypoint is temporarily missing. Package watch scripts should update `dist` in place, and eager generators should wait for package imports to resolve before running.
+
+## Q: How do SDK source tests replace the compile-time client version sentinel?
+A: `packages/template/vitest.config.ts` installs a Vite transform plugin for Vitest that replaces `STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL` with `js <package-name>@<version>` from the local package.json. Keep the plugin in `packages/template` so `pnpm pre`/`scripts/generate-sdks.ts` propagates it to `packages/js`, `packages/react`, and `packages/stack`; otherwise tests importing `common.ts` throw `Client version was not replaced` before test collection.
+
+## Q: How does the Mintlify apps sidebar filter stay in sync with theme changes?
+A: `docs-mintlify/apps-sidebar-filter.js` injects the Apps filter with inline styles, so the MutationObserver must reapply `applySidebarAppsFilterTheme` when an existing input is found. Theme detection should handle both `html.dark` and `data-theme="dark"` signals.
+
+## Q: How should `StackAssertionError` preserve an underlying thrown error?
+A: Pass the underlying error as the `cause` property in the second argument. The `StackAssertionError` constructor only forwards `cause` into `ErrorOptions`, so storing a caught error under an `error` property captures it as ordinary metadata instead of preserving the error cause chain.

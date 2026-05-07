@@ -34,12 +34,12 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
 
   const updatedRows = await sql`
-    SELECT "onboardingState"
+    SELECT "onboardingState"::text AS "onboardingState"
     FROM "Project"
     WHERE "id" = ${ctx.projectId}
   `;
   expect(updatedRows).toHaveLength(1);
-  expect(updatedRows[0].onboardingState).toMatchInlineSnapshot(`
+  expect(JSON.parse(updatedRows[0].onboardingState)).toMatchInlineSnapshot(`
     {
       "selected_apps": [
         "authentication",
