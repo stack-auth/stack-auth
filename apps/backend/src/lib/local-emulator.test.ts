@@ -4,8 +4,10 @@ import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV,
+  isLocalEmulatorOnboardingEnabledInConfig,
   readConfigFromFile,
   writeConfigToFile,
+  writeShowOnboardingConfigToFile,
 } from "./local-emulator";
 
 describe("local emulator config", () => {
@@ -38,12 +40,20 @@ describe("local emulator config", () => {
     await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).resolves.toEqual({});
   });
 
+  it("treats show-onboarding config as an empty config override", async () => {
+    const content = `export const config = "show-onboarding";\n`;
+    vi.stubEnv("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", Buffer.from(content).toString("base64"));
+
+    await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).resolves.toEqual({});
+    await expect(isLocalEmulatorOnboardingEnabledInConfig("/irrelevant/path/stack.config.ts")).resolves.toBe(true);
+  });
+
   it("throws when the config module does not export config", async () => {
     const content = `export default { auth: { allowLocalhost: true } };\n`;
     vi.stubEnv("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", Buffer.from(content).toString("base64"));
 
     await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).rejects.toThrow(
-      "Invalid config in /irrelevant/path/stack.config.ts. The file must export a 'config' object."
+      "Invalid config in /irrelevant/path/stack.config.ts. The file must export a 'config' object or \"show-onboarding\"."
     );
   });
 
@@ -79,6 +89,41 @@ describe("local emulator config", () => {
     await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
       `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
     );
+  });
+
+  it("writes show-onboarding config files to the host mount", async () => {
+    const hostMountRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stack-host-mount-"));
+    const absoluteFilePath = "/Users/foo/project/stack.config.ts";
+    const mountedParentPath = path.join(hostMountRoot, "/Users/foo/project");
+    const mountedFilePath = path.join(hostMountRoot, absoluteFilePath);
+    await fs.mkdir(mountedParentPath, { recursive: true });
+
+    vi.stubEnv(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, hostMountRoot);
+
+    await writeShowOnboardingConfigToFile(absoluteFilePath);
+
+    await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
+      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = "show-onboarding";\n`
+    );
+  });
+
+  it("supports non-ts config filenames by evaluating them as TypeScript", async () => {
+    const hostMountRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stack-host-mount-"));
+    const absoluteFilePath = "/Users/foo/project/test-config.untracked";
+    const mountedParentPath = path.join(hostMountRoot, "/Users/foo/project");
+    const mountedFilePath = path.join(hostMountRoot, absoluteFilePath);
+    await fs.mkdir(mountedParentPath, { recursive: true });
+
+    vi.stubEnv(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, hostMountRoot);
+
+    await writeConfigToFile(absoluteFilePath, { auth: { allowLocalhost: true } });
+
+    await expect(readConfigFromFile(absoluteFilePath)).resolves.toEqual({
+      auth: {
+        allowLocalhost: true,
+      },
+    });
+    await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toContain(`import type { StackConfig }`);
   });
 
   it("fails loudly when the QEMU host mount root is configured but unavailable", async () => {

@@ -594,6 +594,7 @@ async function getTransactions(options: {
   cursor: string | undefined,
   type: TransactionType | undefined,
   customerType: "user" | "team" | "custom" | undefined,
+  customerId: string | undefined,
 }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
   const ledgerTypes = getLedgerTypesForFilter(options.type);
   if (ledgerTypes.length === 0) {
@@ -615,6 +616,9 @@ async function getTransactions(options: {
   ];
   if (options.customerType) {
     whereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
+  }
+  if (options.customerId) {
+    whereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
   }
   if (decodedCursor) {
     whereClauses.push(`(
@@ -673,6 +677,9 @@ async function getTransactions(options: {
     if (options.customerType) {
       refundWhereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
     }
+    if (options.customerId) {
+      refundWhereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
+    }
     const refundSql = `
       SELECT "__rows"."rowdata" AS "rowData"
       FROM (${baseSql}) AS "__rows"
@@ -729,6 +736,7 @@ export const GET = createSmartRouteHandler({
       limit: yupString().optional(),
       type: yupString().oneOf(TRANSACTION_TYPES).optional(),
       customer_type: yupString().oneOf(['user', 'team', 'custom']).optional(),
+      customer_id: yupString().optional(),
     }).optional(),
   }),
   response: yupObject({
@@ -751,6 +759,7 @@ export const GET = createSmartRouteHandler({
       cursor: query.cursor,
       type: query.type,
       customerType: query.customer_type,
+      customerId: query.customer_id,
     });
 
     return {
