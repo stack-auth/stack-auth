@@ -1,8 +1,31 @@
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "./tenancies";
+
+/**
+ * Whether Stack Auth's own plan-limit enforcement (quotas like `analytics_events`,
+ * `session_replays`, `emails_per_month`, the `auth_users` soft cap, and the
+ * `dashboard_admins` seat check) should be enforced for billing teams in the
+ * internal tenancy.
+ *
+ * Setting `STACK_DISABLE_PLAN_LIMITS=true` short-circuits every enforcement
+ * site BEFORE the underlying `getItem` lookup, so missing item config (e.g.
+ * a deploy where the internal tenancy hasn't been migrated to include the
+ * new items yet) cannot cascade into 500s either.
+ *
+ * Intended as a temporary cutover safety net while the plan-limits
+ * infrastructure rolls out to prod; the flag should be removed once we trust
+ * enforcement to behave correctly in every environment.
+ *
+ * Customer projects' own item APIs (`/payments/items/.../update-quantity`)
+ * are unaffected by this flag.
+ */
+export function arePlanLimitsEnforced(): boolean {
+  return getEnvVariable("STACK_DISABLE_PLAN_LIMITS", "false") !== "true";
+}
 
 type GlobalPrismaLike = {
   project: {

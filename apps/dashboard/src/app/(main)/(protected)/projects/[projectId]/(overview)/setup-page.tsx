@@ -72,7 +72,7 @@ const buildInstallPrompt = (framework: SetupFramework) => {
 
   ${command}
 
-  After it finishes, verify that the Stack Auth MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.stack-auth.com/\`. The command above should handle this automatically; if for any reason it didn't, please add the MCP server manually so you have live access to Stack Auth docs and APIs.
+  After it finishes, verify that the Stack Auth MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.stack-auth.com/mcp\`. The command above should handle this automatically; if for any reason it didn't, please add the MCP server manually so you have live access to Stack Auth docs and APIs.
 `;
 };
 

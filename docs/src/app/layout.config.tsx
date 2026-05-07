@@ -32,7 +32,7 @@ export const baseOptions: BaseLayoutProps = {
     {
       type: 'main',
       text: "GitHub",
-      url: "https://github.com/stack-auth/stack-auth",
+      url: "https://github.com/hexclave/stack-auth",
       active: "url",
       external: true
     },

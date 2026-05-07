@@ -1562,7 +1562,7 @@ export class StackClientInterface {
           // refresh token was already invalid, just continue like nothing happened
         } else {
           // this should never happen
-          throw new StackAssertionError("Unexpected error", { error: resOrError.error });
+          throw new StackAssertionError("Unexpected error", { cause: resOrError.error });
         }
       } else {
         // user was signed out successfully, all good
