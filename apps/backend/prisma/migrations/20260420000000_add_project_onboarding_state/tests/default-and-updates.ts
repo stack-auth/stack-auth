@@ -29,7 +29,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   };
   await sql`
     UPDATE "Project"
-    SET "onboardingState" = ${sql.json(onboardingState)}
+    SET "onboardingState" = ${sql.json(onboardingState)}::jsonb
     WHERE "id" = ${ctx.projectId}
   `;
 
