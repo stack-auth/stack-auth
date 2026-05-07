@@ -16,6 +16,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
   <TabsList>
     <TabsTrigger value="cursor">Cursor</TabsTrigger>
     <TabsTrigger value="vscode">VS Code</TabsTrigger>
+    <TabsTrigger value="codex">Codex</TabsTrigger>
     <TabsTrigger value="claudecode">Claude Code</TabsTrigger>
     <TabsTrigger value="claudedesktop">Claude Desktop</TabsTrigger>
     <TabsTrigger value="windsurf">Windsurf</TabsTrigger>
@@ -26,7 +27,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
   <TabsContent value="cursor">
   Configure Stack Auth MCP in Cursor IDE for enhanced code assistance.
 
-  <Button href="cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS8ifQ==" icon={<img src="/imgs/cursor.svg" alt="Cursor" width="14" height="14" className="w-full h-full object-contain" />}>Add to Cursor</Button>
+  <Button href="cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS9tY3AifQ==" icon={<img src="/imgs/cursor.svg" alt="Cursor" width="14" height="14" className="w-full h-full object-contain" />}>Add to Cursor</Button>
     
   **Manual Installation**
     
@@ -36,7 +37,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
       {
         "mcpServers": {
           "stack-auth": {
-            "url": "https://mcp.stack-auth.com/"
+            "url": "https://mcp.stack-auth.com/mcp"
           }
         }
       }
@@ -46,17 +47,43 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
   <TabsContent value="vscode">
     Configure Stack Auth MCP in VSCode IDE for enhanced code assistance.
 
-    <Button href="https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2F%22%7D" icon={<img src="/imgs/vscode.svg" alt="VSCode" width="14" height="14" className="w-full h-full object-contain" />}>Add to VS Code</Button>
+    <Button href="https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2Fmcp%22%7D" icon={<img src="/imgs/vscode.svg" alt="VSCode" width="14" height="14" className="w-full h-full object-contain" />}>Add to VS Code</Button>
 
     **Manual Installation**
 
     Open a terminal and run the following command:
 
     ```sh title="Terminal"
-      code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/"}'
+      code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'
       ```
 
     Then, from inside VS Code, open the .vscode/mcp.json file and click "Start server".
+
+  </TabsContent>
+
+  <TabsContent value="codex">
+    Configure Stack Auth MCP in Codex CLI and the Codex IDE extension. The configuration is shared between both.
+
+    Open a terminal and run the following command:
+
+    ```sh title="Terminal"
+      codex mcp add stack-auth --url https://mcp.stack-auth.com/mcp
+      ```
+
+    Verify it is configured:
+
+    ```sh title="Terminal"
+      codex mcp list
+      ```
+
+    **Manual Installation**
+
+    Alternatively, add the following to `~/.codex/config.toml`:
+
+    ```toml title="config.toml"
+      [mcp_servers.stack-auth]
+      url = "https://mcp.stack-auth.com/mcp"
+      ```
 
   </TabsContent>
 
@@ -64,7 +91,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
     Open a terminal and run the following command:
 
     ```sh title="Terminal"
-      claude mcp add --transport http stack-auth https://mcp.stack-auth.com/
+      claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp
       ```
 
     From within Claude Code, you can use the /mcp command to get more information about the server.
@@ -73,7 +100,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
   <TabsContent value="claudedesktop">
     Open Claude Desktop and navigate to Settings > Connectors > Add Custom Connector.
 
-    Enter the name as stack-auth and the remote MCP server URL as https://mcp.stack-auth.com/.
+    Enter the name as stack-auth and the remote MCP server URL as https://mcp.stack-auth.com/mcp.
   </TabsContent>
   
   <TabsContent value="windsurf">
@@ -83,7 +110,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
       {
         "mcpServers": {
           "stack-auth": {
-            "serverUrl": "https://mcp.stack-auth.com/"
+            "serverUrl": "https://mcp.stack-auth.com/mcp"
           }
         }
       }
@@ -95,7 +122,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
     In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission to set this.
    </Info>
     Navigate to **Settings > Connectors**
-    Add a custom connector with the server URL: `https://mcp.stack-auth.com`
+    Add a custom connector with the server URL: `https://mcp.stack-auth.com/mcp`
 
     After this, it should be visible in Composer > Deep research Tool.
 
@@ -111,7 +138,7 @@ The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your que
       {
         "mcpServers": {
           "stack-auth": {
-           "httpUrl": "https://mcp.stack-auth.com/",
+           "httpUrl": "https://mcp.stack-auth.com/mcp",
            "headers": {
             "Accept": "application/json, text/event-stream"
            }
@@ -132,7 +159,7 @@ If you want to include instructions for all clients in your project's README.md 
 <summary>Cursor</summary>
 
 #### Installation Link
-[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS8ifQ==)
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS9tY3AifQ==)
 
 #### Manual Installation
 Add the following to your \`mcp.json\` file:
@@ -141,7 +168,7 @@ Add the following to your \`mcp.json\` file:
 {
   "mcpServers": {
     "stack-auth": {
-      "url": "https://mcp.stack-auth.com/"
+      "url": "https://mcp.stack-auth.com/mcp"
     }
   }
 }
@@ -152,16 +179,36 @@ Add the following to your \`mcp.json\` file:
 <summary>VSCode</summary>
 
 #### Installation Link
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2F%22%7D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2Fmcp%22%7D)
 
 #### Manual Installation
 Open a terminal and run the following command:
 
 \`\`\`
-code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/"}'
+code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'
 \`\`\`
 
 Then, from inside VS Code, open the .vscode/mcp.json file and click "Start server".
+</details>
+
+<details name="mcp-install-instructions">
+<summary>Codex</summary>
+
+Open a terminal and run the following command:
+\`\`\`
+codex mcp add stack-auth --url https://mcp.stack-auth.com/mcp
+\`\`\`
+
+Verify it is configured:
+\`\`\`
+codex mcp list
+\`\`\`
+
+Alternatively, add the following to \`~/.codex/config.toml\`:
+\`\`\`toml
+[mcp_servers.stack-auth]
+url = "https://mcp.stack-auth.com/mcp"
+\`\`\`
 </details>
 
 <details name="mcp-install-instructions">
@@ -169,7 +216,7 @@ Then, from inside VS Code, open the .vscode/mcp.json file and click "Start serve
 
 Open a terminal and run the following command:
 \`\`\`
-claude mcp add --transport http stack-auth https://mcp.stack-auth.com/
+claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp
 \`\`\`
 From within Claude Code, you can use the \`/mcp\` command to get more information about the server.
 </details>
@@ -179,7 +226,7 @@ From within Claude Code, you can use the \`/mcp\` command to get more informatio
 
 Open Claude Desktop and navigate to Settings > Connectors > Add Custom Connector.
 
-Enter the name as \`stack-auth\` and the remote MCP server URL as \`https://mcp.stack-auth.com/\`.
+Enter the name as \`stack-auth\` and the remote MCP server URL as \`https://mcp.stack-auth.com/mcp\`.
 </details>
 
 <details name="mcp-install-instructions">
@@ -190,7 +237,7 @@ Copy the following JSON to your Windsurf MCP config file:
 {
   "mcpServers": {
     "stack-auth": {
-      "serverUrl": "https://mcp.stack-auth.com/"
+      "serverUrl": "https://mcp.stack-auth.com/mcp"
     }
   }
 }
@@ -203,7 +250,7 @@ Copy the following JSON to your Windsurf MCP config file:
 *Note: In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission*
 
 - Navigate to **Settings > Connectors**
-- Add a custom connector with the server URL: \`https://mcp.stack-auth.com/\`
+- Add a custom connector with the server URL: \`https://mcp.stack-auth.com/mcp\`
 - It should then be visible in the Composer > Deep research tool
 - You may need to add the server as a source
 
@@ -218,7 +265,7 @@ Add the following JSON to your Gemini CLI configuration file (\`~/.gemini/settin
 {
   "mcpServers": {
     "stack-auth": {
-      "httpUrl": "https://mcp.stack-auth.com/",
+      "httpUrl": "https://mcp.stack-auth.com/mcp",
       "headers": {
         "Accept": "application/json, text/event-stream"
       }
@@ -238,4 +285,3 @@ The Stack Auth MCP server exposes **`ask_stack_auth`**, which answers questions 
 - **Authentication flows**: Sign-in, sign-up, and user management
 - **APIs and SDKs**: Endpoints, examples, and framework integration
 - **Best practices**: Security and configuration guidance
-

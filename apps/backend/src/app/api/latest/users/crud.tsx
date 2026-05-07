@@ -882,7 +882,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               }
             });
             throw new StackAssertionError("Failed to update team member", {
-              error: e,
+              cause: e,
               tenancy_id: auth.tenancy.id,
               user_id: params.user_id,
               team_id: data.selected_team_id,

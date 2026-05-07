@@ -247,7 +247,7 @@ export async function logEvent<T extends EventType[]>(
       data = await eventType.dataSchema.validate(data, { strict: true, stripUnknown: false });
     } catch (error) {
       if (error instanceof yup.ValidationError) {
-        throw new StackAssertionError(`Invalid event data for event type: ${eventType.id}`, { eventType, data, error, originalData, originalEventTypes: eventTypes, cause: error });
+        throw new StackAssertionError(`Invalid event data for event type: ${eventType.id}`, { eventType, data, originalData, originalEventTypes: eventTypes, cause: error });
       }
       throw error;
     }

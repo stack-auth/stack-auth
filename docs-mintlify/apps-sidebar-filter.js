@@ -2,8 +2,16 @@
   const SEARCH_ATTRIBUTE = "data-apps-sidebar-search";
   const EMPTY_ATTRIBUTE = "data-apps-sidebar-empty";
 
+  function isPageDarkTheme() {
+    const body = document.body;
+    return document.documentElement.classList.contains("dark")
+      || document.documentElement.getAttribute("data-theme") === "dark"
+      || body?.classList.contains("dark") === true
+      || body?.getAttribute("data-theme") === "dark";
+  }
+
   function applySidebarAppsFilterTheme(searchInput, emptyState, clearFilterButton) {
-    const isDark = document.documentElement.classList.contains("dark");
+    const isDark = isPageDarkTheme();
     searchInput.style.background = isDark ? "rgba(17,24,39,0.72)" : "rgba(248,250,252,0.98)";
     searchInput.style.color = isDark ? "#e5e7eb" : "#111827";
     searchInput.style.border = isDark ? "1px solid rgba(75,85,99,0.9)" : "1px solid rgba(203,213,225,0.95)";
@@ -29,7 +37,13 @@
       return false;
     }
 
-    if (appsHeader.querySelector(`[${SEARCH_ATTRIBUTE}="true"]`) != null) {
+    const existingSearchInput = appsHeader.querySelector(`input[${SEARCH_ATTRIBUTE}="true"]`);
+    if (existingSearchInput != null) {
+      const existingEmptyState = appsGroupContainer.querySelector(`div[${EMPTY_ATTRIBUTE}="true"]`);
+      const existingClearFilterButton = existingEmptyState?.querySelector("button");
+      if (existingEmptyState != null && existingClearFilterButton != null) {
+        applySidebarAppsFilterTheme(existingSearchInput, existingEmptyState, existingClearFilterButton);
+      }
       return true;
     }
 
@@ -126,6 +140,6 @@
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     window.requestAnimationFrame(installWhenReady);
     const observer = new MutationObserver(() => installAppsSidebarFilter());
-    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-theme"] });
   }
 })();
