@@ -77,6 +77,10 @@ vi.mock("@/components/ui", () => ({
   cn: (...classNames: Array<string | false | null | undefined>) => classNames.filter(Boolean).join(" "),
 }));
 
+vi.mock("@/lib/env", () => ({
+  getPublicEnvVar: () => "false",
+}));
+
 vi.mock("@/lib/config-update", () => ({
   useUpdateConfig: () => vi.fn(async () => true),
 }));
@@ -133,12 +137,25 @@ vi.mock("./link-existing-onboarding", () => ({
 }));
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
+import { normalizeProjectOnboardingState, REQUIRED_APP_IDS } from "./shared";
 
 afterEach(() => {
   cleanup();
 });
 
 describe("ProjectOnboardingWizard", () => {
+  it("keeps required apps when normalizing persisted onboarding state", () => {
+    const normalizedState = normalizeProjectOnboardingState({
+      selected_config_choice: "create-new",
+      selected_apps: [],
+      selected_sign_in_methods: [],
+      selected_email_theme_id: null,
+      selected_payments_country: "US",
+    });
+
+    expect(normalizedState.selected_apps).toEqual(REQUIRED_APP_IDS);
+  });
+
   it("completes onboarding automatically after Stripe setup returns successfully", async () => {
     const setStatus = vi.fn(async () => {});
     const onComplete = vi.fn();
@@ -183,9 +200,12 @@ describe("ProjectOnboardingWizard", () => {
       <ProjectOnboardingWizard
         project={project as never}
         status="payments_setup"
+        onboardingState={null}
         mode={null}
         setMode={vi.fn()}
         setStatus={setStatus}
+        setOnboardingState={vi.fn(async () => {})}
+        clearOnboardingState={vi.fn(async () => {})}
         onComplete={onComplete}
       />,
     );

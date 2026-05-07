@@ -1,7 +1,8 @@
 import type { PrismaClientTransaction } from "@/prisma-client";
 import { ITEM_IDS, PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  arePlanLimitsEnforced,
   getBillingTeamId,
   getOwnedProjectIdsForBillingTeam,
   getOwnedTenancyIdsForBillingTeam,
@@ -184,5 +185,35 @@ describe("capacity lookup helpers", () => {
       ITEM_IDS.emailsPerMonth,
       capacityReaders,
     )).rejects.toThrow("Unsupported team-wide capacity item id");
+  });
+});
+
+describe("arePlanLimitsEnforced", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns true when env var is unset (default-on enforcement)", () => {
+    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "");
+    expect(arePlanLimitsEnforced()).toBe(true);
+  });
+
+  it("returns false when env var is exactly 'true'", () => {
+    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "true");
+    expect(arePlanLimitsEnforced()).toBe(false);
+  });
+
+  it("returns true when env var is 'false'", () => {
+    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "false");
+    expect(arePlanLimitsEnforced()).toBe(true);
+  });
+
+  it("returns true for any non-'true' value (e.g. '1', 'yes', 'TRUE')", () => {
+    // Explicit string match is intentional — we don't want to risk a typo
+    // like STACK_DISABLE_PLAN_LIMITS=trueee silently disabling enforcement.
+    for (const value of ["1", "yes", "TRUE", "True", " true", "true ", "trueee"]) {
+      vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", value);
+      expect(arePlanLimitsEnforced()).toBe(true);
+    }
   });
 });

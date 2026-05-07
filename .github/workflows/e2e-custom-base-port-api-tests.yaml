@@ -118,6 +118,15 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
+      - name: Start stack-mcp in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run start:mcp --log-order=stream &
+          wait-on: |
+            http://localhost:6744/health
+          tail: true
+          wait-for: 30s
+          log-output-if: true
       - name: Start stack-dashboard in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
