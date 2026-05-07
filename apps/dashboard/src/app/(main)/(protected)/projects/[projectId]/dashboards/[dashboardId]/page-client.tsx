@@ -391,7 +391,7 @@ function DashboardDetailContent({
     <PageLayout fillWidth noPadding>
       {/* Both panels are always in the DOM so the iframe never unmounts/reloads.
           The chat panel animates its width; the dashboard panel adjusts via flex-1. */}
-      <div data-full-bleed className="flex h-full">
+      <div data-full-bleed className="flex h-[calc(100vh-4.5rem)] dark:h-[calc(100vh-5.75rem)]">
         {/* Dashboard iframe panel */}
         <div
           className={cn(

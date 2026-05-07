@@ -1,4 +1,5 @@
 import withPostHog from "@/analytics";
+import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { globalPrismaClient } from "@/prisma-client";
 import { getStackServerApp } from "@/stack";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
@@ -276,7 +277,7 @@ export async function logEvent<T extends EventType[]>(
   runAsynchronouslyAndWaitUntil((async () => {
     const billingTeamId = options.billingTeamId;
 
-    if (billingTeamId != null) {
+    if (billingTeamId != null && arePlanLimitsEnforced()) {
       const app = getStackServerApp();
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
       const isDebited = await eventsItem.tryDecreaseQuantity(1);

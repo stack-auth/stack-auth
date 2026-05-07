@@ -12,7 +12,7 @@
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
   "version": "2.8.88",
-  "repository": "https://github.com/stack-auth/stack-auth",
+  "repository": "https://github.com/hexclave/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -53,12 +53,12 @@
 
     "//": "IF_PLATFORM template react-like",
     "build": "rimraf dist && pnpm run css && tsdown",
-    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
+    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css",
     "codegen:watch": "pnpm run css:watch"
     ,"//": "ELSE_PLATFORM",
     "build": "rimraf dist && tsdown",
-    "dev": "rimraf dist && tsdown --watch"
+    "dev": "tsdown --watch"
     ,"//": "END_PLATFORM",
 
     "//": "IF_PLATFORM template react-like"
