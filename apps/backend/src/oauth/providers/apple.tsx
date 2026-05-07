@@ -35,7 +35,7 @@ export class AppleProvider extends OAuthBaseProvider {
     try {
       payload = decodeJwt(idToken);
     } catch (error) {
-      throw new StackAssertionError("Error decoding Apple ID token", { error });
+      throw new StackAssertionError("Error decoding Apple ID token", { cause: error });
     }
 
     return validateUserInfo({

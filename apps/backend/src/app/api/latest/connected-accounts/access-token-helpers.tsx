@@ -26,7 +26,6 @@ function captureOAuthAccessTokenRefreshIssue(options: {
       attempts: options.refreshError.attempts,
       retryCount: options.refreshError.retryCount,
       sawAmbiguousRefreshAttempt: options.refreshError.sawAmbiguousRefreshAttempt,
-      error: options.refreshError.cause,
       causes: options.refreshError.causes,
     },
   ));
@@ -197,7 +196,7 @@ export async function retrieveOrRefreshAccessToken(options: {
             refreshError: tokenSetResult.error,
           });
           const assertionError = new StackAssertionError('Unexpected error refreshing access token — this may indicate a bug or misconfiguration', {
-            error: tokenSetResult.error.cause,
+            cause: tokenSetResult.error.cause,
             providerClass: providerInstance.constructor.name,
             refreshErrorType: tokenSetResult.error.type,
             attempts: tokenSetResult.error.attempts,
@@ -210,7 +209,7 @@ export async function retrieveOrRefreshAccessToken(options: {
         }
         default: {
           const _: never = tokenSetResult.error;
-          throw new StackAssertionError("Unhandled OAuth access token refresh error", { error: _ });
+          throw new StackAssertionError("Unhandled OAuth access token refresh error", { cause: _ });
         }
       }
     }
