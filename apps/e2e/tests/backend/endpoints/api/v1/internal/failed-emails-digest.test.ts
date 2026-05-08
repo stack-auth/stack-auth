@@ -129,20 +129,13 @@ describe("with valid credentials", () => {
           {
             "emails": [
               {
-                "subject": "",
-                "to": ["User ID: <stripped UUID>"],
-              },
-              {
                 "subject": "Verify your email at Test Failed Emails Project",
                 "to": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
               },
             ],
             "project_id": "<stripped UUID>",
             "tenancy_id": "<stripped UUID>",
-            "tenant_owner_emails": [
-              "default-mailbox--<stripped UUID>@stack-generated.example.com",
-              "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            ],
+            "tenant_owner_emails": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
           },
         ]
       `);

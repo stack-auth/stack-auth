@@ -298,9 +298,13 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
     await Auth.Anonymous.signUp();
   }
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  // ClickHouse ingestion is async; poll until the regular user's activity is counted in DAU.
+  const response = await waitForMetricsMatch(false, (r) => {
+    const dau = (r.body.daily_active_users as Array<{ activity: number }>);
+    return r.body.users_by_country?.["CA"] === 1
+      && dau.length > 0
+      && dau[dau.length - 1].activity === 1;
+  });
 
   // Should only count 1 regular user
   expect(response.body.total_users).toBe(1);
