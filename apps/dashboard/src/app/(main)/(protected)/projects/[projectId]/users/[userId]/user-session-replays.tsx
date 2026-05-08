@@ -42,6 +42,8 @@ export function UserSessionReplaysSection({ user }: { user: ServerUser }) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,7 +80,14 @@ export function UserSessionReplaysSection({ user }: { user: ServerUser }) {
       setRows((prev) => (cursor ? [...prev, ...res.items] : res.items));
       setNextCursor(res.nextCursor);
       setHasMore(res.nextCursor !== null);
+      setError(null);
+    } catch (e) {
+      if (reqId !== requestIdRef.current) return;
+      setError(e instanceof Error ? e.message : "Failed to load session replays");
     } finally {
+      if (reqId === requestIdRef.current && cursor === null) {
+        setIsInitialLoading(false);
+      }
       if (cursor !== null) {
         loadingMoreRef.current = false;
         setIsLoadingMore(false);
@@ -91,6 +100,8 @@ export function UserSessionReplaysSection({ user }: { user: ServerUser }) {
     setRows([]);
     setNextCursor(null);
     setHasMore(false);
+    setIsInitialLoading(true);
+    setError(null);
     runAsynchronously(() => fetchPage(null), { noErrorLogging: true });
   }, [fetchPage]);
 
@@ -160,6 +171,8 @@ export function UserSessionReplaysSection({ user }: { user: ServerUser }) {
       rows={rows}
       getRowId={(replay) => replay.id}
       emptyLabel="No session replays for this user"
+      isInitialLoading={isInitialLoading}
+      error={error}
       onRowClick={(row) => navigateToReplay(row.id)}
       onSortChange={onSortChange}
       hasMore={hasMore}

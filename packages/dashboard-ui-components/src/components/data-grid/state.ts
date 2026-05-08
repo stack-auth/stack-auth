@@ -160,6 +160,8 @@ function getRelativeTimeFormatter(locale?: string): Intl.RelativeTimeFormat {
 
 export function defaultFormatRelative(date: Date): string {
   const rtf = getRelativeTimeFormatter();
+  // Wall-clock comparison to "now" (e.g. "5 minutes ago"). performance.now()
+  // would be wrong here — it's a monotonic timer, not a wall-clock instant.
   let duration = (date.getTime() - Date.now()) / 1000;
   for (const div of DIVISIONS) {
     if (Math.abs(duration) < div.amount) return rtf.format(Math.round(duration), div.unit);

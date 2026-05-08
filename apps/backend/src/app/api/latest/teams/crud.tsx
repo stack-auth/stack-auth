@@ -280,8 +280,28 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const queryWithoutSpecialChars = query.query?.replace(/[^a-zA-Z0-9\-_.]/g, '');
     const sortDirection = query.desc === 'true' ? 'desc' : 'asc';
+
+    let queryFilter: Prisma.TeamWhereInput | undefined;
+    if (query.query) {
+      const sanitized = query.query.replace(/[^a-zA-Z0-9\-_.]/g, '');
+      queryFilter = {
+        OR: [
+          ...isUuid(sanitized) ? [{
+            teamId: {
+              equals: sanitized,
+            },
+          }] : [],
+          {
+            displayName: {
+              contains: query.query,
+              mode: 'insensitive' as const,
+            },
+          },
+        ],
+      };
+    }
+
     const db = await prisma.team.findMany({
       where: {
         tenancyId: auth.tenancy.id,
@@ -292,28 +312,18 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
             },
           },
         } : {},
-        ...query.query ? {
-          OR: [
-            ...isUuid(queryWithoutSpecialChars!) ? [{
-              teamId: {
-                equals: queryWithoutSpecialChars,
-              },
-            }] : [],
-            {
-              displayName: {
-                contains: query.query,
-                mode: 'insensitive' as const,
-              },
-            },
-          ],
-        } : {},
+        ...queryFilter ?? {},
       },
       orderBy: [
         { createdAt: sortDirection },
         { teamId: sortDirection },
       ],
       take: query.limit ? query.limit + 1 : undefined,
+      // Cursor convention: `cursor` is the id of the last item returned to
+      // the caller on the previous page. Prisma's cursor is inclusive, so we
+      // must `skip: 1` to exclude that row from the new page.
       ...query.cursor ? {
+        skip: 1,
         cursor: {
           tenancyId_teamId: {
             tenancyId: auth.tenancy.id,
@@ -325,11 +335,12 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     if (query.limit) {
       const items = db.slice(0, query.limit).map(teamPrismaToCrud);
+      const hasMore = db.length > query.limit;
       return {
         items,
         is_paginated: true,
         pagination: {
-          next_cursor: db.length >= query.limit + 1 ? db[db.length - 1].teamId : null,
+          next_cursor: hasMore && items.length > 0 ? items[items.length - 1].id : null,
         },
       };
     }

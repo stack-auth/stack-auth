@@ -1,3 +1,5 @@
+import { KnownErrors } from "@stackframe/stack-shared";
+
 type PermissionDefinition = {
   id: string,
   description?: string,
@@ -15,6 +17,12 @@ type ListQuery = {
  * paginating them means filtering and slicing the in-memory list returned by
  * `listPermissionDefinitions`. The list is already sorted by id, which makes
  * the id a stable cursor.
+ *
+ * Cursor convention: `cursor` is the id of the last item returned on the
+ * previous page; the next page starts immediately after it. If the cursor
+ * isn't present in the filtered list (e.g. the caller's `query` filter
+ * changed across pages) we throw rather than silently returning an empty
+ * page — that way the caller learns to reset their pagination state.
  */
 export function paginatePermissionDefinitions(items: PermissionDefinition[], query: ListQuery) {
   const search = query.query?.trim().toLowerCase();
@@ -28,9 +36,14 @@ export function paginatePermissionDefinitions(items: PermissionDefinition[], que
     return { items: filtered, is_paginated: false as const };
   }
 
-  const startIdx = query.cursor
-    ? filtered.findIndex((p) => p.id === query.cursor) + 1 || filtered.length
-    : 0;
+  let startIdx = 0;
+  if (query.cursor) {
+    const cursorIdx = filtered.findIndex((p) => p.id === query.cursor);
+    if (cursorIdx === -1) {
+      throw new KnownErrors.ItemNotFound(query.cursor);
+    }
+    startIdx = cursorIdx + 1;
+  }
   const slice = filtered.slice(startIdx, startIdx + query.limit);
   const hasMore = startIdx + query.limit < filtered.length;
 

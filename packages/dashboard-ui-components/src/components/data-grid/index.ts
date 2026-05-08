@@ -1,6 +1,16 @@
 export { DataGrid, isDataGridInteractiveRowClickTarget } from "./data-grid";
 export { DataGridToolbar } from "./data-grid-toolbar";
 
+// Sizing helpers — re-exported so external consumers that depended on the
+// previous API can still measure column widths consistently with the grid.
+export {
+  getEffectiveMinWidth,
+  getEffectiveMaxWidth,
+  clampColumnWidth,
+  DEFAULT_COL_WIDTH,
+  DEFAULT_MAX_COL_WIDTH,
+} from "./data-grid-sizing";
+
 export { useDataSource } from "./use-data-source";
 export type { UseDataSourceResult } from "./use-data-source";
 

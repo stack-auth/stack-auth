@@ -16,6 +16,10 @@ type UserPageTableSectionProps<TRow> = {
   onLoadMore?: () => void,
   onSortChange?: (model: DataGridSortModel) => void,
   paginated?: boolean,
+  /** True until the first request settles. When true and rows is empty, show a loading state instead of "empty". */
+  isInitialLoading?: boolean,
+  /** Non-null when the latest fetch failed. Rendered in place of empty/loading state. */
+  error?: ReactNode | null,
 };
 
 export function UserPageTableSection<TRow,>({
@@ -31,6 +35,8 @@ export function UserPageTableSection<TRow,>({
   onLoadMore,
   onSortChange,
   paginated,
+  isInitialLoading,
+  error,
 }: UserPageTableSectionProps<TRow>) {
   const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
   const gridData = useDataSource({
@@ -81,7 +87,11 @@ export function UserPageTableSection<TRow,>({
             ))}
           </div>
           <div className="flex min-h-16 items-center justify-center py-4 text-sm font-medium text-muted-foreground">
-            {emptyLabel}
+            {error
+              ? error
+              : isInitialLoading
+                ? "Loading…"
+                : emptyLabel}
           </div>
         </div>
       ) : (

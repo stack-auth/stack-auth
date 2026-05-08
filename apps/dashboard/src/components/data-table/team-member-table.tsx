@@ -24,7 +24,7 @@ import {
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { CheckCircleIcon, CopyIcon, XCircleIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { Link } from "../link";
@@ -212,7 +212,10 @@ function EditPermissionDialog(props: {
           return await props.user.revokePermission(props.team, p.id);
         }
       });
-      await Promise.allSettled(promises);
+      // Use Promise.all so a single failed grant/revoke aborts and the dialog
+      // stays open — otherwise users see "saved" while only some permissions
+      // were applied.
+      await Promise.all(promises);
       props.onSubmit();
     }}
     cancelButton
@@ -261,10 +264,32 @@ function Actions(props: {
   );
 }
 
+const PERMISSION_FETCH_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 export function TeamMemberTable(props: { team: ServerTeam }) {
   const stackAdminApp = useAdminApp();
   const [updateCounter, setUpdateCounter] = useState(0);
   const [permissions, setPermissions] = useState<Map<string, string[]>>(new Map());
+  // Bumped each time we kick off a new generator request; setPermissions
+  // calls from older requests no-op so that a slow earlier fetch can't
+  // clobber the state of a fresh one.
+  const permissionRequestIdRef = useRef(0);
 
   const teamMemberColumns = useMemo<DataGridColumnDef<ExtendedServerUserForTeam>[]>(() => [
     {
@@ -366,6 +391,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
 
   const dataSource = useMemo<DataGridDataSource<ExtendedServerUserForTeam>>(
     () => async function* (params) {
+      const reqId = ++permissionRequestIdRef.current;
       const activeSort = params.sorting.find((s) => s.columnId === "lastActiveAt");
       const sortDesc = activeSort?.direction !== "asc";
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
@@ -383,12 +409,20 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
         includeRestricted: true,
       });
       const extended = extendUsers(result);
+      // Bound each per-user permission fetch so a single slow user can't
+      // hang the whole grid page indefinitely.
       const permissionResults = await Promise.all(
         extended.map(async (user) => {
-          const perms = await user.listPermissions(props.team, { recursive: false });
+          const perms = await withTimeout(
+            user.listPermissions(props.team, { recursive: false }),
+            PERMISSION_FETCH_TIMEOUT_MS,
+            `listPermissions(${user.id})`,
+          );
           return [user.id, perms.map(p => p.id)] as const;
         })
       );
+      // Drop the result if a newer request started while we were fetching.
+      if (reqId !== permissionRequestIdRef.current) return;
       setPermissions((prev) => {
         const next = new Map(prev);
         for (const [id, perms] of permissionResults) next.set(id, perms);

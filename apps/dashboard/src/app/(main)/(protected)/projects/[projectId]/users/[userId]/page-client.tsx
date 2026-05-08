@@ -202,9 +202,9 @@ function RestrictionDialog({
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
-  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
-  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
-  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
+  const restrictedByAdmin = user.restrictedByAdmin;
+  const restrictedByAdminReason = user.restrictedByAdminReason;
+  const restrictedByAdminPrivateDetails = user.restrictedByAdminPrivateDetails;
 
   const [publicReason, setPublicReason] = useState(restrictedByAdminReason ?? '');
   const [privateDetails, setPrivateDetails] = useState(restrictedByAdminPrivateDetails ?? '');
@@ -227,7 +227,7 @@ function RestrictionDialog({
 
     setIsSaving(true);
     try {
-      await user.update({ restrictedByAdmin: true, restrictedByAdminReason: publicReason.trim() || null, restrictedByAdminPrivateDetails: privateDetails.trim() || null } as any);
+      await user.update({ restrictedByAdmin: true, restrictedByAdminReason: publicReason.trim() || null, restrictedByAdminPrivateDetails: privateDetails.trim() || null });
       onOpenChange(false);
     } catch (error) {
       captureError(`user-restriction-save-and-restrict-error`, new StackAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
@@ -243,7 +243,7 @@ function RestrictionDialog({
         restrictedByAdmin: false,
         restrictedByAdminReason: null,
         restrictedByAdminPrivateDetails: null,
-      } as any);
+      });
       onOpenChange(false);
     } finally {
       setIsSaving(false);
@@ -316,9 +316,9 @@ function RestrictionDialog({
 function RestrictionBanner({ user }: { user: ServerUser }) {
   if (!user.isRestricted) return null;
 
-  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
-  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
-  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
+  const restrictedByAdmin = user.restrictedByAdmin;
+  const restrictedByAdminReason = user.restrictedByAdminReason;
+  const restrictedByAdminPrivateDetails = user.restrictedByAdminPrivateDetails;
   const reasonText = getRestrictionReasonText(user);
 
   return (

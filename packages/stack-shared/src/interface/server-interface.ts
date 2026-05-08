@@ -347,6 +347,13 @@ export class StackServerInterface extends StackClientInterface {
 
   async listServerTeams(options?: {
     userId?: string,
+  }): Promise<TeamsCrud['Server']['Read'][]> {
+    const result = await this.listServerTeamsPaginated(options);
+    return result.items;
+  }
+
+  async listServerTeamsPaginated(options?: {
+    userId?: string,
     orderBy?: 'createdAt',
     desc?: boolean,
     cursor?: string,

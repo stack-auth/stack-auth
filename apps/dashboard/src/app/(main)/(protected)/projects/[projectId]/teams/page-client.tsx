@@ -16,7 +16,7 @@ type CreateDialogProps = {
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const teams = stackAdminApp.useTeams({ limit: 1 });
+  const teams = stackAdminApp.useTeamsPaginated({ limit: 1 });
   const project = stackAdminApp.useProject();
 
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);

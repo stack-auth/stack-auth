@@ -106,30 +106,34 @@ export function useDataGridUrlState<TRow>(
     };
   });
 
-  // Sync state -> URL.
+  // Sync state -> URL. Debounced so that high-frequency state changes
+  // (e.g. dragging a column resize handle) don't fire a URL write per pixel.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const before = params.toString();
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const before = params.toString();
 
-    const widthsStr = serializeWidths(state.columnWidths, columnsRef.current);
-    if (widthsStr) {
-      params.set(widthsKey, widthsStr);
-    } else {
-      params.delete(widthsKey);
-    }
+      const widthsStr = serializeWidths(state.columnWidths, columnsRef.current);
+      if (widthsStr) {
+        params.set(widthsKey, widthsStr);
+      } else {
+        params.delete(widthsKey);
+      }
 
-    const hiddenStr = serializeHidden(state.columnVisibility);
-    if (hiddenStr) {
-      params.set(hiddenKey, hiddenStr);
-    } else {
-      params.delete(hiddenKey);
-    }
+      const hiddenStr = serializeHidden(state.columnVisibility);
+      if (hiddenStr) {
+        params.set(hiddenKey, hiddenStr);
+      } else {
+        params.delete(hiddenKey);
+      }
 
-    const after = params.toString();
-    if (before === after) return;
-    const url = `${window.location.pathname}${after ? `?${after}` : ""}${window.location.hash}`;
-    window.history.replaceState(window.history.state, "", url);
+      const after = params.toString();
+      if (before === after) return;
+      const url = `${window.location.pathname}${after ? `?${after}` : ""}${window.location.hash}`;
+      window.history.replaceState(window.history.state, "", url);
+    }, 100);
+    return () => clearTimeout(timer);
   }, [state.columnWidths, state.columnVisibility, widthsKey, hiddenKey]);
 
   // React to back/forward navigation.
@@ -138,9 +142,13 @@ export function useDataGridUrlState<TRow>(
     const onPop = () => {
       const params = new URLSearchParams(window.location.search);
       const cols = columnsRef.current;
+      // When the URL no longer has a value for a key, reset to defaults
+      // rather than preserving the previous in-memory state — otherwise
+      // navigating back to a clean URL leaves stale column widths.
+      const defaults = createDefaultDataGridState(cols);
       setState((prev) => ({
         ...prev,
-        columnWidths: parseWidths(params.get(widthsKey), prev.columnWidths, cols),
+        columnWidths: parseWidths(params.get(widthsKey), defaults.columnWidths, cols),
         columnVisibility: parseHidden(params.get(hiddenKey), cols),
       }));
     };
