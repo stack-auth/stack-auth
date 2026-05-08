@@ -102,10 +102,8 @@ describe("with valid credentials", () => {
       }
     `);
 
-    // Failed emails are written asynchronously; poll until both the test
-    // email and the verification email have been recorded for our tenancy.
-    let mockProjectFailedEmails: any[] = [];
-    for (let i = 0; i < 30; i++) {
+    await wait(10_000);
+
       const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
         method: "POST",
         headers: { "Authorization": "Bearer mock_cron_secret" },
@@ -114,19 +112,14 @@ describe("with valid credentials", () => {
         },
       });
       expect(response.status).toBe(200);
+
       const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
-      mockProjectFailedEmails = failedEmailsByTenancy.filter(
+    const mockProjectFailedEmails = failedEmailsByTenancy.filter(
         (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
       ).map((batch: any) => ({
         ...batch,
         emails: [...batch.emails].sort((a, b) => stringCompare(a.subject, b.subject)),
-        tenant_owner_emails: [...batch.tenant_owner_emails].sort(),
       }));
-      if (mockProjectFailedEmails[0]?.emails?.length >= 2) {
-        break;
-      }
-      await wait(1_000);
-    }
 
     if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);

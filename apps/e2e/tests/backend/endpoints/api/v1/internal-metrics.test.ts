@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, Team, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
@@ -173,8 +173,9 @@ it("should return metrics data with users", async ({ expect }) => {
   backendContext.set({ mailbox: mailboxes[2], ipData: { country: "CH", ipAddress: "127.0.0.1", city: "Zurich", region: "ZH", latitude: 47.3769, longitude: 8.5417, tzIdentifier: "Europe/Zurich" } });
   await Auth.Otp.signIn();
 
-  // the event log is async; poll until ClickHouse has ingested all sign-ins (last one is mailbox-3 → CH)
-  const response = await waitForMetricsToIncludeUsersByCountry({ countryCode: "CH", expectedCount: 1 });
+  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
   expect(response).toMatchSnapshot(`metrics_result_with_users`);
 
   await ensureAnonymousUsersAreStillExcluded(response);
@@ -298,13 +299,9 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
     await Auth.Anonymous.signUp();
   }
 
-  // ClickHouse ingestion is async; poll until the regular user's activity is counted in DAU.
-  const response = await waitForMetricsMatch(false, (r) => {
-    const dau = (r.body.daily_active_users as Array<{ activity: number }>);
-    return r.body.users_by_country?.["CA"] === 1
-      && dau.length > 0
-      && dau[dau.length - 1].activity === 1;
-  });
+  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
 
   // Should only count 1 regular user
   expect(response.body.total_users).toBe(1);
