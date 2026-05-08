@@ -29,17 +29,21 @@ async function readManualEntry(token: string, qaId: bigint) {
 
 function readOptional<T>(value: unknown): T | undefined {
   if (value == null) return undefined;
-  if (typeof value === "object" && value != null && "some" in value) {
+  if (typeof value === "object" && "some" in value) {
     return (value as { some: T }).some;
   }
-  if (typeof value === "object" && value != null && "none" in value) return undefined;
+  if (typeof value === "object" && "none" in value) return undefined;
   return value as T;
 }
 
 describe.skipIf(!canRun)("qa_entries CRUD invariants", () => {
   let scope: CleanupScope;
-  beforeEach(() => { scope = createCleanupScope(); });
-  afterEach(async () => { await scope.cleanup(); });
+  beforeEach(() => {
+    scope = createCleanupScope();
+  });
+  afterEach(async () => {
+    await scope.cleanup();
+  });
 
   it("firstPublishedAt is immutable; lastPublishedAt updates per republish; both survive unpublish", async ({ expect }) => {
     const reviewer = await mintIdentity();
