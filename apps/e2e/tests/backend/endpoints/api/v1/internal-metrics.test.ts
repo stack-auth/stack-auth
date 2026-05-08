@@ -297,9 +297,11 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
     await Auth.Anonymous.signUp();
   }
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  const response = await waitForMetricsMatch(false, (r) => {
+    if (r.body?.total_users !== 1) return false;
+    const dau = r.body?.daily_active_users?.[r.body.daily_active_users.length - 1];
+    return dau?.activity === 1 && r.body?.users_by_country?.["CA"] === 1;
+  });
 
   // Should only count 1 regular user
   expect(response.body.total_users).toBe(1);
