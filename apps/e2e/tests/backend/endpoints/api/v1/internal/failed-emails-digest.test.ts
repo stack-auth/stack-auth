@@ -104,26 +104,26 @@ describe("with valid credentials", () => {
 
     await wait(10_000);
 
-      const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
-        method: "POST",
-        headers: { "Authorization": "Bearer mock_cron_secret" },
-        query: {
-          dry_run: `${isDryRun}`,
-        },
-      });
+    const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+      method: "POST",
+      headers: { "Authorization": "Bearer mock_cron_secret" },
+      query: {
+        dry_run: `${isDryRun}`,
+      },
+    });
       expect(response.status).toBe(200);
 
       const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
-    const mockProjectFailedEmails = failedEmailsByTenancy.filter(
+      const mockProjectFailedEmails = failedEmailsByTenancy.filter(
         (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
       ).map((batch: any) => ({
         ...batch,
         emails: [...batch.emails].sort((a, b) => stringCompare(a.subject, b.subject)),
       }));
 
-    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
-    } else {
+      } else {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
         [
           {
@@ -147,11 +147,11 @@ describe("with valid credentials", () => {
         ]
       `);
       expect(mockProjectFailedEmails[0].project_id).toBe(projectId);
-    }
+      }
 
-    return {
-      projectOwnerMailbox,
-    };
+      return {
+        projectOwnerMailbox,
+      };
   }
 
   it("should return 200 and process dry run request", async ({ expect }) => {
