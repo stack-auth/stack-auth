@@ -102,24 +102,31 @@ describe("with valid credentials", () => {
       }
     `);
 
-    await wait(10_000);
-
-    const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
-      method: "POST",
-      headers: { "Authorization": "Bearer mock_cron_secret" },
-      query: {
-        dry_run: `${isDryRun}`,
-      },
-    });
-    expect(response.status).toBe(200);
-
-    const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
-    const mockProjectFailedEmails = failedEmailsByTenancy.filter(
-      (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
-    ).map((batch: any) => ({
-      ...batch,
-      emails: [...batch.emails].sort((a, b) => stringCompare(a.subject, b.subject)),
-    }));
+    // Failed emails are written asynchronously; poll until both the test
+    // email and the verification email have been recorded for our tenancy.
+    let mockProjectFailedEmails: any[] = [];
+    for (let i = 0; i < 30; i++) {
+      const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
+        method: "POST",
+        headers: { "Authorization": "Bearer mock_cron_secret" },
+        query: {
+          dry_run: `${isDryRun}`,
+        },
+      });
+      expect(response.status).toBe(200);
+      const failedEmailsByTenancy = response.body.failed_emails_by_tenancy;
+      mockProjectFailedEmails = failedEmailsByTenancy.filter(
+        (batch: any) => batch.tenant_owner_emails.includes(backendContext.value.mailbox.emailAddress)
+      ).map((batch: any) => ({
+        ...batch,
+        emails: [...batch.emails].sort((a, b) => stringCompare(a.subject, b.subject)),
+        tenant_owner_emails: [...batch.tenant_owner_emails].sort(),
+      }));
+      if (mockProjectFailedEmails[0]?.emails?.length >= 2) {
+        break;
+      }
+      await wait(1_000);
+    }
 
     if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
@@ -129,13 +136,20 @@ describe("with valid credentials", () => {
           {
             "emails": [
               {
+                "subject": "",
+                "to": ["User ID: <stripped UUID>"],
+              },
+              {
                 "subject": "Verify your email at Test Failed Emails Project",
                 "to": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
               },
             ],
             "project_id": "<stripped UUID>",
             "tenancy_id": "<stripped UUID>",
-            "tenant_owner_emails": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
+            "tenant_owner_emails": [
+              "default-mailbox--<stripped UUID>@stack-generated.example.com",
+              "default-mailbox--<stripped UUID>@stack-generated.example.com",
+            ],
           },
         ]
       `);
