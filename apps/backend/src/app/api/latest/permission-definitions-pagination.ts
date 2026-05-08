@@ -1,4 +1,5 @@
-import { KnownErrors } from "@stackframe/stack-shared";
+import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 type PermissionDefinition = {
   id: string,
@@ -12,19 +13,17 @@ type ListQuery = {
   query?: string,
 };
 
-/**
- * Permission definitions live in tenancy config rather than a DB table, so
- * paginating them means filtering and slicing the in-memory list returned by
- * `listPermissionDefinitions`. The list is already sorted by id, which makes
- * the id a stable cursor.
- *
- * Cursor convention: `cursor` is the id of the last item returned on the
- * previous page; the next page starts immediately after it. If the cursor
- * isn't present in the filtered list (e.g. the caller's `query` filter
- * changed across pages) we throw rather than silently returning an empty
- * page — that way the caller learns to reset their pagination state.
- */
+export const permissionDefinitionsListQuerySchema = yupObject({
+  limit: yupNumber().integer().min(1).max(200).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor." } }),
+  cursor: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "Cursor (permission id) to start the next page from. Requires `limit` to also be set." } }),
+  query: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "Free-text filter applied to permission id and description (case-insensitive)." } }),
+});
+
 export function paginatePermissionDefinitions(items: PermissionDefinition[], query: ListQuery) {
+  if (query.cursor && query.limit === undefined) {
+    throw new StatusError(StatusError.BadRequest, "`cursor` requires `limit` to also be set.");
+  }
+
   const search = query.query?.trim().toLowerCase();
   const filtered = search
     ? items.filter((p) =>
@@ -40,7 +39,11 @@ export function paginatePermissionDefinitions(items: PermissionDefinition[], que
   if (query.cursor) {
     const cursorIdx = filtered.findIndex((p) => p.id === query.cursor);
     if (cursorIdx === -1) {
-      throw new KnownErrors.ItemNotFound(query.cursor);
+      return {
+        items: [],
+        is_paginated: true as const,
+        pagination: { next_cursor: null },
+      };
     }
     startIdx = cursorIdx + 1;
   }

@@ -36,10 +36,10 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API', exampleValue: 'me' } }),
     /** @deprecated use creator_user_id in the body instead */
     add_current_user: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: ['Create'], hidden: true } }),
-    order_by: yupString().oneOf(["createdAt"]).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Field to order results by. Currently only `createdAt` is supported.', exampleValue: 'createdAt' } }),
+    order_by: yupString().oneOf(["created_at"]).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Field to order results by. Currently only `created_at` is supported.', exampleValue: 'created_at' } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Whether to order results in descending order. Defaults to false (ascending).', exampleValue: 'false' } }),
-    limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The maximum number of items to return.' } }),
-    cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The cursor to start the result set from.' } }),
+    limit: yupNumber().integer().min(1).max(200).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The maximum number of items to return (capped at 200).' } }),
+    cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The cursor to start the result set from. Requires `limit` to also be set.' } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "A search query to filter the results by. Free-text search applied to the team's id (exact-match) and display name." } }),
   }),
   paramsSchema: yupObject({
@@ -279,6 +279,10 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       }
     }
 
+    if (query.cursor && !query.limit) {
+      throw new StatusError(StatusError.BadRequest, "`cursor` requires `limit` to also be set.");
+    }
+
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const sortDirection = query.desc === 'true' ? 'desc' : 'asc';
 
@@ -302,6 +306,20 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       };
     }
 
+    if (query.cursor) {
+      const cursorRow = await prisma.team.findUnique({
+        where: { tenancyId_teamId: { tenancyId: auth.tenancy.id, teamId: query.cursor } },
+        select: { teamId: true },
+      });
+      if (!cursorRow) {
+        return {
+          items: [],
+          is_paginated: true,
+          pagination: { next_cursor: null },
+        };
+      }
+    }
+
     const db = await prisma.team.findMany({
       where: {
         tenancyId: auth.tenancy.id,
@@ -319,9 +337,6 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         { teamId: sortDirection },
       ],
       take: query.limit ? query.limit + 1 : undefined,
-      // Cursor convention: `cursor` is the id of the last item returned to
-      // the caller on the previous page. Prisma's cursor is inclusive, so we
-      // must `skip: 1` to exclude that row from the new page.
       ...query.cursor ? {
         skip: 1,
         cursor: {

@@ -283,7 +283,7 @@ async function fetchAllUsers(
     }
     const batch = await stackAdminApp.listUsers(listUsersOptions);
 
-    allUsers.push(...batch);
+    allUsers.push(...batch.items);
     cursor = batch.nextCursor ?? undefined;
   } while (cursor);
 

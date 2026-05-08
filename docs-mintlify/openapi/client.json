@@ -5797,10 +5797,10 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "example": "createdAt",
-              "description": "Field to order results by. Currently only `createdAt` is supported."
+              "example": "created_at",
+              "description": "Field to order results by. Currently only `created_at` is supported."
             },
-            "description": "Field to order results by. Currently only `createdAt` is supported.",
+            "description": "Field to order results by. Currently only `created_at` is supported.",
             "required": false
           },
           {
@@ -5819,9 +5819,9 @@
             "in": "query",
             "schema": {
               "type": "number",
-              "description": "The maximum number of items to return."
+              "description": "The maximum number of items to return (capped at 200)."
             },
-            "description": "The maximum number of items to return.",
+            "description": "The maximum number of items to return (capped at 200).",
             "required": false
           },
           {
@@ -5829,9 +5829,9 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "The cursor to start the result set from."
+              "description": "The cursor to start the result set from. Requires `limit` to also be set."
             },
-            "description": "The cursor to start the result set from.",
+            "description": "The cursor to start the result set from. Requires `limit` to also be set.",
             "required": false
           },
           {

@@ -94,12 +94,12 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
     updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions): Promise<void>,
     deleteTeamPermissionDefinition(permissionId: string): Promise<void>,
-    listTeamPermissionDefinitionsPage(options: { limit: number, cursor?: string, query?: string }): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }>,
+    listTeamPermissionDefinitionsPaginated(options: { limit: number, cursor?: string, query?: string }): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }>,
 
     createProjectPermissionDefinition(data: AdminProjectPermissionDefinitionCreateOptions): Promise<AdminProjectPermission>,
     updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions): Promise<void>,
     deleteProjectPermissionDefinition(permissionId: string): Promise<void>,
-    listProjectPermissionDefinitionsPage(options: { limit: number, cursor?: string, query?: string }): Promise<{ items: AdminProjectPermissionDefinition[], nextCursor: string | null }>,
+    listProjectPermissionDefinitionsPaginated(options: { limit: number, cursor?: string, query?: string }): Promise<{ items: AdminProjectPermissionDefinition[], nextCursor: string | null }>,
 
     useSvixToken(): { token: string, url: string | undefined }, // THIS_LINE_PLATFORM react-like
 

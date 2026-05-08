@@ -11,6 +11,7 @@ import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
+  const [tableVersion, setTableVersion] = React.useState(0);
 
   return (
     <AppEnabledGuard appId="rbac">
@@ -24,11 +25,13 @@ export default function PageClient() {
       >
         <PermissionTable
           permissionType="project"
+          version={tableVersion}
         />
 
         <CreateDialog
           open={createPermissionModalOpen}
           onOpenChange={setCreatePermissionModalOpen}
+          onCreated={() => setTableVersion((v) => v + 1)}
         />
       </PageLayout>
     </AppEnabledGuard>
@@ -38,6 +41,7 @@ export default function PageClient() {
 function CreateDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
+  onCreated?: () => void,
 }) {
   const stackAdminApp = useAdminApp();
   const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
@@ -68,6 +72,7 @@ function CreateDialog(props: {
         description: values.description,
         containedPermissionIds: values.containedPermissionIds,
       });
+      props.onCreated?.();
     }}
     cancelButton
   />;

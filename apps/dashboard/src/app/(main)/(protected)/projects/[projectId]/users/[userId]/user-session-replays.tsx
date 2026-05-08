@@ -74,7 +74,7 @@ export function UserSessionReplaysSection({ user }: { user: ServerUser }) {
         limit: PAGE_SIZE,
         cursor: cursor ?? undefined,
         sortDirection,
-        q: searchQuery || undefined,
+        query: searchQuery || undefined,
       });
       if (reqId !== requestIdRef.current) return;
       setRows((prev) => (cursor ? [...prev, ...res.items] : res.items));

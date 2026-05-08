@@ -63,7 +63,22 @@ import { useAdminApp } from "../../use-admin-app";
 import { UserAnalyticsSection } from "./user-analytics";
 import { UserPageTableSection } from "./user-page-table-section";
 import { UserPaymentsSection } from "./user-payments";
-import SessionReplaysPageClient from "../../session-replays/page-client";
+import dynamic from "next/dynamic";
+
+// The session-replays page is ~2k LOC and pulls rrweb in via dynamic imports.
+// Lazy-load it so the user-detail bundle doesn't pay that cost just because
+// the Replays tab *might* be opened.
+const SessionReplaysPageClient = dynamic(
+  () => import("../../session-replays/page-client"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        Loading session replays…
+      </div>
+    ),
+  },
+);
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -209,28 +224,34 @@ function RestrictionDialog({
   const [publicReason, setPublicReason] = useState(restrictedByAdminReason ?? '');
   const [privateDetails, setPrivateDetails] = useState(restrictedByAdminPrivateDetails ?? '');
   const [isSaving, setIsSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Reset form when dialog opens
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen) {
       setPublicReason(restrictedByAdminReason ?? '');
       setPrivateDetails(restrictedByAdminPrivateDetails ?? '');
+      setSubmitError(null);
     }
     onOpenChange(newOpen);
   };
 
   const handleSaveAndRestrict = async () => {
     if (!privateDetails.trim()) {
-      alert('Please enter the private details for the restriction.');
+      setSubmitError('Please enter the private details for the restriction.');
       return;
     }
 
     setIsSaving(true);
+    setSubmitError(null);
     try {
       await user.update({ restrictedByAdmin: true, restrictedByAdminReason: publicReason.trim() || null, restrictedByAdminPrivateDetails: privateDetails.trim() || null });
+      toast({ title: "User restricted", variant: "success" });
       onOpenChange(false);
     } catch (error) {
       captureError(`user-restriction-save-and-restrict-error`, new StackAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
+      setSubmitError(error instanceof Error && error.message ? error.message : "Failed to save the restriction. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -238,13 +259,18 @@ function RestrictionDialog({
 
   const handleRemoveRestriction = async () => {
     setIsSaving(true);
+    setSubmitError(null);
     try {
       await user.update({
         restrictedByAdmin: false,
         restrictedByAdminReason: null,
         restrictedByAdminPrivateDetails: null,
       });
+      toast({ title: "Restriction removed", variant: "success" });
       onOpenChange(false);
+    } catch (error) {
+      captureError(`user-restriction-remove-error`, new StackAssertionError(`Failed to remove restriction for user ${user.id}`, { cause: error }));
+      setSubmitError(error instanceof Error && error.message ? error.message : "Failed to remove the restriction. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -281,6 +307,11 @@ function RestrictionDialog({
             />
           </div>
         </div>
+        {submitError && (
+          <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {submitError}
+          </div>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {restrictedByAdmin && (
             <Button
@@ -1356,9 +1387,9 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     } else {
       let successMessage = "";
       if (updates.allowSignIn !== undefined) {
-        successMessage = `Sign-in ${provider.allowSignIn ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+        successMessage = `Sign-in ${updates.allowSignIn ? 'enabled' : 'disabled'} for ${provider.type} provider.`;
       } else if (updates.allowConnectedAccounts !== undefined) {
-        successMessage = `Connected accounts ${provider.allowConnectedAccounts ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+        successMessage = `Connected accounts ${updates.allowConnectedAccounts ? 'enabled' : 'disabled'} for ${provider.type} provider.`;
       }
       toast({
         title: "Success",

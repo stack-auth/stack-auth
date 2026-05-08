@@ -57,7 +57,7 @@ function TotalUsersErrorComponent(props: { error: Error }) {
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const firstUser = (stackAdminApp as any).useUsers({ limit: 1 });
+  const firstUserPage = stackAdminApp.useUsers({ limit: 1 });
   const [exportOptions, setExportOptions] = useState<{
     search?: string,
     includeRestricted: boolean,
@@ -106,7 +106,7 @@ export default function PageClient() {
           </div>
         }
       >
-        {firstUser.length > 0 ? null : (
+        {firstUserPage.items.length > 0 ? null : (
           <Alert variant='success'>
             Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
           </Alert>

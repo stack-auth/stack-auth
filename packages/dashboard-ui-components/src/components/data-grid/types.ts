@@ -226,6 +226,14 @@ export type DataGridCallbacks<TRow> = {
   onRowClick?: (row: TRow, rowId: RowId, event: React.MouseEvent) => void;
   onRowDoubleClick?: (row: TRow, rowId: RowId, event: React.MouseEvent) => void;
   onCellClick?: (row: TRow, columnId: string, value: unknown, event: React.MouseEvent) => void;
+  /**
+   * Fires when the selection set changes. **Page-scoped:** the header "select
+   * all" checkbox and `selectedRows` only cover the rows currently rendered
+   * (the visible page in paginated mode, or the loaded prefix in infinite
+   * mode). The grid does not load other pages to satisfy the selection — if
+   * you need cross-page selection, drive `selectedIds` from your own state
+   * and load all rows you care about up-front.
+   */
   onSelectionChange?: (selectedIds: ReadonlySet<RowId>, selectedRows: TRow[]) => void;
   onSortChange?: (model: DataGridSortModel) => void;
   onColumnResize?: (columnId: string, width: number) => void;

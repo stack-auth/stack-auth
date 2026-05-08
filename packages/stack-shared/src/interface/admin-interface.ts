@@ -238,7 +238,7 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
-  async listTeamPermissionDefinitionsPage(
+  async listTeamPermissionDefinitionsPaginated(
     options: { limit: number, cursor?: string, query?: string },
   ): Promise<{ items: TeamPermissionDefinitionsCrud['Admin']['Read'][], nextCursor: string | null }> {
     const params = new URLSearchParams();
@@ -297,7 +297,7 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
-  async listProjectPermissionDefinitionsPage(
+  async listProjectPermissionDefinitionsPaginated(
     options: { limit: number, cursor?: string, query?: string },
   ): Promise<{ items: ProjectPermissionDefinitionsCrud['Admin']['Read'][], nextCursor: string | null }> {
     const params = new URLSearchParams();

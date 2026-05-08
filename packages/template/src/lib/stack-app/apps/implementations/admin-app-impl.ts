@@ -489,10 +489,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.map((p) => this._serverTeamPermissionDefinitionFromCrud(p));
   }
 
-  async listTeamPermissionDefinitionsPage(
+  async listTeamPermissionDefinitionsPaginated(
     options: { limit: number, cursor?: string, query?: string },
   ): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }> {
-    const result = await this._interface.listTeamPermissionDefinitionsPage(options);
+    const result = await this._interface.listTeamPermissionDefinitionsPaginated(options);
     return {
       items: result.items.map((p) => this._serverTeamPermissionDefinitionFromCrud(p)),
       nextCursor: result.nextCursor,
@@ -529,10 +529,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.map((p) => this._serverProjectPermissionDefinitionFromCrud(p));
   }
 
-  async listProjectPermissionDefinitionsPage(
+  async listProjectPermissionDefinitionsPaginated(
     options: { limit: number, cursor?: string, query?: string },
   ): Promise<{ items: AdminProjectPermissionDefinition[], nextCursor: string | null }> {
-    const result = await this._interface.listProjectPermissionDefinitionsPage(options);
+    const result = await this._interface.listProjectPermissionDefinitionsPaginated(options);
     return {
       items: result.items.map((p) => this._serverProjectPermissionDefinitionFromCrud(p)),
       nextCursor: result.nextCursor,
@@ -1166,7 +1166,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       last_event_at_to_millis: options?.lastEventAtToMillis,
       click_count_min: options?.clickCountMin,
       sort_direction: options?.sortDirection,
-      q: options?.q,
+      // SDK uses `query` (consistent with listUsers/listTeams); REST exposes `q`.
+      q: options?.query,
     });
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({

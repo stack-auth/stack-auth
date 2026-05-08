@@ -25,7 +25,9 @@ type UserPageMetricCardProps = {
 function formatDelta({ current, previous }: UserPageMetricCardDelta): { text: string, tone: "up" | "down" | "flat" } {
   if (previous === 0) {
     if (current === 0) return { text: "0%", tone: "flat" };
-    return { text: "+100%", tone: "up" };
+    // No comparable baseline — a percentage would be misleading (0→1 and 0→1M
+    // would render identically as +100%).
+    return { text: "New", tone: "up" };
   }
   const pct = ((current - previous) / previous) * 100;
   const rounded = Math.round(pct);

@@ -9,6 +9,10 @@ import type { DataGridColumnDef, DataGridState } from "./types";
 // Compact, human-readable formats so URLs stay short:
 //   ?{prefix}_w=name:200,email:300       column widths (only non-defaults)
 //   ?{prefix}_h=createdAt,role           hidden column ids
+//
+// Column ids are URL-encoded so ids containing `,` `:` or other reserved
+// characters round-trip safely. Without encoding, an id like "user:name"
+// would silently break the parser.
 
 function serializeWidths(
   widths: Record<string, number>,
@@ -20,7 +24,7 @@ function serializeWidths(
     if (typeof w !== "number" || !Number.isFinite(w)) continue;
     const defaultW = clampColumnWidth(col, col.width ?? 150);
     if (Math.round(w) === Math.round(defaultW)) continue;
-    parts.push(`${col.id}:${Math.round(w)}`);
+    parts.push(`${encodeURIComponent(col.id)}:${Math.round(w)}`);
   }
   return parts.join(",");
 }
@@ -34,7 +38,18 @@ function parseWidths(
   const colMap = new Map(columns.map((c) => [c.id, c]));
   const out: Record<string, number> = { ...fallback };
   for (const part of raw.split(",")) {
-    const [id, num] = part.split(":");
+    // Only split on the FIRST colon — id-side is always pre-encoded so it
+    // can't contain a literal `:`, but width-side is always numeric.
+    const colonIdx = part.indexOf(":");
+    if (colonIdx <= 0) continue;
+    const encodedId = part.slice(0, colonIdx);
+    const num = part.slice(colonIdx + 1);
+    let id: string;
+    try {
+      id = decodeURIComponent(encodedId);
+    } catch {
+      continue;
+    }
     if (!id || !num) continue;
     const col = colMap.get(id);
     if (!col) continue;
@@ -48,7 +63,7 @@ function parseWidths(
 function serializeHidden(visibility: Record<string, boolean>): string {
   return Object.entries(visibility)
     .filter(([, v]) => v === false)
-    .map(([id]) => id)
+    .map(([id]) => encodeURIComponent(id))
     .join(",");
 }
 
@@ -59,7 +74,13 @@ function parseHidden(
   if (!raw) return {};
   const known = new Set(columns.map((c) => c.id));
   const out: Record<string, boolean> = {};
-  for (const id of raw.split(",")) {
+  for (const encodedId of raw.split(",")) {
+    let id: string;
+    try {
+      id = decodeURIComponent(encodedId);
+    } catch {
+      continue;
+    }
     if (id && known.has(id)) out[id] = false;
   }
   return out;

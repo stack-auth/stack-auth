@@ -13,10 +13,15 @@ import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, Pro
 import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import type { ServerTeam } from "@stackframe/stack";
 import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
 
+// Cap for metrics computation. Most teams have well under this; if we hit it,
+// the UI shows a banner so the user knows lifetime metrics are bounded.
+const METRICS_TRANSACTION_CAP = 1000;
+// Smaller page size for the visible transactions table so we don't render
+// 1000 rows up-front. The grid paginates this separately.
 const TRANSACTIONS_PAGE_SIZE = 100;
 
 const DATE_SHORT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -41,8 +46,11 @@ function isProductRevocationEntry(entry: TransactionEntry): entry is ProductRevo
 }
 
 function formatUsd(amount: number): string {
+  // Don't take down the entire payments tab over one bad numeric — log to
+  // Sentry and render a placeholder.
   if (!Number.isFinite(amount)) {
-    throwErr("formatUsd received a non-finite amount");
+    captureError("team-payments-format-usd-non-finite", new Error(`formatUsd received non-finite amount: ${String(amount)}`));
+    return "—";
   }
   return amount.toLocaleString(undefined, {
     style: "currency",
@@ -107,11 +115,16 @@ function TeamPaymentsContent({ team }: { team: ServerTeam }) {
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
 
-  const { transactions: teamTransactions } = stackAdminApp.useTransactions({
-    limit: TRANSACTIONS_PAGE_SIZE,
+  // Pull a wider window of transactions so lifetime metrics are accurate for
+  // teams with non-trivial history. The previous 100-row limit silently
+  // truncated lifetime spend / subscription / product totals for any team
+  // with more than 100 transactions.
+  const { transactions: teamTransactions, nextCursor: metricsNextCursor } = stackAdminApp.useTransactions({
+    limit: METRICS_TRANSACTION_CAP,
     customerType: "team",
     customerId: team.id,
   });
+  const metricsTruncated = metricsNextCursor != null;
 
   const teamItemIds = useMemo(
     () =>
@@ -123,7 +136,7 @@ function TeamPaymentsContent({ team }: { team: ServerTeam }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <MetricsRow teamId={team.id} transactions={teamTransactions} />
+      <MetricsRow teamId={team.id} transactions={teamTransactions} truncated={metricsTruncated} />
 
       <div className="flex flex-col gap-6">
         <ProductsTableSection teamId={team.id} transactions={teamTransactions} />
@@ -199,7 +212,7 @@ function deriveActiveGrants(transactions: Transaction[], teamId: string): Active
   return deduped;
 }
 
-function MetricsRow({ teamId, transactions }: { teamId: string, transactions: Transaction[] }) {
+function MetricsRow({ teamId, transactions, truncated }: { teamId: string, transactions: Transaction[], truncated: boolean }) {
   const activeGrants = useMemo(() => deriveActiveGrants(transactions, teamId), [transactions, teamId]);
 
   const activeSubscriptions = useMemo(
@@ -212,44 +225,63 @@ function MetricsRow({ teamId, transactions }: { teamId: string, transactions: Tr
     [activeGrants],
   );
 
-  const lifetimeSpendUsd = useMemo(() => {
+  // Lifetime spend includes test_mode rows in the *count* but excludes them
+  // from the *dollar* total — keep the two consistent so users don't compare
+  // apples to oranges.
+  const { lifetimeSpendUsd, payingTransactionCount } = useMemo(() => {
     let total = 0;
+    let payingCount = 0;
     for (const transaction of transactions) {
       if (transaction.test_mode) continue;
+      let countedThisTxn = false;
       for (const entry of transaction.entries) {
         if (!isMoneyTransferEntry(entry)) continue;
         if (entry.customer_type !== "team" || entry.customer_id !== teamId) continue;
         const usd = entry.net_amount.USD;
         if (typeof usd !== "string") continue;
         const parsed = Number.parseFloat(usd);
-        if (Number.isFinite(parsed)) total += parsed;
+        if (Number.isFinite(parsed)) {
+          total += parsed;
+          countedThisTxn = true;
+        }
       }
+      if (countedThisTxn) payingCount += 1;
     }
-    return total;
+    return { lifetimeSpendUsd: total, payingTransactionCount: payingCount };
   }, [transactions, teamId]);
 
-  const transactionCount = transactions.length;
+  const lifetimeLabel = truncated ? "Recent spend" : "Lifetime spend";
+  const lifetimeDescription = payingTransactionCount === 0
+    ? "No paying transactions"
+    : `Across ${payingTransactionCount} paying transaction${payingTransactionCount === 1 ? "" : "s"}${truncated ? " (recent only)" : ""}`;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      <UserPageMetricCard
-        label="Active subscriptions"
-        value={activeSubscriptions}
-        description={activeSubscriptions === 0 ? "None" : `${activeSubscriptions} running`}
-        gradient="blue"
-      />
-      <UserPageMetricCard
-        label="Products owned"
-        value={productsOwned}
-        description={productsOwned === 0 ? "None" : `${activeGrants.length} distinct`}
-        gradient="purple"
-      />
-      <UserPageMetricCard
-        label="Lifetime spend"
-        value={formatUsd(lifetimeSpendUsd)}
-        description={transactionCount === 0 ? "No transactions" : `Across ${transactionCount} transaction${transactionCount === 1 ? "" : "s"}`}
-        gradient="green"
-      />
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <UserPageMetricCard
+          label="Active subscriptions"
+          value={activeSubscriptions}
+          description={activeSubscriptions === 0 ? "None" : `${activeSubscriptions} running${truncated ? " (recent only)" : ""}`}
+          gradient="blue"
+        />
+        <UserPageMetricCard
+          label="Products owned"
+          value={productsOwned}
+          description={productsOwned === 0 ? "None" : `${activeGrants.length} distinct${truncated ? " (recent only)" : ""}`}
+          gradient="purple"
+        />
+        <UserPageMetricCard
+          label={lifetimeLabel}
+          value={formatUsd(lifetimeSpendUsd)}
+          description={lifetimeDescription}
+          gradient="green"
+        />
+      </div>
+      {truncated && (
+        <div className="text-xs text-muted-foreground">
+          Metrics computed over the most recent {METRICS_TRANSACTION_CAP.toLocaleString()} transactions. Older history is excluded.
+        </div>
+      )}
     </div>
   );
 }

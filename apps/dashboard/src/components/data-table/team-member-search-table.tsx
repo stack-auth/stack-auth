@@ -113,7 +113,7 @@ export function TeamMemberSearchTable(props: {
         cursor,
       });
       yield {
-        rows: extendUsers(result),
+        rows: extendUsers(result.items),
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
       };

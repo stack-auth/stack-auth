@@ -78,10 +78,8 @@ const AUTH_TYPE_LABELS = new Map<string, string>([
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-export function extendUsers(users: ServerUser[] & { nextCursor: string | null }): ExtendedServerUser[] & { nextCursor: string | null };
-export function extendUsers(users: ServerUser[]): ExtendedServerUser[];
-export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }) {
-  const extended = users.map((user) => {
+export function extendUsers(users: ServerUser[]): ExtendedServerUser[] {
+  return users.map((user) => {
     const authTypes = user.isAnonymous
       ? ["anonymous"]
       : [
@@ -95,7 +93,6 @@ export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }
       emailVerified: user.primaryEmailVerified ? "verified" : "unverified",
     } satisfies ExtendedServerUser;
   });
-  return Object.assign(extended, { nextCursor: users.nextCursor ?? null });
 }
 
 function titleCase(value: string) {
@@ -268,7 +265,7 @@ function UserTableBody(props: {
           cursor,
         });
       yield {
-        rows: extendUsers(result),
+        rows: extendUsers(result.items),
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
       };

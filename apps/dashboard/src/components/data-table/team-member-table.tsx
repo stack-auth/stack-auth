@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { ServerTeam, ServerUser } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   createDefaultDataGridState,
@@ -24,7 +25,7 @@ import {
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { CheckCircleIcon, CopyIcon, XCircleIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { Link } from "../link";
@@ -212,9 +213,6 @@ function EditPermissionDialog(props: {
           return await props.user.revokePermission(props.team, p.id);
         }
       });
-      // Use Promise.all so a single failed grant/revoke aborts and the dialog
-      // stays open — otherwise users see "saved" while only some permissions
-      // were applied.
       await Promise.all(promises);
       props.onSubmit();
     }}
@@ -286,9 +284,6 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
   const stackAdminApp = useAdminApp();
   const [updateCounter, setUpdateCounter] = useState(0);
   const [permissions, setPermissions] = useState<Map<string, string[]>>(new Map());
-  // Bumped each time we kick off a new generator request; setPermissions
-  // calls from older requests no-op so that a slow earlier fetch can't
-  // clobber the state of a fresh one.
   const permissionRequestIdRef = useRef(0);
 
   const teamMemberColumns = useMemo<DataGridColumnDef<ExtendedServerUserForTeam>[]>(() => [
@@ -408,10 +403,8 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
         includeAnonymous: true,
         includeRestricted: true,
       });
-      const extended = extendUsers(result);
-      // Bound each per-user permission fetch so a single slow user can't
-      // hang the whole grid page indefinitely.
-      const permissionResults = await Promise.all(
+      const extended = extendUsers(result.items);
+      const settled = await Promise.allSettled(
         extended.map(async (user) => {
           const perms = await withTimeout(
             user.listPermissions(props.team, { recursive: false }),
@@ -421,7 +414,11 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
           return [user.id, perms.map(p => p.id)] as const;
         })
       );
-      // Drop the result if a newer request started while we were fetching.
+      const permissionResults = settled.map((res, idx): readonly [string, string[]] => {
+        if (res.status === "fulfilled") return res.value;
+        captureError("team-member-table-list-permissions", res.reason instanceof Error ? res.reason : new Error(String(res.reason)));
+        return [extended[idx].id, []] as const;
+      });
       if (reqId !== permissionRequestIdRef.current) return;
       setPermissions((prev) => {
         const next = new Map(prev);
@@ -438,8 +435,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    // updateCounter is included so editing permissions triggers a refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateCounter forces refetch after permission edits
     [stackAdminApp, props.team, updateCounter],
   );
 
@@ -455,7 +451,6 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
     paginationMode: "infinite",
   });
 
-  // Re-decorate already-rendered rows when permissions are loaded for them.
   const rowsWithPermissions = useMemo(
     () => gridData.rows.map((row) => ({
       ...row,
@@ -463,9 +458,6 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
     })),
     [gridData.rows, permissions],
   );
-
-  // Suppress unused warning when there are no permissions yet to merge.
-  useEffect(() => {}, [permissions]);
 
   return (
     <DataGrid

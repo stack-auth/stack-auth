@@ -370,11 +370,13 @@ function SelectionCheckbox({
   indeterminate,
   onChange,
   ariaLabel,
+  title,
 }: {
   checked: boolean;
   indeterminate?: boolean;
   onChange: (event: React.MouseEvent<HTMLButtonElement>) => void;
   ariaLabel: string;
+  title?: string;
 }) {
   const Icon = indeterminate ? MinusSquare : checked ? CheckSquare : Square;
   return (
@@ -391,6 +393,7 @@ function SelectionCheckbox({
         onChange(e);
       }}
       aria-label={ariaLabel}
+      title={title ?? ariaLabel}
       role="checkbox"
       aria-checked={indeterminate ? "mixed" : checked}
     >
@@ -645,7 +648,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     (updater: Updater<SortingState>) => {
       const next = resolveUpdater(updater, toTanstackSorting(state.sorting));
       const ours: DataGridSortItem[] = fromTanstackSorting(next).map((s) => ({ ...s }));
-      onChange((s) => ({ ...s, sorting: ours }));
+      // Reset to page 0 — page N of the new sort order is meaningless when
+      // the order itself changed, and would silently scroll past relevant
+      // rows.
+      onChange((s) => ({
+        ...s,
+        sorting: ours,
+        pagination: { ...s.pagination, pageIndex: 0 },
+      }));
       onSortChange?.(ours);
     },
     [onChange, onSortChange, state.sorting],
@@ -839,9 +849,23 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   }, [rowIds, state.selection.selectedIds, fireSelection]);
 
   // ── CSV export ───────────────────────────────────────────────
+  // The grid only knows about rows currently in memory (the visible page in
+  // paginated mode, or the loaded prefix in infinite mode). To avoid users
+  // assuming "Export CSV" means "everything that exists on the server", we
+  // confirm with the loaded-row count before downloading. Consumers that
+  // want true full-dataset export can override this via a parent toolbar.
   const handleExportCsv = useCallback(() => {
+    if (typeof window !== "undefined" && rows.length > 0) {
+      const totalSuffix = totalRowCount != null && totalRowCount > rows.length
+        ? ` of ${totalRowCount} total — load more rows first to include them`
+        : "";
+      const confirmed = window.confirm(
+        `Export ${rows.length.toLocaleString()} loaded row${rows.length === 1 ? "" : "s"}${totalSuffix}?`,
+      );
+      if (!confirmed) return;
+    }
     exportToCsv(rows, visibleColumns, exportFilename);
-  }, [rows, visibleColumns, exportFilename]);
+  }, [rows, visibleColumns, exportFilename, totalRowCount]);
 
   // ── Virtualizer ──────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1002,7 +1026,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                       checked={allSelected}
                       indeterminate={someSelected}
                       onChange={handleSelectAll}
-                      ariaLabel="Select all rows"
+                      ariaLabel="Select all rows on this page"
+                      title="Select all rows on this page"
                     />
                   )}
                 </div>

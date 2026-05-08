@@ -29,7 +29,7 @@ function UserSearchTable(props: {
     setFilters({ limit: PAGE_SIZE, query: props.query || undefined });
   }, [props.query]);
 
-  const users = extendUsers(stackAdminApp.useUsers(filters));
+  const users = extendUsers(stackAdminApp.useUsers(filters).items);
 
   const { action } = props;
   const columns: DataGridColumnDef<ServerUser>[] = useMemo(() => [

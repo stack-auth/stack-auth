@@ -177,7 +177,7 @@ export function TeamTable() {
         query: search,
       });
       yield {
-        rows: result,
+        rows: result.items,
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
       };

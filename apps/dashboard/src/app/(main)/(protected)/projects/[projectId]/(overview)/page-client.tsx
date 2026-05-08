@@ -8,7 +8,7 @@ import SetupPage from "./setup-page";
 export default function PageClient() {
   const adminApp = useAdminApp();
   const users = adminApp.useUsers({ limit: 1 });
-  const [page, setPage] = useState<'setup' | 'metrics'>(users.length === 0 ? 'setup' : 'metrics');
+  const [page, setPage] = useState<'setup' | 'metrics'>(users.items.length === 0 ? 'setup' : 'metrics');
 
   switch (page) {
     case 'setup': {

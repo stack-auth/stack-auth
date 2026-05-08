@@ -1,11 +1,5 @@
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_lastActiveAt_asc"
-  ON "ProjectUser"("tenancyId", "isAnonymous", "lastActiveAt" ASC);
-
--- SPLIT_STATEMENT_SENTINEL
--- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_lastActiveAt_desc"
-  ON "ProjectUser"("tenancyId", "isAnonymous", "lastActiveAt" DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_lastActiveAt"
+  ON "ProjectUser"("tenancyId", "isAnonymous", "lastActiveAt");

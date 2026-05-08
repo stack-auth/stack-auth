@@ -91,9 +91,7 @@ type LoadState =
   | { status: "error" }
   | { status: "ready", data: AnalyticsData };
 
-// Events are not tagged with team_id at insertion time (events.tsx always sets
-// team_id = null), so we attribute team activity by filtering on the team's
-// member user_ids instead.
+// Team events aren't tagged with team_id; scope by member user_ids.
 const SUMMARY_QUERY = `
   SELECT
     toString(countIf(event_at >= {since:DateTime})) AS total_events,
@@ -295,7 +293,6 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
     const since = new Date(now.getTime() - ANALYTICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const heatmapSince = new Date(now.getTime() - HEATMAP_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-    // Same-length window immediately preceding `since`/`since7d` for trend deltas.
     const prevSince = new Date(since.getTime() - ANALYTICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const prev7dSince = new Date(since7d.getTime() - 7 * 24 * 60 * 60 * 1000);
     const baseParams = {
@@ -347,9 +344,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
     return () => {
       token.cancelled = true;
     };
-    // memberIds is derived from memberIdsKey — keying on the joined string
-    // avoids re-running when the array identity changes but the contents don't.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dependency on serialized member IDs, not referential equality
   }, [stackAdminApp, team.id, memberIdsKey]);
 
   return (
@@ -471,15 +466,14 @@ const HOUR_AXIS_TICKS = [0, 4, 8, 12, 16, 20] as const;
 
 function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEvent: boolean }) {
   const { grid, max } = useMemo(() => {
-    // grid[dowIndex 0..6 (Mon..Sun)][hour 0..23] = avg active users per week
     const g: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
     let m = 0;
     for (const row of rows) {
       const dowIdx = row.dow - 1;
       if (dowIdx < 0 || dowIdx > 6) continue;
-      const avg = row.active_users / HEATMAP_WEEKS;
-      g[dowIdx][row.hour] = avg;
-      if (avg > m) m = avg;
+      const value = row.active_users;
+      g[dowIdx][row.hour] = value;
+      if (value > m) m = value;
     }
     return { grid: g, max: m };
   }, [rows]);
@@ -488,7 +482,7 @@ function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEv
     <DesignChartCard
       gradient="green"
       title="Active users by hour of week"
-      description={`Average distinct active users per hour, over the last ${HEATMAP_WEEKS} weeks (UTC)`}
+      description={`Distinct active users per hour, last ${HEATMAP_WEEKS} weeks (UTC)`}
     >
       {!hasAnyEvent ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">

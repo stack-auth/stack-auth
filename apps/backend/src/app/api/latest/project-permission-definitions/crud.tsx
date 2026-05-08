@@ -2,20 +2,16 @@ import { createPermissionDefinition, deletePermissionDefinition, listPermissionD
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { projectPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/project-permissions';
-import { permissionDefinitionIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { paginatePermissionDefinitions } from "../permission-definitions-pagination";
+import { paginatePermissionDefinitions, permissionDefinitionsListQuerySchema } from "../permission-definitions-pagination";
 
 
 export const projectPermissionDefinitionsCrudHandlers = createLazyProxy(() => createCrudHandlers(projectPermissionDefinitionsCrud, {
   paramsSchema: yupObject({
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
-  querySchema: yupObject({
-    limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "Maximum number of items to return. When set, the response is paginated via cursor." } }),
-    cursor: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "Cursor (permission id) to start the next page from." } }),
-    query: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "Free-text filter applied to permission id and description (case-insensitive)." } }),
-  }),
+  querySchema: permissionDefinitionsListQuerySchema,
   async onCreate({ auth, data }) {
     return await createPermissionDefinition(
       globalPrismaClient,

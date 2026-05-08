@@ -65,14 +65,14 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getTeam(options: { apiKey: string }): Promise<ServerTeam | null>,
 
 
-    useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
-    listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
+    useUsers(options?: ServerListUsersOptions): { items: ServerUser[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
+    listUsers(options?: ServerListUsersOptions): Promise<{ items: ServerUser[], nextCursor: string | null }>,
 
     useTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): ServerTeam[], // THIS_LINE_PLATFORM react-like
     listTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): Promise<ServerTeam[]>,
 
-    useTeamsPaginated(options?: ServerListTeamsOptions): ServerTeam[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
-    listTeamsPaginated(options?: ServerListTeamsOptions): Promise<ServerTeam[] & { nextCursor: string | null }>,
+    useTeamsPaginated(options?: ServerListTeamsOptions): { items: ServerTeam[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
+    listTeamsPaginated(options?: ServerListTeamsOptions): Promise<{ items: ServerTeam[], nextCursor: string | null }>,
 
     // TODO this should actually be on ServerUser
     createOAuthProvider(options: {

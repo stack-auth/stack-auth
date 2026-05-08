@@ -5672,9 +5672,9 @@
             "in": "query",
             "schema": {
               "type": "number",
-              "description": "Maximum number of items to return. When set, the response is paginated via cursor."
+              "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor."
             },
-            "description": "Maximum number of items to return. When set, the response is paginated via cursor.",
+            "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor.",
             "required": false
           },
           {
@@ -5682,9 +5682,9 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "Cursor (permission id) to start the next page from."
+              "description": "Cursor (permission id) to start the next page from. Requires `limit` to also be set."
             },
-            "description": "Cursor (permission id) to start the next page from.",
+            "description": "Cursor (permission id) to start the next page from. Requires `limit` to also be set.",
             "required": false
           },
           {
@@ -6239,9 +6239,9 @@
             "in": "query",
             "schema": {
               "type": "number",
-              "description": "Maximum number of items to return. When set, the response is paginated via cursor."
+              "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor."
             },
-            "description": "Maximum number of items to return. When set, the response is paginated via cursor.",
+            "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor.",
             "required": false
           },
           {
@@ -6249,9 +6249,9 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "Cursor (permission id) to start the next page from."
+              "description": "Cursor (permission id) to start the next page from. Requires `limit` to also be set."
             },
-            "description": "Cursor (permission id) to start the next page from.",
+            "description": "Cursor (permission id) to start the next page from. Requires `limit` to also be set.",
             "required": false
           },
           {
@@ -8598,10 +8598,10 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "example": "createdAt",
-              "description": "Field to order results by. Currently only `createdAt` is supported."
+              "example": "created_at",
+              "description": "Field to order results by. Currently only `created_at` is supported."
             },
-            "description": "Field to order results by. Currently only `createdAt` is supported.",
+            "description": "Field to order results by. Currently only `created_at` is supported.",
             "required": false
           },
           {
@@ -8620,9 +8620,9 @@
             "in": "query",
             "schema": {
               "type": "number",
-              "description": "The maximum number of items to return."
+              "description": "The maximum number of items to return (capped at 200)."
             },
-            "description": "The maximum number of items to return.",
+            "description": "The maximum number of items to return (capped at 200).",
             "required": false
           },
           {
@@ -8630,9 +8630,9 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "description": "The cursor to start the result set from."
+              "description": "The cursor to start the result set from. Requires `limit` to also be set."
             },
-            "description": "The cursor to start the result set from.",
+            "description": "The cursor to start the result set from. Requires `limit` to also be set.",
             "required": false
           },
           {

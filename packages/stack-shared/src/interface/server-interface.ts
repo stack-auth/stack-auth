@@ -363,7 +363,8 @@ export class StackServerInterface extends StackClientInterface {
     const response = await this.sendServerRequest(
       `/teams?${new URLSearchParams(filterUndefined({
         user_id: options?.userId,
-        order_by: options?.orderBy,
+        // SDK option uses camelCase `createdAt`; backend uses snake_case.
+        order_by: options?.orderBy === 'createdAt' ? 'created_at' : options?.orderBy,
         desc: options?.desc !== undefined ? String(options.desc) : undefined,
         cursor: options?.cursor,
         limit: options?.limit?.toString(),

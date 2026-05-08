@@ -20,7 +20,7 @@ export default function PageClient() {
   const project = stackAdminApp.useProject();
 
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);
-  const hasTeams = teams.length > 0;
+  const hasTeams = teams.items.length > 0;
   const teamSettingsPath = project.ownerTeamId ? `/projects?team_settings=${encodeURIComponent(project.ownerTeamId)}` : null;
 
   return (
