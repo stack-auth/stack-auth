@@ -173,9 +173,8 @@ it("should return metrics data with users", async ({ expect }) => {
   backendContext.set({ mailbox: mailboxes[2], ipData: { country: "CH", ipAddress: "127.0.0.1", city: "Zurich", region: "ZH", latitude: 47.3769, longitude: 8.5417, tzIdentifier: "Europe/Zurich" } });
   await Auth.Otp.signIn();
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  // the event log is async; poll until ClickHouse has ingested all sign-ins (last one is mailbox-3 → CH)
+  const response = await waitForMetricsToIncludeUsersByCountry({ countryCode: "CH", expectedCount: 1 });
   expect(response).toMatchSnapshot(`metrics_result_with_users`);
 
   await ensureAnonymousUsersAreStillExcluded(response);
