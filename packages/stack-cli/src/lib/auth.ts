@@ -177,13 +177,13 @@ async function attemptLocalEmulatorSignIn(apiUrl: string, internalPck: string, b
 }
 
 async function localEmulatorSignInWithRetry(apiUrl: string, internalPck: string, body: SignInBody, totalTimeoutMs: number): Promise<Response> {
-  const deadline = Date.now() + totalTimeoutMs;
+  const deadline = performance.now() + totalTimeoutMs;
   let delay = 100;
   let lastError: unknown = null;
   while (true) {
     // Cap each request so the user-set total budget is actually honored — a
     // 5s default per-request would otherwise overshoot a small total.
-    const remainingForRequest = Math.max(1, deadline - Date.now());
+    const remainingForRequest = Math.max(1, deadline - performance.now());
     const perRequestTimeoutMs = Math.min(LOCAL_EMULATOR_PER_REQUEST_TIMEOUT_MS, remainingForRequest);
     try {
       return await attemptLocalEmulatorSignIn(apiUrl, internalPck, body, perRequestTimeoutMs);
@@ -191,11 +191,11 @@ async function localEmulatorSignInWithRetry(apiUrl: string, internalPck: string,
       if (!isRetryableFetchError(err)) throw err;
       lastError = err;
     }
-    if (Date.now() >= deadline) {
+    if (performance.now() >= deadline) {
       const message = lastError instanceof Error ? lastError.message : String(lastError);
       throw new AuthError(`Cannot reach local emulator at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start it with \`stack emulator start\`, or pass --cloud to use the cloud API.`);
     }
-    const remaining = deadline - Date.now();
+    const remaining = deadline - performance.now();
     await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
     delay = Math.min(delay * 2, 1_000);
   }

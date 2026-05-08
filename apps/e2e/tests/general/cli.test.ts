@@ -323,6 +323,7 @@ describe("Stack CLI", () => {
   });
 
   it("local-default exec errors when emulator PCK file is missing", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
     // Without --cloud, exec defaults to the local emulator. With
     // STACK_EMULATOR_HOME pointed at an empty dir, the PCK file lookup fires
     // before any network call and we get a clear error. Setting
@@ -346,6 +347,7 @@ describe("Stack CLI", () => {
   });
 
   it("local-default exec errors when emulator API is unreachable", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
     // PCK file present (so we get past the file check) but STACK_EMULATOR_API_URL
     // points at a port nothing is listening on — fetch fails with a clear error.
     // STACK_EMULATOR_READY_TIMEOUT_MS=0 keeps the retry loop from waiting.
@@ -375,21 +377,46 @@ describe("Stack CLI", () => {
   // there). Stages a STACK_EMULATOR_HOME with the real internal PCK and
   // points STACK_EMULATOR_API_URL at the running backend, so the CLI takes
   // the local-default path and signs in as the emulator admin.
+  //
+  // The CLI signs in as the emulator admin, whose listOwnedProjects() only
+  // returns projects owned by LOCAL_EMULATOR_OWNER_TEAM_ID. createdProjectId
+  // is owned by the test user's team and would be invisible, so we mint a
+  // fresh project via the local-emulator endpoint instead.
   it.runIf(isLocalEmulator)("local-default exec runs against the local emulator backend", async ({ expect }) => {
-    expect(createdProjectId).toBeDefined();
+    const emulatorConfigPath = path.join(tmpDir, `stack-emulator-${crypto.randomUUID()}.config.ts`);
+    fs.writeFileSync(emulatorConfigPath, "");
+    const projectRes = await niceFetch(`${STACK_BACKEND_BASE_URL}/api/v1/internal/local-emulator/project`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-stack-access-type": "server",
+        "x-stack-project-id": "internal",
+        "x-stack-publishable-client-key": STACK_INTERNAL_PROJECT_CLIENT_KEY,
+        "x-stack-secret-server-key": STACK_INTERNAL_PROJECT_SERVER_KEY,
+      },
+      body: JSON.stringify({ absolute_file_path: emulatorConfigPath }),
+    });
+    if (projectRes.status !== 200) {
+      throw new Error(`Failed to mint local emulator project: ${projectRes.status} ${JSON.stringify(projectRes.body)}`);
+    }
+    const emulatorProjectId = (projectRes.body as { project_id: string }).project_id;
+
     const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-emu-positive-"));
     try {
       const pckDir = path.join(fakeEmulatorHome, "run", "vm");
       fs.mkdirSync(pckDir, { recursive: true });
       fs.writeFileSync(path.join(pckDir, "internal-pck"), STACK_INTERNAL_PROJECT_CLIENT_KEY);
-      const { stdout, exitCode } = await runCli(
+      const { stdout, stderr, exitCode } = await runCli(
         ["exec", "return 1+1"],
         {
-          STACK_PROJECT_ID: createdProjectId,
+          STACK_PROJECT_ID: emulatorProjectId,
           STACK_EMULATOR_HOME: fakeEmulatorHome,
           STACK_EMULATOR_API_URL: STACK_BACKEND_BASE_URL,
         },
       );
+      if (exitCode !== 0) {
+        throw new Error(`CLI exited ${exitCode}. stderr: ${stderr}`);
+      }
       expect(exitCode).toBe(0);
       expect(stdout.trim()).toBe("2");
     } finally {
