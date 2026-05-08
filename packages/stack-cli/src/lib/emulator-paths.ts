@@ -76,7 +76,7 @@ export function emulatorMockOAuthPort(): number {
 //     between `stack emulator start` and the next CLI invocation.
 export async function pollInternalPck(timeoutMs: number): Promise<string | null> {
   const pckPath = internalPckPath();
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   let delay = 50;
   while (true) {
     try {
@@ -85,8 +85,8 @@ export async function pollInternalPck(timeoutMs: number): Promise<string | null>
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
-    if (Date.now() >= deadline) return null;
-    const remaining = deadline - Date.now();
+    if (performance.now() >= deadline) return null;
+    const remaining = deadline - performance.now();
     await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
     delay = Math.min(delay * 2, 2000);
   }

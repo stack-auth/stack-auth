@@ -215,7 +215,13 @@ export async function resolveLocalEmulatorAuth(flags: Flags): Promise<ProjectAut
   );
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
+    let body: string;
+    try {
+      body = await res.text();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+    }
     throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
   }
 
