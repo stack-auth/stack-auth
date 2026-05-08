@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { emulatorBackendPort, emulatorDashboardPort, envPort } from "../lib/emulator-paths.js";
 import {
-  envPort,
   formatBytes,
   formatDuration,
   platformInstallHint,
@@ -125,6 +125,52 @@ describe("envPort", () => {
     // Regression target: earlier versions sometimes parsed "" as 0 and threw.
     process.env.__TEST_PORT = "";
     expect(envPort("__TEST_PORT", 1234)).toBe(1234);
+  });
+});
+
+describe("emulator port resolution (STACK_ prefix + legacy alias)", () => {
+  const PORT_VARS = [
+    "STACK_EMULATOR_BACKEND_PORT",
+    "EMULATOR_BACKEND_PORT",
+    "STACK_EMULATOR_DASHBOARD_PORT",
+    "EMULATOR_DASHBOARD_PORT",
+  ] as const;
+  const SAVED: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const v of PORT_VARS) {
+      SAVED[v] = process.env[v];
+      delete process.env[v];
+    }
+  });
+  afterEach(() => {
+    for (const v of PORT_VARS) {
+      if (SAVED[v] === undefined) delete process.env[v];
+      else process.env[v] = SAVED[v];
+    }
+  });
+
+  it("uses default ports when neither alias is set", () => {
+    expect(emulatorBackendPort()).toBe(26701);
+    expect(emulatorDashboardPort()).toBe(26700);
+  });
+
+  it("prefers STACK_ prefix over the unprefixed legacy alias", () => {
+    process.env.STACK_EMULATOR_BACKEND_PORT = "30001";
+    process.env.EMULATOR_BACKEND_PORT = "40001";
+    expect(emulatorBackendPort()).toBe(30001);
+  });
+
+  it("falls back to the unprefixed legacy alias when STACK_ prefix is unset", () => {
+    process.env.EMULATOR_BACKEND_PORT = "40002";
+    expect(emulatorBackendPort()).toBe(40002);
+  });
+
+  it("validates the alias that is actually used", () => {
+    process.env.STACK_EMULATOR_BACKEND_PORT = "not-a-number";
+    expect(() => emulatorBackendPort()).toThrow(/Invalid STACK_EMULATOR_BACKEND_PORT/);
+    delete process.env.STACK_EMULATOR_BACKEND_PORT;
+    process.env.EMULATOR_BACKEND_PORT = "not-a-number";
+    expect(() => emulatorBackendPort()).toThrow(/Invalid EMULATOR_BACKEND_PORT/);
   });
 });
 

@@ -12,8 +12,7 @@ export function registerProjectCommand(program: Command) {
     .command("list")
     .description("List your owned projects")
     .action(async () => {
-      const flags = program.opts();
-      const auth = resolveSessionAuth(flags);
+      const auth = resolveSessionAuth();
       const user = await getInternalUser(auth);
       const projects = await user.listOwnedProjects();
 
@@ -35,8 +34,7 @@ export function registerProjectCommand(program: Command) {
     .description("Create a new project")
     .option("--display-name <name>", "Project display name")
     .action(async (opts) => {
-      const flags = program.opts();
-      const auth = resolveSessionAuth(flags);
+      const auth = resolveSessionAuth();
       const user = await getInternalUser(auth);
 
       const newProject = await createProjectInteractively(user, {

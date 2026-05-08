@@ -7,6 +7,8 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { describe, beforeAll, afterAll } from "vitest";
 import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_INTERNAL_PROJECT_ADMIN_KEY } from "../helpers";
 
+const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+
 const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
 const CLI_SRC_BIN = path.resolve("packages/stack-cli/src/index.ts");
 
@@ -134,6 +136,9 @@ describe("Stack CLI", () => {
   });
 
   it("errors when no project ID given", async ({ expect }) => {
+    // Exercise the default (local) path: project-ID resolution happens before
+    // any emulator I/O, so the missing-ID error fires regardless of whether
+    // an emulator is running.
     const { stderr, exitCode } = await runCli(["exec", "return 1"]);
     expect(exitCode).toBe(1);
     expect(stderr).toContain("No project ID");
@@ -183,7 +188,7 @@ describe("Stack CLI", () => {
   it("returns basic expression", async ({ expect }) => {
     expect(createdProjectId).toBeDefined();
     const { stdout, exitCode } = await runCli(
-      ["exec", "return 1+1"],
+      ["exec", "--cloud", "return 1+1"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
@@ -192,7 +197,7 @@ describe("Stack CLI", () => {
 
   it("has stackServerApp object available", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "return typeof stackServerApp"],
+      ["exec", "--cloud", "return typeof stackServerApp"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
@@ -205,15 +210,21 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("https://docs.stack-auth.com/docs/sdk");
   });
 
+  it("exec help mentions --cloud option", async ({ expect }) => {
+    const { stdout, exitCode } = await runCli(["exec", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--cloud");
+  });
+
   it("errors when no javascript is provided", async ({ expect }) => {
-    const { stderr, exitCode } = await runCli(["exec"], { STACK_PROJECT_ID: createdProjectId });
+    const { stderr, exitCode } = await runCli(["exec", "--cloud"], { STACK_PROJECT_ID: createdProjectId });
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Missing JavaScript argument");
   });
 
   it("reports syntax error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "return @@invalid"],
+      ["exec", "--cloud", "return @@invalid"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(1);
@@ -222,7 +233,7 @@ describe("Stack CLI", () => {
 
   it("reports runtime error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "throw new Error('boom')"],
+      ["exec", "--cloud", "throw new Error('boom')"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(1);
@@ -231,7 +242,7 @@ describe("Stack CLI", () => {
 
   it("reports string runtime error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "throw 'boom-string'"],
+      ["exec", "--cloud", "throw 'boom-string'"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(1);
@@ -240,7 +251,7 @@ describe("Stack CLI", () => {
 
   it("reports object runtime error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "throw { code: 123 }"],
+      ["exec", "--cloud", "throw { code: 123 }"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(1);
@@ -249,7 +260,7 @@ describe("Stack CLI", () => {
 
   it("reports undefined variable", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "return nonExistentVar"],
+      ["exec", "--cloud", "return nonExistentVar"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(1);
@@ -258,7 +269,7 @@ describe("Stack CLI", () => {
 
   it("returns undefined for no return value", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "const x = 1"],
+      ["exec", "--cloud", "const x = 1"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
@@ -267,7 +278,7 @@ describe("Stack CLI", () => {
 
   it("returns complex object as JSON", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "return {a: 1, b: [2, 3]}"],
+      ["exec", "--cloud", "return {a: 1, b: [2, 3]}"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
@@ -277,7 +288,7 @@ describe("Stack CLI", () => {
 
   it("supports async code", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "return await Promise.resolve(42)"],
+      ["exec", "--cloud", "return await Promise.resolve(42)"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
@@ -290,7 +301,7 @@ describe("Stack CLI", () => {
     createdUserEmail = `exec-test-${crypto.randomUUID()}@stack-generated.example.com`;
     const code = `const u = await stackServerApp.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
     const { stdout, exitCode } = await runCli(
-      ["exec", code],
+      ["exec", "--cloud", code],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
@@ -303,12 +314,87 @@ describe("Stack CLI", () => {
     expect(createdProjectId).toBeDefined();
     expect(createdUserEmail).toBeDefined();
     const { stdout, exitCode } = await runCli(
-      ["exec", "const users = await stackServerApp.listUsers(); return users.length"],
+      ["exec", "--cloud", "const users = await stackServerApp.listUsers(); return users.length"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
     const count = JSON.parse(stdout);
     expect(count).toBeGreaterThanOrEqual(1);
+  });
+
+  it("local-default exec errors when emulator PCK file is missing", async ({ expect }) => {
+    // Without --cloud, exec defaults to the local emulator. With
+    // STACK_EMULATOR_HOME pointed at an empty dir, the PCK file lookup fires
+    // before any network call and we get a clear error. Setting
+    // STACK_EMULATOR_READY_TIMEOUT_MS=0 disables the boot-race polling window
+    // so this test fails fast.
+    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-fake-emulator-"));
+    try {
+      const { stderr, exitCode } = await runCli(
+        ["exec", "return 1"],
+        {
+          STACK_PROJECT_ID: createdProjectId,
+          STACK_EMULATOR_HOME: fakeEmulatorHome,
+          STACK_EMULATOR_READY_TIMEOUT_MS: "0",
+        },
+      );
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain("Local emulator publishable client key not found");
+    } finally {
+      fs.rmSync(fakeEmulatorHome, { recursive: true });
+    }
+  });
+
+  it("local-default exec errors when emulator API is unreachable", async ({ expect }) => {
+    // PCK file present (so we get past the file check) but STACK_EMULATOR_API_URL
+    // points at a port nothing is listening on — fetch fails with a clear error.
+    // STACK_EMULATOR_READY_TIMEOUT_MS=0 keeps the retry loop from waiting.
+    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-fake-emulator-"));
+    try {
+      const pckDir = path.join(fakeEmulatorHome, "run", "vm");
+      fs.mkdirSync(pckDir, { recursive: true });
+      fs.writeFileSync(path.join(pckDir, "internal-pck"), "pck_stub_for_test");
+      const { stderr, exitCode } = await runCli(
+        ["exec", "return 1"],
+        {
+          STACK_PROJECT_ID: createdProjectId,
+          STACK_EMULATOR_HOME: fakeEmulatorHome,
+          STACK_EMULATOR_API_URL: "http://127.0.0.1:1",
+          STACK_EMULATOR_READY_TIMEOUT_MS: "0",
+        },
+      );
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain("Cannot reach local emulator");
+    } finally {
+      fs.rmSync(fakeEmulatorHome, { recursive: true });
+    }
+  });
+
+  // Positive happy-path: only runs when the backend is in local-emulator mode
+  // (the password sign-in for local-emulator@stack-auth.com only succeeds
+  // there). Stages a STACK_EMULATOR_HOME with the real internal PCK and
+  // points STACK_EMULATOR_API_URL at the running backend, so the CLI takes
+  // the local-default path and signs in as the emulator admin.
+  it.runIf(isLocalEmulator)("local-default exec runs against the local emulator backend", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-emu-positive-"));
+    try {
+      const pckDir = path.join(fakeEmulatorHome, "run", "vm");
+      fs.mkdirSync(pckDir, { recursive: true });
+      fs.writeFileSync(path.join(pckDir, "internal-pck"), STACK_INTERNAL_PROJECT_CLIENT_KEY);
+      const { stdout, exitCode } = await runCli(
+        ["exec", "return 1+1"],
+        {
+          STACK_PROJECT_ID: createdProjectId,
+          STACK_EMULATOR_HOME: fakeEmulatorHome,
+          STACK_EMULATOR_API_URL: STACK_BACKEND_BASE_URL,
+        },
+      );
+      expect(exitCode).toBe(0);
+      expect(stdout.trim()).toBe("2");
+    } finally {
+      fs.rmSync(fakeEmulatorHome, { recursive: true });
+    }
   });
 
   let configTsPath: string;

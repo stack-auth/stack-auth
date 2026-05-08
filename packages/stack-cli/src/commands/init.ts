@@ -204,17 +204,17 @@ async function handleLinkFromConfigFile(opts: InitOptions): Promise<{ configPath
   return { configPath };
 }
 
-async function ensureLoggedInSession(flags: Record<string, unknown>) {
+async function ensureLoggedInSession() {
   try {
-    return resolveSessionAuth(flags as { projectId?: string });
+    return resolveSessionAuth();
   } catch (e) {
     if (e instanceof AuthError) {
       if (isNonInteractiveEnv()) {
         throw new CliError("Not logged in. Run `stack login` first or set STACK_CLI_REFRESH_TOKEN.");
       }
       console.log("You need to log in first.\n");
-      await performLogin(flags);
-      return resolveSessionAuth(flags as { projectId?: string });
+      await performLogin();
+      return resolveSessionAuth();
     }
     throw e;
   }
@@ -271,8 +271,8 @@ async function writeProjectKeysToEnv(
   }
 }
 
-async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
-  const sessionAuth = await ensureLoggedInSession(flags);
+async function handleCreateCloud(_flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+  const sessionAuth = await ensureLoggedInSession();
   const user = await getInternalUser(sessionAuth);
 
   const newProject = await createProjectInteractively(user, {
@@ -284,8 +284,8 @@ async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptio
   return {};
 }
 
-async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
-  const sessionAuth = await ensureLoggedInSession(flags);
+async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+  const sessionAuth = await ensureLoggedInSession();
   const user = await getInternalUser(sessionAuth);
   let projects = await user.listOwnedProjects();
   let autoCreatedProjectId: string | null = null;
@@ -336,8 +336,8 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
   return {};
 }
 
-async function performLogin(flags: Record<string, unknown>) {
-  const config = resolveLoginConfig(flags as { projectId?: string });
+async function performLogin() {
+  const config = resolveLoginConfig();
 
   const app = new StackClientApp({
     projectId: "internal",
