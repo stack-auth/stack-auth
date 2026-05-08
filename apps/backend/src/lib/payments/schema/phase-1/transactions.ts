@@ -27,6 +27,16 @@ import type { SeedEventsStoredTables } from "./stored-tables";
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
 
+// ── Entry-index constants ──────────────────────────────────────────────
+// These pin the position of the product-grant entry within source
+// transactions. The refund flow uses them for `adjustedEntryIndex` on
+// product-revocation entries; if the layouts above are reordered, both
+// these constants and any persisted refund rows need to be reconciled.
+//   subscription-start: [active-subscription-start, product-grant, money-transfer?, ...]
+//   one-time-purchase:  [product-grant, money-transfer?, ...]
+export const SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX = 1;
+export const ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX = 0;
+
 
 export function createTransactionsTable(events: EventTables, manualTransactions: SeedEventsStoredTables['manualTransactions']) {
 

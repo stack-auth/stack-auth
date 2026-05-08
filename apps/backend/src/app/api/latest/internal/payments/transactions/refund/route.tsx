@@ -1,12 +1,19 @@
-import { buildOneTimePurchaseTransaction, buildSubscriptionTransaction, resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
+import { createHash, randomUUID } from "node:crypto";
+import { Prisma } from "@/generated/prisma/client";
+import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
-import type { ManualTransactionRow } from "@/lib/payments/schema/types";
+import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
+import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
+import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/schema/phase-1/transactions";
+import { paymentsSchema } from "@/lib/payments/schema/singleton";
+import type { ManualTransactionRow, TransactionEntryData } from "@/lib/payments/schema/types";
 import { getStripeForAccount } from "@/lib/stripe";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import type { Tenancy } from "@/lib/tenancies";
+import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import type { TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { moneyAmountToStripeUnits } from "@stackframe/stack-shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -17,14 +24,9 @@ const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "
   ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 
 /**
- * Builds the parameters object for `stripe.refunds.create`. Centralised so the
- * platform-fee invariant — that we never let Stripe reverse our charge-leg
- * 0.9% application fee on refund — has exactly one source of truth and one
- * place to test.
- *
- * Stripe's default for `refund_application_fee` on a Connect direct charge is
- * `true`, which proportionally reverses the application fee along with the
- * refund. We always set it to `false` so the platform retains its cut.
+ * Builds parameters for `stripe.refunds.create`. The platform-fee invariant —
+ * we never let Stripe reverse our charge-leg 0.9% application fee on refund —
+ * lives here so it has exactly one source of truth.
  */
 export function buildStripeRefundParams(args: {
   paymentIntentId: string,
@@ -39,70 +41,12 @@ export function buildStripeRefundParams(args: {
   };
 }
 
-function getTotalUsdStripeUnits(options: { product: InferType<typeof productSchema>, priceId: string | null, quantity: number }) {
-  const selectedPrice = resolveSelectedPriceFromProduct(options.product, options.priceId ?? null);
-  const usdPrice = selectedPrice?.USD;
-  if (typeof usdPrice !== "string") {
-    throw new KnownErrors.SchemaError("Refund amounts can only be specified for USD-priced purchases.");
-  }
-  if (!Number.isFinite(options.quantity) || Math.trunc(options.quantity) !== options.quantity) {
-    throw new StackAssertionError("Purchase quantity is not an integer", { quantity: options.quantity });
-  }
-  return moneyAmountToStripeUnits(usdPrice as MoneyAmount, USD_CURRENCY) * options.quantity;
-}
-
-type RefundEntrySelection = {
-  entry_index: number,
-  quantity: number,
-  amount_usd: MoneyAmount,
-};
-
-function validateRefundEntries(options: { entries: TransactionEntry[], refundEntries: RefundEntrySelection[] }) {
-  const seenEntryIndexes = new Set<number>();
-  const entryByIndex = new Map<number, TransactionEntry>(
-    options.entries.map((entry, index) => [index, entry]),
-  );
-
-  for (const refundEntry of options.refundEntries) {
-    if (!Number.isFinite(refundEntry.quantity) || Math.trunc(refundEntry.quantity) !== refundEntry.quantity) {
-      throw new KnownErrors.SchemaError("Refund quantity must be an integer.");
-    }
-    if (refundEntry.quantity < 0) {
-      throw new KnownErrors.SchemaError("Refund quantity cannot be negative.");
-    }
-    if (seenEntryIndexes.has(refundEntry.entry_index)) {
-      throw new KnownErrors.SchemaError("Refund entries cannot contain duplicate entry indexes.");
-    }
-    seenEntryIndexes.add(refundEntry.entry_index);
-    const entry = entryByIndex.get(refundEntry.entry_index);
-    if (!entry) {
-      throw new KnownErrors.SchemaError("Refund entry index is invalid.");
-    }
-    if (entry.type !== "product_grant") {
-      throw new KnownErrors.SchemaError("Refund entries must reference product grant entries.");
-    }
-    if (refundEntry.quantity > entry.quantity) {
-      throw new KnownErrors.SchemaError("Refund quantity cannot exceed purchased quantity.");
-    }
-  }
-}
-
-function getRefundedQuantity(refundEntries: RefundEntrySelection[]) {
-  let total = 0;
-  for (const refundEntry of refundEntries) {
-    total += refundEntry.quantity;
-  }
-  return total;
-}
-
-function getRefundAmountStripeUnits(refundEntries: RefundEntrySelection[]) {
-  let total = 0;
-  for (const refundEntry of refundEntries) {
-    total += moneyAmountToStripeUnits(refundEntry.amount_usd, USD_CURRENCY);
-  }
-  return total;
-}
-
+/**
+ * Formats stripe units as a decimal money string with the currency's full
+ * decimal places — this is the shape that round-trips through
+ * `moneyAmountToStripeUnits` (which strips the dot and parseInts the result).
+ * E.g. for USD: 5000 → "50.00", 1 → "0.01", 100 → "1.00".
+ */
 function stripeUnitsToMoneyAmount(stripeUnits: number): string {
   if (!Number.isFinite(stripeUnits) || Math.trunc(stripeUnits) !== stripeUnits) {
     throw new StackAssertionError("Stripe units must be an integer", { stripeUnits });
@@ -111,15 +55,8 @@ function stripeUnitsToMoneyAmount(stripeUnits: number): string {
   const decimals = USD_CURRENCY.decimals;
   const units = absolute.toString().padStart(decimals + 1, "0");
   const integerPart = units.slice(0, -decimals) || "0";
-  const fractionalPart = units.slice(-decimals).replace(/0+$/, "");
-  return fractionalPart.length > 0 ? `${integerPart}.${fractionalPart}` : integerPart;
-}
-
-function negateMoneyAmount(amount: string): string {
-  if (amount === "0") {
-    return "0";
-  }
-  return `-${amount}`;
+  const fractionalPart = units.slice(-decimals);
+  return `${integerPart}.${fractionalPart}`;
 }
 
 function readProductLineId(product: InferType<typeof productSchema>): string | null {
@@ -127,75 +64,179 @@ function readProductLineId(product: InferType<typeof productSchema>): string | n
   return typeof productLineId === "string" ? productLineId : null;
 }
 
-function getProductGrantEntry(options: { entries: TransactionEntry[], entryIndex: number }): Extract<TransactionEntry, { type: "product_grant" }> {
-  const entry = options.entries[options.entryIndex];
-  if (entry.type !== "product_grant") {
-    throw new StackAssertionError("Refund entry must reference a product grant entry", { entryIndex: options.entryIndex, entry });
+function getTotalUsdStripeUnits(options: {
+  product: InferType<typeof productSchema>,
+  priceId: string | null,
+  quantity: number,
+}): number {
+  const selectedPrice = resolveSelectedPriceFromProduct(options.product, options.priceId);
+  const usdPrice = selectedPrice?.USD;
+  if (typeof usdPrice !== "string") {
+    throw new KnownErrors.SchemaError("Refunds are only supported for USD-priced purchases.");
   }
-  return entry;
+  if (!Number.isFinite(options.quantity) || Math.trunc(options.quantity) !== options.quantity) {
+    throw new StackAssertionError("Purchase quantity is not an integer", { quantity: options.quantity });
+  }
+  return moneyAmountToStripeUnits(usdPrice as MoneyAmount, USD_CURRENCY) * options.quantity;
 }
 
-function buildRefundManualTransaction(options: {
-  sourceKind: "subscription" | "one-time-purchase",
-  sourceId: string,
-  sourceTransactionId: string,
+// ── Refund row construction ────────────────────────────────────────────────
+
+function makeRefundTxnId(sourceTxnId: string): string {
+  return `${REFUND_TXN_PREFIX}${sourceTxnId}:${randomUUID()}`;
+}
+
+/**
+ * Derive a deterministic Stripe idempotency key from the tenancy, source
+ * transaction, refund amount, and the cumulative amount already refunded
+ * before this call. A network-level retry of the same admin click hits all
+ * three identical inputs and dedupes at Stripe. Two intentional partials of
+ * the same amount get distinct keys because `priorRefundedStripeUnits`
+ * advances after the first one commits.
+ */
+function makeStripeIdempotencyKey(args: {
   tenancyId: string,
-  sourceEntries: TransactionEntry[],
-  refundEntries: RefundEntrySelection[],
-  refundAmountStripeUnits: number,
+  sourceTxnId: string,
+  amountStripeUnits: number,
+  priorRefundedStripeUnits: number,
+}): string {
+  const fingerprint = `${args.tenancyId}:${args.sourceTxnId}:${args.amountStripeUnits}:${args.priorRefundedStripeUnits}`;
+  return `refund:${createHash("sha256").update(fingerprint).digest("hex").slice(0, 32)}`;
+}
+
+function buildProductRevocationEntry(options: {
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  sourceTxnId: string,
+  productGrantEntryIndex: number,
+  productId: string | null,
   productLineId: string | null,
-  paymentProvider: "test_mode" | "stripe",
-  refundedAt: Date,
-}): { rowId: string, rowData: ManualTransactionRow } {
-  const productGrantEntry = getProductGrantEntry({ entries: options.sourceEntries, entryIndex: 0 });
-  const revocationEntries = options.refundEntries.map((refundEntry) => {
-    const adjustedEntry = getProductGrantEntry({
-      entries: options.sourceEntries,
-      entryIndex: refundEntry.entry_index,
-    });
-    return {
-      type: "product-revocation" as const,
-      customerType: adjustedEntry.customer_type,
-      customerId: adjustedEntry.customer_id,
-      adjustedTransactionId: options.sourceTransactionId,
-      adjustedEntryIndex: refundEntry.entry_index,
-      quantity: refundEntry.quantity,
-      productId: adjustedEntry.product_id,
-      productLineId: options.productLineId,
-    };
-  });
-  const refundAmount = negateMoneyAmount(stripeUnitsToMoneyAmount(options.refundAmountStripeUnits));
-  const createdAtMillis = options.refundedAt.getTime();
+  quantity: number,
+}): Extract<TransactionEntryData, { type: "product-revocation" }> {
   return {
-    rowId: `refund:${options.sourceKind}:${options.sourceId}`,
-    rowData: {
-      txnId: `${options.sourceId}:refund`,
-      tenancyId: options.tenancyId,
-      effectiveAtMillis: createdAtMillis,
-      type: "refund",
-      entries: [
-        ...revocationEntries,
-        {
-          type: "money-transfer",
-          customerType: productGrantEntry.customer_type,
-          customerId: productGrantEntry.customer_id,
-          chargedAmount: {
-            USD: refundAmount,
-          },
-        },
-      ],
-      customerType: productGrantEntry.customer_type,
-      customerId: productGrantEntry.customer_id,
-      paymentProvider: options.paymentProvider,
-      createdAtMillis,
+    type: "product-revocation",
+    customerType: options.customerType,
+    customerId: options.customerId,
+    adjustedTransactionId: options.sourceTxnId,
+    adjustedEntryIndex: options.productGrantEntryIndex,
+    quantity: options.quantity,
+    productId: options.productId,
+    productLineId: options.productLineId,
+  };
+}
+
+/**
+ * Money-transfer entry on a refund row. The amount is stored as a positive
+ * decimal money string; the parent `type: "refund"` is the semantic
+ * discriminator that tells consumers this is money flowing back to the
+ * customer. (Storing a literal negative would break `moneyAmountSchema`,
+ * which requires non-negative values.)
+ */
+function buildMoneyTransferEntry(options: {
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  refundAmountStripeUnits: number,
+}): Extract<TransactionEntryData, { type: "money-transfer" }> {
+  return {
+    type: "money-transfer",
+    customerType: options.customerType,
+    customerId: options.customerId,
+    chargedAmount: {
+      USD: stripeUnitsToMoneyAmount(options.refundAmountStripeUnits),
     },
   };
 }
 
+// ── Bulldozer reads: prior refund summary for a source txn ─────────────────
+
+type PriorRefundSummary = {
+  refundedStripeUnits: number,
+  productRevoked: boolean,
+};
+
+async function readPriorRefundSummary(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  sourceTxnId: string,
+}): Promise<PriorRefundSummary> {
+  const executionContext = createBulldozerExecutionContext();
+  const baseSql = toQueryableSqlQuery(paymentsSchema.transactions.listRowsInGroup(executionContext, {
+    start: "start",
+    end: "end",
+    startInclusive: true,
+    endInclusive: true,
+  }));
+  const sql = `
+    SELECT "__rows"."rowdata" AS "rowData"
+    FROM (${baseSql}) AS "__rows"
+    WHERE "__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}
+      AND "__rows"."rowdata"->>'type' = 'refund'
+      AND "__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}
+      AND "__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}
+      -- LIKE pattern is safe today because source txnIds are
+      -- 'sub-start:<uuid>' / 'sub-renewal:<id>' / 'otp:<id>' — none of
+      -- which contain LIKE metacharacters (percent / underscore / backslash).
+      -- If a future source format introduces those, escape them before
+      -- interpolation.
+      AND ("__rows"."rowdata"->>'txnId') LIKE ${quoteSqlStringLiteral(`${REFUND_TXN_PREFIX}${options.sourceTxnId}:%`).sql}
+  `;
+  const rows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(sql)}`;
+  let refundedStripeUnits = 0;
+  let productRevoked = false;
+  for (const row of rows) {
+    const rowData = row.rowData;
+    if (typeof rowData !== "object" || rowData === null) continue;
+    const entries = Reflect.get(rowData, "entries");
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const type = Reflect.get(entry, "type");
+      if (type === "product-revocation") {
+        const adjustedTxnId = Reflect.get(entry, "adjustedTransactionId");
+        if (adjustedTxnId === options.sourceTxnId) {
+          productRevoked = true;
+        }
+      } else if (type === "money-transfer") {
+        const chargedAmount = Reflect.get(entry, "chargedAmount");
+        if (typeof chargedAmount !== "object" || chargedAmount === null) continue;
+        const usd = Reflect.get(chargedAmount, "USD");
+        if (typeof usd !== "string") continue;
+        // Refund money-transfer entries store positive amounts (the refund
+        // row's `type: "refund"` carries the sign); guard against legacy data
+        // that may have a leading minus.
+        const absolute = usd.startsWith("-") ? usd.slice(1) : usd;
+        refundedStripeUnits += moneyAmountToStripeUnits(absolute as MoneyAmount, USD_CURRENCY);
+      }
+    }
+  }
+  return { refundedStripeUnits, productRevoked };
+}
+
+// ── Stripe payment-intent resolution for invoice refunds ───────────────────
+
+async function resolveInvoicePaymentIntentId(stripe: Stripe, stripeInvoiceId: string): Promise<string> {
+  const invoice = await stripe.invoices.retrieve(stripeInvoiceId, { expand: ["payments"] });
+  const payments = invoice.payments?.data;
+  if (!payments || payments.length === 0) {
+    throw new StackAssertionError("Invoice has no payments", { stripeInvoiceId });
+  }
+  const paidPayment = payments.find((payment) => payment.status === "paid");
+  if (!paidPayment) {
+    throw new StackAssertionError("Invoice has no paid payment", { stripeInvoiceId });
+  }
+  const paymentIntentId = paidPayment.payment.payment_intent;
+  if (!paymentIntentId || typeof paymentIntentId !== "string") {
+    throw new StackAssertionError("Payment has no payment intent", { stripeInvoiceId });
+  }
+  return paymentIntentId;
+}
+
+// ── Route ─────────────────────────────────────────────────────────────────
+
 export const POST = createSmartRouteHandler({
-  metadata: {
-    hidden: true,
-  },
+  metadata: { hidden: true },
   request: yupObject({
     auth: yupObject({
       type: adminAuthTypeSchema.defined(),
@@ -205,230 +246,453 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       type: yupString().oneOf(["subscription", "one-time-purchase"]).defined(),
       id: yupString().defined(),
-      refund_entries: yupArray(
-        yupObject({
-          entry_index: yupNumber().integer().defined(),
-          quantity: yupNumber().integer().defined(),
-          amount_usd: moneyAmountSchema(USD_CURRENCY).defined(),
-        }).defined(),
-      ).defined(),
-    }).defined()
+      invoice_id: yupString().optional(),
+      amount_usd: moneyAmountSchema(USD_CURRENCY).defined(),
+      revoke_product: yupBoolean().defined(),
+      end_subscription: yupBoolean().optional(),
+    }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       success: yupBoolean().defined(),
+      refund_transaction_id: yupString().defined(),
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const refundEntries = body.refund_entries.map((entry) => ({
-      ...entry,
-      amount_usd: entry.amount_usd as MoneyAmount,
-    }));
-    if (body.type === "subscription") {
-      const subscription = await prisma.subscription.findUnique({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-      });
-      if (!subscription) {
-        throw new KnownErrors.SubscriptionInvoiceNotFound(body.id);
-      }
-      if (subscription.refundedAt) {
-        throw new KnownErrors.SubscriptionAlreadyRefunded(body.id);
-      }
-      const subscriptionInvoices = await prisma.subscriptionInvoice.findMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          isSubscriptionCreationInvoice: true,
-          subscription: {
-            tenancyId: auth.tenancy.id,
-            id: body.id,
-          }
-        }
-      });
-      if (subscriptionInvoices.length === 0) {
-        throw new KnownErrors.SubscriptionInvoiceNotFound(body.id);
-      }
-      if (subscriptionInvoices.length > 1) {
-        throw new StackAssertionError("Multiple subscription creation invoices found for subscription", { subscriptionId: body.id });
-      }
-      const subscriptionInvoice = subscriptionInvoices[0];
-      const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
-      const invoice = await stripe.invoices.retrieve(subscriptionInvoice.stripeInvoiceId, { expand: ["payments"] });
-      const payments = invoice.payments?.data;
-      if (!payments || payments.length === 0) {
-        throw new StackAssertionError("Invoice has no payments", { invoiceId: subscriptionInvoice.stripeInvoiceId });
-      }
-      const paidPayment = payments.find((payment) => payment.status === "paid");
-      if (!paidPayment) {
-        throw new StackAssertionError("Invoice has no paid payment", { invoiceId: subscriptionInvoice.stripeInvoiceId });
-      }
-      const paymentIntentId = paidPayment.payment.payment_intent;
-      if (!paymentIntentId || typeof paymentIntentId !== "string") {
-        throw new StackAssertionError("Payment has no payment intent", { invoiceId: subscriptionInvoice.stripeInvoiceId });
-      }
-      const transaction = buildSubscriptionTransaction({ subscription });
-      validateRefundEntries({
-        entries: transaction.entries,
-        refundEntries,
-      });
-      const refundedQuantity = getRefundedQuantity(refundEntries);
-      const totalStripeUnits = getTotalUsdStripeUnits({
-        product: subscription.product as InferType<typeof productSchema>,
-        priceId: subscription.priceId ?? null,
-        quantity: subscription.quantity,
-      });
-      const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
-      if (refundAmountStripeUnits < 0) {
-        throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
-      }
-      if (refundAmountStripeUnits > totalStripeUnits) {
-        throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
-      }
-      await stripe.refunds.create(buildStripeRefundParams({
-        paymentIntentId,
-        amountStripeUnits: refundAmountStripeUnits,
-      }));
-      const refundedAt = new Date();
-      if (refundedQuantity > 0) {
-        if (!subscription.stripeSubscriptionId) {
-          throw new StackAssertionError("Stripe subscription id missing for refund", { subscriptionId: subscription.id });
-        }
-        const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
-        if (stripeSubscription.items.data.length === 0) {
-          throw new StackAssertionError("Stripe subscription has no items", { subscriptionId: subscription.id });
-        }
-        const subscriptionItem = stripeSubscription.items.data[0];
-        if (!Number.isFinite(subscriptionItem.quantity) || Math.trunc(subscriptionItem.quantity ?? 0) !== subscriptionItem.quantity) {
-          throw new StackAssertionError("Stripe subscription item quantity is not an integer", {
-            subscriptionId: subscription.id,
-            itemQuantity: subscriptionItem.quantity,
-          });
-        }
-        const currentQuantity = subscriptionItem.quantity ?? 0;
-        const newQuantity = currentQuantity - refundedQuantity;
-        if (newQuantity < 0) {
-          throw new StackAssertionError("Refund quantity exceeds Stripe subscription item quantity", {
-            subscriptionId: subscription.id,
-            currentQuantity,
-            refundedQuantity,
-          });
-        }
-        await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-          cancel_at_period_end: newQuantity === 0,
-          items: [{
-            id: subscriptionItem.id,
-            quantity: newQuantity,
-          }],
-        });
-        await prisma.subscription.update({
-          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-          data: {
-            cancelAtPeriodEnd: newQuantity === 0,
-            refundedAt,
-          },
-        });
-      } else {
-        await prisma.subscription.update({
-          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-          data: { refundedAt },
-        });
-      }
-      // dual write - prisma and bulldozer
-      const updatedSub = await prisma.subscription.findUniqueOrThrow({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-      });
-      await bulldozerWriteSubscription(prisma, updatedSub);
-      const manualRefund = buildRefundManualTransaction({
-        sourceKind: "subscription",
-        sourceId: subscription.id,
-        sourceTransactionId: `sub-start:${subscription.id}`,
-        tenancyId: auth.tenancy.id,
-        sourceEntries: transaction.entries,
-        refundEntries,
-        refundAmountStripeUnits,
-        productLineId: readProductLineId(subscription.product as InferType<typeof productSchema>),
-        paymentProvider: subscription.creationSource === "TEST_MODE" ? "test_mode" : "stripe",
-        refundedAt,
-      });
-      await bulldozerWriteManualTransaction(prisma, manualRefund.rowId, manualRefund.rowData);
-    } else {
-      const purchase = await prisma.oneTimePurchase.findUnique({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-      });
-      if (!purchase) {
-        throw new KnownErrors.OneTimePurchaseNotFound(body.id);
-      }
-      if (purchase.refundedAt) {
-        throw new KnownErrors.OneTimePurchaseAlreadyRefunded(body.id);
-      }
-      if (purchase.creationSource === "TEST_MODE") {
-        throw new KnownErrors.TestModePurchaseNonRefundable();
-      }
-      const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
-      if (!purchase.stripePaymentIntentId) {
-        throw new KnownErrors.OneTimePurchaseNotFound(body.id);
-      }
-      const transaction = buildOneTimePurchaseTransaction({ purchase });
-      validateRefundEntries({
-        entries: transaction.entries,
-        refundEntries,
-      });
-      const totalStripeUnits = getTotalUsdStripeUnits({
-        product: purchase.product as InferType<typeof productSchema>,
-        priceId: purchase.priceId ?? null,
-        quantity: purchase.quantity,
-      });
-      const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
-      if (refundAmountStripeUnits < 0) {
-        throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
-      }
-      if (refundAmountStripeUnits > totalStripeUnits) {
-        throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
-      }
-      await stripe.refunds.create(buildStripeRefundParams({
-        paymentIntentId: purchase.stripePaymentIntentId,
-        amountStripeUnits: refundAmountStripeUnits,
-        metadata: {
-          tenancyId: auth.tenancy.id,
-          purchaseId: purchase.id,
-        },
-      }));
-      const refundedAt = new Date();
-      await prisma.oneTimePurchase.update({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-        data: { refundedAt },
-      });
-      // dual write - prisma and bulldozer
-      const updatedPurchase = await prisma.oneTimePurchase.findUniqueOrThrow({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-      });
-      await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
-      const manualRefund = buildRefundManualTransaction({
-        sourceKind: "one-time-purchase",
-        sourceId: purchase.id,
-        sourceTransactionId: `otp:${purchase.id}`,
-        tenancyId: auth.tenancy.id,
-        sourceEntries: transaction.entries,
-        refundEntries,
-        refundAmountStripeUnits,
-        productLineId: readProductLineId(purchase.product as InferType<typeof productSchema>),
-        paymentProvider: "stripe",
-        refundedAt,
-      });
-      await bulldozerWriteManualTransaction(prisma, manualRefund.rowId, manualRefund.rowData);
+    const amountUsd = body.amount_usd as MoneyAmount;
+    const amountStripeUnits = moneyAmountToStripeUnits(amountUsd, USD_CURRENCY);
+    const revokeProduct = body.revoke_product;
+    const endSubscription = body.end_subscription ?? false;
+
+    if (amountStripeUnits < 0) {
+      throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
     }
 
-    return {
-      statusCode: 200,
-      bodyType: "json",
-      body: {
-        success: true,
-      },
-    };
+    if (body.type === "one-time-purchase") {
+      if (body.invoice_id !== undefined) {
+        throw new KnownErrors.SchemaError("invoice_id is not applicable to one-time purchases.");
+      }
+      if (endSubscription) {
+        throw new KnownErrors.SchemaError("end_subscription is not applicable to one-time purchases.");
+      }
+      if (amountStripeUnits === 0 && !revokeProduct) {
+        throw new KnownErrors.SchemaError("Refund must do something: specify a non-zero amount or revoke the product.");
+      }
+      return await handleOneTimePurchaseRefund({
+        prisma,
+        tenancy: auth.tenancy,
+        purchaseId: body.id,
+        amountUsd,
+        amountStripeUnits,
+        revokeProduct,
+      });
+    }
+
+    // subscription path
+    if (revokeProduct && !endSubscription) {
+      throw new KnownErrors.SchemaError("Revoking a subscription's product also requires ending the subscription. Set end_subscription to true.");
+    }
+    if (amountStripeUnits === 0 && !revokeProduct && !endSubscription) {
+      throw new KnownErrors.SchemaError("Refund must do something: specify a non-zero amount, revoke the product, or end the subscription.");
+    }
+    return await handleSubscriptionRefund({
+      prisma,
+      tenancy: auth.tenancy,
+      subscriptionId: body.id,
+      invoiceId: body.invoice_id,
+      amountUsd,
+      amountStripeUnits,
+      revokeProduct,
+      endSubscription,
+    });
   },
 });
+
+// ── Subscription refund handler ────────────────────────────────────────────
+//
+// Known concurrency / atomicity gaps (deferred to a follow-up):
+//
+// 1. **Race on cap check.** Two concurrent refund requests for the same
+//    source can both call `readPriorRefundSummary` before either commits its
+//    refund row, so both pass the cap check and over-refund. Wrapping this
+//    flow in a Prisma `$transaction` does NOT fix it — `bulldozerWriteManualTransaction`
+//    embeds its own `BEGIN; ... COMMIT;` (see `lib/bulldozer/db/index.ts:162`),
+//    so its writes commit independently of any outer Prisma tx. A real fix
+//    needs either a bulldozer-aware mutex (writes-table sentinel row, advisory
+//    lock taken on a long-lived dedicated connection, etc.) or a "pending
+//    refund intent" pattern that participates in the cap calc before Stripe is
+//    called. In practice, refunds are admin-only and rare, so the race window
+//    is small.
+//
+// 2. **Stripe + DB are not atomic.** A successful `stripe.refunds.create`
+//    followed by a write failure leaves the customer refunded with no ledger
+//    row. The Stripe idempotency key matches `refundTxnId`, but each call
+//    generates a fresh uuid, so a caller-side retry would issue a second
+//    real Stripe refund. No out-of-band reconciliation today. Tracked as a
+//    follow-up alongside (1).
+async function handleSubscriptionRefund(options: {
+  prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
+  tenancy: Tenancy,
+  subscriptionId: string,
+  invoiceId: string | undefined,
+  amountUsd: MoneyAmount,
+  amountStripeUnits: number,
+  revokeProduct: boolean,
+  endSubscription: boolean,
+}) {
+  const { prisma, tenancy } = options;
+  const subscription = await prisma.subscription.findUnique({
+    where: { tenancyId_id: { tenancyId: tenancy.id, id: options.subscriptionId } },
+  });
+  if (!subscription) {
+    throw new KnownErrors.SubscriptionInvoiceNotFound(options.subscriptionId);
+  }
+  // Legacy refund backstop: the pre-three-knob flow set `refundedAt` and
+  // gated all further refunds on it. The new bulldozer-derived prior-refund
+  // summary doesn't see those legacy refunds, so without this gate an admin
+  // could double-refund through Stripe on a previously-refunded purchase.
+  if (subscription.refundedAt) {
+    throw new KnownErrors.SchemaError("This subscription has already been refunded under a previous version of the refund flow; further refunds are not permitted from this endpoint.");
+  }
+
+  const customerType = subscription.customerType.toLowerCase() as "user" | "team" | "custom";
+  const isTestMode = subscription.creationSource === "TEST_MODE";
+  const product = subscription.product as InferType<typeof productSchema>;
+  const productLineId = readProductLineId(product);
+
+  if (isTestMode && options.amountStripeUnits > 0) {
+    throw new KnownErrors.SchemaError("Test-mode subscriptions have no money to refund. Set amount_usd to \"0\".");
+  }
+
+  // Determine which invoice this refund targets — defaults to the start invoice.
+  let invoice: { id: string, stripeInvoiceId: string, amountTotal: number | null } | null = null;
+  let sourceTxnId: string;
+  if (options.invoiceId !== undefined) {
+    const found = await prisma.subscriptionInvoice.findUnique({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: options.invoiceId } },
+    });
+    if (!found || found.stripeSubscriptionId !== subscription.stripeSubscriptionId) {
+      throw new KnownErrors.SubscriptionInvoiceNotFound(options.invoiceId);
+    }
+    invoice = { id: found.id, stripeInvoiceId: found.stripeInvoiceId, amountTotal: found.amountTotal };
+    sourceTxnId = found.isSubscriptionCreationInvoice
+      ? `sub-start:${subscription.id}`
+      : `sub-renewal:${found.id}`;
+  } else if (!isTestMode) {
+    const startInvoices = await prisma.subscriptionInvoice.findMany({
+      where: {
+        tenancyId: tenancy.id,
+        isSubscriptionCreationInvoice: true,
+        subscription: { tenancyId: tenancy.id, id: subscription.id },
+      },
+    });
+    if (startInvoices.length === 0) {
+      throw new KnownErrors.SubscriptionInvoiceNotFound(subscription.id);
+    }
+    if (startInvoices.length > 1) {
+      throw new StackAssertionError("Multiple subscription creation invoices found for subscription", { subscriptionId: subscription.id });
+    }
+    const startInvoice = startInvoices[0];
+    invoice = { id: startInvoice.id, stripeInvoiceId: startInvoice.stripeInvoiceId, amountTotal: startInvoice.amountTotal };
+    sourceTxnId = `sub-start:${subscription.id}`;
+  } else {
+    // test-mode sub has no invoice; refund references the synthetic start txn.
+    sourceTxnId = `sub-start:${subscription.id}`;
+  }
+
+  // Cap = original − sum(prior refunds for this source txn). Test-mode subs
+  // have no money flow (amount must be 0 anyway, see check above), so the cap
+  // is irrelevant — short-circuit to 0 to avoid a USD-only throw on non-USD
+  // test-mode products. Live mode reads the invoice's amountTotal.
+  const totalStripeUnits = isTestMode
+    ? 0
+    : (invoice?.amountTotal ?? getTotalUsdStripeUnits({
+      product,
+      priceId: subscription.priceId ?? null,
+      quantity: subscription.quantity,
+    }));
+
+  const prior = await readPriorRefundSummary({
+    prisma,
+    tenancyId: tenancy.id,
+    customerType,
+    customerId: subscription.customerId,
+    sourceTxnId,
+  });
+  const remainingStripeUnits = Math.max(0, totalStripeUnits - prior.refundedStripeUnits);
+  if (options.amountStripeUnits > remainingStripeUnits) {
+    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
+  }
+  if (options.revokeProduct && prior.productRevoked) {
+    throw new KnownErrors.SchemaError("This subscription's product has already been revoked.");
+  }
+
+  const refundTxnId = makeRefundTxnId(sourceTxnId);
+
+  // ── Stripe side ───────────────────────────────────────────────────────
+  if (options.amountStripeUnits > 0 && !isTestMode) {
+    const stripe = await getStripeForAccount({ tenancy });
+    const paymentIntentId = await resolveInvoicePaymentIntentId(stripe, invoice!.stripeInvoiceId);
+    await stripe.refunds.create(
+      buildStripeRefundParams({
+        paymentIntentId,
+        amountStripeUnits: options.amountStripeUnits,
+        metadata: {
+          tenancyId: tenancy.id,
+          subscriptionId: subscription.id,
+          ...(invoice ? { invoiceId: invoice.id } : {}),
+        },
+      }),
+      {
+        idempotencyKey: makeStripeIdempotencyKey({
+          tenancyId: tenancy.id,
+          sourceTxnId,
+          amountStripeUnits: options.amountStripeUnits,
+          priorRefundedStripeUnits: prior.refundedStripeUnits,
+        }),
+      },
+    );
+  }
+
+  // ── Lifecycle: Prisma + Stripe ────────────────────────────────────────
+  const now = new Date();
+  let updatedSub: typeof subscription | null = null;
+  if (options.revokeProduct) {
+    // Immediate end. Stripe sub canceled, Prisma endedAt=now → timefold
+    // auto-emits subscription-end with item-quantity-expire entries. Preserve
+    // an existing `endedAt` if the sub already ended naturally — clobbering
+    // it with a later `now` would re-trigger the sub-end event with stale
+    // outstandingGrants state.
+    if (!isTestMode && subscription.stripeSubscriptionId) {
+      const stripe = await getStripeForAccount({ tenancy });
+      // Idempotent cancel: the Stripe sub may already be canceled (natural
+      // end before this refund). resource_missing / "already canceled" is
+      // not an error from our perspective.
+      try {
+        await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+      } catch (e: unknown) {
+        const code = (e as { code?: string }).code;
+        if (code !== "resource_missing" && code !== "subscription_canceled") {
+          throw e;
+        }
+      }
+    }
+    updatedSub = await prisma.subscription.update({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: subscription.id } },
+      data: {
+        // Don't touch `cancelAtPeriodEnd` — it's meaningless once `endedAt`
+        // is in the past, and writing `true` alongside an immediate `endedAt`
+        // creates inconsistent state for any reader that consults the flag
+        // without joining `endedAt`.
+        status: "canceled",
+        canceledAt: subscription.canceledAt ?? now,
+        endedAt: subscription.endedAt ?? now,
+      },
+    });
+  } else if (options.endSubscription) {
+    // End at period end. Items follow natural lifecycle when sub-end fires
+    // at period boundary.
+    if (!isTestMode && subscription.stripeSubscriptionId) {
+      const stripe = await getStripeForAccount({ tenancy });
+      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+    }
+    updatedSub = await prisma.subscription.update({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: subscription.id } },
+      data: {
+        cancelAtPeriodEnd: true,
+        canceledAt: subscription.canceledAt ?? now,
+        endedAt: subscription.endedAt ?? subscription.currentPeriodEnd,
+      },
+    });
+  }
+
+  if (updatedSub) {
+    await bulldozerWriteSubscription(prisma, updatedSub);
+  }
+
+  // ── Refund row ────────────────────────────────────────────────────────
+  const refundEntries: TransactionEntryData[] = [];
+  if (options.amountStripeUnits > 0 && !isTestMode) {
+    refundEntries.push(buildMoneyTransferEntry({
+      customerType,
+      customerId: subscription.customerId,
+      refundAmountStripeUnits: options.amountStripeUnits,
+    }));
+  }
+  if (options.revokeProduct) {
+    refundEntries.push(buildProductRevocationEntry({
+      customerType,
+      customerId: subscription.customerId,
+      sourceTxnId,
+      productGrantEntryIndex: SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX,
+      productId: subscription.productId ?? null,
+      productLineId,
+      quantity: subscription.quantity,
+    }));
+  }
+
+  const nowMillis = now.getTime();
+  const refundRow: ManualTransactionRow = {
+    txnId: refundTxnId,
+    tenancyId: tenancy.id,
+    effectiveAtMillis: nowMillis,
+    type: "refund",
+    entries: refundEntries,
+    customerType,
+    customerId: subscription.customerId,
+    paymentProvider: isTestMode ? "test_mode" : "stripe",
+    createdAtMillis: nowMillis,
+  };
+  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+
+  return {
+    statusCode: 200 as const,
+    bodyType: "json" as const,
+    body: { success: true, refund_transaction_id: refundTxnId },
+  };
+}
+
+// ── One-time-purchase refund handler ───────────────────────────────────────
+//
+// See the concurrency / atomicity caveats on `handleSubscriptionRefund`
+// above — the cap-check race and Stripe-vs-DB non-atomicity apply equally
+// to OTPs.
+async function handleOneTimePurchaseRefund(options: {
+  prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
+  tenancy: Tenancy,
+  purchaseId: string,
+  amountUsd: MoneyAmount,
+  amountStripeUnits: number,
+  revokeProduct: boolean,
+}) {
+  const { prisma, tenancy } = options;
+  const purchase = await prisma.oneTimePurchase.findUnique({
+    where: { tenancyId_id: { tenancyId: tenancy.id, id: options.purchaseId } },
+  });
+  if (!purchase) {
+    throw new KnownErrors.OneTimePurchaseNotFound(options.purchaseId);
+  }
+  // Legacy refund backstop — see handleSubscriptionRefund above.
+  if (purchase.refundedAt) {
+    throw new KnownErrors.SchemaError("This purchase has already been refunded under a previous version of the refund flow; further refunds are not permitted from this endpoint.");
+  }
+
+  const customerType = purchase.customerType.toLowerCase() as "user" | "team" | "custom";
+  const isTestMode = purchase.creationSource === "TEST_MODE";
+  const product = purchase.product as InferType<typeof productSchema>;
+  const productLineId = readProductLineId(product);
+
+  if (isTestMode && options.amountStripeUnits > 0) {
+    throw new KnownErrors.SchemaError("Test-mode purchases have no money to refund. Set amount_usd to \"0\".");
+  }
+
+  const sourceTxnId = `otp:${purchase.id}`;
+  const totalStripeUnits = isTestMode
+    ? 0
+    : getTotalUsdStripeUnits({
+      product,
+      priceId: purchase.priceId ?? null,
+      quantity: purchase.quantity,
+    });
+
+  const prior = await readPriorRefundSummary({
+    prisma,
+    tenancyId: tenancy.id,
+    customerType,
+    customerId: purchase.customerId,
+    sourceTxnId,
+  });
+  const remainingStripeUnits = Math.max(0, totalStripeUnits - prior.refundedStripeUnits);
+  if (options.amountStripeUnits > remainingStripeUnits) {
+    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
+  }
+  if (options.revokeProduct && prior.productRevoked) {
+    throw new KnownErrors.SchemaError("This purchase's product has already been revoked.");
+  }
+
+  const refundTxnId = makeRefundTxnId(sourceTxnId);
+
+  // ── Stripe side ───────────────────────────────────────────────────────
+  if (options.amountStripeUnits > 0 && !isTestMode) {
+    if (!purchase.stripePaymentIntentId) {
+      throw new StackAssertionError("Live-mode one-time purchase missing stripePaymentIntentId", { purchaseId: purchase.id });
+    }
+    const stripe = await getStripeForAccount({ tenancy });
+    await stripe.refunds.create(
+      buildStripeRefundParams({
+        paymentIntentId: purchase.stripePaymentIntentId,
+        amountStripeUnits: options.amountStripeUnits,
+        metadata: { tenancyId: tenancy.id, purchaseId: purchase.id },
+      }),
+      {
+        idempotencyKey: makeStripeIdempotencyKey({
+          tenancyId: tenancy.id,
+          sourceTxnId,
+          amountStripeUnits: options.amountStripeUnits,
+          priorRefundedStripeUnits: prior.refundedStripeUnits,
+        }),
+      },
+    );
+  }
+
+  // ── Lifecycle: Prisma ─────────────────────────────────────────────────
+  const now = new Date();
+  if (options.revokeProduct) {
+    const updatedPurchase = await prisma.oneTimePurchase.update({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: purchase.id } },
+      data: { revokedAt: now },
+    });
+    await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
+  }
+
+  // ── Refund row ────────────────────────────────────────────────────────
+  const refundEntries: TransactionEntryData[] = [];
+  if (options.amountStripeUnits > 0 && !isTestMode) {
+    refundEntries.push(buildMoneyTransferEntry({
+      customerType,
+      customerId: purchase.customerId,
+      refundAmountStripeUnits: options.amountStripeUnits,
+    }));
+  }
+  if (options.revokeProduct) {
+    refundEntries.push(buildProductRevocationEntry({
+      customerType,
+      customerId: purchase.customerId,
+      sourceTxnId,
+      productGrantEntryIndex: ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX,
+      productId: purchase.productId ?? null,
+      productLineId,
+      quantity: purchase.quantity,
+    }));
+  }
+
+  const nowMillis = now.getTime();
+  const refundRow: ManualTransactionRow = {
+    txnId: refundTxnId,
+    tenancyId: tenancy.id,
+    effectiveAtMillis: nowMillis,
+    type: "refund",
+    entries: refundEntries,
+    customerType,
+    customerId: purchase.customerId,
+    paymentProvider: isTestMode ? "test_mode" : "stripe",
+    createdAtMillis: nowMillis,
+  };
+  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+
+  return {
+    statusCode: 200 as const,
+    bodyType: "json" as const,
+    body: { success: true, refund_transaction_id: refundTxnId },
+  };
+}
+
+// ── Inline tests for the Stripe params builder ─────────────────────────────
 
 import.meta.vitest?.describe("buildStripeRefundParams", (test) => {
   test("always sets refund_application_fee: false to keep our 0.9% with the platform", ({ expect }) => {
@@ -447,9 +711,6 @@ import.meta.vitest?.describe("buildStripeRefundParams", (test) => {
       metadata: { tenancyId: "t1", purchaseId: "p1" },
     });
     expect(withMeta.metadata).toEqual({ tenancyId: "t1", purchaseId: "p1" });
-    // refund_application_fee invariant must hold even when metadata is set —
-    // pin this explicitly so a future change to the metadata branch can't
-    // accidentally strip the fee flag.
     expect(withMeta.refund_application_fee).toBe(false);
 
     const withoutMeta = buildStripeRefundParams({ paymentIntentId: "pi_x", amountStripeUnits: 1 });
@@ -457,3 +718,4 @@ import.meta.vitest?.describe("buildStripeRefundParams", (test) => {
     expect(withoutMeta.refund_application_fee).toBe(false);
   });
 });
+

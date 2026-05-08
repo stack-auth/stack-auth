@@ -143,8 +143,11 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     refundTransaction(options: {
       type: "subscription" | "one-time-purchase",
       id: string,
-      refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-    }): Promise<void>,
+      invoiceId?: string,
+      amountUsd: MoneyAmount,
+      revokeProduct: boolean,
+      endSubscription?: boolean,
+    }): Promise<{ refundTransactionId: string }>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,

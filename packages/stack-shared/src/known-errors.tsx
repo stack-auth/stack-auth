@@ -1695,6 +1695,11 @@ const OneTimePurchaseNotFound = createKnownErrorConstructor(
   (json) => [json.one_time_purchase_id] as const,
 );
 
+// Vestigial after the three-knob refund rework: no longer thrown by any
+// active code path (the new flow uses SchemaError for cap / revoke / legacy
+// gates). Kept as exports because they're public KnownError codes — removing
+// them is a breaking change to anyone catching by code. Safe to delete in a
+// future major bump if no external clients depend on them.
 const SubscriptionAlreadyRefunded = createKnownErrorConstructor(
   KnownError,
   "SUBSCRIPTION_ALREADY_REFUNDED",

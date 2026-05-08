@@ -894,8 +894,11 @@ export class StackAdminInterface extends StackServerInterface {
   async refundTransaction(options: {
     type: "subscription" | "one-time-purchase",
     id: string,
-    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-  }): Promise<{ success: boolean }> {
+    invoiceId?: string,
+    amountUsd: MoneyAmount,
+    revokeProduct: boolean,
+    endSubscription?: boolean,
+  }): Promise<{ success: boolean, refundTransactionId: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
       {
@@ -906,16 +909,16 @@ export class StackAdminInterface extends StackServerInterface {
         body: JSON.stringify({
           type: options.type,
           id: options.id,
-          refund_entries: options.refundEntries.map((entry) => ({
-            entry_index: entry.entryIndex,
-            quantity: entry.quantity,
-            amount_usd: entry.amountUsd,
-          })),
+          ...(options.invoiceId !== undefined ? { invoice_id: options.invoiceId } : {}),
+          amount_usd: options.amountUsd,
+          revoke_product: options.revokeProduct,
+          ...(options.endSubscription !== undefined ? { end_subscription: options.endSubscription } : {}),
         }),
       },
       null,
     );
-    return await response.json();
+    const json = await response.json();
+    return { success: json.success, refundTransactionId: json.refund_transaction_id };
   }
 
 

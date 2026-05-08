@@ -1,50 +1,58 @@
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 import {
   createLiveModeOneTimePurchaseTransaction,
+  createPurchaseCode,
   createTestModeTransaction,
   setupProjectWithPaymentsConfig,
 } from "../../../../helpers/payments";
 
-it("returns TestModePurchaseNonRefundable when refunding test mode one-time purchases", async () => {
-  await setupProjectWithPaymentsConfig();
-  const { transactionId, userId } = await createTestModeTransaction("otp-product", "single");
-
-  const productsRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
-  });
-  expect(productsRes.status).toBe(200);
-  expect(productsRes.body.items).toHaveLength(1);
-  expect(productsRes.body.items[0].id).toBe("otp-product");
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: transactionId,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
+/**
+ * Spin up a project that has a subscription product configured, sign up a
+ * user, and create a test-mode subscription via the test-mode-purchase-session
+ * endpoint. Returns the new subscription's id.
+ */
+async function createTestModeSubscription(): Promise<{ subscriptionId: string, userId: string }> {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        "sub-product": {
+          displayName: "Sub Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            monthly: { USD: "5000", interval: [1, "month"] },
+          },
+          includedItems: {},
+        },
+      },
+      items: {},
     },
   });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "TEST_MODE_PURCHASE_NON_REFUNDABLE",
-        "error": "Test mode purchases are not refundable.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "TEST_MODE_PURCHASE_NON_REFUNDABLE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
+  const { userId } = await Auth.fastSignUp();
+  const code = await createPurchaseCode({ userId, productId: "sub-product" });
+  const sessionRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    accessType: "admin",
+    method: "POST",
+    body: { full_code: code, price_id: "monthly", quantity: 1 },
+  });
+  expect(sessionRes.status).toBe(200);
+  // The created subscription's id is on the resulting transaction's id.
+  const txnsRes = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  const purchaseTxn = txnsRes.body.transactions.find((tx: any) => tx.type === "purchase");
+  expect(purchaseTxn).toBeDefined();
+  return { subscriptionId: purchaseTxn.id, userId };
+}
 
-
-it("returns SubscriptionInvoiceNotFound when id does not exist", async () => {
+it("rejects refund when target subscription does not exist", async () => {
   await setupProjectWithPaymentsConfig();
 
   const missingId = randomUUID();
@@ -54,220 +62,71 @@ it("returns SubscriptionInvoiceNotFound when id does not exist", async () => {
     body: {
       type: "subscription",
       id: missingId,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1000" }],
+      amount_usd: "0",
+      revoke_product: true,
+      end_subscription: true,
     },
   });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 404,
-      "body": {
-        "code": "SUBSCRIPTION_INVOICE_NOT_FOUND",
-        "details": { "subscription_invoice_id": "<stripped UUID>" },
-        "error": "Subscription invoice with ID \\"<stripped UUID>\\" does not exist.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SUBSCRIPTION_INVOICE_NOT_FOUND",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(refundRes.status).toBe(404);
+  expect(refundRes.body.code).toBe("SUBSCRIPTION_INVOICE_NOT_FOUND");
 });
 
-it("refunds non-test mode one-time purchases created via Stripe webhooks", async () => {
-  const { userId, transactionsRes, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-  const productsRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
-  });
-  expect(productsRes.status).toBe(200);
-  expect(productsRes.body.items).toHaveLength(1);
-  expect(productsRes.body.items[0].id).toBe("otp-product");
+it("rejects refund when target one-time purchase does not exist", async () => {
+  await setupProjectWithPaymentsConfig();
 
-  expect(transactionsRes.body).toMatchInlineSnapshot(`
-    {
-      "next_cursor": null,
-      "transactions": [
-        {
-          "adjusted_by": [],
-          "created_at_millis": <stripped field 'created_at_millis'>,
-          "effective_at_millis": <stripped field 'effective_at_millis'>,
-          "entries": [
-            {
-              "adjusted_entry_index": null,
-              "adjusted_transaction_id": null,
-              "customer_id": "<stripped UUID>",
-              "customer_type": "user",
-              "one_time_purchase_id": "<stripped UUID>",
-              "price_id": "single",
-              "product": {
-                "client_metadata": null,
-                "client_read_only_metadata": null,
-                "customer_type": "user",
-                "display_name": "One-Time Product",
-                "included_items": {},
-                "prices": { "single": { "USD": "5000" } },
-                "server_metadata": null,
-                "server_only": false,
-                "stackable": false,
-              },
-              "product_id": "otp-product",
-              "quantity": 1,
-              "type": "product_grant",
-            },
-            {
-              "adjusted_entry_index": null,
-              "adjusted_transaction_id": null,
-              "charged_amount": { "USD": "5000" },
-              "customer_id": "<stripped UUID>",
-              "customer_type": "user",
-              "net_amount": { "USD": "5000" },
-              "type": "money_transfer",
-            },
-          ],
-          "id": "<stripped UUID>",
-          "test_mode": false,
-          "type": "purchase",
-        },
-      ],
-    }
-  `);
+  const missingId = randomUUID();
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: missingId,
+      amount_usd: "0",
+      revoke_product: true,
+    },
+  });
+  expect(refundRes.status).toBe(404);
+  expect(refundRes.body.code).toBe("ONE_TIME_PURCHASE_NOT_FOUND");
+});
+
+it("rejects revoke=true,end=false on a subscription as a footgun", async () => {
+  await setupProjectWithPaymentsConfig();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: randomUUID(),
+      amount_usd: "0",
+      revoke_product: true,
+      end_subscription: false,
+    },
+  });
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/Revoking a subscription's product also requires ending the subscription/);
+});
+
+it("rejects no-op refund (amount=0, revoke=false, end=false)", async () => {
+  await setupProjectWithPaymentsConfig();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
     body: {
       type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
+      id: randomUUID(),
+      amount_usd: "0",
+      revoke_product: false,
     },
   });
-  expect(refundRes.status).toBe(200);
-  expect(refundRes.body).toEqual({ success: true });
-
-  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
-    accessType: "admin",
-  });
-  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
-
-  const secondRefundAttempt = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
-    },
-  });
-  expect(secondRefundAttempt).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "ONE_TIME_PURCHASE_ALREADY_REFUNDED",
-        "details": { "one_time_purchase_id": "<stripped UUID>" },
-        "error": "One-time purchase with ID \\"<stripped UUID>\\" was already refunded.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "ONE_TIME_PURCHASE_ALREADY_REFUNDED",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-
-  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
-  });
-  expect(productsAfterRes.body).toMatchInlineSnapshot(`
-    {
-      "is_paginated": true,
-      "items": [],
-      "pagination": { "next_cursor": null },
-    }
-  `);
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/Refund must do something/);
 });
 
-it("refunds partial amounts for non-test mode one-time purchases", async () => {
-  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1250" }],
-    },
-  });
-  expect(refundRes.status).toBe(200);
-  expect(refundRes.body).toEqual({ success: true });
-
-  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
-    accessType: "admin",
-  });
-  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
-
-  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
-  });
-  expect(productsAfterRes.body.items).toHaveLength(0);
-
-  const secondRefundAttempt = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1250" }],
-    },
-  });
-  expect(secondRefundAttempt.body.code).toBe("ONE_TIME_PURCHASE_ALREADY_REFUNDED");
-});
-
-// TODO: rethink refund E2E tests — old tests expect refundedAt filtering (legacy behavior);
-// new Bulldozer model tracks quantity via product-revocation entries in the owned products LFold.
-it.skip("refunds selected quantities for non-test mode one-time purchases", async () => {
-  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction({ quantity: 3 });
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 2, amount_usd: "10000" }],
-    },
-  });
-  expect(refundRes.status).toBe(200);
-  expect(refundRes.body).toEqual({ success: true });
-
-  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
-    accessType: "admin",
-  });
-  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
-
-  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
-  });
-  expect(productsAfterRes.body.items).toHaveLength(0);
-});
-
-it("returns SCHEMA_ERROR when amount_usd is negative", async () => {
+it("rejects negative refund amount", async () => {
   const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -276,276 +135,182 @@ it("returns SCHEMA_ERROR when amount_usd is negative", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "-1" }],
+      amount_usd: "-1",
+      revoke_product: false,
     },
   });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on POST /api/latest/internal/payments/transactions/refund:
-              - Money amount must be in the format of <number> or <number>.<number>
-          \`,
-        },
-        "error": deindent\`
-          Request validation failed on POST /api/latest/internal/payments/transactions/refund:
-            - Money amount must be in the format of <number> or <number>.<number>
-        \`,
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
-it("allows amount_usd of zero", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "0" }],
-    },
-  });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "success": true },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-});
-
-// TODO: same as above — refund product ownership expectations need rework for Bulldozer model
-it.skip("allows zero-quantity refund entries (money-only refund)", async () => {
-  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 0, amount_usd: "5000" }],
-    },
-  });
-  expect(refundRes.status).toBe(200);
-  expect(refundRes.body).toEqual({ success: true });
-
-  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
-    accessType: "admin",
-  });
-  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
-
-  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
-  });
-  expect(productsAfterRes.body.items).toHaveLength(0);
-});
-
-it("returns SCHEMA_ERROR when refund_entries contains bad entry_index", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 999, quantity: 1, amount_usd: "5000" }],
-    },
-  });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "Refund entry index is invalid." },
-        "error": "Refund entry index is invalid.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
-it("returns SCHEMA_ERROR when refund_entries contains negative quantity", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: -1, amount_usd: "5000" }],
-    },
-  });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "Refund quantity cannot be negative." },
-        "error": "Refund quantity cannot be negative.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
-// TODO: same as above
-it.skip("allows refund_entries with zero quantity", async () => {
-  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 0, amount_usd: "5000" }],
-    },
-  });
-  expect(refundRes.status).toBe(200);
-  expect(refundRes.body).toEqual({ success: true });
-
-  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
-    accessType: "admin",
-  });
-  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
-
-  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
-    accessType: "client",
-  });
-  expect(productsAfterRes.body.items).toHaveLength(0);
-});
-
-it("returns SCHEMA_ERROR when refund_entries contains quantity past limit", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction({ quantity: 1 });
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 2, amount_usd: "5000" }],
-    },
-  });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "Refund quantity cannot exceed purchased quantity." },
-        "error": "Refund quantity cannot exceed purchased quantity.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
-it("returns SCHEMA_ERROR when amount_usd exceeds charged amount", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5001" }],
-    },
-  });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "Refund amount cannot exceed the charged amount." },
-        "error": "Refund amount cannot exceed the charged amount.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
-it("returns SCHEMA_ERROR when refund_entries contains negative entry_index", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: -1, quantity: 1, amount_usd: "5000" }],
-    },
-  });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "Refund entry index is invalid." },
-        "error": "Refund entry index is invalid.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
-it("returns SCHEMA_ERROR when refund_entries quantity is not an integer", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1.5, amount_usd: "5000" }],
-    },
-  });
+  expect(refundRes.status).toBe(400);
   expect(refundRes.body.code).toBe("SCHEMA_ERROR");
 });
 
-it("returns SCHEMA_ERROR when refund_entries references non-product_grant entries", async () => {
+it("refunds a test-mode one-time purchase by revoking the product (no money flow)", async () => {
+  await setupProjectWithPaymentsConfig();
+  const { transactionId, userId } = await createTestModeTransaction("otp-product", "single");
+
+  const productsBefore = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsBefore.body.items).toHaveLength(1);
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: transactionId,
+      amount_usd: "0",
+      revoke_product: true,
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body.success).toBe(true);
+  expect(typeof refundRes.body.refund_transaction_id).toBe("string");
+  expect(refundRes.body.refund_transaction_id).toMatch(/^refund:otp:/);
+
+  const productsAfter = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfter.body.items).toHaveLength(0);
+});
+
+it("rejects nonzero amount on a test-mode purchase (no money to refund)", async () => {
+  await setupProjectWithPaymentsConfig();
+  const { transactionId } = await createTestModeTransaction("otp-product", "single");
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: transactionId,
+      amount_usd: "10",
+      revoke_product: true,
+    },
+  });
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/Test-mode purchases have no money to refund/);
+});
+
+it("refunds a live-mode OTP fully (money + revoke), surfaces refund row, links via adjusted_by", async () => {
+  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      revoke_product: true,
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body.success).toBe(true);
+  const refundTxnId = refundRes.body.refund_transaction_id as string;
+  expect(refundTxnId).toMatch(/^refund:otp:/);
+
+  const transactionsAfter = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  expect(transactionsAfter.status).toBe(200);
+
+  // Source purchase has adjusted_by linking to the refund.
+  const refundedTransaction = transactionsAfter.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
+  expect(refundedTransaction).toBeDefined();
+  expect(refundedTransaction.adjusted_by).toEqual([
+    {
+      entry_index: 0,
+      transaction_id: refundTxnId,
+    },
+  ]);
+
+  // Refund row appears in the listing with type="refund".
+  const refundRow = transactionsAfter.body.transactions.find((tx: any) => tx.type === "refund");
+  expect(refundRow).toBeDefined();
+
+  const productsAfter = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfter.body.items).toHaveLength(0);
+});
+
+it("supports multiple partial refunds capped at remaining amount", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  // Partial $20.00 refund — succeeds.
+  const refund1 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "2000",
+      revoke_product: false,
+    },
+  });
+  expect(refund1.status).toBe(200);
+
+  // Partial $30.00 refund — succeeds (total now $50.00).
+  const refund2 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "3000",
+      revoke_product: false,
+    },
+  });
+  expect(refund2.status).toBe(200);
+
+  // Third $0.01 refund — exceeds remaining ($0).
+  const refund3 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "0.01",
+      revoke_product: false,
+    },
+  });
+  expect(refund3.status).toBe(400);
+  expect(refund3.body.code).toBe("SCHEMA_ERROR");
+  expect(refund3.body.error).toMatch(/cannot exceed the remaining refundable amount/);
+});
+
+it("rejects revoking a product that has already been revoked", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refund1 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "0",
+      revoke_product: true,
+    },
+  });
+  expect(refund1.status).toBe(200);
+
+  const refund2 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "0",
+      revoke_product: true,
+    },
+  });
+  expect(refund2.status).toBe(400);
+  expect(refund2.body.code).toBe("SCHEMA_ERROR");
+  expect(refund2.body.error).toMatch(/already been revoked/);
+});
+
+it("rejects refund amount exceeding original purchase amount", async () => {
   const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -554,52 +319,92 @@ it("returns SCHEMA_ERROR when refund_entries references non-product_grant entrie
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "5000" }],
+      amount_usd: "5001",
+      revoke_product: false,
     },
   });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "Refund entries must reference product grant entries." },
-        "error": "Refund entries must reference product grant entries.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/cannot exceed the remaining refundable amount/);
 });
 
-it("returns SCHEMA_ERROR when refund_entries contains duplicate entry indexes", async () => {
-  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction({ quantity: 2 });
+it("refunds a test-mode subscription with revoke=true and end=true", async () => {
+  const { subscriptionId, userId } = await createTestModeSubscription();
+
+  // Customer has the product before refund.
+  const productsBefore = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsBefore.body.items).toHaveLength(1);
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
     body: {
-      type: "one-time-purchase",
-      id: purchaseTransaction.id,
-      refund_entries: [
-        { entry_index: 0, quantity: 1, amount_usd: "5000" },
-        { entry_index: 0, quantity: 1, amount_usd: "5000" },
-      ],
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      revoke_product: true,
+      end_subscription: true,
     },
   });
-  expect(refundRes).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": { "message": "Refund entries cannot contain duplicate entry indexes." },
-        "error": "Refund entries cannot contain duplicate entry indexes.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body.success).toBe(true);
+  expect(refundRes.body.refund_transaction_id).toMatch(/^refund:sub-start:/);
+
+  // Subscription-end auto-emit should have stripped the customer's product.
+  const productsAfter = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfter.body.items).toHaveLength(0);
+});
+
+it("rejects a second product revocation on the same subscription (productRevoked short-circuit)", async () => {
+  const { subscriptionId } = await createTestModeSubscription();
+
+  const refund1 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      revoke_product: true,
+      end_subscription: true,
+    },
+  });
+  expect(refund1.status).toBe(200);
+
+  const refund2 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      revoke_product: true,
+      end_subscription: true,
+    },
+  });
+  expect(refund2.status).toBe(400);
+  expect(refund2.body.code).toBe("SCHEMA_ERROR");
+  expect(refund2.body.error).toMatch(/already been revoked/);
+});
+
+it("refunds a test-mode subscription with end=true only (no revoke), no money", async () => {
+  const { subscriptionId } = await createTestModeSubscription();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      revoke_product: false,
+      end_subscription: true,
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body.success).toBe(true);
 });

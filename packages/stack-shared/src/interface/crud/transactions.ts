@@ -101,6 +101,7 @@ export const TRANSACTION_TYPES = [
   "subscription-cancellation",
   "subscription-renewal",
   "manual-item-quantity-change",
+  "refund",
   "chargeback", // todo
   "product-change", // todo
 ] as const;

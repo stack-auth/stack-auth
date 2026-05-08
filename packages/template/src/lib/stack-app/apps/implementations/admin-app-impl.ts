@@ -829,14 +829,21 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async refundTransaction(options: {
     type: "subscription" | "one-time-purchase",
     id: string,
-    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-  }): Promise<void> {
-    await this._interface.refundTransaction({
+    invoiceId?: string,
+    amountUsd: MoneyAmount,
+    revokeProduct: boolean,
+    endSubscription?: boolean,
+  }): Promise<{ refundTransactionId: string }> {
+    const result = await this._interface.refundTransaction({
       type: options.type,
       id: options.id,
-      refundEntries: options.refundEntries,
+      invoiceId: options.invoiceId,
+      amountUsd: options.amountUsd,
+      revokeProduct: options.revokeProduct,
+      endSubscription: options.endSubscription,
     });
     await this._transactionsCache.invalidateWhere(() => true);
+    return { refundTransactionId: result.refundTransactionId };
   }
 
   async listTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {

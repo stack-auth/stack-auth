@@ -5,9 +5,9 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Checkbox, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridState } from '@stackframe/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
@@ -15,9 +15,7 @@ import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
 import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
 import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
 import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/currency-constants';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from '../link';
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
@@ -43,7 +41,6 @@ type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money_transfer' }>;
 type ProductGrantEntry = Extract<TransactionEntry, { type: 'product_grant' }>;
 type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item_quantity_change' }>;
 type RefundTarget = { type: 'subscription' | 'one-time-purchase', id: string };
-type RefundEntrySelection = { entryIndex: number, quantity: number };
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === 'USD');
 
 function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustomer {
@@ -107,6 +104,9 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
     case 'chargeback': {
       return { label: 'Chargeback', Icon: ArrowCounterClockwiseIcon };
     }
+    case 'refund': {
+      return { label: 'Refund', Icon: ReceiptXIcon };
+    }
     case 'manual-item-quantity-change': {
       return { label: 'Manual Item Quantity Change', Icon: GearIcon };
     }
@@ -169,28 +169,9 @@ function pickChargedAmountDisplay(entry: MoneyTransferEntry | undefined): string
   return 'Non USD amount';
 }
 
-function getRefundableProductEntries(transaction: Transaction): Array<{ entryIndex: number, entry: ProductGrantEntry }> {
-  return transaction.entries.flatMap((entry, entryIndex) => (
-    isProductGrantEntry(entry) ? [{ entryIndex, entry }] : []
-  ));
-}
-
 function getProductDisplayName(entry: ProductGrantEntry): string {
   const product = entry.product as { display_name?: string } | null | undefined;
   return product?.display_name ?? entry.product_id ?? 'Product';
-}
-
-function getUsdUnitPrice(entry: ProductGrantEntry): MoneyAmount | null {
-  if (!entry.price_id) {
-    return null;
-  }
-  const product = entry.product as { prices?: Record<string, { USD?: string } | undefined> | "include-by-default" } | null | undefined;
-  if (!product || !product.prices || product.prices === "include-by-default") {
-    return null;
-  }
-  const price = product.prices[entry.price_id];
-  const usd = price?.USD;
-  return typeof usd === 'string' ? (usd as MoneyAmount) : null;
 }
 
 function describeDetail(transaction: Transaction, sourceType: SourceType): string {
@@ -234,184 +215,126 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
 function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [refundSelections, setRefundSelections] = useState<RefundEntrySelection[]>([]);
-  const [refundAmountUsd, setRefundAmountUsd] = useState<string>('');
+  const [amountUsd, setAmountUsd] = useState<string>('0');
+  const [revokeProduct, setRevokeProduct] = useState<boolean>(true);
+  const [endSubscription, setEndSubscription] = useState<boolean>(true);
   const target = transaction.type === 'purchase' ? refundTarget : null;
-  const alreadyRefunded = transaction.adjusted_by.length > 0;
-  const productEntries = useMemo(() => getRefundableProductEntries(transaction), [transaction]);
-  const canRefund = !!target && !transaction.test_mode && !alreadyRefunded && productEntries.length > 0;
+  // Don't gate on `adjusted_by.length` here: the backend supports multiple
+  // partial refunds (and a separate revoke) until both caps are hit, and
+  // computes the actual remaining state from the bulldozer ledger. The button
+  // stays available; the backend rejects if there's nothing left to do.
+  const canRefund = !!target;
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
   const chargedAmountUsd = moneyTransferEntry ? (moneyTransferEntry.charged_amount.USD ?? null) : null;
+  const isSubscription = target?.type === 'subscription';
 
-  useEffect(() => {
-    if (isDialogOpen) {
-      setRefundSelections(productEntries.map(({ entryIndex, entry }) => ({
-        entryIndex,
-        quantity: entry.quantity,
-      })));
-      setRefundAmountUsd(chargedAmountUsd ?? '');
+  const validation = useMemo(() => {
+    if (!target || !USD_CURRENCY) {
+      return { canSubmit: false, error: null as string | null };
     }
-  }, [chargedAmountUsd, isDialogOpen, productEntries]);
-
-  const refundCandidates = useMemo(() => {
-    return productEntries.map(({ entryIndex, entry }) => ({
-      entryIndex,
-      entry,
-      productName: getProductDisplayName(entry),
-      maxQuantity: entry.quantity,
-      unitPriceUsd: getUsdUnitPrice(entry),
-    }));
-  }, [productEntries]);
-
-  const selectionByIndex = useMemo(() => {
-    return new Map(refundSelections.map((selection) => [selection.entryIndex, selection.quantity]));
-  }, [refundSelections]);
-
-  const canComputeRefundEntries = refundCandidates.length > 0 && refundCandidates.every((candidate) => candidate.unitPriceUsd);
-  const selectedEntries = refundCandidates.map((candidate) => {
-    const selectedQuantity = selectionByIndex.get(candidate.entryIndex) ?? candidate.maxQuantity;
-    return { ...candidate, selectedQuantity };
-  });
-  const totalSelectedQuantity = selectedEntries.reduce((sum, entry) => sum + entry.selectedQuantity, 0);
-
-  const refundValidation = useMemo(() => {
-    if (!chargedAmountUsd || !USD_CURRENCY) {
-      return { canSubmit: false, error: "Refund amounts are only supported for USD charges.", refundEntries: undefined };
+    if (!moneyAmountSchema(USD_CURRENCY).defined().isValidSync(amountUsd)) {
+      return { canSubmit: false, error: "Refund amount must be a valid USD amount." };
     }
-    if (!refundAmountUsd) {
-      return { canSubmit: false, error: "Enter a refund amount.", refundEntries: undefined };
-    }
-    const isValid = moneyAmountSchema(USD_CURRENCY).defined().isValidSync(refundAmountUsd);
-    if (!isValid) {
-      return { canSubmit: false, error: "Refund amount must be a valid USD amount.", refundEntries: undefined };
-    }
-    const refundUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
-    const maxChargedUnits = moneyAmountToStripeUnits(chargedAmountUsd as MoneyAmount, USD_CURRENCY);
+    const refundUnits = moneyAmountToStripeUnits(amountUsd as MoneyAmount, USD_CURRENCY);
     if (refundUnits < 0) {
-      return { canSubmit: false, error: "Refund amount cannot be negative.", refundEntries: undefined };
+      return { canSubmit: false, error: "Refund amount cannot be negative." };
     }
-    if (refundUnits > maxChargedUnits) {
-      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined };
+    if (refundUnits > 0 && !chargedAmountUsd) {
+      return { canSubmit: false, error: "This transaction has no money to refund (test mode or non-USD)." };
     }
-    if (!canComputeRefundEntries) {
-      return { canSubmit: false, error: "Refund entries are only supported for USD-priced products.", refundEntries: undefined };
-    }
-    if (totalSelectedQuantity < 0) {
-      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined };
-    }
-    const maxUnits = maxChargedUnits;
-    const selectedUnits = selectedEntries.reduce((sum, entry) => {
-      if (!entry.unitPriceUsd) {
-        return sum;
+    if (chargedAmountUsd) {
+      const maxUnits = moneyAmountToStripeUnits(chargedAmountUsd as MoneyAmount, USD_CURRENCY);
+      if (refundUnits > maxUnits) {
+        return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.` };
       }
-      const entryUnits = moneyAmountToStripeUnits(entry.unitPriceUsd, USD_CURRENCY) * entry.selectedQuantity;
-      return sum + entryUnits;
-    }, 0);
-    if (selectedUnits < 0) {
-      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined };
     }
-    if (selectedUnits > maxUnits) {
-      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined };
+    if (refundUnits === 0 && !revokeProduct && !endSubscription) {
+      return { canSubmit: false, error: "Refund must do something: enter an amount, revoke product, or end subscription." };
     }
-    const entries = selectedEntries
-      .filter((entry) => entry.selectedQuantity > 0)
-      .map((entry) => ({ entryIndex: entry.entryIndex, quantity: entry.selectedQuantity }));
-    const fallbackEntry = selectedEntries[0] ?? throwErr("Refund entry missing for refund entries");
-    const normalizedEntries = entries.length > 0
-      ? entries
-      : [{ entryIndex: fallbackEntry.entryIndex, quantity: 0 }];
-    const refundEntries = normalizedEntries.map((entry, index) => ({
-      ...entry,
-      amountUsd: (index === 0 ? refundAmountUsd : "0") as MoneyAmount,
-    }));
-    return { canSubmit: true, error: null, refundEntries };
-  }, [chargedAmountUsd, canComputeRefundEntries, refundAmountUsd, selectedEntries, totalSelectedQuantity]);
+    return { canSubmit: true, error: null };
+  }, [target, amountUsd, chargedAmountUsd, revokeProduct, endSubscription]);
 
   return (
     <>
       {target ? (
         <ActionDialog
           open={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setAmountUsd(chargedAmountUsd ?? '0');
+              setRevokeProduct(true);
+              setEndSubscription(isSubscription);
+            }
+            setIsDialogOpen(open);
+          }}
           title="Refund Transaction"
           danger
           cancelButton
           okButton={{
             label: "Refund",
             onClick: async () => {
-              if (chargedAmountUsd && !refundValidation.canSubmit) {
+              if (!validation.canSubmit) {
                 return "prevent-close";
               }
               await app.refundTransaction({
                 ...target,
-                refundEntries: refundValidation.refundEntries ?? throwErr("Refund entries missing for refund"),
+                amountUsd: amountUsd as MoneyAmount,
+                revokeProduct,
+                ...(isSubscription ? { endSubscription } : {}),
               });
             },
-            props: chargedAmountUsd ? { disabled: !refundValidation.canSubmit } : undefined,
+            props: { disabled: !validation.canSubmit },
           }}
           confirmText="Refunds cannot be undone"
         >
           <div className="space-y-4">
-            <p>{`Refund this ${target.type === 'subscription' ? 'subscription' : 'one-time purchase'} transaction?`}</p>
-            {chargedAmountUsd ? (
-              <div className="space-y-2">
-                <div className="space-y-2">
-                  <Label htmlFor={`refund-amount-${transaction.id}`}>Refund amount (USD)</Label>
-                  <Input
-                    id={`refund-amount-${transaction.id}`}
-                    inputMode="decimal"
-                    placeholder={chargedAmountUsd}
-                    value={refundAmountUsd}
-                    onChange={(event) => setRefundAmountUsd(event.target.value)}
-                  />
-                </div>
-                {canComputeRefundEntries ? (
-                  <div className="space-y-3">
-                    <Label>Products to refund</Label>
-                    {selectedEntries.map((entry) => (
-                      <div key={entry.entryIndex} className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{entry.productName}</div>
-                          <div className="text-xs text-muted-foreground">Purchased: {entry.maxQuantity}</div>
-                        </div>
-                        <Input
-                          inputMode="numeric"
-                          type="number"
-                          min={0}
-                          max={entry.maxQuantity}
-                          value={entry.selectedQuantity}
-                          onChange={(event) => {
-                            const raw = Number.parseInt(event.target.value, 10);
-                            const clamped = Number.isNaN(raw) ? 0 : Math.min(Math.max(raw, 0), entry.maxQuantity);
-                            setRefundSelections((prev) => prev.map((selection) => (
-                              selection.entryIndex === entry.entryIndex ? { ...selection, quantity: clamped } : selection
-                            )));
-                          }}
-                          className="w-24"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <Alert>
-                    <AlertDescription>
-                      Partial refunds are only available for USD-priced products. This will issue a full refund.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                {refundValidation.error ? (
-                  <Alert variant="destructive">
-                    <AlertDescription>{refundValidation.error}</AlertDescription>
-                  </Alert>
-                ) : null}
+            <p>{`Refund this ${isSubscription ? 'subscription' : 'one-time purchase'}?`}</p>
+            <div className="space-y-2">
+              <Label htmlFor={`refund-amount-${transaction.id}`}>Refund amount (USD)</Label>
+              <Input
+                id={`refund-amount-${transaction.id}`}
+                inputMode="decimal"
+                placeholder={chargedAmountUsd ?? '0'}
+                value={amountUsd}
+                onChange={(event) => setAmountUsd(event.target.value)}
+                disabled={!chargedAmountUsd}
+              />
+              {!chargedAmountUsd ? (
+                <p className="text-xs text-muted-foreground">No money to refund (test mode or non-USD).</p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id={`revoke-product-${transaction.id}`}
+                checked={revokeProduct}
+                onCheckedChange={(value) => {
+                  const next = value === true;
+                  setRevokeProduct(next);
+                  if (next && isSubscription) setEndSubscription(true);
+                }}
+              />
+              <Label htmlFor={`revoke-product-${transaction.id}`} className="cursor-pointer">
+                Revoke product
+              </Label>
+            </div>
+            {isSubscription ? (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id={`end-subscription-${transaction.id}`}
+                  checked={endSubscription}
+                  onCheckedChange={(value) => setEndSubscription(value === true)}
+                  disabled={revokeProduct}
+                />
+                <Label htmlFor={`end-subscription-${transaction.id}`} className="cursor-pointer">
+                  End subscription{revokeProduct ? ' (forced when revoking)' : ''}
+                </Label>
               </div>
-            ) : (
-              <Alert>
-                <AlertDescription>
-                  Partial refunds are only available for USD charges. This will issue a full refund.
-                </AlertDescription>
+            ) : null}
+            {validation.error ? (
+              <Alert variant="destructive">
+                <AlertDescription>{validation.error}</AlertDescription>
               </Alert>
-            )}
+            ) : null}
           </div>
         </ActionDialog>
       ) : null}
