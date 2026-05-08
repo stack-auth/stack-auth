@@ -69,24 +69,32 @@ export const POST = createSmartRouteHandler({
       return createResponse('expired');
     }
 
-    if (cliAuth.usedAt) {
+    if (cliAuth.usedAt !== null) {
       return createResponse('used');
     }
 
-    if (!cliAuth.refreshToken) {
+    if (cliAuth.refreshToken === null) {
       return createResponse('waiting');
     }
 
-    // Mark as used
-    await prisma.$executeRaw(Prisma.sql`
+    // Atomically mark as used, claiming the row only if no one else has.
+    // This prevents a TOCTOU race where two concurrent polls could both
+    // read usedAt = null and both receive the same refresh token.
+    const claimed = await prisma.$queryRaw<{ refreshToken: string }[]>(Prisma.sql`
       UPDATE ${sqlQuoteIdent(schema)}."CliAuthAttempt"
       SET
         "usedAt" = NOW(),
         "updatedAt" = NOW()
       WHERE "tenancyId" = ${tenancy.id}::UUID
         AND "id" = ${cliAuth.id}::UUID
+        AND "usedAt" IS NULL
+      RETURNING "refreshToken"
     `);
 
-    return createResponse('success', cliAuth.refreshToken);
+    if (claimed.length === 0) {
+      return createResponse('used');
+    }
+
+    return createResponse('success', claimed[0].refreshToken);
   },
 });
