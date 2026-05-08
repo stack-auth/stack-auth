@@ -10,6 +10,46 @@ import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist
 const WINDOW_DAYS = 7;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
+type ProjectWeeklyUsers = {
+  weekly_users: number,
+  daily_users: { date: string, activity: number }[],
+};
+
+export function applyProjectWeeklyUsersRows(
+  byProject: Map<string, ProjectWeeklyUsers>,
+  rows: { projectId: string, day: string, users: number }[],
+) {
+  // GROUPING SETS emits one rollup row per project with day defaulted to the
+  // ClickHouse Date epoch ("1970-01-01"); those rows hold the weekly total.
+  const dailyIndex = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    const project = byProject.get(row.projectId);
+    if (project == null) {
+      continue;
+    }
+    const dayKey = row.day.split("T")[0];
+    if (dayKey === "1970-01-01") {
+      project.weekly_users = Number(row.users);
+      continue;
+    }
+    let m = dailyIndex.get(row.projectId);
+    if (!m) {
+      m = new Map();
+      dailyIndex.set(row.projectId, m);
+    }
+    m.set(dayKey, Number(row.users));
+  }
+
+  for (const [id, project] of byProject) {
+    const m = dailyIndex.get(id);
+    if (!m) continue;
+    project.daily_users = project.daily_users.map((point) => ({
+      date: point.date,
+      activity: m.get(point.date) ?? 0,
+    }));
+  }
+}
+
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
   request: yupObject({
@@ -24,7 +64,10 @@ export const GET = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      projects: yupRecord(yupString().defined(), MetricsDataPointsSchema).defined(),
+      projects: yupRecord(yupString().defined(), yupObject({
+        weekly_users: yupNumber().integer().defined(),
+        daily_users: MetricsDataPointsSchema,
+      }).defined()).defined(),
     }).defined(),
   }),
   handler: async (req) => {
@@ -52,28 +95,39 @@ export const GET = createSmartRouteHandler({
       return out;
     };
 
-    const byProject: Record<string, { date: string, activity: number }[]> = {};
+    const byProject = new Map<string, ProjectWeeklyUsers>();
     for (const id of projectIds) {
-      byProject[id] = emptySeries();
+      byProject.set(id, {
+        weekly_users: 0,
+        daily_users: emptySeries(),
+      });
     }
+    const projectsResponse = () => Object.fromEntries(byProject);
 
     if (projectIds.length === 0) {
       return {
         statusCode: 200,
         bodyType: "json",
-        body: { projects: byProject },
+        body: { projects: projectsResponse() },
       };
     }
 
-    let rows: { projectId: string, day: string, dau: number }[] = [];
+    const clickhouseClient = getClickhouseAdminClient();
+    const queryParams = {
+      projectIds,
+      branchId: DEFAULT_BRANCH_ID,
+      since: since.toISOString().slice(0, 19),
+      untilExclusive: untilExclusive.toISOString().slice(0, 19),
+    };
+
+    let rows: { projectId: string, day: string, users: number }[] = [];
     try {
-      const clickhouseClient = getClickhouseAdminClient();
       const result = await clickhouseClient.query({
         query: `
           SELECT
             project_id AS projectId,
-            toDate(event_at) AS day,
-            uniqExact(assumeNotNull(user_id)) AS dau
+            toDate(event_at, 'UTC') AS day,
+            uniqExact(assumeNotNull(user_id)) AS users
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id IN {projectIds:Array(String)}
@@ -82,55 +136,33 @@ export const GET = createSmartRouteHandler({
             AND event_at >= {since:DateTime}
             AND event_at < {untilExclusive:DateTime}
             AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
-          GROUP BY projectId, day
+          GROUP BY GROUPING SETS ((projectId), (projectId, day))
         `,
-        query_params: {
-          projectIds,
-          branchId: DEFAULT_BRANCH_ID,
-          since: since.toISOString().slice(0, 19),
-          untilExclusive: untilExclusive.toISOString().slice(0, 19),
-        },
+        query_params: queryParams,
         format: "JSONEachRow",
       });
-      rows = await result.json();
+      rows = await result.json<{ projectId: string, day: string, users: number }>();
     } catch (error) {
       const captureId = error instanceof ClickHouseError
-        ? "internal-projects-dau-clickhouse-error"
-        : "internal-projects-dau-unexpected-error";
+        ? "internal-projects-weekly-users-clickhouse-error"
+        : "internal-projects-weekly-users-unexpected-error";
       captureError(captureId, new StackAssertionError(
-        "Failed to load projects DAU.",
+        "Failed to load projects weekly users.",
         { cause: error, projectCount: projectIds.length },
       ));
       return {
         statusCode: 200,
         bodyType: "json",
-        body: { projects: byProject },
+        body: { projects: projectsResponse() },
       };
     }
-    const index = new Map<string, Map<string, number>>();
-    for (const row of rows) {
-      const dayKey = row.day.split("T")[0];
-      let m = index.get(row.projectId);
-      if (!m) {
-        m = new Map();
-        index.set(row.projectId, m);
-      }
-      m.set(dayKey, Number(row.dau));
-    }
 
-    for (const id of projectIds) {
-      const m = index.get(id);
-      if (!m) continue;
-      byProject[id] = byProject[id].map((point) => ({
-        date: point.date,
-        activity: m.get(point.date) ?? 0,
-      }));
-    }
+    applyProjectWeeklyUsersRows(byProject, rows);
 
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { projects: byProject },
+      body: { projects: projectsResponse() },
     };
   },
 });

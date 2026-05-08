@@ -2,7 +2,7 @@
 import { DesignBadge } from "@/components/design-components/badge";
 import { DesignCard } from "@/components/design-components/card";
 import { Link } from "@/components/link";
-import { ProjectDauSparkline } from "@/components/project-dau-sparkline";
+import { ProjectWeeklyUsersMetric } from "@/components/project-weekly-users-metric";
 import { useFromNow } from '@/hooks/use-from-now';
 import { FolderOpenIcon } from "@phosphor-icons/react";
 import { AdminProject } from '@stackframe/stack';
@@ -12,7 +12,10 @@ export function ProjectCard(props: {
   project: AdminProject,
   href?: string,
   showIncompleteBadge?: boolean,
-  dau?: { date: string, activity: number }[],
+  weeklyUsers?: number,
+  weeklyUsersChart?: { date: string, activity: number }[],
+  weeklyUsersLoading?: boolean,
+  weeklyUsersError?: boolean,
 }) {
   const createdAt = useFromNow(props.project.createdAt);
   const href = props.href ?? urlString`/projects/${props.project.id}`;
@@ -49,7 +52,12 @@ export function ProjectCard(props: {
         </div>
 
         <div className="-mx-3 -mb-3 mt-3 overflow-hidden rounded-b-2xl border-t border-black/[0.08] dark:border-white/[0.06] px-3 pt-3 pb-3">
-          <ProjectDauSparkline data={props.dau} />
+          <ProjectWeeklyUsersMetric
+            weeklyUsers={props.weeklyUsers}
+            data={props.weeklyUsersChart}
+            loading={props.weeklyUsersLoading}
+            error={props.weeklyUsersError}
+          />
         </div>
       </DesignCard>
     </Link>

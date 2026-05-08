@@ -33,11 +33,50 @@ function EmptyBaseline({ count }: { count: number }) {
   );
 }
 
-export function ProjectDauSparkline(props: { data: DataPoint[] | undefined }) {
+export function ProjectWeeklyUsersMetric(props: {
+  weeklyUsers: number | undefined,
+  data: DataPoint[] | undefined,
+  loading?: boolean,
+  error?: boolean,
+}) {
+  const weeklyUsers = props.weeklyUsers ?? 0;
   const data = props.data;
-  const total = data?.reduce((sum, d) => sum + d.activity, 0) ?? 0;
-  const hasActivity = total > 0;
+  const dailyTotal = data?.reduce((sum, d) => sum + d.activity, 0) ?? 0;
+  const hasActivity = weeklyUsers > 0 || dailyTotal > 0;
   const gradId = useId().replace(/:/g, '');
+
+  if (props.loading && props.weeklyUsers === undefined) {
+    return (
+      <div className="relative w-full" style={{ height: CHART_HEIGHT }}>
+        <div className="absolute left-0 top-0 z-10 flex items-baseline gap-1">
+          <span className="h-[18px] w-10 animate-pulse rounded bg-foreground/10" aria-hidden="true" />
+          <span className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60">
+            users/wk
+          </span>
+        </div>
+        <EmptyBaseline count={7} />
+      </div>
+    );
+  }
+
+  if (props.error && props.weeklyUsers === undefined) {
+    return (
+      <div className="relative w-full" style={{ height: CHART_HEIGHT }}>
+        <div className="absolute left-0 top-0 z-10 flex items-baseline gap-1">
+          <span className="text-lg font-semibold tabular-nums leading-none text-muted-foreground/50">
+            —
+          </span>
+          <span className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60">
+            users/wk
+          </span>
+        </div>
+        <span className="absolute right-0 top-0 text-[9px] uppercase tracking-[0.14em] text-destructive/80">
+          Failed to load
+        </span>
+        <EmptyBaseline count={7} />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full" style={{ height: CHART_HEIGHT }}>
@@ -48,10 +87,10 @@ export function ProjectDauSparkline(props: { data: DataPoint[] | undefined }) {
             (hasActivity ? 'text-foreground' : 'text-muted-foreground/50')
           }
         >
-          {total.toLocaleString()}
+          {weeklyUsers.toLocaleString()}
         </span>
         <span className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60">
-          /wk
+          users/wk
         </span>
       </div>
 
@@ -61,7 +100,7 @@ export function ProjectDauSparkline(props: { data: DataPoint[] | undefined }) {
             <AreaChart data={data} margin={{ top: 22, right: 0, left: 0, bottom: 0 }}>
               <XAxis dataKey="date" hide />
               <defs>
-                <linearGradient id={`dau-fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={`weekly-users-fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="currentColor" stopOpacity={0.28} />
                   <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
                 </linearGradient>
@@ -79,14 +118,14 @@ export function ProjectDauSparkline(props: { data: DataPoint[] | undefined }) {
                 labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: 1, fontSize: 10 }}
                 itemStyle={{ color: 'hsl(var(--foreground))', padding: 0 }}
                 labelFormatter={(label: string) => formatDay(label)}
-                formatter={(value: number) => [value.toLocaleString(), 'active']}
+                formatter={(value: number) => [value.toLocaleString(), 'daily active users']}
               />
               <Area
                 type="monotone"
                 dataKey="activity"
                 stroke="currentColor"
                 strokeWidth={1.5}
-                fill={`url(#dau-fill-${gradId})`}
+                fill={`url(#weekly-users-fill-${gradId})`}
                 isAnimationActive={false}
                 activeDot={{ r: 2.5, strokeWidth: 0, fill: 'currentColor' }}
               />
