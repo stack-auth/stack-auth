@@ -14,6 +14,8 @@ export function ProjectCard(props: {
   showIncompleteBadge?: boolean,
   weeklyUsers?: number,
   weeklyUsersChart?: { date: string, activity: number }[],
+  weeklyUsersLoading?: boolean,
+  weeklyUsersError?: boolean,
 }) {
   const createdAt = useFromNow(props.project.createdAt);
   const href = props.href ?? urlString`/projects/${props.project.id}`;
@@ -50,7 +52,12 @@ export function ProjectCard(props: {
         </div>
 
         <div className="-mx-3 -mb-3 mt-3 overflow-hidden rounded-b-2xl border-t border-black/[0.08] dark:border-white/[0.06] px-3 pt-3 pb-3">
-          <ProjectWeeklyUsersMetric weeklyUsers={props.weeklyUsers} data={props.weeklyUsersChart} />
+          <ProjectWeeklyUsersMetric
+            weeklyUsers={props.weeklyUsers}
+            data={props.weeklyUsersChart}
+            loading={props.weeklyUsersLoading}
+            error={props.weeklyUsersError}
+          />
         </div>
       </DesignCard>
     </Link>

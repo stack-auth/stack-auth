@@ -23,14 +23,12 @@ describe("internal projects weekly users helpers", () => {
     applyProjectWeeklyUsersRows(
       byProject,
       [
-        { projectId: "project-a", weeklyUsers: 4 },
-        { projectId: "__proto__", weeklyUsers: 7 },
-        { projectId: "missing-project", weeklyUsers: 99 },
-      ],
-      [
-        { projectId: "project-a", day: "2026-05-01", dailyUsers: 2 },
-        { projectId: "__proto__", day: "2026-05-02", dailyUsers: 5 },
-        { projectId: "missing-project", day: "2026-05-01", dailyUsers: 99 },
+        { projectId: "project-a", day: "1970-01-01", users: 4 },
+        { projectId: "__proto__", day: "1970-01-01", users: 7 },
+        { projectId: "missing-project", day: "1970-01-01", users: 99 },
+        { projectId: "project-a", day: "2026-05-01", users: 2 },
+        { projectId: "__proto__", day: "2026-05-02", users: 5 },
+        { projectId: "missing-project", day: "2026-05-01", users: 99 },
       ],
     );
 

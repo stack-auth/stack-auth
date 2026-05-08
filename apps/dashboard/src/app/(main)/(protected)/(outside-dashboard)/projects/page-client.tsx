@@ -70,6 +70,8 @@ export default function PageClient() {
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
   const [projectWeeklyUsers, setProjectWeeklyUsers] = useState<Map<string, number>>(new Map());
   const [projectWeeklyUsersChart, setProjectWeeklyUsersChart] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
+  const [loadingProjectWeeklyUsers, setLoadingProjectWeeklyUsers] = useState(true);
+  const [projectWeeklyUsersError, setProjectWeeklyUsersError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -123,44 +125,66 @@ export default function PageClient() {
 
   useEffect(() => {
     let cancelled = false;
-    runAsynchronously(async () => {
-      const response = await appInternals.sendRequest("/internal/projects-weekly-users", {}, "client");
-      if (!response.ok) {
-        throw new Error(`Failed to load project weekly users: ${response.status} ${await response.text()}`);
+    runAsynchronouslyWithAlert(async () => {
+      if (!cancelled) {
+        setLoadingProjectWeeklyUsers(true);
+        setProjectWeeklyUsersError(false);
       }
-      const body = await response.json();
-      if (body == null || typeof body !== "object" || !("projects" in body) || body.projects == null || typeof body.projects !== "object") {
-        throw new Error("Failed to load project weekly users: response body did not include a projects object.");
-      }
-      const weeklyUsersMap = new Map<string, number>();
-      const weeklyUsersChartMap = new Map<string, { date: string, activity: number }[]>();
-      for (const [projectId, value] of Object.entries(body.projects)) {
-        if (value == null || typeof value !== "object") {
-          continue;
+      try {
+        const response = await appInternals.sendRequest("/internal/projects-weekly-users", {}, "client");
+        if (!response.ok) {
+          throw new Error(`Failed to load project weekly users: ${response.status} ${await response.text()}`);
         }
-        const weeklyUsers = "weekly_users" in value ? value.weekly_users : undefined;
-        if (typeof weeklyUsers === "number") {
-          weeklyUsersMap.set(projectId, weeklyUsers);
+        const body = await response.json();
+        if (
+          body == null ||
+          typeof body !== "object" ||
+          !("projects" in body) ||
+          body.projects == null ||
+          typeof body.projects !== "object" ||
+          Array.isArray(body.projects)
+        ) {
+          throw new Error("Failed to load project weekly users: response body did not include a projects object.");
         }
-        const dailyUsers = "daily_users" in value ? value.daily_users : undefined;
-        if (!Array.isArray(dailyUsers)) {
-          continue;
-        }
-        const points: { date: string, activity: number }[] = [];
-        for (const point of dailyUsers) {
-          if (point != null && typeof point === "object" && "date" in point && "activity" in point) {
-            const date = point.date;
-            const activity = point.activity;
-            if (typeof date === "string" && typeof activity === "number") {
-              points.push({ date, activity });
+        const weeklyUsersMap = new Map<string, number>();
+        const weeklyUsersChartMap = new Map<string, { date: string, activity: number }[]>();
+        for (const [projectId, value] of Object.entries(body.projects)) {
+          if (value == null || typeof value !== "object") {
+            continue;
+          }
+          const weeklyUsers = "weekly_users" in value ? value.weekly_users : undefined;
+          if (typeof weeklyUsers === "number") {
+            weeklyUsersMap.set(projectId, weeklyUsers);
+          }
+          const dailyUsers = "daily_users" in value ? value.daily_users : undefined;
+          if (!Array.isArray(dailyUsers)) {
+            continue;
+          }
+          const points: { date: string, activity: number }[] = [];
+          for (const point of dailyUsers) {
+            if (point != null && typeof point === "object" && "date" in point && "activity" in point) {
+              const date = point.date;
+              const activity = point.activity;
+              if (typeof date === "string" && typeof activity === "number") {
+                points.push({ date, activity });
+              }
             }
           }
+          weeklyUsersChartMap.set(projectId, points);
         }
-        weeklyUsersChartMap.set(projectId, points);
-      }
-      if (!cancelled) {
-        setProjectWeeklyUsers(weeklyUsersMap);
-        setProjectWeeklyUsersChart(weeklyUsersChartMap);
+        if (!cancelled) {
+          setProjectWeeklyUsers(weeklyUsersMap);
+          setProjectWeeklyUsersChart(weeklyUsersChartMap);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setProjectWeeklyUsersError(true);
+        }
+        throw error;
+      } finally {
+        if (!cancelled) {
+          setLoadingProjectWeeklyUsers(false);
+        }
       }
     });
     return () => {
@@ -383,6 +407,8 @@ export default function PageClient() {
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
                     weeklyUsers={projectWeeklyUsers.get(project.id)}
                     weeklyUsersChart={projectWeeklyUsersChart.get(project.id)}
+                    weeklyUsersLoading={loadingProjectWeeklyUsers}
+                    weeklyUsersError={projectWeeklyUsersError}
                   />
                 );
               })}

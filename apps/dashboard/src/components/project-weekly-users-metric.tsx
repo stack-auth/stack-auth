@@ -33,12 +33,50 @@ function EmptyBaseline({ count }: { count: number }) {
   );
 }
 
-export function ProjectWeeklyUsersMetric(props: { weeklyUsers: number | undefined, data: DataPoint[] | undefined }) {
+export function ProjectWeeklyUsersMetric(props: {
+  weeklyUsers: number | undefined,
+  data: DataPoint[] | undefined,
+  loading?: boolean,
+  error?: boolean,
+}) {
   const weeklyUsers = props.weeklyUsers ?? 0;
   const data = props.data;
   const dailyTotal = data?.reduce((sum, d) => sum + d.activity, 0) ?? 0;
   const hasActivity = weeklyUsers > 0 || dailyTotal > 0;
   const gradId = useId().replace(/:/g, '');
+
+  if (props.loading && props.weeklyUsers === undefined) {
+    return (
+      <div className="relative w-full" style={{ height: CHART_HEIGHT }}>
+        <div className="absolute left-0 top-0 z-10 flex items-baseline gap-1">
+          <span className="h-[18px] w-10 animate-pulse rounded bg-foreground/10" aria-hidden="true" />
+          <span className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60">
+            users/wk
+          </span>
+        </div>
+        <EmptyBaseline count={7} />
+      </div>
+    );
+  }
+
+  if (props.error && props.weeklyUsers === undefined) {
+    return (
+      <div className="relative w-full" style={{ height: CHART_HEIGHT }}>
+        <div className="absolute left-0 top-0 z-10 flex items-baseline gap-1">
+          <span className="text-lg font-semibold tabular-nums leading-none text-muted-foreground/50">
+            —
+          </span>
+          <span className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground/60">
+            users/wk
+          </span>
+        </div>
+        <span className="absolute right-0 top-0 text-[9px] uppercase tracking-[0.14em] text-destructive/80">
+          Failed to load
+        </span>
+        <EmptyBaseline count={7} />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full" style={{ height: CHART_HEIGHT }}>
