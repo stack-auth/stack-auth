@@ -306,6 +306,7 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 export const STACK_DASHBOARD_BASE_URL = getEnvVariable("STACK_DASHBOARD_BASE_URL");
 export const STACK_BACKEND_BASE_URL = getEnvVariable("STACK_BACKEND_BASE_URL");
+export const STACK_MCP_BASE_URL = getEnvVariable("STACK_MCP_BASE_URL");
 
 /**
  * The `baseUrl` to pass to SDK constructors (`StackClientApp`, `StackServerApp`,
