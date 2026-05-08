@@ -150,6 +150,12 @@ export const ALL_APPS = {
     tags: ["integration", "developers"],
     stage: "stable",
   },
+  "tanstack-start": {
+    displayName: "TanStack Start",
+    subtitle: "Use Stack Auth in TanStack Start apps",
+    tags: ["integration", "developers"],
+    stage: "alpha",
+  },
   "analytics": {
     displayName: "Analytics",
     subtitle: "View and explore analytics data",

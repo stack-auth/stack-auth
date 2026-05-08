@@ -54,7 +54,7 @@ function generateFromTemplate(options: {
     // If the resulting file is package.json, add a comment field to the JSON.
     if (path.basename(relativePath) === "package.json") {
       const jsonObj = JSON.parse(newContent);
-      newContent = JSON.stringify({ "//": COMMENT_LINE, ...jsonObj }, null, 2);
+      newContent = JSON.stringify({ "//": COMMENT_LINE, ...jsonObj }, null, 2) + "\n";
     }
 
     return newContent;
@@ -109,7 +109,7 @@ function processPackageJson(path: string, content: string) {
   } catch (error) {
     throw new Error(`Failed to parse package.json at ${path}`, { cause: error });
   }
-  return JSON.stringify({ "//": `${COMMENT_LINE} (FOR package.json FILES, PLEASE EDIT package-template.json)`, ...jsonObj }, null, 2);
+  return JSON.stringify({ "//": `${COMMENT_LINE} (FOR package.json FILES, PLEASE EDIT package-template.json)`, ...jsonObj }, null, 2) + "\n";
 }
 
 function baseEditFn(options: {
@@ -131,6 +131,14 @@ function baseEditFn(options: {
 withGeneratorLock(async () => {
   const baseDir = path.resolve(__dirname, "..", "packages");
   const srcDir = path.resolve(baseDir, "template");
+  const tanstackStartOnlyTemplateFiles = new Set([
+    "src/tanstack-start-server-context.combined.ts",
+    "src/tanstack-start-server-context.default.ts",
+    "src/tanstack-start-server-context.server.ts",
+  ]);
+  const templateOnlyFiles = new Set([
+    "src/tanstack-start-server-context.d.ts",
+  ]);
 
   // Copy package-template.json to package.json in the template,
   // applying macros and adding a comment field.
@@ -168,7 +176,9 @@ withGeneratorLock(async () => {
         "src/global.d.ts",
       ];
 
-      if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
+      if (tanstackStartOnlyTemplateFiles.has(relativePath) || templateOnlyFiles.has(relativePath)) {
+        return false;
+      } else if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
         return false;
       } else {
         return true;
@@ -182,6 +192,7 @@ withGeneratorLock(async () => {
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["next"] });
     },
+    filterFn: (relativePath) => !tanstackStartOnlyTemplateFiles.has(relativePath),
   });
 
   generateFromTemplate({
@@ -190,6 +201,16 @@ withGeneratorLock(async () => {
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
     },
+    filterFn: (relativePath) => !tanstackStartOnlyTemplateFiles.has(relativePath),
+  });
+
+  generateFromTemplate({
+    src: srcDir,
+    dest: path.resolve(baseDir, "tanstack-start"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["tanstack-start"] });
+    },
+    filterFn: (relativePath) => !templateOnlyFiles.has(relativePath),
   });
 }).catch((error) => {
   console.error(error);

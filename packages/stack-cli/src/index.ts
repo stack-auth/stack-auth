@@ -1,3 +1,8 @@
+import { initSentry } from "./lib/sentry.js";
+initSentry();
+
+import * as Sentry from "@sentry/node";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -48,7 +53,10 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
-    throw err;
+    captureError("stack-cli-fatal", err);
+    await Sentry.flush(2000);
+    console.error(err);
+    process.exit(1);
   }
 }
 

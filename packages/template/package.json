@@ -17,6 +17,17 @@
         "default": "./dist/index.js"
       }
     },
+    "./tanstack-start-server-context": {
+      "types": "./dist/tanstack-start-server-context.combined.d.ts",
+      "import": {
+        "browser": "./dist/esm/tanstack-start-server-context.default.js",
+        "default": "./dist/esm/tanstack-start-server-context.server.js"
+      },
+      "require": {
+        "browser": "./dist/tanstack-start-server-context.default.js",
+        "default": "./dist/tanstack-start-server-context.server.js"
+      }
+    },
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
       "import": {
@@ -94,6 +105,8 @@
     "@types/react-dom": ">=18.3.0",
     "react-dom": ">=18.3.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
+    "@tanstack/react-router": ">=1.100.0",
+    "@tanstack/react-start": ">=1.100.0",
     "react": ">=18.3.0"
   },
   "peerDependenciesMeta": {
@@ -117,6 +130,8 @@
     "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
     "next": "^14.2.35",
+    "@tanstack/react-router": "^1.167.4",
+    "@tanstack/react-start": "^1.166.15",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",
     "react": "^19.0.0",

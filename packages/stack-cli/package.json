@@ -29,6 +29,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.73",
     "@inquirer/prompts": "^7.0.0",
+    "@sentry/node": "^10.42.0",
     "@stackframe/js": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "commander": "^13.1.0",

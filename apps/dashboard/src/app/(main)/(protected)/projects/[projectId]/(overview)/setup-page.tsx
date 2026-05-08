@@ -1,7 +1,7 @@
 'use client';
 
 import { CodeBlock } from '@/components/code-block';
-import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
+import { APIEnvKeys, NextJsEnvKeys, ViteEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { CopyPromptButton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
@@ -27,22 +27,58 @@ const nameClasses = "text-green-600 dark:text-green-500";
 
 const INSTALL_COMMAND_BY_FRAMEWORK = {
   nextjs: 'npx @stackframe/stack-cli@latest init',
+  tanstackStart: 'npm install @stackframe/tanstack-start',
   react: 'npm install @stackframe/react',
   javascript: 'npm install @stackframe/js',
   python: 'pip install requests',
 } as const;
 
-const buildInstallPrompt = (command: string) => deindent`
+type SetupFramework = keyof typeof INSTALL_COMMAND_BY_FRAMEWORK;
+
+const TANSTACK_START_SETUP_PROMPT = deindent`
+  Please set up Stack Auth in my TanStack Start app.
+
+  1. Install the alpha TanStack Start package:
+
+  npm install @stackframe/tanstack-start
+
+  2. Configure the app with these environment variables:
+
+  VITE_STACK_PROJECT_ID=<project-id>
+  STACK_SECRET_SERVER_KEY=<secret-server-key>
+
+  3. Create a StackClientApp using @stackframe/tanstack-start with:
+  - projectId: import.meta.env.VITE_STACK_PROJECT_ID
+  - tokenStore: "cookie"
+  - redirectMethod: "window"
+
+  4. Wrap the TanStack Start root route with StackProvider and StackTheme.
+
+  5. Add a /handler/$ route using StackHandler. The handler route must set ssr: false and pass location={pathname} from useLocation().
+
+  Use only the environment variables listed above.
+
+  After it finishes, verify that the Stack Auth MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.stack-auth.com/\`. If it is not registered, please add it manually so you have live access to Stack Auth docs and APIs.
+`;
+
+const buildInstallPrompt = (framework: SetupFramework) => {
+  if (framework === "tanstackStart") {
+    return TANSTACK_START_SETUP_PROMPT;
+  }
+
+  const command = INSTALL_COMMAND_BY_FRAMEWORK[framework];
+  return deindent`
   Please run the following command in my project's terminal:
 
   ${command}
 
   After it finishes, verify that the Stack Auth MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.stack-auth.com/mcp\`. The command above should handle this automatically; if for any reason it didn't, please add the MCP server manually so you have live access to Stack Auth docs and APIs.
 `;
+};
 
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
-  const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
+  const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'tanstackStart' | 'react' | 'javascript' | 'python'>('nextjs');
   const [keys, setKeys] = useState<{ projectId: string, publishableClientKey?: string, secretServerKey: string } | null>(null);
   const projectConfig = adminApp.useProject().useConfig();
   const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
@@ -218,6 +254,142 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         </Typography>
       </>
     }
+  ];
+
+  const tanstackStartSteps = [
+    {
+      step: 2,
+      title: "Install Stack Auth",
+      content: <>
+        <Typography>
+          In a new or existing TanStack Start project, install the alpha Stack Auth package:
+        </Typography>
+        <CodeBlock
+          language="bash"
+          content={`npm install @stackframe/tanstack-start`}
+          customRender={
+            <div className="p-4 font-mono text-sm">
+              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/tanstack-start</span>
+            </div>
+          }
+          title="Terminal"
+          icon="terminal"
+        />
+      </>
+    },
+    {
+      step: 3,
+      title: "Create Keys",
+      content: <>
+        <Typography>
+          Put these keys in your TanStack Start environment file.
+        </Typography>
+        <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="vite" />
+      </>
+    },
+    {
+      step: 4,
+      title: "Create stack/client.ts file",
+      content: <>
+        <Typography>
+          Create a new file called <InlineCode>src/stack/client.ts</InlineCode> and initialize Stack Auth with cookie storage.
+        </Typography>
+        <CodeBlock
+          language="tsx"
+          content={deindent`
+            import { StackClientApp } from "@stackframe/tanstack-start";
+
+            export const stackClientApp = new StackClientApp({
+              projectId: import.meta.env.VITE_STACK_PROJECT_ID,
+              tokenStore: "cookie",
+              redirectMethod: "window",
+            });
+          `}
+          title="src/stack/client.ts"
+          icon="code"
+        />
+      </>
+    },
+    {
+      step: 5,
+      title: "Update the root route",
+      content: <>
+        <Typography>
+          Wrap your TanStack Start root route with <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode>.
+        </Typography>
+        <CodeBlock
+          language="tsx"
+          maxHeight={300}
+          content={deindent`
+            import { StackProvider, StackTheme } from "@stackframe/tanstack-start";
+            import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+            import { stackClientApp } from "../stack/client";
+
+            export const Route = createRootRoute({
+              component: RootComponent,
+              shellComponent: RootDocument,
+            });
+
+            function RootComponent() {
+              return (
+                <StackProvider app={stackClientApp}>
+                  <StackTheme>
+                    <Outlet />
+                  </StackTheme>
+                </StackProvider>
+              );
+            }
+
+            function RootDocument({ children }: { children: React.ReactNode }) {
+              return (
+                <html>
+                  <head>
+                    <HeadContent />
+                  </head>
+                  <body>
+                    {children}
+                    <Scripts />
+                  </body>
+                </html>
+              );
+            }
+          `}
+          title="src/routes/__root.tsx"
+          icon="code"
+        />
+      </>
+    },
+    {
+      step: 6,
+      title: "Add the handler route",
+      content: <>
+        <Typography>
+          Create a splat route for Stack Auth&apos;s built-in auth pages.
+        </Typography>
+        <CodeBlock
+          language="tsx"
+          content={deindent`
+            import { StackHandler } from "@stackframe/tanstack-start";
+            import { createFileRoute, useLocation } from "@tanstack/react-router";
+
+            export const Route = createFileRoute("/handler/$")({
+              ssr: false,
+              component: HandlerPage,
+            });
+
+            function HandlerPage() {
+              const { pathname } = useLocation();
+              return <StackHandler fullPage location={pathname} />;
+            }
+          `}
+          title="src/routes/handler/$.tsx"
+          icon="code"
+        />
+        <Typography>
+          If you start your TanStack Start app and navigate to <StyledLink href="http://localhost:3000/handler/sign-up">http://localhost:3000/handler/sign-up</StyledLink>, you will see the sign-up page.
+        </Typography>
+      </>
+    },
   ];
 
   const javascriptSteps = [
@@ -480,7 +652,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <CopyPromptButton
           variant="outline"
           size="sm"
-          content={buildInstallPrompt(INSTALL_COMMAND_BY_FRAMEWORK[selectedFramework])}
+          content={buildInstallPrompt(selectedFramework)}
         >
           <SparkleIcon className="w-4 h-4 mr-2 text-purple-500 dark:text-purple-400" weight="fill" />
           Copy prompt
@@ -500,6 +672,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                     name: 'Next.js',
                     reverseIfDark: true,
                     imgSrc: '/next-logo.svg',
+                  }, {
+                    id: 'tanstackStart',
+                    name: 'TanStack Start',
+                    reverseIfDark: false,
+                    imgSrc: '/tanstack-start-logo.png',
                   }, {
                     id: 'react',
                     name: 'React',
@@ -538,6 +715,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               </div>,
             },
             ...(selectedFramework === 'nextjs' ? nextJsSteps : []),
+            ...(selectedFramework === 'tanstackStart' ? tanstackStartSteps : []),
             ...(selectedFramework === 'react' ? reactSteps : []),
             ...(selectedFramework === 'javascript' ? javascriptSteps : []),
             ...(selectedFramework === 'python' ? pythonSteps : []),
@@ -638,7 +816,7 @@ function GlobeIllustrationInner() {
 function StackAuthKeys(props: {
   keys: { projectId: string, publishableClientKey?: string, secretServerKey: string } | null,
   onGenerateKeys: () => Promise<void>,
-  type: 'next' | 'raw',
+  type: 'next' | 'vite' | 'raw',
 }) {
   return (
     <div className="w-full border rounded-xl p-8 gap-4 flex flex-col">
@@ -648,6 +826,11 @@ function StackAuthKeys(props: {
             <NextJsEnvKeys
               projectId={props.keys.projectId}
               publishableClientKey={props.keys.publishableClientKey}
+              secretServerKey={props.keys.secretServerKey}
+            />
+          ) : props.type === 'vite' ? (
+            <ViteEnvKeys
+              projectId={props.keys.projectId}
               secretServerKey={props.keys.secretServerKey}
             />
           ) : (
