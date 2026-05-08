@@ -36,6 +36,10 @@ export function envPort(name: string, fallback: number): number {
   return parsed;
 }
 
+function emulatorDashboardPort(): number {
+  return envPort("EMULATOR_DASHBOARD_PORT", DEFAULT_EMULATOR_DASHBOARD_PORT);
+}
+
 function emulatorBackendPort(): number {
   return envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
 }
@@ -77,6 +81,8 @@ type EmulatorCredentials = {
   project_id: string,
   publishable_client_key: string,
   secret_server_key: string,
+  onboarding_status: string,
+  onboarding_outstanding: boolean,
 };
 
 async function fetchEmulatorCredentials(pck: string, backendPort: number, configFile: string): Promise<EmulatorCredentials> {
@@ -98,12 +104,63 @@ async function fetchEmulatorCredentials(pck: string, backendPort: number, config
     project_id: string,
     publishable_client_key: string,
     secret_server_key: string,
+    onboarding_status: string,
+    onboarding_outstanding: boolean,
   };
+  if (
+    typeof data.project_id !== "string"
+    || typeof data.publishable_client_key !== "string"
+    || typeof data.secret_server_key !== "string"
+    || typeof data.onboarding_status !== "string"
+    || typeof data.onboarding_outstanding !== "boolean"
+  ) {
+    throw new CliError("Local emulator project endpoint returned an invalid credentials response.");
+  }
   return {
     project_id: data.project_id,
     publishable_client_key: data.publishable_client_key,
     secret_server_key: data.secret_server_key,
+    onboarding_status: data.onboarding_status,
+    onboarding_outstanding: data.onboarding_outstanding,
   };
+}
+
+function localEmulatorDashboardBaseUrl(): string {
+  const explicit = process.env.STACK_LOCAL_EMULATOR_DASHBOARD_URL;
+  if (explicit && explicit.trim().length > 0) {
+    return explicit.replace(/\/$/, "");
+  }
+  return `http://localhost:${emulatorDashboardPort()}`;
+}
+
+function openUrlInBrowser(url: string): boolean {
+  try {
+    if (process.platform === "darwin") {
+      execFileSync("open", [url], { stdio: "ignore" });
+      return true;
+    }
+    if (process.platform === "win32") {
+      execFileSync("cmd", ["/c", "start", "", url], { stdio: "ignore" });
+      return true;
+    }
+    execFileSync("xdg-open", [url], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function maybeOpenOnboardingPage(credentials: EmulatorCredentials): void {
+  if (!credentials.onboarding_outstanding) {
+    return;
+  }
+  const url = `${localEmulatorDashboardBaseUrl()}/new-project?project_id=${encodeURIComponent(credentials.project_id)}`;
+  const opened = openUrlInBrowser(url);
+  if (opened) {
+    console.log(`Onboarding is still pending for project ${credentials.project_id}. Opened: ${url}`);
+  } else {
+    console.warn(`Onboarding is still pending for project ${credentials.project_id}. Open this URL manually: ${url}`);
+  }
 }
 
 // Resolve a GitHub auth token. We try GITHUB_TOKEN first so users can pin a
@@ -253,6 +310,38 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
   // skip its own regeneration (which would otherwise require the
   // hdiutil/mkisofs/genisoimage host dep the TS writer replaces).
   await runEmulator("start", { EMULATOR_ARCH: arch, STACK_EMULATOR_CLI_WROTE_ISO: "1" });
+}
+
+function printEmulatorWelcome(): void {
+  const dashboardPort = envPort("EMULATOR_DASHBOARD_PORT", DEFAULT_EMULATOR_DASHBOARD_PORT);
+  const backendPort = envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
+  const inbucketPort = envPort("EMULATOR_INBUCKET_PORT", DEFAULT_EMULATOR_INBUCKET_PORT);
+
+  console.log("\nEmulator is up.\n");
+  console.log("The Stack Auth emulator runs a full local Stack Auth stack (backend, dashboard,");
+  console.log("Postgres, Redis, MinIO, and a test mail server) inside a VM on your machine.");
+  console.log("It gives you an offline, disposable Stack Auth you can develop against — no");
+  console.log("cloud account needed, and you can reset it any time.\n");
+  console.log("Services:");
+  console.log(`  • Local dashboard  http://localhost:${dashboardPort}`);
+  console.log(`  • Backend API      http://localhost:${backendPort}`);
+  console.log(`  • Test inbox       http://localhost:${inbucketPort}  (catches all outbound email)`);
+  console.log("");
+  console.log("Common commands:");
+  console.log("  stack emulator status   Check service health");
+  console.log("  stack emulator stop     Stop the VM (keeps data)");
+  console.log("  stack emulator reset    Wipe all state and start fresh");
+  console.log("  stack emulator run <cmd>  Start the emulator, run <cmd>, stop on exit");
+  console.log("");
+}
+
+export function isEmulatorImageInstalled(arch?: "arm64" | "amd64"): boolean {
+  try {
+    const resolvedArch = arch ?? resolveArch();
+    return existsSync(join(emulatorImageDir(), `stack-emulator-${resolvedArch}.qcow2`));
+  } catch {
+    return false;
+  }
 }
 
 export function resolveArch(raw?: string): "arm64" | "amd64" {
@@ -687,16 +776,28 @@ export function registerEmulatorCommand(program: Command) {
         }
       }
 
+      let freshlyStarted = false;
       if (isEmulatorRunning()) {
         console.warn("Emulator already running, reusing existing instance.");
       } else {
         await startEmulator(arch);
+        freshlyStarted = true;
       }
 
       if (resolvedConfigFile) {
         const pck = await readInternalPck();
         const creds = await fetchEmulatorCredentials(pck, emulatorBackendPort(), resolvedConfigFile);
-        console.log(JSON.stringify(creds, null, 2));
+        maybeOpenOnboardingPage(creds);
+        console.log(JSON.stringify({
+          project_id: creds.project_id,
+          publishable_client_key: creds.publishable_client_key,
+          secret_server_key: creds.secret_server_key,
+        }, null, 2));
+        return;
+      }
+
+      if (freshlyStarted) {
+        printEmulatorWelcome();
       }
     });
 
@@ -730,6 +831,7 @@ export function registerEmulatorCommand(program: Command) {
         const pck = await readInternalPck();
         const backendPort = emulatorBackendPort();
         const creds = await fetchEmulatorCredentials(pck, backendPort, resolvedConfigFile);
+        maybeOpenOnboardingPage(creds);
         const apiUrl = `http://127.0.0.1:${backendPort}`;
         childEnv.STACK_PROJECT_ID = creds.project_id;
         childEnv.NEXT_PUBLIC_STACK_PROJECT_ID = creds.project_id;

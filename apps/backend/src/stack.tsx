@@ -18,6 +18,6 @@ export function getStackServerApp() {
     projectId: 'internal',
     tokenStore: null,
     publishableClientKey: getEnvVariable('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY'),
-    secretServerKey: getEnvVariable('STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY'),
+    secretServerKey: getEnvVariable('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY'),
   });
 }

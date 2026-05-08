@@ -1,5 +1,5 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { getStackServerApp } from "@/stack";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -121,7 +121,7 @@ export const POST = createSmartRouteHandler({
     const app = getStackServerApp();
 
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
-    if (billingTeamId != null) {
+    if (billingTeamId != null && arePlanLimitsEnforced()) {
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
       const isDebited = await eventsItem.tryDecreaseQuantity(body.events.length);
       if (!isDebited) {

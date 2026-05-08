@@ -8,7 +8,7 @@ These instructions describe how to set up Stack Auth.
 ${web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
-Install mcp server from https://mcp.stack-auth.com if not already installed. Global MCP config file paths for popular coding agents:
+Install mcp server from https://mcp.stack-auth.com/mcp if not already installed. Global MCP config file paths for popular coding agents:
 - Claude Code: \`~/.claude.json\`
 - Codex CLI: \`~/.codex/config.toml\`
 - Cursor: \`~/.cursor/mcp.json\`

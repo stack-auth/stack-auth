@@ -372,8 +372,8 @@ export async function seed() {
     const keySet = {
       publishableClientKey: rawPck || throwErr('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
       secretServerKey: isLocalEmulator
-        ? (process.env.STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY ?? null)
-        : (process.env.STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set')),
+        ? (process.env.STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY ?? null)
+        : (process.env.STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY || throwErr('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set')),
       superSecretAdminKey: isLocalEmulator
         ? (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY ?? null)
         : (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set')),
