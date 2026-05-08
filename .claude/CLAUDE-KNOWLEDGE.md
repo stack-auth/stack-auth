@@ -403,3 +403,6 @@ A: `packages/template/vitest.config.ts` installs a Vite transform plugin for Vit
 
 ## Q: How does the Mintlify apps sidebar filter stay in sync with theme changes?
 A: `docs-mintlify/apps-sidebar-filter.js` injects the Apps filter with inline styles, so the MutationObserver must reapply `applySidebarAppsFilterTheme` when an existing input is found. Theme detection should handle both `html.dark` and `data-theme="dark"` signals.
+
+## Q: How should `StackAssertionError` preserve an underlying thrown error?
+A: Pass the underlying error as the `cause` property in the second argument. The `StackAssertionError` constructor only forwards `cause` into `ErrorOptions`, so storing a caught error under an `error` property captures it as ordinary metadata instead of preserving the error cause chain.
