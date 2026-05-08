@@ -6,16 +6,16 @@ import {
   DesignCard,
 } from "@/components/design-components";
 import { cn, Skeleton } from "@/components/ui";
+import { UserPageMetricCard } from "../../users/[userId]/user-page-metric-card";
+import { UserPageTableSection } from "../../users/[userId]/user-page-table-section";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from "@phosphor-icons/react";
 import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import type { ServerUser } from "@stackframe/stack";
+import type { ServerTeam } from "@stackframe/stack";
 import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
-import { UserPageMetricCard } from "./user-page-metric-card";
-import { UserPageTableSection } from "./user-page-table-section";
 
 const TRANSACTIONS_PAGE_SIZE = 100;
 
@@ -78,15 +78,15 @@ function formatTransactionTypeLabel(type: TransactionType | null): { label: stri
   }
 }
 
-export function UserPaymentsSection({ user }: { user: ServerUser }) {
+export function TeamPaymentsSection({ team }: { team: ServerTeam }) {
   return (
-    <Suspense fallback={<UserPaymentsLoading />}>
-      <UserPaymentsContent user={user} />
+    <Suspense fallback={<TeamPaymentsLoading />}>
+      <TeamPaymentsContent team={team} />
     </Suspense>
   );
 }
 
-function UserPaymentsLoading() {
+function TeamPaymentsLoading() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -102,35 +102,35 @@ function UserPaymentsLoading() {
   );
 }
 
-function UserPaymentsContent({ user }: { user: ServerUser }) {
+function TeamPaymentsContent({ team }: { team: ServerTeam }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
 
-  const { transactions: userTransactions } = stackAdminApp.useTransactions({
+  const { transactions: teamTransactions } = stackAdminApp.useTransactions({
     limit: TRANSACTIONS_PAGE_SIZE,
-    customerType: "user",
-    customerId: user.id,
+    customerType: "team",
+    customerId: team.id,
   });
 
-  const userItemIds = useMemo(
+  const teamItemIds = useMemo(
     () =>
       Object.entries(config.payments.items)
-        .filter(([, cfg]) => cfg.customerType === "user")
+        .filter(([, cfg]) => cfg.customerType === "team")
         .map(([id]) => id),
     [config.payments.items],
   );
 
   return (
     <div className="flex flex-col gap-4">
-      <MetricsRow userId={user.id} transactions={userTransactions} />
+      <MetricsRow teamId={team.id} transactions={teamTransactions} />
 
       <div className="flex flex-col gap-6">
-        <ProductsTableSection userId={user.id} transactions={userTransactions} />
-        <TransactionsTableSection userId={user.id} transactions={userTransactions} />
+        <ProductsTableSection teamId={team.id} transactions={teamTransactions} />
+        <TransactionsTableSection teamId={team.id} transactions={teamTransactions} />
       </div>
 
-      <ItemsCard userId={user.id} itemIds={userItemIds} />
+      <ItemsCard teamId={team.id} itemIds={teamItemIds} />
     </div>
   );
 }
@@ -144,10 +144,7 @@ type ActiveGrant = {
   stackable: boolean,
 };
 
-function deriveActiveGrants(transactions: Transaction[], userId: string): ActiveGrant[] {
-  // Build the set of (transactionId, entryIndex) pairs that have been revoked
-  // by a later product_revocation entry. A non-empty revocation means that
-  // specific grant was undone (refunded or product-changed away).
+function deriveActiveGrants(transactions: Transaction[], teamId: string): ActiveGrant[] {
   const revokedRefs = new Set<string>();
   for (const transaction of transactions) {
     for (const entry of transaction.entries) {
@@ -157,16 +154,11 @@ function deriveActiveGrants(transactions: Transaction[], userId: string): Active
     }
   }
 
-  // Any subscription id that appears in a subscription-cancellation
-  // transaction is considered cancelled, so we don't show it as active.
   const cancelledSubscriptionIds = new Set<string>();
   for (const transaction of transactions) {
     if (transaction.type !== "subscription-cancellation") continue;
     for (const entry of transaction.entries) {
       if (isProductRevocationEntry(entry)) {
-        // The revoked product_grant pointed at by this revocation is the
-        // subscription that's being cancelled. We need to resolve that to a
-        // subscription_id by looking it up in the original transaction.
         const originalTransaction = transactions.find((t) => t.id === entry.adjusted_transaction_id);
         const originalEntry = originalTransaction?.entries[entry.adjusted_entry_index];
         if (originalEntry && isProductGrantEntry(originalEntry) && originalEntry.subscription_id) {
@@ -180,7 +172,7 @@ function deriveActiveGrants(transactions: Transaction[], userId: string): Active
   for (const transaction of transactions) {
     transaction.entries.forEach((entry, entryIndex) => {
       if (!isProductGrantEntry(entry)) return;
-      if (entry.customer_type !== "user" || entry.customer_id !== userId) return;
+      if (entry.customer_type !== "team" || entry.customer_id !== teamId) return;
       if (revokedRefs.has(`${transaction.id}:${entryIndex}`)) return;
       if (entry.subscription_id && cancelledSubscriptionIds.has(entry.subscription_id)) return;
 
@@ -195,8 +187,6 @@ function deriveActiveGrants(transactions: Transaction[], userId: string): Active
     });
   }
 
-  // De-dupe subscription grants by subscription_id. Renewals create a fresh
-  // product_grant entry each period, but the "product owned" should show once.
   const seenSubscriptions = new Set<string>();
   const deduped: ActiveGrant[] = [];
   for (const grant of grants.sort((a, b) => b.grantedAt.getTime() - a.grantedAt.getTime())) {
@@ -209,8 +199,8 @@ function deriveActiveGrants(transactions: Transaction[], userId: string): Active
   return deduped;
 }
 
-function MetricsRow({ userId, transactions }: { userId: string, transactions: Transaction[] }) {
-  const activeGrants = useMemo(() => deriveActiveGrants(transactions, userId), [transactions, userId]);
+function MetricsRow({ teamId, transactions }: { teamId: string, transactions: Transaction[] }) {
+  const activeGrants = useMemo(() => deriveActiveGrants(transactions, teamId), [transactions, teamId]);
 
   const activeSubscriptions = useMemo(
     () => activeGrants.filter((g) => g.subscriptionId != null).length,
@@ -228,7 +218,7 @@ function MetricsRow({ userId, transactions }: { userId: string, transactions: Tr
       if (transaction.test_mode) continue;
       for (const entry of transaction.entries) {
         if (!isMoneyTransferEntry(entry)) continue;
-        if (entry.customer_type !== "user" || entry.customer_id !== userId) continue;
+        if (entry.customer_type !== "team" || entry.customer_id !== teamId) continue;
         const usd = entry.net_amount.USD;
         if (typeof usd !== "string") continue;
         const parsed = Number.parseFloat(usd);
@@ -236,7 +226,7 @@ function MetricsRow({ userId, transactions }: { userId: string, transactions: Tr
       }
     }
     return total;
-  }, [transactions, userId]);
+  }, [transactions, teamId]);
 
   const transactionCount = transactions.length;
 
@@ -264,8 +254,8 @@ function MetricsRow({ userId, transactions }: { userId: string, transactions: Tr
   );
 }
 
-function ProductsTableSection({ userId, transactions }: { userId: string, transactions: Transaction[] }) {
-  const grants = useMemo(() => deriveActiveGrants(transactions, userId), [transactions, userId]);
+function ProductsTableSection({ teamId, transactions }: { teamId: string, transactions: Transaction[] }) {
+  const grants = useMemo(() => deriveActiveGrants(transactions, teamId), [transactions, teamId]);
   const columns = useMemo<DataGridColumnDef<ActiveGrant>[]>(() => [
     {
       id: "productDisplayName",
@@ -322,17 +312,17 @@ function ProductsTableSection({ userId, transactions }: { userId: string, transa
       columns={columns}
       rows={grants}
       getRowId={(grant) => grant.key}
-      emptyLabel="This user has no active products or subscriptions."
+      emptyLabel="This team has no active products or subscriptions."
     />
   );
 }
 
-function transactionSignedUsdForUser(transaction: Transaction, userId: string): number | null {
+function transactionSignedUsdForTeam(transaction: Transaction, teamId: string): number | null {
   let total = 0;
   let hadAny = false;
   for (const entry of transaction.entries) {
     if (!isMoneyTransferEntry(entry)) continue;
-    if (entry.customer_type !== "user" || entry.customer_id !== userId) continue;
+    if (entry.customer_type !== "team" || entry.customer_id !== teamId) continue;
     const usd = entry.net_amount.USD;
     if (typeof usd !== "string") continue;
     const parsed = Number.parseFloat(usd);
@@ -343,10 +333,10 @@ function transactionSignedUsdForUser(transaction: Transaction, userId: string): 
   return hadAny ? total : null;
 }
 
-function transactionDetailForUser(transaction: Transaction, userId: string): string {
+function transactionDetailForTeam(transaction: Transaction, teamId: string): string {
   const productGrant = transaction.entries.find(
     (e): e is ProductGrantEntry =>
-      isProductGrantEntry(e) && e.customer_type === "user" && e.customer_id === userId,
+      isProductGrantEntry(e) && e.customer_type === "team" && e.customer_id === teamId,
   );
   if (productGrant) {
     const name = productGrant.product.display_name;
@@ -354,7 +344,7 @@ function transactionDetailForUser(transaction: Transaction, userId: string): str
   }
   const itemChange = transaction.entries.find(
     (e): e is ItemQuantityChangeEntry =>
-      isItemQuantityChangeEntry(e) && e.customer_type === "user" && e.customer_id === userId,
+      isItemQuantityChangeEntry(e) && e.customer_type === "team" && e.customer_id === teamId,
   );
   if (itemChange) {
     const delta = itemChange.quantity;
@@ -363,7 +353,7 @@ function transactionDetailForUser(transaction: Transaction, userId: string): str
   return "-";
 }
 
-function TransactionsTableSection({ userId, transactions }: { userId: string, transactions: Transaction[] }) {
+function TransactionsTableSection({ teamId, transactions }: { teamId: string, transactions: Transaction[] }) {
   const ordered = useMemo(
     () => [...transactions].sort((a, b) => b.created_at_millis - a.created_at_millis),
     [transactions],
@@ -393,7 +383,7 @@ function TransactionsTableSection({ userId, transactions }: { userId: string, tr
       flex: 1,
       sortable: false,
       renderCell: ({ row }) => (
-        <span className="truncate text-sm text-muted-foreground">{transactionDetailForUser(row, userId)}</span>
+        <span className="truncate text-sm text-muted-foreground">{transactionDetailForTeam(row, teamId)}</span>
       ),
     },
     {
@@ -421,7 +411,7 @@ function TransactionsTableSection({ userId, transactions }: { userId: string, tr
         if (row.test_mode) {
           return <span className="text-xs font-medium text-muted-foreground">Test</span>;
         }
-        const signedUsd = transactionSignedUsdForUser(row, userId);
+        const signedUsd = transactionSignedUsdForTeam(row, teamId);
         if (signedUsd == null) {
           return <span className="text-xs text-muted-foreground">-</span>;
         }
@@ -448,7 +438,7 @@ function TransactionsTableSection({ userId, transactions }: { userId: string, tr
         return badge ? <DesignBadge label={badge.label} color={badge.color} size="sm" /> : <span className="text-sm text-muted-foreground">-</span>;
       },
     },
-  ], [userId]);
+  ], [teamId]);
 
   return (
     <UserPageTableSection
@@ -456,7 +446,7 @@ function TransactionsTableSection({ userId, transactions }: { userId: string, tr
       columns={columns}
       rows={ordered}
       getRowId={(transaction) => transaction.id}
-      emptyLabel="This user has no transactions."
+      emptyLabel="This team has no transactions."
       paginated
     />
   );
@@ -471,13 +461,13 @@ function transactionStatusBadge(
   return null;
 }
 
-function ItemsCard({ userId, itemIds }: { userId: string, itemIds: string[] }) {
+function ItemsCard({ teamId, itemIds }: { teamId: string, itemIds: string[] }) {
   if (itemIds.length === 0) return null;
 
   return (
     <DesignCard
       title="Item balances"
-      subtitle={`${itemIds.length} user-scoped item${itemIds.length === 1 ? "" : "s"}`}
+      subtitle={`${itemIds.length} team-scoped item${itemIds.length === 1 ? "" : "s"}`}
       icon={CoinsIcon}
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
@@ -491,7 +481,7 @@ function ItemsCard({ userId, itemIds }: { userId: string, itemIds: string[] }) {
               </div>
             }
           >
-            <ItemBalanceRow userId={userId} itemId={itemId} />
+            <ItemBalanceRow teamId={teamId} itemId={itemId} />
           </Suspense>
         ))}
       </div>
@@ -499,9 +489,9 @@ function ItemsCard({ userId, itemIds }: { userId: string, itemIds: string[] }) {
   );
 }
 
-function ItemBalanceRow({ userId, itemId }: { userId: string, itemId: string }) {
+function ItemBalanceRow({ teamId, itemId }: { teamId: string, itemId: string }) {
   const stackAdminApp = useAdminApp();
-  const item = stackAdminApp.useItem({ userId, itemId });
+  const item = stackAdminApp.useItem({ teamId, itemId });
   const isNegative = item.quantity < 0;
 
   return (

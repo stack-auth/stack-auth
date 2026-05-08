@@ -893,7 +893,7 @@
                 "properties": {
                   "expires_in_millis": {
                     "type": "number",
-                    "default": 7200000
+                    "default": 120000
                   },
                   "anon_refresh_token": {
                     "type": "string"
@@ -5790,6 +5790,58 @@
               "description": "Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API"
             },
             "description": "Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API",
+            "required": false
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "createdAt",
+              "description": "Field to order results by. Currently only `createdAt` is supported."
+            },
+            "description": "Field to order results by. Currently only `createdAt` is supported.",
+            "required": false
+          },
+          {
+            "name": "desc",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "false",
+              "description": "Whether to order results in descending order. Defaults to false (ascending)."
+            },
+            "description": "Whether to order results in descending order. Defaults to false (ascending).",
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "description": "The maximum number of items to return."
+            },
+            "description": "The maximum number of items to return.",
+            "required": false
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The cursor to start the result set from."
+            },
+            "description": "The cursor to start the result set from.",
+            "required": false
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "A search query to filter the results by. Free-text search applied to the team's id (exact-match) and display name."
+            },
+            "description": "A search query to filter the results by. Free-text search applied to the team's id (exact-match) and display name.",
             "required": false
           }
         ],

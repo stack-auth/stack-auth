@@ -301,9 +301,7 @@ export type DataGridProps<TRow> = {
    * content (e.g. metadata) sits directly under the table without a large empty gap.
    */
   fillHeight?: boolean;
-  /** Top offset for the sticky toolbar + header (px or CSS string).
-   *  Set this to the page header height so the grid chrome sticks
-   *  below it instead of overlapping. Defaults to 0. */
+  /** Top offset for the sticky toolbar + header (px or CSS string). */
   stickyTop?: number | string;
 
   // ── Callbacks ──────────────────────────────────────────────────

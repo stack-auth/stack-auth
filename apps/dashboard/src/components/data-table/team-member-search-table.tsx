@@ -33,14 +33,15 @@ export function TeamMemberSearchTable(props: {
     {
       id: "avatar",
       header: "",
-      width: 50,
-      minWidth: 50,
-      maxWidth: 50,
+      width: 56,
+      minWidth: 56,
+      maxWidth: 56,
+      align: "center",
       sortable: false,
       hideable: false,
       resizable: false,
       renderCell: ({ row }) => (
-        <Avatar className="h-8 w-8">
+        <Avatar className="h-7 w-7">
           <AvatarImage src={row.profileImageUrl ?? undefined} />
           <AvatarFallback className="text-xs">
             {row.displayName?.charAt(0) ?? row.primaryEmail?.charAt(0) ?? "?"}
@@ -52,7 +53,7 @@ export function TeamMemberSearchTable(props: {
       id: "displayName",
       header: "Display Name",
       accessor: "displayName",
-      width: 150,
+      width: 140,
       flex: 1,
       sortable: false,
       type: "string",
@@ -66,7 +67,7 @@ export function TeamMemberSearchTable(props: {
       id: "primaryEmail",
       header: "Email",
       accessor: "primaryEmail",
-      width: 200,
+      width: 160,
       flex: 1,
       sortable: false,
       type: "string",
@@ -80,6 +81,9 @@ export function TeamMemberSearchTable(props: {
       id: "actions",
       header: "",
       width: 100,
+      minWidth: 100,
+      maxWidth: 100,
+      align: "right",
       sortable: false,
       hideable: false,
       resizable: false,

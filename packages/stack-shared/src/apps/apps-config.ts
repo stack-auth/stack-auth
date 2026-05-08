@@ -162,4 +162,10 @@ export const ALL_APPS = {
     tags: ["developers", "operations"],
     stage: "beta",
   },
+  "session-replays": {
+    displayName: "Session Replays",
+    subtitle: "Watch real user sessions to understand how people use your app",
+    tags: ["developers", "operations"],
+    stage: "beta",
+  },
 } as const satisfies Record<string, App>;

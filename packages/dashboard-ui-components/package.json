@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "dev": "tsdown --watch --onSuccess 'pnpm run build-iife && pnpm run copy-iife'",
+    "dev:tui": "pnpm run dev",
     "build-iife": "tsx scripts/build-iife.ts",
     "copy-iife": "tsx scripts/copy-iife.ts",
     "lint": "eslint --ext .tsx,.ts ."
@@ -57,6 +58,7 @@
     "@react-hook/resize-observer": "^2.0.2",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
+    "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.0",
     "class-variance-authority": "^0.7.0"
   },

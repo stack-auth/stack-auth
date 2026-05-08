@@ -127,6 +127,7 @@ export default function PageClient() {
             onSave={handleSave}
             onDiscard={handleDiscard}
             externalModifiedKeys={modifiedKeys}
+            className="gap-y-3"
           />
         </DesignCard>
       </PageLayout>

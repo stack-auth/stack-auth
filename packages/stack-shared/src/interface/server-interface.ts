@@ -300,10 +300,11 @@ export class StackServerInterface extends StackClientInterface {
     & {
       cursor?: string,
       limit?: number,
-      orderBy?: 'signedUpAt',
+      orderBy?: 'signedUpAt' | 'lastActiveAt',
       desc?: boolean,
       query?: string,
       includeRestricted?: boolean,
+      teamId?: string,
     }
     & (
       {
@@ -320,9 +321,11 @@ export class StackServerInterface extends StackClientInterface {
       cursor: options.cursor,
       limit: options.limit?.toString(),
       desc: options.desc?.toString(),
+      team_id: options.teamId,
       ...options.orderBy ? {
         order_by: {
           signedUpAt: "signed_up_at",
+          lastActiveAt: "last_active_at",
         }[options.orderBy],
       } : {},
       ...options.query ? {
@@ -344,16 +347,25 @@ export class StackServerInterface extends StackClientInterface {
 
   async listServerTeams(options?: {
     userId?: string,
-  }): Promise<TeamsCrud['Server']['Read'][]> {
+    orderBy?: 'createdAt',
+    desc?: boolean,
+    cursor?: string,
+    limit?: number,
+    query?: string,
+  }): Promise<TeamsCrud['Server']['List']> {
     const response = await this.sendServerRequest(
       `/teams?${new URLSearchParams(filterUndefined({
         user_id: options?.userId,
+        order_by: options?.orderBy,
+        desc: options?.desc !== undefined ? String(options.desc) : undefined,
+        cursor: options?.cursor,
+        limit: options?.limit?.toString(),
+        query: options?.query,
       }))}`,
       {},
       null
     );
-    const result = await response.json() as TeamsCrud['Server']['List'];
-    return result.items;
+    return await response.json() as TeamsCrud['Server']['List'];
   }
 
   async getServerTeam(teamId: string): Promise<TeamsCrud['Server']['Read']> {

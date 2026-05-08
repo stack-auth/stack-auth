@@ -12,7 +12,6 @@ import {
   SimpleTooltip,
   toast,
 } from "@/components/ui";
-import { Link } from "../link";
 import { ServerTeam, ServerUser } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -21,14 +20,20 @@ import {
   DataGrid,
   useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { CheckCircleIcon, CopyIcon, XCircleIcon } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDebounce } from "use-debounce";
 import * as yup from "yup";
+import { Link } from "../link";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
 import { extendUsers, type ExtendedServerUser } from "./user-table";
+
+const PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
 
 type ExtendedServerUserForTeam = ExtendedServerUser & {
   permissions: string[],
@@ -80,11 +85,6 @@ function TeamMemberUserCell(props: { user: ExtendedServerUserForTeam }) {
               {displayName}
             </span>
           </Link>
-          {user.isAnonymous && (
-            <Badge variant="secondary" className="text-xs">
-              Anonymous
-            </Badge>
-          )}
         </div>
       </div>
     </div>
@@ -261,17 +261,17 @@ function Actions(props: {
   );
 }
 
-export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }) {
+export function TeamMemberTable(props: { team: ServerTeam }) {
+  const stackAdminApp = useAdminApp();
   const [updateCounter, setUpdateCounter] = useState(0);
+  const [permissions, setPermissions] = useState<Map<string, string[]>>(new Map());
 
   const teamMemberColumns = useMemo<DataGridColumnDef<ExtendedServerUserForTeam>[]>(() => [
     {
       id: "user",
       header: "User",
-      width: 160,
+      width: 200,
       flex: 1,
-      minWidth: 110,
-      maxWidth: 220,
       sortable: false,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberUserCell user={row} />,
@@ -280,10 +280,8 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       id: "email",
       header: "Email",
       accessor: (row) => row.primaryEmail ?? "",
-      width: 160,
+      width: 200,
       flex: 1,
-      minWidth: 110,
-      maxWidth: 220,
       sortable: false,
       type: "string",
       renderCell: ({ row }) => <TeamMemberEmailCell user={row} />,
@@ -291,9 +289,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     {
       id: "userId",
       header: "User ID",
-      width: 130,
-      minWidth: 90,
-      maxWidth: 160,
+      width: 140,
       sortable: false,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberUserIdCell user={row} />,
@@ -301,9 +297,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     {
       id: "emailStatus",
       header: "Email Verified",
-      width: 110,
-      minWidth: 80,
-      maxWidth: 130,
+      width: 130,
       sortable: false,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberEmailStatusCell user={row} />,
@@ -312,10 +306,8 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       id: "lastActiveAt",
       header: "Last active",
       accessor: (row) => row.lastActiveAt,
-      width: 110,
-      minWidth: 80,
-      maxWidth: 130,
-      sortable: false,
+      width: 120,
+      sortable: true,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberLastActiveCell user={row} />,
     },
@@ -328,8 +320,8 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
         </div>
       ),
       accessor: (row) => row.permissions.join(", "),
-      width: 120,
-      minWidth: 80,
+      width: 180,
+      flex: 1,
       sortable: false,
       type: "string",
       cellOverflow: "wrap",
@@ -347,7 +339,10 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       sortable: false,
       hideable: false,
       resizable: false,
-      width: 48,
+      width: 56,
+      minWidth: 56,
+      maxWidth: 56,
+      align: "right",
       type: "custom",
       renderCell: ({ row }) => (
         <Actions user={row} team={props.team} setUpdateCounter={setUpdateCounter} />
@@ -359,6 +354,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     const base = createDefaultDataGridState(teamMemberColumns);
     return {
       ...base,
+      sorting: [{ columnId: "lastActiveAt", direction: "desc" }],
       columnVisibility: {
         ...base.columnVisibility,
         emailStatus: false,
@@ -366,69 +362,93 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     };
   });
 
-  const [users, setUsers] = useState<ServerUser[]>([]);
-  const [userPermissions, setUserPermissions] = useState<Map<string, string[]>>(new Map());
-  const [isLoadingExtendedUsers, setIsLoadingExtendedUsers] = useState(true);
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
 
-  const extendedUsers: ExtendedServerUserForTeam[] = useMemo(() => {
-    return extendUsers(users).map((user) => ({
-      ...user,
-      permissions: userPermissions.get(user.id) ?? [],
-    }));
-  }, [users, userPermissions]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      const promises = props.users.map(async user => {
-        const permissions = await user.listPermissions(props.team, { recursive: false });
-        return {
-          user,
-          permissions,
-        };
+  const dataSource = useMemo<DataGridDataSource<ExtendedServerUserForTeam>>(
+    () => async function* (params) {
+      const activeSort = params.sorting.find((s) => s.columnId === "lastActiveAt");
+      const sortDesc = activeSort?.direction !== "asc";
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const result = await stackAdminApp.listUsers({
+        limit: PAGE_SIZE,
+        teamId: props.team.id,
+        orderBy: "lastActiveAt",
+        desc: sortDesc,
+        cursor,
+        query: search,
+        includeAnonymous: true,
+        includeRestricted: true,
       });
-      return await Promise.all(promises);
-    }
+      const extended = extendUsers(result);
+      const permissionResults = await Promise.all(
+        extended.map(async (user) => {
+          const perms = await user.listPermissions(props.team, { recursive: false });
+          return [user.id, perms.map(p => p.id)] as const;
+        })
+      );
+      setPermissions((prev) => {
+        const next = new Map(prev);
+        for (const [id, perms] of permissionResults) next.set(id, perms);
+        return next;
+      });
+      const permsMap = new Map(permissionResults);
+      yield {
+        rows: extended.map((user) => ({
+          ...user,
+          permissions: permsMap.get(user.id) ?? [],
+        })),
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    // updateCounter is included so editing permissions triggers a refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stackAdminApp, props.team, updateCounter],
+  );
 
-    setIsLoadingExtendedUsers(true);
-    runAsynchronously(load().then((data) => {
-      if (cancelled) return;
-      setUserPermissions(new Map(
-        props.users.map((user, index) => [user.id, data[index].permissions.map(p => p.id)])
-      ));
-      setUsers(data.map(d => d.user));
-      setIsLoadingExtendedUsers(false);
-    }).catch(() => {
-      if (cancelled) return;
-      setIsLoadingExtendedUsers(false);
-    }));
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.users, props.team, updateCounter]);
+  const getRowId = useCallback((row: ExtendedServerUserForTeam) => row.id, []);
 
   const gridData = useDataSource({
-    data: extendedUsers,
+    dataSource,
     columns: teamMemberColumns,
-    getRowId: (row) => row.id,
+    getRowId,
     sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
+    quickSearch: debouncedQuickSearch,
     pagination: gridState.pagination,
-    paginationMode: "client",
+    paginationMode: "infinite",
   });
+
+  // Re-decorate already-rendered rows when permissions are loaded for them.
+  const rowsWithPermissions = useMemo(
+    () => gridData.rows.map((row) => ({
+      ...row,
+      permissions: permissions.get(row.id) ?? row.permissions,
+    })),
+    [gridData.rows, permissions],
+  );
+
+  // Suppress unused warning when there are no permissions yet to merge.
+  useEffect(() => {}, [permissions]);
 
   return (
     <DataGrid
       columns={teamMemberColumns}
-      rows={gridData.rows}
-      getRowId={(row) => row.id}
-      totalRowCount={gridData.totalRowCount}
-      isLoading={isLoadingExtendedUsers}
+      rows={rowsWithPermissions}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
       rowHeight="auto"
       estimatedRowHeight={44}
+      footer={false}
       fillHeight={false}
     />
   );

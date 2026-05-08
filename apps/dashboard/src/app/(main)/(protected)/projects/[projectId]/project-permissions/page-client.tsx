@@ -10,8 +10,6 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useProjectPermissionDefinitions();
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
 
   return (
@@ -25,7 +23,6 @@ export default function PageClient() {
         }
       >
         <PermissionTable
-          permissions={permissions}
           permissionType="project"
         />
 

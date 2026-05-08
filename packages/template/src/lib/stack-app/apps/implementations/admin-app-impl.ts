@@ -489,6 +489,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.map((p) => this._serverTeamPermissionDefinitionFromCrud(p));
   }
 
+  async listTeamPermissionDefinitionsPage(
+    options: { limit: number, cursor?: string, query?: string },
+  ): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }> {
+    const result = await this._interface.listTeamPermissionDefinitionsPage(options);
+    return {
+      items: result.items.map((p) => this._serverTeamPermissionDefinitionFromCrud(p)),
+      nextCursor: result.nextCursor,
+    };
+  }
+
   // IF_PLATFORM react-like
   useTeamPermissionDefinitions(): AdminTeamPermissionDefinition[] {
     const crud = useAsyncCache(this._adminTeamPermissionDefinitionsCache, [], "adminApp.useTeamPermissionDefinitions()");
@@ -517,6 +527,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async listProjectPermissionDefinitions(): Promise<AdminProjectPermissionDefinition[]> {
     const crud = Result.orThrow(await this._adminProjectPermissionDefinitionsCache.getOrWait([], "write-only"));
     return crud.map((p) => this._serverProjectPermissionDefinitionFromCrud(p));
+  }
+
+  async listProjectPermissionDefinitionsPage(
+    options: { limit: number, cursor?: string, query?: string },
+  ): Promise<{ items: AdminProjectPermissionDefinition[], nextCursor: string | null }> {
+    const result = await this._interface.listProjectPermissionDefinitionsPage(options);
+    return {
+      items: result.items.map((p) => this._serverProjectPermissionDefinitionFromCrud(p)),
+      nextCursor: result.nextCursor,
+    };
   }
 
   // IF_PLATFORM react-like
@@ -1145,6 +1165,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       last_event_at_from_millis: options?.lastEventAtFromMillis,
       last_event_at_to_millis: options?.lastEventAtToMillis,
       click_count_min: options?.clickCountMin,
+      sort_direction: options?.sortDirection,
+      q: options?.q,
     });
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({

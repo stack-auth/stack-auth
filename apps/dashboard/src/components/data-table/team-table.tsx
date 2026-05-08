@@ -8,13 +8,18 @@ import {
   DataGrid,
   useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
 import { InputField } from "../form-fields";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
+
+const PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const teamFormSchema = yup.object({
   displayName: yup.string(),
@@ -145,7 +150,7 @@ const columns: DataGridColumnDef<ServerTeam>[] = [
   },
 ];
 
-export function TeamTable(props: { teams: ServerTeam[] }) {
+export function TeamTable() {
   const router = useRouter();
   const stackAdminApp = useAdminApp();
 
@@ -154,25 +159,61 @@ export function TeamTable(props: { teams: ServerTeam[] }) {
     sorting: [{ columnId: "createdAt", direction: "desc" }],
   }));
 
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
+
+  const dataSource = useMemo<DataGridDataSource<ServerTeam>>(
+    () => async function* (params) {
+      const activeSort = params.sorting.find((s) => s.columnId === "createdAt");
+      const sortDesc = activeSort?.direction !== "asc";
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const result = await stackAdminApp.listTeams({
+        limit: PAGE_SIZE,
+        orderBy: "createdAt",
+        desc: sortDesc,
+        cursor,
+        query: search,
+      });
+      yield {
+        rows: result,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [stackAdminApp],
+  );
+
+  const getRowId = useCallback((row: ServerTeam) => row.id, []);
+
   const gridData = useDataSource({
-    data: props.teams,
+    dataSource,
     columns,
-    getRowId: (row) => row.id,
+    getRowId,
     sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
+    quickSearch: debouncedQuickSearch,
     pagination: gridState.pagination,
-    paginationMode: "client",
+    paginationMode: "infinite",
   });
 
   return (
     <DataGrid
       columns={columns}
       rows={gridData.rows}
-      getRowId={(row) => row.id}
-      totalRowCount={gridData.totalRowCount}
+      getRowId={getRowId}
       isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      rowHeight="auto"
+      estimatedRowHeight={44}
+      footer={false}
+      fillHeight={false}
       onRowClick={(row) => {
         router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
       }}

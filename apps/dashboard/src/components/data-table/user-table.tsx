@@ -144,7 +144,6 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
     id: "lastActiveAt",
     header: "Last active",
     width: 110,
-    sortable: false,
     renderCell: ({ row }) => <DateMetaCell value={row.lastActiveAt} emptyLabel="Never" />,
   },
   {
@@ -240,12 +239,18 @@ function UserTableBody(props: {
       const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
         ? params.quickSearch.trim()
         : undefined;
-      const sortDesc = params.sorting.find((s) => s.columnId === "signedUpAt")?.direction !== "asc";
+      const activeSort = params.sorting.find(
+        (s) => s.columnId === "signedUpAt" || s.columnId === "lastActiveAt",
+      );
+      const orderBy: "signedUpAt" | "lastActiveAt" = activeSort?.columnId === "lastActiveAt"
+        ? "lastActiveAt"
+        : "signedUpAt";
+      const sortDesc = activeSort?.direction !== "asc";
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
       const result = filters.onlyAnonymous
         ? await stackAdminApp.listUsers({
           limit: PAGE_SIZE,
-          orderBy: "signedUpAt",
+          orderBy,
           desc: sortDesc,
           query: search,
           includeRestricted: filters.includeRestricted,
@@ -255,7 +260,7 @@ function UserTableBody(props: {
         })
         : await stackAdminApp.listUsers({
           limit: PAGE_SIZE,
-          orderBy: "signedUpAt",
+          orderBy,
           desc: sortDesc,
           query: search,
           includeRestricted: filters.includeRestricted,

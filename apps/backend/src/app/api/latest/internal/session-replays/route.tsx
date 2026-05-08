@@ -100,6 +100,8 @@ export const GET = createSmartRouteHandler({
       last_event_at_from_millis: yupString().optional(),
       last_event_at_to_millis: yupString().optional(),
       click_count_min: yupString().optional(),
+      sort_direction: yupString().oneOf(["asc", "desc"]).optional(),
+      q: yupString().optional(),
     }).optional(),
   }),
   response: yupObject({
@@ -138,6 +140,8 @@ export const GET = createSmartRouteHandler({
     const clickCountMin = parseNonNegativeInt("click_count_min", query.click_count_min);
     const lastEventAtFrom = parseMillis("last_event_at_from_millis", query.last_event_at_from_millis);
     const lastEventAtTo = parseMillis("last_event_at_to_millis", query.last_event_at_to_millis);
+    const sortDirection: "asc" | "desc" = query.sort_direction === "asc" ? "asc" : "desc";
+    const searchQuery = query.q?.trim() || null;
 
     if (durationMsMin !== null && durationMsMax !== null && durationMsMin > durationMsMax) {
       throw new StatusError(StatusError.BadRequest, "duration_ms_min must be less than or equal to duration_ms_max");
@@ -176,6 +180,24 @@ export const GET = createSmartRouteHandler({
       }
     }
 
+    const cursorComparator = sortDirection === "asc"
+      ? cursorPivot
+        ? Prisma.sql`AND (
+            sr."lastEventAt" > ${cursorPivot.lastEventAt}
+            OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" > ${cursorId})
+          )`
+        : Prisma.empty
+      : cursorPivot
+        ? Prisma.sql`AND (
+            sr."lastEventAt" < ${cursorPivot.lastEventAt}
+            OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
+          )`
+        : Prisma.empty;
+
+    const orderBySql = sortDirection === "asc"
+      ? Prisma.sql`ORDER BY sr."lastEventAt" ASC, sr."id" ASC`
+      : Prisma.sql`ORDER BY sr."lastEventAt" DESC, sr."id" DESC`;
+
     const suffixSql = Prisma.sql`
         ${userIdsFilter.length > 0 ? Prisma.sql`AND sr."projectUserId" IN (${Prisma.join(userIdsFilter)})` : Prisma.empty}
         ${lastEventAtFrom ? Prisma.sql`AND sr."lastEventAt" >= ${lastEventAtFrom}` : Prisma.empty}
@@ -189,11 +211,12 @@ export const GET = createSmartRouteHandler({
         ${clickQualifiedIds ? Prisma.sql`AND sr."id" IN (${Prisma.join(clickQualifiedIds)})` : Prisma.empty}
         ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
         ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}
-        ${cursorPivot ? Prisma.sql`AND (
-          sr."lastEventAt" < ${cursorPivot.lastEventAt}
-          OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
+        ${searchQuery ? Prisma.sql`AND (
+          sr."id"::text ILIKE ${`%${searchQuery}%`}
+          OR pu."displayName" ILIKE ${`%${searchQuery}%`}
         )` : Prisma.empty}
-      ORDER BY sr."lastEventAt" DESC, sr."id" DESC
+        ${cursorComparator}
+      ${orderBySql}
       LIMIT ${limit + 1}
     `;
 

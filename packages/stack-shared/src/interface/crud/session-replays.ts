@@ -8,6 +8,8 @@ export type AdminListSessionReplaysOptions = {
   last_event_at_from_millis?: number,
   last_event_at_to_millis?: number,
   click_count_min?: number,
+  sort_direction?: "asc" | "desc",
+  q?: string,
 };
 
 export type AdminListSessionReplaysResponse = {

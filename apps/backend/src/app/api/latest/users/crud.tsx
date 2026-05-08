@@ -522,7 +522,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Only return users who are members of the given team" } }),
     limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
-    order_by: yupString().oneOf(['signed_up_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
+    order_by: yupString().oneOf(['signed_up_at', 'last_active_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
     include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false" } }),
@@ -624,6 +624,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         {
           [({
             signed_up_at: 'signedUpAt',
+            last_active_at: 'lastActiveAt',
           } as const)[query.order_by ?? 'signed_up_at']]: sortDirection,
         },
         { projectUserId: sortDirection },

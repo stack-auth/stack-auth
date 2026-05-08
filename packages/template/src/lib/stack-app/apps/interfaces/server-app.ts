@@ -5,7 +5,7 @@ import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
-import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
+import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
@@ -68,6 +68,9 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
 
+    useTeams(options?: ServerListTeamsOptions): ServerTeam[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
+    listTeams(options?: ServerListTeamsOptions): Promise<ServerTeam[] & { nextCursor: string | null }>,
+
     // TODO this should actually be on ServerUser
     createOAuthProvider(options: {
       userId: string,
@@ -89,7 +92,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
-  & AsyncStoreProperty<"teams", [], ServerTeam[], true>
+  & Omit<AsyncStoreProperty<"teams", [options?: ServerListTeamsOptions], ServerTeam[], true>, "listTeams" | "useTeams">
   & AsyncStoreProperty<"dataVaultStore", [id: string], DataVaultStore, false>
   & AsyncStoreProperty<
     "item",

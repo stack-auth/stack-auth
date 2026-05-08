@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09",
+    "dev:tui": "pnpm run dev",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "lint": "eslint --ext .ts,.tsx .",

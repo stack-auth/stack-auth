@@ -7,8 +7,11 @@ import {
   DataGrid,
   useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
+  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
@@ -20,6 +23,9 @@ type AdminPermissionDefinition = {
 };
 
 type PermissionType = 'project' | 'team';
+
+const PAGE_SIZE = 50;
+const SEARCH_DEBOUNCE_MS = 300;
 
 function EditDialog(props: {
   open: boolean,
@@ -147,6 +153,7 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       accessor: "id",
       width: 180,
       type: "string",
+      sortable: false,
       renderCell: ({ row }) => (
         <div className="flex max-w-[180px] items-center gap-1">
           <span className="truncate font-mono text-xs text-muted-foreground">{row.id}</span>
@@ -163,6 +170,7 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       width: 200,
       flex: 1,
       type: "string",
+      sortable: false,
       renderCell: ({ value }) => (
         <span className="truncate">{String(value ?? "")}</span>
       ),
@@ -178,6 +186,7 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       accessor: "containedPermissionIds",
       width: 120,
       type: "custom",
+      sortable: false,
       cellOverflow: "wrap",
       formatValue: (value) => (Array.isArray(value) ? value.join(", ") : String(value ?? "")),
       renderCell: ({ row }) => (
@@ -208,36 +217,65 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
   ];
 }
 
-export function PermissionTable<T extends AdminPermissionDefinition>(props: {
-  permissions: T[],
+export function PermissionTable(props: {
   permissionType: PermissionType,
 }) {
+  const stackAdminApp = useAdminApp();
   const columns = useMemo(
-    () => createColumns<T>(props.permissionType),
+    () => createColumns<AdminPermissionDefinition>(props.permissionType),
     [props.permissionType],
   );
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useState<DataGridState>(() => createDefaultDataGridState(columns));
+
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
+
+  const dataSource = useMemo<DataGridDataSource<AdminPermissionDefinition>>(
+    () => async function* (params) {
+      const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const result = props.permissionType === 'project'
+        ? await stackAdminApp.listProjectPermissionDefinitionsPage({ limit: PAGE_SIZE, cursor, query: search })
+        : await stackAdminApp.listTeamPermissionDefinitionsPage({ limit: PAGE_SIZE, cursor, query: search });
+      yield {
+        rows: result.items,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [stackAdminApp, props.permissionType],
+  );
+
+  const getRowId = useCallback((row: AdminPermissionDefinition) => row.id, []);
 
   const gridData = useDataSource({
-    data: props.permissions,
+    dataSource,
     columns,
-    getRowId: (row) => row.id,
+    getRowId,
     sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
+    quickSearch: debouncedQuickSearch,
     pagination: gridState.pagination,
-    paginationMode: "client",
+    paginationMode: "infinite",
   });
 
   return (
-    <DataGrid<T>
+    <DataGrid<AdminPermissionDefinition>
       columns={columns}
       rows={gridData.rows}
-      getRowId={(row) => row.id}
-      totalRowCount={gridData.totalRowCount}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
       rowHeight="auto"
       estimatedRowHeight={44}
+      footer={false}
+      fillHeight={false}
       strings={{ searchPlaceholder: "Filter" }}
     />
   );

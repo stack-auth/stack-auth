@@ -6,6 +6,7 @@
   "scripts": {
     "convex": "convex",
     "dev": "pnpm run predev && npm-run-all --parallel dev:frontend dev:backend",
+    "dev:tui": "pnpm run dev",
     "dev:frontend": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}27",
     "dev:backend": "convex dev --typecheck=disable --env-file .env.development",
     "dev:backend:until-success": "pnpm run dev:backend --until-success",

@@ -2,7 +2,7 @@
 
 import type { StackClientApp } from "../lib/stack-app";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
-import { createDevTool } from "./dev-tool-core";
+import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
 const OVERRIDE_KEY = '__stack-dev-tool-override';
 
@@ -38,6 +38,15 @@ function shouldShow(): boolean {
 
 let activeCleanup: (() => void) | null = null;
 let activeApp: StackClientApp<true> | null = null;
+let mountGeneration = 0;
+
+let createDevToolPromise: Promise<typeof CreateDevToolFn> | null = null;
+function loadCreateDevTool(): Promise<typeof CreateDevToolFn> {
+  if (!createDevToolPromise) {
+    createDevToolPromise = import("./dev-tool-core").then(m => m.createDevTool);
+  }
+  return createDevToolPromise;
+}
 
 function tryMount() {
   if (activeCleanup) {
@@ -47,8 +56,14 @@ function tryMount() {
 
   if (!shouldShow() || !activeApp || !canMountIntoDom()) return;
 
+  const generation = ++mountGeneration;
   const app = activeApp;
-  activeCleanup = createDevTool(app);
+
+  loadCreateDevTool().then(createDevTool => {
+    if (generation !== mountGeneration) return;
+    if (!shouldShow() || activeApp !== app || !canMountIntoDom()) return;
+    activeCleanup = createDevTool(app);
+  }).catch(() => {});
 }
 
 /**

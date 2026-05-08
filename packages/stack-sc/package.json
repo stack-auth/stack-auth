@@ -38,6 +38,7 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "dev": "tsdown --watch",
+    "dev:tui": "pnpm run dev",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [

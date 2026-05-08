@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}12",
+    "dev:tui": "pnpm run dev",
     "build": "next build",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}12",
     "lint": "next lint",

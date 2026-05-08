@@ -31,7 +31,7 @@ import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
-import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
@@ -53,28 +53,43 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _serverUsersCache = createCache<[
     cursor?: string,
     limit?: number,
-    orderBy?: 'signedUpAt',
+    orderBy?: 'signedUpAt' | 'lastActiveAt',
     desc?: boolean,
     query?: string,
     includeRestricted?: boolean,
     includeAnonymous?: boolean,
     onlyAnonymous?: boolean,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, onlyAnonymous]) => {
+    teamId?: string,
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, onlyAnonymous, teamId]) => {
     if (onlyAnonymous && !includeAnonymous) {
       throw new StackAssertionError("onlyAnonymous=true requires includeAnonymous=true");
     }
     if (onlyAnonymous) {
-      return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous: true, onlyAnonymous: true });
+      return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous: true, onlyAnonymous: true, teamId });
     }
-    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous });
+    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, teamId });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
     return Result.or(user, null);
   });
-  private readonly _serverTeamsCache = createCache<[string | undefined], TeamsCrud['Server']['Read'][]>(async ([userId]) => {
-    return await this._interface.listServerTeams({ userId });
+  private readonly _serverTeamsCache = createCache<[
+    userId?: string,
+    orderBy?: 'createdAt',
+    desc?: boolean,
+    cursor?: string,
+    limit?: number,
+    query?: string,
+  ], TeamsCrud['Server']['List']>(async ([userId, orderBy, desc, cursor, limit, query]) => {
+    return await this._interface.listServerTeams({ userId, orderBy, desc, cursor, limit, query });
   });
+
+  protected async _refreshTeamMembership(teamId: string, userId: string) {
+    await Promise.all([
+      this._serverTeamMemberProfilesCache.refresh([teamId]),
+      this._serverTeamsCache.refreshWhere(([u]) => u === userId || u === undefined),
+    ]);
+  }
   private readonly _serverUserTeamInvitationsCache = createCache<string[], TeamInvitationCrud['Client']['Read'][]>(async ([userId]) => {
     return await this._interface.listServerUserTeamInvitations(userId);
   });
@@ -689,14 +704,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         }, [teams, teamId]);
       },
       // END_PLATFORM
-      async listTeams() {
-        const teams = Result.orThrow(await app._serverTeamsCache.getOrWait([crud.id], "write-only"));
-        return teams.map((t) => app._serverTeamFromCrud(t));
+      async listTeams(options?: ServerListTeamsOptions) {
+        const result = Result.orThrow(await app._serverTeamsCache.getOrWait([crud.id, options?.orderBy, options?.desc] as const, "write-only"));
+        return result.items.map((t) => app._serverTeamFromCrud(t));
       },
       // IF_PLATFORM react-like
-      useTeams() {
-        const teams = useAsyncCache(app._serverTeamsCache, [crud.id], "user.useTeams()");
-        return useMemo(() => teams.map((t) => app._serverTeamFromCrud(t)), [teams]);
+      useTeams(options?: ServerListTeamsOptions) {
+        const result = useAsyncCache(app._serverTeamsCache, [crud.id, options?.orderBy, options?.desc] as const, "user.useTeams()");
+        return useMemo(() => result.items.map((t) => app._serverTeamFromCrud(t)), [result]);
       },
       // END_PLATFORM
       createTeam: async (data: Omit<ServerTeamCreateOptions, "creatorUserId">) => {
@@ -704,13 +719,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           creatorUserId: crud.id,
           ...data,
         }));
-        await app._serverTeamsCache.refresh([undefined]);
+        await app._serverTeamsCache.refreshWhere(() => true);
         await app._updateServerUser(crud.id, { selectedTeamId: team.id });
         return app._serverTeamFromCrud(team);
       },
       leaveTeam: async (team: Team) => {
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
-        // TODO: refresh cache
+        await app._refreshTeamMembership(team.id, crud.id);
       },
       async listTeamInvitations() {
         const invitations = Result.orThrow(await app._serverUserTeamInvitationsCache.getOrWait([crud.id], "write-only"));
@@ -971,7 +986,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.acceptServerTeamInvitationById(crud.id, userId);
         await Promise.all([
           app._serverUserTeamInvitationsCache.refresh([userId]),
-          app._serverTeamsCache.refresh([userId]),
+          app._serverTeamsCache.refreshWhere(([u]) => u === userId || u === undefined),
           app._serverTeamInvitationsCache.refresh([crud.team_id]),
         ]);
       },
@@ -1000,11 +1015,11 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       serverMetadata: crud.server_metadata,
       async update(update: Partial<ServerTeamUpdateOptions>) {
         await app._interface.updateServerTeam(crud.id, serverTeamUpdateOptionsToCrud(update));
-        await app._serverTeamsCache.refresh([undefined]);
+        await app._serverTeamsCache.refreshWhere(() => true);
       },
       async delete() {
         await app._interface.deleteServerTeam(crud.id);
-        await app._serverTeamsCache.refresh([undefined]);
+        await app._serverTeamsCache.refreshWhere(() => true);
       },
       async listUsers() {
         const result = Result.orThrow(await app._serverTeamMemberProfilesCache.getOrWait([crud.id], "write-only"));
@@ -1021,14 +1036,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           teamId: crud.id,
           userId,
         });
-        await app._serverTeamMemberProfilesCache.refresh([crud.id]);
+        await app._refreshTeamMembership(crud.id, userId);
       },
       async removeUser(userId) {
         await app._interface.removeServerUserFromTeam({
           teamId: crud.id,
           userId,
         });
-        await app._serverTeamMemberProfilesCache.refresh([crud.id]);
+        await app._refreshTeamMembership(crud.id, userId);
       },
       async inviteUser(options: { email: string, callbackUrl?: string }) {
         await app._interface.sendServerTeamInvitation({
@@ -1353,7 +1368,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous], "write-only"));
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1361,7 +1376,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous] as const, "serverApp.useUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1388,11 +1403,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       description: crud.description,
       containedPermissionIds: crud.contained_permission_ids,
     };
-  }
-
-  async listTeams(): Promise<ServerTeam[]> {
-    const teams = Result.orThrow(await this._serverTeamsCache.getOrWait([undefined], "write-only"));
-    return teams.map((t) => this._serverTeamFromCrud(t));
   }
 
   async getItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): Promise<ServerItem> {
@@ -1481,16 +1491,25 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));
-    await this._serverTeamsCache.refresh([undefined]);
+    await this._serverTeamsCache.refreshWhere(() => true);
     return this._serverTeamFromCrud(team);
   }
 
+  async listTeams(options?: ServerListTeamsOptions): Promise<ServerTeam[] & { nextCursor: string | null }> {
+    const crud = Result.orThrow(await this._serverTeamsCache.getOrWait([undefined, options?.orderBy, options?.desc, options?.cursor, options?.limit, options?.query] as const, "write-only"));
+    const result: any = crud.items.map((t) => this._serverTeamFromCrud(t));
+    result.nextCursor = crud.pagination?.next_cursor ?? null;
+    return result as any;
+  }
+
   // IF_PLATFORM react-like
-  useTeams(): ServerTeam[] {
-    const teams = useAsyncCache(this._serverTeamsCache, [undefined], "serverApp.useTeams()");
+  useTeams(options?: ServerListTeamsOptions): ServerTeam[] & { nextCursor: string | null } {
+    const crud = useAsyncCache(this._serverTeamsCache, [undefined, options?.orderBy, options?.desc, options?.cursor, options?.limit, options?.query] as const, "serverApp.useTeams()");
     return useMemo(() => {
-      return teams.map((t) => this._serverTeamFromCrud(t));
-    }, [teams]);
+      const result: any = crud.items.map((t) => this._serverTeamFromCrud(t));
+      result.nextCursor = crud.pagination?.next_cursor ?? null;
+      return result as any;
+    }, [crud]);
   }
   // END_PLATFORM
 
