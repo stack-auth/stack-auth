@@ -42,9 +42,25 @@ import { getConvexProvidersConfig } from "@stackframe/js";  // Vanilla JS
 
 export default {
   providers: getConvexProvidersConfig({
-    projectId: process.env.STACK_PROJECT_ID,  // or: process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+    projectId: process.env.STACK_PROJECT_ID!,
   }),
 }
+```
+
+Set `STACK_PROJECT_ID` in your Convex dashboard environment variables. Convex runs outside your Next.js process, so it reads the variables configured for the Convex deployment.
+
+Next, update or create a file in `convex/convex.config.ts`:
+
+```ts
+import { defineApp } from "convex/server";
+import stackAuthComponent from "@stackframe/js/convex.config";  // Vanilla JS
+// or: import stackAuthComponent from "@stackframe/react/convex.config";  // React
+// or: import stackAuthComponent from "@stackframe/stack/convex.config";  // Next.js
+
+const app = defineApp();
+app.use(stackAuthComponent);
+
+export default app;
 ```
 
 Then, update your Convex client to use Stack Auth:
@@ -76,5 +92,179 @@ export const myQuery = query({
   },
 });
 ```
+
+### Partial users in Convex queries and mutations
+
+`getPartialUser({ from: "convex", ctx })` reads the user identity that Convex verified from the Stack Auth JWT.
+
+```ts
+import { query } from "./_generated/server";
+import { stackServerApp } from "../stack/server";
+
+export const getUserInfo = query({
+  handler: async (ctx) => {
+    const user = await stackServerApp.getPartialUser({ from: "convex", ctx });
+
+    if (user === null) {
+      return { signedIn: false };
+    }
+
+    return {
+      signedIn: true,
+      user: {
+        id: user.id,
+        displayName: user.displayName,
+        primaryEmail: user.primaryEmail,
+        primaryEmailVerified: user.primaryEmailVerified,
+        isAnonymous: user.isAnonymous,
+        isMultiFactorRequired: user.isMultiFactorRequired,
+        isRestricted: user.isRestricted,
+        restrictedReason: user.restrictedReason,
+      },
+    };
+  },
+});
+```
+
+It returns:
+
+```ts
+{
+  id: string;
+  displayName: string | null;
+  primaryEmail: string | null;
+  primaryEmailVerified: boolean;
+  isAnonymous: boolean;
+  isMultiFactorRequired: boolean;
+  isRestricted: boolean;
+  restrictedReason: string | null;
+}
+```
+
+It does not include `teamId`, `selectedTeam`, or a teams list.
+
+For mutations, read the user from `ctx` instead of accepting a user ID from the client:
+
+```ts
+import { v } from "convex/values";
+import { mutation } from "./_generated/server";
+import { stackServerApp } from "../stack/server";
+
+export const createNote = mutation({
+  args: {
+    text: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await stackServerApp.getPartialUser({ from: "convex", ctx });
+
+    if (user === null) {
+      throw new Error("User must be signed in to create a note.");
+    }
+
+    return await ctx.db.insert("notes", {
+      text: args.text,
+      ownerUserId: user.id,
+    });
+  },
+});
+```
+
+### Full users and teams
+
+If you need Stack Auth team data, use the full Stack user from a Next.js route handler or a Convex action. Full users have APIs such as `user.selectedTeam` and `await user.listTeams()`.
+
+In a Next.js route handler:
+
+```ts
+const user = await stackServerApp.getUser({ tokenStore: request });
+const teams = user === null ? [] : await user.listTeams();
+```
+
+```ts
+"use node";
+
+import { action } from "./_generated/server";
+import { stackServerApp } from "../stack/server";
+
+export const getFullStackUser = action({
+  handler: async (ctx) => {
+    const partialUser = await stackServerApp.getPartialUser({ from: "convex", ctx });
+
+    if (partialUser === null) {
+      return null;
+    }
+
+    const user = await stackServerApp.getUser(partialUser.id);
+
+    if (user === null) {
+      throw new Error("Convex identity referenced a Stack Auth user that does not exist.");
+    }
+
+    const teams = await user.listTeams();
+
+    return {
+      id: user.id,
+      selectedTeamId: user.selectedTeam?.id ?? null,
+      teams: teams.map((team) => ({
+        id: team.id,
+        displayName: team.displayName,
+      })),
+    };
+  },
+});
+```
+
+### Calling Convex from a Next.js route handler
+
+In Next.js route handlers, pass the Stack Auth token as the third argument to Convex's `fetchQuery`, `fetchMutation`, or `fetchAction` helpers:
+
+```ts
+import { api } from "@/convex/_generated/api";
+import { stackServerApp } from "@/stack/server";
+import { fetchMutation, fetchQuery } from "convex/nextjs";
+import { NextRequest, NextResponse } from "next/server";
+
+export async function GET(request: NextRequest) {
+  const token = await stackServerApp.getConvexHttpClientAuth({
+    tokenStore: request,
+  });
+
+  if (token === "") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userInfo = await fetchQuery(api.myFunctions.getUserInfo, {}, { token });
+
+  return NextResponse.json({ userInfo });
+}
+
+export async function POST(request: NextRequest) {
+  const token = await stackServerApp.getConvexHttpClientAuth({
+    tokenStore: request,
+  });
+
+  if (token === "") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+
+  if (typeof body !== "object" || body === null || !("text" in body)) {
+    return NextResponse.json({ error: "Missing text" }, { status: 400 });
+  }
+
+  const text = Reflect.get(body, "text");
+
+  if (typeof text !== "string") {
+    return NextResponse.json({ error: "text must be a string" }, { status: 400 });
+  }
+
+  const noteId = await fetchMutation(api.myFunctions.createNote, { text }, { token });
+
+  return NextResponse.json({ noteId });
+}
+```
+
+In `fetchQuery(api.myFunctions.getUserInfo, {}, { token })`, the second argument is the query args object, and the third argument is where the auth token goes.
 
 You can find the production-ready template with Stack-Auth, Convex & Shadcn pre-configured [here on GitHub](https://github.com/developing-gamer/next-convex-stack-template).

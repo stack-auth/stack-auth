@@ -23,10 +23,12 @@ import { getConvexProvidersConfig } from "@stackframe/js/convex-auth.config";  /
 
 export default {
   providers: getConvexProvidersConfig({
-    projectId: process.env.STACK_PROJECT_ID,  // or: process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+    projectId: process.env.STACK_PROJECT_ID!,
   }),
 }
 ```
+
+Set `STACK_PROJECT_ID` in your Convex dashboard environment variables. Convex runs outside your Next.js process, so it reads the variables configured for the Convex deployment.
 
 Next, update or create a file in `convex/convex.config.ts`:
 
@@ -35,7 +37,6 @@ import { defineApp } from "convex/server";
 import stackAuthComponent from "@stackframe/js/convex.config";  // Vanilla JS
 // or: import stackAuthComponent from "@stackframe/react/convex.config";  // React
 // or: import stackAuthComponent from "@stackframe/stack/convex.config";  // Next.js
-
 
 const app = defineApp();
 app.use(stackAuthComponent);
@@ -70,5 +71,26 @@ export const myQuery = query({
   },
 });
 ```
+
+## Partial and full users
+
+`getPartialUser({ from: "convex", ctx })` returns the user identity Convex verified from the Stack Auth JWT. It includes fields such as `id`, `displayName`, `primaryEmail`, `primaryEmailVerified`, `isAnonymous`, `isMultiFactorRequired`, `isRestricted`, and `restrictedReason`.
+
+It does not include `teamId`, `selectedTeam`, or a teams list. If you need Stack Auth team data, use the full Stack user from a Next.js route handler or a Convex action. Full users have APIs such as `user.selectedTeam` and `await user.listTeams()`.
+
+## Next.js route handlers
+
+In Next.js route handlers, pass the Stack Auth token as the third argument to Convex's `fetchQuery`, `fetchMutation`, or `fetchAction` helpers:
+
+```ts
+const token = await stackServerApp.getConvexHttpClientAuth({
+  tokenStore: request,
+});
+
+const userInfo = await fetchQuery(api.myFunctions.getUserInfo, {}, { token });
+const noteId = await fetchMutation(api.myFunctions.createNote, { text }, { token });
+```
+
+In `fetchQuery(api.myFunctions.getUserInfo, {}, { token })`, the second argument is the query args object, and the third argument is where the auth token goes.
 
 For more information on how to use Stack Auth, see the [Stack Auth docs](https://docs.stack-auth.com).
