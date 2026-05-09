@@ -31,7 +31,7 @@ import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
-import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListTeamsOptions, ServerListUsersOptions, ServerListUsersPaginatedOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
@@ -704,13 +704,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         }, [teams, teamId]);
       },
       // END_PLATFORM
-      async listTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): Promise<ServerTeam[]> {
-        const result = Result.orThrow(await app._serverTeamsCache.getOrWait([crud.id, options?.orderBy, options?.desc, undefined, undefined, undefined] as const, "write-only"));
+      async listTeams(): Promise<ServerTeam[]> {
+        const result = Result.orThrow(await app._serverTeamsCache.getOrWait([crud.id, undefined, undefined, undefined, undefined, undefined] as const, "write-only"));
         return result.items.map((t) => app._serverTeamFromCrud(t));
       },
       // IF_PLATFORM react-like
-      useTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): ServerTeam[] {
-        const result = useAsyncCache(app._serverTeamsCache, [crud.id, options?.orderBy, options?.desc, undefined, undefined, undefined] as const, "user.useTeams()");
+      useTeams(): ServerTeam[] {
+        const result = useAsyncCache(app._serverTeamsCache, [crud.id, undefined, undefined, undefined, undefined, undefined] as const, "user.useTeams()");
         return useMemo(() => result.items.map((t) => app._serverTeamFromCrud(t)), [result]);
       },
       // END_PLATFORM
@@ -1383,7 +1383,23 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
-  async listUsers(options?: ServerListUsersOptions): Promise<{ items: ServerUser[], nextCursor: string | null }> {
+  async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, undefined], "write-only"));
+    const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
+    result.nextCursor = crud.pagination?.next_cursor ?? null;
+    return result as any;
+  }
+
+  // IF_PLATFORM react-like
+  useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, undefined] as const, "serverApp.useUsers()");
+    const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
+    result.nextCursor = crud.pagination?.next_cursor ?? null;
+    return result as any;
+  }
+  // END_PLATFORM
+
+  async listUsersPaginated(options?: ServerListUsersPaginatedOptions): Promise<{ items: ServerUser[], nextCursor: string | null }> {
     const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId], "write-only"));
     return {
       items: crud.items.map((j) => this._serverUserFromCrud(j)),
@@ -1392,8 +1408,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   // IF_PLATFORM react-like
-  useUsers(options?: ServerListUsersOptions): { items: ServerUser[], nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId] as const, "serverApp.useUsers()");
+  useUsersPaginated(options?: ServerListUsersPaginatedOptions): { items: ServerUser[], nextCursor: string | null } {
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId] as const, "serverApp.useUsersPaginated()");
     return {
       items: crud.items.map((j) => this._serverUserFromCrud(j)),
       nextCursor: crud.pagination?.next_cursor ?? null,
@@ -1513,14 +1529,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._serverTeamFromCrud(team);
   }
 
-  async listTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): Promise<ServerTeam[]> {
-    const crud = Result.orThrow(await this._serverTeamsCache.getOrWait([undefined, options?.orderBy, options?.desc, undefined, undefined, undefined] as const, "write-only"));
+  async listTeams(): Promise<ServerTeam[]> {
+    const crud = Result.orThrow(await this._serverTeamsCache.getOrWait([undefined, undefined, undefined, undefined, undefined, undefined] as const, "write-only"));
     return crud.items.map((t) => this._serverTeamFromCrud(t));
   }
 
   // IF_PLATFORM react-like
-  useTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): ServerTeam[] {
-    const crud = useAsyncCache(this._serverTeamsCache, [undefined, options?.orderBy, options?.desc, undefined, undefined, undefined] as const, "serverApp.useTeams()");
+  useTeams(): ServerTeam[] {
+    const crud = useAsyncCache(this._serverTeamsCache, [undefined, undefined, undefined, undefined, undefined, undefined] as const, "serverApp.useTeams()");
     return useMemo(() => crud.items.map((t) => this._serverTeamFromCrud(t)), [crud]);
   }
   // END_PLATFORM

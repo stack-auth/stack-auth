@@ -393,7 +393,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
       const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
         ? params.quickSearch.trim()
         : undefined;
-      const result = await stackAdminApp.listUsers({
+      const result = await stackAdminApp.listUsersPaginated({
         limit: PAGE_SIZE,
         teamId: props.team.id,
         orderBy: "lastActiveAt",

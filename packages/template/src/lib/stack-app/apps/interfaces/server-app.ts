@@ -5,7 +5,7 @@ import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
-import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
+import { ServerListTeamsOptions, ServerListUsersOptions, ServerListUsersPaginatedOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
@@ -65,11 +65,11 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getTeam(options: { apiKey: string }): Promise<ServerTeam | null>,
 
 
-    useUsers(options?: ServerListUsersOptions): { items: ServerUser[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
-    listUsers(options?: ServerListUsersOptions): Promise<{ items: ServerUser[], nextCursor: string | null }>,
+    useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
+    listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
 
-    useTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): ServerTeam[], // THIS_LINE_PLATFORM react-like
-    listTeams(options?: { orderBy?: 'createdAt', desc?: boolean }): Promise<ServerTeam[]>,
+    useUsersPaginated(options?: ServerListUsersPaginatedOptions): { items: ServerUser[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
+    listUsersPaginated(options?: ServerListUsersPaginatedOptions): Promise<{ items: ServerUser[], nextCursor: string | null }>,
 
     useTeamsPaginated(options?: ServerListTeamsOptions): { items: ServerTeam[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listTeamsPaginated(options?: ServerListTeamsOptions): Promise<{ items: ServerTeam[], nextCursor: string | null }>,
@@ -95,7 +95,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
-  & Omit<AsyncStoreProperty<"teams", [options?: ServerListTeamsOptions], ServerTeam[], true>, "listTeams" | "useTeams">
+  & AsyncStoreProperty<"teams", [], ServerTeam[], true>
   & AsyncStoreProperty<"dataVaultStore", [id: string], DataVaultStore, false>
   & AsyncStoreProperty<
     "item",

@@ -129,13 +129,9 @@ export type ServerTeam = {
 type ServerListUsersOptionsBase = {
   cursor?: string,
   limit?: number,
-  orderBy?: 'signedUpAt' | 'lastActiveAt',
+  orderBy?: 'signedUpAt',
   desc?: boolean,
   query?: string,
-  /**
-   * Only return users who are members of the given team.
-   */
-  teamId?: string,
   /**
    * Whether to include restricted users (users who haven't completed onboarding requirements).
    * Defaults to false.
@@ -157,6 +153,29 @@ export type ServerListUsersOptions = ServerListUsersOptionsBase & (
    * Requires includeAnonymous=true.
    * Defaults to false.
    */
+    onlyAnonymous: true,
+    includeAnonymous: true,
+  }
+);
+
+type ServerListUsersPaginatedOptionsBase = {
+  cursor?: string,
+  limit?: number,
+  orderBy?: 'signedUpAt' | 'lastActiveAt',
+  desc?: boolean,
+  query?: string,
+  /**
+   * Only return users who are members of the given team.
+   */
+  teamId?: string,
+  includeRestricted?: boolean,
+  includeAnonymous?: boolean,
+};
+
+export type ServerListUsersPaginatedOptions = ServerListUsersPaginatedOptionsBase & (
+  {
+    onlyAnonymous?: false,
+  } | {
     onlyAnonymous: true,
     includeAnonymous: true,
   }

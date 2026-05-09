@@ -20,7 +20,7 @@ function UserSearchTable(props: {
   action: (user: ServerUser) => React.ReactNode,
 }) {
   const stackAdminApp = useAdminApp();
-  const [filters, setFilters] = useState<Parameters<typeof stackAdminApp.listUsers>[0]>({
+  const [filters, setFilters] = useState<Parameters<typeof stackAdminApp.listUsersPaginated>[0]>({
     limit: PAGE_SIZE,
     query: props.query || undefined,
   });
@@ -29,7 +29,7 @@ function UserSearchTable(props: {
     setFilters({ limit: PAGE_SIZE, query: props.query || undefined });
   }, [props.query]);
 
-  const users = extendUsers(stackAdminApp.useUsers(filters).items);
+  const users = extendUsers(stackAdminApp.useUsersPaginated(filters).items);
 
   const { action } = props;
   const columns: DataGridColumnDef<ServerUser>[] = useMemo(() => [

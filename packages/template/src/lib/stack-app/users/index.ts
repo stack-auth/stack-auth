@@ -415,7 +415,7 @@ export type ServerBaseUser = {
   }>,
 }
 & AsyncStoreProperty<"team", [id: string], ServerTeam | null, false>
-& AsyncStoreProperty<"teams", [options?: { orderBy?: 'createdAt', desc?: boolean }], ServerTeam[], true>
+& AsyncStoreProperty<"teams", [], ServerTeam[], true>
 & AsyncStoreProperty<"teamsPaginated", [options?: ServerListTeamsOptions], { items: ServerTeam[], nextCursor: string | null }, true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { direct?: boolean }], AdminTeamPermission | null, false>
 & AsyncStoreProperty<"permissions", [scope: Team, options?: { direct?: boolean }], AdminTeamPermission[], true>;

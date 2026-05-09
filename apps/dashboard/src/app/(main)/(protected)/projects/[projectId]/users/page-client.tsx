@@ -106,7 +106,7 @@ export default function PageClient() {
           </div>
         }
       >
-        {firstUserPage.items.length > 0 ? null : (
+        {firstUserPage.length > 0 ? null : (
           <Alert variant='success'>
             Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
           </Alert>

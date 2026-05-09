@@ -347,7 +347,6 @@ function RestrictionDialog({
 function RestrictionBanner({ user }: { user: ServerUser }) {
   if (!user.isRestricted) return null;
 
-  const restrictedByAdmin = user.restrictedByAdmin;
   const restrictedByAdminReason = user.restrictedByAdminReason;
   const restrictedByAdminPrivateDetails = user.restrictedByAdminPrivateDetails;
   const reasonText = getRestrictionReasonText(user);
@@ -1039,7 +1038,7 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
   const [sortDesc, setSortDesc] = useState<boolean | undefined>(undefined);
-  const teams = user.useTeams(sortDesc === undefined ? undefined : { orderBy: 'createdAt', desc: sortDesc });
+  const teams = user.useTeamsPaginated(sortDesc === undefined ? undefined : { orderBy: 'createdAt', desc: sortDesc }).items;
   const [addTeamDialogOpen, setAddTeamDialogOpen] = useState(false);
   const [teamToRemove, setTeamToRemove] = useState<ServerTeam | null>(null);
 

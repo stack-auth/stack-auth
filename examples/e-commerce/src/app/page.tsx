@@ -4,9 +4,7 @@ import { stackServerApp } from "@/stack";
 
 export default async function Home() {
   const users = await stackServerApp.listUsers();
-  const shops: [ServerUser, Shop][] = users.items
-    .map((user: ServerUser) => [user, (user.serverMetadata as any)?.eCommerceExample?.shop as Shop | undefined] as const)
-    .filter((entry): entry is [ServerUser, Shop] => entry[1] != null);
+  const shops: [ServerUser, Shop][] = users.map(user => [user, (user.serverMetadata as any)?.eCommerceExample?.shop] as any).filter(([_, shop]) => shop);
   const currentUser = await stackServerApp.getUser();
 
   return (

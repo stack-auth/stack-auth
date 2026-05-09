@@ -107,7 +107,7 @@ export function TeamMemberSearchTable(props: {
         ? params.quickSearch.trim()
         : undefined;
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
-      const result = await stackAdminApp.listUsers({
+      const result = await stackAdminApp.listUsersPaginated({
         limit: PAGE_SIZE,
         query,
         cursor,

@@ -7,26 +7,22 @@ import {
   sessionReplayAdminRowToApiItem,
 } from "./session-replay-admin-rows";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const CLICK_FILTER_ID_CAP = 1000;
-const MAX_CSV_IDS = 200;
 
-function parseCsvIds(name: string, raw: string | undefined): string[] {
+function parseCsvIds(raw: string | undefined): string[] {
   if (!raw) return [];
-  const values = raw.split(",").map(s => s.trim()).filter(Boolean);
-  if (values.length > MAX_CSV_IDS) {
-    throw new StatusError(StatusError.BadRequest, `${name} accepts at most ${MAX_CSV_IDS} comma-separated values`);
-  }
-  return values;
+  return raw.split(",").map(s => s.trim()).filter(Boolean);
 }
 
 function parseCsvUuids(name: string, raw: string | undefined): string[] {
-  const values = parseCsvIds(name, raw);
+  const values = parseCsvIds(raw);
   for (const value of values) {
     if (!isUuid(value)) {
       throw new StatusError(StatusError.BadRequest, `${name} must contain valid UUID values`);
@@ -35,7 +31,6 @@ function parseCsvUuids(name: string, raw: string | undefined): string[] {
   return values;
 }
 
-// Escape ILIKE `%`/`_`/`\` so search text matches literally.
 function escapeLikePattern(input: string): string {
   return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
@@ -160,19 +155,13 @@ export const GET = createSmartRouteHandler({
     }
 
     // If click filter is active, get qualifying replay IDs from ClickHouse in one query
-    let clickQualifiedIds: string[] | null = null;
-    if (clickCountMin && clickCountMin > 0) {
-      try {
-        clickQualifiedIds = await loadClickQualifiedReplayIds({
-          projectId: auth.tenancy.project.id,
-          branchId: auth.tenancy.branchId,
-          clickCountMin,
-        });
-      } catch (e) {
-        captureError("session-replays-list-clickhouse", new Error(`ClickHouse query failed for click filter: tenancy=${auth.tenancy.id} project=${auth.tenancy.project.id} branch=${auth.tenancy.branchId} clickCountMin=${clickCountMin} cause=${e instanceof Error ? e.message : String(e)}`));
-        throw new StatusError(503, "Session-replay search backend is temporarily unavailable. Try again in a moment.");
-      }
-    }
+    const clickQualifiedIds = clickCountMin && clickCountMin > 0
+      ? await loadClickQualifiedReplayIds({
+        projectId: auth.tenancy.project.id,
+        branchId: auth.tenancy.branchId,
+        clickCountMin,
+      })
+      : null;
 
     if (clickQualifiedIds && clickQualifiedIds.length === 0) {
       return {
@@ -182,6 +171,7 @@ export const GET = createSmartRouteHandler({
       };
     }
 
+    // Handle cursor-based pagination
     const cursorId = query.cursor;
     let cursorPivot: { id: string, lastEventAt: Date } | null = null;
     if (cursorId) {
@@ -190,31 +180,9 @@ export const GET = createSmartRouteHandler({
         select: { id: true, lastEventAt: true },
       });
       if (!cursorPivot) {
-        return {
-          statusCode: 200,
-          bodyType: "json",
-          body: { items: [], pagination: { next_cursor: null } },
-        };
+        throw new KnownErrors.ItemNotFound(cursorId);
       }
     }
-
-    const cursorWhereSql = sortDirection === "asc"
-      ? cursorPivot
-        ? Prisma.sql`AND (
-            sr."lastEventAt" > ${cursorPivot.lastEventAt}
-            OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" > ${cursorId})
-          )`
-        : Prisma.empty
-      : cursorPivot
-        ? Prisma.sql`AND (
-            sr."lastEventAt" < ${cursorPivot.lastEventAt}
-            OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
-          )`
-        : Prisma.empty;
-
-    const orderBySql = sortDirection === "asc"
-      ? Prisma.sql`ORDER BY sr."lastEventAt" ASC, sr."id" ASC`
-      : Prisma.sql`ORDER BY sr."lastEventAt" DESC, sr."id" DESC`;
 
     const suffixSql = Prisma.sql`
         ${userIdsFilter.length > 0 ? Prisma.sql`AND sr."projectUserId" IN (${Prisma.join(userIdsFilter)})` : Prisma.empty}
@@ -230,11 +198,21 @@ export const GET = createSmartRouteHandler({
         ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
         ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}
         ${searchQuery ? Prisma.sql`AND (
-          sr."id"::text ILIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\'
-          OR pu."displayName" ILIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\'
+          sr."id"::text ILIKE ${`%${escapeLikePattern(searchQuery)}%`}
+          OR pu."displayName" ILIKE ${`%${escapeLikePattern(searchQuery)}%`}
         )` : Prisma.empty}
-        ${cursorWhereSql}
-      ${orderBySql}
+        ${cursorPivot ? (sortDirection === "asc"
+          ? Prisma.sql`AND (
+              sr."lastEventAt" > ${cursorPivot.lastEventAt}
+              OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" > ${cursorId})
+            )`
+          : Prisma.sql`AND (
+              sr."lastEventAt" < ${cursorPivot.lastEventAt}
+              OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
+            )`) : Prisma.empty}
+      ${sortDirection === "asc"
+        ? Prisma.sql`ORDER BY sr."lastEventAt" ASC, sr."id" ASC`
+        : Prisma.sql`ORDER BY sr."lastEventAt" DESC, sr."id" DESC`}
       LIMIT ${limit + 1}
     `;
 

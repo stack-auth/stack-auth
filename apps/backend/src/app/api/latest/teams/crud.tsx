@@ -288,14 +288,9 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     let queryFilter: Prisma.TeamWhereInput | undefined;
     if (query.query) {
-      const sanitized = query.query.replace(/[^a-zA-Z0-9\-_.]/g, '');
       queryFilter = {
         OR: [
-          ...isUuid(sanitized) ? [{
-            teamId: {
-              equals: sanitized,
-            },
-          }] : [],
+          ...isUuid(query.query) ? [{ teamId: { equals: query.query } }] : [],
           {
             displayName: {
               contains: query.query,
@@ -312,11 +307,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         select: { teamId: true },
       });
       if (!cursorRow) {
-        return {
-          items: [],
-          is_paginated: true,
-          pagination: { next_cursor: null },
-        };
+        throw new KnownErrors.ItemNotFound(query.cursor);
       }
     }
 
