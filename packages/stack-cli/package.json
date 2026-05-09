@@ -12,7 +12,6 @@
     "clean": "rimraf node_modules && rimraf dist",
     "build": "tsdown && node scripts/copy-emulator-assets.mjs",
     "dev": "tsdown --watch",
-    "dev:tui": "pnpm run dev",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

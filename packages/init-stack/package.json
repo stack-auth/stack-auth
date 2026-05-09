@@ -10,7 +10,6 @@
     "clean": "rimraf test-run-output && rimraf node_modules && rimraf dist",
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "dev:tui": "pnpm run dev",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
     "init-stack": "node dist/index.mjs",

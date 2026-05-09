@@ -7,7 +7,6 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch --clear-screen=false src/index.ts",
-    "dev:tui": "pnpm run dev",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "clean": "rimraf dist && rimraf node_modules"

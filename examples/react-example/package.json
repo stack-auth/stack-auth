@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite --force --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}20",
-    "dev:tui": "pnpm run dev",
     "build": "tsc -b && vite build",
     "clean": "rimraf dist && rimraf node_modules",
     "typecheck": "tsc --noEmit",

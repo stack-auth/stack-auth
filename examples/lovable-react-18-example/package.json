@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:tui": "pnpm run dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "echo 'No linting for this example'",

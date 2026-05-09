@@ -9,7 +9,6 @@
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
     "dev": "concurrently -n \"dev,bundle-type-defs\" -k \"next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01\" \"pnpm run bundle-type-definitions:watch\"",
-    "dev:tui": "pnpm run dev",
     "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
     "bundle-type-definitions:watch": "tsx watch --clear-screen=false scripts/bundle-type-definitions.ts",
     "build": "pnpm run bundle-type-definitions && next build",

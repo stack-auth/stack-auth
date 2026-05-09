@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/pre-dev.mjs && next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}41",
-    "dev:tui": "pnpm run dev",
     "build": "next build",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}41",
     "typecheck": "tsc --noEmit",
