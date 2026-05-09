@@ -104,43 +104,79 @@ function resolveUpdater<T>(updater: Updater<T>, current: T): T {
   return typeof updater === "function" ? (updater as (old: T) => T)(current) : updater;
 }
 
+// ─── Flex column width distribution ──────────────────────────────────
+
+function distributeFlexWidths<TRow>(
+  sizes: Record<string, number>,
+  visibleColumns: readonly DataGridColumnDef<TRow>[],
+  available: number,
+): void {
+  const flexCols = visibleColumns.filter((c) => c.flex != null && c.flex > 0);
+  if (flexCols.length === 0 || available <= 0) return;
+  const totalFlex = flexCols.reduce((acc, c) => acc + (c.flex ?? 0), 0);
+  let remaining = available;
+  flexCols.forEach((col, i) => {
+    const isLast = i === flexCols.length - 1;
+    const share = isLast
+      ? remaining
+      : Math.floor(available * ((col.flex ?? 0) / totalFlex));
+    const max = col.maxWidth ?? Infinity;
+    const add = Math.max(0, Math.min(share, max - sizes[col.id]));
+    sizes[col.id] += add;
+    remaining -= add;
+  });
+}
+
 // ─── Selection logic (with shift-range anchor) ───────────────────────
 
-function nextSelection(
+type SelectionInput = {
+  current: DataGridSelectionModel;
+  rowId: RowId;
+  mode: "single" | "multiple";
+  modifiers: { shift: boolean; ctrl: boolean };
+  allRowIds: readonly RowId[];
+};
+
+function selectSingle(current: DataGridSelectionModel, rowId: RowId): DataGridSelectionModel {
+  const isSelected = current.selectedIds.has(rowId);
+  return {
+    selectedIds: isSelected ? new Set() : new Set([rowId]),
+    anchorId: isSelected ? null : rowId,
+  };
+}
+
+function selectRange(
   current: DataGridSelectionModel,
   rowId: RowId,
-  mode: "single" | "multiple",
-  shiftKey: boolean,
-  ctrlKey: boolean,
   allRowIds: readonly RowId[],
-): DataGridSelectionModel {
-  if (mode === "single") {
-    const isSelected = current.selectedIds.has(rowId);
-    return {
-      selectedIds: isSelected ? new Set() : new Set([rowId]),
-      anchorId: isSelected ? null : rowId,
-    };
+  additive: boolean,
+): DataGridSelectionModel | null {
+  if (current.anchorId == null) return null;
+  const anchorIdx = allRowIds.indexOf(current.anchorId);
+  const currentIdx = allRowIds.indexOf(rowId);
+  if (anchorIdx < 0 || currentIdx < 0) return null;
+  const start = Math.min(anchorIdx, currentIdx);
+  const end = Math.max(anchorIdx, currentIdx);
+  const next = additive ? new Set(current.selectedIds) : new Set<RowId>();
+  for (let i = start; i <= end; i++) next.add(allRowIds[i]!);
+  return { selectedIds: next, anchorId: current.anchorId };
+}
+
+function selectToggle(current: DataGridSelectionModel, rowId: RowId): DataGridSelectionModel {
+  const next = new Set(current.selectedIds);
+  if (next.has(rowId)) next.delete(rowId);
+  else next.add(rowId);
+  return { selectedIds: next, anchorId: rowId };
+}
+
+function nextSelection(input: SelectionInput): DataGridSelectionModel {
+  const { current, rowId, mode, modifiers, allRowIds } = input;
+  if (mode === "single") return selectSingle(current, rowId);
+  if (modifiers.shift) {
+    const range = selectRange(current, rowId, allRowIds, modifiers.ctrl);
+    if (range != null) return range;
   }
-  if (shiftKey && current.anchorId != null) {
-    const anchorIdx = allRowIds.indexOf(current.anchorId);
-    const currentIdx = allRowIds.indexOf(rowId);
-    if (anchorIdx >= 0 && currentIdx >= 0) {
-      const start = Math.min(anchorIdx, currentIdx);
-      const end = Math.max(anchorIdx, currentIdx);
-      const next = ctrlKey ? new Set(current.selectedIds) : new Set<RowId>();
-      for (let i = start; i <= end; i++) next.add(allRowIds[i]!);
-      return { selectedIds: next, anchorId: current.anchorId };
-    }
-  }
-  if (ctrlKey) {
-    const next = new Set(current.selectedIds);
-    if (next.has(rowId)) {
-      next.delete(rowId);
-    } else {
-      next.add(rowId);
-    }
-    return { selectedIds: next, anchorId: rowId };
-  }
+  if (modifiers.ctrl) return selectToggle(current, rowId);
   return { selectedIds: new Set([rowId]), anchorId: rowId };
 }
 
@@ -614,7 +650,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         id: col.id,
         accessorFn: (row) => resolveColumnValue(col, row),
         header: typeof col.header === "string" ? col.header : col.id,
-        size: col.width ?? 150,
+        size: col.width ?? DEFAULT_COL_WIDTH,
         minSize: getEffectiveMinWidth(col),
         maxSize: getEffectiveMaxWidth(col),
         enableSorting: col.sortable !== false,
@@ -732,7 +768,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     onColumnVisibilityChange: handleVisibilityChange,
     onColumnOrderChange: handleColumnOrderChange,
     onColumnPinningChange: handleColumnPinningChange,
-    columnResizeMode: "onChange",
+    columnResizeMode: "onEnd",
     enableRowSelection: selectionMode !== "none",
     enableMultiRowSelection: selectionMode === "multiple",
     enableColumnResizing: resizable,
@@ -766,31 +802,23 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   }, []);
 
   // ── Column width CSS variables (TanStack pattern) ────────────
-  // Update on either columnSizing OR columnSizingInfo so resize-in-progress
-  // also reflows widths. Cells read via var(--col-X-size).
+  // With `columnResizeMode: "onEnd"`, live drag width comes from deltaOffset; committed sizes update on pointer-up.
   const columnSizingInfo = table.getState().columnSizingInfo;
   const columnSizes = useMemo<Record<string, number>>(() => {
     const sizes: Record<string, number> = {};
     let baseTotal = selectionMode !== "none" ? 44 : 0;
+    const resizingId = columnSizingInfo.isResizingColumn || null;
+    const deltaOffset = columnSizingInfo.deltaOffset ?? 0;
     for (const col of visibleColumns) {
-      const s = table.getColumn(col.id)?.getSize() ?? col.width ?? DEFAULT_COL_WIDTH;
-      sizes[col.id] = s;
-      baseTotal += s;
+      const tsCol = table.getColumn(col.id);
+      const baseSize = tsCol?.getSize() ?? col.width ?? DEFAULT_COL_WIDTH;
+      const liveSize = resizingId === col.id
+        ? clampColumnWidth(col, baseSize + deltaOffset)
+        : baseSize;
+      sizes[col.id] = liveSize;
+      baseTotal += liveSize;
     }
-    const flexCols = visibleColumns.filter((c) => c.flex != null && c.flex > 0);
-    if (flexCols.length > 0 && containerWidth > baseTotal) {
-      const totalFlex = flexCols.reduce((acc, c) => acc + (c.flex ?? 0), 0);
-      let remaining = containerWidth - baseTotal;
-      flexCols.forEach((col, i) => {
-        const share = i === flexCols.length - 1
-          ? remaining
-          : Math.floor((containerWidth - baseTotal) * ((col.flex ?? 0) / totalFlex));
-        const max = col.maxWidth ?? Infinity;
-        const add = Math.max(0, Math.min(share, max - sizes[col.id]));
-        sizes[col.id] += add;
-        remaining -= add;
-      });
-    }
+    distributeFlexWidths(sizes, visibleColumns, containerWidth - baseTotal);
     return sizes;
   }, [visibleColumns, table, columnSizingInfo, state.columnWidths, containerWidth, selectionMode]);
 
@@ -824,14 +852,13 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const handleRowClick = useCallback(
     (row: TRow, rowId: RowId, event: React.MouseEvent) => {
       if (selectionMode !== "none") {
-        const next = nextSelection(
-          state.selection,
+        const next = nextSelection({
+          current: state.selection,
           rowId,
-          selectionMode,
-          event.shiftKey,
-          event.metaKey || event.ctrlKey,
-          rowIds,
-        );
+          mode: selectionMode,
+          modifiers: { shift: event.shiftKey, ctrl: event.metaKey || event.ctrlKey },
+          allRowIds: rowIds,
+        });
         fireSelection(next);
       }
       onRowClick?.(row, rowId, event);

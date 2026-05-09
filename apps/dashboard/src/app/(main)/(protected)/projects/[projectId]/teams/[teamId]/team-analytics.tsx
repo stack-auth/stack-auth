@@ -304,8 +304,18 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
     const runQuery = (query: string, params: Record<string, unknown>) =>
       stackAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
 
+    const emptySummary: SummaryRow = {
+      total_events: 0,
+      active_users_30d: 0,
+      active_users_7d: 0,
+      last_event_at: null,
+      prev_total_events: 0,
+      prev_active_users_30d: 0,
+      prev_active_users_7d: 0,
+    };
+
     runAsynchronously(async () => {
-      const [summaryRes, dauRes, heatmapRes, contributorsRes] = await Promise.all([
+      const results = await Promise.allSettled([
         runQuery(SUMMARY_QUERY, {
           ...baseParams,
           since7d: toClickhouseDateTimeParam(since7d),
@@ -323,13 +333,26 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
 
       if (token.cancelled) return;
 
+      const queryNames = ["summary", "dau", "heatmap", "contributors"] as const;
+      for (const [i, res] of results.entries()) {
+        if (res.status === "rejected") {
+          captureError(`team-analytics-query:${queryNames[i]}`, res.reason);
+        }
+      }
+      if (results.every((r) => r.status === "rejected")) {
+        setState({ status: "error" });
+        return;
+      }
+
+      const [summaryRes, dauRes, heatmapRes, contributorsRes] = results;
+
       setState({
         status: "ready",
         data: {
-          summary: parseSummary(summaryRes.result),
-          dau: parseDau(dauRes.result),
-          heatmap: parseHeatmap(heatmapRes.result),
-          contributors: parseContributors(contributorsRes.result),
+          summary: summaryRes.status === "fulfilled" ? parseSummary(summaryRes.value.result) : emptySummary,
+          dau: dauRes.status === "fulfilled" ? parseDau(dauRes.value.result) : [],
+          heatmap: heatmapRes.status === "fulfilled" ? parseHeatmap(heatmapRes.value.result) : [],
+          contributors: contributorsRes.status === "fulfilled" ? parseContributors(contributorsRes.value.result) : [],
         },
       });
     }, {

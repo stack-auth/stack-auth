@@ -198,7 +198,7 @@ export const GET = createSmartRouteHandler({
       }
     }
 
-    const cursorComparator = sortDirection === "asc"
+    const cursorWhereSql = sortDirection === "asc"
       ? cursorPivot
         ? Prisma.sql`AND (
             sr."lastEventAt" > ${cursorPivot.lastEventAt}
@@ -230,10 +230,10 @@ export const GET = createSmartRouteHandler({
         ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
         ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}
         ${searchQuery ? Prisma.sql`AND (
-          sr."id"::text ILIKE ${`%${escapeLikePattern(searchQuery)}%`}
-          OR pu."displayName" ILIKE ${`%${escapeLikePattern(searchQuery)}%`}
+          sr."id"::text ILIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\'
+          OR pu."displayName" ILIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\'
         )` : Prisma.empty}
-        ${cursorComparator}
+        ${cursorWhereSql}
       ${orderBySql}
       LIMIT ${limit + 1}
     `;
