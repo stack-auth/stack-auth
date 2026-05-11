@@ -1,7 +1,7 @@
 "use client";
 
 import { TeamSearchTable } from "@/components/data-table/team-search-table";
-import { UserSearchPicker } from "@/components/data-table/user-search-picker";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1562,7 +1562,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                         <DialogTitle>User Filter</DialogTitle>
                       </DialogHeader>
                       <div className="space-y-3">
-                        <UserSearchPicker
+                        <UserPickerTable
                           action={(user) => (
                             <Button
                               variant="outline"

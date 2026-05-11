@@ -1,6 +1,6 @@
 "use client";
 
-import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { DesignButton } from "@/components/design-components";
 import { DesignCard } from "@/components/design-components";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
@@ -379,7 +379,7 @@ function RecipientsStage({ draftId, onBack, onNext, onStepClick }: RecipientsSta
                 )}
 
                 {/* Search Table */}
-                <TeamMemberSearchTable
+                <UserPickerTable
                   action={(user) => (
                     <Button
                       type="button"

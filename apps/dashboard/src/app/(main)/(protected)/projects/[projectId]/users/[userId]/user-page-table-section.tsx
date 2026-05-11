@@ -1,6 +1,6 @@
 "use client";
 
-import { createDefaultDataGridState, DataGrid, type DataGridColumnDef, type DataGridSortModel, useDataSource } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, type DataGridColumnDef, type DataGridSortModel, useDataGridUrlState, useDataSource } from "@stackframe/dashboard-ui-components";
 import { useState, type ReactNode } from "react";
 
 type UserPageTableSectionProps<TRow> = {
@@ -20,7 +20,15 @@ type UserPageTableSectionProps<TRow> = {
   isInitialLoading?: boolean,
   /** Non-null when the latest fetch failed. Rendered in place of empty/loading state. */
   error?: ReactNode | null,
+  urlStateKey?: string,
 };
+
+function useGridState<TRow>(columns: readonly DataGridColumnDef<TRow>[], urlStateKey?: string) {
+  // Always call both hooks for rules-of-hooks; return whichever the caller opted into.
+  const urlBacked = useDataGridUrlState(columns, urlStateKey ? { paramPrefix: urlStateKey } : undefined);
+  const localBacked = useState(() => createDefaultDataGridState(columns));
+  return urlStateKey ? urlBacked : localBacked;
+}
 
 export function UserPageTableSection<TRow,>({
   title,
@@ -37,8 +45,9 @@ export function UserPageTableSection<TRow,>({
   paginated,
   isInitialLoading,
   error,
+  urlStateKey,
 }: UserPageTableSectionProps<TRow>) {
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useGridState(columns, urlStateKey);
   const gridData = useDataSource({
     data: paginated ? rows : [],
     columns,

@@ -2,6 +2,19 @@ import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/s
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
+// Binary search: index of the first item whose id > cursor, in an
+// array already sorted by `stringCompare(a.id, b.id)`.
+function firstIndexAfter<T extends { id: string }>(sorted: T[], cursor: string): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (stringCompare(sorted[mid].id, cursor) <= 0) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 type PermissionDefinition = {
   id: string,
   description?: string,
@@ -40,10 +53,14 @@ export function paginatePermissionDefinitions(items: PermissionDefinition[], que
   let startIdx = 0;
   if (query.cursor != null) {
     const cursorIdx = filtered.findIndex((p) => p.id === query.cursor);
-    if (cursorIdx === -1) {
-      throw new StatusError(StatusError.BadRequest, `Cursor not found: ${query.cursor}`);
-    }
-    startIdx = cursorIdx + 1;
+    // If the cursor row was deleted (or filtered out) between page
+    // requests, fall back to "first id strictly greater than the cursor"
+    // rather than 400'ing the client mid-scroll. Worst case the user
+    // sees a one-row gap; the alternative is a hard error on infinite
+    // scroll for any concurrent edit.
+    startIdx = cursorIdx === -1
+      ? firstIndexAfter(filtered, query.cursor)
+      : cursorIdx + 1;
   }
   const slice = filtered.slice(startIdx, startIdx + query.limit);
   const hasMore = startIdx + query.limit < filtered.length;

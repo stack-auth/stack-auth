@@ -100,6 +100,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   >(async ([teamId, userId, recursive]) => {
     return await this._interface.listServerTeamPermissions({ teamId, userId, recursive }, null);
   });
+  // Bulk variant: one request returning permissions for every member of a
+  // team. Used by the dashboard's team-member table to avoid N per-row
+  // calls. Keyed without userId so it's a distinct cache entry from the
+  // per-user lookup above.
+  private readonly _serverAllTeamMemberPermissionsCache = createCache<
+    [string, boolean],
+    TeamPermissionsCrud['Server']['Read'][]
+  >(async ([teamId, recursive]) => {
+    return await this._interface.listServerTeamPermissions({ teamId, recursive }, null);
+  });
   private readonly _serverUserProjectPermissionsCache = createCache<
     [string, boolean],
     ProjectPermissionsCrud['Server']['Read'][]
@@ -606,6 +616,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
           for (const recursive of [true, false]) {
             await app._serverTeamUserPermissionsCache.refresh([scope.id, crud.id, recursive]);
+            await app._serverAllTeamMemberPermissionsCache.refresh([scope.id, recursive]);
           }
         } else {
           const pId = scopeOrPermissionId as string;
@@ -623,6 +634,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
           for (const recursive of [true, false]) {
             await app._serverTeamUserPermissionsCache.refresh([scope.id, crud.id, recursive]);
+            await app._serverAllTeamMemberPermissionsCache.refresh([scope.id, recursive]);
           }
         } else {
           const pId = scopeOrPermissionId as string;
@@ -1565,6 +1577,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         nextCursor: crud.pagination?.next_cursor ?? null,
       };
     }, [crud]);
+  }
+  // END_PLATFORM
+
+  async listTeamMemberPermissions(teamId: string, options?: { recursive?: boolean }): Promise<{ userId: string, permissionId: string }[]> {
+    const recursive = options?.recursive ?? false;
+    const rows = Result.orThrow(await this._serverAllTeamMemberPermissionsCache.getOrWait([teamId, recursive] as const, "write-only"));
+    return rows.map((r) => ({ userId: r.user_id, permissionId: r.id }));
+  }
+
+  // IF_PLATFORM react-like
+  useTeamMemberPermissions(teamId: string, options?: { recursive?: boolean }): { userId: string, permissionId: string }[] {
+    const recursive = options?.recursive ?? false;
+    const rows = useAsyncCache(this._serverAllTeamMemberPermissionsCache, [teamId, recursive] as const, "serverApp.useTeamMemberPermissions()");
+    return useMemo(() => rows.map((r) => ({ userId: r.user_id, permissionId: r.id })), [rows]);
   }
   // END_PLATFORM
 

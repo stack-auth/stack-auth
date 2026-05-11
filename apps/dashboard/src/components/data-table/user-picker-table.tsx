@@ -22,7 +22,7 @@ import { extendUsers } from "./user-table";
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
 
-export function TeamMemberSearchTable(props: {
+export function UserPickerTable(props: {
   action: (user: ServerUser) => React.ReactNode,
 }) {
   const stackAdminApp = useAdminApp();
@@ -98,9 +98,6 @@ export function TeamMemberSearchTable(props: {
   // Debounce the toolbar search so we don't hit `listUsers` on every keystroke.
   const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
 
-  // Server-side infinite data source. Identity is stable (no closure state
-  // beyond `stackAdminApp`) so refetches are driven purely by the debounced
-  // `quickSearch` key inside `useDataSource`.
   const dataSource = useMemo<DataGridDataSource<ServerUser>>(
     () => async function* (params) {
       const query = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
@@ -146,6 +143,8 @@ export function TeamMemberSearchTable(props: {
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      fillHeight={false}
+      maxHeight={420}
       footer={false}
       emptyState={
         <div className="text-center py-8">

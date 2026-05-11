@@ -769,6 +769,7 @@ function TopContributorsTable({
   return (
     <UserPageTableSection
       title="Top contributors"
+      urlStateKey="contributors"
       columns={columns}
       rows={rows}
       getRowId={(row) => row.id}

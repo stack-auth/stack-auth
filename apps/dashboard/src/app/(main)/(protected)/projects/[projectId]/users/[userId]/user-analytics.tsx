@@ -923,6 +923,7 @@ function TopPathsTableSection({
   return (
     <UserPageTableSection
       title={title}
+      urlStateKey={title.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12)}
       columns={columns}
       rows={rows}
       getRowId={(row) => row.label}
@@ -989,6 +990,7 @@ function RecentEventsTableSection({
   return (
     <UserPageTableSection
       title="Recent activity"
+      urlStateKey="userevents"
       columns={columns}
       rows={rows}
       getRowId={(row) => row.id}

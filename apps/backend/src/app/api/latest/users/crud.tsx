@@ -520,7 +520,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   }),
   querySchema: yupObject({
     team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Only return users who are members of the given team" } }),
-    limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
+    limit: yupNumber().integer().min(1).max(200).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return (capped at 200)." } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
     order_by: yupString().oneOf(['signed_up_at', 'last_active_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
@@ -629,9 +629,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         },
         { projectUserId: sortDirection },
       ],
-      // +1 because we need to know if there is a next page
+      // +1 to detect whether a next page exists without a separate count.
       take: query.limit ? query.limit + 1 : undefined,
+      // Cursor convention (matches teams/crud.tsx): the client sends the
+      // id of the LAST row of the previous page; Prisma starts AT that id,
+      // and `skip: 1` drops it so we don't re-emit it.
       ...query.cursor ? {
+        skip: 1,
         cursor: {
           tenancyId_projectUserId: {
             tenancyId: auth.tenancy.id,
@@ -641,13 +645,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     });
 
+    const items = db.slice(0, query.limit).map((user) => userPrismaToCrud(user, auth.tenancy.config));
+    const hasMore = query.limit != null && db.length > query.limit;
     return {
-      // remove the last item because it's the next cursor
-      items: db.map((user) => userPrismaToCrud(user, auth.tenancy.config)).slice(0, query.limit),
+      items,
       is_paginated: true,
       pagination: {
-        // if result is not full length, there is no next cursor
-        next_cursor: query.limit && db.length >= query.limit + 1 ? db[db.length - 1].projectUserId : null,
+        next_cursor: hasMore && items.length > 0 ? items[items.length - 1].id : null,
       },
     };
   },

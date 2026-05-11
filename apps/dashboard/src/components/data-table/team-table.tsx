@@ -4,12 +4,11 @@ import { useRouter } from "@/components/router";
 import { ActionCell, ActionDialog, Typography } from "@/components/ui";
 import { ServerTeam } from '@stackframe/stack';
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import React, { useCallback, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
@@ -156,10 +155,12 @@ export function TeamTable() {
   const router = useRouter();
   const stackAdminApp = useAdminApp();
 
-  const [gridState, setGridState] = useState<DataGridState>(() => ({
-    ...createDefaultDataGridState(columns),
-    sorting: [{ columnId: "createdAt", direction: "desc" }],
-  }));
+  const [gridState, setGridState] = useDataGridUrlState(columns, {
+    paramPrefix: "teams",
+    initial: {
+      sorting: [{ columnId: "createdAt", direction: "desc" }],
+    },
+  });
 
   const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
 

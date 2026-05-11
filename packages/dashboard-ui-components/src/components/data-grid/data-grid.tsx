@@ -790,14 +790,22 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const rowIds = useMemo(() => rows.map(getRowId), [rows, getRowId]);
 
   // ── Container width tracking (for `flex` column distribution) ─
+  // Measure the scroll container's clientWidth, which excludes the vertical
+  // scrollbar — using the outer grid would leave a few pixels of phantom
+  // horizontal scroll when rows overflow.
   const [containerWidth, setContainerWidth] = useState(0);
   useLayoutEffect(() => {
-    const el = gridRef.current;
-    if (!el) return;
-    const update = () => setContainerWidth(el.clientWidth);
+    const grid = gridRef.current;
+    const scroller = scrollContainerRef.current;
+    if (!grid) return;
+    const update = () => {
+      const w = scroller?.clientWidth ?? grid.clientWidth;
+      if (w > 0) setContainerWidth(w);
+    };
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(el);
+    observer.observe(grid);
+    if (scroller) observer.observe(scroller);
     return () => observer.disconnect();
   }, []);
 
@@ -997,12 +1005,15 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     return m;
   }, [headers]);
 
+  const isBounded = fillHeight || maxHeight != null;
+
   return (
     <div
       ref={gridRef}
       className={cn(
         "isolate flex w-full min-w-0 max-w-full flex-col bg-transparent rounded-[calc(var(--radius)*2)]",
         fillHeight ? "min-h-0 h-full" : "min-h-0 h-auto",
+        isBounded && "overflow-hidden",
         className,
       )}
       style={maxHeight != null ? { ...cssVars, maxHeight } : cssVars}
@@ -1013,7 +1024,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       <div
         ref={stickyChromeRef}
         className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl"
-        style={{ top: stickyTop ?? "var(--data-grid-sticky-top, 0px)" }}
+        style={{ top: stickyTop ?? (maxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
       >
         {toolbar !== false && (
           <div className="relative bg-transparent">
@@ -1073,7 +1084,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         ref={scrollContainerRef}
         className={cn(
           "relative z-0 w-full min-w-0 overflow-auto bg-transparent",
-          fillHeight ? "min-h-0 flex-1" : "flex-none",
+          isBounded ? "min-h-0 flex-1" : "flex-none",
           "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",

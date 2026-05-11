@@ -167,6 +167,7 @@ export function UserSessionReplaysSection({ user }: { user: ServerUser }) {
   return (
     <UserPageTableSection
       title="Session Replays"
+      urlStateKey="userreplays"
       columns={columns}
       rows={rows}
       getRowId={(replay) => replay.id}

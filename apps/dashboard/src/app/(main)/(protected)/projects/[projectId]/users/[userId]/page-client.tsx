@@ -943,6 +943,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
 
       <UserPageTableSection
         title="Contact Channels"
+        urlStateKey="contactch"
         columns={contactChannelColumns}
         rows={contactChannels}
         getRowId={(channel) => channel.id}
@@ -1135,6 +1136,7 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
     <>
       <UserPageTableSection
         title="Teams"
+        urlStateKey="userteams"
         columns={teamColumns}
         rows={teams}
         getRowId={(team) => team.id}
@@ -1156,7 +1158,7 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
       />
       <Dialog open={addTeamDialogOpen} onOpenChange={setAddTeamDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+          <DialogHeader className="mb-4">
             <DialogTitle>Add to team</DialogTitle>
           </DialogHeader>
           <TeamSearchTable
@@ -1519,6 +1521,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
 
       <UserPageTableSection
         title="OAuth Providers"
+        urlStateKey="useroauth"
         columns={oauthColumns}
         rows={oauthProviders}
         getRowId={(provider) => provider.id}

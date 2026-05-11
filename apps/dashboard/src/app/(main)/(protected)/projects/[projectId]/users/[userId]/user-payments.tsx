@@ -320,6 +320,7 @@ function ProductsTableSection({ userId, transactions }: { userId: string, transa
   return (
     <UserPageTableSection
       title="Products & subscriptions"
+      urlStateKey="usersubs"
       columns={columns}
       rows={grants}
       getRowId={(grant) => grant.key}
@@ -454,6 +455,7 @@ function TransactionsTableSection({ userId, transactions }: { userId: string, tr
   return (
     <UserPageTableSection
       title="Transaction history"
+      urlStateKey="usertxns"
       columns={columns}
       rows={ordered}
       getRowId={(transaction) => transaction.id}

@@ -1,8 +1,3 @@
-// TODO(ui-fixes-minor): URL-synced query state (filter / search / page) was
-// dropped when this table was migrated off `usePaginatedData` +
-// `useUrlQueryState` + `useCursorPaginationCache`. Back-button and reload no
-// longer restore the user's view. Restore via the same hooks (still in
-// `./common/`) or call out the regression in the PR description before ship.
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
@@ -29,12 +24,11 @@ import {
 import { CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@stackframe/stack";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -201,10 +195,12 @@ function UserTableBody(props: {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
 
-  const [gridState, setGridState] = useState<DataGridState>(() => ({
-    ...createDefaultDataGridState(USER_TABLE_COLUMNS),
-    sorting: [{ columnId: "signedUpAt", direction: filters.signedUpOrder }],
-  }));
+  const [gridState, setGridState] = useDataGridUrlState(USER_TABLE_COLUMNS, {
+    paramPrefix: "users",
+    initial: {
+      sorting: [{ columnId: "signedUpAt", direction: DEFAULT_FILTERS.signedUpOrder }],
+    },
+  });
 
   // Sync the sort header back into `filters` so the parent can persist it.
   const sortDirection = gridState.sorting.find((s) => s.columnId === "signedUpAt")?.direction ?? "desc";
@@ -292,7 +288,7 @@ function UserTableBody(props: {
       quickSearch: "",
       sorting: [{ columnId: "signedUpAt", direction: DEFAULT_FILTERS.signedUpOrder }],
     }));
-  }, [setFilters]);
+  }, [setFilters, setGridState]);
 
   const filterValue = filters.onlyAnonymous ? "anonymous-only" : filters.includeAnonymous ? "anonymous" : filters.includeRestricted ? "restricted" : "standard";
 

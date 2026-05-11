@@ -3,12 +3,11 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ActionCell, ActionDialog, SimpleTooltip } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { useCallback, useContext, useMemo, useState, createContext } from "react";
 import { useDebounce } from "use-debounce";
@@ -232,7 +231,12 @@ export function PermissionTable(props: {
     () => createColumns<AdminPermissionDefinition>(props.permissionType),
     [props.permissionType],
   );
-  const [gridState, setGridState] = useState<DataGridState>(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, {
+    // Distinct prefixes for project vs team permissions so the two grids
+    // can't collide if ever rendered together, and so bookmarks scoped to
+    // one don't bleed into the other.
+    paramPrefix: props.permissionType === "project" ? "projperms" : "teamperms",
+  });
   const [internalRefetchKey, setInternalRefetchKey] = useState(0);
   const refetchPermissions = useCallback(() => setInternalRefetchKey((k) => k + 1), []);
   const refetchKey = internalRefetchKey + (props.version ?? 0);

@@ -8,7 +8,7 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
-import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridState } from '@stackframe/dashboard-ui-components';
+import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@stackframe/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
@@ -602,9 +602,7 @@ function TransactionTableBody(props: {
     },
   ], []);
 
-  const [gridState, setGridState] = useState<DataGridState>(() =>
-    createDefaultDataGridState(columns)
-  );
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "transactions" });
 
   const gridData = useDataSource({
     dataSource,

@@ -17,12 +17,11 @@ import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { CheckCircleIcon, CopyIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -382,16 +381,12 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
     },
   ], [props.team]);
 
-  const [gridState, setGridState] = useState<DataGridState>(() => {
-    const base = createDefaultDataGridState(teamMemberColumns);
-    return {
-      ...base,
+  const [gridState, setGridState] = useDataGridUrlState(teamMemberColumns, {
+    paramPrefix: "members",
+    initial: {
       sorting: [{ columnId: "lastActiveAt", direction: "desc" }],
-      columnVisibility: {
-        ...base.columnVisibility,
-        emailStatus: false,
-      },
-    };
+      columnVisibility: { emailStatus: false },
+    },
   });
 
   const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
@@ -405,46 +400,59 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
       const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
         ? params.quickSearch.trim()
         : undefined;
-      const result = await stackAdminApp.listUsersPaginated({
-        limit: PAGE_SIZE,
-        teamId: props.team.id,
-        orderBy: "lastActiveAt",
-        desc: sortDesc,
-        cursor,
-        query: search,
-        includeAnonymous: true,
-        includeRestricted: true,
-      });
-      const extended = extendUsers(result.items);
-      const settled = await Promise.allSettled(
-        extended.map(async (user) => {
-          const perms = await withTimeout(
-            user.listPermissions(props.team, { recursive: false }),
-            PERMISSION_FETCH_TIMEOUT_MS,
-            `listPermissions(${user.id})`,
-          );
-          return [user.id, perms.map(p => p.id)] as const;
-        })
-      );
-      const permissionResults = settled.map((res, idx): readonly [string, string[] | null] => {
-        if (res.status === "fulfilled") return res.value;
-        captureError("team-member-table-list-permissions", res.reason instanceof Error ? res.reason : new Error(String(res.reason)));
-        return [extended[idx].id, null] as const;
-      });
+      // Fan the user-list page and the team-wide permissions bulk-fetch
+      // out in parallel — they're independent and the bulk fetch is
+      // cached across pages of the same team.
+      const [result, permsResult] = await Promise.allSettled([
+        stackAdminApp.listUsersPaginated({
+          limit: PAGE_SIZE,
+          teamId: props.team.id,
+          orderBy: "lastActiveAt",
+          desc: sortDesc,
+          cursor,
+          query: search,
+          includeAnonymous: true,
+          includeRestricted: true,
+        }),
+        withTimeout(
+          stackAdminApp.listTeamMemberPermissions(props.team.id, { recursive: false }),
+          PERMISSION_FETCH_TIMEOUT_MS,
+          `listTeamMemberPermissions(${props.team.id})`,
+        ),
+      ]);
+      if (result.status === "rejected") throw result.reason;
+      const extended = extendUsers(result.value.items);
+      let permsByUser: Map<string, string[]> | null = null;
+      if (permsResult.status === "fulfilled") {
+        permsByUser = new Map();
+        for (const { userId, permissionId } of permsResult.value) {
+          const existing = permsByUser.get(userId);
+          if (existing) existing.push(permissionId);
+          else permsByUser.set(userId, [permissionId]);
+        }
+      } else {
+        captureError(
+          "team-member-table-list-permissions",
+          permsResult.reason instanceof Error ? permsResult.reason : new Error(String(permsResult.reason)),
+        );
+      }
       if (reqId !== permissionRequestIdRef.current) return;
+      const resolved = extended.map((user): readonly [string, string[] | null] =>
+        [user.id, permsByUser ? (permsByUser.get(user.id) ?? []) : null] as const,
+      );
       setPermissions((prev) => {
         const next = new Map(prev);
-        for (const [id, perms] of permissionResults) next.set(id, perms);
+        for (const [id, perms] of resolved) next.set(id, perms);
         return next;
       });
-      const permsMap = new Map(permissionResults);
+      const permsMap = new Map(resolved);
       yield {
         rows: extended.map((user) => ({
           ...user,
           permissions: permsMap.has(user.id) ? permsMap.get(user.id) ?? null : null,
         })),
-        hasMore: result.nextCursor != null,
-        nextCursor: result.nextCursor ?? undefined,
+        hasMore: result.value.nextCursor != null,
+        nextCursor: result.value.nextCursor ?? undefined,
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- updateCounter forces refetch after permission edits

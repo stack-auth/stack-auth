@@ -74,6 +74,17 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     useTeamsPaginated(options?: ServerListTeamsOptions): { items: ServerTeam[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listTeamsPaginated(options?: ServerListTeamsOptions): Promise<{ items: ServerTeam[], nextCursor: string | null }>,
 
+    /**
+     * Returns every direct (or recursive) team permission grant for every
+     * member of the given team in one request. Use this instead of calling
+     * `user.listPermissions(team)` per row when rendering a roster — that
+     * pattern produces an N+1 over the team-member endpoint.
+     */
+    listTeamMemberPermissions(teamId: string, options?: { recursive?: boolean }): Promise<{ userId: string, permissionId: string }[]>,
+    // IF_PLATFORM react-like
+    useTeamMemberPermissions(teamId: string, options?: { recursive?: boolean }): { userId: string, permissionId: string }[],
+    // END_PLATFORM
+
     // TODO this should actually be on ServerUser
     createOAuthProvider(options: {
       userId: string,

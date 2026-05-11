@@ -341,6 +341,7 @@ function ProductsTableSection({ teamId, transactions }: { teamId: string, transa
   return (
     <UserPageTableSection
       title="Products & subscriptions"
+      urlStateKey="teamsubs"
       columns={columns}
       rows={grants}
       getRowId={(grant) => grant.key}
@@ -475,6 +476,7 @@ function TransactionsTableSection({ teamId, transactions }: { teamId: string, tr
   return (
     <UserPageTableSection
       title="Transaction history"
+      urlStateKey="teamtxns"
       columns={columns}
       rows={ordered}
       getRowId={(transaction) => transaction.id}
