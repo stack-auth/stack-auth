@@ -11,6 +11,7 @@ import { seed } from "../prisma/seed";
 import { runBackfillInternalFreePlans } from "./backfill-internal-free-plans";
 import { runBulldozerPaymentsInit } from "./bulldozer-payments-init";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
+import { runRegenInternalSubscriptionsToLatest } from "./regen-internal-subscriptions-to-latest";
 
 const getClickhouseClient = () => getClickhouseAdminClient();
 
@@ -186,6 +187,10 @@ Commands:
   init                             Apply migrations and seed the database
   migrate                          Apply migrations
   backfill-internal-free-plans     Grant the free plan to internal-tenancy teams that have no plan. Run AFTER seed.
+  regen-internal-subscriptions-to-latest
+                                   Bring every active internal-tenancy subscription up to the latest version of its
+                                   product (rewrites the stored snapshot; rebases Stripe metadata for live subs).
+                                   Idempotent. Run AFTER seed and AFTER backfill-internal-free-plans.
   help                             Show this help message
 
 Options:
@@ -238,6 +243,15 @@ const main = async () => {
       // reads from is populated.
       await runBulldozerPaymentsInit(globalPrismaClient);
       await runBackfillInternalFreePlans();
+      break;
+    }
+    case 'regen-internal-subscriptions-to-latest': {
+      // Explicit step — callers must guarantee the internal tenancy has been
+      // seeded. Bulldozer init runs first because the regen reads
+      // `sub.product` via the Subscription LFold; without init the per-sub
+      // equality check would compare against a stale view.
+      await runBulldozerPaymentsInit(globalPrismaClient);
+      await runRegenInternalSubscriptionsToLatest();
       break;
     }
     case 'help': {
