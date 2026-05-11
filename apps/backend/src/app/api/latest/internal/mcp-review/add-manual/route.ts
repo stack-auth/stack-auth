@@ -1,4 +1,4 @@
-import { callReducerStrict } from "@/lib/ai/spacetimedb-client";
+import { callReducerStrict, opt } from "@/lib/ai/spacetimedb-client";
 import { assertIsAiChatReviewer } from "@/lib/ai/qa/reviewer-auth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -16,6 +16,7 @@ export const POST = createSmartRouteHandler({
       question: yupString().defined(),
       answer: yupString().defined(),
       publish: yupBoolean().defined(),
+      requestId: yupString(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -27,8 +28,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
+    assertIsAiChatReviewer(auth);
     const user = auth.user;
-    assertIsAiChatReviewer(user);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     await callReducerStrict("add_manual_qa", [
@@ -37,6 +38,7 @@ export const POST = createSmartRouteHandler({
       body.answer,
       body.publish,
       user.display_name ?? user.primary_email ?? user.id,
+      body.requestId
     ]);
 
     return {

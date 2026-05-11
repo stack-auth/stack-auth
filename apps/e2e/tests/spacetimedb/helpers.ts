@@ -158,6 +158,27 @@ function coerceBigInt(raw: unknown): bigint | undefined {
   if (typeof raw === "bigint") return raw;
   return undefined;
 }
+async function collectStackUserIdsForIdentities(
+  callerToken: string,
+  identities: ReadonlySet<string>,
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (identities.size === 0) return out;
+  const { rows } = await sqlQuery(callerToken, "SELECT * FROM operators");
+  for (const row of rows) {
+    const stackUserIdRaw = row.stack_user_id ?? row.stackUserId;
+    if (typeof stackUserIdRaw !== "string") continue;
+    if (stackUserIdRaw === "__service__") continue;
+    const rowJson = JSON.stringify(row).toLowerCase();
+    for (const identity of identities) {
+      if (rowJson.includes(identity.toLowerCase())) {
+        out.add(stackUserIdRaw);
+        break;
+      }
+    }
+  }
+  return out;
+}
 
 /**
  * Per-test collector for anything these tests drop into SpacetimeDB so
@@ -198,11 +219,12 @@ export function createCleanupScope(): CleanupScope {
       const caller = await mintIdentity().catch(() => null);
       if (caller == null) return;
 
+      const callerStackUserId = `cleanup-${caller.identity}`;
       try {
         await callReducer(caller.token, "add_operator", [
           logToken,
           [`0x${caller.identity}`],
-          `__cleanup__-${caller.identity}`,
+          callerStackUserId,
           "Cleanup Scope",
         ]).catch(() => undefined);
 
@@ -225,11 +247,15 @@ export function createCleanupScope(): CleanupScope {
           await callReducer(caller.token, "delete_ai_query_log", [logToken, correlationId]).catch(() => undefined);
         }
 
-        for (const identity of identities) {
-          await callReducer(caller.token, "remove_operator", [logToken, [`0x${identity}`]]).catch(() => undefined);
+        if (identities.size > 0) {
+          const stackUserIdsToRemove = await collectStackUserIdsForIdentities(caller.token, identities)
+            .catch(() => new Set<string>());
+          for (const stackUserId of stackUserIdsToRemove) {
+            await callReducer(caller.token, "remove_operators_for_user", [logToken, stackUserId]).catch(() => undefined);
+          }
         }
       } finally {
-        await callReducer(caller.token, "remove_operator", [logToken, [`0x${caller.identity}`]]).catch(() => undefined);
+        await callReducer(caller.token, "remove_operators_for_user", [logToken, callerStackUserId]).catch(() => undefined);
         identities.clear();
         questions.clear();
         aiQueryCorrelationIds.clear();

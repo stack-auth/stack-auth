@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
-    assertIsAiChatReviewer(auth.user);
+    assertIsAiChatReviewer(auth);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     await callReducerStrict("unmark_human_reviewed", [

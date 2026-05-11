@@ -29,24 +29,6 @@ if (publish.status !== 0) {
 }
 
 await provisionServiceToken();
-await runQaEntriesBackfill();
-
-async function runQaEntriesBackfill() {
-  const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "stack-auth-llm";
-  const logToken = process.env.STACK_MCP_LOG_TOKEN ?? "";
-  if (!logToken) {
-    console.warn("[internal-tool] STACK_MCP_LOG_TOKEN not set; skipping qa_entries backfill.");
-    return;
-  }
-  const result = spawnSync(
-    "spacetime",
-    ["call", dbName, "backfill_qa_entries", JSON.stringify(logToken)],
-    { stdio: "inherit" },
-  );
-  if (result.status !== 0) {
-    console.warn(`[internal-tool] backfill_qa_entries returned ${result.status}; ignoring (may already be migrated).`);
-  }
-}
 
 async function provisionServiceToken() {
   const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";

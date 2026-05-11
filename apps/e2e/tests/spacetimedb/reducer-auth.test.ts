@@ -57,16 +57,17 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
 
     const cases = [
       { name: "add_operator", args: [wrong, [hexId], "some-user", "Some Name"] },
-      { name: "remove_operator", args: [wrong, [hexId]] },
+      { name: "remove_operators_for_user", args: [wrong, "some-user"] },
       { name: "enroll_service", args: [wrong, "Some Service"] },
       { name: "mark_human_reviewed", args: [wrong, "corr", "reviewer"] },
       { name: "unmark_human_reviewed", args: [wrong, "corr"] },
       {
-        name: "update_human_correction",
+        name: "upsert_qa_from_call",
         args: [wrong, "corr", "q", "a", false, "reviewer"],
       },
-      { name: "add_manual_qa", args: [wrong, "q", "a", false, "reviewer"] },
-      { name: "delete_qa_entry", args: [wrong, "corr"] },
+      { name: "add_manual_qa", args: [wrong, "q", "a", false, "reviewer", opt(null)] },
+      { name: "delete_qa_entry", args: [wrong, 0n] },
+      { name: "update_qa_entry_with_publish", args: [wrong, 0n, "q", "a", false, "reviewer"] },
       {
         name: "log_mcp_call",
         args: [wrong, "corr", opt(null), "tool", "reason", "prompt", "q", "r", 0, "[]", 0n, "model", opt(null)],

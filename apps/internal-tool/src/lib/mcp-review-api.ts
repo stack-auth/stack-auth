@@ -46,6 +46,7 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
       question: string;
       answer: string;
       publish: boolean;
+      requestId: string;
     }) => post("add-manual", body, authHeaders),
 
     updateQaEntry: (body: {

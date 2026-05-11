@@ -67,27 +67,34 @@ function spacetimeDbError(label: string, status: number, preview: string): Error
   return new StackAssertionError(detail);
 }
 
-export async function callReducer(reducer: string, args: unknown[]): Promise<void> {
+async function callWithEnrollmentRetry(reducer: string, args: unknown[]): Promise<boolean> {
   const token = await getServiceToken();
-  if (!token) return;
-  await rawCallReducer(token, reducer, args);
+  if (!token) return false;
+  try {
+    await rawCallReducer(token, reducer, args);
+    return true;
+  } catch (err) {
+    if (!(err instanceof StatusError) || err.statusCode !== 401) throw err;
+    enrollmentPromise = null;
+    const fresh = await getServiceToken();
+    if (!fresh) throw err;
+    await rawCallReducer(fresh, reducer, args);
+    return true;
+  }
 }
 
-/**
- * Like {@link callReducer} but throws when SpacetimeDB isn't configured, rather
- * than no-opping. Use for endpoints where the client treats a 200 as proof the
- * mutation actually ran (reviewer enrollment, human QA edits, deletions).
- * Fire-and-forget logging paths should keep using the best-effort variant.
- */
+export async function callReducer(reducer: string, args: unknown[]): Promise<void> {
+  await callWithEnrollmentRetry(reducer, args);
+}
+
 export async function callReducerStrict(reducer: string, args: unknown[]): Promise<void> {
-  const token = await getServiceToken();
-  if (!token) {
+  const ran = await callWithEnrollmentRetry(reducer, args);
+  if (!ran) {
     throw new StackAssertionError(
       `SpacetimeDB is not configured. Reducer ${reducer} cannot run. ` +
       `Check STACK_SPACETIMEDB_URL and STACK_SPACETIMEDB_SERVICE_TOKEN.`
     );
   }
-  await rawCallReducer(token, reducer, args);
 }
 
 /**
@@ -130,4 +137,3 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
     return obj as T;
   });
 }
-

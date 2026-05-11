@@ -26,8 +26,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
+    assertIsAiChatReviewer(auth);
     const user = auth.user;
-    assertIsAiChatReviewer(user);
     if (!/^[0-9a-fA-F]{64}$/.test(body.identity)) {
       throw new StatusError(StatusError.BadRequest, "Invalid identity.");
     }

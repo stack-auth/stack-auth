@@ -39,12 +39,16 @@ export default function App() {
     if (typeof window === "undefined") return;
     window.sessionStorage.setItem(TAB_STORAGE_KEY, tab);
   }, [tab]);
-  const enrolledRef = useRef<Map<string, Promise<void>>>(new Map());
+  const ENROLL_REFRESH_MS = 15 * 60 * 1000;
+  const enrolledRef = useRef<Map<string, { promise: Promise<void>, enrolledAt: number }>>(new Map());
   const ensureEnrolled = useCallback(async (identity: Identity) => {
     if (!user) throw new Error("Not authenticated");
     const key = identity.toHexString();
     const existing = enrolledRef.current.get(key);
-    if (existing) return await existing;
+    if (existing && Date.now() - existing.enrolledAt < ENROLL_REFRESH_MS) {
+      return await existing.promise;
+    }
+    const startedAt = Date.now();
     const promise = (async () => {
       const { accessToken, refreshToken } = await user.getAuthJson();
       const authHeaders: Record<string, string> = {};
@@ -53,13 +57,16 @@ export default function App() {
       try {
         await enrollSpacetimeReviewer({ identity: key }, authHeaders);
       } catch (err) {
-        enrolledRef.current.delete(key);
+        const cached = enrolledRef.current.get(key);
+        if (cached && cached.enrolledAt === startedAt) {
+          enrolledRef.current.delete(key);
+        }
         throw err;
       }
     })();
-    enrolledRef.current.set(key, promise);
+    enrolledRef.current.set(key, { promise, enrolledAt: startedAt });
     return await promise;
-  }, [user]);
+  }, [ENROLL_REFRESH_MS, user]);
   const isAiChatReviewer = Boolean(
     (user?.clientReadOnlyMetadata as Record<string, unknown> | null)?.isAiChatReviewer,
   );
@@ -185,9 +192,9 @@ export default function App() {
       {showAddQa && (
         <AddManualQa
           onClose={() => setShowAddQa(false)}
-          onSave={async (question, answer, publish) => {
+          onSave={async (question, answer, publish, requestId) => {
             const api = await getApi();
-            await api.addManual({ question, answer, publish });
+            await api.addManual({ question, answer, publish, requestId });
           }}
         />
       )}

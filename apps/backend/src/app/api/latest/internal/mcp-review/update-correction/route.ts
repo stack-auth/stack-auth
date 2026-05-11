@@ -28,8 +28,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
+    assertIsAiChatReviewer(auth);
     const user = auth.user;
-    assertIsAiChatReviewer(user);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     const reviewer = user.display_name ?? user.primary_email ?? user.id;

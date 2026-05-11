@@ -62,10 +62,7 @@ describe.skipIf(!canRun)("operators table RLS", () => {
     expect(rows.length).toBe(0);
   });
 
-  it("enrolling a second identity as the same reviewer sweeps the first", async ({ expect }) => {
-    // The add_operator reducer's sweep logic deletes prior rows with the same
-    // stackUserId before inserting a new identity — a reviewer switching browsers
-    // should not accumulate stale operator rows.
+  it("enrolling a second identity as the same reviewer keeps both active", async ({ expect }) => {
     const x = await mintIdentity();
     scope.trackIdentity(x.identity);
     await AiChatReviewer.createReviewer();
@@ -76,7 +73,6 @@ describe.skipIf(!canRun)("operators table RLS", () => {
     });
     expect(enrollX.status).toBe(200);
 
-    // Same reviewer (backendContext.userAuth unchanged) enrolls a second identity.
     const y = await mintIdentity();
     scope.trackIdentity(y.identity);
     const enrollY = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
@@ -85,43 +81,64 @@ describe.skipIf(!canRun)("operators table RLS", () => {
       body: { identity: y.identity },
     });
     expect(enrollY.status).toBe(200);
-
-    // X should no longer be in operators — sweep removed its row.
     const asX = await sqlQuery(x.token, "SELECT * FROM operators");
-    expect(asX.rows.length).toBe(0);
-    // Y should still be the active operator.
+    expect(asX.rows.length).toBe(1);
     const asY = await sqlQuery(y.token, "SELECT * FROM operators");
     expect(asY.rows.length).toBe(1);
   });
 
   it.skipIf(!logToken)(
-    "remove_operator reducer revokes an operator's view access",
+    "remove_operators_for_user revokes every device a user has enrolled",
     async ({ expect }) => {
-      const target = await mintIdentity();
-      scope.trackIdentity(target.identity);
+      const targetA = await mintIdentity();
+      scope.trackIdentity(targetA.identity);
       await AiChatReviewer.createReviewer();
-      const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
+      const enrollA = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
         method: "POST",
         accessType: "client",
-        body: { identity: target.identity },
+        body: { identity: targetA.identity },
       });
-      expect(enroll.status).toBe(200);
+      expect(enrollA.status).toBe(200);
 
-      // Confirm enrolled.
-      const before = await sqlQuery(target.token, "SELECT * FROM operators");
-      expect(before.rows.length).toBe(1);
+      const targetB = await mintIdentity();
+      scope.trackIdentity(targetB.identity);
+      const enrollB = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
+        method: "POST",
+        accessType: "client",
+        body: { identity: targetB.identity },
+      });
+      expect(enrollB.status).toBe(200);
 
-      // Directly call remove_operator with the log token.
-      const caller = await mintIdentity();
-      const removed = await callReducer(caller.token, "remove_operator", [
+      expect((await sqlQuery(targetA.token, "SELECT * FROM operators")).rows.length).toBe(1);
+      expect((await sqlQuery(targetB.token, "SELECT * FROM operators")).rows.length).toBe(1);
+
+      const adminEnroll = await mintIdentity();
+      await callReducer(adminEnroll.token, "add_operator", [
         logToken!,
-        [`0x${target.identity}`],
+        [`0x${adminEnroll.identity}`],
+        `e2e-admin-${adminEnroll.identity}`,
+        "E2E Admin",
+      ]);
+      scope.trackIdentity(adminEnroll.identity);
+      const allOps = await sqlQuery(adminEnroll.token, "SELECT * FROM operators");
+      const targetRowJson = JSON.stringify(allOps.rows.find(r =>
+        JSON.stringify(r).toLowerCase().includes(targetA.identity.toLowerCase())
+      ) ?? {});
+      expect(targetRowJson).toContain("0x" + targetA.identity.toLowerCase().slice(0, 8));
+      const stackUserId = (allOps.rows.find(r =>
+        JSON.stringify(r).toLowerCase().includes(targetA.identity.toLowerCase())
+      ) as { stack_user_id?: string, stackUserId?: string } | undefined);
+      const sUid = stackUserId?.stack_user_id ?? stackUserId?.stackUserId;
+      expect(typeof sUid).toBe("string");
+
+      const removed = await callReducer(adminEnroll.token, "remove_operators_for_user", [
+        logToken!,
+        sUid!,
       ]);
       expect(removed.ok).toBe(true);
 
-      // Target is no longer an operator.
-      const after = await sqlQuery(target.token, "SELECT * FROM operators");
-      expect(after.rows.length).toBe(0);
+      expect((await sqlQuery(targetA.token, "SELECT * FROM operators")).rows.length).toBe(0);
+      expect((await sqlQuery(targetB.token, "SELECT * FROM operators")).rows.length).toBe(0);
     },
   );
 });

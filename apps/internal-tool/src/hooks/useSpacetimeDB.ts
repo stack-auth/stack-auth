@@ -21,6 +21,7 @@ function getConfig() {
 
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
+const ENROLL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 type ConnectionState = "connecting" | "connected" | "error";
 
@@ -48,6 +49,8 @@ function useTableSubscription<Row extends { id: bigint }>(
     let cancelled = false;
     let retryCount = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshTimer: ReturnType<typeof setInterval> | null = null;
+    let currentIdentity: Identity | null = null;
     const query = `SELECT * FROM ${binding.tableName}`;
 
     function retry() {
@@ -101,6 +104,7 @@ function useTableSubscription<Row extends { id: bigint }>(
 
           const enrollFn = ensureEnrolledRef.current;
           if (enrollFn) {
+            currentIdentity = identity;
             enrollFn(identity).then(
               () => startSubscription(),
               (err) => {
@@ -108,6 +112,17 @@ function useTableSubscription<Row extends { id: bigint }>(
                 setConnectionState("error");
               },
             );
+            if (refreshTimer == null) {
+              refreshTimer = setInterval(() => {
+                if (cancelled) return;
+                const fn = ensureEnrolledRef.current;
+                const id = currentIdentity;
+                if (!fn || !id) return;
+                fn(id).catch((err) => {
+                  captureError("spacetimedb-enroll-refresh", err);
+                });
+              }, ENROLL_REFRESH_INTERVAL_MS);
+            }
           } else {
             startSubscription();
           }
@@ -163,6 +178,11 @@ function useTableSubscription<Row extends { id: bigint }>(
         clearTimeout(retryTimer);
         retryTimer = null;
       }
+      if (refreshTimer !== null) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+      currentIdentity = null;
       if (connRef.current) {
         connRef.current.disconnect();
         connRef.current = null;

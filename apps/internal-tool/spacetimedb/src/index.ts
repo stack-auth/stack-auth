@@ -1,5 +1,8 @@
 import { schema, t, table, SenderError } from 'spacetimedb/server';
-import type { Timestamp } from 'spacetimedb';
+import { Timestamp } from 'spacetimedb';
+
+const OPERATOR_TTL_MILLIS = 60n * 60n * 1000n;
+const OPERATOR_TTL_MICROS = OPERATOR_TTL_MILLIS * 1000n;
 
 // Injected at publish time by the spacetime:inject-token pnpm script from STACK_MCP_LOG_TOKEN env var.
 // Must match STACK_MCP_LOG_TOKEN in the backend .env.
@@ -82,6 +85,7 @@ const operators = table(
     addedAt: t.timestamp(),
     stackUserId: t.string(),
     displayName: t.string(),
+    expiresAt: t.timestamp().optional(),
   }
 );
 
@@ -91,6 +95,7 @@ const qaEntries = table(
     id: t.u64().primaryKey().autoInc(),
     shard: t.u8().index('btree'),
     sourceMcpCorrelationId: t.string().optional(),
+    requestId: t.string().optional(),
     question: t.string(),
     answer: t.string(),
     createdBy: t.string(),
@@ -181,6 +186,18 @@ export const add_operator = spacetimedb.reducer(
     if (/^__.*__$/.test(args.stackUserId)) {
       throw new SenderError('stackUserId pattern __*__ is reserved');
     }
+    const nowMicros = ctx.timestamp.microsSinceUnixEpoch;
+    const expired = [];
+    for (const row of ctx.db.operators.iter()) {
+      if (row.expiresAt != null && row.expiresAt.microsSinceUnixEpoch <= nowMicros) {
+        expired.push(row);
+      }
+    }
+    for (const row of expired) {
+      ctx.db.operators.identity.delete(row.identity);
+    }
+
+    const expiresAt = new Timestamp(nowMicros + OPERATOR_TTL_MICROS);
     const existing = ctx.db.operators.identity.find(args.identity);
     if (existing != null) {
       if (existing.stackUserId !== args.stackUserId) {
@@ -191,37 +208,39 @@ export const add_operator = spacetimedb.reducer(
         addedAt: existing.addedAt,
         stackUserId: args.stackUserId,
         displayName: args.displayName,
+        expiresAt,
       });
       return;
-    }
-    const stale = [];
-    for (const row of ctx.db.operators.iter()) {
-      if (row.stackUserId === args.stackUserId) {
-        stale.push(row);
-      }
-    }
-    for (const row of stale) {
-      ctx.db.operators.identity.delete(row.identity);
     }
     ctx.db.operators.insert({
       identity: args.identity,
       addedAt: ctx.timestamp,
       stackUserId: args.stackUserId,
       displayName: args.displayName,
+      expiresAt,
     });
   }
 );
 
-export const remove_operator = spacetimedb.reducer(
+export const remove_operators_for_user = spacetimedb.reducer(
   {
     token: t.string(),
-    identity: t.identity(),
+    stackUserId: t.string(),
   },
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    ctx.db.operators.identity.delete(args.identity);
+    if (/^__.*__$/.test(args.stackUserId)) {
+      throw new SenderError('Refusing to remove reserved __*__ identities');
+    }
+    const matches = [];
+    for (const row of ctx.db.operators.iter()) {
+      if (row.stackUserId === args.stackUserId) matches.push(row);
+    }
+    for (const row of matches) {
+      ctx.db.operators.identity.delete(row.identity);
+    }
   }
 );
 
@@ -241,6 +260,7 @@ export const enroll_service = spacetimedb.reducer(
       addedAt: ctx.timestamp,
       stackUserId: '__service__',
       displayName: args.displayName,
+      expiresAt: undefined,
     });
   }
 );
@@ -407,6 +427,7 @@ export const upsert_qa_from_call = spacetimedb.reducer(
       id: 0n,
       shard: 0,
       sourceMcpCorrelationId: args.correlationId,
+      requestId: undefined,
       question: args.question,
       answer: args.answer,
       createdBy: args.editedBy,
@@ -427,15 +448,22 @@ export const add_manual_qa = spacetimedb.reducer(
     answer: t.string(),
     publish: t.bool(),
     createdBy: t.string(),
+    requestId: t.string().optional(),
   },
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    if (args.requestId != null && args.requestId !== '') {
+      for (const existing of ctx.db.qaEntries.iter()) {
+        if (existing.requestId === args.requestId) return;
+      }
+    }
     ctx.db.qaEntries.insert({
       id: 0n,
       shard: 0,
       sourceMcpCorrelationId: undefined,
+      requestId: args.requestId,
       question: args.question,
       answer: args.answer,
       createdBy: args.createdBy,
@@ -463,31 +491,6 @@ export const delete_qa_entry = spacetimedb.reducer(
       throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
     }
     ctx.db.qaEntries.id.delete(row.id);
-  }
-);
-
-// Pure publish state transition. Same firstPublishedAt / lastPublishedAt
-// semantics as upsert_qa_from_call.
-export const set_qa_published = spacetimedb.reducer(
-  {
-    token: t.string(),
-    qaId: t.u64(),
-    publish: t.bool(),
-  },
-  (ctx, args) => {
-    if (args.token !== EXPECTED_LOG_TOKEN) {
-      throw new SenderError('Invalid log token');
-    }
-    const row = ctx.db.qaEntries.id.find(args.qaId);
-    if (row == null) {
-      throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
-    }
-    ctx.db.qaEntries.id.update({
-      ...row,
-      published: args.publish,
-      firstPublishedAt: args.publish ? (row.firstPublishedAt ?? ctx.timestamp) : row.firstPublishedAt,
-      lastPublishedAt: args.publish ? ctx.timestamp : row.lastPublishedAt,
-    });
   }
 );
 
@@ -520,77 +523,6 @@ export const update_qa_entry_with_publish = spacetimedb.reducer(
     });
   }
 );
-
-// Text-only edit. Doesn't touch publish state.
-export const update_qa_entry = spacetimedb.reducer(
-  {
-    token: t.string(),
-    qaId: t.u64(),
-    question: t.string(),
-    answer: t.string(),
-    editedBy: t.string(),
-  },
-  (ctx, args) => {
-    if (args.token !== EXPECTED_LOG_TOKEN) {
-      throw new SenderError('Invalid log token');
-    }
-    const row = ctx.db.qaEntries.id.find(args.qaId);
-    if (row == null) {
-      throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
-    }
-    ctx.db.qaEntries.id.update({
-      ...row,
-      question: args.question,
-      answer: args.answer,
-      lastEditedBy: args.editedBy,
-      lastEditedAt: ctx.timestamp,
-    });
-  }
-);
-
-export const backfill_qa_entries = spacetimedb.reducer(
-  {
-    token: t.string(),
-  },
-  (ctx, args) => {
-    if (args.token !== EXPECTED_LOG_TOKEN) {
-      throw new SenderError('Invalid log token');
-    }
-    for (const call of ctx.db.mcpCallLog.shard.filter(0)) {
-      const hasEditorialContent =
-        call.humanCorrectedQuestion != null ||
-        call.humanCorrectedAnswer != null ||
-        call.publishedToQa === true ||
-        call.toolName === 'manual';
-      if (!hasEditorialContent) continue;
-      let alreadyMigrated = false;
-      for (const existing of ctx.db.qaEntries.shard.filter(0)) {
-        if (existing.sourceMcpCorrelationId === call.correlationId) {
-          alreadyMigrated = true;
-          break;
-        }
-      }
-      if (alreadyMigrated) continue;
-      const reviewerId = call.humanReviewedBy ?? '__backfill__';
-      const reviewedAt = call.humanReviewedAt ?? call.createdAt;
-      ctx.db.qaEntries.insert({
-        id: 0n,
-        shard: 0,
-        sourceMcpCorrelationId: call.toolName === 'manual' ? undefined : call.correlationId,
-        question: call.humanCorrectedQuestion ?? call.question,
-        answer: call.humanCorrectedAnswer ?? call.response,
-        createdBy: reviewerId,
-        createdAt: reviewedAt,
-        lastEditedBy: reviewerId,
-        lastEditedAt: reviewedAt,
-        published: call.publishedToQa,
-        firstPublishedAt: call.publishedToQa ? (call.publishedAt ?? reviewedAt) : undefined,
-        lastPublishedAt: call.publishedToQa ? (call.publishedAt ?? reviewedAt) : undefined,
-      } as Parameters<typeof ctx.db.qaEntries.insert>[0]);
-    }
-  }
-);
-
 
 export const log_ai_query = spacetimedb.reducer(
   {
