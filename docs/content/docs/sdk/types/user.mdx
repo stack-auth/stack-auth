@@ -1713,9 +1713,9 @@ code={`type ServerUser =
       // NEXT_LINE_PLATFORM react-like
       ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#serveruserusecontactchannels
 
-      listTeamsPaginated([options]): Promise<{ items: ServerTeam[]; nextCursor: string | null }>; //$stack-link-to:#serveruserlistteamspaginatedoptions
+      listTeamsPaginated([options]): Promise<{ items: ServerTeam[]; nextCursor: string | null }>; //$stack-link-to:#serveruserlistteamspaginated
       // NEXT_LINE_PLATFORM react-like
-      ⤷ useTeamsPaginated([options]): { items: ServerTeam[]; nextCursor: string | null }; //$stack-link-to:#serveruseruseteamspaginatedoptions
+      ⤷ useTeamsPaginated([options]): { items: ServerTeam[]; nextCursor: string | null }; //$stack-link-to:#serveruseruseteamspaginated
 
       grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
       revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
@@ -1945,7 +1945,7 @@ code={`type ServerUser =
     <MethodContent>
       <Markdown src="../../snippets/use-on-server-callout.mdx" />
 
-      Functionally equivalent to [`listTeamsPaginated()`](#serveruserlistteamspaginatedoptions), but as a React hook.
+      Functionally equivalent to [`listTeamsPaginated()`](#serveruserlistteamspaginated), but as a React hook.
     </MethodContent>
     <MethodAside title="Signature">
 

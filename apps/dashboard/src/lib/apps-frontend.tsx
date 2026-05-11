@@ -51,14 +51,14 @@ export type AppFrontend = {
 )
 
 export type NavigableAppFrontend = Extract<AppFrontend, { navigationItems: AppNavigationItem[] }>;
-export type SubAppFrontend = Extract<AppFrontend, { parentAppId: AppId }>;
+export type SubAppFrontend = AppFrontend & { parentAppId: AppId };
 
 export function hasNavigationItems(appFrontend: AppFrontend): appFrontend is NavigableAppFrontend {
   return "navigationItems" in appFrontend;
 }
 
 export function isSubApp(appFrontend: AppFrontend): appFrontend is SubAppFrontend {
-  return "parentAppId" in appFrontend;
+  return "parentAppId" in appFrontend && appFrontend.parentAppId !== undefined;
 }
 
 export function getDocumentationHref(appFrontend: AppFrontend): string | null {

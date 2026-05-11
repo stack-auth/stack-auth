@@ -37,7 +37,10 @@ const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
 
 type ExtendedServerUserForTeam = ExtendedServerUser & {
-  permissions: string[],
+  // `null` indicates that the permission fetch failed for this user; the UI
+  // surfaces this distinctly from an empty (no permissions) array so admins
+  // don't mistake transient failures for revoked access.
+  permissions: string[] | null,
 };
 
 function formatUserId(id: string) {
@@ -186,6 +189,7 @@ function EditPermissionDialog(props: {
   const stackAdminApp = useAdminApp();
   const permissions = stackAdminApp.useTeamPermissionDefinitions();
 
+  const currentPermissions = props.user.permissions ?? [];
   const formSchema = yup.object({
     permissions: yup.array().of(yup.string().defined()).defined().meta({
       stackFormFieldRender: (innerProps) => (
@@ -193,11 +197,11 @@ function EditPermissionDialog(props: {
           {...innerProps}
           permissions={permissions}
           type="edit-user"
-          containedPermissionIds={props.user.permissions}
+          containedPermissionIds={currentPermissions}
         />
       ),
     }),
-  }).default({ permissions: props.user.permissions });
+  }).default({ permissions: currentPermissions });
 
   return <SmartFormDialog
     open={props.open}
@@ -209,7 +213,7 @@ function EditPermissionDialog(props: {
       const promises = permissions.map(async (p) => {
         if (values.permissions.includes(p.id)) {
           return await props.user.grantPermission(props.team, p.id);
-        } else if (props.user.permissions.includes(p.id)) {
+        } else if (currentPermissions.includes(p.id)) {
           return await props.user.revokePermission(props.team, p.id);
         }
       });
@@ -249,6 +253,8 @@ function Actions(props: {
           {
             item: "Edit permissions",
             onClick: () => setIsEditModalOpen(true),
+            disabled: props.user.permissions == null,
+            disabledTooltip: "Permissions failed to load for this user. Reload the table to retry.",
           },
           '-',
           {
@@ -283,7 +289,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 export function TeamMemberTable(props: { team: ServerTeam }) {
   const stackAdminApp = useAdminApp();
   const [updateCounter, setUpdateCounter] = useState(0);
-  const [permissions, setPermissions] = useState<Map<string, string[]>>(new Map());
+  const [permissions, setPermissions] = useState<Map<string, string[] | null>>(new Map());
   const permissionRequestIdRef = useRef(0);
 
   const teamMemberColumns = useMemo<DataGridColumnDef<ExtendedServerUserForTeam>[]>(() => [
@@ -339,18 +345,24 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
           <SimpleTooltip tooltip="Only showing direct permissions" type='info' />
         </div>
       ),
-      accessor: (row) => row.permissions.join(", "),
+      accessor: (row) => row.permissions == null ? "" : row.permissions.join(", "),
       width: 180,
       flex: 1,
       sortable: false,
       type: "string",
       cellOverflow: "wrap",
       renderCell: ({ row }) => (
-        <div className="flex items-center gap-1 flex-wrap">
-          {row.permissions.map((permissionId) => (
-            <Badge key={permissionId} variant="secondary">{permissionId}</Badge>
-          ))}
-        </div>
+        row.permissions == null ? (
+          <SimpleTooltip tooltip="Failed to load permissions for this user. Reload the table to retry.">
+            <span className="text-xs text-destructive">Failed to load</span>
+          </SimpleTooltip>
+        ) : (
+          <div className="flex items-center gap-1 flex-wrap">
+            {row.permissions.map((permissionId) => (
+              <Badge key={permissionId} variant="secondary">{permissionId}</Badge>
+            ))}
+          </div>
+        )
       ),
     },
     {
@@ -414,10 +426,10 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
           return [user.id, perms.map(p => p.id)] as const;
         })
       );
-      const permissionResults = settled.map((res, idx): readonly [string, string[]] => {
+      const permissionResults = settled.map((res, idx): readonly [string, string[] | null] => {
         if (res.status === "fulfilled") return res.value;
         captureError("team-member-table-list-permissions", res.reason instanceof Error ? res.reason : new Error(String(res.reason)));
-        return [extended[idx].id, []] as const;
+        return [extended[idx].id, null] as const;
       });
       if (reqId !== permissionRequestIdRef.current) return;
       setPermissions((prev) => {
@@ -429,7 +441,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
       yield {
         rows: extended.map((user) => ({
           ...user,
-          permissions: permsMap.get(user.id) ?? [],
+          permissions: permsMap.has(user.id) ? permsMap.get(user.id) ?? null : null,
         })),
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
@@ -454,7 +466,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
   const rowsWithPermissions = useMemo(
     () => gridData.rows.map((row) => ({
       ...row,
-      permissions: permissions.get(row.id) ?? row.permissions,
+      permissions: permissions.has(row.id) ? permissions.get(row.id) ?? null : row.permissions,
     })),
     [gridData.rows, permissions],
   );

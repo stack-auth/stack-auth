@@ -1,6 +1,8 @@
 // IF_PLATFORM js-like
 
 import type { StackClientApp } from "../lib/stack-app";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
@@ -62,11 +64,17 @@ function tryMount() {
   const generation = ++mountGeneration;
   const app = activeApp;
 
-  loadCreateDevTool().then(createDevTool => {
+  runAsynchronously(async () => {
+    const createDevTool = await loadCreateDevTool();
     if (generation !== mountGeneration) return;
     if (!shouldShow() || activeApp !== app || !canMountIntoDom()) return;
     activeCleanup = createDevTool(app);
-  }).catch(() => {});
+  }, {
+    noErrorLogging: true,
+    onError: (error) => {
+      captureError("dev-tool-mount", error);
+    },
+  });
 }
 
 /**

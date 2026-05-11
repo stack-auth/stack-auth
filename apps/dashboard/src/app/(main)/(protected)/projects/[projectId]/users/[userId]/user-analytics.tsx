@@ -551,36 +551,35 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
   }, [stackAdminApp, user.id, filterRange]);
 
   const onLoadMoreRecent = useCallback(() => {
-    setRecent((prev) => {
-      if (prev.isLoadingMore || !prev.hasMore) return prev;
-      const ctx = recentContextRef.current;
-      if (!ctx) return prev;
-      const offset = prev.rows.length;
-      runAsynchronously(async () => {
-        const res = await stackAdminApp.queryAnalytics({
-          query: RECENT_EVENTS_QUERY,
-          params: { ...ctx.params, limit: RECENT_EVENTS_PAGE_SIZE, offset },
-          timeout_ms: 30_000,
-          include_all_branches: false,
-        });
-        if (ctx.token.cancelled) return;
-        const newRows = parseRecentEvents(res.result);
-        setRecent((p) => ({
-          rows: [...p.rows, ...newRows],
-          hasMore: newRows.length >= RECENT_EVENTS_PAGE_SIZE,
-          isLoadingMore: false,
-        }));
-      }, {
-        noErrorLogging: true,
-        onError: (error) => {
-          if (ctx.token.cancelled) return;
-          captureError("user-analytics-recent-load-more", error);
-          setRecent((p) => ({ ...p, isLoadingMore: false, hasMore: false }));
-        },
+    const current = recent;
+    if (current.isLoadingMore || !current.hasMore) return;
+    const ctx = recentContextRef.current;
+    if (!ctx) return;
+    const offset = current.rows.length;
+    setRecent((p) => ({ ...p, isLoadingMore: true }));
+    runAsynchronously(async () => {
+      const res = await stackAdminApp.queryAnalytics({
+        query: RECENT_EVENTS_QUERY,
+        params: { ...ctx.params, limit: RECENT_EVENTS_PAGE_SIZE, offset },
+        timeout_ms: 30_000,
+        include_all_branches: false,
       });
-      return { ...prev, isLoadingMore: true };
+      if (ctx.token.cancelled) return;
+      const newRows = parseRecentEvents(res.result);
+      setRecent((p) => ({
+        rows: [...p.rows, ...newRows],
+        hasMore: newRows.length >= RECENT_EVENTS_PAGE_SIZE,
+        isLoadingMore: false,
+      }));
+    }, {
+      noErrorLogging: true,
+      onError: (error) => {
+        if (ctx.token.cancelled) return;
+        captureError("user-analytics-recent-load-more", error);
+        setRecent((p) => ({ ...p, isLoadingMore: false, hasMore: false }));
+      },
     });
-  }, [stackAdminApp]);
+  }, [stackAdminApp, recent]);
 
   return (
     <div className="flex flex-col gap-4">

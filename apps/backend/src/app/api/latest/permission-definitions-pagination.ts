@@ -21,7 +21,7 @@ export const permissionDefinitionsListQuerySchema = yupObject({
 });
 
 export function paginatePermissionDefinitions(items: PermissionDefinition[], query: ListQuery) {
-  if (query.cursor && query.limit === undefined) {
+  if (query.cursor != null && query.limit === undefined) {
     throw new StatusError(StatusError.BadRequest, "`cursor` requires `limit` to also be set.");
   }
 
@@ -38,7 +38,7 @@ export function paginatePermissionDefinitions(items: PermissionDefinition[], que
   }
 
   let startIdx = 0;
-  if (query.cursor) {
+  if (query.cursor != null) {
     const cursorIdx = filtered.findIndex((p) => p.id === query.cursor);
     if (cursorIdx === -1) {
       throw new StatusError(StatusError.BadRequest, `Cursor not found: ${query.cursor}`);
