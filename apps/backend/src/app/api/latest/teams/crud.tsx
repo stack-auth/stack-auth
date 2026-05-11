@@ -301,16 +301,6 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       };
     }
 
-    if (query.cursor) {
-      const cursorRow = await prisma.team.findUnique({
-        where: { tenancyId_teamId: { tenancyId: auth.tenancy.id, teamId: query.cursor } },
-        select: { teamId: true },
-      });
-      if (!cursorRow) {
-        throw new KnownErrors.ItemNotFound(query.cursor);
-      }
-    }
-
     const db = await prisma.team.findMany({
       where: {
         tenancyId: auth.tenancy.id,

@@ -12,7 +12,7 @@ export default async function EditShop() {
 
   async function createShop(formData: FormData) {
     "use server";
-    await (await stackServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
+    await user.setServerMetadata({
       // TODO this should be more like a transaction
       ...user.serverMetadata,
       eCommerceExample: {
@@ -34,7 +34,7 @@ export default async function EditShop() {
 
   async function deleteShop(formData: FormData) {
     "use server";
-    await (await stackServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
+    await user.setServerMetadata({
       // TODO this should be more like a transaction
       ...user.serverMetadata,
       eCommerceExample: {
@@ -59,7 +59,7 @@ export default async function EditShop() {
         dollarPrice: Number(formData.get(`product${i}DollarPrice`)),
       });
     }
-    await (await stackServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
+    await user.setServerMetadata({
       // TODO this should be more like a transaction
       ...user.serverMetadata,
       eCommerceExample: {

@@ -1450,7 +1450,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
   // ---- Rendering ----
 
   return (
-    <AppEnabledGuard appId="analytics">
+    <AppEnabledGuard appId="session-replays">
       <PageLayout
         title={isEmbedded ? undefined : (isStandaloneReplayPage ? "Session Replay" : "Session Replays")}
         description={!isEmbedded && isStandaloneReplayPage ? (

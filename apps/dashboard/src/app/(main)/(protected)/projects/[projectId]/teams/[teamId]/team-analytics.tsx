@@ -505,7 +505,7 @@ function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEv
     <DesignChartCard
       gradient="green"
       title="Active users by hour of week"
-      description={`Distinct active users per hour, last ${HEATMAP_WEEKS} weeks (UTC)`}
+      description={`Distinct active users per hour over the last ${HEATMAP_WEEKS} weeks (UTC)`}
     >
       {!hasAnyEvent ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
@@ -553,7 +553,7 @@ function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEv
                             <div className="text-muted-foreground">
                               {value === 0
                                 ? "No active users"
-                                : `${value.toFixed(value < 10 ? 1 : 0)} active users / week`}
+                                : `${value.toFixed(value < 10 ? 1 : 0)} active users over ${HEATMAP_WEEKS} weeks`}
                             </div>
                           </TooltipContent>
                         </Tooltip>

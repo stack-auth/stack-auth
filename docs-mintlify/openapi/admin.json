@@ -44,7 +44,12 @@
             "name": "X-Stack-Access-Type",
             "in": "header",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "client",
+                "server",
+                "admin"
+              ]
             },
             "required": false
           },
@@ -258,7 +263,10 @@
                             ]
                           },
                           "type": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "team"
+                            ]
                           },
                           "team_id": {
                             "type": "string"
@@ -363,7 +371,10 @@
                       "type": "boolean"
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "team"
+                      ]
                     },
                     "team_id": {
                       "type": "string"
@@ -451,7 +462,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "team"
+                      ]
                     },
                     "team_id": {
                       "type": "string"
@@ -529,7 +543,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "team"
+                      ]
                     },
                     "team_id": {
                       "type": "string"
@@ -624,7 +641,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "team"
+                      ]
                     },
                     "team_id": {
                       "type": "string"
@@ -707,7 +727,10 @@
                             ]
                           },
                           "type": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "user"
+                            ]
                           },
                           "user_id": {
                             "type": "string",
@@ -818,7 +841,10 @@
                       "type": "boolean"
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "user"
+                      ]
                     },
                     "user_id": {
                       "type": "string",
@@ -908,7 +934,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "user"
+                      ]
                     },
                     "user_id": {
                       "type": "string",
@@ -988,7 +1017,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "user"
+                      ]
                     },
                     "user_id": {
                       "type": "string",
@@ -1085,7 +1117,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "user"
+                      ]
                     },
                     "user_id": {
                       "type": "string",
@@ -1185,6 +1220,11 @@
                   },
                   "mode": {
                     "type": "string",
+                    "enum": [
+                      "check",
+                      "claim-anon-session",
+                      "complete"
+                    ],
                     "default": "complete"
                   },
                   "refresh_token": {
@@ -1262,7 +1302,13 @@
                   "type": "object",
                   "properties": {
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "waiting",
+                        "success",
+                        "expired",
+                        "used"
+                      ]
                     },
                     "refresh_token": {
                       "type": "string"
@@ -1283,7 +1329,13 @@
                   "type": "object",
                   "properties": {
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "waiting",
+                        "success",
+                        "expired",
+                        "used"
+                      ]
                     },
                     "refresh_token": {
                       "type": "string"
@@ -1437,6 +1489,9 @@
                           },
                           "type": {
                             "type": "string",
+                            "enum": [
+                              "email"
+                            ],
                             "example": "email",
                             "description": "The type of the contact channel. Currently only \"email\" is supported."
                           },
@@ -1536,6 +1591,9 @@
                   },
                   "type": {
                     "type": "string",
+                    "enum": [
+                      "email"
+                    ],
                     "example": "email",
                     "description": "The type of the contact channel. Currently only \"email\" is supported."
                   },
@@ -1597,6 +1655,9 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "email"
+                      ],
                       "example": "email",
                       "description": "The type of the contact channel. Currently only \"email\" is supported."
                     },
@@ -1818,6 +1879,9 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "email"
+                      ],
                       "example": "email",
                       "description": "The type of the contact channel. Currently only \"email\" is supported."
                     },
@@ -1990,6 +2054,9 @@
                   },
                   "type": {
                     "type": "string",
+                    "enum": [
+                      "email"
+                    ],
                     "example": "email",
                     "description": "The type of the contact channel. Currently only \"email\" is supported."
                   },
@@ -2044,6 +2111,9 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "email"
+                      ],
                       "example": "email",
                       "description": "The type of the contact channel. Currently only \"email\" is supported."
                     },
@@ -3131,7 +3201,11 @@
                     "type": "string"
                   },
                   "feedback_type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "feedback",
+                      "bug"
+                    ]
                   }
                 },
                 "required": [
@@ -3222,6 +3296,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "authenticate",
+                "link"
+              ],
               "default": "authenticate"
             },
             "required": false
@@ -3264,6 +3342,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "json",
+                "redirect"
+              ],
               "default": "redirect"
             },
             "required": false
@@ -3280,7 +3362,11 @@
             "name": "bot_challenge_phase",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "invisible",
+                "visible"
+              ]
             },
             "required": false
           },
@@ -3288,7 +3374,10 @@
             "name": "bot_challenge_unavailable",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             },
             "required": false
           },
@@ -3336,7 +3425,10 @@
             "name": "grant_type",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "authorization_code"
+              ]
             },
             "required": true
           },
@@ -3449,6 +3541,9 @@
                   },
                   "code_challenge_method": {
                     "type": "string",
+                    "enum": [
+                      "S256"
+                    ],
                     "default": "S256"
                   },
                   "after_callback_redirect_url": {
@@ -3504,7 +3599,11 @@
                 "type": "object",
                 "properties": {
                   "grant_type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "authorization_code",
+                      "refresh_token"
+                    ]
                   },
                   "client_id": {
                     "type": "string"
@@ -3595,6 +3694,20 @@
                           },
                           "type": {
                             "type": "string",
+                            "enum": [
+                              "google",
+                              "github",
+                              "microsoft",
+                              "spotify",
+                              "facebook",
+                              "discord",
+                              "gitlab",
+                              "bitbucket",
+                              "linkedin",
+                              "apple",
+                              "x",
+                              "twitch"
+                            ],
                             "example": "google",
                             "description": "OAuth provider type, one of `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, `twitch`"
                           },
@@ -3738,6 +3851,20 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "google",
+                        "github",
+                        "microsoft",
+                        "spotify",
+                        "facebook",
+                        "discord",
+                        "gitlab",
+                        "bitbucket",
+                        "linkedin",
+                        "apple",
+                        "x",
+                        "twitch"
+                      ],
                       "example": "google",
                       "description": "OAuth provider type, one of `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, `twitch`"
                     },
@@ -3832,6 +3959,20 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "google",
+                        "github",
+                        "microsoft",
+                        "spotify",
+                        "facebook",
+                        "discord",
+                        "gitlab",
+                        "bitbucket",
+                        "linkedin",
+                        "apple",
+                        "x",
+                        "twitch"
+                      ],
                       "example": "google",
                       "description": "OAuth provider type, one of `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, `twitch`"
                     },
@@ -4013,6 +4154,20 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "google",
+                        "github",
+                        "microsoft",
+                        "spotify",
+                        "facebook",
+                        "discord",
+                        "gitlab",
+                        "bitbucket",
+                        "linkedin",
+                        "apple",
+                        "x",
+                        "twitch"
+                      ],
                       "example": "google",
                       "description": "OAuth provider type, one of `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, `twitch`"
                     },
@@ -4128,7 +4283,11 @@
                       "type": "object",
                       "properties": {
                         "role": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "assistant"
+                          ]
                         },
                         "content": {
                           "type": "object"
@@ -4360,7 +4519,11 @@
                       "type": "object",
                       "properties": {
                         "role": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "assistant"
+                          ]
                         },
                         "content": {
                           "type": "object"
@@ -4413,7 +4576,10 @@
                 "type": "object",
                 "properties": {
                   "type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "totp"
+                    ]
                   },
                   "totp": {
                     "type": "string"
@@ -4508,10 +4674,17 @@
                     "type": "string"
                   },
                   "bot_challenge_phase": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "invisible",
+                      "visible"
+                    ]
                   },
                   "bot_challenge_unavailable": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "true"
+                    ]
                   }
                 },
                 "required": [
@@ -4837,7 +5010,10 @@
                   "type": "object",
                   "properties": {
                     "success": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "maybe, only if user with e-mail exists"
+                      ]
                     }
                   },
                   "required": [
@@ -4993,10 +5169,17 @@
                     "type": "string"
                   },
                   "bot_challenge_phase": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "invisible",
+                      "visible"
+                    ]
                   },
                   "bot_challenge_unavailable": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "true"
+                    ]
                   }
                 },
                 "required": [
@@ -5120,6 +5303,11 @@
             "in": "path",
             "schema": {
               "type": "string",
+              "enum": [
+                "user",
+                "team",
+                "custom"
+              ],
               "example": "user",
               "description": "The type of customer"
             },
@@ -5199,6 +5387,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "example": "false",
               "description": "Whether to allow the quantity to go negative"
             },
@@ -5210,6 +5402,11 @@
             "in": "path",
             "schema": {
               "type": "string",
+              "enum": [
+                "user",
+                "team",
+                "custom"
+              ],
               "example": "user",
               "description": "The type of customer"
             },
@@ -5247,7 +5444,7 @@
                 "type": "object",
                 "properties": {
                   "delta": {
-                    "type": "number",
+                    "type": "integer",
                     "example": 100,
                     "description": "The amount to change the quantity by (positive to increase, negative to decrease)"
                   },
@@ -5307,6 +5504,11 @@
                 "properties": {
                   "customer_type": {
                     "type": "string",
+                    "enum": [
+                      "user",
+                      "team",
+                      "custom"
+                    ],
                     "example": "user",
                     "description": "The type of customer making the purchase"
                   },
@@ -5327,12 +5529,17 @@
                         "type": "string"
                       },
                       "customer_type": {
-                        "type": "string"
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "team",
+                          "custom"
+                        ]
                       },
                       "free_trial": {
                         "type": "array",
                         "items": {
-                          "type": "number"
+                          "type": "integer"
                         }
                       },
                       "server_only": {
@@ -5454,7 +5661,7 @@
                     "description": "The Stack auth price ID to purchase"
                   },
                   "quantity": {
-                    "type": "number",
+                    "type": "integer",
                     "example": 1,
                     "description": "The quantity to purchase",
                     "default": 1
@@ -5554,12 +5761,17 @@
                           "type": "string"
                         },
                         "customer_type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "team",
+                            "custom"
+                          ]
                         },
                         "free_trial": {
                           "type": "array",
                           "items": {
-                            "type": "number"
+                            "type": "integer"
                           }
                         },
                         "server_only": {
@@ -5671,7 +5883,7 @@
             "name": "limit",
             "in": "query",
             "schema": {
-              "type": "number",
+              "type": "integer",
               "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor."
             },
             "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor.",
@@ -6038,6 +6250,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "example": "true",
               "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed."
             },
@@ -6238,7 +6454,7 @@
             "name": "limit",
             "in": "query",
             "schema": {
-              "type": "number",
+              "type": "integer",
               "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor."
             },
             "description": "Maximum number of items to return (capped at 200). When set, the response is paginated via cursor.",
@@ -6616,6 +6832,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "example": "true",
               "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed."
             },
@@ -7765,7 +7985,12 @@
                                 "type": "object",
                                 "properties": {
                                   "type": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "enum": [
+                                      "anonymous",
+                                      "email_not_verified",
+                                      "restricted_by_administrator"
+                                    ]
                                   }
                                 },
                                 "required": [
@@ -7801,10 +8026,10 @@
                                     "type": "object",
                                     "properties": {
                                       "bot": {
-                                        "type": "number"
+                                        "type": "integer"
                                       },
                                       "free_trial_abuse": {
-                                        "type": "number"
+                                        "type": "integer"
                                       }
                                     },
                                     "required": [
@@ -8056,7 +8281,12 @@
                           "type": "object",
                           "properties": {
                             "type": {
-                              "type": "string"
+                              "type": "string",
+                              "enum": [
+                                "anonymous",
+                                "email_not_verified",
+                                "restricted_by_administrator"
+                              ]
                             }
                           },
                           "required": [
@@ -8092,10 +8322,10 @@
                               "type": "object",
                               "properties": {
                                 "bot": {
-                                  "type": "number"
+                                  "type": "integer"
                                 },
                                 "free_trial_abuse": {
-                                  "type": "number"
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -8354,7 +8584,12 @@
                           "type": "object",
                           "properties": {
                             "type": {
-                              "type": "string"
+                              "type": "string",
+                              "enum": [
+                                "anonymous",
+                                "email_not_verified",
+                                "restricted_by_administrator"
+                              ]
                             }
                           },
                           "required": [
@@ -8390,10 +8625,10 @@
                               "type": "object",
                               "properties": {
                                 "bot": {
-                                  "type": "number"
+                                  "type": "integer"
                                 },
                                 "free_trial_abuse": {
-                                  "type": "number"
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -8598,6 +8833,9 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "created_at"
+              ],
               "example": "created_at",
               "description": "Field to order results by. Currently only `created_at` is supported."
             },
@@ -8609,6 +8847,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "example": "false",
               "description": "Whether to order results in descending order. Defaults to false (ascending)."
             },
@@ -8619,7 +8861,7 @@
             "name": "limit",
             "in": "query",
             "schema": {
-              "type": "number",
+              "type": "integer",
               "description": "The maximum number of items to return (capped at 200)."
             },
             "description": "The maximum number of items to return (capped at 200).",
@@ -9141,7 +9383,7 @@
             "name": "limit",
             "in": "query",
             "schema": {
-              "type": "number",
+              "type": "integer",
               "description": "The maximum number of items to return"
             },
             "description": "The maximum number of items to return",
@@ -9162,6 +9404,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "signed_up_at",
+                "last_active_at"
+              ],
               "description": "The field to sort the results by. Defaults to signed_up_at"
             },
             "description": "The field to sort the results by. Defaults to signed_up_at",
@@ -9172,6 +9418,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "description": "Whether to sort the results in descending order. Defaults to false"
             },
             "description": "Whether to sort the results in descending order. Defaults to false",
@@ -9192,6 +9442,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "description": "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false"
             },
             "description": "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false",
@@ -9202,6 +9456,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "description": "Whether to return only anonymous users. When true, implies include_anonymous=true. Defaults to false"
             },
             "description": "Whether to return only anonymous users. When true, implies include_anonymous=true. Defaults to false",
@@ -9212,6 +9470,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "description": "Whether to include restricted users in the results. Defaults to false"
             },
             "description": "Whether to include restricted users in the results. Defaults to false",
@@ -9364,7 +9626,12 @@
                             "type": "object",
                             "properties": {
                               "type": {
-                                "type": "string"
+                                "type": "string",
+                                "enum": [
+                                  "anonymous",
+                                  "email_not_verified",
+                                  "restricted_by_administrator"
+                                ]
                               }
                             },
                             "required": [
@@ -9400,10 +9667,10 @@
                                 "type": "object",
                                 "properties": {
                                   "bot": {
-                                    "type": "number"
+                                    "type": "integer"
                                   },
                                   "free_trial_abuse": {
-                                    "type": "number"
+                                    "type": "integer"
                                   }
                                 },
                                 "required": [
@@ -9559,10 +9826,10 @@
                         "type": "object",
                         "properties": {
                           "bot": {
-                            "type": "number"
+                            "type": "integer"
                           },
                           "free_trial_abuse": {
-                            "type": "number"
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -9743,7 +10010,12 @@
                       "type": "object",
                       "properties": {
                         "type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "anonymous",
+                            "email_not_verified",
+                            "restricted_by_administrator"
+                          ]
                         }
                       },
                       "required": [
@@ -9779,10 +10051,10 @@
                           "type": "object",
                           "properties": {
                             "bot": {
-                              "type": "number"
+                              "type": "integer"
                             },
                             "free_trial_abuse": {
-                              "type": "number"
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -9967,7 +10239,12 @@
                       "type": "object",
                       "properties": {
                         "type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "anonymous",
+                            "email_not_verified",
+                            "restricted_by_administrator"
+                          ]
                         }
                       },
                       "required": [
@@ -10003,10 +10280,10 @@
                           "type": "object",
                           "properties": {
                             "bot": {
-                              "type": "number"
+                              "type": "integer"
                             },
                             "free_trial_abuse": {
-                              "type": "number"
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -10181,10 +10458,10 @@
                         "type": "object",
                         "properties": {
                           "bot": {
-                            "type": "number"
+                            "type": "integer"
                           },
                           "free_trial_abuse": {
-                            "type": "number"
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -10366,7 +10643,12 @@
                       "type": "object",
                       "properties": {
                         "type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "anonymous",
+                            "email_not_verified",
+                            "restricted_by_administrator"
+                          ]
                         }
                       },
                       "required": [
@@ -10402,10 +10684,10 @@
                           "type": "object",
                           "properties": {
                             "bot": {
-                              "type": "number"
+                              "type": "integer"
                             },
                             "free_trial_abuse": {
-                              "type": "number"
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -10602,7 +10884,12 @@
                       "type": "object",
                       "properties": {
                         "type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "anonymous",
+                            "email_not_verified",
+                            "restricted_by_administrator"
+                          ]
                         }
                       },
                       "required": [
@@ -10638,10 +10925,10 @@
                           "type": "object",
                           "properties": {
                             "bot": {
-                              "type": "number"
+                              "type": "integer"
                             },
                             "free_trial_abuse": {
-                              "type": "number"
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -10840,10 +11127,10 @@
                         "type": "object",
                         "properties": {
                           "bot": {
-                            "type": "number"
+                            "type": "integer"
                           },
                           "free_trial_abuse": {
-                            "type": "number"
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -11025,7 +11312,12 @@
                       "type": "object",
                       "properties": {
                         "type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "anonymous",
+                            "email_not_verified",
+                            "restricted_by_administrator"
+                          ]
                         }
                       },
                       "required": [
@@ -11061,10 +11353,10 @@
                           "type": "object",
                           "properties": {
                             "bot": {
-                              "type": "number"
+                              "type": "integer"
                             },
                             "free_trial_abuse": {
-                              "type": "number"
+                              "type": "integer"
                             }
                           },
                           "required": [

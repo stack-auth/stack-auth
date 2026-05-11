@@ -874,20 +874,20 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                 }] : []),
                 {
                   item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
-                  onClick: async () => { await toggleVerified(channel); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => toggleVerified(channel)); },
                 },
                 ...(!channel.isPrimary ? [{
                   item: "Set as primary",
-                  onClick: async () => { await setPrimaryEmail(channel); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => setPrimaryEmail(channel)); },
                 }] : []),
                 {
                   item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
-                  onClick: async () => { await toggleUsedForAuth(channel); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => toggleUsedForAuth(channel)); },
                 },
                 {
                   item: "Delete",
                   danger: true,
-                  onClick: async () => { await channel.delete(); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => channel.delete()); },
                 },
               ]}
             />
@@ -1189,9 +1189,11 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
         okButton={{
           label: "Remove user from team",
           onClick: async () => {
-            if (teamToRemove) {
-              await teamToRemove.removeUser(user.id);
-            }
+            runAsynchronouslyWithAlert(async () => {
+              if (teamToRemove) {
+                await teamToRemove.removeUser(user.id);
+              }
+            });
           },
         }}
         cancelButton

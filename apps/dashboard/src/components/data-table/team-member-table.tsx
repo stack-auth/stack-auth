@@ -167,7 +167,7 @@ function RemoveUserDialog(props: {
     onOpenChange={props.onOpenChange}
     okButton={{
       label: "Remove user from team",
-      onClick: async () => { await props.team.removeUser(props.user.id); }
+      onClick: async () => { runAsynchronouslyWithAlert(() => props.team.removeUser(props.user.id)); }
     }}
     cancelButton
     confirmText="I understand this will cause the user to lose access to the team."
