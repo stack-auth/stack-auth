@@ -188,7 +188,7 @@ export function FeedbackForm() {
             <EnvelopeIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
           </a>
           <a
-            href="https://github.com/stack-auth/stack-auth"
+            href="https://github.com/hexclave/stack-auth"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors group"

@@ -1,12 +1,16 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { CallbackParamsType, Client, Issuer, TokenSet as OIDCTokenSet, generators } from "openid-client";
+import { CallbackParamsType, Client, Issuer, TokenSet as OIDCTokenSet, custom, generators } from "openid-client";
 import { OAuthUserInfo } from "../utils";
 
 const OAUTH_USERINFO_TOTAL_ATTEMPTS = 3;
 const OAUTH_USERINFO_RETRY_DELAY_BASE_MS = 250;
+const OAUTH_ACCESS_TOKEN_REFRESH_TOTAL_ATTEMPTS = 2;
+const OAUTH_ACCESS_TOKEN_REFRESH_RETRY_DELAY_MS = 250;
+const OAUTH_HTTP_TIMEOUT_MS = 6000;
 const RETRYABLE_OAUTH_NETWORK_ERROR_CODES = new Set([
   "ETIMEDOUT",
   "ECONNRESET",
@@ -22,6 +26,13 @@ const RETRYABLE_OAUTH_PROVIDER_ERROR_CODES = new Set([
   "temporarily_unavailable",
   "timeout",
 ]);
+
+// openid-client defaults to a 3.5s HTTP timeout. OAuth providers can be slow
+// enough that this causes avoidable refresh failures, so give token/userinfo
+// requests a little more room while still bounding backend request latency.
+custom.setHttpOptionsDefaults({
+  timeout: OAUTH_HTTP_TIMEOUT_MS,
+});
 
 export type TokenSet = {
   accessToken: string,
@@ -59,7 +70,7 @@ export function isRetryableOAuthUserInfoError(error: unknown): boolean {
     return true;
   }
 
-  const providerErrorCode = getStringProperty(error, "error")?.toLowerCase();
+  const providerErrorCode = getOAuthProviderErrorCode(error);
   if (providerErrorCode && RETRYABLE_OAUTH_PROVIDER_ERROR_CODES.has(providerErrorCode)) {
     return true;
   }
@@ -89,6 +100,121 @@ export function isRetryableOAuthUserInfoError(error: unknown): boolean {
   }
 
   return false;
+}
+
+function getOAuthProviderErrorCode(error: unknown): string | undefined {
+  const directCode = getStringProperty(error, "error");
+  const nestedError = getUnknownProperty(error, "error");
+  const nestedCode = getStringProperty(nestedError, "error");
+  return (directCode ?? nestedCode)?.toLowerCase();
+}
+
+export type OAuthAccessTokenRefreshErrorDisposition =
+  | {
+    type: "invalid-refresh-token",
+    message: string,
+  }
+  | {
+    type: "temporarily-unavailable",
+  }
+  | {
+    type: "invalid-client",
+  }
+  | {
+    type: "unexpected",
+  };
+
+type OAuthAccessTokenRefreshErrorMetadata = {
+  attempts: number,
+  retryCount: number,
+  sawAmbiguousRefreshAttempt: boolean,
+  causes: readonly unknown[],
+};
+
+export type OAuthAccessTokenRefreshError =
+  | ({
+    type: "invalid-refresh-token",
+    message: string,
+  } & OAuthAccessTokenRefreshErrorMetadata)
+  | ({
+    type: "temporarily-unavailable",
+    cause: unknown,
+  } & OAuthAccessTokenRefreshErrorMetadata)
+  | ({
+    type: "invalid-client",
+    cause: unknown,
+  } & OAuthAccessTokenRefreshErrorMetadata)
+  | ({
+    type: "unexpected",
+    cause: unknown,
+  } & OAuthAccessTokenRefreshErrorMetadata);
+
+/**
+ * Classifies the provider error by what it says about the request itself.
+ * `invalid-refresh-token` means the provider explicitly rejected the refresh
+ * token, but callers still need context before deciding whether to invalidate
+ * our stored token.
+ */
+export function getOAuthAccessTokenRefreshErrorDisposition(error: unknown): OAuthAccessTokenRefreshErrorDisposition {
+  const providerErrorCode = getOAuthProviderErrorCode(error);
+
+  if (providerErrorCode === "invalid_grant") {
+    return { type: "invalid-refresh-token", message: "Refresh token is invalid or expired" };
+  }
+  if (providerErrorCode === "access_denied" || providerErrorCode === "consent_required") {
+    return { type: "invalid-refresh-token", message: "Access was denied or consent was revoked" };
+  }
+  if (providerErrorCode === "invalid_token") {
+    return { type: "invalid-refresh-token", message: "Refresh token is invalid" };
+  }
+  if (providerErrorCode === "unauthorized_client") {
+    return { type: "invalid-refresh-token", message: "OAuth Client ID is no longer authorized to use this refresh token" };
+  }
+  if (providerErrorCode === "invalid_client") {
+    return { type: "invalid-client" };
+  }
+  if (isRetryableOAuthUserInfoError(error)) {
+    return { type: "temporarily-unavailable" };
+  }
+
+  return { type: "unexpected" };
+}
+
+/**
+ * Converts a provider refresh failure into the action Stack should take.
+ *
+ * The subtle case is refresh-token rotation. A timeout can happen after the
+ * provider has processed the refresh and rotated the refresh token, but before
+ * our HTTP client receives the replacement. If we retry with the old token, the
+ * provider can legitimately answer `invalid_grant`. In that situation, treating
+ * the old token as revoked would lock the user out even though they did nothing
+ * wrong, so we surface a temporary provider failure instead.
+ */
+export function getOAuthAccessTokenRefreshError(error: unknown, options: {
+  sawAmbiguousRefreshAttempt: boolean,
+  attempts: number,
+  causes: readonly unknown[],
+}): OAuthAccessTokenRefreshError {
+  const disposition = getOAuthAccessTokenRefreshErrorDisposition(error);
+  const metadata = {
+    attempts: options.attempts,
+    retryCount: options.attempts - 1,
+    sawAmbiguousRefreshAttempt: options.sawAmbiguousRefreshAttempt,
+    causes: [...options.causes],
+  };
+  if (disposition.type === "invalid-refresh-token") {
+    if (options.sawAmbiguousRefreshAttempt) {
+      return { type: "temporarily-unavailable", cause: error, ...metadata };
+    }
+    return { ...disposition, ...metadata };
+  }
+  if (disposition.type === "temporarily-unavailable") {
+    return { type: "temporarily-unavailable", cause: error, ...metadata };
+  }
+  if (disposition.type === "invalid-client") {
+    return { type: "invalid-client", cause: error, ...metadata };
+  }
+  return { type: "unexpected", cause: error, ...metadata };
 }
 
 function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: number): TokenSet {
@@ -311,39 +437,45 @@ export abstract class OAuthBaseProvider {
   /**
    * Refreshes the access token using a refresh token.
    *
-   * Returns a Result to differentiate between:
-   * - Success: the token was refreshed successfully
-   * - Handled error: the refresh token is invalid/expired (user needs to re-authenticate)
-   * - Thrown error: unexpected failures that may indicate bugs or configuration issues
+   * This intentionally returns expected OAuth failures instead of throwing
+   * KnownErrors/StatusErrors. The caller has the DB context needed to decide
+   * whether to invalidate a stored refresh token, try another token, or return a
+   * temporary provider failure to the customer.
+   *
+   * Transient provider/network failures are retried once. After any ambiguous
+   * attempt (for example, a timeout), a later `invalid_grant` is not enough to
+   * prove revocation because the first attempt may have rotated the token.
    */
   async getAccessToken(options: {
     refreshToken: string,
     scope?: string,
-  }): Promise<Result<TokenSet, string>> {
-    let tokenSet;
-    try {
-      tokenSet = await this.oauthClient.refresh(options.refreshToken, { exchangeBody: { scope: options.scope } });
-    } catch (error: any) {
-      // Handle known OAuth error cases where the refresh token is no longer valid
-      // These are expected scenarios that don't indicate bugs
-      if (error?.error === "invalid_grant" || error?.error?.error === "invalid_grant") {
-        return Result.error("Refresh token is invalid or expired");
-      }
-      if (error?.error === "access_denied" || error?.error === "consent_required") {
-        return Result.error("Access was denied or consent was revoked");
-      }
-      if (error?.error === "invalid_token") {
-        return Result.error("Refresh token is invalid");
-      }
-      if (error?.error === "unauthorized_client") {
-        return Result.error("OAuth Client ID is no longer authorized to use this refresh token");
-      }
+  }): Promise<Result<TokenSet, OAuthAccessTokenRefreshError>> {
+    let sawAmbiguousRefreshAttempt = false;
+    const refreshErrorCauses: unknown[] = [];
 
-      // For unknown errors, throw so they can be investigated
-      throw new StackAssertionError(`Failed to refresh access token: ${error}`, { cause: error });
+    for (let attemptIndex = 0; attemptIndex < OAUTH_ACCESS_TOKEN_REFRESH_TOTAL_ATTEMPTS; attemptIndex++) {
+      try {
+        const tokenSet = await this.oauthClient.refresh(options.refreshToken, { exchangeBody: { scope: options.scope } });
+        return Result.ok(processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis));
+      } catch (error) {
+        refreshErrorCauses.push(error);
+        const refreshError = getOAuthAccessTokenRefreshError(error, {
+          sawAmbiguousRefreshAttempt,
+          attempts: attemptIndex + 1,
+          causes: refreshErrorCauses,
+        });
+        if (refreshError.type === "temporarily-unavailable") {
+          sawAmbiguousRefreshAttempt = true;
+          if (attemptIndex < OAUTH_ACCESS_TOKEN_REFRESH_TOTAL_ATTEMPTS - 1) {
+            await wait(OAUTH_ACCESS_TOKEN_REFRESH_RETRY_DELAY_MS);
+            continue;
+          }
+        }
+        return Result.error(refreshError);
+      }
     }
 
-    return Result.ok(processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis));
+    throw new StackAssertionError("OAuth access token refresh finished without a result. This should never happen because the refresh loop either returns a result or throws.");
   }
 
   // If the token can be revoked before it expires, override this method to make an API call to the provider to check if the token is valid

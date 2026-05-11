@@ -12,16 +12,21 @@ import { isNonInteractiveEnv } from "../lib/interactive.js";
 import { createInitPrompt } from "../lib/init-prompt.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
+import { isEmulatorImageInstalled } from "./emulator.js";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
+const VALID_INIT_MODES = ["create", "create-cloud", "link-config", "link-cloud"] as const;
+type InitMode = typeof VALID_INIT_MODES[number];
+
 type InitOptions = {
-  mode?: "create" | "create-cloud" | "link-config" | "link-cloud",
+  mode?: InitMode,
   apps?: string,
   configFile?: string,
   selectProjectId?: string,
   outputDir?: string,
   agent?: boolean,
+  displayName?: string,
 };
 
 export function registerInitCommand(program: Command) {
@@ -34,8 +39,12 @@ export function registerInitCommand(program: Command) {
     .option("--select-project-id <id>", "Project ID to link (for link-cloud mode)")
     .option("--output-dir <dir>", "Directory to write output files (defaults to cwd)")
     .option("--no-agent", "Skip Claude agent and print setup instructions instead")
+    .option("--display-name <name>", "Project display name (used by create-cloud mode)")
     .action(async (opts: InitOptions) => {
-      const hasFlags = opts.mode != null;
+      if (opts.mode != null && !VALID_INIT_MODES.includes(opts.mode)) {
+        throw new CliError(`Invalid --mode: ${opts.mode}. Expected one of: ${VALID_INIT_MODES.join(", ")}.`);
+      }
+      const hasFlags = opts.mode != null || opts.configFile != null || opts.selectProjectId != null;
 
       if (!hasFlags && isNonInteractiveEnv()) {
         throw new CliError("stack init requires an interactive terminal. Use --mode flag for non-interactive usage.");
@@ -91,7 +100,7 @@ async function runInit(program: Command, opts: InitOptions) {
 
   console.log("Welcome to Stack Auth!\n");
 
-  let mode: "create" | "create-cloud" | "link" | "link-config" | "link-cloud";
+  let mode: string;
   if (opts.mode) {
     mode = opts.mode;
   } else if (opts.selectProjectId) {
@@ -99,54 +108,45 @@ async function runInit(program: Command, opts: InitOptions) {
   } else if (opts.configFile) {
     mode = "link-config";
   } else {
-    const action = await select({
-      message: "Would you like to link to an existing project, or create a new one?",
+    console.log("Creating a new Stack Auth project.\n");
+    const localLabel = isEmulatorImageInstalled()
+      ? "Local (emulator already installed)"
+      : "Local (requires local emulator installation, ~1.3gb storage required)";
+    const location = await select({
+      message: "Where would you like to create the project?",
       choices: [
-        { name: "Create a new project", value: "create" as const },
-        { name: "Link an existing project", value: "link" as const },
+        { name: "Stack Auth Cloud", value: "hosted" as const },
+        { name: localLabel, value: "local" as const },
       ],
     });
-
-    if (action === "link") {
-      mode = "link";
-    } else {
-      const location = await select({
-        message: "Where would you like to create the project?",
-        choices: [
-          { name: "Stack Auth Cloud", value: "hosted" as const },
-          { name: "Local (requires local emulator installation, ~1.3gb storage required)", value: "local" as const },
-        ],
-      });
-      mode = location === "local" ? "create" : "create-cloud";
-    }
+    mode = location === "local" ? "create" : "create-cloud";
   }
 
   let configPath: string | undefined;
+  let projectId: string | undefined;
 
-  switch (mode) {
-    case "link":
-    case "link-config":
-    case "link-cloud": {
-      const result = await handleLink(flags, opts, outputDir, mode);
-      configPath = result.configPath;
-      break;
-    }
-    case "create": {
-      const result = await handleCreate(opts, outputDir);
-      configPath = result.configPath;
-      break;
-    }
-    case "create-cloud": {
-      const result = await handleCreateCloud(flags, opts, outputDir);
-      configPath = result.configPath;
-      break;
-    }
+  if (mode === "link-config" || mode === "link-cloud") {
+    const result = await handleLink(flags, opts, outputDir, mode);
+    configPath = result.configPath;
+    projectId = result.projectId;
+  } else if (mode === "create") {
+    const result = await handleCreate(opts, outputDir);
+    configPath = result.configPath;
+  } else if (mode === "create-cloud") {
+    const result = await handleCreateCloud(flags, opts, outputDir);
+    configPath = result.configPath;
+    projectId = result.projectId;
+  } else {
+    throw new CliError(`Unknown mode: ${mode}`);
   }
 
   const initPrompt = createInitPrompt(false, configPath);
   const useAgent = opts.agent !== false && !isNonInteractiveEnv();
 
   if (useAgent) {
+    console.log("\nRunning your coding agent to wire up Stack Auth.");
+    console.log("This also registers the Stack Auth MCP server (https://mcp.stack-auth.com)");
+    console.log("so your agent can read the docs and answer Stack-specific questions going forward.\n");
     const success = await runClaudeAgent({
       prompt: `Execute ALL of the following setup steps in my project now. Do not ask questions — just detect the framework and package manager from existing files and proceed.\n\n${initPrompt}`,
       cwd: outputDir,
@@ -158,26 +158,31 @@ async function runInit(program: Command, opts: InitOptions) {
   } else {
     console.log("\n" + initPrompt);
   }
+
+  const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+  printNextSteps({ mode, projectId, dashboardUrl });
 }
 
-async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode: "link" | "link-config" | "link-cloud"): Promise<{ configPath?: string }> {
-  let source: "config-file" | "cloud";
+function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: string }) {
+  console.log("\nYou're all set! What's next:\n");
+  console.log("  • Start your dev server, then visit /handler/sign-up to create a test user");
+  console.log("    (and /handler/sign-in to log in). Drop <UserButton /> into a page to see the session.");
 
-  if (resolvedMode === "link-config") {
-    source = "config-file";
-  } else if (resolvedMode === "link-cloud") {
-    source = "cloud";
-  } else {
-    source = await select({
-      message: "How would you like to link your project?",
-      choices: [
-        { name: "Link from config file", value: "config-file" as const },
-        { name: "Link from app.stack-auth.com", value: "cloud" as const },
-      ],
-    });
+  if (args.mode === "create") {
+    console.log("  • You're wired up to the local emulator. Start it in another terminal:");
+    console.log("      npx @stackframe/stack-cli emulator start");
+    console.log("    Local dashboard: http://localhost:26700");
+  } else if (args.projectId) {
+    console.log("  • Manage this project in the dashboard:");
+    console.log(`      ${args.dashboardUrl}/projects/${encodeURIComponent(args.projectId)}`);
   }
 
-  if (source === "config-file") {
+  console.log("  • Docs: https://docs.stack-auth.com");
+  console.log("");
+}
+
+async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode: "link-config" | "link-cloud"): Promise<{ configPath?: string, projectId?: string }> {
+  if (resolvedMode === "link-config") {
     return await handleLinkFromConfigFile(opts);
   }
   return await handleLinkFromCloud(flags, opts, outputDir);
@@ -223,6 +228,7 @@ async function ensureLoggedInSession(flags: Record<string, unknown>) {
 async function writeProjectKeysToEnv(
   project: { id: string, app: { createInternalApiKey: (opts: { description: string, expiresAt: Date, hasPublishableClientKey: boolean, hasSecretServerKey: boolean, hasSuperSecretAdminKey: boolean }) => Promise<{ publishableClientKey?: string | null, secretServerKey?: string | null }> } },
   outputDir: string,
+  variant: "cloud" | "local" = "cloud",
 ) {
   const apiKey = await project.app.createInternalApiKey({
     description: "Created by CLI init script",
@@ -235,8 +241,16 @@ async function writeProjectKeysToEnv(
   const publishableClientKey = apiKey.publishableClientKey ?? throwErr("createInternalApiKey returned no publishableClientKey despite hasPublishableClientKey=true");
   const secretServerKey = apiKey.secretServerKey ?? throwErr("createInternalApiKey returned no secretServerKey despite hasSecretServerKey=true");
 
+  const header = variant === "local"
+    ? [
+      "# Stack Auth — local emulator keys",
+      "# These credentials point at your local Stack Auth emulator, not a cloud project.",
+      "# They are only valid while the emulator is running (`stack emulator start`).",
+    ]
+    : ["# Stack Auth"];
+
   const envLines = [
-    "# Stack Auth",
+    ...header,
     `NEXT_PUBLIC_STACK_PROJECT_ID=${project.id}`,
     `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKey}`,
     `STACK_SECRET_SERVER_KEY=${secretServerKey}`,
@@ -271,28 +285,34 @@ async function writeProjectKeysToEnv(
   }
 }
 
-async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
   const sessionAuth = await ensureLoggedInSession(flags);
   const user = await getInternalUser(sessionAuth);
 
+  const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
   const newProject = await createProjectInteractively(user, {
+    displayName: opts.displayName,
     defaultDisplayName: path.basename(outputDir),
+    dashboardUrl,
   });
   console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
 
   await writeProjectKeysToEnv(newProject, outputDir);
-  return {};
+  return { projectId: newProject.id };
 }
 
-async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
   const sessionAuth = await ensureLoggedInSession(flags);
   const user = await getInternalUser(sessionAuth);
   let projects = await user.listOwnedProjects();
   let autoCreatedProjectId: string | null = null;
 
   if (projects.length === 0) {
+    if (opts.selectProjectId) {
+      throw new CliError(`Project '${opts.selectProjectId}' not found among your owned projects. Check the ID or omit --select-project-id to create a new project interactively.`);
+    }
     if (isNonInteractiveEnv()) {
-      throw new CliError("No projects found. Run `stack project create --display-name <name>` first, or set --select-project-id.");
+      throw new CliError("No projects found. Run `stack project create --display-name <name>` first.");
     }
 
     const shouldCreate = await confirm({
@@ -301,11 +321,14 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
     });
 
     if (!shouldCreate) {
-      throw new CliError("You don't own any projects. Create one at app.stack-auth.com or re-run and choose to create one.");
+      const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+      throw new CliError(`You don't own any projects. Create one at ${dashboardUrl} or re-run and choose to create one.`);
     }
 
+    const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
     const newProject = await createProjectInteractively(user, {
       defaultDisplayName: path.basename(outputDir),
+      dashboardUrl,
     });
     console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
     projects = [newProject];
@@ -331,9 +354,10 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
     });
   }
 
-  const project = projects.find((p) => p.id === projectId)!;
+  const project = projects.find((p) => p.id === projectId)
+    ?? throwErr(`Project not found: ${projectId}`);
   await writeProjectKeysToEnv(project, outputDir);
-  return {};
+  return { projectId };
 }
 
 async function performLogin(flags: Record<string, unknown>) {

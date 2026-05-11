@@ -312,6 +312,38 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
   await runEmulator("start", { EMULATOR_ARCH: arch, STACK_EMULATOR_CLI_WROTE_ISO: "1" });
 }
 
+function printEmulatorWelcome(): void {
+  const dashboardPort = envPort("EMULATOR_DASHBOARD_PORT", DEFAULT_EMULATOR_DASHBOARD_PORT);
+  const backendPort = envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
+  const inbucketPort = envPort("EMULATOR_INBUCKET_PORT", DEFAULT_EMULATOR_INBUCKET_PORT);
+
+  console.log("\nEmulator is up.\n");
+  console.log("The Stack Auth emulator runs a full local Stack Auth stack (backend, dashboard,");
+  console.log("Postgres, Redis, MinIO, and a test mail server) inside a VM on your machine.");
+  console.log("It gives you an offline, disposable Stack Auth you can develop against — no");
+  console.log("cloud account needed, and you can reset it any time.\n");
+  console.log("Services:");
+  console.log(`  • Local dashboard  http://localhost:${dashboardPort}`);
+  console.log(`  • Backend API      http://localhost:${backendPort}`);
+  console.log(`  • Test inbox       http://localhost:${inbucketPort}  (catches all outbound email)`);
+  console.log("");
+  console.log("Common commands:");
+  console.log("  stack emulator status   Check service health");
+  console.log("  stack emulator stop     Stop the VM (keeps data)");
+  console.log("  stack emulator reset    Wipe all state and start fresh");
+  console.log("  stack emulator run <cmd>  Start the emulator, run <cmd>, stop on exit");
+  console.log("");
+}
+
+export function isEmulatorImageInstalled(arch?: "arm64" | "amd64"): boolean {
+  try {
+    const resolvedArch = arch ?? resolveArch();
+    return existsSync(join(emulatorImageDir(), `stack-emulator-${resolvedArch}.qcow2`));
+  } catch {
+    return false;
+  }
+}
+
 export function resolveArch(raw?: string): "arm64" | "amd64" {
   const arch = raw ?? (process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "amd64" : null);
   if (arch === "arm64" || arch === "amd64") return arch;
@@ -744,10 +776,12 @@ export function registerEmulatorCommand(program: Command) {
         }
       }
 
+      let freshlyStarted = false;
       if (isEmulatorRunning()) {
         console.warn("Emulator already running, reusing existing instance.");
       } else {
         await startEmulator(arch);
+        freshlyStarted = true;
       }
 
       if (resolvedConfigFile) {
@@ -759,6 +793,11 @@ export function registerEmulatorCommand(program: Command) {
           publishable_client_key: creds.publishable_client_key,
           secret_server_key: creds.secret_server_key,
         }, null, 2));
+        return;
+      }
+
+      if (freshlyStarted) {
+        printEmulatorWelcome();
       }
     });
 

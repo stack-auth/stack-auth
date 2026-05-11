@@ -1,0 +1,4 @@
+.output
+.tanstack
+dist
+node_modules

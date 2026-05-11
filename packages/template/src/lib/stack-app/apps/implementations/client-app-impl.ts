@@ -36,6 +36,8 @@ import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withB
 import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
+import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
@@ -150,6 +152,26 @@ function getHeaderValueFromRequestLikeHeaders(headers: RequestLike["headers"], n
     }
   }
   return null;
+}
+
+// IF_PLATFORM tanstack-start
+function getTanStackStartRequestHeader(name: string): string | null {
+  const { getRequestHeader } = tanstackStartServerContext;
+  if (getRequestHeader == null) {
+    throw new StackAssertionError("TanStack Start request headers are only available during server rendering");
+  }
+  return getRequestHeader(name) ?? null;
+}
+// END_PLATFORM
+
+async function getServerRequestHost(): Promise<string | null> {
+  // IF_PLATFORM next
+  return (await sc.headers?.())?.get("host") ?? null;
+  // ELSE_IF_PLATFORM tanstack-start
+  return getTanStackStartRequestHeader("host");
+  // ELSE_PLATFORM
+  return null;
+  // END_PLATFORM
 }
 
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
@@ -608,6 +630,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._tokenStoreInit = resolvedOptions.tokenStore;
     this._redirectMethod = resolvedOptions.redirectMethod || (isBrowserLike() ? "window" : "none");
     this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
+    this._redirectMethod = resolvedOptions.redirectMethod || "tanstack-start"; // THIS_LINE_PLATFORM tanstack-start
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
     if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
@@ -888,12 +911,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       let hostname;
       if (isBrowserLike()) {
         hostname = window.location.hostname;
+      } else {
+        hostname = await getServerRequestHost();
       }
-      // IF_PLATFORM next
-      else {
-        hostname = (await sc.headers?.())?.get("host");
-      }
-      // END_PLATFORM
       if (!hostname) {
         console.warn("No hostname found when queueing custom refresh cookie update");
         return;
@@ -997,6 +1017,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     switch (tokenStoreInit) {
       case "cookie": {
+        // IF_PLATFORM tanstack-start
+        if (!isBrowserLike()) {
+          return this._getOrCreateTokenStore(cookieHelper, "nextjs-cookie");
+        }
+        // END_PLATFORM
         return this._getBrowserCookieTokenStore();
       }
       case "nextjs-cookie": {
@@ -1105,6 +1130,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   protected _useTokenStore(overrideTokenStoreInit?: TokenStoreInit): Store<TokenObject> {
+    // IF_PLATFORM tanstack-start
+    if (!isBrowserLike()) {
+      return this._getOrCreateTokenStore(use(createCookieHelper()), overrideTokenStoreInit);
+    }
+    // END_PLATFORM
     suspendIfSsr();
     const cookieHelper = createBrowserCookieHelper();
     const tokenStore = this._getOrCreateTokenStore(cookieHelper, overrideTokenStoreInit);
@@ -2520,6 +2550,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else if (isReactServer && this._redirectMethod === "nextjs") {
       NextNavigation.redirect(options.url.toString(), options.replace ? NextNavigation.RedirectType.replace : NextNavigation.RedirectType.push);
       // END_PLATFORM
+      // IF_PLATFORM tanstack-start
+    } else if (this._redirectMethod === "tanstack-start" && !isBrowserLike()) {
+      throw TanStackRouter.redirect({ href: options.url.toString(), replace: options.replace });
+      // END_PLATFORM
     } else if (typeof this._redirectMethod === "object" && this._redirectMethod.navigate) {
       this._redirectMethod.navigate(options.url.toString());
     } else {
@@ -2543,6 +2577,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else if (this._redirectMethod === "nextjs") {
       const router = NextNavigation.useRouter();
       return (to: string) => router.push(to);
+      // END_PLATFORM
+      // IF_PLATFORM tanstack-start
+    } else if (this._redirectMethod === "tanstack-start") {
+      return (to: string) => window.location.assign(to);
       // END_PLATFORM
     } else {
       return (to: string) => { };
@@ -2587,6 +2625,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     await this._redirectIfTrusted(plan.url, options);
+  }
+
+  protected _redirectToHandlerDuringRender(handlerName: keyof HandlerUrls, options?: RedirectToOptions): boolean {
+    // IF_PLATFORM tanstack-start
+    if (this._redirectMethod === "tanstack-start" && !isBrowserLike()) {
+      const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
+      const rawHandlerUrl = rawUrls[handlerName];
+      if (!rawHandlerUrl) {
+        throw new Error(`No URL for handler name ${handlerName}`);
+      }
+      throw TanStackRouter.redirect({ href: rawHandlerUrl, replace: options?.replace });
+    }
+    // END_PLATFORM
+    return false;
   }
 
   async redirectToSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("signIn", options); }
@@ -2742,9 +2794,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       switch (options?.or) {
         case 'redirect': {
           if (!crud?.is_anonymous && crud?.is_restricted) {
-            runAsynchronously(this.redirectToOnboarding({ replace: true }));
+            if (!this._redirectToHandlerDuringRender("onboarding", { replace: true })) {
+              runAsynchronously(this.redirectToOnboarding({ replace: true }));
+            }
           } else {
-            runAsynchronously(this.redirectToSignIn({ replace: true }));
+            if (!this._redirectToHandlerDuringRender("signIn", { replace: true })) {
+              runAsynchronously(this.redirectToSignIn({ replace: true }));
+            }
           }
           suspend();
           throw new StackAssertionError("suspend should never return");

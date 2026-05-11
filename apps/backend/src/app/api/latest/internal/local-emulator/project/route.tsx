@@ -4,10 +4,11 @@ import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
   LOCAL_EMULATOR_OWNER_TEAM_ID,
-  isLocalEmulatorOnboardingEnabledInConfig,
   isLocalEmulatorEnabled,
+  isLocalEmulatorOnboardingEnabledInConfig,
   readConfigFromFile,
   resolveEmulatorPath,
+  writeConfigToFile,
   writeShowOnboardingConfigToFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
@@ -18,6 +19,7 @@ import {
   projectOnboardingStatusSchema,
   projectOnboardingStatusValues,
   type ProjectOnboardingStatus,
+  yupArray,
   yupBoolean,
   yupNumber,
   yupObject,
@@ -35,6 +37,14 @@ type LocalEmulatorProjectMappingRow = {
 
 function isProjectOnboardingStatus(value: string): value is ProjectOnboardingStatus {
   return projectOnboardingStatusValues.some((status) => status === value);
+}
+
+function deriveDisplayLabel(absoluteFilePath: string): string {
+  const base = path.basename(absoluteFilePath);
+  if (base.toLowerCase() === "stack.config.ts") {
+    return path.basename(path.dirname(absoluteFilePath)) || base;
+  }
+  return base;
 }
 
 async function assertLocalEmulatorOwnerTeamReadiness() {
@@ -90,7 +100,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     update: {},
     create: {
       id: projectId,
-      displayName: `Local Emulator: ${path.basename(absoluteFilePath) || "Project"}`,
+      displayName: `Local Emulator: ${deriveDisplayLabel(absoluteFilePath) || "Project"}`,
       description: `Local emulator project for ${absoluteFilePath}`,
       isProductionMode: false,
       ownerTeamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
@@ -287,14 +297,30 @@ export const POST = createSmartRouteHandler({
     if (!isLocalEmulatorEnabled()) {
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
     }
-    if (!path.isAbsolute(req.body.absolute_file_path)) {
-      throw new StatusError(StatusError.BadRequest, "absolute_file_path must be an absolute path.");
+    if (!path.posix.isAbsolute(req.body.absolute_file_path)) {
+      const looksWindows = path.win32.isAbsolute(req.body.absolute_file_path);
+      throw new StatusError(
+        StatusError.BadRequest,
+        looksWindows
+          ? "absolute_file_path must be a POSIX absolute path. The local emulator runs in a Linux VM and does not accept Windows-style paths. Use the in-VM path or run the emulator from WSL."
+          : "absolute_file_path must be an absolute path.",
+      );
     }
 
-    const absoluteFilePath = path.resolve(req.body.absolute_file_path);
-    const resolvedFilePath = resolveEmulatorPath(absoluteFilePath);
+    const inputPath = path.resolve(req.body.absolute_file_path);
+    let inputStat;
+    try {
+      inputStat = await fs.stat(resolveEmulatorPath(inputPath));
+    } catch {
+      inputStat = undefined;
+    }
 
-    // Validate file exists before creating a project
+    const looksLikeConfigFile = /\.(ts|js|mjs)$/i.test(inputPath);
+    const absoluteFilePath = (inputStat?.isDirectory() || (!inputStat && !looksLikeConfigFile))
+      ? path.join(inputPath, "stack.config.ts")
+      : inputPath;
+
+    const resolvedFilePath = resolveEmulatorPath(absoluteFilePath);
     let fileExists: boolean;
     try {
       await fs.access(resolvedFilePath);
@@ -303,7 +329,7 @@ export const POST = createSmartRouteHandler({
       fileExists = false;
     }
     if (!fileExists) {
-      throw new StatusError(StatusError.BadRequest, `Config file not found: ${absoluteFilePath}`);
+      await writeConfigToFile(absoluteFilePath, {});
     }
 
     const fileContent = await fs.readFile(resolvedFilePath, "utf-8");
@@ -331,6 +357,74 @@ export const POST = createSmartRouteHandler({
         branch_config_override_string: JSON.stringify(fileConfig),
         onboarding_status: onboardingStatus,
         onboarding_outstanding: onboardingStatus !== "completed",
+      },
+    };
+  },
+});
+
+type LocalEmulatorProjectListRow = {
+  projectId: string,
+  absoluteFilePath: string,
+  updatedAt: Date,
+};
+
+export const GET = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+    summary: "List recent local emulator projects",
+    description: "Returns previously opened local emulator project mappings, most-recent first.",
+    tags: ["Local Emulator"],
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: clientOrHigherAuthTypeSchema.defined(),
+      project: yupObject({
+        id: yupString().oneOf(["internal"]).defined(),
+      }).defined(),
+    }).defined(),
+    method: yupString().oneOf(["GET"]).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      projects: yupArray(yupObject({
+        project_id: yupString().defined(),
+        absolute_file_path: yupString().defined(),
+        display_name: yupString().defined(),
+      }).defined()).defined(),
+    }).defined(),
+  }),
+  handler: async () => {
+    if (!isLocalEmulatorEnabled()) {
+      throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
+    }
+
+    const rows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
+      SELECT "projectId", "absoluteFilePath", "updatedAt"
+      FROM "LocalEmulatorProject"
+      ORDER BY "updatedAt" DESC
+      LIMIT 20
+    `);
+
+    const projectIds = rows.map((r) => r.projectId);
+    const projects = projectIds.length > 0
+      ? await globalPrismaClient.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, displayName: true },
+      })
+      : [];
+    const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]));
+
+    return {
+      statusCode: 200 as const,
+      bodyType: "json" as const,
+      body: {
+        projects: rows.map((r) => ({
+          project_id: r.projectId,
+          absolute_file_path: r.absoluteFilePath,
+          display_name: displayNameById.get(r.projectId) ?? deriveDisplayLabel(r.absoluteFilePath),
+        })),
       },
     };
   },

@@ -184,7 +184,17 @@ export function createEmptyTokenStore() {
 const cachePromiseByHookId = new Map<string, ReactPromise<Result<unknown>>>();
 export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>>, dependencies: D, caller: string): T {
   // we explicitly don't want to run this hook in SSR
+  // IF_PLATFORM tanstack-start
+  if (!isBrowserLike()) {
+    const result = use(cache.getOrWait(dependencies, "read-write"));
+    if (result.status === "error") {
+      throw result.error;
+    }
+    return result.data;
+  }
+  // ELSE_PLATFORM
   suspendIfSsr(caller);
+  // END_PLATFORM
 
   // on the dashboard, we do some perf monitoring for pre-fetching which should hook right in here
   const asyncCacheHooks: any[] = getGlobal("use-async-cache-execution-hooks") ?? [];
@@ -220,7 +230,7 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
   const promise = React.useSyncExternalStore(
     subscribe,
     getSnapshot,
-    () => throwErr(new Error("getServerSnapshot should never be called in useAsyncCache because we restrict to CSR earlier"))
+    getSnapshot,
   );
 
   const result = use(promise);

@@ -66,9 +66,14 @@ export default function PageClient() {
   const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
   const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
+  const [recentConfigProjects, setRecentConfigProjects] = useState<Array<{ project_id: string, absolute_file_path: string, display_name: string }>>([]);
+  const [recentConfigProjectsError, setRecentConfigProjectsError] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
-  const [projectDau, setProjectDau] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
+  const [projectWeeklyUsers, setProjectWeeklyUsers] = useState<Map<string, number>>(new Map());
+  const [projectWeeklyUsersChart, setProjectWeeklyUsersChart] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
+  const [loadingProjectWeeklyUsers, setLoadingProjectWeeklyUsers] = useState(true);
+  const [projectWeeklyUsersError, setProjectWeeklyUsersError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -122,34 +127,66 @@ export default function PageClient() {
 
   useEffect(() => {
     let cancelled = false;
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
+      if (!cancelled) {
+        setLoadingProjectWeeklyUsers(true);
+        setProjectWeeklyUsersError(false);
+      }
       try {
-        const response = await appInternals.sendRequest("/internal/projects-dau", {}, "client");
+        const response = await appInternals.sendRequest("/internal/projects-weekly-users", {}, "client");
         if (!response.ok) {
-          console.warn("[projects-dau] request failed", response.status, await response.text());
-          return;
+          throw new Error(`Failed to load project weekly users: ${response.status} ${await response.text()}`);
         }
         const body = await response.json();
-        if (body == null || typeof body !== "object" || !("projects" in body) || body.projects == null || typeof body.projects !== "object") {
-          console.warn("[projects-dau] unexpected body", body);
-          return;
+        if (
+          body == null ||
+          typeof body !== "object" ||
+          !("projects" in body) ||
+          body.projects == null ||
+          typeof body.projects !== "object" ||
+          Array.isArray(body.projects)
+        ) {
+          throw new Error("Failed to load project weekly users: response body did not include a projects object.");
         }
-        const map = new Map<string, { date: string, activity: number }[]>();
-        for (const [projectId, series] of Object.entries(body.projects as Record<string, unknown>)) {
-          if (!Array.isArray(series)) continue;
+        const weeklyUsersMap = new Map<string, number>();
+        const weeklyUsersChartMap = new Map<string, { date: string, activity: number }[]>();
+        for (const [projectId, value] of Object.entries(body.projects)) {
+          if (value == null || typeof value !== "object") {
+            continue;
+          }
+          const weeklyUsers = "weekly_users" in value ? value.weekly_users : undefined;
+          if (typeof weeklyUsers === "number") {
+            weeklyUsersMap.set(projectId, weeklyUsers);
+          }
+          const dailyUsers = "daily_users" in value ? value.daily_users : undefined;
+          if (!Array.isArray(dailyUsers)) {
+            continue;
+          }
           const points: { date: string, activity: number }[] = [];
-          for (const point of series) {
-            if (point != null && typeof point === "object" && "date" in point && "activity" in point && typeof (point as any).date === "string" && typeof (point as any).activity === "number") {
-              points.push({ date: (point as any).date, activity: (point as any).activity });
+          for (const point of dailyUsers) {
+            if (point != null && typeof point === "object" && "date" in point && "activity" in point) {
+              const date = point.date;
+              const activity = point.activity;
+              if (typeof date === "string" && typeof activity === "number") {
+                points.push({ date, activity });
+              }
             }
           }
-          map.set(projectId, points);
+          weeklyUsersChartMap.set(projectId, points);
         }
         if (!cancelled) {
-          setProjectDau(map);
+          setProjectWeeklyUsers(weeklyUsersMap);
+          setProjectWeeklyUsersChart(weeklyUsersChartMap);
         }
-      } catch (e) {
-        console.warn("[projects-dau] fetch error", e);
+      } catch (error) {
+        if (!cancelled) {
+          setProjectWeeklyUsersError(true);
+        }
+        throw error;
+      } finally {
+        if (!cancelled) {
+          setLoadingProjectWeeklyUsers(false);
+        }
       }
     });
     return () => {
@@ -157,17 +194,77 @@ export default function PageClient() {
     };
   }, [appInternals, rawProjects.length]);
 
+  useEffect(() => {
+    if (!openConfigFileDialog || !isLocalEmulator) return;
+    let cancelled = false;
+    setRecentConfigProjectsError(false);
+    runAsynchronously(async () => {
+      try {
+        const response = await appInternals.sendRequest("/internal/local-emulator/project", { method: "GET" }, "client");
+        if (!response.ok) {
+          if (!cancelled) {
+            setRecentConfigProjects([]);
+            setRecentConfigProjectsError(true);
+          }
+          return;
+        }
+        const body = await response.json() as { projects?: unknown };
+        if (cancelled) return;
+        if (!Array.isArray(body.projects)) {
+          throw new Error("Invalid recent-projects payload");
+        }
+        const parsed = body.projects.map((p: unknown): { project_id: string, absolute_file_path: string, display_name: string } => {
+          if (
+            !p || typeof p !== "object"
+            || typeof (p as Record<string, unknown>).project_id !== "string"
+            || typeof (p as Record<string, unknown>).absolute_file_path !== "string"
+            || typeof (p as Record<string, unknown>).display_name !== "string"
+          ) {
+            throw new Error("Invalid recent-projects payload");
+          }
+          const r = p as Record<string, string>;
+          return { project_id: r.project_id, absolute_file_path: r.absolute_file_path, display_name: r.display_name };
+        });
+        setRecentConfigProjects(parsed);
+      } catch {
+        if (!cancelled) {
+          setRecentConfigProjects([]);
+          setRecentConfigProjectsError(true);
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openConfigFileDialog, isLocalEmulator, appInternals]);
+
+  const pathCopyTip = useMemo(() => {
+    const p = typeof navigator !== "undefined" ? navigator.platform : "";
+    if (/Mac|iPhone|iPad|iPod/i.test(p)) {
+      return "Tip: in Finder, right-click the file → hold ⌥ Option → Copy as Pathname, then paste here.";
+    }
+    if (/Win/i.test(p)) {
+      return "Note: the emulator runs in a Linux VM and needs a POSIX path. From WSL, run `wslpath -a stack.config.ts` (or `realpath stack.config.ts`) and paste that here.";
+    }
+    return "Tip: from your project folder, run `realpath stack.config.ts` in a terminal.";
+  }, []);
+
   const handleOpenConfigFile = async () => {
     const trimmedPath = absoluteConfigFilePath.trim();
     if (trimmedPath.length === 0) {
-      throw new Error("Please enter an absolute config file path.");
+      toast({ description: "Please enter a path to your project or stack.config.ts.", variant: "destructive" });
+      return;
     }
 
-    const hasUnixAbsolutePath = trimmedPath.startsWith("/");
-    const hasWindowsAbsolutePath = /^[a-zA-Z]:[\\/]/.test(trimmedPath);
-    const hasWindowsUncPath = trimmedPath.startsWith("\\\\");
-    if (!hasUnixAbsolutePath && !hasWindowsAbsolutePath && !hasWindowsUncPath) {
-      throw new Error("Config file path must be absolute.");
+    if (!trimmedPath.startsWith("/")) {
+      const looksWindows = /^[a-zA-Z]:[\\/]/.test(trimmedPath) || trimmedPath.startsWith("\\\\");
+      toast({
+        description: looksWindows
+          ? "The local emulator runs in a Linux VM and only accepts POSIX paths (e.g. /Users/you/project). Windows paths aren't supported — use WSL or the in-VM path."
+          : "The path must be absolute (e.g. /Users/you/project or /Users/you/project/stack.config.ts).",
+        variant: "destructive",
+      });
+      return;
     }
 
     setOpeningConfigFile(true);
@@ -188,19 +285,20 @@ export default function PageClient() {
       const responseBody = await response.json();
 
       if (!response.ok) {
+        let message = "Couldn't open that path. Make sure it points to your project folder or a valid stack.config.ts.";
         if (typeof responseBody === "string" && responseBody.length > 0) {
-          throw new Error(responseBody);
-        }
-        if (
+          message = responseBody;
+        } else if (
           responseBody != null &&
           typeof responseBody === "object" &&
           "error" in responseBody &&
           typeof responseBody.error === "string" &&
           responseBody.error.length > 0
         ) {
-          throw new Error(responseBody.error);
+          message = responseBody.error;
         }
-        throw new Error("Failed to open config file project in local emulator.");
+        toast({ description: message, variant: "destructive" });
+        return;
       }
 
       if (
@@ -209,7 +307,8 @@ export default function PageClient() {
         !("project_id" in responseBody) ||
         typeof responseBody.project_id !== "string"
       ) {
-        throw new Error("Local emulator endpoint returned an invalid response.");
+        toast({ description: "Local emulator endpoint returned an invalid response.", variant: "destructive" });
+        return;
       }
       const onboardingStatus = "onboarding_status" in responseBody
         ? responseBody.onboarding_status
@@ -232,6 +331,11 @@ export default function PageClient() {
         router.push(`/new-project?project_id=${encodeURIComponent(responseBody.project_id)}`);
       }
       await wait(2000);
+    } catch (e) {
+      toast({
+        description: e instanceof Error ? e.message : "Something went wrong opening that project.",
+        variant: "destructive",
+      });
     } finally {
       setOpeningConfigFile(false);
     }
@@ -302,7 +406,7 @@ export default function PageClient() {
               router.push("/new-project");
               return await wait(2000);
             }}
-          >{isLocalEmulator ? "Open config file" : "Create Project"}
+          >{isLocalEmulator ? "Open a project" : "Create Project"}
           </Button>
         </div>
       </div>
@@ -318,24 +422,57 @@ export default function PageClient() {
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Open config file</DialogTitle>
+            <DialogTitle>Open your Stack Auth project</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">
-              Enter the absolute path to your local Stack config file. The local emulator will create or reuse the mapped project and open it in the dashboard.
+              Point the local dashboard at the <code>stack.config.ts</code> in your project. If you just ran <code>stack init</code>, it was created at the root of that project.
             </Typography>
+            <Typography variant="secondary" className="text-xs">
+              Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>stack.config.ts</code> for you.
+            </Typography>
+            {recentConfigProjects.length > 0 && (
+              <div className="space-y-1">
+                <Typography variant="secondary" className="text-xs uppercase tracking-wide">Recent</Typography>
+                <div className="max-h-40 overflow-y-auto rounded-md border">
+                  {recentConfigProjects.map((p) => (
+                    <button
+                      key={p.project_id}
+                      type="button"
+                      className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
+                      onClick={() => setAbsoluteConfigFilePath(p.absolute_file_path)}
+                      title={p.absolute_file_path}
+                    >
+                      {p.absolute_file_path}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {recentConfigProjectsError && recentConfigProjects.length === 0 && (
+              <Typography variant="secondary" className="text-xs text-destructive">
+                Couldn&apos;t load recent projects. Paste a path below to continue.
+              </Typography>
+            )}
             <Input
               autoFocus
               placeholder="/Users/you/project/stack.config.ts"
               value={absoluteConfigFilePath}
               onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
             />
+            <Typography variant="secondary" className="text-xs">
+              {pathCopyTip}
+            </Typography>
           </div>
           <DialogFooter className="pt-2">
             <Button variant="outline" onClick={() => setOpenConfigFileDialog(false)} disabled={openingConfigFile}>
               Cancel
             </Button>
-            <Button onClick={handleOpenConfigFile} loading={openingConfigFile}>
+            <Button
+              onClick={handleOpenConfigFile}
+              loading={openingConfigFile}
+              disabled={absoluteConfigFilePath.trim().length === 0}
+            >
               Open project
             </Button>
           </DialogFooter>
@@ -370,7 +507,10 @@ export default function PageClient() {
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
-                    dau={projectDau.get(project.id)}
+                    weeklyUsers={projectWeeklyUsers.get(project.id)}
+                    weeklyUsersChart={projectWeeklyUsersChart.get(project.id)}
+                    weeklyUsersLoading={loadingProjectWeeklyUsers}
+                    weeklyUsersError={projectWeeklyUsersError}
                   />
                 );
               })}

@@ -1,6 +1,7 @@
 import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
 import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
 
@@ -67,6 +68,49 @@ import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomS
 type SetCookieOptions = { maxAge: number | "session", noOpIfServerComponent?: boolean, domain?: string, secure?: boolean };
 type DeleteCookieOptions = { noOpIfServerComponent?: boolean, domain?: string };
 
+// IF_PLATFORM tanstack-start
+let tanStackStartCookieHelperPromise: Promise<CookieHelper> | null = null;
+
+function getTanStackStartServerContext() {
+  const {
+    deleteCookie,
+    getCookie,
+    getCookies,
+    getRequestHeader,
+    setCookie,
+  } = tanstackStartServerContext;
+  if (
+    deleteCookie == null
+    || getCookie == null
+    || getCookies == null
+    || getRequestHeader == null
+    || setCookie == null
+  ) {
+    throw new StackAssertionError("TanStack Start server context is only available during server rendering");
+  }
+  return {
+    deleteCookie,
+    getCookie,
+    getCookies,
+    getRequestHeader,
+    setCookie,
+  };
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface ImportMetaEnv {
+    SSR: boolean,
+  }
+
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface ImportMeta {
+    readonly env: ImportMetaEnv,
+  }
+}
+
+// END_PLATFORM
+
 function ensureClient() {
   if (!isBrowserLike()) {
     throw new Error("cookieClient functions can only be called in a browser environment, yet window is undefined");
@@ -95,6 +139,16 @@ export async function createPlaceholderCookieHelper(): Promise<CookieHelper> {
   };
 }
 
+function requiresSecureAttribute(name: string): boolean {
+  return name.startsWith("__Host-");
+}
+
+function validateCookieOptions(name: string, options: DeleteCookieOptions | SetCookieOptions) {
+  if (requiresSecureAttribute(name) && options.domain !== undefined) {
+    throw new StackAssertionError("__Host- cookies must not specify a Domain attribute");
+  }
+}
+
 export async function createCookieHelper(): Promise<CookieHelper> {
   if (isBrowserLike()) {
     return createBrowserCookieHelper();
@@ -104,11 +158,89 @@ export async function createCookieHelper(): Promise<CookieHelper> {
       await rscCookies(),
       await rscHeaders(),
     );
+    // ELSE_IF_PLATFORM tanstack-start
+    if (import.meta.env.SSR) {
+      const cookieHelperPromise = tanStackStartCookieHelperPromise
+        ?? Promise.resolve(createTanStackStartCookieHelper(getTanStackStartServerContext()));
+      tanStackStartCookieHelperPromise = cookieHelperPromise;
+      return await cookieHelperPromise;
+    }
+    return await createPlaceholderCookieHelper();
     // ELSE_PLATFORM
     return await createPlaceholderCookieHelper();
     // END_PLATFORM
   }
 }
+
+export function createCookieHelperSync(): CookieHelper {
+  if (isBrowserLike()) {
+    return createBrowserCookieHelper();
+  }
+  function throwError(): never {
+    throw new StackAssertionError("Synchronous server cookie helpers are not available on this platform");
+  }
+  return {
+    get: throwError,
+    getAll: throwError,
+    set: throwError,
+    setOrDelete: throwError,
+    delete: throwError,
+  };
+}
+
+// IF_PLATFORM tanstack-start
+function determineSecureFromTanStackStartContext(api: ReturnType<typeof getTanStackStartServerContext>): boolean {
+  return api.getRequestHeader("x-forwarded-proto") === "https"
+    || (api.getCookie("stack-is-https") !== undefined);
+}
+
+function refreshTanStackStartIsHttpsCookie(api: ReturnType<typeof getTanStackStartServerContext>) {
+  api.setCookie("stack-is-https", "true", {
+    secure: true,
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax",
+    path: "/",
+  });
+}
+
+function createTanStackStartCookieHelper(api: ReturnType<typeof getTanStackStartServerContext>): CookieHelper {
+  const helper: CookieHelper = {
+    get: (name: string) => {
+      const all = helper.getAll();
+      return all[name] ?? null;
+    },
+    getAll: () => {
+      // set a helper cookie, see comment in `NextCookieHelper.set` below
+      refreshTanStackStartIsHttpsCookie(api);
+      return api.getCookies();
+    },
+    set: (name: string, value: string, options: SetCookieOptions) => {
+      validateCookieOptions(name, options);
+      api.setCookie(name, value, {
+        secure: requiresSecureAttribute(name) || (options.secure ?? determineSecureFromTanStackStartContext(api)),
+        maxAge: options.maxAge === "session" ? undefined : options.maxAge,
+        domain: options.domain,
+        sameSite: "lax",
+        path: "/",
+      });
+    },
+    setOrDelete: (name, value, options) => {
+      if (value === null) helper.delete(name, options);
+      else helper.set(name, value, options);
+    },
+    delete: (name: string, options: DeleteCookieOptions) => {
+      validateCookieOptions(name, options);
+      const secure = requiresSecureAttribute(name) || determineSecureFromTanStackStartContext(api);
+      api.deleteCookie(name, {
+        secure,
+        domain: options.domain,
+        path: "/",
+      });
+    },
+  };
+  return helper;
+}
+// END_PLATFORM
 
 export function createBrowserCookieHelper(): CookieHelper {
   return {
@@ -166,6 +298,7 @@ function createNextCookieHelper(
       }, {} as Record<string, string>);
     },
     set: (name: string, value: string, options: SetCookieOptions) => {
+      validateCookieOptions(name, options);
       // Whenever the client is on HTTPS, we want to set the Secure flag on the cookie.
       //
       // This is not easy to find out on a Next.js server, so see the algorithm at the top of this file.
@@ -177,10 +310,11 @@ function createNextCookieHelper(
 
       try {
         rscCookiesAwaited.set(name, value, {
-          secure: isSecureCookie,
+          secure: requiresSecureAttribute(name) || isSecureCookie,
           maxAge: options.maxAge === "session" ? undefined : options.maxAge,
           domain: options.domain,
           sameSite: "lax",
+          path: "/",
         });
       } catch (e) {
         handleCookieError(e, options);
@@ -195,10 +329,11 @@ function createNextCookieHelper(
     },
     delete(name: string, options: DeleteCookieOptions) {
       try {
+        validateCookieOptions(name, options);
         if (options.domain !== undefined) {
-          rscCookiesAwaited.delete({ name, domain: options.domain });
+          rscCookiesAwaited.delete({ name, domain: options.domain, path: "/" });
         } else {
-          rscCookiesAwaited.delete(name);
+          rscCookiesAwaited.delete({ name, path: "/" });
         }
       } catch (e) {
         handleCookieError(e, options);
@@ -232,6 +367,10 @@ export async function isSecure(): Promise<boolean> {
   }
   // IF_PLATFORM next
   return determineSecureFromServerContext(await rscCookies(), await rscHeaders());
+  // ELSE_IF_PLATFORM tanstack-start
+  if (import.meta.env.SSR) {
+    return determineSecureFromTanStackStartContext(getTanStackStartServerContext());
+  }
   // END_PLATFORM
   return false;
 }
@@ -299,12 +438,14 @@ function _internalShouldSetPartitionedClient() {
 }
 
 function setCookieClientInternal(name: string, value: string, options: SetCookieOptions) {
-  const secure = options.secure ?? determineSecureFromClientContext();
+  validateCookieOptions(name, options);
+  const secure = requiresSecureAttribute(name) || (options.secure ?? determineSecureFromClientContext());
   const partitioned = shouldSetPartitionedClient();
   Cookies.set(name, value, {
     expires: options.maxAge === "session" ? undefined : new Date(Date.now() + (options.maxAge) * 1000),
     domain: options.domain,
     secure,
+    path: "/",
     sameSite: "Lax",
     ...(partitioned ? {
       partitioned,
@@ -314,11 +455,12 @@ function setCookieClientInternal(name: string, value: string, options: SetCookie
 }
 
 function deleteCookieClientInternal(name: string, options: DeleteCookieOptions) {
+  validateCookieOptions(name, options);
   for (const partitioned of [true, false]) {
     if (options.domain !== undefined) {
-      Cookies.remove(name, { domain: options.domain, secure: determineSecureFromClientContext(), partitioned });
+      Cookies.remove(name, { domain: options.domain, secure: determineSecureFromClientContext(), partitioned, path: "/" });
     }
-    Cookies.remove(name, { secure: determineSecureFromClientContext(), partitioned });
+    Cookies.remove(name, { secure: requiresSecureAttribute(name) || determineSecureFromClientContext(), partitioned, path: "/" });
   }
 }
 

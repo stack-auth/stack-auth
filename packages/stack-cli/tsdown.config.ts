@@ -7,6 +7,9 @@ const config: UserConfig = {
   dts: true,
   outDir: 'dist',
   external: ['@anthropic-ai/claude-agent-sdk'],
+  define: {
+    __STACK_CLI_SENTRY_DSN__: JSON.stringify(process.env.STACK_CLI_SENTRY_DSN_BUILD ?? ''),
+  },
   format: {
     esm: {
       outExtensions: () => ({ js: '.js', dts: '.d.ts' }),

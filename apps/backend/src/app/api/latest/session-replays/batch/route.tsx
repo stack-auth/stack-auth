@@ -2,7 +2,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
-import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { getStackServerApp } from "@/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -113,7 +113,7 @@ export const POST = createSmartRouteHandler({
 
     const isNewSession = recentSession == null;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
-    if (isNewSession && billingTeamId != null) {
+    if (isNewSession && billingTeamId != null && arePlanLimitsEnforced()) {
       const replaysItem = await app.getItem({ itemId: ITEM_IDS.sessionReplays, teamId: billingTeamId });
       const isDebited = await replaysItem.tryDecreaseQuantity(1);
       if (!isDebited) {
