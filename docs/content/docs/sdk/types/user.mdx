@@ -1713,9 +1713,9 @@ code={`type ServerUser =
       // NEXT_LINE_PLATFORM react-like
       ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#serveruserusecontactchannels
 
-      listTeamsPaginated([options]): Promise<ServerTeam[] & { nextCursor: string | null }>; //$stack-link-to:#serveruserlistteamspaginatedoptions
+      listTeamsPaginated([options]): Promise<{ items: ServerTeam[]; nextCursor: string | null }>; //$stack-link-to:#serveruserlistteamspaginatedoptions
       // NEXT_LINE_PLATFORM react-like
-      ⤷ useTeamsPaginated([options]): ServerTeam[] & { nextCursor: string | null }; //$stack-link-to:#serveruseruseteamspaginatedoptions
+      ⤷ useTeamsPaginated([options]): { items: ServerTeam[]; nextCursor: string | null }; //$stack-link-to:#serveruseruseteamspaginatedoptions
 
       grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
       revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
@@ -1907,7 +1907,7 @@ code={`type ServerUser =
 
       ### Returns
 
-      `Promise<ServerTeam[] & { nextCursor: string | null }>`
+      `Promise<{ items: ServerTeam[]; nextCursor: string | null }>`
     </MethodContent>
     <MethodAside>
       <AsideSection title="Signature">
@@ -1919,7 +1919,7 @@ code={`type ServerUser =
         orderBy?: "createdAt";
         desc?: boolean;
         query?: string;
-      }): Promise<ServerTeam[] & { nextCursor: string | null }>;
+      }): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
       ```
       </AsideSection>
       <AsideSection title="Examples">
@@ -1956,7 +1956,7 @@ code={`type ServerUser =
         orderBy?: "createdAt";
         desc?: boolean;
         query?: string;
-      }): ServerTeam[] & { nextCursor: string | null };
+      }): { items: ServerTeam[]; nextCursor: string | null };
       ```
     </MethodAside>
   </MethodLayout>

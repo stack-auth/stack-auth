@@ -43,7 +43,10 @@ let mountGeneration = 0;
 let createDevToolPromise: Promise<typeof CreateDevToolFn> | null = null;
 function loadCreateDevTool(): Promise<typeof CreateDevToolFn> {
   if (!createDevToolPromise) {
-    createDevToolPromise = import("./dev-tool-core").then(m => m.createDevTool);
+    createDevToolPromise = import("./dev-tool-core").then(m => m.createDevTool).catch((err) => {
+      createDevToolPromise = null;
+      throw err;
+    });
   }
   return createDevToolPromise;
 }

@@ -99,8 +99,8 @@ export function AddUserDialog(props: {
           size="sm"
           variant="outline"
           disabled={teamUsers.find(u => u.id === user.id) !== undefined}
-          onClick={async () => {
-            await props.team.addUser(user.id);
+          onClick={() => {
+            runAsynchronouslyWithAlert(props.team.addUser(user.id));
           }}
         >
           {teamUsers.find(u => u.id === user.id) ? 'Added' : 'Add'}

@@ -215,7 +215,7 @@ export function exportToCsv<TRow>(
     }),
   );
   // UTF-8 BOM so Excel opens the CSV as UTF-8.
-  const csvContent = "﻿" + [
+  const csvContent = "\uFEFF" + [
     header.join(","),
     ...csvRows.map((row) => row.join(",")),
   ].join("\n");

@@ -1,5 +1,6 @@
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 type PermissionDefinition = {
   id: string,
@@ -25,11 +26,12 @@ export function paginatePermissionDefinitions(items: PermissionDefinition[], que
   }
 
   const search = query.query?.trim().toLowerCase();
-  const filtered = search
+  const filtered = (search
     ? items.filter((p) =>
       p.id.toLowerCase().includes(search)
       || (p.description?.toLowerCase().includes(search) ?? false))
-    : items;
+    : items.slice()
+  ).sort((a, b) => stringCompare(a.id, b.id));
 
   if (query.limit === undefined) {
     return { items: filtered, is_paginated: false as const };
@@ -39,11 +41,7 @@ export function paginatePermissionDefinitions(items: PermissionDefinition[], que
   if (query.cursor) {
     const cursorIdx = filtered.findIndex((p) => p.id === query.cursor);
     if (cursorIdx === -1) {
-      return {
-        items: [],
-        is_paginated: true as const,
-        pagination: { next_cursor: null },
-      };
+      throw new StatusError(StatusError.BadRequest, `Cursor not found: ${query.cursor}`);
     }
     startIdx = cursorIdx + 1;
   }

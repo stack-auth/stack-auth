@@ -115,6 +115,7 @@ const columns: DataGridColumnDef<ServerTeam>[] = [
     accessor: "id",
     width: 120,
     type: "string",
+    sortable: false,
     renderCell: ({ value }) => (
       <span className="truncate font-mono text-xs text-muted-foreground">{String(value)}</span>
     ),
@@ -126,6 +127,7 @@ const columns: DataGridColumnDef<ServerTeam>[] = [
     width: 200,
     flex: 1,
     type: "string",
+    sortable: false,
     renderCell: ({ value }) => (
       <span className="truncate">{String(value ?? "")}</span>
     ),

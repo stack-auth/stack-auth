@@ -2365,8 +2365,8 @@ Accessible via `stackServerApp.getUser()` on the server. `ServerUser` inherits m
     grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
     revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
     listContactChannels(): Promise<ServerContactChannel[]>; //$stack-link-to:#serveruserlistcontactchannels
-    listTeamsPaginated([options]): Promise<ServerTeam[] & { nextCursor: string | null }>; //$stack-link-to:#serveruserlistteamspaginated
-    useTeamsPaginated([options]): ServerTeam[] & { nextCursor: string | null }; //$stack-link-to:#serveruseruseteamspaginated
+    listTeamsPaginated([options]): Promise<{ items: ServerTeam[]; nextCursor: string | null }>; //$stack-link-to:#serveruserlistteamspaginated
+    useTeamsPaginated([options]): { items: ServerTeam[]; nextCursor: string | null }; //$stack-link-to:#serveruseruseteamspaginated
     createSession([options]): Promise<{ getTokens(): ... }>; //$stack-link-to:#serverusercreatesession
     grantProduct(product): Promise<void>; //$stack-link-to:#serverusergrantproduct
 };`}
@@ -2785,7 +2785,7 @@ Accessible via `stackServerApp.getUser()` on the server. `ServerUser` inherits m
         </ParamField>
       </ContentSection>
 
-      <MethodReturns type="Promise<ServerTeam[] & { nextCursor: string | null }>" />
+      <MethodReturns type="Promise<{ items: ServerTeam[]; nextCursor: string | null }>" />
     </MethodContent>
 
     <MethodAside>
@@ -2797,7 +2797,7 @@ Accessible via `stackServerApp.getUser()` on the server. `ServerUser` inherits m
           orderBy?: "createdAt";
           desc?: boolean;
           query?: string;
-        }): Promise<ServerTeam[] & { nextCursor: string | null }>;
+        }): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
         ```
       </AsideSection>
 
@@ -2835,7 +2835,7 @@ Accessible via `stackServerApp.getUser()` on the server. `ServerUser` inherits m
           orderBy?: "createdAt";
           desc?: boolean;
           query?: string;
-        }): ServerTeam[] & { nextCursor: string | null };
+        }): { items: ServerTeam[]; nextCursor: string | null };
         ```
       </AsideSection>
     </MethodAside>

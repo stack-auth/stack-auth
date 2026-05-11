@@ -528,8 +528,8 @@ type StackServerApp =
     useTeam(id): ServerTeam;
     listTeams([options]): Promise<ServerTeam[]>;
     useTeams([options]): ServerTeam[];
-    listTeamsPaginated([options]): Promise<ServerTeam[] & { nextCursor: string | null }>;
-    useTeamsPaginated([options]): ServerTeam[] & { nextCursor: string | null };
+    listTeamsPaginated([options]): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
+    useTeamsPaginated([options]): { items: ServerTeam[]; nextCursor: string | null };
     createTeam([options]): Promise<ServerTeam>;
   }
 ```
@@ -1028,7 +1028,7 @@ Creates a new `StackServerApp` instance.
       </ParamField>
     </ContentSection>
 
-    <MethodReturns type="Promise<ServerTeam[] & { nextCursor: string | null }>" />
+    <MethodReturns type="Promise<{ items: ServerTeam[]; nextCursor: string | null }>" />
 
   </MethodContent>
 
@@ -1041,7 +1041,7 @@ Creates a new `StackServerApp` instance.
         orderBy?: "createdAt";
         desc?: boolean;
         query?: string;
-      }): Promise<ServerTeam[] & { nextCursor: string | null }>;
+      }): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
       ```
     </AsideSection>
 
@@ -1082,7 +1082,7 @@ Creates a new `StackServerApp` instance.
         orderBy?: "createdAt";
         desc?: boolean;
         query?: string;
-      }): ServerTeam[] & { nextCursor: string | null };
+      }): { items: ServerTeam[]; nextCursor: string | null };
       ```
     </AsideSection>
   </MethodAside>

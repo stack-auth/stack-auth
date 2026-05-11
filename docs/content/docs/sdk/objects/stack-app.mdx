@@ -533,9 +533,9 @@ exposing [`SECRET_SERVER_KEY`](../../rest-api/overview.mdx) on the client.
       listTeams([options]): Promise<ServerTeam[]>; //$stack-link-to:#stackserverapplistteamsoptions
       // NEXT_LINE_PLATFORM react-like
       ⤷ useTeams([options]): ServerTeam[]; //$stack-link-to:#stackserverappuseteamsoptions
-      listTeamsPaginated([options]): Promise<ServerTeam[] & { nextCursor: string | null }>; //$stack-link-to:#stackserverapplistteamspaginatedoptions
+      listTeamsPaginated([options]): Promise<{ items: ServerTeam[], nextCursor: string | null }>; //$stack-link-to:#stackserverapplistteamspaginatedoptions
       // NEXT_LINE_PLATFORM react-like
-      ⤷ useTeamsPaginated([options]): ServerTeam[] & { nextCursor: string | null }; //$stack-link-to:#stackserverappuseteamspaginatedoptions
+      ⤷ useTeamsPaginated([options]): { items: ServerTeam[], nextCursor: string | null }; //$stack-link-to:#stackserverappuseteamspaginatedoptions
       createTeam([options]): Promise<ServerTeam>; //$stack-link-to:#stackserverappcreateteamoptions
     }`} />
 
@@ -996,7 +996,7 @@ Functionally equivalent to [`listTeams()`](#stackserverapplistteamsoptions), but
     </Accordion>
   </ParamField>
 
-**Returns:** `Promise<ServerTeam[] & { nextCursor: string | null }>`
+**Returns:** `Promise<{ items: ServerTeam[]; nextCursor: string | null }>`
   </MethodContent>
   <MethodAside>
     <AsideSection title="Signature">
@@ -1008,21 +1008,21 @@ Functionally equivalent to [`listTeams()`](#stackserverapplistteamsoptions), but
       orderBy?: "createdAt";
       desc?: boolean;
       query?: string;
-    }): Promise<ServerTeam[] & { nextCursor: string | null }>;
+    }): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
     ```
     </AsideSection>
     <AsideSection title="Examples">
 
     ```typescript
-    const teams = await stackServerApp.listTeamsPaginated({ limit: 20 });
-    console.log(teams);
+    const { items, nextCursor } = await stackServerApp.listTeamsPaginated({ limit: 20 });
+    console.log(items);
 
-    if (teams.nextCursor) {
-      const nextPageTeams = await stackServerApp.listTeamsPaginated({
-        cursor: teams.nextCursor,
+    if (nextCursor) {
+      const nextPage = await stackServerApp.listTeamsPaginated({
+        cursor: nextCursor,
         limit: 20,
       });
-      console.log(nextPageTeams);
+      console.log(nextPage.items);
     }
     ```
     </AsideSection>

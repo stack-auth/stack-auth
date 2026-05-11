@@ -88,6 +88,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     await Promise.all([
       this._serverTeamMemberProfilesCache.refresh([teamId]),
       this._serverTeamsCache.refreshWhere(([u]) => u === userId || u === undefined),
+      this._serverUsersCache.refreshWhere((key) => key[8] === teamId),
     ]);
   }
   private readonly _serverUserTeamInvitationsCache = createCache<string[], TeamInvitationCrud['Client']['Read'][]>(async ([userId]) => {
@@ -1002,8 +1003,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.acceptServerTeamInvitationById(crud.id, userId);
         await Promise.all([
           app._serverUserTeamInvitationsCache.refresh([userId]),
-          app._serverTeamsCache.refreshWhere(([u]) => u === userId || u === undefined),
           app._serverTeamInvitationsCache.refresh([crud.team_id]),
+          app._refreshTeamMembership(crud.team_id, userId),
         ]);
       },
     };
@@ -1031,11 +1032,17 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       serverMetadata: crud.server_metadata,
       async update(update: Partial<ServerTeamUpdateOptions>) {
         await app._interface.updateServerTeam(crud.id, serverTeamUpdateOptionsToCrud(update));
-        await app._serverTeamsCache.refreshWhere(() => true);
+        await Promise.all([
+          app._serverTeamsCache.refreshWhere(() => true),
+          app._serverUsersCache.refreshWhere(() => true),
+        ]);
       },
       async delete() {
         await app._interface.deleteServerTeam(crud.id);
-        await app._serverTeamsCache.refreshWhere(() => true);
+        await Promise.all([
+          app._serverTeamsCache.refreshWhere(() => true),
+          app._serverUsersCache.refreshWhere(() => true),
+        ]);
       },
       async listUsers() {
         const result = Result.orThrow(await app._serverTeamMemberProfilesCache.getOrWait([crud.id], "write-only"));

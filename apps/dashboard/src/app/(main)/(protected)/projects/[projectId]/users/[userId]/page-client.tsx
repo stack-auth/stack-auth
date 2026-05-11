@@ -1167,9 +1167,11 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
                   variant="outline"
                   size="sm"
                   disabled={alreadyMember}
-                  onClick={async () => {
-                    await team.addUser(user.id);
-                    setAddTeamDialogOpen(false);
+                  onClick={() => {
+                    runAsynchronouslyWithAlert(async () => {
+                      await team.addUser(user.id);
+                      setAddTeamDialogOpen(false);
+                    });
                   }}
                 >
                   {alreadyMember ? 'Added' : 'Add'}

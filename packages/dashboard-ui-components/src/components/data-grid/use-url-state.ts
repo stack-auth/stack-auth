@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { clampColumnWidth } from "./data-grid-sizing";
+import { DEFAULT_COL_WIDTH, clampColumnWidth } from "./data-grid-sizing";
 import { createDefaultDataGridState } from "./state";
 import type { DataGridColumnDef, DataGridState } from "./types";
 
@@ -22,7 +22,7 @@ function serializeWidths(
   for (const col of columns) {
     const w = widths[col.id];
     if (typeof w !== "number" || !Number.isFinite(w)) continue;
-    const defaultW = clampColumnWidth(col, col.width ?? 150);
+    const defaultW = clampColumnWidth(col, col.width ?? DEFAULT_COL_WIDTH);
     if (Math.round(w) === Math.round(defaultW)) continue;
     parts.push(`${encodeURIComponent(col.id)}:${Math.round(w)}`);
   }
