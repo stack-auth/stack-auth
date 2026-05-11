@@ -28,6 +28,21 @@ function getEsmFallbackVersion(version: string): string {
   return `${parts[0]}.${parts[1]}.${patch - 1}`;
 }
 
+const ESM_VERSION_HEADER = "// @stack-esm-version:";
+const ESM_VERSION_REGEX = /^\/\/\s*@stack-esm-version:\s*(\S+)\s*$/m;
+
+function extractEsmVersion(sourceCode: string): string | null {
+  const match = sourceCode.match(ESM_VERSION_REGEX);
+  return match ? match[1] : null;
+}
+
+export function stampEsmVersion(sourceCode: string, version: string): string {
+  if (ESM_VERSION_REGEX.test(sourceCode)) {
+    return sourceCode.replace(ESM_VERSION_REGEX, `${ESM_VERSION_HEADER} ${version}`);
+  }
+  return `${ESM_VERSION_HEADER} ${version}\n${sourceCode}`;
+}
+
 function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, dashboardUrl: string): string {
   if (isDev) {
     return html`
@@ -174,7 +189,7 @@ function escapeScriptContent(code: string): string {
 function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
   const sourceCode = escapeScriptContent(artifact.runtimeCodegen.uiRuntimeSourceCode);
   const darkClass = initialTheme === "dark" ? "dark" : "";
-  const esmVersion = packageJson.version;
+  const esmVersion = extractEsmVersion(artifact.runtimeCodegen.uiRuntimeSourceCode) ?? packageJson.version;
   const esmFallbackVersion = getEsmFallbackVersion(esmVersion);
   const devScriptSrc = isDev ? ` ${dashboardUrl}` : '';
   const devConnectSrc = isDev ? ` ${dashboardUrl}` : '';
