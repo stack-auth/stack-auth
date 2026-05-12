@@ -16,11 +16,11 @@ type CreateDialogProps = {
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const teams = stackAdminApp.useTeamsPaginated({ limit: 1 });
+  const teams = stackAdminApp.useTeams({ limit: 1 });
   const project = stackAdminApp.useProject();
 
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);
-  const hasTeams = teams.items.length > 0;
+  const hasTeams = teams.length > 0;
   const teamSettingsPath = project.ownerTeamId ? `/projects?team_settings=${encodeURIComponent(project.ownerTeamId)}` : null;
 
   return (

@@ -297,21 +297,6 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
-  async listProjectPermissionDefinitionsPaginated(
-    options: { limit: number, cursor?: string, query?: string },
-  ): Promise<{ items: ProjectPermissionDefinitionsCrud['Admin']['Read'][], nextCursor: string | null }> {
-    const params = new URLSearchParams();
-    params.set("limit", String(options.limit));
-    if (options.cursor) params.set("cursor", options.cursor);
-    if (options.query) params.set("query", options.query);
-    const response = await this.sendAdminRequest(`/project-permission-definitions?${params.toString()}`, {}, null);
-    const result = await response.json() as ProjectPermissionDefinitionsCrud['Admin']['List'];
-    return {
-      items: result.items,
-      nextCursor: result.pagination?.next_cursor ?? null,
-    };
-  }
-
   async createProjectPermissionDefinition(data: ProjectPermissionDefinitionsCrud['Admin']['Create']): Promise<ProjectPermissionDefinitionsCrud['Admin']['Read']> {
     const response = await this.sendAdminRequest(
       "/project-permission-definitions",
@@ -871,8 +856,6 @@ export class StackAdminInterface extends StackServerInterface {
     if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
     if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
     if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
-    if (params?.sort_direction) qs.set("sort_direction", params.sort_direction);
-    if (params?.q) qs.set("q", params.q);
     const response = await this.sendAdminRequest(
       `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },

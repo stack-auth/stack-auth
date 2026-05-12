@@ -404,7 +404,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
       // out in parallel — they're independent and the bulk fetch is
       // cached across pages of the same team.
       const [result, permsResult] = await Promise.allSettled([
-        stackAdminApp.listUsersPaginated({
+        stackAdminApp.listUsers({
           limit: PAGE_SIZE,
           teamId: props.team.id,
           orderBy: "lastActiveAt",
@@ -421,7 +421,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
         ),
       ]);
       if (result.status === "rejected") throw result.reason;
-      const extended = extendUsers(result.value.items);
+      const extended = extendUsers(result.value);
       let permsByUser: Map<string, string[]> | null = null;
       if (permsResult.status === "fulfilled") {
         permsByUser = new Map();

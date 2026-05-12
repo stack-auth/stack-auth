@@ -248,10 +248,21 @@ export function PermissionTable(props: {
       const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
         ? params.quickSearch.trim()
         : undefined;
+      if (props.permissionType === 'project') {
+        // Project permission definitions are expected to be a small set, so we
+        // fetch them all and filter on the client.
+        const all = await stackAdminApp.listProjectPermissionDefinitions();
+        const filtered = search
+          ? all.filter((p) => {
+            const haystack = `${p.id} ${p.description ?? ""}`.toLowerCase();
+            return haystack.includes(search.toLowerCase());
+          })
+          : all;
+        yield { rows: filtered, hasMore: false };
+        return;
+      }
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
-      const result = props.permissionType === 'project'
-        ? await stackAdminApp.listProjectPermissionDefinitionsPaginated({ limit: PAGE_SIZE, cursor, query: search })
-        : await stackAdminApp.listTeamPermissionDefinitionsPaginated({ limit: PAGE_SIZE, cursor, query: search });
+      const result = await stackAdminApp.listTeamPermissionDefinitionsPaginated({ limit: PAGE_SIZE, cursor, query: search });
       yield {
         rows: result.items,
         hasMore: result.nextCursor != null,

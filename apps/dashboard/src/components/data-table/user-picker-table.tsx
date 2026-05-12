@@ -104,13 +104,13 @@ export function UserPickerTable(props: {
         ? params.quickSearch.trim()
         : undefined;
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
-      const result = await stackAdminApp.listUsersPaginated({
+      const result = await stackAdminApp.listUsers({
         limit: PAGE_SIZE,
         query,
         cursor,
       });
       yield {
-        rows: extendUsers(result.items),
+        rows: extendUsers(result),
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
       };

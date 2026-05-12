@@ -1039,7 +1039,7 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
   const [sortDesc, setSortDesc] = useState<boolean | undefined>(undefined);
-  const teams = user.useTeamsPaginated(sortDesc === undefined ? undefined : { orderBy: 'createdAt', desc: sortDesc }).items;
+  const teams = user.useTeams(sortDesc === undefined ? undefined : { orderBy: 'createdAt', desc: sortDesc });
   const [addTeamDialogOpen, setAddTeamDialogOpen] = useState(false);
   const [teamToRemove, setTeamToRemove] = useState<ServerTeam | null>(null);
 
