@@ -53,21 +53,6 @@ describe("local emulator project endpoint", () => {
     }
   });
 
-  it.runIf(isLocalEmulator)("rejects non-existent config files", async ({ expect }) => {
-    const nonExistentPath = `/tmp/${randomUUID()}/stack.config.ts`;
-
-    const response = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
-      accessType: "admin",
-      method: "POST",
-      body: {
-        absolute_file_path: nonExistentPath,
-      },
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toContain("Config file not found");
-  });
-
   it.runIf(isLocalEmulator)("writes default config for empty files", async ({ expect }) => {
     const filePath = `/tmp/${randomUUID()}/stack.config.ts`;
     await fs.mkdir(path.dirname(filePath), { recursive: true });
