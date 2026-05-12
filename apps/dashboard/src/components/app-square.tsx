@@ -1,7 +1,7 @@
 import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
-import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, isSubApp } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, getDocumentationHref, isSubApp } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { CheckIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react";
@@ -220,6 +220,7 @@ export function AppListItem({
 
   const isEnabled = isAppEnabled(config.apps.installed, appId);
   const appPath = getAppPath(project.id, appFrontend);
+  const appDestinationPath = getDocumentationHref(appFrontend) ?? appPath;
   const appDetailsPath = `/projects/${project.id}/apps/${appId}`;
   const router = useRouter();
   const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
@@ -249,7 +250,7 @@ export function AppListItem({
 
   return (
     <Link
-      href={parentDestinationPath ?? (isEnabled ? appPath : appDetailsPath)}
+      href={parentDestinationPath ?? (isEnabled ? appDestinationPath : appDetailsPath)}
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg transition-all",
         "hover:bg-gray-50 dark:hover:bg-gray-800/50",

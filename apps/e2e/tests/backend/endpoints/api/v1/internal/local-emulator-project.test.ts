@@ -83,15 +83,68 @@ describe("local emulator project endpoint", () => {
 
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body.branch_config_override_string)).toEqual({});
+    expect(response.body.onboarding_status).toBe("config_choice");
+    expect(response.body.onboarding_outstanding).toBe(true);
 
     const fileContent = await fs.readFile(filePath, "utf-8");
     expect(fileContent).toMatchInlineSnapshot(`
       deindent\`
         import type { StackConfig } from "@stackframe/js";
         
-        export const config: StackConfig = {};
+        export const config: StackConfig = "show-onboarding";
       \` + "\\n"
     `);
+  });
+
+  it.runIf(isLocalEmulator)("enables onboarding iff config is show-onboarding", async ({ expect }) => {
+    const filePath = `/tmp/${randomUUID()}/stack.config.ts`;
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(
+      filePath,
+      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = "show-onboarding";\n`,
+      "utf-8",
+    );
+
+    const onboardingResponse = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
+      accessType: "admin",
+      method: "POST",
+      body: {
+        absolute_file_path: filePath,
+      },
+    });
+    expect(onboardingResponse.status).toBe(200);
+    expect(onboardingResponse.body.onboarding_status).toBe("config_choice");
+    expect(onboardingResponse.body.onboarding_outstanding).toBe(true);
+
+    await fs.writeFile(filePath, `export const config = {};\n`, "utf-8");
+    const completedResponse = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
+      accessType: "admin",
+      method: "POST",
+      body: {
+        absolute_file_path: filePath,
+      },
+    });
+    expect(completedResponse.status).toBe(200);
+    expect(completedResponse.body.project_id).toBe(onboardingResponse.body.project_id);
+    expect(completedResponse.body.onboarding_status).toBe("completed");
+    expect(completedResponse.body.onboarding_outstanding).toBe(false);
+
+    await fs.writeFile(
+      filePath,
+      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = "show-onboarding";\n`,
+      "utf-8",
+    );
+    const onboardingAgainResponse = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
+      accessType: "admin",
+      method: "POST",
+      body: {
+        absolute_file_path: filePath,
+      },
+    });
+    expect(onboardingAgainResponse.status).toBe(200);
+    expect(onboardingAgainResponse.body.project_id).toBe(onboardingResponse.body.project_id);
+    expect(onboardingAgainResponse.body.onboarding_status).toBe("config_choice");
+    expect(onboardingAgainResponse.body.onboarding_outstanding).toBe(true);
   });
 
   it.runIf(isLocalEmulator)("creates path-based projects, reuses mappings, and returns valid credentials", async ({ expect }) => {
@@ -110,6 +163,8 @@ describe("local emulator project endpoint", () => {
     expect(responseA1.body.secret_server_key).toMatch(/^ssk_/);
     expect(responseA1.body.super_secret_admin_key).toMatch(/^sak_/);
     expect(JSON.parse(responseA1.body.branch_config_override_string)).toEqual({});
+    expect(responseA1.body.onboarding_status).toBe("completed");
+    expect(responseA1.body.onboarding_outstanding).toBe(false);
 
     const responseA2 = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
       accessType: "admin",
@@ -133,6 +188,8 @@ describe("local emulator project endpoint", () => {
     expect(responseB.status).toBe(200);
     expect(responseB.body.project_id).not.toBe(responseA1.body.project_id);
     expect(JSON.parse(responseB.body.branch_config_override_string)).toEqual({});
+    expect(responseB.body.onboarding_status).toBe("completed");
+    expect(responseB.body.onboarding_outstanding).toBe(false);
 
     backendContext.set({
       projectKeys: {
@@ -159,5 +216,46 @@ describe("local emulator project endpoint", () => {
     });
     expect(projectBResponse.status).toBe(200);
     expect(projectBResponse.body.owner_team_id).toBe(LOCAL_EMULATOR_OWNER_TEAM_ID);
+  });
+
+  it.runIf(isLocalEmulator)("updates onboarding_state on local emulator projects without mutating env config", async ({ expect }) => {
+    const filePath = `/tmp/${randomUUID()}/stack.config.ts`;
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, "", "utf-8");
+
+    const localEmulatorProjectResponse = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
+      accessType: "admin",
+      method: "POST",
+      body: {
+        absolute_file_path: filePath,
+      },
+    });
+    expect(localEmulatorProjectResponse.status).toBe(200);
+
+    backendContext.set({
+      projectKeys: {
+        projectId: localEmulatorProjectResponse.body.project_id,
+        superSecretAdminKey: localEmulatorProjectResponse.body.super_secret_admin_key,
+      },
+    });
+
+    const onboardingState = {
+      selected_config_choice: "create-new" as const,
+      selected_apps: ["authentication", "payments", "emails", "analytics"] as const,
+      selected_sign_in_methods: [] as const,
+      selected_email_theme_id: randomUUID(),
+      selected_payments_country: "US" as const,
+    };
+
+    const updateCurrentProjectResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+      accessType: "admin",
+      method: "PATCH",
+      body: {
+        onboarding_state: onboardingState,
+      },
+    });
+
+    expect(updateCurrentProjectResponse.status).toBe(200);
+    expect(updateCurrentProjectResponse.body.onboarding_state).toEqual(onboardingState);
   });
 });

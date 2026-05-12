@@ -3,7 +3,7 @@ import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDelivery
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
-import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { getStackServerApp } from "@/stack";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
@@ -693,7 +693,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       }
     }
 
-    if (context.billingTeamId != null && row.sendRetries === 0) {
+    if (context.billingTeamId != null && row.sendRetries === 0 && arePlanLimitsEnforced()) {
       const app = getStackServerApp();
       const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
       const isDebited = await emailItem.tryDecreaseQuantity(1);

@@ -34,7 +34,9 @@ import {
   beginPendingAction,
   endPendingAction,
   getStackAppInternals,
+  isProjectOnboardingState,
   isProjectOnboardingStatus,
+  type ProjectOnboardingState,
 } from "./shared";
 
 export default function PageClient() {
@@ -68,6 +70,7 @@ function PageClientInner() {
   const mode = searchParams.get("mode");
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
+  const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
   const [loadingStatuses, setLoadingStatuses] = useState(true);
   const [, startStatusTransition] = useTransition();
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
@@ -128,6 +131,7 @@ function PageClientInner() {
         }
 
         const statusMap = new Map<string, ProjectOnboardingStatus>();
+        const onboardingStateMap = new Map<string, ProjectOnboardingState | null>();
         for (const item of body.items) {
           if (item == null || typeof item !== "object" || !("id" in item) || typeof item.id !== "string") {
             continue;
@@ -138,10 +142,17 @@ function PageClientInner() {
             throw new Error(`Project ${item.id} returned an invalid onboarding status.`);
           }
           statusMap.set(item.id, onboardingStatus);
+
+          const onboardingState = "onboarding_state" in item ? item.onboarding_state : null;
+          if (onboardingState != null && !isProjectOnboardingState(onboardingState)) {
+            throw new Error(`Project ${item.id} returned an invalid onboarding state.`);
+          }
+          onboardingStateMap.set(item.id, onboardingState);
         }
 
         if (!cancelled) {
           setProjectStatuses(statusMap);
+          setProjectOnboardingStates(onboardingStateMap);
         }
       } finally {
         if (!cancelled) {
@@ -168,6 +179,13 @@ function PageClientInner() {
     }
     return projectStatuses.get(selectedProjectId) ?? null;
   }, [projectStatuses, selectedProjectId]);
+
+  const selectedProjectOnboardingState = useMemo(() => {
+    if (selectedProjectId == null) {
+      return null;
+    }
+    return projectOnboardingStates.get(selectedProjectId) ?? null;
+  }, [projectOnboardingStates, selectedProjectId]);
 
   useEffect(() => {
     if (selectedProject == null || loadingStatuses || selectedProjectStatus !== "completed") {
@@ -207,7 +225,33 @@ function PageClientInner() {
     await appInternals.refreshOwnedProjects();
   };
 
-  if (isLocalEmulator) {
+  const setSelectedProjectOnboardingState = async (project: AdminOwnedProject, onboardingState: ProjectOnboardingState | null) => {
+    const projectInternals = getStackAppInternals(project.app);
+
+    const response = await projectInternals.sendRequest(
+      "/internal/projects/current",
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ onboarding_state: onboardingState }),
+      },
+      "admin",
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to update onboarding state: ${response.status} ${await response.text()}`);
+    }
+
+    setProjectOnboardingStates((previous) => {
+      const next = new Map(previous);
+      next.set(project.id, onboardingState);
+      return next;
+    });
+  };
+
+  if (isLocalEmulator && selectedProjectId == null) {
     return (
       <div className="w-full flex-grow flex items-center justify-center p-4">
         <div className="max-w-lg w-full rounded-lg border border-border p-6 space-y-4">
@@ -361,6 +405,11 @@ function PageClientInner() {
                         next.set(newProject.id, "config_choice");
                         return next;
                       });
+                      setProjectOnboardingStates((previous) => {
+                        const next = new Map(previous);
+                        next.set(newProject.id, null);
+                        return next;
+                      });
 
                       if (redirectToNeonConfirmWith != null) {
                         const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
@@ -472,9 +521,12 @@ function PageClientInner() {
       <ProjectOnboardingWizard
         project={selectedProject}
         status={selectedProjectStatus ?? "config_choice"}
+        onboardingState={selectedProjectOnboardingState}
         mode={mode}
         setMode={(nextMode) => updateSearchParams({ mode: nextMode })}
         setStatus={(nextStatus) => setSelectedProjectStatus(selectedProject, nextStatus)}
+        setOnboardingState={(nextState) => setSelectedProjectOnboardingState(selectedProject, nextState)}
+        clearOnboardingState={() => setSelectedProjectOnboardingState(selectedProject, null)}
         onComplete={() => {
           router.push(`/projects/${encodeURIComponent(selectedProject.id)}`);
         }}
