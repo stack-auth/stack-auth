@@ -4,6 +4,7 @@ import { webhookEvents } from '@stackframe/stack-shared/dist/interface/webhooks'
 import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
 import { HTTP_METHODS } from '@stackframe/stack-shared/dist/utils/http';
 import { typedKeys } from '@stackframe/stack-shared/dist/utils/objects';
+import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
 import fs from 'fs';
 import { glob } from 'glob';
 import path from 'path';
@@ -29,7 +30,7 @@ async function main() {
   // Generate OpenAPI specs for each audience (let parseOpenAPI handle the filtering)
   const filePathPrefix = path.resolve(process.platform === "win32" ? "apps/src/app/api/latest" : "src/app/api/latest");
   const importPathPrefix = "@/app/api/latest";
-  const filePaths = [...await glob(filePathPrefix + "/**/route.{js,jsx,ts,tsx}")];
+  const filePaths = [...await glob(filePathPrefix + "/**/route.{js,jsx,ts,tsx}")].sort((a, b) => stringCompare(a, b));
 
   const endpoints = new Map(await Promise.all(filePaths.map(async (filePath) => {
     if (!filePath.startsWith(filePathPrefix)) {

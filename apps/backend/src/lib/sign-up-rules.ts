@@ -4,6 +4,7 @@ import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { CelEvaluationError, evaluateCelExpression, SignUpRuleContext } from "./cel-evaluator";
 import { logEvent, SystemEventTypes } from "./events";
+import { getBillingTeamId } from "./plan-entitlements";
 import { Tenancy } from "./tenancies";
 
 /**
@@ -25,6 +26,8 @@ async function logRuleTrigger(
       email: context.email,
       authMethod: context.authMethod,
       oauthProvider: context.oauthProvider,
+    }, {
+      billingTeamId: getBillingTeamId(tenancy.project),
     });
   } catch (e) {
     // Don't fail the signup if logging fails

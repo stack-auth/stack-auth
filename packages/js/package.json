@@ -1,8 +1,8 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY, INSTEAD EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@stackframe/js",
-  "version": "2.8.86",
-  "repository": "https://github.com/stack-auth/stack-auth",
+  "version": "2.8.89",
+  "repository": "https://github.com/hexclave/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -41,7 +41,7 @@
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
     "build": "rimraf dist && tsdown",
-    "dev": "rimraf dist && tsdown --watch"
+    "dev": "tsdown --watch"
   },
   "files": [
     "README.md",

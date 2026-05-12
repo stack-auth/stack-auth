@@ -696,14 +696,29 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   }, [cameraDistance, shouldShowGlobe, globeSize]);
 
 
-  // Heatmap-style coloring: log-scaled user counts, normalized with a steeper curve so neighboring
-  // countries with different volumes (e.g. US vs Canada vs Mexico) don't all land in the same band.
+  const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
+  const totalPopulationInCountries = countries.features.reduce((acc, curr) => acc + curr.properties.POP_EST, 0);
+  const oneSided95PercentZScore = 1.645;
+
+  const getCountryColorValue = (countryUsers: number, countryPopulation: number): number | null => {
+    if (countryUsers === 0) return null;
+
+    const observedProportion = countryUsers / totalUsersInCountries;
+    const standardError = Math.sqrt(observedProportion * (1 - observedProportion) / totalUsersInCountries);
+    const proportionLowerBound = Math.max(0, observedProportion - oneSided95PercentZScore * standardError);
+    const populationProportion = countryPopulation / totalPopulationInCountries;
+    const likelihoodRatio = proportionLowerBound / populationProportion;
+
+    return Math.max(0, Math.log(100 * likelihoodRatio));
+  };
+
+  // Heatmap-style coloring: population-normalized user concentration, with a
+  // confidence lower bound so tiny samples don't make a country look too strong.
   const numericColorValues = countries.features
     .map((country) => {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       const countryUsers = countryData[country.properties.ISO_A2_EH] ?? 0;
-      if (countryUsers === 0) return null;
-      return Math.log1p(countryUsers);
+      return getCountryColorValue(countryUsers, country.properties.POP_EST);
     })
     .filter((v): v is number => v !== null)
     .sort((a, b) => a - b);
@@ -720,9 +735,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   const colorValues = new Map(countries.features.map((country) => {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const countryUsers = countryData[country.properties.ISO_A2_EH] ?? 0;
-    if (countryUsers === 0) return [country.properties.ISO_A2_EH, null] as const;
-
-    const colorValue = Math.log1p(countryUsers);
+    const colorValue = getCountryColorValue(countryUsers, country.properties.POP_EST);
     return [country.properties.ISO_A2_EH, colorValue] as const;
   }));
   const maxColorValue = spreadMax;

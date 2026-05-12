@@ -2,7 +2,7 @@
 
 import { AppIcon } from "@/components/app-square";
 import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@/components/ui";
-import { ALL_APPS_FRONTEND, isSubApp, type AppId } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getDocumentationHref, isSubApp, type AppId } from "@/lib/apps-frontend";
 import { ArrowRightIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, LightningIcon, ShieldCheckIcon, XIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import Image from "next/image";
@@ -25,6 +25,7 @@ export function AppStoreEntry({
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
+  const isDocumentationBackedApp = getDocumentationHref(appFrontend) != null;
   const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
   const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
   const screenshotContainerRef = useRef<HTMLDivElement>(null);
@@ -154,7 +155,7 @@ export function AppStoreEntry({
                           className="px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20"
                         >
                           <ArrowRightIcon className="w-4 h-4 mr-2" />
-                          Open App
+                          {isDocumentationBackedApp ? "Open Docs" : "Open App"}
                         </Button>
                         {onDisable && (
                           <Button

@@ -9,7 +9,8 @@ export const PLATFORMS = {
   "next": ['next', 'react-like', 'js-like'],
   "js": ['js', 'js-like'],
   "react": ['react', 'react-like', 'js-like'],
-  "template": ['template', 'react-like', 'next', 'js', 'js-like', 'python-like'],
+  "tanstack-start": ['tanstack-start', 'react', 'react-like', 'js-like'],
+  "template": ['template', 'react-like', 'next', 'js', 'js-like', 'python-like', 'tanstack-start'],
   "python": ['python', 'python-like'],
 }
 

@@ -31,7 +31,7 @@
     "links": [
       {
         "type": "github",
-        "href": "https://github.com/stack-auth/stack-auth"
+        "href": "https://github.com/hexclave/stack-auth"
       }
     ],
     "primary": {
@@ -123,6 +123,7 @@
           {
             "group": "Integrations",
             "pages": [
+              "guides/integrations/tanstack-start/overview",
               "guides/integrations/supabase/overview",
               "guides/integrations/convex/overview",
               "guides/integrations/vercel/overview"
@@ -226,6 +227,9 @@
     "metatags": {
       "robots": "noindex"
     }
+  },
+  "settings": {
+    "customScripts": ["/apps-sidebar-filter.js"]
   },
   "redirects": []
 }
