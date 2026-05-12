@@ -58,9 +58,11 @@ type AppSection = {
   items: {
     name: string,
     href: string,
+    external?: boolean,
     match: (fullUrl: URL) => boolean,
   }[],
   firstItemHref?: string,
+  firstItemExternal?: boolean,
 };
 
 type BottomItem = {
@@ -209,6 +211,7 @@ function NavItem({
   if (isCollapsed) {
     // For sections, navigate to the first item when collapsed
     const collapsedHref = isSection && item.firstItemHref ? item.firstItemHref : href;
+    const collapsedTarget = isSection && item.firstItemExternal ? "_blank" : undefined;
 
     return (
       <div className="flex justify-center">
@@ -226,7 +229,7 @@ function NavItem({
                     : "hover:bg-white/40 dark:hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Link href={collapsedHref ?? "#"} onClick={onClick}>
+                <Link href={collapsedHref ?? "#"} target={collapsedTarget} onClick={onClick}>
                   <IconComponent className={iconClasses} />
                 </Link>
               </Button>
@@ -351,6 +354,7 @@ function NavSubItem({
   return (
     <Link
       href={href}
+      target={item.external ? "_blank" : undefined}
       onClick={onClick}
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 hover:transition-none",
@@ -404,6 +408,7 @@ function AppNavItem({
     const items = navigableFrontend.navigationItems.map((navItem) => ({
       name: navItem.displayName,
       href: getItemPath(projectId, navigableFrontend, navItem),
+      external: navItem.external,
       match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
     }));
     return {
@@ -413,6 +418,7 @@ function AppNavItem({
       href: getAppPath(projectId, appFrontend),
       icon: appFrontend.icon,
       firstItemHref: items[0]?.href,
+      firstItemExternal: items[0]?.external,
     };
   }, [app.displayName, appId, appFrontend, projectId]);
 

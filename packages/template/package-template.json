@@ -5,14 +5,16 @@
   "name": "@stackframe/js",
   "//": "ELSE_IF_PLATFORM next",
   "name": "@stackframe/stack",
+  "//": "ELSE_IF_PLATFORM tanstack-start",
+  "name": "@stackframe/tanstack-start",
   "//": "ELSE_IF_PLATFORM react",
   "name": "@stackframe/react",
   "//": "END_PLATFORM",
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "2.8.87",
-  "repository": "https://github.com/stack-auth/stack-auth",
+  "version": "2.8.89",
+  "repository": "https://github.com/hexclave/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,6 +28,19 @@
         "default": "./dist/index.js"
       }
     },
+    "//": "IF_PLATFORM tanstack-start",
+    "./tanstack-start-server-context": {
+      "types": "./dist/tanstack-start-server-context.combined.d.ts",
+      "import": {
+        "browser": "./dist/esm/tanstack-start-server-context.default.js",
+        "default": "./dist/esm/tanstack-start-server-context.server.js"
+      },
+      "require": {
+        "browser": "./dist/tanstack-start-server-context.default.js",
+        "default": "./dist/tanstack-start-server-context.server.js"
+      }
+    },
+    "//": "END_PLATFORM",
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
       "import": {
@@ -53,12 +68,12 @@
 
     "//": "IF_PLATFORM template react-like",
     "build": "rimraf dist && pnpm run css && tsdown",
-    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
+    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css",
     "codegen:watch": "pnpm run css:watch"
     ,"//": "ELSE_PLATFORM",
     "build": "rimraf dist && tsdown",
-    "dev": "rimraf dist && tsdown --watch"
+    "dev": "tsdown --watch"
     ,"//": "END_PLATFORM",
 
     "//": "IF_PLATFORM template react-like"
@@ -131,6 +146,10 @@
     "react-dom": ">=18.3.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
     "//": "END_PLATFORM",
+    "//": "IF_PLATFORM tanstack-start",
+    "@tanstack/react-router": ">=1.100.0",
+    "@tanstack/react-start": ">=1.100.0",
+    "//": "END_PLATFORM",
     "react": ">=18.3.0"
   },
   "//": "END_PLATFORM",
@@ -160,6 +179,10 @@
     "i18next-parser": "^9.0.2",
     "//": "NEXT_LINE_PLATFORM next",
     "next": "^14.2.35",
+    "//": "NEXT_LINE_PLATFORM template tanstack-start",
+    "@tanstack/react-router": "^1.167.4",
+    "//": "NEXT_LINE_PLATFORM template tanstack-start",
+    "@tanstack/react-start": "^1.166.15",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",
     "react": "^19.0.0",

@@ -1,6 +1,6 @@
 import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
-import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getStackServerApp } from "@/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -42,7 +42,7 @@ export const POST = createSmartRouteHandler({
 
     let effectiveTimeoutMs = body.timeout_ms;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
-    if (billingTeamId != null) {
+    if (billingTeamId != null && arePlanLimitsEnforced()) {
       const app = getStackServerApp();
       const timeoutItem = await app.getItem({ itemId: ITEM_IDS.analyticsTimeoutSeconds, teamId: billingTeamId });
       // clickHouse treats max_execution_time=0 as

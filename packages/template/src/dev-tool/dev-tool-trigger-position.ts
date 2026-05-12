@@ -1,13 +1,12 @@
-export type TriggerSide = 'left' | 'right' | 'top' | 'bottom';
+export type TriggerCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+export type TriggerPlacement = {
+  corner: TriggerCorner;
+};
 
 export type TriggerPosition = {
   left: number;
   top: number;
-};
-
-export type TriggerPlacement = {
-  side: TriggerSide;
-  offset: number;
 };
 
 export type TriggerSize = {
@@ -22,121 +21,85 @@ export type TriggerViewport = {
 
 export const TRIGGER_EDGE_MARGIN = 16;
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(value, max));
-}
-
-function getBounds(
+function getSnapBounds(
   triggerSize: TriggerSize,
   viewport: TriggerViewport,
-  edgeMargin: number,
 ) {
   const maxLeft = Math.max(0, viewport.width - triggerSize.width);
   const maxTop = Math.max(0, viewport.height - triggerSize.height);
-  const minSnapLeft = Math.min(edgeMargin, maxLeft);
-  const maxSnapLeft = Math.max(minSnapLeft, maxLeft - edgeMargin);
-  const minSnapTop = Math.min(edgeMargin, maxTop);
-  const maxSnapTop = Math.max(minSnapTop, maxTop - edgeMargin);
-
+  const minLeft = Math.min(TRIGGER_EDGE_MARGIN, maxLeft);
+  const minTop = Math.min(TRIGGER_EDGE_MARGIN, maxTop);
   return {
-    maxLeft,
-    maxTop,
-    minSnapLeft,
-    maxSnapLeft,
-    minSnapTop,
-    maxSnapTop,
+    minLeft,
+    maxLeft: Math.max(minLeft, maxLeft - TRIGGER_EDGE_MARGIN),
+    minTop,
+    maxTop: Math.max(minTop, maxTop - TRIGGER_EDGE_MARGIN),
   };
 }
 
+/**
+ * Clamps a position so the trigger stays fully within the viewport.
+ * Used during drag to prevent the pill from leaving the screen.
+ */
 export function clampTriggerPosition(
   position: TriggerPosition,
   triggerSize: TriggerSize,
   viewport: TriggerViewport,
 ): TriggerPosition {
-  const { maxLeft, maxTop } = getBounds(triggerSize, viewport, TRIGGER_EDGE_MARGIN);
-
+  const maxLeft = Math.max(0, viewport.width - triggerSize.width);
+  const maxTop = Math.max(0, viewport.height - triggerSize.height);
   return {
-    left: clamp(position.left, 0, maxLeft),
-    top: clamp(position.top, 0, maxTop),
+    left: Math.max(0, Math.min(position.left, maxLeft)),
+    top: Math.max(0, Math.min(position.top, maxTop)),
   };
 }
 
-export function getSnappedTriggerPlacement(
-  position: TriggerPosition,
-  triggerSize: TriggerSize,
-  viewport: TriggerViewport,
-): TriggerPlacement {
-  const clamped = clampTriggerPosition(position, triggerSize, viewport);
-  const bounds = getBounds(triggerSize, viewport, TRIGGER_EDGE_MARGIN);
-
-  const candidates: TriggerPlacement[] = [
-    { side: 'left', offset: clamped.top },
-    { side: 'right', offset: clamped.top },
-    { side: 'top', offset: clamped.left },
-    { side: 'bottom', offset: clamped.left },
-  ];
-
-  function getDistance(placement: TriggerPlacement) {
-    switch (placement.side) {
-      case 'left': {
-        return Math.abs(clamped.left - bounds.minSnapLeft);
-      }
-      case 'right': {
-        return Math.abs(clamped.left - bounds.maxSnapLeft);
-      }
-      case 'top': {
-        return Math.abs(clamped.top - bounds.minSnapTop);
-      }
-      case 'bottom': {
-        return Math.abs(clamped.top - bounds.maxSnapTop);
-      }
-    }
-  }
-
-  let nearest = candidates[0];
-  let nearestDistance = getDistance(nearest);
-  for (const candidate of candidates.slice(1)) {
-    const distance = getDistance(candidate);
-    if (distance < nearestDistance) {
-      nearest = candidate;
-      nearestDistance = distance;
-    }
-  }
-
-  return nearest;
-}
-
+/**
+ * Returns the exact pixel position for a corner placement.
+ * The trigger is always `TRIGGER_EDGE_MARGIN` px from both adjacent edges.
+ */
 export function resolveTriggerPosition(
   placement: TriggerPlacement,
   triggerSize: TriggerSize,
   viewport: TriggerViewport,
 ): TriggerPosition {
-  const bounds = getBounds(triggerSize, viewport, TRIGGER_EDGE_MARGIN);
+  const bounds = getSnapBounds(triggerSize, viewport);
+  const position = (() => {
+    switch (placement.corner) {
+      case 'top-left': {
+        return { left: bounds.minLeft, top: bounds.minTop };
+      }
+      case 'top-right': {
+        return { left: bounds.maxLeft, top: bounds.minTop };
+      }
+      case 'bottom-left': {
+        return { left: bounds.minLeft, top: bounds.maxTop };
+      }
+      case 'bottom-right': {
+        return { left: bounds.maxLeft, top: bounds.maxTop };
+      }
+    }
+  })();
 
-  switch (placement.side) {
-    case 'left': {
-      return {
-        left: bounds.minSnapLeft,
-        top: clamp(placement.offset, 0, bounds.maxTop),
-      };
-    }
-    case 'right': {
-      return {
-        left: bounds.maxSnapLeft,
-        top: clamp(placement.offset, 0, bounds.maxTop),
-      };
-    }
-    case 'top': {
-      return {
-        left: clamp(placement.offset, 0, bounds.maxLeft),
-        top: bounds.minSnapTop,
-      };
-    }
-    case 'bottom': {
-      return {
-        left: clamp(placement.offset, 0, bounds.maxLeft),
-        top: bounds.maxSnapTop,
-      };
-    }
-  }
+  return clampTriggerPosition(position, triggerSize, viewport);
+}
+
+/**
+ * Snaps a free position to the nearest corner by checking which viewport
+ * quadrant the trigger center falls in.
+ */
+export function getSnappedTriggerPlacement(
+  position: TriggerPosition,
+  triggerSize: TriggerSize,
+  viewport: TriggerViewport,
+): TriggerPlacement {
+  const cx = position.left + triggerSize.width / 2;
+  const cy = position.top + triggerSize.height / 2;
+
+  const corner: TriggerCorner =
+    cy < viewport.height / 2
+      ? cx < viewport.width / 2 ? 'top-left' : 'top-right'
+      : cx < viewport.width / 2 ? 'bottom-left' : 'bottom-right';
+
+  return { corner };
 }

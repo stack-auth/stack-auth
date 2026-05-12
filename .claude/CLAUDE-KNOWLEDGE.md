@@ -217,6 +217,9 @@ A: Check the error location:
 - Callback endpoint (400 error) - Validation failed during callback
 - Token endpoint (400 error) - Validation failed during token exchange
 
+### Q: How should connected-account OAuth access-token refresh errors be classified?
+A: In `apps/backend/src/oauth/providers/base.tsx`, invalid/revoked refresh-token provider errors such as `invalid_grant` return `Result.error({ type: "invalid-refresh-token", ... })` so `access-token-helpers.tsx` can invalidate that stored refresh token and try another. Transient provider/network failures such as openid-client `RPError: outgoing request timed out after 3500ms` return `Result.error({ type: "temporarily-unavailable", cause })`; the connected-account helper converts that to `OAuthProviderTemporarilyUnavailable` without invalidating the refresh token. Expected refresh outcomes should be represented in the provider return type instead of thrown as known/status errors. Refresh requests use a 6s openid-client HTTP timeout and retry transient failures once. If a retry sees `invalid_grant` after an ambiguous transient failure, keep treating it as temporarily unavailable rather than invalidating the refresh token, because the first request may have reached the provider and rotated the token before our client timed out. Sentry should capture non-revocation refresh issues (temporary provider failure, invalid client, unexpected) with provider id/class, attempts, retry count, ambiguity state, final cause, and all provider errors seen during attempts; normal revoked/expired refresh tokens should not be reported.
+
 ## Git and Development Workflow
 
 ### Q: How should you format git commit messages in this project?
@@ -356,6 +359,36 @@ Then restart the dev server. This rebuilds all packages and generates the necess
 ## Q: How is backwards compatibility for the offer→product rename handled in the payments purchase APIs?
 A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.
 
+## Q: How does the Stack Auth template dev tool decide whether to iframe the dashboard?
+A: The dev tool always iframes the Dashboard tab and provides an "Open in New Tab" escape hatch for auth or framing issues.
+
+### Q: What's the reliable way to run targeted tests across backend, dashboard, stack-shared, and e2e at once?
+A: Run from the monorepo root with explicit file paths: `pnpm test run "<path1>" "<path2>" ...`. This works even when individual packages do not define a local `test` script. Also avoid passing an extra `run` argument to package-level `test` scripts that already execute `vitest run`.
+
+### Q: What's the new Authorization header format for Stack token forwarding?
+A: Use `getAuthorizationHeader()`, which returns `Bearer stackauth_<base64(getAuthJson())>`. The payload encodes both `accessToken` and `refreshToken`, and request-like token stores should parse this format first, with legacy `x-stack-auth` remaining as a backward-compatible fallback.
+
+### Q: What RequestLike header shapes are supported by tokenStore overrides?
+A: `RequestLike` accepts both `{ headers: { get(name): string | null } }` and `{ headers: Record<string, string | null> }`. Header lookup is case-insensitive for record-style headers, and supports `authorization`, `x-stack-auth`, and `cookie`.
+
+### Q: Which env var should emulator onboarding URLs use for dashboard port?
+A: Use `EMULATOR_DASHBOARD_PORT` (default `26700`) or explicit `STACK_LOCAL_EMULATOR_DASHBOARD_URL`. Do not derive emulator URLs from `NEXT_PUBLIC_STACK_PORT_PREFIX`, because that points to the host dev environment ports (e.g. `92xx`) rather than the emulator host-forwarded ports.
+
+### Q: Why does `PATCH /api/v1/internal/projects/current` fail in local emulator when updating only `onboarding_state`?
+A: `createOrUpdateProjectWithLegacyConfig` always called `overrideEnvironmentConfigOverride`, even when there were zero config override keys to apply. In local emulator mode, environment config overrides are intentionally blocked, so this threw `Environment configuration overrides cannot be changed in the local emulator` and returned 500. The fix is to skip `overrideEnvironmentConfigOverride` unless `configOverrideOverride` has at least one key.
+
+### Q: Why might local emulator UI changes in `apps/dashboard` not appear immediately at `localhost:26700`?
+A: The QEMU local emulator serves the dashboard from the Docker image bundled inside the VM, not from the host repo's live source tree. Source edits in `apps/dashboard` are reflected in lint/typecheck/tests immediately, but you need an updated emulator image/runtime to see the visual change on `26700`.
+
+### Q: Why can local emulator onboarding break with `ParseError` on non-`.ts` config files (e.g. `test-config.untracked`)?
+A: The emulator writes TypeScript-style config source (`import type ...` and `config: StackConfig`) and later evaluates it with Jiti. If the filename has a non-TS extension, Jiti may parse it as plain JS and fail. Fix by evaluating unknown extensions as TypeScript (use a `.ts` eval filename fallback) and add regression coverage for non-`.ts` config paths.
+
+### Q: How should docs fetch the canonical AI setup prompt text?
+A: Expose an unauthenticated backend endpoint at `/api/v1/setup-prompt` that returns `getSdkSetupPrompt("ai-prompt", { tanstackQuery: false })` as plain text and sets `Cache-Control: public, max-age=60`. Mintlify docs should fetch `https://api.stack-auth.com/api/v1/setup-prompt` directly when docs and API are on different origins.
+
+### Q: Can Mintlify snippets import other snippets?
+A: No. Keep snippet logic inline within each snippet file; avoid snippet-to-snippet imports. For setup prompt fetching, point directly to `https://api.stack-auth.com/api/v1/setup-prompt` when docs run on a different origin/port than the API.
+
 ## Q: How does `/api/v1/ai/query/generate` reject invalid AI tool names?
 A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/src/lib/ai/schema.ts` via `yupString().oneOf(TOOL_NAMES)`, so the endpoint returns a structured `SCHEMA_ERROR` object mentioning `body.tools[n]` rather than a custom `"Invalid tool names"` string from handler logic.
 
@@ -364,3 +397,63 @@ A: The `/api/v1/internal/metrics` response now intentionally includes `analytics
 
 ## Q: Why can environment config override writes fail with a product/product-line customer type warning after creating a preview project?
 A: The environment override endpoint validates the new environment override against the rendered branch config. Preview dummy payments data must therefore be internally coherent: products assigned to a product line need the same `customerType` as that product line, otherwise unrelated environment patches can fail with warnings like `Product "growth" has customer type "user" but its product line "workspace" has customer type "team"`.
+
+## Q: How do you keep the Stack Auth dev tool from reopening automatically after navigation or reload?
+A: Treat `isOpen` as mount-local state in `packages/template/src/dev-tool/dev-tool-core.ts`: load persisted preferences with `isOpen: false`, and save state back to localStorage with `isOpen: false` so tab/size preferences persist without reopening the panel on the next mount.
+
+## Q: How should the Stack Auth dev tool indicator avoid being hidden by other dev indicators?
+A: Do not dynamically reflow around framework indicators; that makes pointer interaction brittle. Keep the trigger anchored to its saved corner and give `.sdt-trigger` a max practical z-index (`2147483647`) so the Stack indicator renders above Next/Turbo overlays.
+
+## Q: How should Stack Auth dev tool trigger movement feel?
+A: Dragging should remain instant/direct, but programmatic moves like snap-to-corner after drag, resize reposition, and post-measurement correction should use a short snappy left/top transition. In `dev-tool-core.ts`, toggle a dedicated animation class only for those programmatic updates and remove it shortly after.
+
+## Q: How do you prevent duplicate Stack Auth dev tool indicators from multiple package/module instances?
+A: `createDevTool` in `packages/template/src/dev-tool/dev-tool-core.ts` should register a browser-wide singleton instance on `window` with an idempotent cleanup function, call any previous global cleanup before mounting, and remove leftover `#__stack-dev-tool-root` nodes as a fallback for older instances that did not register cleanup.
+
+## Q: How should the Stack Auth dev tool handle Dashboard tab sizing?
+A: Keep the user's default panel width/height in state for normal tabs, but apply a transient fullscreen class while the active tab is `dashboard`. The fullscreen class should override fixed dimensions and hide resize handles, then remove itself and restore the saved default dimensions when any other tab is selected.
+
+## Q: How should the Stack Auth dev tool animate Dashboard fullscreen transitions?
+A: Add a short-lived geometry animation class only around tab-driven switches into or out of Dashboard fullscreen. Animate `width`, `height`, `right`, `bottom`, and radius for the mode change, then remove the class so manual dragging/resizing remains direct and does not lag.
+
+## Q: Should the Stack Auth dev tool Dashboard tab be gated on local emulator mode?
+A: No. The Dashboard tab should always render the dashboard URL in an iframe inside the dev tool, and should also show an "Open in New Tab" link so users can escape iframe/auth/framing issues without losing the embedded view.
+
+## Q: How should the Dashboard iframe use space in the Stack Auth dev tool?
+A: In Dashboard fullscreen mode, the panel should cover the full viewport with no inset or rounded frame, and the iframe should fill all available content space. Put auxiliary actions like "Open in New Tab" in a top-edge overlay below the tab bar so they do not reserve layout height from the iframe.
+
+## Q: How do you maximize iframe tabs inside the Stack Auth dev tool panel?
+A: Mark Docs/Dashboard panes with an iframe-specific class, remove the normal 16px tab-pane padding, hide pane overflow, and give the iframe container explicit `width: 100%` and `height: 100%`. Keep toolbar actions as absolute overlays so they do not reduce iframe layout space.
+
+## Q: How should docs access work in the Stack Auth dev tool?
+A: Docs should not be an iframe-backed tab. Keep docs as a top-bar external link to `https://docs.stack-auth.com` with an up-right arrow icon, and migrate any persisted `activeTab: "docs"` value back to `overview`.
+
+## Q: How should the Stack Auth dev tool Console tab handle large log volumes?
+A: Keep the full log history in the shared log store, but render only the newest 100 entries initially. When the log scroll area nears the bottom, increase the visible count by another 100 and rerender. The Console tab should be a single logs view with Copy, Export, and Clear buttons in the header rather than nested Logs/Config subtabs.
+
+## Q: How should the Stack Auth dev tool Customize page detail show page metadata?
+A: Avoid repeated page-type badges like `Handler` in page tiles or detail headers. Keep actionable badges such as `Outdated`, show the compact route path next to the page title, use `Open` for the page action, and phrase the customization prompt as "Want to customize this page? Paste this prompt into your coding agent." with a `Copy prompt` button below it.
+
+## Q: How should the Stack Auth dev tool Customize page Open action behave?
+A: The page detail `Open` action should be a taller button matching the redirect code chip height, include a small up-right arrow icon, and always open the selected page in a new tab.
+
+## Q: How should the Stack Auth dev tool Support tab be structured?
+A: Do not keep top-level Feedback/Feature Request subtabs unless the backend supports them. The Support tab should mount the feedback form directly, show Discord/Email/GitHub links at the top, keep only Feedback and Bug Report choices in the form, and use a Submit button with a right-arrow icon after the text.
+
+## Q: Which tab should the Stack Auth dev tool show when opened?
+A: Opening the dev tool should always reset `activeTab` to `overview` before creating the panel. Other preferences like size can persist, but each fresh open should start on Overview instead of the last-used tab.
+
+## Q: How should Stack Auth dev tool PR review comments around Overview and trigger behavior be handled?
+A: Keep trigger corner resolution on-screen even in tiny viewports by snapping to bounded edge positions, remove unused trigger-position helpers, treat browser fetch `TypeError`s such as Safari's `Load failed` as best-effort Overview hydration errors, replace auth-method skeletons with a fallback on every load failure, and compute the `Auth method active` checklist row from loaded project config instead of hard-coding it as passing.
+
+## Q: Why can `pnpm run dev` fail with `ERR_MODULE_NOT_FOUND` for `@stackframe/stack/dist/esm/index.js` during OpenAPI docs generation?
+A: Root `dev` starts the OpenAPI docs watcher at the same time as package `dev` watchers. If a package `dev` script removes `dist` before `tsdown --watch` recreates it, the docs generator can import `apps/backend/src/stack.tsx` while `@stackframe/stack`'s ESM entrypoint is temporarily missing. Package watch scripts should update `dist` in place, and eager generators should wait for package imports to resolve before running.
+
+## Q: How do SDK source tests replace the compile-time client version sentinel?
+A: `packages/template/vitest.config.ts` installs a Vite transform plugin for Vitest that replaces `STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL` with `js <package-name>@<version>` from the local package.json. Keep the plugin in `packages/template` so `pnpm pre`/`scripts/generate-sdks.ts` propagates it to `packages/js`, `packages/react`, and `packages/stack`; otherwise tests importing `common.ts` throw `Client version was not replaced` before test collection.
+
+## Q: How does the Mintlify apps sidebar filter stay in sync with theme changes?
+A: `docs-mintlify/apps-sidebar-filter.js` injects the Apps filter with inline styles, so the MutationObserver must reapply `applySidebarAppsFilterTheme` when an existing input is found. Theme detection should handle both `html.dark` and `data-theme="dark"` signals.
+
+## Q: How should `StackAssertionError` preserve an underlying thrown error?
+A: Pass the underlying error as the `cause` property in the second argument. The `StackAssertionError` constructor only forwards `cause` into `ErrorOptions`, so storing a caught error under an `error` property captures it as ordinary metadata instead of preserving the error cause chain.

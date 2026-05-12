@@ -1438,7 +1438,7 @@ const OAuthProviderTemporarilyUnavailable = createKnownErrorConstructor(
   "OAUTH_PROVIDER_TEMPORARILY_UNAVAILABLE",
   () => [
     503,
-    "The OAuth provider is temporarily unavailable. Please try signing in again.",
+    "The OAuth provider is temporarily unavailable. Please try again later.",
   ] as const,
   () => [] as const,
 );

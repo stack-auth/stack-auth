@@ -565,3 +565,416 @@ describe("Stack CLI — Emulator", () => {
     expect(stdout).toContain("--repo");
   });
 });
+
+// Doctor CLI tests — no backend required. Each test builds a fixture project
+// in a temp dir and runs `stack doctor --output-dir <dir> --json`.
+describe("Stack CLI — Doctor", () => {
+  let doctorTmpRoot: string;
+
+  beforeAll(() => {
+    if (!fs.existsSync(CLI_BIN)) {
+      throw new Error("CLI not built. Run `pnpm --filter @stackframe/stack-cli run build` first.");
+    }
+    doctorTmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-doctor-test-"));
+  });
+
+  afterAll(() => {
+    if (doctorTmpRoot && fs.existsSync(doctorTmpRoot)) {
+      fs.rmSync(doctorTmpRoot, { recursive: true });
+    }
+  });
+
+  function runDoctor(
+    args: string[],
+    envOverrides?: Record<string, string>,
+  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
+    const env: Record<string, string> = {
+      PATH: process.env.PATH ?? "",
+      HOME: process.env.HOME ?? "",
+      CI: "1",
+      ...envOverrides,
+    };
+    return new Promise((resolve) => {
+      execFile("node", [CLI_BIN, ...args], {
+        env,
+        timeout: 30_000,
+      }, (error, stdout, stderr) => {
+        resolve({
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+          exitCode: error ? (error as any).code ?? 1 : 0,
+        });
+      });
+    });
+  }
+
+  function makeProject(subdir: string, files: Record<string, string>): string {
+    const dir = path.join(doctorTmpRoot, `${subdir}-${crypto.randomUUID().slice(0, 8)}`);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const [rel, content] of Object.entries(files)) {
+      const full = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content);
+    }
+    return dir;
+  }
+
+  function pkg(extra: Record<string, unknown>): string {
+    return JSON.stringify({ name: "fixture", version: "0.0.0", ...extra }, null, 2);
+  }
+
+  // Reusable Next.js all-green fixture
+  function nextHappyFiles(): Record<string, string> {
+    return {
+      "package.json": pkg({
+        dependencies: { next: "14.0.0", "@stackframe/stack": "1.0.0" },
+      }),
+      "stack/client.ts": "export const stackClientApp = {};\n",
+      "stack/server.ts": "export const stackServerApp = {};\n",
+      "app/handler/[...stack]/page.tsx": "export default function Page() { return null; }\n",
+      "app/layout.tsx":
+        `import { StackProvider } from "@stackframe/stack";\n` +
+        `export default function RootLayout({ children }) {\n` +
+        `  return <StackProvider>{children}</StackProvider>;\n` +
+        `}\n`,
+      ".env.local":
+        `NEXT_PUBLIC_STACK_PROJECT_ID=proj_test\n` +
+        `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=pck_test\n` +
+        `STACK_SECRET_SERVER_KEY="ssk_test"\n`,
+    };
+  }
+
+  it("doctor --help shows options", async ({ expect }) => {
+    const { stdout, exitCode } = await runDoctor(["doctor", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--output-dir");
+    expect(stdout).toContain("--framework");
+    expect(stdout).toContain("--json");
+  });
+
+  it("fails when package.json is missing", async ({ expect }) => {
+    const dir = makeProject("no-pkg", {});
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.error).toBe("no package.json");
+    expect(parsed.projectDir).toBe(dir);
+  });
+
+  it("fails when package.json is invalid JSON", async ({ expect }) => {
+    const dir = makeProject("bad-pkg", { "package.json": "not json" });
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.error).toBe("invalid package.json");
+    expect(typeof parsed.detail).toBe("string");
+    expect(parsed.detail.length).toBeGreaterThan(0);
+  });
+
+  it("fails when no dependencies declared", async ({ expect }) => {
+    const dir = makeProject("empty-deps", { "package.json": pkg({}) });
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.error).toContain("no dependencies");
+  });
+
+  it("rejects Next.js project without app router", async ({ expect }) => {
+    const dir = makeProject("next-pages", {
+      "package.json": pkg({ dependencies: { next: "14.0.0" } }),
+      "pages/index.tsx": "export default function Home() { return null; }\n",
+    });
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.error).toContain("pages router");
+  });
+
+  it("rejects unknown --framework value", async ({ expect }) => {
+    const dir = makeProject("bad-fw", { "package.json": pkg({ dependencies: { next: "14.0.0" } }) });
+    const { stdout, exitCode } = await runDoctor([
+      "doctor", "--output-dir", dir, "--framework", "bogus", "--json",
+    ]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.error).toContain("Unknown framework");
+  });
+
+  it("--framework override applies even when deps don't list it", async ({ expect }) => {
+    const dir = makeProject("fw-override", {
+      "package.json": pkg({ dependencies: { something: "1.0.0" } }),
+      "app/marker.txt": "ensures app router exists\n",
+    });
+    const { stdout, exitCode } = await runDoctor([
+      "doctor", "--output-dir", dir, "--framework", "next", "--json",
+    ]);
+    // Will fail many checks (no Stack package, no files), but framework should be next.
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.framework).toBe("next");
+  });
+
+  it("Next.js happy path passes all checks", async ({ expect }) => {
+    const dir = makeProject("next-happy", nextHappyFiles());
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.framework).toBe("next");
+    expect(parsed.failed).toBe(0);
+    expect(parsed.warned).toBe(0);
+    expect(parsed.checks.every((c: any) => c.status === "pass")).toBe(true);
+  });
+
+  it("Next.js applies src/ prefix when src/app exists", async ({ expect }) => {
+    const dir = makeProject("next-src", {
+      "package.json": pkg({
+        dependencies: { next: "14.0.0", "@stackframe/stack": "1.0.0" },
+      }),
+      "src/stack/client.ts": "export const stackClientApp = {};\n",
+      "src/stack/server.ts": "export const stackServerApp = {};\n",
+      "src/app/handler/[...stack]/page.tsx": "export default function P() { return null; }\n",
+      "src/app/layout.tsx":
+        `import { StackProvider } from "@stackframe/stack";\n` +
+        `export default function L({ children }) { return <StackProvider>{children}</StackProvider>; }\n`,
+      ".env.local":
+        `NEXT_PUBLIC_STACK_PROJECT_ID=p\n` +
+        `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
+        `STACK_SECRET_SERVER_KEY=s\n`,
+    });
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    const clientCheck = parsed.checks.find((c: any) => c.id === "next.client-app");
+    expect(clientCheck.status).toBe("pass");
+    expect(clientCheck.label).toContain("src/stack/client.ts");
+  });
+
+  it("React happy path passes all checks", async ({ expect }) => {
+    const dir = makeProject("react-happy", {
+      "package.json": pkg({
+        dependencies: { react: "18.0.0", "@stackframe/react": "1.0.0" },
+      }),
+      "stack/client.ts": "export const stackClientApp = {};\n",
+      ".env.local":
+        `VITE_STACK_PROJECT_ID=p\n` +
+        `VITE_STACK_PUBLISHABLE_CLIENT_KEY=k\n`,
+    });
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.framework).toBe("react");
+    expect(parsed.failed).toBe(0);
+  });
+
+  it("JS catch-all happy path passes all checks", async ({ expect }) => {
+    const dir = makeProject("js-happy", {
+      "package.json": pkg({
+        dependencies: { svelte: "4.0.0", "@stackframe/js": "1.0.0" },
+      }),
+      "stack/server.ts": "export const stackServerApp = {};\n",
+      ".env":
+        `STACK_PROJECT_ID=p\n` +
+        `STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
+        `STACK_SECRET_SERVER_KEY=s\n`,
+    });
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.framework).toBe("js");
+    expect(parsed.failed).toBe(0);
+  });
+
+  it("JS catch-all accepts PUBLIC_* env aliases", async ({ expect }) => {
+    const dir = makeProject("js-public", {
+      "package.json": pkg({
+        dependencies: { svelte: "4.0.0", "@stackframe/js": "1.0.0" },
+      }),
+      "stack/client.ts": "export const stackClientApp = {};\n",
+      ".env":
+        `PUBLIC_STACK_PROJECT_ID=p\n` +
+        `PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
+        `STACK_SECRET_SERVER_KEY=s\n`,
+    });
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.framework).toBe("js");
+    expect(parsed.failed).toBe(0);
+  });
+
+  it("fails when @stackframe/stack is not installed", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["package.json"] = pkg({ dependencies: { next: "14.0.0" } });
+    const dir = makeProject("no-stack-pkg", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "next.package");
+    expect(check.status).toBe("fail");
+  });
+
+  it("fails when client app file is missing", async ({ expect }) => {
+    const files = nextHappyFiles();
+    delete files["stack/client.ts"];
+    const dir = makeProject("no-client", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "next.client-app");
+    expect(check.status).toBe("fail");
+  });
+
+  it("fails when handler route is missing", async ({ expect }) => {
+    const files = nextHappyFiles();
+    delete files["app/handler/[...stack]/page.tsx"];
+    const dir = makeProject("no-handler", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "next.handler-route");
+    expect(check.status).toBe("fail");
+    expect(check.hint).toContain("app/handler/[...stack]/page.tsx");
+  });
+
+  it("warns when layout imports StackProvider but does not render it", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["app/layout.tsx"] =
+      `import { StackProvider } from "@stackframe/stack";\n` +
+      `export default function L({ children }) { return <html><body>{children}</body></html>; }\n`;
+    const dir = makeProject("layout-no-jsx", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    // Warn does not flip exit code.
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "next.layout-provider");
+    expect(check.status).toBe("warn");
+  });
+
+  it("fails when layout renders <StackProvider> without importing it", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["app/layout.tsx"] =
+      `export default function L({ children }) { return <StackProvider>{children}</StackProvider>; }\n`;
+    const dir = makeProject("layout-no-import", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "next.layout-provider");
+    expect(check.status).toBe("fail");
+  });
+
+  it("fails when layout file is missing entirely", async ({ expect }) => {
+    const files = nextHappyFiles();
+    delete files["app/layout.tsx"];
+    const dir = makeProject("layout-missing", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "next.layout-provider");
+    expect(check.status).toBe("fail");
+  });
+
+  it("fails when a required env var is missing", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files[".env.local"] =
+      `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
+      `STACK_SECRET_SERVER_KEY=s\n`;
+    const dir = makeProject("env-fail", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "env-vars");
+    expect(check.status).toBe("fail");
+    expect(check.label).toContain("NEXT_PUBLIC_STACK_PROJECT_ID");
+  });
+
+  it("warns (without failing) when only the recommended env var is missing", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files[".env.local"] =
+      `NEXT_PUBLIC_STACK_PROJECT_ID=p\n` +
+      `STACK_SECRET_SERVER_KEY=s\n`;
+    const dir = makeProject("env-warn", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "env-vars");
+    expect(check.status).toBe("warn");
+    expect(check.label).toContain("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY");
+  });
+
+  it("resolves env vars from .env.local before .env", async ({ expect }) => {
+    const files = nextHappyFiles();
+    // .env is missing the required project ID; .env.local supplies it.
+    files[".env"] = `UNRELATED=1\n`;
+    files[".env.local"] =
+      `NEXT_PUBLIC_STACK_PROJECT_ID=p\n` +
+      `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
+      `STACK_SECRET_SERVER_KEY=s\n`;
+    const dir = makeProject("env-precedence", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "env-vars");
+    expect(check.status).toBe("pass");
+  });
+
+  it("skips config-file check when stack.config.ts is absent", async ({ expect }) => {
+    const dir = makeProject("no-config", nextHappyFiles());
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "config-file");
+    expect(check).toBeUndefined();
+  });
+
+  it("fails config-file check when config export is an array", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["stack.config.ts"] = "export const config = [];\n";
+    const dir = makeProject("config-array", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "config-file");
+    expect(check.status).toBe("fail");
+    expect(check.label).toContain("not a plain object");
+  });
+
+  it("fails config-file check when there is no config export", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["stack.config.ts"] = "export const other = 1;\n";
+    const dir = makeProject("config-missing", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "config-file");
+    expect(check.status).toBe("fail");
+    expect(check.label).toContain("missing a `config` export");
+  });
+
+  it("passes config-file check when config is a valid plain object", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["stack.config.ts"] = "export const config = { apps: { installed: {} } };\n";
+    const dir = makeProject("config-ok", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    const check = parsed.checks.find((c: any) => c.id === "config-file");
+    expect(check.status).toBe("pass");
+  });
+
+  it("renders a human report with header and summary when --json is omitted", async ({ expect }) => {
+    const dir = makeProject("human", nextHappyFiles());
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Stack Auth doctor");
+    expect(stdout).toMatch(/\d+ passed, \d+ failed/);
+  });
+
+  it("honors top-level --json flag (stack --json doctor)", async ({ expect }) => {
+    const dir = makeProject("top-json", nextHappyFiles());
+    const { stdout, exitCode } = await runDoctor(["--json", "doctor", "--output-dir", dir]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.framework).toBe("next");
+    expect(Array.isArray(parsed.checks)).toBe(true);
+  });
+});
