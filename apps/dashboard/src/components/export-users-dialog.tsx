@@ -270,7 +270,7 @@ async function fetchAllUsers(
   const limit = 100; // Fetch in batches of 100
 
   do {
-    const listUsersOptions: Parameters<typeof stackAdminApp.listUsersPaginated>[0] = {
+    const listUsersOptions: Parameters<typeof stackAdminApp.listUsers>[0] = {
       limit,
       cursor,
       query: options?.search,
@@ -281,9 +281,9 @@ async function fetchAllUsers(
     if (options?.onlyAnonymous) {
       Object.assign(listUsersOptions, { onlyAnonymous: true });
     }
-    const batch = await stackAdminApp.listUsersPaginated(listUsersOptions);
+    const batch = await stackAdminApp.listUsers(listUsersOptions);
 
-    allUsers.push(...batch.items);
+    allUsers.push(...batch);
     cursor = batch.nextCursor ?? undefined;
   } while (cursor);
 

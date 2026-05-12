@@ -129,9 +129,16 @@ export type ServerTeam = {
 type ServerListUsersOptionsBase = {
   cursor?: string,
   limit?: number,
-  orderBy?: 'signedUpAt',
+  orderBy?: 'signedUpAt' | 'lastActiveAt',
   desc?: boolean,
+  /**
+   * Free-text search. Matches user ID (exact UUID), display name, and contact channels (e.g. primary email).
+   */
   query?: string,
+  /**
+   * Only return users who are members of the given team.
+   */
+  teamId?: string,
   /**
    * Whether to include restricted users (users who haven't completed onboarding requirements).
    * Defaults to false.
@@ -158,34 +165,14 @@ export type ServerListUsersOptions = ServerListUsersOptionsBase & (
   }
 );
 
-type ServerListUsersPaginatedOptionsBase = {
-  cursor?: string,
-  limit?: number,
-  orderBy?: 'signedUpAt' | 'lastActiveAt',
-  desc?: boolean,
-  query?: string,
-  /**
-   * Only return users who are members of the given team.
-   */
-  teamId?: string,
-  includeRestricted?: boolean,
-  includeAnonymous?: boolean,
-};
-
-export type ServerListUsersPaginatedOptions = ServerListUsersPaginatedOptionsBase & (
-  {
-    onlyAnonymous?: false,
-  } | {
-    onlyAnonymous: true,
-    includeAnonymous: true,
-  }
-);
-
 export type ServerListTeamsOptions = {
   orderBy?: 'createdAt',
   desc?: boolean,
   cursor?: string,
   limit?: number,
+  /**
+   * Free-text search. Matches team ID (exact UUID) and display name.
+   */
   query?: string,
 };
 

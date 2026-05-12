@@ -172,7 +172,7 @@ export function TeamTable() {
       const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
         ? params.quickSearch.trim()
         : undefined;
-      const result = await stackAdminApp.listTeamsPaginated({
+      const result = await stackAdminApp.listTeams({
         limit: PAGE_SIZE,
         orderBy: "createdAt",
         desc: sortDesc,
@@ -180,7 +180,7 @@ export function TeamTable() {
         query: search,
       });
       yield {
-        rows: result.items,
+        rows: result,
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
       };

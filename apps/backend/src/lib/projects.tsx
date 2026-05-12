@@ -314,11 +314,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
     configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
     configOverrideOverride['apps.installed.emails.enabled'] ??= true;
   }
-  await overrideEnvironmentConfigOverride({
-    projectId: projectId,
-    branchId: branchId,
-    environmentConfigOverrideOverride: configOverrideOverride,
-  });
+  if (options.type === "create" || Object.keys(configOverrideOverride).length > 0) {
+    await overrideEnvironmentConfigOverride({
+      projectId: projectId,
+      branchId: branchId,
+      environmentConfigOverrideOverride: configOverrideOverride,
+    });
+  }
   const result = await getProject(projectId);
   if (!result) {
     throw new StackAssertionError("Project not found after creation/update", { projectId });

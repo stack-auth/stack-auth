@@ -241,7 +241,7 @@ function UserTableBody(props: {
       const sortDesc = activeSort?.direction !== "asc";
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
       const result = filters.onlyAnonymous
-        ? await stackAdminApp.listUsersPaginated({
+        ? await stackAdminApp.listUsers({
           limit: PAGE_SIZE,
           orderBy,
           desc: sortDesc,
@@ -251,7 +251,7 @@ function UserTableBody(props: {
           onlyAnonymous: true,
           cursor,
         })
-        : await stackAdminApp.listUsersPaginated({
+        : await stackAdminApp.listUsers({
           limit: PAGE_SIZE,
           orderBy,
           desc: sortDesc,
@@ -261,7 +261,7 @@ function UserTableBody(props: {
           cursor,
         });
       yield {
-        rows: extendUsers(result.items),
+        rows: extendUsers(result),
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
       };

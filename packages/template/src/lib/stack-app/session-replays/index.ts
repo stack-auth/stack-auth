@@ -33,8 +33,6 @@ export type ListSessionReplaysOptions = {
   lastEventAtFromMillis?: number,
   lastEventAtToMillis?: number,
   clickCountMin?: number,
-  sortDirection?: "asc" | "desc",
-  query?: string,
 };
 
 export type ListSessionReplaysResult = {

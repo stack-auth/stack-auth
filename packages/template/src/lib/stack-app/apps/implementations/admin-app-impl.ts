@@ -529,16 +529,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.map((p) => this._serverProjectPermissionDefinitionFromCrud(p));
   }
 
-  async listProjectPermissionDefinitionsPaginated(
-    options: { limit: number, cursor?: string, query?: string },
-  ): Promise<{ items: AdminProjectPermissionDefinition[], nextCursor: string | null }> {
-    const result = await this._interface.listProjectPermissionDefinitionsPaginated(options);
-    return {
-      items: result.items.map((p) => this._serverProjectPermissionDefinitionFromCrud(p)),
-      nextCursor: result.nextCursor,
-    };
-  }
-
   // IF_PLATFORM react-like
   useProjectPermissionDefinitions(): AdminProjectPermissionDefinition[] {
     const crud = useAsyncCache(this._adminProjectPermissionDefinitionsCache, [], "adminApp.useProjectPermissionDefinitions()");
@@ -1165,9 +1155,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       last_event_at_from_millis: options?.lastEventAtFromMillis,
       last_event_at_to_millis: options?.lastEventAtToMillis,
       click_count_min: options?.clickCountMin,
-      sort_direction: options?.sortDirection,
-      // SDK uses `query` (consistent with listUsers/listTeams); REST exposes `q`.
-      q: options?.query,
     });
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({

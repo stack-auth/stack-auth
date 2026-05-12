@@ -8604,9 +8604,9 @@
             "in": "query",
             "schema": {
               "type": "integer",
-              "description": "The maximum number of items to return (capped at 200)."
+              "description": "The maximum number of items to return"
             },
-            "description": "The maximum number of items to return (capped at 200).",
+            "description": "The maximum number of items to return",
             "required": false
           },
           {

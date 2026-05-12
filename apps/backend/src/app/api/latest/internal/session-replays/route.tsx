@@ -31,10 +31,6 @@ function parseCsvUuids(name: string, raw: string | undefined): string[] {
   return values;
 }
 
-function escapeLikePattern(input: string): string {
-  return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
-
 function parseNonNegativeInt(name: string, raw: string | undefined): number | null {
   if (!raw) return null;
   const value = Number(raw);
@@ -104,8 +100,6 @@ export const GET = createSmartRouteHandler({
       last_event_at_from_millis: yupString().optional(),
       last_event_at_to_millis: yupString().optional(),
       click_count_min: yupString().optional(),
-      sort_direction: yupString().oneOf(["asc", "desc"]).optional(),
-      q: yupString().optional(),
     }).optional(),
   }),
   response: yupObject({
@@ -144,8 +138,6 @@ export const GET = createSmartRouteHandler({
     const clickCountMin = parseNonNegativeInt("click_count_min", query.click_count_min);
     const lastEventAtFrom = parseMillis("last_event_at_from_millis", query.last_event_at_from_millis);
     const lastEventAtTo = parseMillis("last_event_at_to_millis", query.last_event_at_to_millis);
-    const sortDirection: "asc" | "desc" = query.sort_direction === "asc" ? "asc" : "desc";
-    const searchQuery = query.q?.trim() || null;
 
     if (durationMsMin !== null && durationMsMax !== null && durationMsMin > durationMsMax) {
       throw new StatusError(StatusError.BadRequest, "duration_ms_min must be less than or equal to duration_ms_max");
@@ -226,22 +218,11 @@ export const GET = createSmartRouteHandler({
         ${clickQualifiedIds ? Prisma.sql`AND sr."id" IN (${Prisma.join(clickQualifiedIds)})` : Prisma.empty}
         ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
         ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}
-        ${searchQuery ? Prisma.sql`AND (
-          sr."id"::text ILIKE ${`%${escapeLikePattern(searchQuery)}%`}
-          OR pu."displayName" ILIKE ${`%${escapeLikePattern(searchQuery)}%`}
-        )` : Prisma.empty}
-        ${cursorPivot ? (sortDirection === "asc"
-          ? Prisma.sql`AND (
-              sr."lastEventAt" > ${cursorPivot.lastEventAt}
-              OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" > ${cursorId})
-            )`
-          : Prisma.sql`AND (
-              sr."lastEventAt" < ${cursorPivot.lastEventAt}
-              OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
-            )`) : Prisma.empty}
-      ${sortDirection === "asc"
-        ? Prisma.sql`ORDER BY sr."lastEventAt" ASC, sr."id" ASC`
-        : Prisma.sql`ORDER BY sr."lastEventAt" DESC, sr."id" DESC`}
+        ${cursorPivot ? Prisma.sql`AND (
+            sr."lastEventAt" < ${cursorPivot.lastEventAt}
+            OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
+          )` : Prisma.empty}
+      ORDER BY sr."lastEventAt" DESC, sr."id" DESC
       LIMIT ${limit + 1}
     `;
 

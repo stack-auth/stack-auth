@@ -5,7 +5,7 @@ import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
-import { ServerListTeamsOptions, ServerListUsersOptions, ServerListUsersPaginatedOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
+import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
@@ -68,12 +68,6 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
 
-    useUsersPaginated(options?: ServerListUsersPaginatedOptions): { items: ServerUser[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
-    listUsersPaginated(options?: ServerListUsersPaginatedOptions): Promise<{ items: ServerUser[], nextCursor: string | null }>,
-
-    useTeamsPaginated(options?: ServerListTeamsOptions): { items: ServerTeam[], nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
-    listTeamsPaginated(options?: ServerListTeamsOptions): Promise<{ items: ServerTeam[], nextCursor: string | null }>,
-
     /**
      * Returns every direct (or recursive) team permission grant for every
      * member of the given team in one request. Use this instead of calling
@@ -106,7 +100,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
-  & AsyncStoreProperty<"teams", [], ServerTeam[], true>
+  & AsyncStoreProperty<"teams", [options?: ServerListTeamsOptions], ServerTeam[] & { nextCursor: string | null }, true>
   & AsyncStoreProperty<"dataVaultStore", [id: string], DataVaultStore, false>
   & AsyncStoreProperty<
     "item",

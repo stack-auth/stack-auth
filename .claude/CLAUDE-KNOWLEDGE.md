@@ -359,6 +359,9 @@ Then restart the dev server. This rebuilds all packages and generates the necess
 ## Q: How is backwards compatibility for the offer→product rename handled in the payments purchase APIs?
 A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.
 
+## Q: How does the Stack Auth template dev tool decide whether to iframe the dashboard?
+A: The dev tool always iframes the Dashboard tab and provides an "Open in New Tab" escape hatch for auth or framing issues.
+
 ### Q: What's the reliable way to run targeted tests across backend, dashboard, stack-shared, and e2e at once?
 A: Run from the monorepo root with explicit file paths: `pnpm test run "<path1>" "<path2>" ...`. This works even when individual packages do not define a local `test` script. Also avoid passing an extra `run` argument to package-level `test` scripts that already execute `vitest run`.
 
@@ -394,6 +397,54 @@ A: The `/api/v1/internal/metrics` response now intentionally includes `analytics
 
 ## Q: Why can environment config override writes fail with a product/product-line customer type warning after creating a preview project?
 A: The environment override endpoint validates the new environment override against the rendered branch config. Preview dummy payments data must therefore be internally coherent: products assigned to a product line need the same `customerType` as that product line, otherwise unrelated environment patches can fail with warnings like `Product "growth" has customer type "user" but its product line "workspace" has customer type "team"`.
+
+## Q: How do you keep the Stack Auth dev tool from reopening automatically after navigation or reload?
+A: Treat `isOpen` as mount-local state in `packages/template/src/dev-tool/dev-tool-core.ts`: load persisted preferences with `isOpen: false`, and save state back to localStorage with `isOpen: false` so tab/size preferences persist without reopening the panel on the next mount.
+
+## Q: How should the Stack Auth dev tool indicator avoid being hidden by other dev indicators?
+A: Do not dynamically reflow around framework indicators; that makes pointer interaction brittle. Keep the trigger anchored to its saved corner and give `.sdt-trigger` a max practical z-index (`2147483647`) so the Stack indicator renders above Next/Turbo overlays.
+
+## Q: How should Stack Auth dev tool trigger movement feel?
+A: Dragging should remain instant/direct, but programmatic moves like snap-to-corner after drag, resize reposition, and post-measurement correction should use a short snappy left/top transition. In `dev-tool-core.ts`, toggle a dedicated animation class only for those programmatic updates and remove it shortly after.
+
+## Q: How do you prevent duplicate Stack Auth dev tool indicators from multiple package/module instances?
+A: `createDevTool` in `packages/template/src/dev-tool/dev-tool-core.ts` should register a browser-wide singleton instance on `window` with an idempotent cleanup function, call any previous global cleanup before mounting, and remove leftover `#__stack-dev-tool-root` nodes as a fallback for older instances that did not register cleanup.
+
+## Q: How should the Stack Auth dev tool handle Dashboard tab sizing?
+A: Keep the user's default panel width/height in state for normal tabs, but apply a transient fullscreen class while the active tab is `dashboard`. The fullscreen class should override fixed dimensions and hide resize handles, then remove itself and restore the saved default dimensions when any other tab is selected.
+
+## Q: How should the Stack Auth dev tool animate Dashboard fullscreen transitions?
+A: Add a short-lived geometry animation class only around tab-driven switches into or out of Dashboard fullscreen. Animate `width`, `height`, `right`, `bottom`, and radius for the mode change, then remove the class so manual dragging/resizing remains direct and does not lag.
+
+## Q: Should the Stack Auth dev tool Dashboard tab be gated on local emulator mode?
+A: No. The Dashboard tab should always render the dashboard URL in an iframe inside the dev tool, and should also show an "Open in New Tab" link so users can escape iframe/auth/framing issues without losing the embedded view.
+
+## Q: How should the Dashboard iframe use space in the Stack Auth dev tool?
+A: In Dashboard fullscreen mode, the panel should cover the full viewport with no inset or rounded frame, and the iframe should fill all available content space. Put auxiliary actions like "Open in New Tab" in a top-edge overlay below the tab bar so they do not reserve layout height from the iframe.
+
+## Q: How do you maximize iframe tabs inside the Stack Auth dev tool panel?
+A: Mark Docs/Dashboard panes with an iframe-specific class, remove the normal 16px tab-pane padding, hide pane overflow, and give the iframe container explicit `width: 100%` and `height: 100%`. Keep toolbar actions as absolute overlays so they do not reduce iframe layout space.
+
+## Q: How should docs access work in the Stack Auth dev tool?
+A: Docs should not be an iframe-backed tab. Keep docs as a top-bar external link to `https://docs.stack-auth.com` with an up-right arrow icon, and migrate any persisted `activeTab: "docs"` value back to `overview`.
+
+## Q: How should the Stack Auth dev tool Console tab handle large log volumes?
+A: Keep the full log history in the shared log store, but render only the newest 100 entries initially. When the log scroll area nears the bottom, increase the visible count by another 100 and rerender. The Console tab should be a single logs view with Copy, Export, and Clear buttons in the header rather than nested Logs/Config subtabs.
+
+## Q: How should the Stack Auth dev tool Customize page detail show page metadata?
+A: Avoid repeated page-type badges like `Handler` in page tiles or detail headers. Keep actionable badges such as `Outdated`, show the compact route path next to the page title, use `Open` for the page action, and phrase the customization prompt as "Want to customize this page? Paste this prompt into your coding agent." with a `Copy prompt` button below it.
+
+## Q: How should the Stack Auth dev tool Customize page Open action behave?
+A: The page detail `Open` action should be a taller button matching the redirect code chip height, include a small up-right arrow icon, and always open the selected page in a new tab.
+
+## Q: How should the Stack Auth dev tool Support tab be structured?
+A: Do not keep top-level Feedback/Feature Request subtabs unless the backend supports them. The Support tab should mount the feedback form directly, show Discord/Email/GitHub links at the top, keep only Feedback and Bug Report choices in the form, and use a Submit button with a right-arrow icon after the text.
+
+## Q: Which tab should the Stack Auth dev tool show when opened?
+A: Opening the dev tool should always reset `activeTab` to `overview` before creating the panel. Other preferences like size can persist, but each fresh open should start on Overview instead of the last-used tab.
+
+## Q: How should Stack Auth dev tool PR review comments around Overview and trigger behavior be handled?
+A: Keep trigger corner resolution on-screen even in tiny viewports by snapping to bounded edge positions, remove unused trigger-position helpers, treat browser fetch `TypeError`s such as Safari's `Load failed` as best-effort Overview hydration errors, replace auth-method skeletons with a fallback on every load failure, and compute the `Auth method active` checklist row from loaded project config instead of hard-coding it as passing.
 
 ## Q: Why can `pnpm run dev` fail with `ERR_MODULE_NOT_FOUND` for `@stackframe/stack/dist/esm/index.js` during OpenAPI docs generation?
 A: Root `dev` starts the OpenAPI docs watcher at the same time as package `dev` watchers. If a package `dev` script removes `dist` before `tsdown --watch` recreates it, the docs generator can import `apps/backend/src/stack.tsx` while `@stackframe/stack`'s ESM entrypoint is temporarily missing. Package watch scripts should update `dist` in place, and eager generators should wait for package imports to resolve before running.

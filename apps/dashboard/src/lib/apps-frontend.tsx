@@ -43,7 +43,6 @@ export type AppFrontend = {
     navigationItems: AppNavigationItem[],
     matchPath?: (relativePart: string) => boolean,
     getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
-    parentAppId?: AppId,
   }
   | {
     parentAppId: AppId,
@@ -51,14 +50,14 @@ export type AppFrontend = {
 )
 
 export type NavigableAppFrontend = Extract<AppFrontend, { navigationItems: AppNavigationItem[] }>;
-export type SubAppFrontend = AppFrontend & { parentAppId: AppId };
+export type SubAppFrontend = Extract<AppFrontend, { parentAppId: AppId }>;
 
 export function hasNavigationItems(appFrontend: AppFrontend): appFrontend is NavigableAppFrontend {
   return "navigationItems" in appFrontend;
 }
 
 export function isSubApp(appFrontend: AppFrontend): appFrontend is SubAppFrontend {
-  return "parentAppId" in appFrontend && appFrontend.parentAppId !== undefined;
+  return "parentAppId" in appFrontend;
 }
 
 export function getDocumentationHref(appFrontend: AppFrontend): string | null {
@@ -379,6 +378,7 @@ export const ALL_APPS_FRONTEND = {
     href: "analytics",
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
+      { displayName: "Replays", href: "../session-replays" },
       { displayName: "Queries", href: "./queries" },
     ],
     screenshots: [],
@@ -393,9 +393,6 @@ export const ALL_APPS_FRONTEND = {
     icon: MonitorPlayIcon,
     href: "session-replays",
     parentAppId: "analytics",
-    navigationItems: [
-      { displayName: "Session Replays", href: "." },
-    ],
     screenshots: [],
     storeDescription: (
       <>

@@ -8,3 +8,5 @@ packages:
   - sdks/implementations/*
 
 minimumReleaseAge: 10080
+
+blockExoticSubdeps: true
