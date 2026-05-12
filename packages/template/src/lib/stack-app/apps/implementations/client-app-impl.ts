@@ -676,7 +676,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     // IF_PLATFORM js-like
-    if (isBrowserLike()) {
+    if (isBrowserLike() && resolvedOptions.devTool !== false) {
       mountDevTool(this as any);
     }
     // END_PLATFORM
@@ -3614,6 +3614,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           uniqueIdentifier: this._getUniqueIdentifier(),
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
+          devTool: this._options.devTool,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
         };
       },
