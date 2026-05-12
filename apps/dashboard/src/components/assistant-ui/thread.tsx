@@ -27,7 +27,10 @@ import {
   MAX_IMAGE_MB_PER_FILE,
 } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type FC } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type FC, type ReactNode } from "react";
+
+type AssistantContentComponents = ComponentProps<typeof MessagePrimitive.Content>["components"];
+const AssistantContentComponentsContext = createContext<AssistantContentComponents | undefined>(undefined);
 
 const HideMessageActionsContext = createContext(false);
 const HasRunningStatusContext = createContext(false);
@@ -62,60 +65,59 @@ export const Thread: FC<{
   runningStatusMessages?: string[],
   composerAttachments?: boolean,
   attachmentAdapter?: AttachmentAdapter,
-}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter }) => {
+  /** Custom welcome / empty-state node. Defaults to the email-template welcome. */
+  welcome?: ReactNode,
+  /** Overrides for the assistant message content slots (Text / tools / etc.). */
+  assistantContentComponents?: AssistantContentComponents,
+}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter, welcome, assistantContentComponents }) => {
   return (
     <HideMessageActionsContext.Provider value={hideMessageActions}>
       <HasRunningStatusContext.Provider value={!!runningStatusMessages}>
-        <ComposerAttachmentAdapterContext.Provider value={attachmentAdapter ?? null}>
-          <ComposerAttachmentsEnabledContext.Provider value={composerAttachments}>
-            <ThreadPrimitive.Root
-              className={cn(
-          "box-border flex h-0 flex-grow flex-col overflow-hidden",
-          useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
-        )}
-              style={{
-                ["--thread-max-width" as string]: "100%",
-              }}
-            >
-              <ThreadPrimitive.Viewport
-                className={cn(
-            "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
-            useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
-          )}
+        <AssistantContentComponentsContext.Provider value={assistantContentComponents}>
+          <ComposerAttachmentAdapterContext.Provider value={attachmentAdapter ?? null}>
+            <ComposerAttachmentsEnabledContext.Provider value={composerAttachments}>
+              <ThreadPrimitive.Root
+                className="box-border flex h-0 flex-grow flex-col overflow-hidden bg-transparent"
+                style={{
+                  ["--thread-max-width" as string]: "100%",
+                }}
               >
-                <ThreadWelcome />
+                <ThreadPrimitive.Viewport
+                  className="flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3 bg-inherit"
+                >
+                  {welcome ? (
+                    <ThreadPrimitive.Empty>{welcome}</ThreadPrimitive.Empty>
+                  ) : (
+                    <ThreadWelcome />
+                  )}
 
-                <ThreadPrimitive.Messages
-                  components={{
-                    UserMessage: UserMessage,
-                    EditComposer: EditComposer,
-                    AssistantMessage: AssistantMessage,
-                  }}
-                />
+                  <ThreadPrimitive.Messages
+                    components={{
+                      UserMessage: UserMessage,
+                      EditComposer: EditComposer,
+                      AssistantMessage: AssistantMessage,
+                    }}
+                  />
 
-                {runningStatusMessages && (
-                  <ThreadPrimitive.If running>
-                    <ThreadRunningStatus messages={runningStatusMessages} />
+                  {runningStatusMessages && (
+                    <ThreadPrimitive.If running>
+                      <ThreadRunningStatus messages={runningStatusMessages} />
+                    </ThreadPrimitive.If>
+                  )}
+
+                  <ThreadPrimitive.If empty={false}>
+                    <div className="min-h-6 flex-grow" />
                   </ThreadPrimitive.If>
-                )}
 
-                <ThreadPrimitive.If empty={false}>
-                  <div className="min-h-6 flex-grow" />
-                </ThreadPrimitive.If>
-
-                <div className={cn(
-            "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
-            useOffWhiteLightMode
-              ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
-              : "from-background via-background",
-          )}>
-                  <ThreadScrollToBottom />
-                  <Composer placeholder={composerPlaceholder} />
-                </div>
-              </ThreadPrimitive.Viewport>
-            </ThreadPrimitive.Root>
-          </ComposerAttachmentsEnabledContext.Provider>
-        </ComposerAttachmentAdapterContext.Provider>
+                  <div className="sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end pt-6 pb-3">
+                    <ThreadScrollToBottom />
+                    <Composer placeholder={composerPlaceholder} />
+                  </div>
+                </ThreadPrimitive.Viewport>
+              </ThreadPrimitive.Root>
+            </ComposerAttachmentsEnabledContext.Provider>
+          </ComposerAttachmentAdapterContext.Provider>
+        </AssistantContentComponentsContext.Provider>
       </HasRunningStatusContext.Provider>
     </HideMessageActionsContext.Provider>
   );
@@ -439,6 +441,7 @@ const ComposerAttachmentsAddButton: FC = () => {
   return (
     <TooltipIconButton
       tooltip={tooltipText}
+      side="top"
       onClick={handleClick}
       className={cn(
         "h-7 w-7 rounded-lg text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
@@ -540,7 +543,7 @@ const ComposerStaticInput: FC<{ placeholder?: string }> = ({ placeholder }) => {
 const Composer: FC<{ placeholder?: ComposerPlaceholder }> = ({ placeholder }) => {
   const attachmentsEnabled = useComposerAttachmentsEnabled();
   return (
-    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-white dark:bg-background/90 backdrop-blur-xl shadow-sm dark:shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
+    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-transparent ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       {attachmentsEnabled && <ComposerAttachmentsRow />}
       {typeof placeholder === "object" ? (
         <ComposerAnimatedInput
@@ -704,6 +707,8 @@ const EditComposer: FC = () => {
 
 const AssistantMessage: FC = () => {
   const hasRunningStatus = useContext(HasRunningStatusContext);
+  const overrideComponents = useContext(AssistantContentComponentsContext);
+  const contentComponents: AssistantContentComponents = overrideComponents ?? { Text: MarkdownText };
   return (
     <MessagePrimitive.Root className="flex flex-col relative w-full max-w-[var(--thread-max-width)] py-4 group">
       <div className="flex items-start gap-3">
@@ -723,7 +728,7 @@ const AssistantMessage: FC = () => {
         </div>
         <div className="flex-1 min-w-0 space-y-2">
           <div className="text-foreground break-words leading-relaxed text-sm">
-            <MessagePrimitive.Content components={{ Text: MarkdownText }} />
+            <MessagePrimitive.Content components={contentComponents} />
           </div>
           <MessageError />
           <AssistantActionBar />

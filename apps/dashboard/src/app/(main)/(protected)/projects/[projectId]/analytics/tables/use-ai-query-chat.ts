@@ -1,11 +1,10 @@
 "use client";
 
-import { buildStackAuthHeaders } from "@/lib/api-headers";
+import { createUnifiedAiTransport } from "@/components/assistant-ui/chat-stream";
 import { getPublicEnvVar } from "@/lib/env";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjectId } from "../../use-admin-app";
 
@@ -110,26 +109,14 @@ export function useAiQueryChat(): AiQueryChat {
 
   const transport = useMemo(
     () =>
-      new DefaultChatTransport({
-        api: `${backendBaseUrl}/api/latest/ai/query/stream`,
-        headers: () => buildStackAuthHeaders(currentUser),
-        prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
-          const modelMessages = await convertToModelMessages(uiMessages);
-          return {
-            body: {
-              systemPrompt: "build-analytics-query",
-              tools: ["sql-query"],
-              quality: "smart",
-              speed: "fast",
-              projectId,
-              messages: modelMessages.map((m) => ({
-                role: m.role,
-                content: m.content,
-              })),
-            },
-            headers,
-          };
-        },
+      createUnifiedAiTransport({
+        backendBaseUrl,
+        currentUser,
+        systemPrompt: "build-analytics-query",
+        tools: ["sql-query"],
+        quality: "smart",
+        speed: "fast",
+        projectId,
       }),
     // The transport only needs to be rebuilt if the backend URL or
     // project changes; current user is read via closure on each

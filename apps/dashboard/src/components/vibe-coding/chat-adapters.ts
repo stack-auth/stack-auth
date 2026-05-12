@@ -1,3 +1,4 @@
+import { formatThreadMessagesForBackend, sendAiStreamRequest, uiPartsToChatContent } from "@/components/assistant-ui/chat-stream";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { AppId } from "@/lib/apps-frontend";
@@ -11,42 +12,13 @@ import {
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
-import {
-  parseJsonEventStream,
-  readUIMessageStream,
-  uiMessageChunkSchema,
-  type UIMessage,
-  type UIMessageChunk,
-} from "ai";
+import { readUIMessageStream } from "ai";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
 const isToolCall = (content: { type: string }): content is ToolCallContent => {
   return content.type === "tool-call";
 };
-
-/** Maps thread messages to the backend wire format; merges `attachments` into `content`. */
-function formatThreadMessagesForBackend(
-  messages: readonly { role: string, content: readonly { type: string }[], attachments?: readonly { content?: readonly unknown[] }[] }[],
-): Array<{ role: string, content: unknown }> {
-  const formatted: Array<{ role: string, content: unknown }> = [];
-  for (const msg of messages) {
-    const textContent = msg.content.filter((c) => !isToolCall(c));
-    const attachmentContent: unknown[] = [];
-    if (msg.attachments) {
-      for (const attachment of msg.attachments) {
-        if (Array.isArray(attachment.content)) {
-          attachmentContent.push(...attachment.content);
-        }
-      }
-    }
-    const combined = [...textContent, ...attachmentContent];
-    if (combined.length > 0) {
-      formatted.push({ role: msg.role, content: combined });
-    }
-  }
-  return formatted;
-}
 
 /** Normalizes model JSX: strip fences, decode basic entities, fix `;` vs `,` between object props. */
 function sanitizeGeneratedCode(code: string): string {
@@ -124,103 +96,6 @@ function sanitizeAiContent(content: ChatContent): ChatContent {
     }
     return item;
   });
-}
-
-/**
- * Sends a request to the AI streaming endpoint and returns a stream of UIMessageChunks
- * (as produced by the Vercel AI SDK's `streamText().toUIMessageStreamResponse()`).
- */
-async function sendAiStreamRequest(
-  backendBaseUrl: string,
-  currentUser: CurrentUser | undefined,
-  body: {
-    quality: string,
-    speed: string,
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    projectId?: string,
-  },
-  abortSignal?: AbortSignal,
-): Promise<ReadableStream<UIMessageChunk>> {
-  const authHeaders = await buildStackAuthHeaders(currentUser);
-
-  const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/stream`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "text/event-stream",
-      ...authHeaders,
-    },
-    ...(abortSignal ? { signal: abortSignal } : {}),
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok || !response.body) {
-    throw new Error(`AI stream request failed: ${response.status} ${response.statusText}`);
-  }
-
-  return parseJsonEventStream({
-    stream: response.body,
-    schema: uiMessageChunkSchema,
-  }).pipeThrough(
-    new TransformStream<
-      { success: true, value: UIMessageChunk, rawValue: unknown } | { success: false, error: unknown, rawValue: unknown },
-      UIMessageChunk
-    >({
-      transform(parseResult, controller) {
-        if (parseResult.success) {
-          controller.enqueue(parseResult.value);
-        }
-      },
-    }),
-  );
-}
-
-/**
- * Converts a UIMessage's parts (as emitted by `readUIMessageStream`) into our
- * ChatContent shape so the existing tool UI / sanitizer pipeline keeps working.
- */
-function uiPartsToChatContent(parts: UIMessage["parts"]): ChatContent {
-  const result: ChatContent = [];
-  for (const part of parts) {
-    if (part.type === "text") {
-      if (part.text) {
-        result.push({ type: "text", text: part.text });
-      }
-      continue;
-    }
-
-    if (part.type === "dynamic-tool") {
-      const toolPart = part as { toolCallId: string, toolName: string, input?: unknown, output?: unknown };
-      const input = toolPart.input ?? {};
-      result.push({
-        type: "tool-call",
-        toolCallId: toolPart.toolCallId,
-        toolName: toolPart.toolName,
-        args: input,
-        argsText: typeof input === "string" ? input : JSON.stringify(input),
-        result: toolPart.output ?? null,
-      });
-      continue;
-    }
-
-    if (typeof part.type === "string" && part.type.startsWith("tool-")) {
-      const toolName = part.type.slice("tool-".length);
-      const toolPart = part as { toolCallId: string, input?: unknown, output?: unknown };
-      const input = toolPart.input ?? {};
-      result.push({
-        type: "tool-call",
-        toolCallId: toolPart.toolCallId,
-        toolName,
-        args: input,
-        argsText: typeof input === "string" ? input : JSON.stringify(input),
-        result: toolPart.output ?? null,
-      });
-      continue;
-    }
-  }
-  return result;
 }
 
 /**

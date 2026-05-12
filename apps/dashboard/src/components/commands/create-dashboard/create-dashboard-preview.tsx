@@ -4,9 +4,9 @@ import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[pr
 import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
+import { createUnifiedAiTransport } from "@/components/assistant-ui/chat-stream";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import type { AppId } from "@/lib/apps-frontend";
-import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,6 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useChat, type UIMessage } from "@ai-sdk/react";
-import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
 import { DashboardSandboxHost } from "./dashboard-sandbox-host";
@@ -118,15 +117,15 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
   const finalizedRef = useRef(false);
 
-  const transport = useMemo(() => new DefaultChatTransport({
-    api: `${browserBaseUrl}/api/latest/ai/query/stream`,
-    headers: () => buildStackAuthHeaders(currentUserRef.current),
-    prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
-      const modelMessages = await convertToModelMessages(uiMessages);
-      const userMessages = modelMessages.map(m => ({
-        role: m.role as string,
-        content: m.content as unknown,
-      }));
+  const transport = useMemo(() => createUnifiedAiTransport({
+    backendBaseUrl: browserBaseUrl,
+    currentUser: () => currentUserRef.current,
+    systemPrompt: "create-dashboard",
+    tools: ["update-dashboard"],
+    quality: "smart",
+    speed: "slow",
+    projectId: projectIdRef.current,
+    transformMessages: async (userMessages) => {
       const contextMessages = await buildDashboardMessages(
         backendBaseUrlRef.current,
         currentUserRef.current,
@@ -134,17 +133,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
         undefined,
         enabledAppIdsRef.current,
       );
-      return {
-        body: {
-          systemPrompt: "create-dashboard",
-          tools: ["update-dashboard"],
-          quality: "smart",
-          speed: "slow",
-          projectId: projectIdRef.current,
-          messages: [...contextMessages, ...userMessages],
-        },
-        headers,
-      };
+      return [...contextMessages, ...userMessages];
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [browserBaseUrl]);
