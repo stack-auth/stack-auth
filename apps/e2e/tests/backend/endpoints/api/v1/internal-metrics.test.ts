@@ -79,7 +79,7 @@ async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: str
     }
     await wait(2_000);
   }
-  return response;
+  throw new Error(`Timed out waiting for users_by_country[${options.countryCode}] === ${options.expectedCount}; last response: ${JSON.stringify(response.body?.users_by_country)}`);
 }
 
 async function waitForMetricsMatch(
@@ -95,7 +95,7 @@ async function waitForMetricsMatch(
     }
     await wait(1_000);
   }
-  return response;
+  throw new Error(`Timed out waiting for metrics predicate to match (include_anonymous=${includeAnonymous}); last response body: ${JSON.stringify(response.body)}`);
 }
 
 async function waitForAnalyticsRowsForSessionReplaySegment(
