@@ -45,7 +45,11 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
       mailbox: createMailbox(`refresh-race--${randomUUID()}${generatedEmailSuffix}`),
       userAuth: null,
     });
-    await Auth.Password.signUpWithEmail();
+    // `noWaitForEmail`: the race test only needs a refresh token, which is
+    // returned by the sign-up response itself. Waiting for the verification
+    // email costs 5–10s per iteration on CI and pushes the test past its
+    // 120s timeout.
+    await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
     const rt = backendContext.value.userAuth!.refreshToken!;
 
     const refreshP = niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
@@ -84,7 +88,8 @@ it("does not 500 when an OAuth refresh-token grant races with a sign-out of the 
       mailbox: createMailbox(`oauth-refresh-race--${randomUUID()}${generatedEmailSuffix}`),
       userAuth: null,
     });
-    await Auth.Password.signUpWithEmail();
+    // See note above on `noWaitForEmail`.
+    await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
     const rt = backendContext.value.userAuth!.refreshToken!;
     const projectKeys = backendContext.value.projectKeys;
     if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");

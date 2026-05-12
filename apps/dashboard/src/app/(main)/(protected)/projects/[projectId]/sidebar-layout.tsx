@@ -58,9 +58,11 @@ type AppSection = {
   items: {
     name: string,
     href: string,
+    external?: boolean,
     match: (fullUrl: URL) => boolean,
   }[],
   firstItemHref?: string,
+  firstItemExternal?: boolean,
 };
 
 type BottomItem = {
@@ -209,6 +211,7 @@ function NavItem({
   if (isCollapsed) {
     // For sections, navigate to the first item when collapsed
     const collapsedHref = isSection && item.firstItemHref ? item.firstItemHref : href;
+    const collapsedTarget = isSection && item.firstItemExternal ? "_blank" : undefined;
 
     return (
       <div className="flex justify-center">
@@ -226,7 +229,7 @@ function NavItem({
                     : "hover:bg-white/40 dark:hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Link href={collapsedHref ?? "#"} onClick={onClick}>
+                <Link href={collapsedHref ?? "#"} target={collapsedTarget} onClick={onClick}>
                   <IconComponent className={iconClasses} />
                 </Link>
               </Button>
@@ -351,6 +354,7 @@ function NavSubItem({
   return (
     <Link
       href={href}
+      target={item.external ? "_blank" : undefined}
       onClick={onClick}
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 hover:transition-none",
@@ -404,6 +408,7 @@ function AppNavItem({
     const items = navigableFrontend.navigationItems.map((navItem) => ({
       name: navItem.displayName,
       href: getItemPath(projectId, navigableFrontend, navItem),
+      external: navItem.external,
       match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
     }));
     return {
@@ -413,6 +418,7 @@ function AppNavItem({
       href: getAppPath(projectId, appFrontend),
       icon: appFrontend.icon,
       firstItemHref: items[0]?.href,
+      firstItemExternal: items[0]?.external,
     };
   }, [app.displayName, appId, appFrontend, projectId]);
 
@@ -661,7 +667,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   return (
     <WalkthroughProvider>
       <TooltipProvider>
-        <div className="mx-auto w-full flex flex-col min-h-screen dark:bg-background dark:shadow-2xl dark:border-x dark:border-border/5">
+        <div className="mx-auto w-full flex h-screen min-h-0 flex-col overflow-y-auto dark:bg-background dark:shadow-2xl dark:border-x dark:border-border/5">
           {/* Header - Glassmorphic with vertical blur gradient (light) / Floating card (dark) */}
           <div className="sticky top-0 z-20 relative dark:top-3 dark:mx-3 dark:mb-3 dark:mt-3 dark:rounded-2xl">
             {/* Vertical blur layer behind header - light mode only */}
@@ -747,13 +753,13 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 has-[[data-full-bleed]]:h-[calc(100vh-3.5rem)] dark:py-0 dark:px-2 dark:pb-3 dark:h-[calc(100vh-6rem)]">
+            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 dark:py-0 dark:px-2 dark:pb-3">
               <div className={cn(
-              "relative flex flex-col overflow-visible dark:h-full dark:overflow-auto has-[[data-full-bleed]]:h-full has-[[data-full-bleed]]:overflow-auto",
+              "relative flex min-w-0 flex-col overflow-visible has-[[data-full-bleed]]:h-full",
               // Light mode card styling
               "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06] lg:pr-20",
               // Dark mode: remove card styling
-              "dark:min-h-0 dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0 dark:lg:pr-20",
+              "dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0 dark:lg:pr-20",
               // Full-bleed pages (email editors etc.): remove card styling in light mode too (keep lg:pr-20 for companion space)
               "has-[[data-full-bleed]]:min-h-0 has-[[data-full-bleed]]:bg-transparent has-[[data-full-bleed]]:backdrop-blur-none has-[[data-full-bleed]]:shadow-none has-[[data-full-bleed]]:rounded-none has-[[data-full-bleed]]:border-0",
             )}>

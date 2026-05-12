@@ -132,7 +132,10 @@ export default function VibeCodeLayout({
   return (
     <TooltipProvider delayDuration={300}>
       {/* Mobile Layout - visible on small screens, hidden on md+ */}
-      <div className="flex flex-col h-full w-full overflow-hidden md:hidden">
+      {/* h-[calc(100dvh-3.5rem)] anchors to viewport (minus sticky header) so the
+          editor doesn't depend on an unbroken h-full chain through the dashboard
+          shell, which collapses because <main> doesn't stretch (items-start). */}
+      <div className="flex flex-col h-[calc(100dvh-3.5rem)] w-full overflow-hidden md:hidden">
         {/* Mobile Header - Compact */}
         <div className="px-3 pt-3 pb-2 shrink-0">
           <div className="flex flex-col gap-2">
@@ -354,7 +357,9 @@ export default function VibeCodeLayout({
       </div>
 
       {/* Desktop/Tablet Layout - hidden on small screens, visible on md+ */}
-      <div className="hidden md:flex flex-col h-full w-full overflow-hidden">
+      {/* See note on the mobile wrapper above; the dark-mode header is taller
+          (floating card with mt-3/mb-3 padding), matching sidebar-layout.tsx. */}
+      <div className="hidden md:flex flex-col h-[calc(100vh-3.5rem)] dark:h-[calc(100vh-6rem)] w-full overflow-hidden">
         <div className="flex-1 overflow-hidden flex flex-col">
           {/* Top Header / Toolbar - with consistent inset spacing */}
           <div className="px-6 pt-4 pb-3">

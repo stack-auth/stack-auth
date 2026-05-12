@@ -127,3 +127,27 @@ export function NextJsEnvKeys(props: {
     />
   );
 }
+
+export function ViteEnvKeys(props: {
+  projectId: string,
+  secretServerKey?: string,
+}) {
+  const envFileContent = Object.entries({
+    VITE_STACK_API_URL: getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL'),
+    VITE_STACK_PROJECT_ID: props.projectId,
+    STACK_SECRET_SERVER_KEY: props.secretServerKey,
+  })
+    .filter(([, value]) => value != null)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+
+  return (
+    <CopyField
+      type="textarea"
+      monospace
+      height={envFileContent.split("\n").length * 26}
+      value={envFileContent}
+      fixedSize
+    />
+  );
+}

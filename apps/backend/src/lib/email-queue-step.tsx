@@ -3,6 +3,9 @@ import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDelivery
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, RESEND_SMTP_HOST, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
+import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
+import { getStackServerApp } from "@/stack";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
@@ -611,6 +614,7 @@ type TenancyProcessingContext = {
   tenancy: Tenancy,
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   emailConfig: Awaited<ReturnType<typeof getEmailConfig>>,
+  billingTeamId: string | null,
 };
 
 async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
@@ -618,11 +622,13 @@ async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
 
   const prisma = await getPrismaClientForTenancy(tenancy);
   const emailConfig = await getEmailConfig(tenancy);
+  const billingTeamId = getBillingTeamId(tenancy.project);
 
   const context: TenancyProcessingContext = {
     tenancy,
     prisma,
     emailConfig,
+    billingTeamId,
   };
 
   const promises = batch.rows.map((row) => processSingleEmail(context, row));
@@ -691,6 +697,48 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           });
           return;
         }
+      }
+    }
+
+    if (context.billingTeamId != null && row.sendRetries === 0 && arePlanLimitsEnforced()) {
+      const app = getStackServerApp();
+      const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
+      const isDebited = await emailItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        const errorMessage = "Monthly email sending limit exceeded for your plan. Please upgrade your plan or wait until next month.";
+        // Intentionally do NOT increment sendRetries or append to
+        // sendAttemptErrors. sendRetries tracks SMTP attempts, and a quota
+        // rejection never reaches SMTP; the DB-level
+        // EmailOutbox_sendAttemptErrors_requires_failure CHECK also forbids
+        // non-null sendAttemptErrors while sendRetries is 0. All the
+        // debugging info is captured in sendServerError* below. Keeping
+        // sendRetries at 0 means that if a future admin flow ever
+        // un-finalises this row (clearing finishedSendingAt), the
+        // `sendRetries === 0` quota gate above re-fires instead of being
+        // silently skipped.
+        await globalPrismaClient.emailOutbox.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: row.tenancyId,
+              id: row.id,
+            },
+            finishedSendingAt: null,
+          },
+          data: {
+            finishedSendingAt: new Date(),
+            canHaveDeliveryInfo: false,
+            sendServerErrorExternalMessage: errorMessage,
+            sendServerErrorExternalDetails: { errorType: "monthly-email-limit-exceeded" },
+            sendServerErrorInternalMessage: errorMessage,
+            sendServerErrorInternalDetails: {
+              errorType: "monthly-email-limit-exceeded",
+              remainingQuota: emailItem.quantity,
+              billingTeamId: context.billingTeamId,
+            },
+            shouldUpdateSequenceId: true,
+          },
+        });
+        return;
       }
     }
 
@@ -811,6 +859,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           shouldUpdateSequenceId: true,
         },
       });
+
     }
   } catch (error) {
     captureError("email-queue-step-sending-single-error", error);

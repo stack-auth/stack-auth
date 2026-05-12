@@ -612,3 +612,78 @@ describe("_withFallback", () => {
     expect(hitOrder).toContain(1);  // found during iteration
   });
 });
+
+describe("sendAnalyticsEventBatch encoding", () => {
+  function captureFetch() {
+    const fetchMock = vi.fn(async () => createJsonResponse({ inserted: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function getRequestInit(fetchMock: { mock: { calls: unknown[][] } }): RequestInit {
+    const init = fetchMock.mock.calls[0]?.[1];
+    if (init == null || typeof init !== "object") throw new Error("expected RequestInit");
+    return init as RequestInit;
+  }
+
+  async function gunzipToText(body: unknown): Promise<string> {
+    if (!(body instanceof Uint8Array)) throw new Error("expected Uint8Array body");
+    const stream = new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(stream).text();
+  }
+
+  it("gzips body and sends application/octet-stream when keepalive is false", async () => {
+    const fetchMock = captureFetch();
+    const iface = createClientInterface();
+    const payload = JSON.stringify({ batch_id: "abc", events: [{ event_type: "$click" }] });
+
+    await iface.sendAnalyticsEventBatch(payload, null, { keepalive: false });
+
+    const init = getRequestInit(fetchMock);
+    const contentType = new Headers(init.headers).get("Content-Type");
+    expect(contentType).toBe("application/octet-stream");
+    expect(init.body).toBeInstanceOf(Uint8Array);
+    await expect(gunzipToText(init.body)).resolves.toBe(payload);
+  });
+
+  it("falls back to plain JSON when keepalive is true (avoids racing pagehide tear-down)", async () => {
+    const fetchMock = captureFetch();
+    const iface = createClientInterface();
+    const payload = JSON.stringify({ batch_id: "abc", events: [] });
+
+    await iface.sendAnalyticsEventBatch(payload, null, { keepalive: true });
+
+    const init = getRequestInit(fetchMock);
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+    expect(init.body).toBe(payload);
+  });
+
+  it("falls back to plain JSON when CompressionStream is unavailable", async () => {
+    vi.stubGlobal("CompressionStream", undefined);
+    const fetchMock = captureFetch();
+    const iface = createClientInterface();
+    const payload = JSON.stringify({ batch_id: "abc", events: [] });
+
+    await iface.sendAnalyticsEventBatch(payload, null, { keepalive: false });
+
+    const init = getRequestInit(fetchMock);
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+    expect(init.body).toBe(payload);
+  });
+
+  it("falls back to plain JSON when CompressionStream throws at runtime", async () => {
+    class ThrowingCompressionStream {
+      constructor() { throw new Error("compression unsupported"); }
+    }
+    vi.stubGlobal("CompressionStream", ThrowingCompressionStream);
+    const fetchMock = captureFetch();
+    const iface = createClientInterface();
+    const payload = JSON.stringify({ batch_id: "abc", events: [] });
+
+    await iface.sendAnalyticsEventBatch(payload, null, { keepalive: false });
+
+    const init = getRequestInit(fetchMock);
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+    expect(init.body).toBe(payload);
+  });
+});

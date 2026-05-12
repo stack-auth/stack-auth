@@ -26,7 +26,7 @@ import { PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, useStackApp, useUser } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import type { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
@@ -34,10 +34,26 @@ import {
   beginPendingAction,
   endPendingAction,
   getStackAppInternals,
+  isProjectOnboardingState,
   isProjectOnboardingStatus,
+  type ProjectOnboardingState,
 } from "./shared";
 
 export default function PageClient() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex w-full flex-grow items-center justify-center">
+          <Spinner size={24} />
+        </div>
+      }
+    >
+      <PageClientInner />
+    </Suspense>
+  );
+}
+
+function PageClientInner() {
   const app = useStackApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
   const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
@@ -54,7 +70,9 @@ export default function PageClient() {
   const mode = searchParams.get("mode");
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
+  const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
   const [loadingStatuses, setLoadingStatuses] = useState(true);
+  const [, startStatusTransition] = useTransition();
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -113,6 +131,7 @@ export default function PageClient() {
         }
 
         const statusMap = new Map<string, ProjectOnboardingStatus>();
+        const onboardingStateMap = new Map<string, ProjectOnboardingState | null>();
         for (const item of body.items) {
           if (item == null || typeof item !== "object" || !("id" in item) || typeof item.id !== "string") {
             continue;
@@ -123,10 +142,17 @@ export default function PageClient() {
             throw new Error(`Project ${item.id} returned an invalid onboarding status.`);
           }
           statusMap.set(item.id, onboardingStatus);
+
+          const onboardingState = "onboarding_state" in item ? item.onboarding_state : null;
+          if (onboardingState != null && !isProjectOnboardingState(onboardingState)) {
+            throw new Error(`Project ${item.id} returned an invalid onboarding state.`);
+          }
+          onboardingStateMap.set(item.id, onboardingState);
         }
 
         if (!cancelled) {
           setProjectStatuses(statusMap);
+          setProjectOnboardingStates(onboardingStateMap);
         }
       } finally {
         if (!cancelled) {
@@ -153,6 +179,13 @@ export default function PageClient() {
     }
     return projectStatuses.get(selectedProjectId) ?? null;
   }, [projectStatuses, selectedProjectId]);
+
+  const selectedProjectOnboardingState = useMemo(() => {
+    if (selectedProjectId == null) {
+      return null;
+    }
+    return projectOnboardingStates.get(selectedProjectId) ?? null;
+  }, [projectOnboardingStates, selectedProjectId]);
 
   useEffect(() => {
     if (selectedProject == null || loadingStatuses || selectedProjectStatus !== "completed") {
@@ -181,16 +214,44 @@ export default function PageClient() {
       throw new Error(`Failed to update onboarding status: ${response.status} ${await response.text()}`);
     }
 
-    setProjectStatuses((previous) => {
-      const next = new Map(previous);
-      next.set(project.id, status);
-      return next;
+    startStatusTransition(() => {
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(project.id, status);
+        return next;
+      });
     });
 
     await appInternals.refreshOwnedProjects();
   };
 
-  if (isLocalEmulator) {
+  const setSelectedProjectOnboardingState = async (project: AdminOwnedProject, onboardingState: ProjectOnboardingState | null) => {
+    const projectInternals = getStackAppInternals(project.app);
+
+    const response = await projectInternals.sendRequest(
+      "/internal/projects/current",
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ onboarding_state: onboardingState }),
+      },
+      "admin",
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to update onboarding state: ${response.status} ${await response.text()}`);
+    }
+
+    setProjectOnboardingStates((previous) => {
+      const next = new Map(previous);
+      next.set(project.id, onboardingState);
+      return next;
+    });
+  };
+
+  if (isLocalEmulator && selectedProjectId == null) {
     return (
       <div className="w-full flex-grow flex items-center justify-center p-4">
         <div className="max-w-lg w-full rounded-lg border border-border p-6 space-y-4">
@@ -344,6 +405,11 @@ export default function PageClient() {
                         next.set(newProject.id, "config_choice");
                         return next;
                       });
+                      setProjectOnboardingStates((previous) => {
+                        const next = new Map(previous);
+                        next.set(newProject.id, null);
+                        return next;
+                      });
 
                       if (redirectToNeonConfirmWith != null) {
                         const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
@@ -455,9 +521,12 @@ export default function PageClient() {
       <ProjectOnboardingWizard
         project={selectedProject}
         status={selectedProjectStatus ?? "config_choice"}
+        onboardingState={selectedProjectOnboardingState}
         mode={mode}
         setMode={(nextMode) => updateSearchParams({ mode: nextMode })}
         setStatus={(nextStatus) => setSelectedProjectStatus(selectedProject, nextStatus)}
+        setOnboardingState={(nextState) => setSelectedProjectOnboardingState(selectedProject, nextState)}
+        clearOnboardingState={() => setSelectedProjectOnboardingState(selectedProject, null)}
         onComplete={() => {
           router.push(`/projects/${encodeURIComponent(selectedProject.id)}`);
         }}

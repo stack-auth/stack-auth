@@ -2,7 +2,7 @@ import { StackClientApp } from "@stackframe/js";
 import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { TextEncoder } from "util";
 import { vi } from "vitest";
-import { STACK_BACKEND_BASE_URL } from "../helpers";
+import { SDK_BASE_URL } from "../helpers";
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";
 
@@ -410,7 +410,7 @@ it("should eagerly create cross-subdomain cookie on construction when session ex
   // Construct a new client app (simulates page reload)
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   const reloadedApp = new StackClientApp({
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: SDK_BASE_URL,
     projectId: clientApp.projectId,
     publishableClientKey: apiKey.publishableClientKey,
     tokenStore: "cookie",

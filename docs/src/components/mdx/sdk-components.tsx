@@ -183,7 +183,7 @@ export function Markdown({ src }: { src: string }) {
               Does not persist changes to the tokens.
             </ParamField>
             <ParamField path="Request" type="object">
-              Reads the initial value for the session tokens from headers of the request object. For more information, see the documentation for [`currentUser.getAuthHeaders()`](../types/user.mdx#getauthheaders).
+              Reads the initial value for the session tokens from headers of the request object. For more information, see the documentation for [`currentUser.getAuthorizationHeader()`](../types/user.mdx#getauthorizationheader).
 
               Does not persist changes to the tokens.
             </ParamField>
