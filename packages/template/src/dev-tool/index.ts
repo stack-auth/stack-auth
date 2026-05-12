@@ -67,11 +67,16 @@ export function mountDevTool(app: StackClientApp<true>): () => void {
   activeApp = app;
   tryMount();
 
+  // Capture the cleanup created by THIS specific mount call so that React
+  // StrictMode's double-invoke doesn't let the first effect's cleanup tear
+  // down the second mount (which would cause the tool to disappear silently).
+  const myCleanup = activeCleanup;
+
   return () => {
     activeApp = null;
-    if (activeCleanup) {
-      activeCleanup();
+    if (activeCleanup === myCleanup && myCleanup != null) {
       activeCleanup = null;
+      myCleanup();
     }
   };
 }
