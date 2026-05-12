@@ -239,7 +239,7 @@ import.meta.vitest?.test("branchPaymentsSchema rejects a product that references
       pro: {
         customerType: "user",
         productLineId: "missing-line",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" specifies product line ID "missing-line", but that product line does not exist]`);
@@ -262,7 +262,7 @@ import.meta.vitest?.test("branchPaymentsSchema rejects null product line entries
       pro: {
         customerType: "user",
         productLineId: "teamLine",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLines cannot be null]`);
@@ -279,7 +279,7 @@ import.meta.vitest?.test("branchPaymentsSchema rejects a product whose customer 
       pro: {
         customerType: "user",
         productLineId: "teamLine",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" has customer type "user" but its product line "teamLine" has customer type "team"]`);
@@ -291,7 +291,7 @@ import.meta.vitest?.test("branchPaymentsSchema lets productLineId schema reject 
       pro: {
         customerType: "user",
         productLineId: "",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen]`);
