@@ -3,13 +3,20 @@
 import { cn } from "@/components/ui";
 import { type ToolCallContentPartProps } from "@assistant-ui/react";
 import { CaretDownIcon, DatabaseIcon, SpinnerGapIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 /**
  * Shared assistant-ui tool fallback. Renders a collapsible card for any
  * tool call streamed from the unified AI endpoint (sql-query, docs, etc.).
  */
-export function ToolFallback({ toolName, args, result, status, argsText }: ToolCallContentPartProps) {
+export function ToolFallback({
+  toolName,
+  args,
+  result,
+  status,
+  argsText,
+  headerAction,
+}: ToolCallContentPartProps & { headerAction?: ReactNode }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isRunning = status.type === "running" || status.type === "requires-action";
@@ -55,7 +62,12 @@ export function ToolFallback({ toolName, args, result, status, argsText }: ToolC
         ) : !isSuccess && (isIncomplete || hasOutput) ? (
           <span className="text-[10px] text-red-400/80 shrink-0">Error</span>
         ) : null}
-        <div className={cn("transition-transform duration-200", !isExpanded && "-rotate-90")}>
+        {headerAction ? (
+          <span className="flex shrink-0 items-center">
+            {headerAction}
+          </span>
+        ) : null}
+        <div className={cn("flex shrink-0 items-center transition-transform duration-200", !isExpanded && "-rotate-90")}>
           <CaretDownIcon className="h-3 w-3 text-muted-foreground/50" />
         </div>
       </button>

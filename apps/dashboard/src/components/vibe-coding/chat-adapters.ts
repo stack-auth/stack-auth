@@ -1,18 +1,15 @@
-import { formatThreadMessagesForBackend, sendAiStreamRequest, uiPartsToChatContent } from "@/components/assistant-ui/chat-stream";
+import { createUnifiedAiChatAdapter, type WireMessage } from "@/components/assistant-ui/chat-stream";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { AppId } from "@/lib/apps-frontend";
 import {
   type ChatModelAdapter,
-  type ChatModelRunOptions,
-  type ChatModelRunResult,
   type ExportedMessageRepository,
   type ThreadHistoryAdapter,
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
-import { readUIMessageStream } from "ai";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
@@ -20,7 +17,6 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
   return content.type === "tool-call";
 };
 
-/** Normalizes model JSX: strip fences, decode basic entities, fix `;` vs `,` between object props. */
 function sanitizeGeneratedCode(code: string): string {
   let result = code.trim();
 
@@ -53,42 +49,6 @@ function stripCodeFences(code: string): string {
   return lines.join("\n");
 }
 
-/**
- * Sends a request to the AI query endpoint and returns the parsed content.
- */
-async function sendAiRequest(
-  backendBaseUrl: string,
-  currentUser: CurrentUser | undefined,
-  body: {
-    quality: string,
-    speed: string,
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    projectId?: string,
-  },
-  abortSignal?: AbortSignal,
-): Promise<ChatContent> {
-  const authHeaders = await buildStackAuthHeaders(currentUser);
-
-  const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...authHeaders },
-    ...(abortSignal ? { signal: abortSignal } : {}),
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`AI request failed: ${response.status} ${response.statusText}`);
-  }
-
-  const json = await response.json() as { content?: ChatContent };
-  return Array.isArray(json.content) ? json.content : [];
-}
-
-/**
- * Sanitizes tool call content in AI response and returns the sanitized content.
- */
 function sanitizeAiContent(content: ChatContent): ChatContent {
   return content.map((item) => {
     if (item.type === "tool-call" && typeof item.args?.content === "string") {
@@ -96,100 +56,6 @@ function sanitizeAiContent(content: ChatContent): ChatContent {
     }
     return item;
   });
-}
-
-/**
- * Streaming dashboard generation: yields progressively updated ChatContent as the AI
- * streams text and tool-call input. Each yield represents the full current state of
- * the assistant message (not an incremental delta).
- */
-export async function* streamDashboardCode(
-  backendBaseUrl: string,
-  currentUser: CurrentUser | undefined,
-  messages: Array<{ role: string, content: unknown }>,
-  options?: {
-    currentTsxSource?: string,
-    abortSignal?: AbortSignal,
-    enabledAppIds?: AppId[],
-    projectId?: string,
-  },
-): AsyncGenerator<ChatContent, void, undefined> {
-  const contextMessages = await buildDashboardMessages(
-    backendBaseUrl,
-    currentUser,
-    messages,
-    options?.currentTsxSource,
-    options?.enabledAppIds,
-  );
-
-  // Only give the agent the sql-query tool when we know which project to scope it to.
-  // Without projectId, the tool would fall back to the internal project — wrong target.
-  const tools = options?.projectId
-    ? ["update-dashboard", "sql-query"]
-    : ["update-dashboard"];
-
-  const chunkStream = await sendAiStreamRequest(
-    backendBaseUrl,
-    currentUser,
-    {
-      quality: "smart",
-      speed: "slow",
-      systemPrompt: "create-dashboard",
-      tools,
-      messages: [...contextMessages, ...messages],
-      projectId: options?.projectId,
-    },
-    options?.abortSignal,
-  );
-
-  for await (const message of readUIMessageStream({ stream: chunkStream })) {
-    if (options?.abortSignal?.aborted) return;
-    yield sanitizeAiContent(uiPartsToChatContent(message.parts));
-  }
-}
-
-/**
- * One-shot dashboard generation: builds context, calls AI, returns the tool call content.
- * Used by both the cmd+K preview and the dashboard chat adapter.
- */
-export async function generateDashboardCode(
-  backendBaseUrl: string,
-  currentUser: CurrentUser | undefined,
-  messages: Array<{ role: string, content: unknown }>,
-  options?: {
-    currentTsxSource?: string,
-    abortSignal?: AbortSignal,
-    enabledAppIds?: AppId[],
-    projectId?: string,
-  },
-): Promise<{ content: ChatContent, toolCall: ToolCallContent | undefined }> {
-  const contextMessages = await buildDashboardMessages(
-    backendBaseUrl,
-    currentUser,
-    messages,
-    options?.currentTsxSource,
-    options?.enabledAppIds,
-  );
-  const tools = options?.projectId
-    ? ["update-dashboard", "sql-query"]
-    : ["update-dashboard"];
-  const rawContent = await sendAiRequest(
-    backendBaseUrl,
-    currentUser,
-    {
-      quality: "smart",
-      speed: "slow",
-      systemPrompt: "create-dashboard",
-      tools,
-      messages: [...contextMessages, ...messages],
-      projectId: options?.projectId,
-    },
-    options?.abortSignal,
-  );
-
-  const toolCall = rawContent.find(isToolCall);
-
-  return { content: rawContent, toolCall };
 }
 
 const CONTEXT_MAP = {
@@ -207,54 +73,62 @@ export function createChatAdapter(
   onRunStart?: () => void,
   onRunEnd?: () => void,
 ): ChatModelAdapter {
-  return {
-    async run({ messages, abortSignal }: ChatModelRunOptions) {
-      onRunStart?.();
-      try {
-        const formattedMessages = formatThreadMessagesForBackend(messages);
+  const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
-        const { systemPrompt, tools } = CONTEXT_MAP[contextType];
-
-        const contextMessages: Array<{ role: string, content: unknown }> = [];
-        if (getCurrentSource) {
-          const src = getCurrentSource();
-          if (src.length > 0) {
-            contextMessages.push({ role: "user", content: `Here is the current source:\n\`\`\`tsx\n${src}\n\`\`\`` });
-            contextMessages.push({ role: "assistant", content: "Got it, I have the current source code." });
-          }
+  return createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser,
+    systemPrompt,
+    tools: [...tools],
+    quality: "smartest",
+    speed: "fast",
+    sanitizeContent: sanitizeAiContent,
+    transformMessages: (messages) => {
+      const contextMessages: WireMessage[] = [];
+      if (getCurrentSource) {
+        const src = getCurrentSource();
+        if (src.length > 0) {
+          contextMessages.push({ role: "user", content: `Here is the current source:\n\`\`\`tsx\n${src}\n\`\`\`` });
+          contextMessages.push({ role: "assistant", content: "Got it, I have the current source code." });
         }
-
-        const rawContent = await sendAiRequest(
-          backendBaseUrl,
-          currentUser,
-          {
-            quality: "smartest",
-            speed: "fast",
-            systemPrompt,
-            tools: [...tools],
-            messages: [...contextMessages, ...formattedMessages],
-          },
-          abortSignal,
-        );
-
-        const sanitizedContent = sanitizeAiContent(rawContent);
-
-        const toolCall = sanitizedContent.find(isToolCall);
-        if (toolCall) {
-          onToolCall(toolCall);
-        }
-
-        return { content: sanitizedContent };
-      } catch (error) {
-        if (abortSignal.aborted) {
-          return {};
-        }
-        throw new Error("Failed to get AI response. Please try again.");
-      } finally {
-        onRunEnd?.();
+      }
+      return [...contextMessages, ...messages];
+    },
+    onRunStart,
+    onRunEnd,
+    onFinish: ({ assistantContent }) => {
+      const toolCall = assistantContent.find(isToolCall);
+      if (toolCall) {
+        onToolCall(toolCall);
       }
     },
-  };
+    onError: () => {
+      throw new Error("Failed to get AI response. Please try again.");
+    },
+  });
+}
+
+export function createAnalyticsQueryChatAdapter(
+  backendBaseUrl: string,
+  currentUser: CurrentUser | undefined,
+  projectId: string | undefined,
+  onError?: (error: Error) => void,
+): ChatModelAdapter {
+  return createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser,
+    systemPrompt: "build-analytics-query",
+    tools: ["sql-query"],
+    quality: "smart",
+    speed: "fast",
+    projectId,
+    sanitizeContent: sanitizeAiContent,
+    onError: () => {
+      const wrapped = new Error("Failed to get AI response. Please try again.");
+      onError?.(wrapped);
+      throw wrapped;
+    },
+  });
 }
 
 export function createDashboardChatAdapter(
@@ -267,44 +141,43 @@ export function createDashboardChatAdapter(
   onRunStart?: () => void,
   onRunEnd?: () => void,
 ): ChatModelAdapter {
-  return {
-    async *run({ messages, abortSignal }: ChatModelRunOptions): AsyncGenerator<ChatModelRunResult, void> {
-      onRunStart?.();
-      try {
-        const formattedMessages = formatThreadMessagesForBackend(messages);
+  const tools = projectId
+    ? ["update-dashboard", "sql-query"]
+    : ["update-dashboard"];
 
-        let latestContent: ChatContent = [];
-        for await (const content of streamDashboardCode(
-          backendBaseUrl,
-          currentUser,
-          formattedMessages,
-          {
-            currentTsxSource,
-            abortSignal,
-            enabledAppIds,
-            projectId,
-          },
-        )) {
-          latestContent = content;
-          yield { content };
-        }
-
-        const finalToolCall = latestContent.find(
-          (item): item is ToolCallContent => isToolCall(item) && item.toolName === "updateDashboard",
-        );
-        if (finalToolCall) {
-          onToolCall(finalToolCall);
-        }
-      } catch (error) {
-        if (abortSignal.aborted) {
-          return;
-        }
-        throw new Error("Failed to get AI response. Please try again.");
-      } finally {
-        onRunEnd?.();
+  return createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser,
+    systemPrompt: "create-dashboard",
+    tools,
+    quality: "smart",
+    speed: "slow",
+    projectId,
+    sanitizeContent: sanitizeAiContent,
+    transformMessages: async (messages) => {
+      const contextMessages = await buildDashboardMessages(
+        backendBaseUrl,
+        currentUser,
+        messages,
+        currentTsxSource,
+        enabledAppIds,
+      );
+      return [...contextMessages, ...messages];
+    },
+    onRunStart,
+    onRunEnd,
+    onFinish: ({ assistantContent }) => {
+      const finalToolCall = assistantContent.find(
+        (item): item is ToolCallContent => isToolCall(item) && item.toolName === "updateDashboard",
+      );
+      if (finalToolCall) {
+        onToolCall(finalToolCall);
       }
     },
-  };
+    onError: () => {
+      throw new Error("Failed to get AI response. Please try again.");
+    },
+  });
 }
 
 export async function applyWysiwygEdit(

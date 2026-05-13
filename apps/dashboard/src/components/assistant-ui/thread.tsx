@@ -69,7 +69,8 @@ export const Thread: FC<{
   welcome?: ReactNode,
   /** Overrides for the assistant message content slots (Text / tools / etc.). */
   assistantContentComponents?: AssistantContentComponents,
-}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter, welcome, assistantContentComponents }) => {
+  autoFocusComposer?: boolean,
+}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter, welcome, assistantContentComponents, autoFocusComposer = true }) => {
   return (
     <HideMessageActionsContext.Provider value={hideMessageActions}>
       <HasRunningStatusContext.Provider value={!!runningStatusMessages}>
@@ -111,7 +112,7 @@ export const Thread: FC<{
 
                   <div className="sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end pt-6 pb-3">
                     <ThreadScrollToBottom />
-                    <Composer placeholder={composerPlaceholder} />
+                    <Composer placeholder={composerPlaceholder} autoFocus={autoFocusComposer} />
                   </div>
                 </ThreadPrimitive.Viewport>
               </ThreadPrimitive.Root>
@@ -463,7 +464,8 @@ const ComposerAnimatedInput: FC<{
   deleteSpeed: number,
   pauseAfterType: number,
   pauseAfterDelete: number,
-}> = ({ prefix, suffixes, typeSpeed, deleteSpeed, pauseAfterType, pauseAfterDelete }) => {
+  autoFocus?: boolean,
+}> = ({ prefix, suffixes, typeSpeed, deleteSpeed, pauseAfterType, pauseAfterDelete, autoFocus = true }) => {
   const [suffixText, setSuffixText] = useState("");
   const stateRef = useRef({
     suffixIndex: 0,
@@ -522,28 +524,28 @@ const ComposerAnimatedInput: FC<{
   return (
     <ComposerPrimitive.Input
       rows={1}
-      autoFocus
+      autoFocus={autoFocus}
       placeholder={prefix + suffixText}
       className={COMPOSER_INPUT_CLASS}
     />
   );
 };
 
-const ComposerStaticInput: FC<{ placeholder?: string }> = ({ placeholder }) => {
+const ComposerStaticInput: FC<{ placeholder?: string, autoFocus?: boolean }> = ({ placeholder, autoFocus = true }) => {
   return (
     <ComposerPrimitive.Input
       rows={1}
-      autoFocus
+      autoFocus={autoFocus}
       placeholder={placeholder ?? "Describe what you want..."}
       className={COMPOSER_INPUT_CLASS}
     />
   );
 };
 
-const Composer: FC<{ placeholder?: ComposerPlaceholder }> = ({ placeholder }) => {
+const Composer: FC<{ placeholder?: ComposerPlaceholder, autoFocus?: boolean }> = ({ placeholder, autoFocus = true }) => {
   const attachmentsEnabled = useComposerAttachmentsEnabled();
   return (
-    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-transparent ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
+    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-background/95 dark:bg-background/80 shadow-sm ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       {attachmentsEnabled && <ComposerAttachmentsRow />}
       {typeof placeholder === "object" ? (
         <ComposerAnimatedInput
@@ -553,9 +555,10 @@ const Composer: FC<{ placeholder?: ComposerPlaceholder }> = ({ placeholder }) =>
           deleteSpeed={placeholder.deleteSpeed ?? 40}
           pauseAfterType={placeholder.pauseAfterType ?? 2000}
           pauseAfterDelete={placeholder.pauseAfterDelete ?? 400}
+          autoFocus={autoFocus}
         />
       ) : (
-        <ComposerStaticInput placeholder={placeholder} />
+        <ComposerStaticInput placeholder={placeholder} autoFocus={autoFocus} />
       )}
       <div className="flex items-center justify-between px-3 pb-2.5 gap-2">
         <div className="flex items-center gap-1">

@@ -1,4 +1,4 @@
-import { formatThreadMessagesForBackend, getFriendlyAiErrorMessage, sendAiStreamRequest, uiPartsToChatContent } from "@/components/assistant-ui/chat-stream";
+import { createUnifiedAiChatAdapter, getFriendlyAiErrorMessage } from "@/components/assistant-ui/chat-stream";
 import { ImageAttachmentAdapter } from "@/components/assistant-ui/image-attachment-adapter";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -13,15 +13,14 @@ import {
 } from "@assistant-ui/react";
 import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { readUIMessageStream } from "ai";
 import { usePathname } from "next/navigation";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
 
 const RUNNING_STATUS_MESSAGES = ["Thinking..."];
 
-export function AIChatPreview({ query, ...rest }: CmdKPreviewProps) {
-  return <AIChatPreviewInner key={query} query={query} {...rest} />;
+export function AIChatPreview(props: CmdKPreviewProps) {
+  return <AIChatPreviewInner {...props} />;
 }
 
 const AIChatPreviewInner = memo(function AIChatPreview({
@@ -38,38 +37,16 @@ const AIChatPreviewInner = memo(function AIChatPreview({
 
   const [runError, setRunError] = useState<string | null>(null);
 
-  const chatAdapter = useMemo<ChatModelAdapter>(() => ({
-    async *run({ messages, abortSignal }) {
-      setRunError(null);
-      const wireMessages = formatThreadMessagesForBackend(messages);
-      try {
-        const chunkStream = await sendAiStreamRequest(
-          backendBaseUrl,
-          currentUser ?? undefined,
-          {
-            quality: "smart",
-            speed: "slow",
-            systemPrompt: "command-center-ask-ai",
-            tools: ["docs", "sql-query"],
-            projectId,
-            messages: wireMessages,
-          },
-          abortSignal,
-        );
-
-        for await (const uiMessage of readUIMessageStream({ stream: chunkStream })) {
-          if (abortSignal.aborted) return;
-          yield { content: uiPartsToChatContent(uiMessage.parts) };
-        }
-      } catch (error) {
-        if (abortSignal.aborted) return;
-        const message = error instanceof Error
-          ? getFriendlyAiErrorMessage(error)
-          : "Failed to get response. Please try again.";
-        setRunError(message);
-        throw error;
-      }
-    },
+  const chatAdapter = useMemo<ChatModelAdapter>(() => createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser: currentUser ?? undefined,
+    systemPrompt: "command-center-ask-ai",
+    tools: ["docs", "sql-query"],
+    quality: "smart",
+    speed: "slow",
+    projectId,
+    onRunStart: () => setRunError(null),
+    onError: ({ error }) => setRunError(getFriendlyAiErrorMessage(error)),
   }), [backendBaseUrl, currentUser, projectId]);
 
   const attachmentAdapter = useMemo(() => new ImageAttachmentAdapter(), []);
@@ -110,6 +87,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
           assistantContentComponents={assistantContentComponents}
           composerAttachments
           attachmentAdapter={attachmentAdapter}
+          autoFocusComposer={false}
         />
       </div>
     </AssistantRuntimeProvider>
@@ -126,7 +104,7 @@ function AskAiAutoSend({ query }: { query: string }) {
         content: [{ type: "text", text: trimmed }],
       });
     },
-    delayMs: 400,
+    delayMs: 1000,
     skip: !trimmed,
   });
   return null;

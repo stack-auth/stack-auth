@@ -214,7 +214,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
   useDebouncedAction({
     action: generateDashboard,
-    delayMs: 500,
+    delayMs: 1000,
     skip: !projectId || !prompt,
   });
 

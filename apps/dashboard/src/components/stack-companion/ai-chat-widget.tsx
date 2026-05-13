@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from "@/components/ui";
-import { formatThreadMessagesForBackend, getFriendlyAiErrorMessage, sendAiStreamRequest, uiPartsToChatContent } from "@/components/assistant-ui/chat-stream";
+import { createUnifiedAiChatAdapter, getFriendlyAiErrorMessage } from "@/components/assistant-ui/chat-stream";
 import { ImageAttachmentAdapter } from "@/components/assistant-ui/image-attachment-adapter";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -19,8 +19,6 @@ import {
   AssistantRuntimeProvider,
   useLocalRuntime,
   type ChatModelAdapter,
-  type ChatModelRunOptions,
-  type ChatModelRunResult,
   type ThreadAssistantContentPart,
   type ThreadMessage,
   type ThreadMessageLike,
@@ -29,7 +27,6 @@ import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ChatCircleDotsIcon, PlusIcon,
 import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { readUIMessageStream } from "ai";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -448,46 +445,25 @@ function AIChatWidgetInner({
     runAsynchronouslyWithAlert(doSave(allWire, title));
   }, [doSave]);
 
-  const chatAdapter = useMemo<ChatModelAdapter>(() => ({
-    async *run({ messages, abortSignal }: ChatModelRunOptions): AsyncGenerator<ChatModelRunResult, void> {
+  const chatAdapter = useMemo<ChatModelAdapter>(() => createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser: currentUser ?? undefined,
+    systemPrompt: "command-center-ask-ai",
+    tools: ["docs", "sql-query"],
+    quality: "smart",
+    speed: "slow",
+    projectId,
+    onRunStart: () => {
       setRunError(null);
       setIsRunning(true);
-      const wireMessages = formatThreadMessagesForBackend(messages);
-      let latestAssistantContent: ThreadAssistantContentPart[] = [];
-
-      try {
-        const chunkStream = await sendAiStreamRequest(
-          backendBaseUrl,
-          currentUser ?? undefined,
-          {
-            quality: "smart",
-            speed: "slow",
-            systemPrompt: "command-center-ask-ai",
-            tools: ["docs", "sql-query"],
-            projectId,
-            messages: wireMessages,
-          },
-          abortSignal,
-        );
-
-        for await (const uiMessage of readUIMessageStream({ stream: chunkStream })) {
-          if (abortSignal.aborted) return;
-          latestAssistantContent = uiPartsToChatContent(uiMessage.parts) as ThreadAssistantContentPart[];
-          yield { content: latestAssistantContent };
-        }
-
-        persist(messages, latestAssistantContent);
-      } catch (error) {
-        if (abortSignal.aborted) return;
-        const message = error instanceof Error
-          ? getFriendlyAiErrorMessage(error)
-          : "Failed to get response. Please try again.";
-        setRunError(message);
-        persist(messages.filter(m => m.role === "user"), []);
-        throw error;
-      } finally {
-        setIsRunning(false);
-      }
+    },
+    onRunEnd: () => setIsRunning(false),
+    onFinish: ({ threadMessages, assistantContent }) => {
+      persist(threadMessages, assistantContent as ThreadAssistantContentPart[]);
+    },
+    onError: ({ error, threadMessages }) => {
+      setRunError(getFriendlyAiErrorMessage(error));
+      persist(threadMessages.filter(m => m.role === "user"), []);
     },
   }), [backendBaseUrl, currentUser, projectId, persist]);
 
