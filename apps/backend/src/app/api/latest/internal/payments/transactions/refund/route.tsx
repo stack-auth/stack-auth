@@ -329,10 +329,16 @@ export const POST = createSmartRouteHandler({
 //
 // 2. **Stripe + DB are not atomic.** A successful `stripe.refunds.create`
 //    followed by a write failure leaves the customer refunded with no ledger
-//    row. The Stripe idempotency key matches `refundTxnId`, but each call
-//    generates a fresh uuid, so a caller-side retry would issue a second
-//    real Stripe refund. No out-of-band reconciliation today. Tracked as a
-//    follow-up alongside (1).
+//    row. The Stripe idempotency key is derived from
+//    `(tenancyId, sourceTxnId, amountStripeUnits, priorRefundedStripeUnits)`
+//    — *not* from `refundTxnId` — so:
+//      - Stripe-success → DB-fail → caller retries: `prior` is unchanged
+//        (no row committed), the key matches, Stripe dedupes, and the
+//        second attempt's bulldozer write recovers the state. Self-heals.
+//      - DB-success → response lost → caller retries: `prior` now includes
+//        the just-committed amount, so a fresh key is generated and Stripe
+//        issues a second real refund. This is the open hole — no
+//        out-of-band reconciliation today. Tracked alongside (1).
 async function handleSubscriptionRefund(options: {
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   tenancy: Tenancy,
@@ -354,8 +360,10 @@ async function handleSubscriptionRefund(options: {
   // gated all further refunds on it. The new bulldozer-derived prior-refund
   // summary doesn't see those legacy refunds, so without this gate an admin
   // could double-refund through Stripe on a previously-refunded purchase.
+  // Preserve the legacy `SubscriptionAlreadyRefunded` known-error code so
+  // callers catching by code still work.
   if (subscription.refundedAt) {
-    throw new KnownErrors.SchemaError("This subscription has already been refunded under a previous version of the refund flow; further refunds are not permitted from this endpoint.");
+    throw new KnownErrors.SubscriptionAlreadyRefunded(subscription.id);
   }
 
   const customerType = subscription.customerType.toLowerCase() as "user" | "team" | "custom";
@@ -364,7 +372,7 @@ async function handleSubscriptionRefund(options: {
   const productLineId = readProductLineId(product);
 
   if (isTestMode && options.amountStripeUnits > 0) {
-    throw new KnownErrors.SchemaError("Test-mode subscriptions have no money to refund. Set amount_usd to \"0\".");
+    throw new KnownErrors.TestModePurchaseNonRefundable();
   }
 
   // Determine which invoice this refund targets — defaults to the start invoice.
@@ -577,9 +585,11 @@ async function handleOneTimePurchaseRefund(options: {
   if (!purchase) {
     throw new KnownErrors.OneTimePurchaseNotFound(options.purchaseId);
   }
-  // Legacy refund backstop — see handleSubscriptionRefund above.
+  // Legacy refund backstop — see handleSubscriptionRefund above. Preserves
+  // the legacy `OneTimePurchaseAlreadyRefunded` known-error code for callers
+  // catching by code.
   if (purchase.refundedAt) {
-    throw new KnownErrors.SchemaError("This purchase has already been refunded under a previous version of the refund flow; further refunds are not permitted from this endpoint.");
+    throw new KnownErrors.OneTimePurchaseAlreadyRefunded(purchase.id);
   }
 
   const customerType = purchase.customerType.toLowerCase() as "user" | "team" | "custom";
@@ -588,7 +598,7 @@ async function handleOneTimePurchaseRefund(options: {
   const productLineId = readProductLineId(product);
 
   if (isTestMode && options.amountStripeUnits > 0) {
-    throw new KnownErrors.SchemaError("Test-mode purchases have no money to refund. Set amount_usd to \"0\".");
+    throw new KnownErrors.TestModePurchaseNonRefundable();
   }
 
   const sourceTxnId = `otp:${purchase.id}`;
