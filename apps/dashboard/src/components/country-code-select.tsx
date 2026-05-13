@@ -9,6 +9,7 @@ import {
   Input,
 } from "@/components/ui";
 import { FieldLabel } from "@/components/form-fields";
+import { useEffect, useState } from "react";
 import { Control, FieldValues, Path } from "react-hook-form";
 
 type CountryCodeInputProps = {
@@ -26,11 +27,18 @@ export function CountryCodeInput({
   disabled,
   className,
 }: CountryCodeInputProps) {
+  const [draftValue, setDraftValue] = useState(value ?? "");
+
+  useEffect(() => {
+    setDraftValue(value ?? "");
+  }, [value]);
+
   return (
     <Input
-      value={value ?? ""}
+      value={draftValue}
       onChange={(e) => {
         const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+        setDraftValue(val);
         onChange(val || null);
       }}
       placeholder={placeholder}

@@ -1,7 +1,8 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
+import { getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -9,7 +10,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import Stripe from "stripe";
 
@@ -72,7 +73,7 @@ export const POST = createSmartRouteHandler({
     if (body.from_product_id === body.to_product_id) {
       throw new StatusError(400, "Product is already active.");
     }
-    if (toProduct.isAddOnTo && typedKeys(toProduct.isAddOnTo).length > 0) {
+    if (isAddOnProduct(toProduct)) {
       throw new StatusError(400, "Add-on products cannot be selected for plan switching.");
     }
     const fromIsIncludeByDefault = fromProduct.prices === "include-by-default";
@@ -204,6 +205,11 @@ export const POST = createSmartRouteHandler({
         throw new StackAssertionError("Stripe subscription has no items", { subscriptionId: existingSub.id });
       }
       const existingItem = existingStripeSub.items.data[0];
+      // Intentional: switching an existing (possibly pre-platform-fee)
+      // subscription to a new plan attaches the 0.9% application fee from
+      // this point forward. Subscriptions that never switch plans stay
+      // fee-less until a separate migration applies fees retroactively.
+      const applicationFeePercent = getApplicationFeePercentOrUndefined(auth.tenancy.project.id);
       const updated = await stripe.subscriptions.update(existingSub.stripeSubscriptionId, {
         payment_behavior: "error_if_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
@@ -226,6 +232,7 @@ export const POST = createSmartRouteHandler({
           productVersionId,
           priceId: selectedPriceId,
         },
+        ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
       });
       const updatedSubscription = updated as Stripe.Subscription;
       const sanitizedUpdateDates = sanitizeStripePeriodDates(
@@ -261,6 +268,7 @@ export const POST = createSmartRouteHandler({
       // DEPRECATED: this path handles switching from include-by-default (free) products
       // to paid subscriptions. Default products are being removed; this code is kept
       // for backward compatibility only.
+      const applicationFeePercent = getApplicationFeePercentOrUndefined(auth.tenancy.project.id);
       const created = await stripe.subscriptions.create({
         customer: stripeCustomer.id,
         payment_behavior: "error_if_incomplete",
@@ -283,6 +291,7 @@ export const POST = createSmartRouteHandler({
           productVersionId,
           priceId: selectedPriceId,
         },
+        ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
       });
       const createdSubscription = created as Stripe.Subscription;
       if (createdSubscription.items.data.length === 0) {

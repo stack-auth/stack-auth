@@ -34,7 +34,13 @@ export function parseOpenAPI(options: {
           )]
         ))
         .filter(([_, handlersByMethod]) => Object.keys(handlersByMethod).length > 0)
-        .sort(([_a, handlersByMethodA], [_b, handlersByMethodB]) => stringCompare((Object.values(handlersByMethodA)[0] as any).tags[0] ?? "", (Object.values(handlersByMethodB)[0] as any).tags[0] ?? "")),
+        .sort(([pathA, handlersByMethodA], [pathB, handlersByMethodB]) => {
+          const tagComparison = stringCompare((Object.values(handlersByMethodA)[0] as any).tags[0] ?? "", (Object.values(handlersByMethodB)[0] as any).tags[0] ?? "");
+          if (tagComparison !== 0) {
+            return tagComparison;
+          }
+          return stringCompare(pathA, pathB);
+        }),
     ),
   };
 }

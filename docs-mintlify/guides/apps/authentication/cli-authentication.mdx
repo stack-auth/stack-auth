@@ -1,9 +1,14 @@
 ---
-title: CLI Authentication
-description: How to authenticate a command line application using Stack Auth
+title: CLI App Authentication
+description: How to authenticate users in your own command-line application using Stack Auth
+sidebarTitle: CLI App Authentication
 ---
 
-If you're building a command line application that runs in a terminal, you can use Stack Auth to let your users log in to their accounts.
+If you're building your own command-line application, you can use Stack Auth to let users log in from a terminal.
+
+<Info>
+  This page is about adding authentication to your own CLI app. For the official `stack` command, see the [Stack CLI guide](/guides/going-further/cli).
+</Info>
 
 To do so, we provide a Python template that you can use as a starting point. [Download it here](https://github.com/stack-auth/stack-auth/tree/main/docs/public/stack-auth-cli-template.py) and copy it into your project, for example:
 
@@ -33,8 +38,8 @@ if refresh_token is None:
 
 # you can now use the REST API with the refresh token
 def stack_auth_request(method, endpoint, **kwargs):
-  # ... see Stack Auth's Getting Started section to see how this function should look like
-  # https://docs.stack-auth.com/python/getting-started/setup
+  # ... see the REST API overview for required Stack Auth headers
+  # https://docs.stack-auth.com/api/overview
 
 def get_access_token(refresh_token):
   access_token_response = stack_auth_request(

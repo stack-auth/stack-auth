@@ -25,8 +25,6 @@ import {
   DesignBadge,
   DesignButton,
   DesignCard,
-  DesignDialog,
-  DesignDialogClose,
   DesignEmptyState,
   DesignInput,
   DesignMenu,
@@ -47,7 +45,11 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowsDownUpIcon,
+  CaretDownIcon,
+  CaretRightIcon,
   CheckIcon,
+  CheckCircleIcon,
+  CircleNotchIcon,
   ClockIcon,
   DotsSixVerticalIcon,
   FlaskIcon,
@@ -55,8 +57,10 @@ import {
   PlusIcon,
   PulseIcon,
   ShieldCheckIcon,
+  SlidersIcon,
   TrashIcon,
   UserIcon,
+  XCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -460,10 +464,8 @@ function RuleTriggerHistoryDialog({
   const totalLabel = `${allTimeCount.toLocaleString()} total trigger${allTimeCount === 1 ? "" : "s"}`;
 
   return (
-    <DesignDialog
-      open={open}
-      onOpenChange={handleOpenChange}
-      trigger={(
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
         <button
           type="button"
           className="rounded-sm hover:bg-muted/40 px-1 py-0.5 transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -478,94 +480,109 @@ function RuleTriggerHistoryDialog({
             isLoading={isSparklineLoading}
           />
         </button>
-      )}
-      size="2xl"
-      icon={PulseIcon}
-      title="Rule trigger history"
-      description={`${totalLabel} for this rule`}
-      headerContent={(
-        <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
-              {ruleDisplayName}
-            </Typography>
-            <ActionBadge type={ruleActionType} />
-            <DesignBadge
-              label={ruleEnabled ? "Enabled" : "Disabled"}
-              color={ruleEnabled ? "green" : "orange"}
-              size="sm"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <TriggerStatTile
-              label={`Last ${timespanHours}h`}
-              value={countInTimespan.toLocaleString()}
-              hint="recent matches"
-            />
-            <TriggerStatTile
-              label="All-time"
-              value={allTimeCount.toLocaleString()}
-              hint="since rule created"
-            />
-            <TriggerHistoryChart data={sparklineData} />
-          </div>
-        </div>
-      )}
-      footer={(
-        <DesignDialogClose asChild>
-          <DesignButton variant="secondary" size="sm">Close</DesignButton>
-        </DesignDialogClose>
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Recent triggers
-        </span>
-        {!isInitialLoading && triggers.length > 0 && (
-          <Typography variant="secondary" className="text-[11px] tabular-nums">
-            showing {triggers.length}{hasMore ? "+" : ""}
-          </Typography>
-        )}
-      </div>
-
-      {loadingError ? (
-        <DesignAlert variant="error" description={loadingError} />
-      ) : null}
-
-      <div
-        className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
-        onScroll={handleScroll}
+      </DialogTrigger>
+      <DialogContent
+        className="max-w-2xl gap-0 p-0 overflow-hidden border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"
+        overlayProps={{ className: "bg-black/50 backdrop-blur-sm" }}
       >
-        {isInitialLoading ? (
-          <div className="space-y-2 p-3">
-            {["one", "two", "three", "four", "five"].map((skeletonId) => (
-              <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
-            ))}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.06]">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
+              <PulseIcon className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-3">
+              <div className="space-y-1">
+                <DialogTitle className="text-base">Rule trigger history</DialogTitle>
+                <DialogDescription className="text-xs">
+                  {totalLabel} for this rule
+                </DialogDescription>
+              </div>
+              <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
+                    {ruleDisplayName}
+                  </Typography>
+                  <ActionBadge type={ruleActionType} />
+                  <DesignBadge
+                    label={ruleEnabled ? "Enabled" : "Disabled"}
+                    color={ruleEnabled ? "green" : "orange"}
+                    size="sm"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <TriggerStatTile
+                    label={`Last ${timespanHours}h`}
+                    value={countInTimespan.toLocaleString()}
+                    hint="recent matches"
+                  />
+                  <TriggerStatTile
+                    label="All-time"
+                    value={allTimeCount.toLocaleString()}
+                    hint="since rule created"
+                  />
+                  <TriggerHistoryChart data={sparklineData} />
+                </div>
+              </div>
+            </div>
           </div>
-        ) : triggers.length === 0 ? (
-          <DesignEmptyState
-            icon={ClockIcon}
-            title="No triggers yet"
-            description={
-              isSparklineLoading
-                ? "Loading recent activity…"
-                : "Once a sign-up matches this rule, you'll see it appear here."
-            }
-          />
-        ) : (
-          <div className="divide-y divide-foreground/[0.06]">
-            {triggers.map((trigger) => (
-              <TriggerRow key={trigger.id} trigger={trigger} />
-            ))}
+        </DialogHeader>
+        <DialogBody className="mx-0 my-0 w-auto px-6 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Recent triggers
+            </span>
+            {!isInitialLoading && triggers.length > 0 && (
+              <Typography variant="secondary" className="text-[11px] tabular-nums">
+                showing {triggers.length}{hasMore ? "+" : ""}
+              </Typography>
+            )}
           </div>
-        )}
-        {isLoadingMore ? (
-          <div className="p-3">
-            <DesignSkeleton className="h-9 rounded-lg" />
+
+          {loadingError ? (
+            <DesignAlert variant="error" description={loadingError} />
+          ) : null}
+
+          <div
+            className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
+            onScroll={handleScroll}
+          >
+            {isInitialLoading ? (
+              <div className="space-y-2 p-3">
+                {["one", "two", "three", "four", "five"].map((skeletonId) => (
+                  <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
+                ))}
+              </div>
+            ) : triggers.length === 0 ? (
+              <DesignEmptyState
+                icon={ClockIcon}
+                title="No triggers yet"
+                description={
+                  isSparklineLoading
+                    ? "Loading recent activity..."
+                    : "Once a sign-up matches this rule, you'll see it appear here."
+                }
+              />
+            ) : (
+              <div className="divide-y divide-foreground/[0.06]">
+                {triggers.map((trigger) => (
+                  <TriggerRow key={trigger.id} trigger={trigger} />
+                ))}
+              </div>
+            )}
+            {isLoadingMore ? (
+              <div className="p-3">
+                <DesignSkeleton className="h-9 rounded-lg" />
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-    </DesignDialog>
+        </DialogBody>
+        <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
+          <DialogClose asChild>
+            <DesignButton variant="secondary" size="sm">Close</DesignButton>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -958,11 +975,10 @@ function EmptyState({ onAddRule, disabled }: { onAddRule: () => void, disabled: 
 
 const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
 
-function TestRulesCard({
-  stackAdminApp,
-}: {
-  stackAdminApp: ReturnType<typeof useAdminApp>,
-}) {
+
+// Shared hook used by every TestRulesCard variant - encapsulates all the state
+// and the API call so the variants can focus purely on the UI.
+function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
@@ -1026,39 +1042,63 @@ function TestRulesCard({
     setResult(data);
   }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp, turnstileResultOverride]);
 
-  const evaluations = result?.evaluations ?? [];
-  const matchedEvaluations = evaluations.filter((evaluation) => evaluation.status === 'matched');
+  return {
+    email, setEmail,
+    authMethod, setAuthMethod,
+    oauthProvider, setOauthProvider,
+    countryCodeOverride, setCountryCodeOverride,
+    turnstileResultOverride, setTurnstileResultOverride,
+    botRiskScoreOverride, setBotRiskScoreOverride,
+    freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride,
+    result,
+    runTest,
+    isRunning,
+  };
+}
+
+type TestRulesState = ReturnType<typeof useTestRulesState>;
+
+function actionBadgeClassNameFor(type: SignUpRulesTestEvaluation['action']['type']) {
+  return cn(
+    "text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded",
+    type === 'allow' && "bg-green-500/10 text-green-600 dark:text-green-400",
+    type === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
+    type === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+    type === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  );
+}
+
+const DECISION_LABEL: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
+  allow: 'Allowed by rule',
+  reject: 'Rejected by rule',
+  'default-allow': 'Allowed by default',
+  'default-reject': 'Rejected by default',
+};
+
+const STATUS_LABEL: Record<SignUpRulesTestEvaluationStatus, string> = {
+  matched: 'Matched',
+  not_matched: 'No match',
+  disabled: 'Disabled',
+  missing_condition: 'No condition',
+  error: 'Error',
+};
+
+// Essentials-first test rules card with a collapsible "Advanced" panel
+// and an outcome-forward results view. The outcome box mounts as soon as
+// a run kicks off so users see a loading indicator before it resolves.
+function TestRulesCard({ state }: { state: TestRulesState }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const { result, isRunning } = state;
+
+  const hasRun = isRunning || result !== null;
+  const matchedCount = result?.evaluations.filter((e) => e.status === 'matched').length ?? 0;
   const decisionRule = result?.outcome.decision_rule_id
-    ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.decision_rule_id)
+    ? result.evaluations.find((e) => e.rule_id === result.outcome.decision_rule_id)
     : undefined;
   const restrictedRule = result?.outcome.restricted_because_of_rule_id
-    ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.restricted_because_of_rule_id)
+    && result.outcome.restricted_because_of_rule_id !== result.outcome.decision_rule_id
+    ? result.evaluations.find((e) => e.rule_id === result.outcome.restricted_because_of_rule_id)
     : undefined;
-
-  const outcomeLabel = result?.outcome.should_allow ? 'Allow' : 'Reject';
-  const outcomeBadgeColor = result?.outcome.should_allow ? 'green' : 'red';
-
-  const statusBadgeColor = (status: SignUpRulesTestEvaluationStatus): "green" | "red" | "orange" | "blue" | undefined => {
-    if (status === 'matched') return 'green';
-    if (status === 'missing_condition') return 'orange';
-    if (status === 'error') return 'red';
-    return undefined;
-  };
-
-  const statusLabel: Record<SignUpRulesTestEvaluationStatus, string> = {
-    matched: 'Matched',
-    not_matched: 'No match',
-    disabled: 'Disabled',
-    missing_condition: 'No condition',
-    error: 'Error',
-  };
-
-  const decisionLabel: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
-    allow: 'Allowed by rule',
-    reject: 'Rejected by rule',
-    'default-allow': 'Allowed by default',
-    'default-reject': 'Rejected by default',
-  };
 
   const fieldLabel = (text: string) => (
     <Typography variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
@@ -1066,329 +1106,249 @@ function TestRulesCard({
     </Typography>
   );
 
-  const sectionHeader = (icon: React.ReactNode, title: string, hint?: string) => (
-    <div className="flex items-center gap-2">
-      <div className="h-6 w-6 rounded-lg bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</span>
-        {hint && <span className="text-[10px] text-muted-foreground/80 ml-2">{hint}</span>}
-      </div>
-    </div>
-  );
-
-  const subCard = (children: React.ReactNode, className?: string) => (
-    <div className={cn("rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-2", className)}>
-      {children}
-    </div>
-  );
-
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+    <div className="space-y-5">
       <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-4 space-y-4">
-        <div className="space-y-3">
-          {sectionHeader(
-            <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />,
-            "Identity",
-            "What the user submits"
-          )}
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1.5">
-              {fieldLabel("Email")}
-              <DesignInput
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@company.com"
-                size="sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              {fieldLabel("Auth method")}
-              <DesignSelectorDropdown
-                value={authMethod}
-                onValueChange={(v) => {
-                  if (v === 'password' || v === 'otp' || v === 'oauth' || v === 'passkey') {
-                    setAuthMethod(v);
-                    if (v !== 'oauth') setOauthProvider('');
-                  }
-                }}
-                size="sm"
-                options={[
-                  { value: "password", label: "Password" },
-                  { value: "otp", label: "OTP" },
-                  { value: "oauth", label: "OAuth" },
-                  { value: "passkey", label: "Passkey" },
-                ]}
-              />
-            </div>
-          </div>
+        <div className="grid gap-3 md:grid-cols-[2fr_1fr]">
           <div className="space-y-1.5">
-            {fieldLabel("OAuth provider")}
+            {fieldLabel("Email")}
             <DesignInput
-              value={oauthProvider}
-              onChange={(e) => setOauthProvider(e.target.value)}
-              placeholder={authMethod === 'oauth' ? "google" : "Only used for OAuth"}
-              disabled={authMethod !== 'oauth'}
-              list="sign-up-rule-test-oauth-providers"
+              value={state.email}
+              onChange={(e) => state.setEmail(e.target.value)}
+              placeholder="user@company.com"
               size="sm"
             />
-            <datalist id="sign-up-rule-test-oauth-providers">
-              {OAUTH_PROVIDER_OPTIONS.map((provider) => (
-                <option key={provider} value={provider} />
-              ))}
-            </datalist>
+          </div>
+          <div className="space-y-1.5">
+            {fieldLabel("Sign-up method")}
+            <DesignSelectorDropdown
+              value={state.authMethod}
+              onValueChange={(v) => {
+                if (v === 'password' || v === 'otp' || v === 'oauth' || v === 'passkey') {
+                  state.setAuthMethod(v);
+                  if (v !== 'oauth') state.setOauthProvider('');
+                }
+              }}
+              size="sm"
+              options={[
+                { value: "password", label: "Password" },
+                { value: "otp", label: "OTP" },
+                { value: "oauth", label: "OAuth" },
+                { value: "passkey", label: "Passkey" },
+              ]}
+            />
           </div>
         </div>
 
-        <div className="h-px bg-foreground/[0.06]" />
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors hover:transition-none"
+        >
+          {showAdvanced ? <CaretDownIcon className="h-3.5 w-3.5" /> : <CaretRightIcon className="h-3.5 w-3.5" />}
+          <SlidersIcon className="h-3.5 w-3.5" />
+          Advanced options
+          <span className="text-muted-foreground/70">
+            (OAuth provider, country, risk scores, turnstile)
+          </span>
+        </button>
 
-        <div className="space-y-3">
-          {sectionHeader(
-            <ShieldCheckIcon className="h-3.5 w-3.5 text-muted-foreground" />,
-            "Risk overrides",
-            "Optional"
-          )}
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-1.5">
-              {fieldLabel("Country")}
-              <CountryCodeInput
-                value={countryCodeOverride || null}
-                onChange={(val) => setCountryCodeOverride(val ?? "")}
-              />
-            </div>
-            <div className="space-y-1.5">
-              {fieldLabel("Bot score")}
-              <DesignInput
-                value={botRiskScoreOverride}
-                onChange={(e) => setBotRiskScoreOverride(e.target.value)}
-                placeholder="0-100"
-                inputMode="numeric"
-                size="sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              {fieldLabel("Free-trial abuse")}
-              <DesignInput
-                value={freeTrialAbuseRiskScoreOverride}
-                onChange={(e) => setFreeTrialAbuseRiskScoreOverride(e.target.value)}
-                placeholder="0-100"
-                inputMode="numeric"
-                size="sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              {fieldLabel("Turnstile")}
-              <DesignSelectorDropdown
-                value={turnstileResultOverride}
-                onValueChange={(value) => {
-                  if (value === DEFAULT_TURNSTILE_OVERRIDE || value === "ok" || value === "invalid" || value === "error") {
-                    setTurnstileResultOverride(value);
-                  }
-                }}
-                size="sm"
-                options={[
-                  { value: DEFAULT_TURNSTILE_OVERRIDE, label: "Default (real result)" },
-                  { value: "ok", label: "OK" },
-                  { value: "invalid", label: "Invalid" },
-                  { value: "error", label: "Error" },
-                ]}
-              />
+        {showAdvanced && (
+          <div className="rounded-lg border border-dashed p-4 space-y-3 bg-muted/20">
+            {state.authMethod === 'oauth' && (
+              <div className="space-y-1.5">
+                {fieldLabel("OAuth provider")}
+                <DesignInput
+                  value={state.oauthProvider}
+                  onChange={(e) => state.setOauthProvider(e.target.value)}
+                  placeholder="google"
+                  list="sign-up-rule-test-oauth-providers"
+                  size="sm"
+                />
+                <datalist id="sign-up-rule-test-oauth-providers">
+                  {OAUTH_PROVIDER_OPTIONS.map((provider) => <option key={provider} value={provider} />)}
+                </datalist>
+              </div>
+            )}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                {fieldLabel("Country")}
+                <CountryCodeInput
+                  value={state.countryCodeOverride || null}
+                  onChange={(val) => state.setCountryCodeOverride(val ?? "")}
+                />
+                <Typography variant="secondary" className="text-[11px]">Leave blank to use real geolocation.</Typography>
+              </div>
+              <div className="space-y-1.5">
+                {fieldLabel("Turnstile result")}
+                <DesignSelectorDropdown
+                  value={state.turnstileResultOverride}
+                  onValueChange={(value) => {
+                    if (value === DEFAULT_TURNSTILE_OVERRIDE || value === "ok" || value === "invalid" || value === "error") {
+                      state.setTurnstileResultOverride(value);
+                    }
+                  }}
+                  size="sm"
+                  options={[
+                    { value: DEFAULT_TURNSTILE_OVERRIDE, label: "Use real result" },
+                    { value: "ok", label: "OK" },
+                    { value: "invalid", label: "Invalid" },
+                    { value: "error", label: "Error" },
+                  ]}
+                />
+              </div>
+              <div className="space-y-1.5">
+                {fieldLabel("Bot risk score")}
+                <DesignInput
+                  value={state.botRiskScoreOverride}
+                  onChange={(e) => state.setBotRiskScoreOverride(e.target.value)}
+                  placeholder="0-100 (blank = real)"
+                  inputMode="numeric"
+                  size="sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                {fieldLabel("Free trial abuse score")}
+                <DesignInput
+                  value={state.freeTrialAbuseRiskScoreOverride}
+                  onChange={(e) => state.setFreeTrialAbuseRiskScoreOverride(e.target.value)}
+                  placeholder="0-100 (blank = real)"
+                  inputMode="numeric"
+                  size="sm"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="flex items-center justify-between gap-3 pt-1 border-t border-foreground/[0.06] -mx-1 px-1">
-          <Typography variant="secondary" className="text-xs">
-            Simulate a sign-up to preview which rules trigger.
-          </Typography>
+        <div className="flex justify-end">
           <DesignButton
             size="sm"
-            onClick={() => runAsynchronouslyWithAlert(runTest)}
-            loading={isRunning}
+            onClick={() => runAsynchronouslyWithAlert(state.runTest)}
+            loading={state.isRunning}
           >
-            <span className="inline-flex items-center gap-1.5">
-              <FlaskIcon className="h-4 w-4" />
-              Run test
-            </span>
+            <FlaskIcon className="h-4 w-4 mr-1.5" />
+            Run test
           </DesignButton>
         </div>
       </div>
 
-      <div className="space-y-3">
-        {!result ? (
-          <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 h-full min-h-[260px] flex items-center justify-center">
-            <DesignEmptyState
-              icon={FlaskIcon}
-              title="No simulation yet"
-              description="Fill in the context on the left, then run a test to see how each rule evaluates."
-            />
-          </div>
-        ) : (
-          <>
-            {subCard(
-              <>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={cn(
-                      "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ring-1",
-                      result.outcome.should_allow
-                        ? "bg-emerald-500/10 ring-emerald-400/30 text-emerald-500"
-                        : "bg-red-500/10 ring-red-400/30 text-red-500",
-                    )}>
-                      {result.outcome.should_allow
-                        ? <CheckIcon className="h-4 w-4" />
-                        : <XIcon className="h-4 w-4" />}
-                    </div>
-                    <Typography className="text-sm font-semibold">Outcome</Typography>
-                  </div>
-                  <DesignBadge label={outcomeLabel} color={outcomeBadgeColor} size="sm" />
-                </div>
-                <Typography variant="secondary" className="text-xs">
-                  {decisionLabel[result.outcome.decision]}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out",
+          hasRun ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-3">
+            <div
+              className={cn(
+                "rounded-xl border-2 p-5 flex items-center gap-4 transition-colors duration-500 ease-out",
+                !result && "bg-muted/30 border-muted-foreground/20 text-muted-foreground",
+                result?.outcome.should_allow && "bg-green-500/5 border-green-500/30 text-green-700 dark:text-green-400",
+                result && !result.outcome.should_allow && "bg-red-500/5 border-red-500/30 text-red-700 dark:text-red-400",
+              )}
+            >
+              <div className="relative h-10 w-10 flex-shrink-0">
+                <CircleNotchIcon
+                  className={cn(
+                    "absolute inset-0 h-10 w-10 text-muted-foreground/60 animate-spin transition-opacity duration-200",
+                    result ? "opacity-0" : "opacity-100",
+                  )}
+                />
+                <CheckCircleIcon
+                  weight="fill"
+                  className={cn(
+                    "absolute inset-0 h-10 w-10 transition-opacity duration-300",
+                    result?.outcome.should_allow ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                <XCircleIcon
+                  weight="fill"
+                  className={cn(
+                    "absolute inset-0 h-10 w-10 transition-opacity duration-300",
+                    result && !result.outcome.should_allow ? "opacity-100" : "opacity-0",
+                  )}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <Typography className="text-xl font-bold">
+                  {!result && "Running test..."}
+                  {result && `Sign-up would ${result.outcome.should_allow ? 'be allowed' : 'be rejected'}`}
                 </Typography>
-                {decisionRule && (
-                  <Typography variant="secondary" className="text-xs">
-                    Decision rule: <span className="font-medium text-foreground">{decisionRule.display_name || decisionRule.rule_id}</span>
+                <Typography variant="secondary" className="text-sm">
+                  {!result && "Evaluating configured rules."}
+                  {result && (
+                    <>
+                      {DECISION_LABEL[result.outcome.decision]}
+                      {decisionRule && <> - <span className="font-medium">{decisionRule.display_name || decisionRule.rule_id}</span></>}
+                    </>
+                  )}
+                </Typography>
+                {restrictedRule && (
+                  <Typography variant="secondary" className="text-xs mt-1">
+                    Restricted by: <span className="font-medium">{restrictedRule.display_name || restrictedRule.rule_id}</span>
                   </Typography>
                 )}
                 {decisionRule?.action.message && (
-                  <Typography variant="secondary" className="text-xs">
-                    Rejection reason: {decisionRule.action.message}
+                  <Typography variant="secondary" className="text-xs mt-1 italic">
+                    Reason: {decisionRule.action.message}
                   </Typography>
                 )}
-                {restrictedRule && (
-                  <Typography variant="secondary" className="text-xs">
-                    Restricted by: <span className="font-medium text-foreground">{restrictedRule.display_name || restrictedRule.rule_id}</span>
-                  </Typography>
-                )}
-              </>,
-              "space-y-1.5"
-            )}
+              </div>
+            </div>
 
-            {subCard(
-              <>
-                <div className="flex items-center justify-between">
-                  <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Triggered rules
-                  </Typography>
-                  <Typography variant="secondary" className="text-[11px] tabular-nums">
-                    {matchedEvaluations.length} matched
-                  </Typography>
-                </div>
-                {matchedEvaluations.length === 0 ? (
-                  <Typography variant="secondary" className="text-xs">
-                    No rules matched. Default action applies.
-                  </Typography>
-                ) : (
-                  <div className="space-y-2">
-                    {matchedEvaluations.map((evaluation) => (
-                      <div
-                        key={evaluation.rule_id}
-                        className="flex items-center justify-between gap-2 rounded-lg bg-background/60 px-2.5 py-2 ring-1 ring-foreground/[0.04]"
-                      >
-                        <div className="min-w-0">
-                          <Typography className="text-xs font-medium truncate">
-                            {evaluation.display_name || evaluation.rule_id}
-                          </Typography>
-                          <Typography variant="secondary" className="text-[10px] truncate font-mono">
-                            {evaluation.condition || "No condition"}
-                          </Typography>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <ActionBadge type={evaluation.action.type} />
-                          {evaluation.rule_id === result.outcome.decision_rule_id && (
-                            <DesignBadge label="Decision" color="purple" size="sm" />
-                          )}
-                          {evaluation.rule_id === result.outcome.restricted_because_of_rule_id && (
-                            <DesignBadge label="Restrict" color="orange" size="sm" />
-                          )}
-                        </div>
+            <div
+              className={cn(
+                "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+                result ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+              )}
+            >
+              <div className="overflow-hidden space-y-3">
+                {result && (
+                  <>
+                    <details className="rounded-lg border bg-background/40">
+                      <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium flex items-center justify-between">
+                        <span>Rule evaluations</span>
+                        <span className="text-xs text-muted-foreground">{matchedCount} matched of {result.evaluations.length}</span>
+                      </summary>
+                      <div className="px-4 pb-3 space-y-1">
+                        {result.evaluations.map((evaluation) => (
+                          <div key={evaluation.rule_id} className="flex items-center gap-2 py-1.5 border-t first:border-t-0">
+                            <span className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              evaluation.status === 'matched' && "bg-emerald-500",
+                              evaluation.status === 'not_matched' && "bg-muted-foreground/30",
+                              evaluation.status === 'disabled' && "bg-muted-foreground/20",
+                              evaluation.status === 'error' && "bg-red-500",
+                              evaluation.status === 'missing_condition' && "bg-amber-500",
+                            )} />
+                            <span className="text-sm font-medium truncate flex-1">{evaluation.display_name || evaluation.rule_id}</span>
+                            <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[evaluation.status]}</span>
+                            <span className={actionBadgeClassNameFor(evaluation.action.type)}>{evaluation.action.type}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
+                    </details>
 
-            {subCard(
-              <>
-                <div className="flex items-center justify-between">
-                  <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Evaluation trace
-                  </Typography>
-                  <Typography variant="secondary" className="text-[11px] tabular-nums">
-                    {evaluations.length} evaluated
-                  </Typography>
-                </div>
-                {evaluations.length === 0 ? (
-                  <Typography variant="secondary" className="text-xs">
-                    No rules configured yet.
-                  </Typography>
-                ) : (
-                  <div className="space-y-1 max-h-48 overflow-auto pr-1">
-                    {evaluations.map((evaluation) => {
-                      const statusColor = statusBadgeColor(evaluation.status);
-                      return (
-                        <div
-                          key={evaluation.rule_id}
-                          className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-foreground/[0.03] transition-colors hover:transition-none"
-                          title={evaluation.error ?? undefined}
-                        >
-                          <div className="min-w-0">
-                            <Typography className="text-xs font-medium truncate">
-                              {evaluation.display_name || evaluation.rule_id}
-                            </Typography>
-                            <Typography variant="secondary" className="text-[10px] truncate font-mono">
-                              {evaluation.condition || "No condition"}
-                            </Typography>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <ActionBadge type={evaluation.action.type} />
-                            {statusColor ? (
-                              <DesignBadge label={statusLabel[evaluation.status]} color={statusColor} size="sm" />
-                            ) : (
-                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                {statusLabel[evaluation.status]}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                    <details className="rounded-lg border bg-background/40">
+                      <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium">Resolved context</summary>
+                      <div className="px-4 pb-3 pt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div><span className="text-muted-foreground">Email: </span>{result.context.email || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">Domain: </span>{result.context.email_domain || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">Country: </span>{result.context.country_code || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">OAuth provider: </span>{result.context.oauth_provider || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">Turnstile: </span>{result.context.turnstile_result}</div>
+                        <div><span className="text-muted-foreground">Bot score: </span>{result.context.risk_scores.bot}</div>
+                        <div><span className="text-muted-foreground">Free-trial abuse: </span>{result.context.risk_scores.free_trial_abuse}</div>
+                      </div>
+                    </details>
+                  </>
                 )}
-              </>
-            )}
-
-            {subCard(
-              <>
-                <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Normalized context
-                </Typography>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                  {[
-                    ["Email", result.context.email || "(empty)"],
-                    ["Domain", result.context.email_domain || "(empty)"],
-                    ["Country", result.context.country_code || "(empty)"],
-                    ["OAuth", result.context.oauth_provider || "(empty)"],
-                    ["Turnstile", result.context.turnstile_result],
-                    ["Bot risk", String(result.context.risk_scores.bot)],
-                    ["Free-trial risk", String(result.context.risk_scores.free_trial_abuse)],
-                  ].map(([label, value]) => (
-                    <div key={label} className="flex items-center justify-between gap-2 min-w-0">
-                      <Typography variant="secondary" className="text-[10px] uppercase tracking-wider shrink-0">
-                        {label}
-                      </Typography>
-                      <Typography className="text-xs font-mono truncate">{value}</Typography>
-                    </div>
-                  ))}
-                </div>
-              </>,
-              "space-y-1.5"
-            )}
-          </>
-        )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1401,6 +1361,8 @@ function TestRulesDialog({
   stackAdminApp: ReturnType<typeof useAdminApp>,
   trigger: React.ReactNode,
 }) {
+  const state = useTestRulesState(stackAdminApp);
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -1425,7 +1387,7 @@ function TestRulesDialog({
         </DialogHeader>
 
         <DialogBody className="mx-0 my-0 w-auto px-6 py-4">
-          <TestRulesCard stackAdminApp={stackAdminApp} />
+          <TestRulesCard state={state} />
         </DialogBody>
 
         <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
@@ -1536,7 +1498,9 @@ function useSignUpRulesAnalytics() {
     };
 
     runAsynchronouslyWithAlert(fetchAnalytics);
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [stackAdminApp]);
 
   return { analytics, timespanHours, isLoading };
@@ -1565,7 +1529,7 @@ type PageBodyProps = {
   onToggleEnabled: (id: string, enabled: boolean) => void,
   onDefaultActionChange: (value: 'allow' | 'reject') => void,
   onDragEnd: (event: DragEndEvent) => void,
-  onSaveOrder: () => void,
+  onSaveOrder: () => Promise<void>,
   onDiscardOrder: () => void,
   stackAdminApp: ReturnType<typeof useAdminApp>,
 };
@@ -1652,7 +1616,7 @@ function PageBody(props: PageBodyProps) {
         {props.signUpRules.length === 0 && !props.isCreatingNew && (
           <EmptyState
             onAddRule={props.onAddRule}
-            disabled={props.editingRuleId !== null || props.isCreatingNew || props.hasOrderChanges}
+            disabled={props.editingRuleId !== null || props.hasOrderChanges}
           />
         )}
 

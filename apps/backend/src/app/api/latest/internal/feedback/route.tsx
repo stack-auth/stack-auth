@@ -1,3 +1,4 @@
+import { createConversation } from "@/lib/conversations";
 import { sendSupportFeedbackEmail } from "@/lib/internal-feedback-emails";
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -74,6 +75,30 @@ export const POST = createSmartRouteHandler({
       message: body.message,
       feedbackType: body.feedback_type,
     });
+
+    // Dogfood: mirror dashboard support submissions into the managed inbox (same subject line as email).
+    // If the mirror write fails the user will see a 500 and retry; duplicate emails are preferable to
+    // silently swallowing a real failure (per AGENTS.md: never catch-all).
+    if (auth?.tenancy != null && auth.user != null) {
+      const feedbackLabel = body.feedback_type === "bug" ? "Bug Report" : "Support";
+      const conversationSubject = `[${feedbackLabel}] ${body.email}`;
+      await createConversation({
+        tenancyId: auth.tenancy.id,
+        userId: auth.user.id,
+        subject: conversationSubject,
+        priority: "normal",
+        source: "api",
+        channelType: "api",
+        adapterKey: "dashboard-support-form",
+        body: body.message,
+        sender: {
+          type: "user",
+          id: auth.user.id,
+          displayName: auth.user.display_name ?? null,
+          primaryEmail: auth.user.primary_email ?? null,
+        },
+      });
+    }
 
     return {
       statusCode: 200,
