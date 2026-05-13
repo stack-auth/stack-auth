@@ -18,13 +18,57 @@ type DashboardArtifact = {
 function html(strings: TemplateStringsArray, ...values: unknown[]): string {
   return strings.reduce<string>((result, str, i) => result + str + (values[i] ?? ''), '');
 }
-
 const isDev = process.env.NODE_ENV === "development";
+
+function getEsmFallbackVersion(version: string): string {
+  const parts = version.split(".");
+  if (parts.length !== 3) return version;
+  const patch = Number(parts[2]);
+  if (!Number.isInteger(patch) || patch <= 0) return version;
+  return `${parts[0]}.${parts[1]}.${patch - 1}`;
+}
+
+const ESM_VERSION_HEADER = "// @stack-esm-version:";
+const ESM_VERSION_REGEX = /^\/\/\s*@stack-esm-version:\s*(\S+)\s*$/m;
+
+function extractEsmVersion(sourceCode: string): string | null {
+  const match = sourceCode.match(ESM_VERSION_REGEX);
+  return match ? match[1] : null;
+}
+
+export function stampEsmVersion(sourceCode: string, version: string): string {
+  if (ESM_VERSION_REGEX.test(sourceCode)) {
+    return sourceCode.replace(ESM_VERSION_REGEX, `${ESM_VERSION_HEADER} ${version}`);
+  }
+  return `${ESM_VERSION_HEADER} ${version}\n${sourceCode}`;
+}
 
 function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, dashboardUrl: string): string {
   if (isDev) {
     return html`
       <script type="module">
+        function formatDependencyError(error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+
+        function reportDependencyError(message, error) {
+          window.parent.postMessage({
+            type: 'dashboard-sandbox-dependency-error',
+            message,
+            stack: error instanceof Error ? error.stack : undefined,
+          }, '*');
+        }
+
+        function failDependencyLoad(message, error) {
+          reportDependencyError(message, error);
+          window.__depsError = {
+            message,
+            stack: error instanceof Error ? error.stack : undefined,
+          };
+          window.__depsReady = true;
+          window.dispatchEvent(new Event('deps-ready'));
+        }
+
         import React from 'https://esm.sh/react@19.2.3';
         import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
         import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
@@ -41,14 +85,14 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
           window.StackServerApp = StackSDK.StackServerApp;
           window.StackSDK = StackSDK;
         } catch (e) {
-          window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Stack SDK failed at version ${esmVersion}, trying fallback ${esmFallbackVersion}: ' + e?.message }, '*');
+          reportDependencyError('[sandbox] @stackframe/js failed at version ${esmVersion}; trying fallback ${esmFallbackVersion}: ' + formatDependencyError(e), e);
           try {
             const StackSDK = await import('https://esm.sh/@stackframe/js@${esmFallbackVersion}');
             window.StackAdminApp = StackSDK.StackAdminApp;
             window.StackServerApp = StackSDK.StackServerApp;
             window.StackSDK = StackSDK;
           } catch (e2) {
-            window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Stack SDK fallback also failed: ' + e2?.message }, '*');
+            failDependencyLoad('[sandbox] @stackframe/js fallback failed at version ${esmFallbackVersion}: ' + formatDependencyError(e2), e2);
           }
         }
         window.generateUuid = () => crypto.randomUUID();
@@ -61,10 +105,8 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
           window.dispatchEvent(new Event('deps-ready'));
         };
         script.onerror = (e) => {
-          window.parent.postMessage({
-            type: 'dashboard-error-boundary',
-            message: 'Failed to load dashboard-ui-components IIFE bundle',
-          }, '*');
+          const message = '[sandbox] Failed to load local dashboard-ui-components IIFE bundle. Run pnpm --filter @stackframe/dashboard-ui-components dev or pnpm --filter @stackframe/dashboard-ui-components build so apps/dashboard/public/dashboard-ui-components.iife.js exists.';
+          failDependencyLoad(message, e instanceof Error ? e : new Error(message));
         };
         document.head.appendChild(script);
       </script>`;
@@ -72,6 +114,30 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
 
   return html`
     <script type="module">
+      const CUSTOM_DASHBOARD_LOAD_ERROR_MESSAGE = 'There was a problem loading custom dashboards. Please refresh the page and try again.';
+
+      function formatDependencyError(error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+
+      function reportDependencyError(message, error) {
+        window.parent.postMessage({
+          type: 'dashboard-sandbox-dependency-error',
+          message,
+          stack: error instanceof Error ? error.stack : undefined,
+        }, '*');
+      }
+
+      function failDependencyLoad(message, error) {
+        reportDependencyError(message, error);
+        window.__depsError = {
+          message: CUSTOM_DASHBOARD_LOAD_ERROR_MESSAGE,
+          stack: error instanceof Error ? error.stack : undefined,
+        };
+        window.__depsReady = true;
+        window.dispatchEvent(new Event('deps-ready'));
+      }
+
       import React from 'https://esm.sh/react@19.2.3';
       import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
       import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
@@ -89,21 +155,27 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
           import('https://esm.sh/@stackframe/js@${esmVersion}'),
         ]);
       } catch (e) {
-        window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Failed to load at version ${esmVersion}, trying fallback ${esmFallbackVersion}: ' + e?.message }, '*');
-        [DashboardUIComponents, StackSDK] = await Promise.all([
-          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmFallbackVersion}?deps=react@19.2.3,react-dom@19.2.3'),
-          import('https://esm.sh/@stackframe/js@${esmFallbackVersion}'),
-        ]);
+        reportDependencyError('[sandbox] Custom dashboard packages failed at version ${esmVersion}; trying fallback ${esmFallbackVersion}: ' + formatDependencyError(e), e);
+        try {
+          [DashboardUIComponents, StackSDK] = await Promise.all([
+            import('https://esm.sh/@stackframe/dashboard-ui-components@${esmFallbackVersion}?deps=react@19.2.3,react-dom@19.2.3'),
+            import('https://esm.sh/@stackframe/js@${esmFallbackVersion}'),
+          ]);
+        } catch (e2) {
+          failDependencyLoad('[sandbox] Custom dashboard package fallback failed at version ${esmFallbackVersion}: ' + formatDependencyError(e2), e2);
+        }
       }
 
-      window.DashboardUI = DashboardUIComponents;
-      window.StackAdminApp = StackSDK.StackAdminApp;
-      window.StackServerApp = StackSDK.StackServerApp;
-      window.StackSDK = StackSDK;
-      window.generateUuid = () => crypto.randomUUID();
+      if (!window.__depsError) {
+        window.DashboardUI = DashboardUIComponents;
+        window.StackAdminApp = StackSDK.StackAdminApp;
+        window.StackServerApp = StackSDK.StackServerApp;
+        window.StackSDK = StackSDK;
+        window.generateUuid = () => crypto.randomUUID();
 
-      window.__depsReady = true;
-      window.dispatchEvent(new Event('deps-ready'));
+        window.__depsReady = true;
+        window.dispatchEvent(new Event('deps-ready'));
+      }
     </script>`;
 }
 
@@ -117,8 +189,8 @@ function escapeScriptContent(code: string): string {
 function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
   const sourceCode = escapeScriptContent(artifact.runtimeCodegen.uiRuntimeSourceCode);
   const darkClass = initialTheme === "dark" ? "dark" : "";
-  const esmVersion = packageJson.version;
-  const esmFallbackVersion = "2.8.71";
+  const esmVersion = extractEsmVersion(artifact.runtimeCodegen.uiRuntimeSourceCode) ?? packageJson.version;
+  const esmFallbackVersion = getEsmFallbackVersion(esmVersion);
   const devScriptSrc = isDev ? ` ${dashboardUrl}` : '';
   const devConnectSrc = isDev ? ` ${dashboardUrl}` : '';
 
@@ -307,10 +379,18 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
       };
       
       async function waitForDeps() {
-        if (window.__depsReady) return;
-        await new Promise(resolve => {
-          window.addEventListener('deps-ready', resolve, { once: true });
-        });
+        if (!window.__depsReady) {
+          await new Promise(resolve => {
+            window.addEventListener('deps-ready', resolve, { once: true });
+          });
+        }
+        if (window.__depsError) {
+          const error = new Error(window.__depsError.message || 'There was a problem loading custom dashboards. Please refresh the page and try again.');
+          if (window.__depsError.stack) {
+            error.stack = window.__depsError.stack;
+          }
+          throw error;
+        }
       }
 
       async function requestAccessToken() {
@@ -732,6 +812,13 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
 
       if (type === "dashboard-edit") {
         onEditToggleRef.current?.();
+        return;
+      }
+
+      if (type === "dashboard-sandbox-dependency-error") {
+        const err = new Error(event.data.message ?? 'Unknown custom dashboard dependency error');
+        if (event.data.stack) err.stack = event.data.stack;
+        captureError('dashboard-sandbox-dependency-error', err);
         return;
       }
 

@@ -100,6 +100,14 @@ export async function createFreePlanSubscriptionRow(options: {
  * no-ops on misconfiguration, when a plan is already owned, or when a
  * concurrent caller already established the free sub.
  *
+ * Returns `true` iff this call actually inserted a new free-plan subscription
+ * row (i.e. the team really was orphaned in the source of truth and we held
+ * the SERIALIZABLE slot that wrote the row). All other paths — misconfig,
+ * fast-path occupancy hit, slow-path occupancy hit, lost-race concurrent
+ * insert — return `false`. The deploy-time backfill uses this to count
+ * orphaned-and-actually-granted teams accurately rather than maintaining its
+ * own (LFold-lagging) predicate.
+ *
  * Two-phase concurrency story:
  *
  *   1. Fast path — O(1) read against the `subscriptionMapByCustomer`
@@ -126,11 +134,11 @@ export async function createFreePlanSubscriptionRow(options: {
  * directly, the SERIALIZABLE Prisma tx becomes a Bulldozer insert with
  * its own concurrency story.
  */
-export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promise<void> {
+export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promise<boolean> {
   const internalTenancy = await getInternalBillingTenancy();
   const freePlanProduct = getOrUndefined(internalTenancy.config.payments.products, "free");
   if (freePlanProduct == null || freePlanProduct.customerType !== "team" || freePlanProduct.productLineId == null) {
-    return;
+    return false;
   }
   const freeProductLineId = freePlanProduct.productLineId;
 
@@ -175,7 +183,7 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
     customerId: billingTeamId,
   });
   if (Object.values(subscriptionMap).some(productLineStillOccupiedBy)) {
-    return;
+    return false;
   }
 
   // Slow path: the team appears to have no occupying sub. Re-check under
@@ -216,11 +224,13 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
     });
   }, { level: "serializable" });
 
-  if (createdSub != null) {
-    // Bulldozer write happens outside the tx — it issues its own BEGIN/
-    // COMMIT and can't nest. If it fails after the Prisma insert committed,
-    // the sub exists in Prisma but not yet in Bulldozer; same trade-off as
-    // all other dual-write call sites, reconciled by the next sync.
-    await bulldozerWriteSubscription(internalPrisma, createdSub);
+  if (createdSub == null) {
+    return false;
   }
+  // Bulldozer write happens outside the tx — it issues its own BEGIN/
+  // COMMIT and can't nest. If it fails after the Prisma insert committed,
+  // the sub exists in Prisma but not yet in Bulldozer; same trade-off as
+  // all other dual-write call sites, reconciled by the next sync.
+  await bulldozerWriteSubscription(internalPrisma, createdSub);
+  return true;
 }

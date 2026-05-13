@@ -39,3 +39,33 @@ html.dark ul#sidebar-group > li > a > div:first-child > img,
     inset 0 0 0 1px rgba(0, 0, 0, 0.1);
   filter: invert(1);
 }
+
+.showcase-card {
+  aspect-ratio: 16 / 9;
+  display: block;
+  overflow: hidden;
+  position: relative;
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+
+.showcase-card:hover {
+  box-shadow: 0 24px 52px rgba(15, 23, 42, 0.24) !important;
+  transform: translateY(-2px);
+}
+
+.showcase-card .showcase-card-image {
+  border-radius: 0 !important;
+  height: 100% !important;
+  inset: 0 !important;
+  margin: 0 !important;
+  max-width: none !important;
+  object-fit: cover !important;
+  position: absolute !important;
+  transition: transform 150ms ease;
+  transform: scale(1);
+  width: 100% !important;
+}
+
+.showcase-card:hover .showcase-card-image {
+  transform: scale(1.18) !important;
+}

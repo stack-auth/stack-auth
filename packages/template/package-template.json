@@ -13,7 +13,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "2.8.88",
+  "version": "2.8.89",
   "repository": "https://github.com/hexclave/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
