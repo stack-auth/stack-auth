@@ -40,7 +40,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: marker, answer: "x", publish: false },
+      body: { question: marker, answer: "x", publish: false, requestId: marker },
     });
     expect(add.status).toBe(200);
 
@@ -63,7 +63,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: marker, answer: "x", publish: true },
+      body: { question: marker, answer: "x", publish: true, requestId: marker },
     });
     expect(add.status).toBe(200);
     expect(await publishedQaContains(marker)).toBe(true);
@@ -102,7 +102,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: marker, answer: "x", publish: true },
+      body: { question: marker, answer: "x", publish: true, requestId: marker },
     });
     expect(add.status).toBe(200);
     expect(await publishedQaContains(marker)).toBe(true);
@@ -137,7 +137,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: marker, answer: "x", publish: true },
+      body: { question: marker, answer: "x", publish: true, requestId: marker },
     });
     expect(add.status).toBe(200);
     expect(await publishedQaContains(marker)).toBe(true);

@@ -56,7 +56,7 @@ describe.skipIf(!canRun)("published_qa view projection", () => {
     const publish = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: markerQuestion, answer: markerAnswer, publish: true },
+      body: { question: markerQuestion, answer: markerAnswer, publish: true, requestId: markerQuestion },
     });
     expect(publish.status).toBe(200);
 

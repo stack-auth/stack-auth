@@ -36,7 +36,7 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
     const seedPublish = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: seedMarker, answer: "a", publish: false },
+      body: { question: seedMarker, answer: "a", publish: false, requestId: seedMarker },
     });
     expect(seedPublish.status).toBe(200);
 
@@ -65,7 +65,7 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
         name: "upsert_qa_from_call",
         args: [wrong, "corr", "q", "a", false, "reviewer"],
       },
-      { name: "add_manual_qa", args: [wrong, "q", "a", false, "reviewer", opt(null)] },
+      { name: "add_manual_qa", args: [wrong, "q", "a", false, "reviewer", "req-id"] },
       { name: "delete_qa_entry", args: [wrong, 0n] },
       { name: "update_qa_entry_with_publish", args: [wrong, 0n, "q", "a", false, "reviewer"] },
       {

@@ -441,6 +441,68 @@ export const upsert_qa_from_call = spacetimedb.reducer(
   }
 );
 
+export const upsert_qa_from_call_and_mark_reviewed = spacetimedb.reducer(
+  {
+    token: t.string(),
+    correlationId: t.string(),
+    question: t.string(),
+    answer: t.string(),
+    publish: t.bool(),
+    reviewer: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const callLogRow = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (callLogRow == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    }
+
+    let existing = null;
+    for (const row of ctx.db.qaEntries.shard.filter(0)) {
+      if (row.sourceMcpCorrelationId === args.correlationId) {
+        existing = row;
+        break;
+      }
+    }
+    if (existing != null) {
+      ctx.db.qaEntries.id.update({
+        ...existing,
+        question: args.question,
+        answer: args.answer,
+        lastEditedBy: args.reviewer,
+        lastEditedAt: ctx.timestamp,
+        published: args.publish,
+        firstPublishedAt: args.publish ? (existing.firstPublishedAt ?? ctx.timestamp) : existing.firstPublishedAt,
+        lastPublishedAt: args.publish ? ctx.timestamp : existing.lastPublishedAt,
+      });
+    } else {
+      ctx.db.qaEntries.insert({
+        id: 0n,
+        shard: 0,
+        sourceMcpCorrelationId: args.correlationId,
+        requestId: undefined,
+        question: args.question,
+        answer: args.answer,
+        createdBy: args.reviewer,
+        createdAt: ctx.timestamp,
+        lastEditedBy: args.reviewer,
+        lastEditedAt: ctx.timestamp,
+        published: args.publish,
+        firstPublishedAt: args.publish ? ctx.timestamp : undefined,
+        lastPublishedAt: args.publish ? ctx.timestamp : undefined,
+      } as Parameters<typeof ctx.db.qaEntries.insert>[0]);
+    }
+
+    ctx.db.mcpCallLog.id.update({
+      ...callLogRow,
+      humanReviewedAt: ctx.timestamp,
+      humanReviewedBy: args.reviewer,
+    });
+  }
+);
+
 export const add_manual_qa = spacetimedb.reducer(
   {
     token: t.string(),
@@ -448,13 +510,13 @@ export const add_manual_qa = spacetimedb.reducer(
     answer: t.string(),
     publish: t.bool(),
     createdBy: t.string(),
-    requestId: t.string().optional(),
+    requestId: t.string(),
   },
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    if (args.requestId != null && args.requestId !== '') {
+    if (args.requestId !== '') {
       for (const existing of ctx.db.qaEntries.iter()) {
         if (existing.requestId === args.requestId) return;
       }

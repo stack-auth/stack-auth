@@ -27,7 +27,7 @@ const endpoints = [
   },
   {
     path: "/api/latest/internal/mcp-review/add-manual",
-    validBody: { question: "q", answer: "a", publish: false },
+    validBody: { question: "q", answer: "a", publish: false, requestId: "test-req-id" },
     invalidBody: { question: "q" },
   },
   {

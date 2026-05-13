@@ -34,7 +34,7 @@ export const POST = createSmartRouteHandler({
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     const reviewer = user.display_name ?? user.primary_email ?? user.id;
 
-    await callReducerStrict("upsert_qa_from_call", [
+    await callReducerStrict("upsert_qa_from_call_and_mark_reviewed", [
       token,
       body.correlationId,
       body.correctedQuestion,
@@ -42,7 +42,6 @@ export const POST = createSmartRouteHandler({
       body.publish,
       reviewer,
     ]);
-    await callReducerStrict("mark_human_reviewed", [token, body.correlationId, reviewer]);
 
     return {
       statusCode: 200,

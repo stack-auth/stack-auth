@@ -77,7 +77,7 @@ describe.skipIf(!canRun)("private log tables and view gating", () => {
     const seed = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: seedMarker, answer: "a", publish: false },
+      body: { question: seedMarker, answer: "a", publish: false, requestId: seedMarker },
     });
     expect(seed.status).toBe(200);
 

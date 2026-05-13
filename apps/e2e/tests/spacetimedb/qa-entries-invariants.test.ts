@@ -61,7 +61,7 @@ describe.skipIf(!canRun)("qa_entries CRUD invariants", () => {
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: marker, answer: "a", publish: true },
+      body: { question: marker, answer: "a", publish: true, requestId: marker },
     });
     expect(add.status).toBe(200);
 
@@ -120,7 +120,7 @@ describe.skipIf(!canRun)("qa_entries CRUD invariants", () => {
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: marker, answer: "a", publish: true },
+      body: { question: marker, answer: "a", publish: true, requestId: marker },
     });
     expect(add.status).toBe(200);
 
