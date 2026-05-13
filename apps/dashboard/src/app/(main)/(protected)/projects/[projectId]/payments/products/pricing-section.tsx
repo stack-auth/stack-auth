@@ -112,6 +112,7 @@ export function PricingSection({
                     variant="ghost"
                     size="sm"
                     type="button"
+                    aria-label={`Remove price ${id}`}
                     className="text-destructive hover:text-destructive"
                     onClick={() => handleRemovePrice(id)}
                   >
@@ -171,6 +172,7 @@ export function PricingSection({
             variant="ghost"
             size="sm"
             type="button"
+            aria-label="Make paid (remove free price)"
             className="text-destructive hover:text-destructive"
             onClick={() => onPricesChange({})}
           >
@@ -247,6 +249,7 @@ export function PricingSection({
                   variant="ghost"
                   size="sm"
                   type="button"
+                  aria-label={`Remove price ${priceId}`}
                   className="text-destructive hover:text-destructive"
                   onClick={() => handleRemovePrice(priceId)}
                 >

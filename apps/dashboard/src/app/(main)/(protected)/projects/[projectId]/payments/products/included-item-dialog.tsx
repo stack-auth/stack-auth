@@ -15,6 +15,11 @@ import { useMemo, useState } from "react";
 
 type ExpiresOption = 'never' | 'when-purchase-expires' | 'when-repeated';
 
+// Sentinel value used for the "+ Create new item" row. Includes a `__` prefix so
+// it cannot collide with a real item id (item ids cannot start with `__` and
+// cannot contain spaces, so this string is unreachable as a user-supplied id).
+const CREATE_NEW_ITEM_SENTINEL = '__stack_create_new_item__';
+
 type Product = CompleteConfig['payments']['products'][string];
 type IncludedItem = Product['includedItems'][string];
 
@@ -140,8 +145,8 @@ export function IncludedItemDialog({
       value: item.id,
       label: `${item.displayName || item.id} (${item.customerType.toUpperCase()} · ${item.id})`,
     })),
-    { value: 'create-new', label: '+ Create new item' },
-  ], [existingItems]);
+    ...(onCreateNewItem ? [{ value: CREATE_NEW_ITEM_SENTINEL, label: '+ Create new item' }] : []),
+  ], [existingItems, onCreateNewItem]);
 
   const repeatUnitOptions = useMemo(() => [
     { value: 'day', label: 'day(s)' },
@@ -188,7 +193,7 @@ export function IncludedItemDialog({
           <DesignSelectorDropdown
             value={selectedItemId}
             onValueChange={(value) => {
-              if (value === 'create-new') {
+              if (value === CREATE_NEW_ITEM_SENTINEL) {
                 onCreateNewItem?.();
               } else {
                 setSelectedItemId(value);

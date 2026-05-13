@@ -11,6 +11,7 @@ import { Label, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { PackageIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useEffect, useMemo, useState } from "react";
 
 type ItemDialogProps = {
@@ -110,7 +111,7 @@ export function ItemDialog({
           <DesignDialogClose asChild>
             <DesignButton variant="secondary" size="sm" type="button">Cancel</DesignButton>
           </DesignDialogClose>
-          <DesignButton size="sm" type="button" onClick={validateAndSave}>
+          <DesignButton size="sm" type="button" onClick={() => runAsynchronouslyWithAlert(validateAndSave)}>
             {editingItem ? "Save Changes" : "Create Item"}
           </DesignButton>
         </>

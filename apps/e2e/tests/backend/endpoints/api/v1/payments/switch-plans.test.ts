@@ -77,7 +77,7 @@ it("rejects writes that use the deprecated include-by-default price sentinel", a
     body: {
       config_override_string: JSON.stringify({
         payments: {
-          productLines: { catalog: { displayName: "Plans" } },
+          productLines: { catalog: { displayName: "Plans", customerType: "user" } },
           products: {
             legacyDefault: {
               displayName: "Legacy Default",

@@ -81,8 +81,6 @@ export function ActionDialog(props: ActionDialogProps) {
 
       <DialogContent
         onInteractOutside={blockDismissOnOutside ? (e) => e.preventDefault() : undefined}
-        onPointerDownOutside={blockDismissOnOutside ? (e) => e.preventDefault() : undefined}
-        onFocusOutside={blockDismissOnOutside ? (e) => e.preventDefault() : undefined}
         className={[
           props.preventClose ? "[&>button]:hidden" : "",
           props.contentClassName ?? "",

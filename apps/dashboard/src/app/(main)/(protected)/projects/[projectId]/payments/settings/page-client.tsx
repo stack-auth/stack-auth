@@ -6,7 +6,7 @@ import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { LockIcon } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { PaymentMethods } from "./payment-methods";
@@ -20,10 +20,12 @@ export default function PageClient() {
   const updateConfig = useUpdateConfig();
 
   const [optimisticBlocked, setOptimisticBlocked] = useState<boolean | null>(null);
+  const latestRequestIdRef = useRef(0);
   const blocked = optimisticBlocked ?? paymentsConfig.blockNewPurchases;
 
   const handleBlockChange = (checked: boolean) => {
     setOptimisticBlocked(checked);
+    const nextRequestId = ++latestRequestIdRef.current;
     runAsynchronouslyWithAlert((async () => {
       try {
         await updateConfig({
@@ -32,7 +34,12 @@ export default function PageClient() {
           pushable: true,
         });
       } finally {
-        setOptimisticBlocked(null);
+        // Only clear the optimistic value if this is the most recent toggle —
+        // otherwise a slow earlier request can clobber a newer optimistic value
+        // and momentarily snap the UI back to the stale config value.
+        if (nextRequestId === latestRequestIdRef.current) {
+          setOptimisticBlocked(null);
+        }
       }
     })());
   };

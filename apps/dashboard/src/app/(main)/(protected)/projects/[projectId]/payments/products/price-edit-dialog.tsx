@@ -53,6 +53,7 @@ export function PriceEditDialog({
   const [priceFreeTrialPopoverOpen, setPriceFreeTrialPopoverOpen] = useState(false);
   const [priceFreeTrialCount, setPriceFreeTrialCount] = useState(7);
   const [priceFreeTrialUnit, setPriceFreeTrialUnit] = useState<DayInterval[1]>('day');
+  const [isSaving, setIsSaving] = useState(false);
 
   const freeTrialUnitOptions = useMemo(
     () => DEFAULT_INTERVAL_UNITS.map((unit) => ({
@@ -101,10 +102,18 @@ export function PriceEditDialog({
           <DesignButton
             size="sm"
             type="button"
-            disabled={!editingPrice}
+            disabled={!editingPrice || isSaving}
+            loading={isSaving}
             onClick={() => {
-              if (!editingPrice) return;
-              runAsynchronouslyWithAlert(() => onSave(editingPrice, isAdding));
+              if (!editingPrice || isSaving) return;
+              setIsSaving(true);
+              runAsynchronouslyWithAlert(async () => {
+                try {
+                  await onSave(editingPrice, isAdding);
+                } finally {
+                  setIsSaving(false);
+                }
+              });
             }}
           >
             {isAdding ? "Add Price" : "Save Changes"}
@@ -195,7 +204,7 @@ export function PriceEditDialog({
                           type="number"
                           min={1}
                           value={priceFreeTrialCount}
-                          onChange={(e) => setPriceFreeTrialCount(parseInt(e.target.value) || 1)}
+                          onChange={(e) => setPriceFreeTrialCount(Math.max(1, parseInt(e.target.value) || 1))}
                           size="sm"
                         />
                         <DesignSelectorDropdown
@@ -215,7 +224,7 @@ export function PriceEditDialog({
                             onEditingPriceChange({
                               ...editingPrice,
                               freeTrialEnabled: true,
-                              freeTrialCount: priceFreeTrialCount,
+                              freeTrialCount: Math.max(1, priceFreeTrialCount),
                               freeTrialUnit: priceFreeTrialUnit,
                             });
                             setPriceFreeTrialPopoverOpen(false);

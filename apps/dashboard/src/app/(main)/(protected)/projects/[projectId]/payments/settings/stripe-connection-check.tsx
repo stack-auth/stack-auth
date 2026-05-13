@@ -4,7 +4,7 @@ import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { ArrowRightIcon, CheckCircleIcon, PlugsConnectedIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useAdminApp } from "../../use-admin-app";
 
 type StatusVariant = "success" | "warning" | "error";
@@ -88,7 +88,7 @@ export function StripeConnectionCheck() {
           title="Not connected"
           description="Set up Stripe to start accepting payments."
           action={
-            <DesignButton onClick={setupPayments} size="sm" className="gap-1.5">
+            <DesignButton onClick={() => runAsynchronouslyWithAlert(setupPayments)} size="sm" className="gap-1.5">
               <span>Connect Stripe</span>
               <ArrowRightIcon className="h-3.5 w-3.5" />
             </DesignButton>
@@ -118,7 +118,7 @@ export function StripeConnectionCheck() {
           description="Complete onboarding to unlock full capabilities."
           badges={missingCapabilities}
           action={
-            <DesignButton onClick={setupPayments} size="sm" variant="outline" className="gap-1.5">
+            <DesignButton onClick={() => runAsynchronouslyWithAlert(setupPayments)} size="sm" variant="outline" className="gap-1.5">
               <span>Continue setup</span>
               <ArrowRightIcon className="h-3.5 w-3.5" />
             </DesignButton>
