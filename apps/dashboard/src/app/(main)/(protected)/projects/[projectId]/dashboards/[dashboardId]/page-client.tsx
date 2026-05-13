@@ -1,7 +1,8 @@
 
 "use client";
 
-import { DashboardSandboxHost, type DashboardRuntimeError, type WidgetSelection } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
+import { DashboardSandboxHost, stampEsmVersion, type DashboardRuntimeError, type WidgetSelection } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
+import packageJson from "../../../../../../../../package.json";
 import { useRouter, useRouterConfirm } from "@/components/router";
 import { StreamingCodeViewer } from "@/components/streaming-code-viewer";
 import { ActionDialog, Button, Typography, useToast } from "@/components/ui";
@@ -239,8 +240,9 @@ function DashboardDetailContent({
 
   const handleCodeUpdate = useCallback((toolCall: ToolCallContent) => {
     if (typeof toolCall.args.content === "string") {
-      setPendingCode(toolCall.args.content);
-      setCurrentTsxSource(toolCall.args.content);
+      const stamped = stampEsmVersion(toolCall.args.content, packageJson.version);
+      setPendingCode(stamped);
+      setCurrentTsxSource(stamped);
       clearTimeout(codePhaseTimerRef.current);
       setCodePhase("typing");
       codePhaseTimerRef.current = setTimeout(() => {
@@ -450,7 +452,7 @@ function DashboardDetailContent({
                 <AssistantChat
                   chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, enabledAppIds, projectId, handleRunStart, handleRunEnd)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
-                  toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} currentCode={currentTsxSource} />}
+                  toolComponents={<DashboardToolUI setCurrentCode={(code) => setCurrentTsxSource(stampEsmVersion(code, packageJson.version))} currentCode={currentTsxSource} />}
                   useOffWhiteLightMode
                   composerPlaceholder={currentHasSource ? undefined : DASHBOARD_COMPOSER_PLACEHOLDER}
                   runningStatusMessages={!isCreating ? UPDATE_STATUS_MESSAGES : undefined}

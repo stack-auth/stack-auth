@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, Team, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
@@ -79,7 +79,7 @@ async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: str
     }
     await wait(2_000);
   }
-  return response;
+  throw new Error(`Timed out waiting for users_by_country[${options.countryCode}] === ${options.expectedCount}; last response: ${JSON.stringify(response.body?.users_by_country)}`);
 }
 
 async function waitForMetricsMatch(
@@ -95,7 +95,7 @@ async function waitForMetricsMatch(
     }
     await wait(1_000);
   }
-  return response;
+  throw new Error(`Timed out waiting for metrics predicate to match (include_anonymous=${includeAnonymous}); last response body: ${JSON.stringify(response.body)}`);
 }
 
 async function waitForAnalyticsRowsForSessionReplaySegment(
@@ -173,9 +173,7 @@ it("should return metrics data with users", async ({ expect }) => {
   backendContext.set({ mailbox: mailboxes[2], ipData: { country: "CH", ipAddress: "127.0.0.1", city: "Zurich", region: "ZH", latitude: 47.3769, longitude: 8.5417, tzIdentifier: "Europe/Zurich" } });
   await Auth.Otp.signIn();
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  const response = await waitForMetricsToIncludeUsersByCountry({ countryCode: "CH", expectedCount: 1 });
   expect(response).toMatchSnapshot(`metrics_result_with_users`);
 
   await ensureAnonymousUsersAreStillExcluded(response);
@@ -299,9 +297,11 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
     await Auth.Anonymous.signUp();
   }
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  const response = await waitForMetricsMatch(false, (r) => {
+    if (r.body?.total_users !== 1) return false;
+    const dau = r.body?.daily_active_users?.[r.body.daily_active_users.length - 1];
+    return dau?.activity === 1 && r.body?.users_by_country?.["CA"] === 1;
+  });
 
   // Should only count 1 regular user
   expect(response.body.total_users).toBe(1);
