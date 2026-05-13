@@ -15,7 +15,7 @@ import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/rea
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import * as yup from "yup";
@@ -230,7 +230,7 @@ function WarningInline() {
   );
 }
 
-function NoteInline({ children }: { children: React.ReactNode }) {
+function NoteInline({ children }: { children: ReactNode }) {
   return (
     <p className="flex items-start gap-2 text-[11px] text-muted-foreground">
       <InfoIcon size={12} className="mt-[2px] shrink-0" />
