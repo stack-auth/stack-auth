@@ -2,19 +2,12 @@
 
 import { ProjectTransferConfirmView, type ProjectTransferConfirmUiState } from "@/components/project-transfer-confirm-view";
 import { useRouter } from "@/components/router";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { buildTransferSignUpUrl, getStackAppInternals } from "@/lib/transfer-utils";
 import { useStackApp, useUser } from "@stackframe/stack";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
-function buildSignUpUrl(): string {
-  const currentUrl = new URL(window.location.href);
-  const signUpSearchParams = new URLSearchParams();
-  signUpSearchParams.set("after_auth_return_to", currentUrl.pathname + currentUrl.search + currentUrl.hash);
-  return `/handler/signup?${signUpSearchParams.toString()}`;
-}
 
 /** Custom integration project transfer — design-components UI. Neon uses `neon-transfer-confirm-page`. */
 export default function CustomIntegrationProjectTransferConfirmPageClient() {
@@ -28,7 +21,7 @@ export default function CustomIntegrationProjectTransferConfirmPageClient() {
   useEffect(() => {
     runAsynchronously(async () => {
       try {
-        await (app as any)[stackAppInternalsSymbol].sendRequest("/integrations/custom/projects/transfer/confirm/check", {
+        await getStackAppInternals(app).sendRequest("/integrations/custom/projects/transfer/confirm/check", {
           method: "POST",
           body: JSON.stringify({
             code: searchParams.get("code"),
@@ -63,7 +56,7 @@ export default function CustomIntegrationProjectTransferConfirmPageClient() {
       }}
       onPrimary={async () => {
         if (user) {
-          const confirmRes = await (app as any)[stackAppInternalsSymbol].sendRequest("/integrations/custom/projects/transfer/confirm", {
+          const confirmRes = await getStackAppInternals(app).sendRequest("/integrations/custom/projects/transfer/confirm", {
             method: "POST",
             body: JSON.stringify({
               code: searchParams.get("code"),
@@ -79,7 +72,7 @@ export default function CustomIntegrationProjectTransferConfirmPageClient() {
           router.push(`/projects/${confirmResJson.project_id}`);
           await wait(3000);
         } else {
-          router.push(buildSignUpUrl());
+          router.push(buildTransferSignUpUrl());
           await wait(3000);
         }
       }}
@@ -87,7 +80,7 @@ export default function CustomIntegrationProjectTransferConfirmPageClient() {
         if (user == null) {
           return;
         }
-        await user.signOut({ redirectUrl: buildSignUpUrl() });
+        await user.signOut({ redirectUrl: buildTransferSignUpUrl() });
       }}
     />
   );

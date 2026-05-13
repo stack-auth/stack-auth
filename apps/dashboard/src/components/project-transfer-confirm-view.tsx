@@ -34,9 +34,16 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
     onSwitchAccount,
   } = props;
 
+  const isErrorState = typeof state !== "string";
+
+  if (state === "success" || isErrorState) {
+    if (onCancel == null) {
+      throw new StackAssertionError("ProjectTransferConfirmView requires `onCancel` in the success and error states");
+    }
+  }
   if (state === "success") {
-    if (onCancel == null || onPrimary == null) {
-      throw new StackAssertionError("ProjectTransferConfirmView requires `onCancel` and `onPrimary` in the success state");
+    if (onPrimary == null) {
+      throw new StackAssertionError("ProjectTransferConfirmView requires `onPrimary` in the success state");
     }
     if (signedIn && (signedInAsLabel == null || onSwitchAccount == null)) {
       throw new StackAssertionError("ProjectTransferConfirmView requires `signedInAsLabel` and `onSwitchAccount` when `signedIn` is true in the success state");
@@ -109,7 +116,7 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
           </div>
         )}
 
-        {typeof state !== "string" && (
+        {isErrorState && (
           <DesignAlert
             variant="error"
             title="This transfer can’t continue"
@@ -118,7 +125,7 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
           />
         )}
 
-        {state === "success" && (
+        {(state === "success" || isErrorState) && (
           <div className="flex flex-col-reverse gap-2 border-t border-black/[0.08] pt-5 dark:border-white/[0.08] sm:flex-row sm:justify-end">
             <DesignButton
               variant="outline"
@@ -129,18 +136,20 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
                 });
               }}
             >
-              Cancel
+              {isErrorState ? "Close" : "Cancel"}
             </DesignButton>
-            <DesignButton
-              className="sm:min-w-[6.5rem]"
-              onClick={() => {
-                runAsynchronouslyWithAlert(async () => {
-                  await onPrimary?.();
-                });
-              }}
-            >
-              {primaryLabel}
-            </DesignButton>
+            {state === "success" && (
+              <DesignButton
+                className="sm:min-w-[6.5rem]"
+                onClick={() => {
+                  runAsynchronouslyWithAlert(async () => {
+                    await onPrimary?.();
+                  });
+                }}
+              >
+                {primaryLabel}
+              </DesignButton>
+            )}
           </div>
         )}
       </DesignCard>
