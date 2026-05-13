@@ -50,8 +50,8 @@ export function ensurePolyfilled() {
       captureError("unhandled-promise-rejection", reason);
       if (getNodeEnvironment() === "development") {
         console.error("\x1b[41mUnhandled promise rejection. Some production environments (particularly Vercel) will kill the server in this case, so the server will now exit. Please use the `ignoreUnhandledRejection` function to signal that you've handled the error.\x1b[0m", reason);
+        (globalThis as any).process.exit(1);
       }
-      (globalThis as any).process.exit(1);
     });
   }
 }

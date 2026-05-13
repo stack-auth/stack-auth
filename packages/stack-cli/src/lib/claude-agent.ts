@@ -150,8 +150,9 @@ function stripClaudeCodeEnv(): Record<string, string> {
 export async function runClaudeAgent(options: {
   prompt: string,
   cwd: string,
+  label?: string,
 }): Promise<boolean> {
-  const ui = new AgentProgressUI("Setting up Stack Auth...");
+  const ui = new AgentProgressUI(options.label ?? "Setting up Stack Auth...");
   ui.start();
 
   try {
