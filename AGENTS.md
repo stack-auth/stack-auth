@@ -111,6 +111,8 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Always let me know about the tradeoffs and decisions you make while implementing a non-trivial change.
 - Whenever you change the URL of a page in the docs (or remove one), add a redirect in the docs-mintlify/docs.json file to make sure we don't lose any SEO juice.
 - When you made frontend (or docs, dashboard, demo, etc.) changes, and you have a browser MCP in your list of MCP tools, make sure to test the changes in the browser MCP.
+- If you're using the browser to test the dashboard and need to sign in, use GitHub OAuth to sign in (by default it should redirect you to the mock OAuth provider page, where you can sign in with admin@example.com).
+- NEVER INSTALL A NEW PACKAGE (or anything else) WITHOUT EXPLICIT APPROVAL FROM THE USER.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

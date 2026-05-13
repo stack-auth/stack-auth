@@ -46,14 +46,17 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { CountryCodeInput } from "@/components/country-code-select";
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { useRouter } from "@/components/router";
 import { UserAnalyticsSection } from "./user-analytics";
 import { UserPageTableSection } from "./user-page-table-section";
 import { UserPaymentsSection } from "./user-payments";
@@ -92,6 +95,7 @@ function UserHeader({ user }: UserHeaderProps) {
   const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const stackAdminApp = useAdminApp();
+  const router = useRouter();
 
   return (
     <div className="flex min-w-0 flex-1 gap-4 items-center">
@@ -111,7 +115,13 @@ function UserHeader({ user }: UserHeaderProps) {
           }}/>
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
-      <div className="shrink-0 mr-8">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          onClick={() => router.push(`${urlString`/projects/${stackAdminApp.projectId}/conversations`}?userId=${encodeURIComponent(user.id)}`)}
+        >
+          Support
+        </Button>
         <DesignMenu
           variant="actions"
           trigger="icon"
@@ -128,7 +138,7 @@ function UserHeader({ user }: UserHeaderProps) {
                   const session = await user.createSession({ expiresInMillis });
                   const tokens = await session.getTokens();
                   setImpersonateSnippet(deindent`
-                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
+                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
                     window.location.reload();
                   `);
                 });
@@ -145,7 +155,7 @@ function UserHeader({ user }: UserHeaderProps) {
             }] satisfies DesignMenuActionItem[] : [],
             {
               id: "restriction",
-              label: "User restriction",
+              label: getRestrictionActionLabel(user),
               onClick: () => { setRestrictionDialogOpen(true); },
             },
             {
@@ -185,6 +195,26 @@ function getRestrictionReasonText(user: ServerUser): string {
   }
 }
 
+function getRestrictionActionLabel(user: ServerUser): string {
+  if (user.restrictedByAdmin) {
+    return "Edit or remove manual restriction";
+  }
+  if (user.isRestricted) {
+    return "Add manual restriction";
+  }
+  return "Restrict user";
+}
+
+function getManualRestrictionStatusText(user: ServerUser): string {
+  if (user.restrictedByAdmin) {
+    return "Restricted by admin";
+  }
+  if (user.isRestricted) {
+    return `Not manually restricted (${getRestrictionReasonText(user)})`;
+  }
+  return "Not restricted";
+}
+
 // Restriction dialog for editing restriction details
 function RestrictionDialog({
   user,
@@ -195,35 +225,31 @@ function RestrictionDialog({
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
-  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
-  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
-  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
-
-  const [publicReason, setPublicReason] = useState(restrictedByAdminReason ?? '');
-  const [privateDetails, setPrivateDetails] = useState(restrictedByAdminPrivateDetails ?? '');
+  const [publicReason, setPublicReason] = useState(user.restrictedByAdminReason ?? '');
+  const [privateDetails, setPrivateDetails] = useState(user.restrictedByAdminPrivateDetails ?? '');
   const [isSaving, setIsSaving] = useState(false);
 
   // Reset form when dialog opens
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen) {
-      setPublicReason(restrictedByAdminReason ?? '');
-      setPrivateDetails(restrictedByAdminPrivateDetails ?? '');
+      setPublicReason(user.restrictedByAdminReason ?? '');
+      setPrivateDetails(user.restrictedByAdminPrivateDetails ?? '');
     }
     onOpenChange(newOpen);
   };
 
   const handleSaveAndRestrict = async () => {
-    if (!privateDetails.trim()) {
-      alert('Please enter the private details for the restriction.');
-      return;
-    }
+    const trimmedPublicReason = publicReason.trim();
+    const trimmedPrivateDetails = privateDetails.trim();
 
     setIsSaving(true);
     try {
-      await user.update({ restrictedByAdmin: true, restrictedByAdminReason: publicReason.trim() || null, restrictedByAdminPrivateDetails: privateDetails.trim() || null } as any);
+      await user.update({
+        restrictedByAdmin: true,
+        restrictedByAdminReason: trimmedPublicReason.length > 0 ? trimmedPublicReason : null,
+        restrictedByAdminPrivateDetails: trimmedPrivateDetails.length > 0 ? trimmedPrivateDetails : null,
+      });
       onOpenChange(false);
-    } catch (error) {
-      captureError(`user-restriction-save-and-restrict-error`, new StackAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
     } finally {
       setIsSaving(false);
     }
@@ -236,7 +262,7 @@ function RestrictionDialog({
         restrictedByAdmin: false,
         restrictedByAdminReason: null,
         restrictedByAdminPrivateDetails: null,
-      } as any);
+      });
       onOpenChange(false);
     } finally {
       setIsSaving(false);
@@ -249,7 +275,9 @@ function RestrictionDialog({
         <DialogHeader>
           <DialogTitle>User Restriction</DialogTitle>
           <DialogDescription>
-            Restricted users cannot access your app by default. You can optionally provide a public reason (shown to the user) and private details (for internal notes).
+            {user.restrictedByAdmin
+              ? "This user is manually restricted. You can update the notes or remove the manual restriction."
+              : "Use a manual restriction to block this user from accessing your app by default. You can optionally provide a public reason shown to the user."}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-4">
@@ -263,21 +291,20 @@ function RestrictionDialog({
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium">Private details (internal only)</label>
+            <label className="text-sm font-medium">Private details (internal only, optional)</label>
             <Textarea
               value={privateDetails}
               onChange={(e) => setPrivateDetails(e.target.value)}
               placeholder="Internal notes, e.g., which sign-up rule triggered"
-              required
               className="min-h-[80px]"
               disabled={isSaving}
             />
           </div>
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          {restrictedByAdmin && (
+          {user.restrictedByAdmin && (
             <Button
-              variant="destructive"
+              variant="outline"
               onClick={handleRemoveRestriction}
               disabled={isSaving}
               className="sm:mr-auto"
@@ -293,7 +320,6 @@ function RestrictionDialog({
             Cancel
           </Button>
           <Button
-
             onClick={handleSaveAndRestrict}
             disabled={isSaving}
           >
@@ -307,44 +333,54 @@ function RestrictionDialog({
 
 // Restriction banner shown at top of page when user is restricted
 function RestrictionBanner({ user }: { user: ServerUser }) {
+  const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
+
   if (!user.isRestricted) return null;
 
-  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
-  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
-  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
   const reasonText = getRestrictionReasonText(user);
 
   return (
-    <Alert variant="destructive" className="mb-4">
-      <ProhibitIcon size={16} />
-      <AlertTitle>This user is currently restricted</AlertTitle>
-      <AlertDescription className="mt-2">
-        <p className="mb-2">
-          Restricted users cannot access your app by default. This user is restricted because: <strong>{reasonText}</strong>.
-        </p>
-        {user.restrictedReason?.type === 'email_not_verified' && (
-          <p className="text-sm opacity-80">
-            The user needs to verify their email address to remove this restriction.
+    <>
+      <Alert variant="destructive" className="mb-4">
+        <ProhibitIcon size={16} />
+        <AlertTitle>This user is currently restricted</AlertTitle>
+        <AlertDescription className="mt-2">
+          <p className="mb-2">
+            Restricted users cannot access your app by default. This user is restricted because: <strong>{reasonText}</strong>.
           </p>
-        )}
-        {user.restrictedReason?.type === 'anonymous' && (
-          <p className="text-sm opacity-80">
-            Anonymous users must sign up with credentials to remove this restriction.
-          </p>
-        )}
-        {user.restrictedReason?.type === 'restricted_by_administrator' && (
-          <div className="text-sm opacity-80">
-            <p>This user was manually restricted by an administrator.</p>
-            {restrictedByAdminReason && (
-              <p className="mt-1"><strong>Public reason:</strong> {restrictedByAdminReason}</p>
-            )}
-            {restrictedByAdminPrivateDetails && (
-              <p className="mt-1"><strong>Private details:</strong> {restrictedByAdminPrivateDetails}</p>
-            )}
-          </div>
-        )}
-      </AlertDescription>
-    </Alert>
+          {user.restrictedReason?.type === 'email_not_verified' && (
+            <p className="text-sm opacity-80">
+              The user needs to verify their email address to remove this restriction.
+            </p>
+          )}
+          {user.restrictedReason?.type === 'anonymous' && (
+            <p className="text-sm opacity-80">
+              Anonymous users must sign up with credentials to remove this restriction.
+            </p>
+          )}
+          {user.restrictedReason?.type === 'restricted_by_administrator' && (
+            <div className="text-sm opacity-80">
+              <p>This user was manually restricted by an administrator.</p>
+              {user.restrictedByAdminReason && (
+                <p className="mt-1"><strong>Public reason:</strong> {user.restrictedByAdminReason}</p>
+              )}
+              {user.restrictedByAdminPrivateDetails && (
+                <p className="mt-1"><strong>Private details:</strong> {user.restrictedByAdminPrivateDetails}</p>
+              )}
+            </div>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRestrictionDialogOpen(true)}
+            className="mt-3"
+          >
+            {getRestrictionActionLabel(user)}
+          </Button>
+        </AlertDescription>
+      </Alert>
+      <RestrictionDialog user={user} open={restrictionDialogOpen} onOpenChange={setRestrictionDialogOpen} />
+    </>
   );
 }
 
@@ -413,7 +449,21 @@ function UserDetails({ user }: { user: ServerUser }) {
 }
 
 function FraudSection({ user }: { user: ServerUser }) {
+  const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
   const items = useMemo<DesignEditableGridItem[]>(() => [
+    {
+      type: "custom",
+      icon: <ProhibitIcon size={14} />,
+      name: "Manual restriction",
+      children: (
+        <span className={cn(
+          "text-sm",
+          user.restrictedByAdmin ? "font-medium text-destructive" : "text-muted-foreground",
+        )}>
+          {getManualRestrictionStatusText(user)}
+        </span>
+      ),
+    },
     {
       type: "text",
       icon: <ShieldIcon size={14} />,
@@ -463,15 +513,25 @@ function FraudSection({ user }: { user: ServerUser }) {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Fraud
-      </h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Fraud
+        </h2>
+        <Button
+          variant={user.restrictedByAdmin ? "outline" : "destructive"}
+          size="sm"
+          onClick={() => setRestrictionDialogOpen(true)}
+        >
+          {getRestrictionActionLabel(user)}
+        </Button>
+      </div>
       <DesignEditableGrid
         items={items}
         columns={2}
         size="sm"
         deferredSave={false}
       />
+      <RestrictionDialog user={user} open={restrictionDialogOpen} onOpenChange={setRestrictionDialogOpen} />
     </section>
   );
 }
@@ -1350,7 +1410,7 @@ const ACTIVITY_WEEKDAY_LABELS = [
 ] as const;
 
 // Activity heatmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
-// intensity (buckets based on the user's own max activity over the window).
+// log-scaled intensity based on the user's own max activity over the window.
 // Tailwind needs the exact class strings at build time, so we keep them
 // enumerated here rather than building them dynamically.
 //
@@ -1369,7 +1429,7 @@ const ACTIVITY_COLORS = [
 
 function activityLevel(activity: number, max: number): 0 | 1 | 2 | 3 | 4 {
   if (activity <= 0 || max <= 0) return 0;
-  const intensity = activity / max;
+  const intensity = Math.log1p(activity) / Math.log1p(max);
   if (intensity <= 0.25) return 1;
   if (intensity <= 0.5) return 2;
   if (intensity <= 0.75) return 3;

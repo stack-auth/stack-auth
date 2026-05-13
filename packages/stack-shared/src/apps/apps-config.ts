@@ -96,6 +96,12 @@ export const ALL_APPS = {
     tags: ["comms"],
     stage: "stable",
   },
+  "support": {
+    displayName: "Support",
+    subtitle: "Customer conversations, team replies, and internal notes",
+    tags: ["comms", "operations"],
+    stage: "alpha",
+  },
   "email-api": {
     displayName: "Email API",
     subtitle: "Programmatic email sending and delivery",

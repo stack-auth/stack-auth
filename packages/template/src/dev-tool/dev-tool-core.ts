@@ -3,21 +3,20 @@
 import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
-import { envVars } from "../lib/env";
 import type { StackClientApp } from "../lib/stack-app";
 import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 import { getPagePrompt } from "../lib/stack-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
-import type { TriggerPlacement } from "./dev-tool-trigger-position";
+import type { TriggerCorner, TriggerPlacement } from "./dev-tool-trigger-position";
 import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPosition } from "./dev-tool-trigger-position";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'components' | 'ai' | 'docs' | 'dashboard' | 'console' | 'support';
+type TabId = 'overview' | 'customize' | 'ai' | 'dashboard' | 'console' | 'support';
 
 type TabResult = { element: HTMLElement, cleanup?: () => void };
 
@@ -38,13 +37,9 @@ type EventLogEntry = {
   message: string;
 };
 
-type ConsoleSubTab = 'logs' | 'config';
-type SupportSubTab = 'feedback' | 'feature-requests';
-
 type DevToolState = {
   isOpen: boolean;
   activeTab: TabId;
-  consoleSubTab: ConsoleSubTab;
   panelWidth: number;
   panelHeight: number;
 };
@@ -55,15 +50,18 @@ type DevToolState = {
 
 const STORAGE_KEY = '__stack-dev-tool-state';
 const TRIGGER_POS_KEY = 'stack-devtool-trigger-position';
+const ROOT_ID = '__stack-dev-tool-root';
+const GLOBAL_INSTANCE_KEY = '__stack-dev-tool-instance';
 const MAX_LOG_ENTRIES = 500;
+const CONSOLE_LOG_BATCH_SIZE = 100;
 const DRAG_THRESHOLD = 5;
+const DOCS_URL = 'https://docs.stack-auth.com';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
-  { id: 'components', label: 'Components', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+  { id: 'customize', label: 'Customize', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
   { id: 'ai', label: 'AI', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
   { id: 'console', label: 'Console', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
-  { id: 'docs', label: 'Docs', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' },
   { id: 'dashboard', label: 'Dashboard', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>' },
   { id: 'support', label: 'Support', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
 ];
@@ -71,7 +69,6 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 const DEFAULT_STATE: DevToolState = {
   isOpen: false,
   activeTab: 'overview',
-  consoleSubTab: 'logs',
   panelWidth: 800,
   panelHeight: 520,
 };
@@ -86,7 +83,11 @@ function loadState(): DevToolState {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return { ...DEFAULT_STATE, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored);
+      // Migrate old 'components' tab name to 'customize'
+      if (parsed.activeTab === 'components') parsed.activeTab = 'customize';
+      if (parsed.activeTab === 'docs') parsed.activeTab = 'overview';
+      return { ...DEFAULT_STATE, ...parsed, isOpen: false };
     }
   } catch {}
   return { ...DEFAULT_STATE };
@@ -94,7 +95,8 @@ function loadState(): DevToolState {
 
 function saveState(state: DevToolState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Keep layout preferences across pages, but do not reopen the panel automatically on remount.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, isOpen: false }));
   } catch {}
 }
 
@@ -131,6 +133,29 @@ type LogStore = {
   clear(): void;
   subscribe(fn: () => void): () => void;
 };
+
+type DevToolGlobalInstance = {
+  cleanup: () => void;
+};
+
+function isDevToolGlobalInstance(value: unknown): value is DevToolGlobalInstance {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'cleanup') === 'function';
+}
+
+function getGlobalDevToolInstance(): DevToolGlobalInstance | null {
+  if (typeof window === 'undefined') return null;
+  const value: unknown = Reflect.get(window, GLOBAL_INSTANCE_KEY);
+  return isDevToolGlobalInstance(value) ? value : null;
+}
+
+function setGlobalDevToolInstance(instance: DevToolGlobalInstance | null) {
+  if (typeof window === 'undefined') return;
+  if (instance === null) {
+    Reflect.deleteProperty(window, GLOBAL_INSTANCE_KEY);
+  } else {
+    Reflect.set(window, GLOBAL_INSTANCE_KEY, instance);
+  }
+}
 
 function getGlobalLogStore(): LogStore {
   const g = globalThis as any;
@@ -329,18 +354,15 @@ function appendInlineMarkdown(container: HTMLElement, text: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Trigger button (draggable pill)
+// Trigger button (draggable pill — corner-snapping, icon only)
 // ---------------------------------------------------------------------------
 
-function createTrigger(onClick: () => void): HTMLElement {
+function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: () => void } {
   type Position = { left: number; top: number };
   type Placement = TriggerPlacement;
-  const triggerSize = { width: 76, height: 36 };
 
-  const defaultPos = (): Position => ({
-    left: window.innerWidth - 76 - 16,
-    top: window.innerHeight - 36 - 16,
-  });
+  // Measured lazily after the element is appended to the DOM.
+  let triggerSize = { width: 36, height: 36 };
 
   function isPosition(value: unknown): value is Position {
     if (typeof value !== 'object' || value === null) return false;
@@ -349,8 +371,8 @@ function createTrigger(onClick: () => void): HTMLElement {
 
   function isPlacement(value: unknown): value is Placement {
     if (typeof value !== 'object' || value === null) return false;
-    const side = Reflect.get(value, 'side');
-    return ['left', 'right', 'top', 'bottom'].includes(String(side)) && typeof Reflect.get(value, 'offset') === 'number';
+    const corner = Reflect.get(value, 'corner');
+    return ['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(String(corner));
   }
 
   function loadPlacement(): Placement | null {
@@ -358,7 +380,24 @@ function createTrigger(onClick: () => void): HTMLElement {
       const raw = localStorage.getItem(TRIGGER_POS_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
+
       if (isPlacement(parsed)) return parsed;
+
+      // Migrate old side-based placement { side, offset } to nearest corner.
+      if (typeof parsed === 'object' && parsed !== null && 'side' in parsed && 'offset' in parsed) {
+        const side = String(Reflect.get(parsed, 'side'));
+        const offset = Number(Reflect.get(parsed, 'offset'));
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let corner: TriggerCorner;
+        if (side === 'right')  corner = offset < vh / 2 ? 'top-right'   : 'bottom-right';
+        else if (side === 'left')   corner = offset < vh / 2 ? 'top-left'    : 'bottom-left';
+        else if (side === 'top')    corner = offset < vw / 2 ? 'top-left'    : 'top-right';
+        else                        corner = offset < vw / 2 ? 'bottom-left' : 'bottom-right';
+        return { corner };
+      }
+
+      // Migrate old absolute position.
       if (isPosition(parsed)) {
         return getSnappedTriggerPlacement(parsed, triggerSize, { width: window.innerWidth, height: window.innerHeight });
       }
@@ -372,26 +411,60 @@ function createTrigger(onClick: () => void): HTMLElement {
     } catch {}
   }
 
-  function applyPos(nextPos: Position) {
+  let animationTimeout: number | null = null;
+
+  function setPositionAnimation(isAnimated: boolean) {
+    if (animationTimeout !== null) {
+      window.clearTimeout(animationTimeout);
+      animationTimeout = null;
+    }
+    btn.classList.toggle('sdt-trigger-position-animated', isAnimated);
+    if (isAnimated) {
+      animationTimeout = window.setTimeout(() => {
+        animationTimeout = null;
+        btn.classList.remove('sdt-trigger-position-animated');
+      }, 180);
+    }
+  }
+
+  function applyPos(nextPos: Position, options?: { animate?: boolean }) {
+    setPositionAnimation(options?.animate === true);
     pos = nextPos;
     btn.style.left = pos.left + 'px';
     btn.style.top = pos.top + 'px';
   }
 
-  const btn = h('button', { className: 'sdt-trigger', 'aria-label': 'Toggle Stack Auth Dev Tools', title: 'Stack Auth Dev Tools' });
+  const btn = h('button', {
+    className: 'sdt-trigger',
+    'aria-label': 'Toggle Stack Auth Dev Tools',
+    'data-stack-devtool-trigger': 'true',
+    title: 'Stack Auth Dev Tools',
+  });
   const logoSpan = h('span', { className: 'sdt-trigger-logo' });
   setHtml(logoSpan, STACK_LOGO_SVG);
   btn.appendChild(logoSpan);
-  btn.appendChild(h('span', { className: 'sdt-trigger-text' }, 'DEV'));
 
-  let placement = loadPlacement() ?? getSnappedTriggerPlacement(defaultPos(), triggerSize, { width: window.innerWidth, height: window.innerHeight });
+  let placement = loadPlacement() ?? { corner: 'bottom-right' as TriggerCorner };
   let pos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
   applyPos(pos);
 
   let dragState: { startX: number; startY: number; startLeft: number; startTop: number; didDrag: boolean } | null = null;
 
+  // After mount, measure the actual rendered size and re-snap if needed.
+  requestAnimationFrame(() => {
+    const rect = btn.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      triggerSize = { width: rect.width, height: rect.height };
+      const measured = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
+      if (measured.left !== pos.left || measured.top !== pos.top) {
+        applyPos(measured, { animate: true });
+      }
+    }
+  });
+
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    setPositionAnimation(false);
     btn.setPointerCapture(e.pointerId);
     dragState = { startX: e.clientX, startY: e.clientY, startLeft: pos.left, startTop: pos.top, didDrag: false };
   });
@@ -416,23 +489,33 @@ function createTrigger(onClick: () => void): HTMLElement {
     btn.releasePointerCapture(e.pointerId);
     if (ds.didDrag) {
       placement = getSnappedTriggerPlacement(pos, triggerSize, { width: window.innerWidth, height: window.innerHeight });
-      applyPos(resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight }));
+      applyPos(resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight }), { animate: true });
       savePlacement(placement);
     } else {
       onClick();
     }
   });
 
-  window.addEventListener('resize', () => {
+  // On viewport resize, reapply the existing corner placement to the new dimensions.
+  // Placement (corner) only changes when the user drags.
+  function onResize() {
     const resizedPos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
     if (resizedPos.left !== pos.left || resizedPos.top !== pos.top) {
-      applyPos(resizedPos);
-      placement = getSnappedTriggerPlacement(pos, triggerSize, { width: window.innerWidth, height: window.innerHeight });
-      savePlacement(placement);
+      applyPos(resizedPos, { animate: true });
     }
-  });
+  }
 
-  return btn;
+  window.addEventListener('resize', onResize);
+
+  return {
+    element: btn,
+    cleanup: () => {
+      if (animationTimeout !== null) {
+        window.clearTimeout(animationTimeout);
+      }
+      window.removeEventListener('resize', onResize);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -513,8 +596,13 @@ function createTabBar(
 // Iframe helper
 // ---------------------------------------------------------------------------
 
-function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026', errorMsg = 'Unable to load content', errorDetail?: string): HTMLElement {
+function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026', errorMsg = 'Unable to load content', errorDetail?: string, openExternallyLabel?: string): HTMLElement {
   const container = h('div', { className: 'sdt-iframe-container' });
+  if (openExternallyLabel != null) {
+    container.appendChild(h('div', { className: 'sdt-iframe-toolbar' },
+      h('a', { href: src, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-iframe-open-link' }, openExternallyLabel),
+    ));
+  }
   const loadingEl = h('div', { className: 'sdt-iframe-loading' }, loadingMsg);
   container.appendChild(loadingEl);
 
@@ -539,8 +627,7 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
     }
     const retryBtn = h('button', { className: 'sdt-iframe-error-btn' }, 'Retry');
     retryBtn.addEventListener('click', () => {
-      container.innerHTML = '';
-      container.appendChild(createIframeTab(src, title, loadingMsg, errorMsg, errorDetail));
+      container.replaceWith(createIframeTab(src, title, loadingMsg, errorMsg, errorDetail, openExternallyLabel));
     });
     errDiv.appendChild(retryBtn);
     const link = h('a', { href: src, target: '_blank', rel: 'noopener noreferrer', style: { color: 'var(--sdt-accent)', fontSize: '12px', textDecoration: 'none' } }, 'Open in new tab');
@@ -562,9 +649,8 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
 
 function createOverviewTab(app: StackClientApp<true>): TabResult {
   const container = h('div', { className: 'sdt-ov' });
-  const apiBaseUrl = resolveApiBaseUrl(app);
 
-  // -- User hero card --
+  // ── Identity card ──────────────────────────────────────────────────────────
   const heroCard = h('div', { className: 'sdt-ov-card sdt-ov-card-hero' });
   heroCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Identity'));
 
@@ -585,6 +671,22 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
   const emailBtn = h('button', null);
   setHtml(emailBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>');
   emailRow.append(emailInput, emailBtn);
+
+  function isBestEffortOverviewError(error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return true;
+    }
+    if (error instanceof TypeError) {
+      return true;
+    }
+    if (error instanceof Error) {
+      return error.message.includes('Failed to fetch')
+        || error.message.includes('NetworkError')
+        || error.message.includes('Load failed')
+        || error.message.includes('network connection');
+    }
+    return false;
+  }
 
   function showToast(msg: string, type: 'success' | 'error') {
     toast.textContent = msg;
@@ -712,114 +814,27 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     }
   });
 
-  async function refreshUser() {
-    try {
-      currentUser = await app.getUser();
-    } catch {
-      currentUser = null;
-    }
-    if (currentUser) {
-      const initials = (currentUser.displayName || currentUser.primaryEmail || '?')
-        .split(' ').map((s: string) => s[0]).join('').slice(0, 2).toUpperCase();
-      avatar.className = 'sdt-ov-avatar sdt-ov-avatar-active';
-      if (currentUser.profileImageUrl) {
-        avatar.innerHTML = `<img src="${escapeHtml(currentUser.profileImageUrl)}" alt="" />`;
-      } else {
-        avatar.textContent = initials;
-      }
-      userName.textContent = currentUser.displayName || 'Anonymous';
-      userEmail.textContent = currentUser.primaryEmail || 'No email';
-      authIndicator.style.display = '';
-    } else {
-      avatar.className = 'sdt-ov-avatar';
-      avatar.textContent = '?';
-      userName.textContent = 'No user signed in';
-      userEmail.textContent = 'Sign in to test auth flows';
-      authIndicator.style.display = 'none';
-    }
-    rebuildActions();
-    buildChecklist();
-  }
-
   heroCard.append(actions, toast);
-  runAsynchronously(refreshUser());
-  const userPoll = setInterval(() => {
-    runAsynchronously(refreshUser());
-  }, 3000);
 
-  // -- Project info card --
-  const projectCard = h('div', { className: 'sdt-ov-card sdt-ov-card-project' });
-  projectCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Project'));
-  const projectRows = h('div', { className: 'sdt-ov-project-rows' });
-
-  const sdkVersion = app.version;
-  const projectId = app.projectId;
-
-  function addProjectRow(key: string, val: string | HTMLElement) {
-    const row = h('div', { className: 'sdt-ov-project-row' });
-    row.appendChild(h('span', { className: 'sdt-ov-project-key' }, key));
-    const valEl = h('span', { className: 'sdt-ov-project-val' });
-    if (typeof val === 'string') {
-      valEl.textContent = val;
-    } else {
-      valEl.appendChild(val);
-    }
-    row.appendChild(valEl);
-    projectRows.appendChild(row);
-  }
-
-  const sdkValSpan = h('span', null, sdkVersion || '?');
-  addProjectRow('SDK', sdkValSpan);
-
-  // Check latest version
-  const parsed = sdkVersion.match(/(@[\w-]+\/[\w-]+)@(\d+\.\d+\.\d+)/);
-  if (parsed) {
-    runAsynchronously(
-      fetch(`https://registry.npmjs.org/${parsed[1]}/latest`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.version) {
-            const pa = parsed[2].split('.').map(Number);
-            const pb = data.version.split('.').map(Number);
-            let outdated = false;
-            for (let i = 0; i < 3; i++) {
-              if (pa[i] !== pb[i]) {
-                outdated = pa[i] < pb[i];
-                break;
-              }
-            }
-            if (outdated) {
-              const badge = h('span', { className: 'sdt-ov-sdk-badge', title: `Latest: ${data.version}` }, 'Outdated');
-              sdkValSpan.parentElement!.appendChild(badge);
-            }
-          }
-        })
-    );
-  }
-
-  const idValSpan = h('span', { className: 'sdt-ov-project-val-mono' }, projectId || 'N/A');
-  addProjectRow('Project ID', idValSpan);
-
-  const envVal = h('span', { className: 'sdt-ov-env-val' });
-  const dot = h('span', { className: 'sdt-ov-pulse-dot' });
-  envVal.append(dot, h('span', null, 'Development'));
-  addProjectRow('Environment', envVal);
-
-  projectCard.appendChild(projectRows);
-
-  // -- Auth config card --
-  const authCard = h('div', { className: 'sdt-ov-card sdt-ov-card-auth' });
-  authCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Config'));
+  // ── Auth methods card ──────────────────────────────────────────────────────
+  const methodsCard = h('div', { className: 'sdt-ov-card sdt-ov-card-auth' });
+  methodsCard.appendChild(h('div', { className: 'sdt-ov-label' }, 'Auth Methods'));
   const authGrid = h('div', { className: 'sdt-ov-auth-grid' });
   for (let i = 0; i < 3; i++) {
     authGrid.appendChild(h('div', { className: 'sdt-ov-method sdt-ov-skeleton-pill' }));
   }
-  authCard.appendChild(authGrid);
+  methodsCard.appendChild(authGrid);
+  let hasActiveAuthMethod: boolean | null = null;
 
-  runAsynchronously(
-    app.getProject().then((project: any) => {
+  async function loadAuthMethods() {
+    try {
+      const project = await app.getProject();
       authGrid.innerHTML = '';
       const config = project.config;
+      hasActiveAuthMethod = config.credentialEnabled
+        || config.magicLinkEnabled
+        || config.passkeyEnabled
+        || config.oauthProviders.length > 0;
       const methods = [
         { label: 'Password', enabled: config.credentialEnabled },
         { label: 'Magic Link', enabled: config.magicLinkEnabled },
@@ -840,32 +855,53 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
         pill.appendChild(h('span', { className: 'sdt-ov-method-name' }, 'Sign-up off'));
         authGrid.appendChild(pill);
       }
-    }).catch(() => {
-      authGrid.innerHTML = '<div style="font-size:11px;color:var(--sdt-text-tertiary)">Could not load config</div>';
-    })
-  );
+      buildChecklist();
+    } catch (error) {
+      authGrid.innerHTML = '<div style="font-size:11px;color:var(--sdt-text-tertiary)">Could not load auth methods</div>';
+      hasActiveAuthMethod = null;
+      buildChecklist();
+      if (!isBestEffortOverviewError(error)) {
+        throw error;
+      }
+    }
+  }
 
-  // -- Checklist card --
+  // Overview hydration is best-effort while the local Stack backend is still booting.
+  runAsynchronously(loadAuthMethods());
+
+  // ── Setup checklist (only shown when something is incomplete) ──────────────
   const checksCard = h('div', { className: 'sdt-ov-card sdt-ov-card-checks' });
+  const projectId = app.projectId;
+  let checksCardMounted = false;
+
   function buildChecklist() {
     checksCard.innerHTML = '';
     const checks = [
-      { ok: !!projectId && projectId !== 'default', label: 'Project' },
-      { ok: true, label: 'Provider' },
-      { ok: !!currentUser, label: 'Auth' },
+      { ok: !!projectId && projectId !== 'default', label: 'Project configured', hint: null },
+      { ok: hasActiveAuthMethod === true, label: 'Auth method active', hint: hasActiveAuthMethod === null ? 'Still checking project config' : null },
+      { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' },
     ];
     const passCount = checks.filter((c) => c.ok).length;
     const allGood = passCount === checks.length;
+
     if (allGood) {
-      checksCard.classList.add('sdt-ov-card-checks-ok');
-    } else {
-      checksCard.classList.remove('sdt-ov-card-checks-ok');
+      if (checksCardMounted && checksCard.parentElement) {
+        container.removeChild(checksCard);
+        checksCardMounted = false;
+      }
+      return;
     }
 
-    const header = h('div', { className: 'sdt-ov-checks-header' });
-    header.appendChild(h('div', { className: 'sdt-ov-label', style: { marginBottom: '0' } }, 'Setup'));
-    header.appendChild(h('span', { className: `sdt-ov-checks-badge ${allGood ? 'sdt-ov-checks-badge-ok' : 'sdt-ov-checks-badge-warn'}` }, allGood ? 'All good' : `${passCount}/${checks.length}`));
-    checksCard.appendChild(header);
+    if (!checksCardMounted) {
+      container.appendChild(checksCard);
+      checksCardMounted = true;
+    }
+
+    const titleRow = h('div', { className: 'sdt-ov-checks-header' });
+    const titleLabel = h('div', { className: 'sdt-ov-label', style: { marginBottom: '0', color: 'var(--sdt-warning)' } }, 'Setup');
+    const badge = h('span', { className: 'sdt-ov-checks-badge sdt-ov-checks-badge-warn' }, `${passCount}\u200a/\u200a${checks.length}`);
+    titleRow.append(titleLabel, badge);
+    checksCard.appendChild(titleRow);
 
     const bar = h('div', { className: 'sdt-ov-checks-bar' });
     const fill = h('div', { className: 'sdt-ov-checks-bar-fill' });
@@ -873,135 +909,61 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     bar.appendChild(fill);
     checksCard.appendChild(bar);
 
-    const checksRow = h('div', { className: 'sdt-ov-checks' });
     for (const c of checks) {
-      const check = h('div', { className: `sdt-ov-check ${c.ok ? 'sdt-ov-check-ok' : 'sdt-ov-check-warn'}` });
-      check.appendChild(h('span', { className: 'sdt-ov-check-icon' }, c.ok ? '\u2713' : '!'));
-      check.appendChild(h('span', { className: 'sdt-ov-check-label' }, c.label));
-      checksRow.appendChild(check);
+      const row = h('div', { className: 'sdt-ov-setup-row' });
+      row.appendChild(h('span', { className: `sdt-ov-setup-dot ${c.ok ? 'sdt-ov-setup-dot-ok' : 'sdt-ov-setup-dot-warn'}` }));
+      row.appendChild(h('span', { className: 'sdt-ov-setup-label' }, c.label));
+      if (!c.ok && c.hint) {
+        row.appendChild(h('span', { className: 'sdt-ov-setup-hint' }, c.hint));
+      }
+      checksCard.appendChild(row);
     }
-    checksCard.appendChild(checksRow);
   }
-  buildChecklist();
 
-  // -- Changelog card --
-  const changelogCard = h('div', { className: 'sdt-ov-card sdt-ov-card-changelog' });
-  changelogCard.appendChild(h('div', { className: 'sdt-ov-label' }, "What's New"));
-
-  const changelogPath = '/api/latest/internal/changelog';
-  const changelogContent = h('div', { className: 'sdt-ov-changelog-content' });
-  changelogContent.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Loading changelog...</div>';
-  changelogCard.appendChild(changelogContent);
-
-  runAsynchronously((async () => {
-    let entries: any[] = [];
+  async function refreshUser() {
     try {
-      const res = await fetch(apiBaseUrl + changelogPath);
-      if (res.ok) {
-        const data = await res.json();
-        entries = data.entries ?? [];
+      currentUser = await app.getUser();
+
+      if (currentUser) {
+        const initials = (currentUser.displayName || currentUser.primaryEmail || '?')
+          .split(' ').map((s: string) => s[0]).join('').slice(0, 2).toUpperCase();
+        avatar.className = 'sdt-ov-avatar sdt-ov-avatar-active';
+        if (currentUser.profileImageUrl) {
+          avatar.innerHTML = `<img src="${escapeHtml(currentUser.profileImageUrl)}" alt="" />`;
+        } else {
+          avatar.textContent = initials;
+        }
+        userName.textContent = currentUser.displayName || 'Anonymous';
+        userEmail.textContent = currentUser.primaryEmail || 'No email';
+        authIndicator.style.display = '';
+      } else {
+        avatar.className = 'sdt-ov-avatar';
+        avatar.textContent = '?';
+        userName.textContent = 'No user signed in';
+        userEmail.textContent = 'Sign in to test auth flows';
+        authIndicator.style.display = 'none';
       }
-    } catch {}
-    if (entries.length === 0) {
-      try {
-        const res = await fetch('https://api.stack-auth.com' + changelogPath);
-        if (res.ok) {
-          const data = await res.json();
-          entries = data.entries ?? [];
-        }
-      } catch {}
-    }
-
-    changelogContent.innerHTML = '';
-    if (entries.length === 0) {
-      changelogContent.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Could not load changelog.</div>';
-      return;
-    }
-
-    const changelogDiv = h('div', { className: 'sdt-ov-changelog' });
-    let expandedVersion: string | null = entries[0]?.version ?? null;
-
-    function renderEntries() {
-      changelogDiv.innerHTML = '';
-      for (const entry of entries.slice(0, 5)) {
-        const isExpanded = expandedVersion === entry.version;
-        const release = h('div', { className: 'sdt-ov-release' });
-        const head = h('div', { className: 'sdt-ov-release-head', style: { cursor: 'pointer' } });
-        head.textContent = entry.version;
-        if (entry.releasedAt) {
-          head.appendChild(h('span', { className: 'sdt-ov-release-date' }, entry.releasedAt));
-        }
-        const arrow = h('span', { style: { marginLeft: 'auto', fontSize: '10px', color: 'var(--sdt-text-tertiary)' } }, isExpanded ? '\u25B2' : '\u25BC');
-        head.appendChild(arrow);
-        head.addEventListener('click', () => {
-          expandedVersion = isExpanded ? null : entry.version;
-          renderEntries();
-        });
-        release.appendChild(head);
-
-        if (isExpanded && entry.markdown) {
-          const body = h('div', { className: 'sdt-ov-release-body', style: { padding: '4px 0 8px' } });
-          const lines = entry.markdown.split('\n');
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine === '') continue;
-
-            const image = parseMarkdownImage(trimmedLine);
-            if (image) {
-              const figure = h('figure', { className: 'sdt-ov-release-image-figure' });
-              const imageLink = h('a', {
-                className: 'sdt-ov-release-image-link',
-                href: image.src,
-                target: '_blank',
-                rel: 'noopener noreferrer',
-              });
-              imageLink.appendChild(h('img', {
-                className: 'sdt-ov-release-image',
-                src: image.src,
-                alt: image.alt,
-                loading: 'lazy',
-                decoding: 'async',
-              }));
-              figure.appendChild(imageLink);
-              if (image.alt !== '') {
-                figure.appendChild(h('figcaption', { className: 'sdt-ov-release-image-caption' }, image.alt));
-              }
-              body.appendChild(figure);
-              continue;
-            }
-
-            const headingMatch = line.match(/^###\s+(.+)/);
-            if (headingMatch) {
-              const heading = h('div', { style: { fontWeight: '600', color: 'var(--sdt-text)', marginTop: '8px', marginBottom: '4px', fontSize: '12px' } });
-              appendInlineMarkdown(heading, headingMatch[1]);
-              body.appendChild(heading);
-              continue;
-            }
-            if (line.startsWith('- ')) {
-              const li = h('div', { style: { fontSize: '12px', color: 'var(--sdt-text-secondary)', lineHeight: '1.6', paddingLeft: '12px' } });
-              li.appendChild(document.createTextNode('\u2022 '));
-              appendInlineMarkdown(li, line.slice(2));
-              body.appendChild(li);
-              continue;
-            }
-            const paragraph = h('div', { style: { fontSize: '12px', color: 'var(--sdt-text-secondary)', lineHeight: '1.6' } });
-            appendInlineMarkdown(paragraph, line);
-            body.appendChild(paragraph);
-          }
-          release.appendChild(body);
-        }
-        changelogDiv.appendChild(release);
+    } catch (error) {
+      avatar.className = 'sdt-ov-avatar';
+      avatar.textContent = '?';
+      userName.textContent = 'Could not load user';
+      userEmail.textContent = 'Check your local Stack backend';
+      authIndicator.style.display = 'none';
+      currentUser = null;
+      if (!isBestEffortOverviewError(error)) {
+        throw error;
       }
     }
-    renderEntries();
-    changelogContent.appendChild(changelogDiv);
-  })());
+    rebuildActions();
+    buildChecklist();
+  }
 
-  const allReleasesLink = h('a', { className: 'sdt-ov-all-releases', href: 'https://github.com/stack-auth/stack/releases', target: '_blank', rel: 'noopener noreferrer' });
-  setHtml(allReleasesLink, 'All releases <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>');
-  changelogCard.appendChild(allReleasesLink);
-
-  container.append(heroCard, projectCard, authCard, checksCard, changelogCard);
+  container.append(heroCard, methodsCard);
+  buildChecklist();
+  runAsynchronously(refreshUser());
+  const userPoll = setInterval(() => {
+    runAsynchronously(refreshUser());
+  }, 3000);
 
   return { element: container, cleanup: () => clearInterval(userPoll) };
 }
@@ -1010,41 +972,94 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
 // Console tab
 // ---------------------------------------------------------------------------
 
-function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: ReturnType<typeof createStateStore>): TabResult {
-  const container = h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } });
+type MergedLogEntry =
+  | { kind: 'api', entry: ApiLogEntry }
+  | { kind: 'event', entry: EventLogEntry };
+
+function createConsoleTab(logStore: LogStore): TabResult {
+  const container = h('div', { className: 'sdt-console-panel' });
 
   const EVENT_TYPE_STYLES: Record<string, string> = {
     'error': 'sdt-badge-error',
     'info': 'sdt-badge-info',
   };
 
-  const trailingBtns = h('div', { style: { display: 'flex', gap: '4px' } });
-  const exportBtn = h('button', { className: 'sdt-close-btn', title: 'Export logs & config', style: { fontSize: '11px', width: 'auto', padding: '0 8px' } });
-  setHtml(exportBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>Export');
-  const clearBtn = h('button', { className: 'sdt-close-btn', title: 'Clear logs', style: { fontSize: '11px', width: 'auto', padding: '0 8px' } }, 'Clear');
-  clearBtn.addEventListener('click', () => logStore.clear());
-  trailingBtns.append(exportBtn, clearBtn);
+  const title = h('div', { className: 'sdt-console-title' }, 'Logs');
+  const actions = h('div', { className: 'sdt-console-actions' });
+  const copyBtn = h('button', { className: 'sdt-console-action-btn', title: 'Copy logs' });
+  setHtml(copyBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy');
+  const exportBtn = h('button', { className: 'sdt-console-action-btn', title: 'Export logs' });
+  setHtml(exportBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export');
+  const clearBtn = h('button', { className: 'sdt-console-action-btn', title: 'Clear logs' });
+  setHtml(clearBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Clear');
+  actions.append(copyBtn, exportBtn, clearBtn);
+  container.appendChild(h('div', { className: 'sdt-console-header' }, title, actions));
 
-  const subTabBar = createTabBar(
-    [{ id: 'logs', label: 'Logs' }, { id: 'config', label: 'Config' }],
-    state.get().consoleSubTab,
-    (id) => {
-      state.update({ consoleSubTab: id as ConsoleSubTab });
-      renderSubTab();
-    },
-    { variant: 'pills', trailing: trailingBtns },
-  );
-  container.appendChild(h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' } }, subTabBar.el));
-
-  const contentArea = h('div', { className: 'sdt-tab-content-fade', style: { flex: '1', overflow: 'auto' } });
+  const contentArea = h('div', { className: 'sdt-console-log-scroll sdt-tab-content-fade' });
   container.appendChild(contentArea);
 
-  function renderLogs() {
-    contentArea.innerHTML = '';
-    const merged = [
-      ...logStore.apiLogs.map((e) => ({ kind: 'api' as const, entry: e })),
-      ...logStore.eventLogs.map((e) => ({ kind: 'event' as const, entry: e })),
+  let visibleLogCount = CONSOLE_LOG_BATCH_SIZE;
+
+  function getMergedLogs(): MergedLogEntry[] {
+    return [
+      ...logStore.apiLogs.map((entry) => ({ kind: 'api' as const, entry })),
+      ...logStore.eventLogs.map((entry) => ({ kind: 'event' as const, entry })),
     ].sort((a, b) => b.entry.timestamp - a.entry.timestamp);
+  }
+
+  function formatLogLine(item: MergedLogEntry): string {
+    if (item.kind === 'api') {
+      const log = item.entry;
+      const status = log.status !== undefined ? ` [${log.status}]` : '';
+      const duration = log.duration !== undefined ? ` ${log.duration}ms` : '';
+      const error = log.error !== undefined ? ` ${log.error}` : '';
+      return `${new Date(log.timestamp).toISOString()} ${log.method} ${log.url}${status}${duration}${error}`;
+    }
+
+    const log = item.entry;
+    return `${new Date(log.timestamp).toISOString()} ${log.type.toUpperCase()} ${log.message}`;
+  }
+
+  function formatLogsForExport(): string {
+    const lines = [
+      '=== Stack Auth Dev Tool Logs ===',
+      `Generated: ${new Date().toISOString()}`,
+      `Total logs: ${getMergedLogs().length}`,
+      '',
+      ...getMergedLogs().map(formatLogLine),
+    ];
+    return lines.join('\n');
+  }
+
+  function renderLogItem(item: MergedLogEntry): HTMLElement {
+    if (item.kind === 'api') {
+      const log = item.entry;
+      const row = h('div', { className: 'sdt-log-item' });
+      row.appendChild(h('span', { className: 'sdt-log-time' }, formatTimestamp(log.timestamp)));
+      row.appendChild(h('span', { className: `sdt-log-method sdt-log-method-${log.method.toLowerCase()}` }, log.method));
+      row.appendChild(h('span', { className: 'sdt-log-url' }, log.url));
+      if (log.status !== undefined) {
+        row.appendChild(h('span', { className: `sdt-log-status ${log.status < 400 ? 'sdt-log-status-ok' : 'sdt-log-status-err'}` }, String(log.status)));
+      }
+      if (log.duration !== undefined) {
+        row.appendChild(h('span', { className: 'sdt-log-time' }, log.duration + 'ms'));
+      }
+      return row;
+    }
+
+    const log = item.entry;
+    const row = h('div', { className: 'sdt-log-item' });
+    row.appendChild(h('span', { className: 'sdt-log-time' }, formatTimestamp(log.timestamp)));
+    row.appendChild(h('span', { className: `sdt-badge ${EVENT_TYPE_STYLES[log.type] || 'sdt-badge-info'}` }, log.type));
+    row.appendChild(h('span', { className: 'sdt-log-message' }, log.message));
+    return row;
+  }
+
+  function renderLogs() {
+    const previousScrollTop = contentArea.scrollTop;
+    contentArea.innerHTML = '';
+    const merged = getMergedLogs();
+    visibleLogCount = Math.min(Math.max(visibleLogCount, CONSOLE_LOG_BATCH_SIZE), Math.max(merged.length, CONSOLE_LOG_BATCH_SIZE));
 
     if (merged.length === 0) {
       contentArea.innerHTML = '<div class="sdt-empty-state"><div class="sdt-empty-state-icon">\uD83D\uDCCB</div><div>No logs recorded yet</div><div style="font-size:12px;color:var(--sdt-text-tertiary)">API calls and auth events will appear here</div></div>';
@@ -1052,113 +1067,66 @@ function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: 
     }
 
     const list = h('div', { className: 'sdt-log-list' });
-    for (const item of merged) {
-      if (item.kind === 'api') {
-        const log = item.entry as ApiLogEntry;
-        const row = h('div', { className: 'sdt-log-item' });
-        row.appendChild(h('span', { className: 'sdt-log-time' }, formatTimestamp(log.timestamp)));
-        row.appendChild(h('span', { className: `sdt-log-method sdt-log-method-${log.method.toLowerCase()}` }, log.method));
-        row.appendChild(h('span', { className: 'sdt-log-url' }, log.url));
-        if (log.status !== undefined) {
-          row.appendChild(h('span', { className: `sdt-log-status ${log.status < 400 ? 'sdt-log-status-ok' : 'sdt-log-status-err'}` }, String(log.status)));
-        }
-        if (log.duration !== undefined) {
-          row.appendChild(h('span', { className: 'sdt-log-time' }, log.duration + 'ms'));
-        }
-        list.appendChild(row);
-      } else {
-        const log = item.entry as EventLogEntry;
-        const row = h('div', { className: 'sdt-log-item' });
-        row.appendChild(h('span', { className: 'sdt-log-time' }, formatTimestamp(log.timestamp)));
-        row.appendChild(h('span', { className: `sdt-badge ${EVENT_TYPE_STYLES[log.type] || 'sdt-badge-info'}` }, log.type));
-        row.appendChild(h('span', { className: 'sdt-log-message' }, log.message));
-        list.appendChild(row);
-      }
+    for (const item of merged.slice(0, visibleLogCount)) {
+      list.appendChild(renderLogItem(item));
+    }
+    if (visibleLogCount < merged.length) {
+      list.appendChild(h('div', { className: 'sdt-log-load-hint' }, `${merged.length - visibleLogCount} older logs available`));
     }
     contentArea.appendChild(list);
+    contentArea.scrollTop = Math.min(previousScrollTop, contentArea.scrollHeight);
   }
 
-  function renderConfig() {
-    contentArea.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Loading config...</div>';
-    runAsynchronously(
-      app.getProject().then((project: any) => {
-        contentArea.innerHTML = '';
-        const table = h('table', { className: 'sdt-config-table' });
-        const tbody = h('tbody', null);
-        const items: [string, string][] = [
-          ['Project ID', project.id],
-          ['Display Name', project.displayName],
-          ['Sign-Up Enabled', String(project.config.signUpEnabled)],
-          ['Credential Auth', String(project.config.credentialEnabled)],
-          ['Magic Link', String(project.config.magicLinkEnabled)],
-          ['Passkey', String(project.config.passkeyEnabled)],
-          ['Client Team Creation', String(project.config.clientTeamCreationEnabled)],
-          ['Client User Deletion', String(project.config.clientUserDeletionEnabled)],
-          ['User API Keys', String(project.config.allowUserApiKeys)],
-          ['Team API Keys', String(project.config.allowTeamApiKeys)],
-          ['OAuth Providers', project.config.oauthProviders.length > 0 ? project.config.oauthProviders.map((p: any) => p.id).join(', ') : 'None'],
-        ];
-        for (const [label, value] of items) {
-          const tr = h('tr', null);
-          tr.appendChild(h('td', null, label));
-          const td = h('td', null);
-          if (value === 'true') {
-            setHtml(td, '<span style="color:var(--sdt-success)">Enabled</span>');
-          } else if (value === 'false') {
-            setHtml(td, '<span style="color:var(--sdt-text-tertiary)">Disabled</span>');
-          } else {
-            td.textContent = value;
-          }
-          tr.appendChild(td);
-          tbody.appendChild(tr);
-        }
-        table.appendChild(tbody);
-        contentArea.appendChild(table);
-      }).catch(() => {
-        contentArea.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Could not load config.</div>';
-      })
-    );
-  }
-
-  function renderSubTab() {
-    subTabBar.setActive(state.get().consoleSubTab);
-    clearBtn.style.display = state.get().consoleSubTab === 'logs' ? '' : 'none';
-    if (state.get().consoleSubTab === 'logs') {
+  function maybeLoadOlderLogs() {
+    const mergedLength = getMergedLogs().length;
+    if (visibleLogCount >= mergedLength) return;
+    const distanceFromBottom = contentArea.scrollHeight - contentArea.scrollTop - contentArea.clientHeight;
+    if (distanceFromBottom <= 48) {
+      visibleLogCount = Math.min(visibleLogCount + CONSOLE_LOG_BATCH_SIZE, mergedLength);
       renderLogs();
-    } else {
-      renderConfig();
     }
   }
 
-  renderSubTab();
+  contentArea.addEventListener('scroll', maybeLoadOlderLogs);
+  renderLogs();
 
-  exportBtn.addEventListener('click', () => {
-    const lines: string[] = [];
-    lines.push('=== Stack Auth Dev Tool Report ===');
-    lines.push(`Generated: ${new Date().toISOString()}`);
-    lines.push('');
-    for (const log of logStore.apiLogs.slice(0, 50)) {
-      const status = log.status !== undefined ? ` [${log.status}]` : '';
-      const duration = log.duration !== undefined ? ` ${log.duration}ms` : '';
-      lines.push(`${new Date(log.timestamp).toISOString()} ${log.method} ${log.url}${status}${duration}`);
-    }
+  copyBtn.addEventListener('click', () => {
     runAsynchronously(
-      navigator.clipboard.writeText(lines.join('\n')).then(() => {
-        exportBtn.textContent = '\u2713 Copied';
+      navigator.clipboard.writeText(formatLogsForExport()).then(() => {
+        copyBtn.textContent = '\u2713 Copied';
         setTimeout(() => {
-          setHtml(exportBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>Export');
+          setHtml(copyBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy');
         }, 1500);
       })
     );
   });
 
-  const unsub = logStore.subscribe(() => {
-    if (state.get().consoleSubTab === 'logs') {
-      renderLogs();
-    }
+  exportBtn.addEventListener('click', () => {
+    const blob = new Blob([formatLogsForExport()], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = h('a', { href: url, download: `stack-auth-dev-tool-logs-${new Date().toISOString()}.txt` });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   });
 
-  return { element: container, cleanup: unsub };
+  clearBtn.addEventListener('click', () => {
+    visibleLogCount = CONSOLE_LOG_BATCH_SIZE;
+    logStore.clear();
+  });
+
+  const unsub = logStore.subscribe(() => {
+    renderLogs();
+  });
+
+  return {
+    element: container,
+    cleanup: () => {
+      contentArea.removeEventListener('scroll', maybeLoadOlderLogs);
+      unsub();
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1770,30 +1738,12 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Docs tab
-// ---------------------------------------------------------------------------
-
-function createDocsTab(): HTMLElement {
-  return createIframeTab('https://docs.stack-auth.com', 'Stack Auth Documentation', 'Loading documentation\u2026', 'Unable to load documentation');
-}
-
-// ---------------------------------------------------------------------------
 // Dashboard tab
 // ---------------------------------------------------------------------------
 
 function createDashboardTab(app: StackClientApp<true>): HTMLElement {
   const dashboardUrl = resolveDashboardUrl(app);
-  const isLocalEmulator = envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true';
-
-  if (!isLocalEmulator) {
-    const ctr = h('div', { className: 'sdt-iframe-container', style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } });
-    const inner = h('div', { style: { textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' } });
-    inner.appendChild(h('a', { href: dashboardUrl, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-iframe-error-btn', style: { textDecoration: 'none' } }, 'Open Dashboard in New Tab'));
-    ctr.appendChild(inner);
-    return ctr;
-  }
-
-  return createIframeTab(dashboardUrl, 'Stack Auth Dashboard', 'Loading dashboard\u2026', 'Unable to load dashboard', 'The dashboard may require authentication or block framing');
+  return createIframeTab(dashboardUrl, 'Stack Auth Dashboard', 'Loading dashboard\u2026', 'Unable to load dashboard', 'The dashboard may require authentication or block framing', 'Open in New Tab');
 }
 
 // ---------------------------------------------------------------------------
@@ -1803,41 +1753,6 @@ function createDashboardTab(app: StackClientApp<true>): HTMLElement {
 function createSupportTab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-support-tab' });
   const apiBaseUrl = resolveApiBaseUrl(app);
-
-  let subTab: SupportSubTab = 'feedback';
-  const contentArea = h('div', { className: 'sdt-support-content' });
-
-  const subTabBar = createTabBar(
-    [{ id: 'feedback', label: 'Feedback' }, { id: 'feature-requests', label: 'Feature Requests' }],
-    subTab,
-    (id) => {
-      subTab = id as SupportSubTab;
-      subTabBar.setActive(subTab);
-      renderSubTab();
-    },
-    { variant: 'pills' },
-  );
-  container.appendChild(subTabBar.el);
-  container.appendChild(contentArea);
-
-  let feedbackPane: HTMLElement | null = null;
-  let featurePane: HTMLElement | null = null;
-
-  function renderSubTab() {
-    contentArea.innerHTML = '';
-    if (subTab === 'feedback') {
-      if (!feedbackPane) {
-        feedbackPane = createFeedbackForm();
-      }
-      contentArea.appendChild(feedbackPane);
-    } else {
-      if (!featurePane) {
-        featurePane = h('div', { className: 'sdt-support-iframe-pane' });
-        featurePane.appendChild(createIframeTab('https://feedback.stack-auth.com', 'Stack Auth Feature Requests', 'Loading feature requests\u2026', 'Unable to load feature requests'));
-      }
-      contentArea.appendChild(featurePane);
-    }
-  }
 
   function createFeedbackForm(): HTMLElement {
     const pane = h('div', { className: 'sdt-support-feedback-pane' });
@@ -1925,7 +1840,7 @@ function createSupportTab(app: StackClientApp<true>): HTMLElement {
       form.appendChild(typeCards);
 
       const submitBtn = h('button', { type: 'submit', className: 'sdt-support-submit' });
-      setHtml(submitBtn, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-7 7l7-7 7 7"/></svg> Submit');
+      setHtml(submitBtn, 'Submit <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>');
       submitBtn.disabled = status === 'submitting';
       form.appendChild(submitBtn);
 
@@ -1944,6 +1859,7 @@ function createSupportTab(app: StackClientApp<true>): HTMLElement {
           <span>GitHub</span>
         </a>`;
       form.appendChild(channels);
+      form.insertBefore(channels, form.firstChild);
     }
 
     form.addEventListener('submit', (e) => {
@@ -1985,7 +1901,7 @@ function createSupportTab(app: StackClientApp<true>): HTMLElement {
     return pane;
   }
 
-  renderSubTab();
+  container.appendChild(createFeedbackForm());
   return container;
 }
 
@@ -2014,18 +1930,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
   ];
 
   type PageClassification = 'handler-component' | 'hosted' | 'custom';
-
-  const classificationLabel: Record<PageClassification, string> = {
-    'handler-component': 'Handler',
-    'hosted': 'Hosted',
-    'custom': 'Custom',
-  };
-
-  const classificationBadgeClass: Record<PageClassification, string> = {
-    'handler-component': 'sdt-pg-badge-handler',
-    'hosted': 'sdt-pg-badge-hosted',
-    'custom': 'sdt-pg-badge-custom',
-  };
 
   function classifyPage(key: keyof HandlerUrls): { classification: PageClassification; version: number | null } {
     const target: HandlerUrlTarget = (urlOptions as any)[key] ?? (urlOptions as any).default ?? { type: 'handler-component' };
@@ -2093,6 +1997,11 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     });
   }
 
+  function getCompactUrl(url: string): string {
+    const resolved = new URL(url, window.location.origin);
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  }
+
   const sidebar = h('div', { className: 'sdt-pg-sidebar' });
   const mainArea = h('div', { className: 'sdt-pg-main' });
 
@@ -2125,8 +2034,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
       item.appendChild(h('span', { className: 'sdt-pg-item-label' }, page.label));
       if (isOutdated) {
         item.appendChild(h('span', { className: 'sdt-pg-badge sdt-pg-badge-outdated' }, 'Outdated'));
-      } else {
-        item.appendChild(h('span', { className: `sdt-pg-badge ${classificationBadgeClass[page.classification]}` }, classificationLabel[page.classification]));
       }
       item.addEventListener('click', () => {
         selectedKey = page.key as string;
@@ -2145,25 +2052,22 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     const header = h('div', { className: 'sdt-pg-header' });
     const headerTop = h('div', { className: 'sdt-pg-header-top' });
     headerTop.appendChild(h('h3', { className: 'sdt-pg-title' }, `${page.label} Page`));
+    headerTop.appendChild(h('a', { href: page.url, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-pg-title-url' }, getCompactUrl(page.url)));
     if (page.versionStatus === 'outdated') {
       headerTop.appendChild(h('span', { className: 'sdt-pg-badge sdt-pg-badge-outdated' }, 'Outdated'));
     }
-    headerTop.appendChild(h('span', { className: `sdt-pg-badge ${classificationBadgeClass[page.classification]}` }, classificationLabel[page.classification]));
     header.appendChild(headerTop);
 
     const redirectMethod = `stackApp.redirectTo${(page.key as string).charAt(0).toUpperCase()}${(page.key as string).slice(1)}()`;
     const codeRow = h('div', { className: 'sdt-pg-code-inline' });
     codeRow.appendChild(h('code', { className: 'sdt-pg-code' }, redirectMethod));
-    const viewBtn = h('button', { className: 'sdt-pg-copy-btn' }, 'View');
-    viewBtn.addEventListener('click', () => {
+    const openBtn = h('button', { className: 'sdt-pg-copy-btn sdt-pg-open-btn' });
+    setHtml(openBtn, 'Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>');
+    openBtn.addEventListener('click', () => {
       const resolved = new URL(page.url, window.location.origin);
-      if (resolved.origin === window.location.origin) {
-        window.location.href = resolved.toString();
-      } else {
-        window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
-      }
+      window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
     });
-    codeRow.appendChild(viewBtn);
+    codeRow.appendChild(openBtn);
     header.appendChild(codeRow);
     detail.appendChild(header);
 
@@ -2183,7 +2087,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
 
         if (promptText) {
           const section = h('div', { className: 'sdt-pg-section' });
-          section.appendChild(h('div', { className: 'sdt-pg-section-label' }, isOutdated ? 'Use this prompt to upgrade your component:' : 'Customization prompt:'));
+          section.appendChild(h('div', { className: 'sdt-pg-section-label' }, isOutdated ? 'Use this prompt to upgrade your component:' : 'Want to customize this page? Paste this prompt into your coding agent.'));
           section.appendChild(h('pre', { className: 'sdt-pg-pre' }, promptText));
           const footer = h('div', { className: 'sdt-pg-section-footer' });
           const copyBtn = h('button', { className: 'sdt-pg-copy-btn' }, 'Copy prompt');
@@ -2201,11 +2105,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
         }
       }
     }
-
-    const urlRow = h('div', { className: 'sdt-pg-url-row' });
-    urlRow.appendChild(h('span', { className: 'sdt-pg-url-label' }, 'URL'));
-    urlRow.appendChild(h('a', { href: page.url, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-pg-url' }, page.url));
-    detail.appendChild(urlRow);
 
     mainArea.appendChild(detail);
   }
@@ -2239,8 +2138,37 @@ function createPanel(
   onClose: () => void,
 ): { element: HTMLElement, cleanup: () => void } {
   const panel = h('div', { className: 'sdt-panel' });
-  panel.style.width = state.get().panelWidth + 'px';
-  panel.style.height = state.get().panelHeight + 'px';
+  let panelAnimationTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function animateNextPanelGeometryChange() {
+    panel.classList.add('sdt-panel-geometry-animated');
+    if (panelAnimationTimeout !== null) {
+      clearTimeout(panelAnimationTimeout);
+    }
+    panelAnimationTimeout = setTimeout(() => {
+      panel.classList.remove('sdt-panel-geometry-animated');
+      panelAnimationTimeout = null;
+    }, 220);
+  }
+
+  function applyPanelMode(tabId: TabId, opts?: { animate?: boolean }) {
+    if (opts?.animate === true) {
+      animateNextPanelGeometryChange();
+    }
+
+    if (tabId === 'dashboard') {
+      panel.classList.add('sdt-panel-fullscreen');
+      panel.style.width = '';
+      panel.style.height = '';
+      return;
+    }
+
+    panel.classList.remove('sdt-panel-fullscreen');
+    panel.style.width = state.get().panelWidth + 'px';
+    panel.style.height = state.get().panelHeight + 'px';
+  }
+
+  applyPanelMode(state.get().activeTab);
 
   const inner = h('div', { className: 'sdt-panel-inner' });
 
@@ -2248,10 +2176,19 @@ function createPanel(
   setHtml(closeBtn, '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>');
   closeBtn.addEventListener('click', onClose);
 
+  const docsLink = h('a', { href: DOCS_URL, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-docs-link' });
+  docsLink.appendChild(document.createTextNode('Docs'));
+  const docsIcon = h('span', { className: 'sdt-docs-link-icon', 'aria-hidden': 'true' });
+  setHtml(docsIcon, '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>');
+  docsLink.appendChild(docsIcon);
+
+  const trailingControls = h('div', { className: 'sdt-tabbar-actions' }, docsLink, closeBtn);
+
   const tabBar = createTabBar(TABS, state.get().activeTab, (id) => {
     state.update({ activeTab: id as TabId });
+    applyPanelMode(id as TabId, { animate: true });
     showTab(id as TabId);
-  }, { trailing: closeBtn });
+  }, { trailing: trailingControls });
   inner.appendChild(tabBar.el);
 
   const content = h('div', { className: 'sdt-content' });
@@ -2278,12 +2215,15 @@ function createPanel(
       return mountedPanes.get(tabId)!;
     }
     const pane = h('div', { className: 'sdt-tab-pane' });
+    if (tabId === 'dashboard') {
+      pane.classList.add('sdt-tab-pane-iframe');
+    }
     switch (tabId) {
       case 'overview': {
         mountTab(pane, createOverviewTab(app));
         break;
       }
-      case 'components': {
+      case 'customize': {
         mountTab(pane, createComponentsTab(app));
         break;
       }
@@ -2292,11 +2232,7 @@ function createPanel(
         break;
       }
       case 'console': {
-        mountTab(pane, createConsoleTab(app, logStore, state));
-        break;
-      }
-      case 'docs': {
-        mountTab(pane, createDocsTab());
+        mountTab(pane, createConsoleTab(logStore));
         break;
       }
       case 'dashboard': {
@@ -2333,6 +2269,11 @@ function createPanel(
 
     handle.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      if (panelAnimationTimeout !== null) {
+        clearTimeout(panelAnimationTimeout);
+        panelAnimationTimeout = null;
+      }
+      panel.classList.remove('sdt-panel-geometry-animated');
       handle.setPointerCapture(e.pointerId);
       startX = e.clientX;
       startY = e.clientY;
@@ -2370,6 +2311,9 @@ function createPanel(
   return {
     element: panel,
     cleanup: () => {
+      if (panelAnimationTimeout !== null) {
+        clearTimeout(panelAnimationTimeout);
+      }
       for (const fn of cleanups) fn();
     },
   };
@@ -2386,8 +2330,15 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   const body = Reflect.get(document, 'body');
   if (!hasAppendChild(body)) return () => {};
 
+  getGlobalDevToolInstance()?.cleanup();
+  let existingRoot = document.getElementById(ROOT_ID);
+  while (existingRoot !== null) {
+    existingRoot.remove();
+    existingRoot = document.getElementById(ROOT_ID);
+  }
+
   const root = document.createElement('div');
-  root.id = '__stack-dev-tool-root';
+  root.id = ROOT_ID;
   body.appendChild(root);
 
   const wrapper = h('div', { className: 'stack-devtool' });
@@ -2403,18 +2354,19 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   let panel: { element: HTMLElement, cleanup: () => void } | null = null;
 
   function closePanelAndPersistClosed() {
-    state.update({ isOpen: false });
     closePanel();
   }
 
   function openPanel() {
     if (panel) return;
+    state.update({ activeTab: 'overview' });
     panel = createPanel(app, state, logStore, closePanelAndPersistClosed);
     wrapper.appendChild(panel.element);
   }
 
   function closePanel() {
     if (!panel) return;
+    state.update({ isOpen: false });
     const closing = panel;
     panel = null;
     closing.cleanup();
@@ -2428,7 +2380,6 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   function togglePanel() {
     if (state.get().isOpen) {
-      state.update({ isOpen: false });
       closePanel();
     } else {
       state.update({ isOpen: true });
@@ -2437,7 +2388,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   }
 
   const trigger = createTrigger(togglePanel);
-  wrapper.appendChild(trigger);
+  wrapper.appendChild(trigger.element);
 
   if (state.get().isOpen) {
     openPanel();
@@ -2461,12 +2412,26 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     }
   });
 
+  let didCleanup = false;
+  const instance: DevToolGlobalInstance = {
+    cleanup: () => {
+      if (didCleanup) return;
+      didCleanup = true;
+      if (getGlobalDevToolInstance() === instance) {
+        setGlobalDevToolInstance(null);
+      }
+      trigger.cleanup();
+      removeRequestListener();
+      panel?.cleanup();
+      if (root.parentNode) {
+        root.parentNode.removeChild(root);
+      }
+    },
+  };
+  setGlobalDevToolInstance(instance);
+
   return () => {
-    removeRequestListener();
-    panel?.cleanup();
-    if (root.parentNode) {
-      root.parentNode.removeChild(root);
-    }
+    instance.cleanup();
   };
 }
 

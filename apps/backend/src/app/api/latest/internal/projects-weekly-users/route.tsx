@@ -7,7 +7,8 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { MetricsDataPointsSchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-const WINDOW_DAYS = 7;
+const WEEKLY_USERS_WINDOW_DAYS = 7;
+const CHART_WINDOW_DAYS = 30;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 type ProjectWeeklyUsers = {
@@ -19,8 +20,8 @@ export function applyProjectWeeklyUsersRows(
   byProject: Map<string, ProjectWeeklyUsers>,
   rows: { projectId: string, day: string, users: number }[],
 ) {
-  // GROUPING SETS emits one rollup row per project with day defaulted to the
-  // ClickHouse Date epoch ("1970-01-01"); those rows hold the weekly total.
+  // The query emits one synthetic row per project with day set to the ClickHouse
+  // Date epoch ("1970-01-01"); those rows hold the weekly total.
   const dailyIndex = new Map<string, Map<string, number>>();
   for (const row of rows) {
     const project = byProject.get(row.projectId);
@@ -83,12 +84,13 @@ export const GET = createSmartRouteHandler({
     const now = new Date();
     const todayUtc = new Date(now);
     todayUtc.setUTCHours(0, 0, 0, 0);
-    const since = new Date(todayUtc.getTime() - (WINDOW_DAYS - 1) * ONE_DAY_MS);
+    const since = new Date(todayUtc.getTime() - (CHART_WINDOW_DAYS - 1) * ONE_DAY_MS);
+    const weeklySince = new Date(todayUtc.getTime() - (WEEKLY_USERS_WINDOW_DAYS - 1) * ONE_DAY_MS);
     const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
     const emptySeries = () => {
       const out: { date: string, activity: number }[] = [];
-      for (let i = 0; i < WINDOW_DAYS; i += 1) {
+      for (let i = 0; i < CHART_WINDOW_DAYS; i += 1) {
         const day = new Date(since.getTime() + i * ONE_DAY_MS);
         out.push({ date: day.toISOString().split("T")[0], activity: 0 });
       }
@@ -117,6 +119,7 @@ export const GET = createSmartRouteHandler({
       projectIds,
       branchId: DEFAULT_BRANCH_ID,
       since: since.toISOString().slice(0, 19),
+      weeklySince: weeklySince.toISOString().slice(0, 19),
       untilExclusive: untilExclusive.toISOString().slice(0, 19),
     };
 
@@ -126,7 +129,7 @@ export const GET = createSmartRouteHandler({
         query: `
           SELECT
             project_id AS projectId,
-            toDate(event_at, 'UTC') AS day,
+            toString(toDate(event_at, 'UTC')) AS day,
             uniqExact(assumeNotNull(user_id)) AS users
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
@@ -136,7 +139,21 @@ export const GET = createSmartRouteHandler({
             AND event_at >= {since:DateTime}
             AND event_at < {untilExclusive:DateTime}
             AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
-          GROUP BY GROUPING SETS ((projectId), (projectId, day))
+          GROUP BY projectId, day
+          UNION ALL
+          SELECT
+            project_id AS projectId,
+            '1970-01-01' AS day,
+            uniqExact(assumeNotNull(user_id)) AS users
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id IN {projectIds:Array(String)}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {weeklySince:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+            AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
+          GROUP BY projectId
         `,
         query_params: queryParams,
         format: "JSONEachRow",

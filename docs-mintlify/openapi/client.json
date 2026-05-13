@@ -1916,6 +1916,642 @@
         }
       }
     },
+    "/internal/dogfood/support/conversations": {
+      "get": {
+        "summary": "List conversations for the current user",
+        "description": "List conversations visible to the currently authenticated user",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "tags": [
+          "Conversations"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/dogfood/support/conversations",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "conversation_id": {
+                            "type": "string"
+                          },
+                          "user_id": {
+                            "type": "string"
+                          },
+                          "team_id": {
+                            "type": "string"
+                          },
+                          "user_display_name": {
+                            "type": "string"
+                          },
+                          "user_primary_email": {
+                            "type": "string"
+                          },
+                          "user_profile_image_url": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "last_message_type": {
+                            "type": "string"
+                          },
+                          "preview": {
+                            "type": "string"
+                          },
+                          "last_activity_at": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "properties": {
+                              "assigned_to_user_id": {
+                                "type": "string"
+                              },
+                              "assigned_to_display_name": {
+                                "type": "string"
+                              },
+                              "tags": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "first_response_due_at": {
+                                "type": "string"
+                              },
+                              "first_response_at": {
+                                "type": "string"
+                              },
+                              "next_response_due_at": {
+                                "type": "string"
+                              },
+                              "last_customer_reply_at": {
+                                "type": "string"
+                              },
+                              "last_agent_reply_at": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "tags"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "conversation_id",
+                          "subject",
+                          "status",
+                          "priority",
+                          "source",
+                          "last_message_type",
+                          "last_activity_at",
+                          "metadata"
+                        ]
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "conversations",
+                    "has_more"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a conversation",
+        "description": "Create a new conversation as the current user",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "subject": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "subject",
+                  "message"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Conversations"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/dogfood/support/conversations",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "conversation_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/dogfood/support/conversations/{conversationId}": {
+      "get": {
+        "summary": "Get a conversation for the current user",
+        "description": "Get conversation detail visible to the currently authenticated user",
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Conversations"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/dogfood/support/conversations/{conversationId}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "conversation_id": {
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "type": "string"
+                        },
+                        "team_id": {
+                          "type": "string"
+                        },
+                        "user_display_name": {
+                          "type": "string"
+                        },
+                        "user_primary_email": {
+                          "type": "string"
+                        },
+                        "user_profile_image_url": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "priority": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "last_message_type": {
+                          "type": "string"
+                        },
+                        "preview": {
+                          "type": "string"
+                        },
+                        "last_activity_at": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "properties": {
+                            "assigned_to_user_id": {
+                              "type": "string"
+                            },
+                            "assigned_to_display_name": {
+                              "type": "string"
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "first_response_due_at": {
+                              "type": "string"
+                            },
+                            "first_response_at": {
+                              "type": "string"
+                            },
+                            "next_response_due_at": {
+                              "type": "string"
+                            },
+                            "last_customer_reply_at": {
+                              "type": "string"
+                            },
+                            "last_agent_reply_at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "tags"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "conversation_id",
+                        "subject",
+                        "status",
+                        "priority",
+                        "source",
+                        "last_message_type",
+                        "last_activity_at",
+                        "metadata"
+                      ]
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "conversation_id": {
+                            "type": "string"
+                          },
+                          "user_id": {
+                            "type": "string"
+                          },
+                          "team_id": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "message_type": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "sender": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "display_name": {
+                                "type": "string"
+                              },
+                              "primary_email": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "conversation_id",
+                          "subject",
+                          "status",
+                          "priority",
+                          "source",
+                          "message_type",
+                          "attachments",
+                          "created_at",
+                          "sender"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "conversation",
+                    "messages"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Reply to a conversation",
+        "description": "Append a user message to an existing conversation",
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Conversations"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/dogfood/support/conversations/{conversationId}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "conversation_id": {
+                          "type": "string"
+                        },
+                        "user_id": {
+                          "type": "string"
+                        },
+                        "team_id": {
+                          "type": "string"
+                        },
+                        "user_display_name": {
+                          "type": "string"
+                        },
+                        "user_primary_email": {
+                          "type": "string"
+                        },
+                        "user_profile_image_url": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "priority": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "last_message_type": {
+                          "type": "string"
+                        },
+                        "preview": {
+                          "type": "string"
+                        },
+                        "last_activity_at": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "properties": {
+                            "assigned_to_user_id": {
+                              "type": "string"
+                            },
+                            "assigned_to_display_name": {
+                              "type": "string"
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "first_response_due_at": {
+                              "type": "string"
+                            },
+                            "first_response_at": {
+                              "type": "string"
+                            },
+                            "next_response_due_at": {
+                              "type": "string"
+                            },
+                            "last_customer_reply_at": {
+                              "type": "string"
+                            },
+                            "last_agent_reply_at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "tags"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "conversation_id",
+                        "subject",
+                        "status",
+                        "priority",
+                        "source",
+                        "last_message_type",
+                        "last_activity_at",
+                        "metadata"
+                      ]
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "conversation_id": {
+                            "type": "string"
+                          },
+                          "user_id": {
+                            "type": "string"
+                          },
+                          "team_id": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "message_type": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "sender": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "display_name": {
+                                "type": "string"
+                              },
+                              "primary_email": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "conversation_id",
+                          "subject",
+                          "status",
+                          "priority",
+                          "source",
+                          "message_type",
+                          "attachments",
+                          "created_at",
+                          "sender"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "conversation",
+                    "messages"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/emails/notification-preference/{user_id}": {
       "get": {
         "summary": "List notification preferences",
@@ -3405,6 +4041,831 @@
                 "schema": {
                   "type": "object",
                   "properties": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/conversations": {
+      "get": {
+        "summary": "List conversations",
+        "description": "List conversations for a managed project",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+              "description": "The unique identifier of the project"
+            },
+            "description": "The unique identifier of the project",
+            "required": true
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
+              "description": "The unique identifier of the user"
+            },
+            "description": "The unique identifier of the user",
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "conversationId": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "teamId": {
+                            "type": "string"
+                          },
+                          "userDisplayName": {
+                            "type": "string"
+                          },
+                          "userPrimaryEmail": {
+                            "type": "string"
+                          },
+                          "userProfileImageUrl": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "lastMessageType": {
+                            "type": "string"
+                          },
+                          "preview": {
+                            "type": "string"
+                          },
+                          "lastActivityAt": {
+                            "type": "string"
+                          },
+                          "metadata": {
+                            "type": "object",
+                            "properties": {
+                              "assignedToUserId": {
+                                "type": "string"
+                              },
+                              "assignedToDisplayName": {
+                                "type": "string"
+                              },
+                              "tags": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "firstResponseDueAt": {
+                                "type": "string"
+                              },
+                              "firstResponseAt": {
+                                "type": "string"
+                              },
+                              "nextResponseDueAt": {
+                                "type": "string"
+                              },
+                              "lastCustomerReplyAt": {
+                                "type": "string"
+                              },
+                              "lastAgentReplyAt": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "tags"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          },
+                          "lastMessageAt": {
+                            "type": "string"
+                          },
+                          "lastInboundAt": {
+                            "type": "string"
+                          },
+                          "lastOutboundAt": {
+                            "type": "string"
+                          },
+                          "closedAt": {
+                            "type": "string"
+                          },
+                          "recordMetadata": {
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "conversationId",
+                          "subject",
+                          "status",
+                          "priority",
+                          "source",
+                          "lastMessageType",
+                          "lastActivityAt",
+                          "metadata"
+                        ]
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "conversations",
+                    "hasMore"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create conversation",
+        "description": "Create a managed project conversation for a user",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "projectId": {
+                    "type": "string",
+                    "example": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+                    "description": "The unique identifier of the project"
+                  },
+                  "userId": {
+                    "type": "string",
+                    "example": "3241a285-8329-4d69-8f3d-316e08cf140c",
+                    "description": "The unique identifier of the user"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "initialMessage": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "projectId",
+                  "userId",
+                  "subject",
+                  "initialMessage",
+                  "priority"
+                ],
+                "example": {
+                  "projectId": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+                  "userId": "3241a285-8329-4d69-8f3d-316e08cf140c"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversationId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "conversationId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/conversations/{conversationId}": {
+      "get": {
+        "summary": "Get conversation detail",
+        "description": "Get conversation detail for a managed project",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+              "description": "The unique identifier of the project"
+            },
+            "description": "The unique identifier of the project",
+            "required": true
+          },
+          {
+            "name": "conversationId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations/{conversationId}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "conversationId": {
+                          "type": "string"
+                        },
+                        "userId": {
+                          "type": "string"
+                        },
+                        "teamId": {
+                          "type": "string"
+                        },
+                        "userDisplayName": {
+                          "type": "string"
+                        },
+                        "userPrimaryEmail": {
+                          "type": "string"
+                        },
+                        "userProfileImageUrl": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "priority": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "lastMessageType": {
+                          "type": "string"
+                        },
+                        "preview": {
+                          "type": "string"
+                        },
+                        "lastActivityAt": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "properties": {
+                            "assignedToUserId": {
+                              "type": "string"
+                            },
+                            "assignedToDisplayName": {
+                              "type": "string"
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "firstResponseDueAt": {
+                              "type": "string"
+                            },
+                            "firstResponseAt": {
+                              "type": "string"
+                            },
+                            "nextResponseDueAt": {
+                              "type": "string"
+                            },
+                            "lastCustomerReplyAt": {
+                              "type": "string"
+                            },
+                            "lastAgentReplyAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "tags"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "lastMessageAt": {
+                          "type": "string"
+                        },
+                        "lastInboundAt": {
+                          "type": "string"
+                        },
+                        "lastOutboundAt": {
+                          "type": "string"
+                        },
+                        "closedAt": {
+                          "type": "string"
+                        },
+                        "recordMetadata": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "conversationId",
+                        "subject",
+                        "status",
+                        "priority",
+                        "source",
+                        "lastMessageType",
+                        "lastActivityAt",
+                        "metadata"
+                      ]
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "conversationId": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "teamId": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "messageType": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "sender": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "primaryEmail": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "conversationId",
+                          "subject",
+                          "status",
+                          "priority",
+                          "source",
+                          "messageType",
+                          "attachments",
+                          "createdAt",
+                          "sender"
+                        ]
+                      }
+                    },
+                    "entryPoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "channelType": {
+                            "type": "string"
+                          },
+                          "adapterKey": {
+                            "type": "string"
+                          },
+                          "externalChannelId": {
+                            "type": "string"
+                          },
+                          "isEntryPoint": {
+                            "type": "boolean"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "channelType",
+                          "adapterKey",
+                          "isEntryPoint",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "conversation",
+                    "messages",
+                    "entryPoints"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update conversation",
+        "description": "Append a message or update conversation attributes on a managed project conversation",
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations/{conversationId}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "type": "object",
+                      "properties": {
+                        "conversationId": {
+                          "type": "string"
+                        },
+                        "userId": {
+                          "type": "string"
+                        },
+                        "teamId": {
+                          "type": "string"
+                        },
+                        "userDisplayName": {
+                          "type": "string"
+                        },
+                        "userPrimaryEmail": {
+                          "type": "string"
+                        },
+                        "userProfileImageUrl": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "priority": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "lastMessageType": {
+                          "type": "string"
+                        },
+                        "preview": {
+                          "type": "string"
+                        },
+                        "lastActivityAt": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "properties": {
+                            "assignedToUserId": {
+                              "type": "string"
+                            },
+                            "assignedToDisplayName": {
+                              "type": "string"
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "firstResponseDueAt": {
+                              "type": "string"
+                            },
+                            "firstResponseAt": {
+                              "type": "string"
+                            },
+                            "nextResponseDueAt": {
+                              "type": "string"
+                            },
+                            "lastCustomerReplyAt": {
+                              "type": "string"
+                            },
+                            "lastAgentReplyAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "tags"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "lastMessageAt": {
+                          "type": "string"
+                        },
+                        "lastInboundAt": {
+                          "type": "string"
+                        },
+                        "lastOutboundAt": {
+                          "type": "string"
+                        },
+                        "closedAt": {
+                          "type": "string"
+                        },
+                        "recordMetadata": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "conversationId",
+                        "subject",
+                        "status",
+                        "priority",
+                        "source",
+                        "lastMessageType",
+                        "lastActivityAt",
+                        "metadata"
+                      ]
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "conversationId": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "teamId": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "messageType": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "sender": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "primaryEmail": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "conversationId",
+                          "subject",
+                          "status",
+                          "priority",
+                          "source",
+                          "messageType",
+                          "attachments",
+                          "createdAt",
+                          "sender"
+                        ]
+                      }
+                    },
+                    "entryPoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "channelType": {
+                            "type": "string"
+                          },
+                          "adapterKey": {
+                            "type": "string"
+                          },
+                          "externalChannelId": {
+                            "type": "string"
+                          },
+                          "isEntryPoint": {
+                            "type": "boolean"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "channelType",
+                          "adapterKey",
+                          "isEntryPoint",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "conversation",
+                    "messages",
+                    "entryPoints"
+                  ]
                 }
               }
             }
