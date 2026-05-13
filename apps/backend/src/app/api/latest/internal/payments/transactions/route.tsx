@@ -182,11 +182,10 @@ function parseSourceId(row: LedgerTransactionRow): string {
     return row.txnId.slice("miqc:".length);
   }
   if (row.type === "refund") {
-    const parsed = parseRefundTxnId(row.txnId);
-    if (parsed) return parsed.uuid;
-    // Legacy refund format `<sourceId>:refund` (pre-three-knob refund flow).
-    // No structured uuid to extract; the txnId itself is unique, so use it
-    // directly. Avoids 500ing the listing for tenancies with prior refunds.
+    // Return the full ledger txnId. Source rows link to refunds via
+    // `adjusted_by.transaction_id`, which carries the full refund txnId
+    // (matching what the refund route returns as `refund_transaction_id`).
+    // The listing's `id` field must match for the dashboard to join the two.
     return row.txnId;
   }
   if (!row.txnId.startsWith("sub-renewal:")) {

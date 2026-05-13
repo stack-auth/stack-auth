@@ -224,9 +224,12 @@ it("refunds a live-mode OTP fully (money + revoke), surfaces refund row, links v
     },
   ]);
 
-  // Refund row appears in the listing with type="refund".
+  // Refund row appears in the listing with type="refund". Its `id` must
+  // match the `adjusted_by.transaction_id` linkage so the dashboard can join
+  // source rows to their refund rows.
   const refundRow = transactionsAfter.body.transactions.find((tx: any) => tx.type === "refund");
   expect(refundRow).toBeDefined();
+  expect(refundRow.id).toBe(refundTxnId);
 
   const productsAfter = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
@@ -408,6 +411,41 @@ it("refunds a test-mode subscription with end=true only (no revoke), no money", 
   expect(refundRes.body.success).toBe(true);
 });
 
+it("rejects end-only sub refund replay (already scheduled to end)", async () => {
+  const { subscriptionId } = await createTestModeSubscription();
+
+  // First end-only refund succeeds and sets cancelAtPeriodEnd.
+  const refund1 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      revoke_product: false,
+      end_subscription: true,
+    },
+  });
+  expect(refund1.status).toBe(200);
+
+  // Replay must be rejected; otherwise it'd accumulate phantom empty-entries
+  // refund rows (readPriorRefundSummary doesn't track end-only events).
+  const refund2 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      revoke_product: false,
+      end_subscription: true,
+    },
+  });
+  expect(refund2.status).toBe(400);
+  expect(refund2.body.code).toBe("SCHEMA_ERROR");
+  expect(refund2.body.error).toMatch(/already scheduled to end/);
+});
+
 /**
  * Spin up a live-mode subscription via Stripe webhooks (creation + renewal
  * invoices), and return the prisma ids of both invoices plus the user/sub.
@@ -586,6 +624,36 @@ it("refunds a renewal invoice (invoice_id path) without money or revoke — sour
     (tx: any) => tx.type === "purchase" && tx.id === subscriptionId,
   );
   expect(startTxn?.adjusted_by ?? []).toEqual([]);
+
+  // Refund row's listed `id` must match the linkage carried by adjusted_by.
+  const refundRow = txnsAfter.body.transactions.find(
+    (tx: any) => tx.type === "refund" && tx.id === refundRes.body.refund_transaction_id,
+  );
+  expect(refundRow).toBeDefined();
+});
+
+it("rejects revoke_product=true when invoice_id targets a renewal invoice", async () => {
+  // The product grant lives on the sub-start txn, not on renewals — so a
+  // revocation entry referencing a renewal would point at a non-existent
+  // entry. Force admin to revoke against the start invoice (or the default
+  // no-invoice-id call, which already implies start).
+  const { subscriptionId, renewalInvoiceId } = await createLiveModeSubscriptionWithRenewal();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      invoice_id: renewalInvoiceId,
+      amount_usd: "0",
+      revoke_product: true,
+      end_subscription: true,
+    },
+  });
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/Cannot revoke product when refunding a renewal invoice/);
 });
 
 it("rejects refund with invoice_id that does not belong to the subscription", async () => {

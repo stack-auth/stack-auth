@@ -366,6 +366,17 @@ async function handleSubscriptionRefund(options: {
     throw new KnownErrors.SubscriptionAlreadyRefunded(subscription.id);
   }
 
+  // End-only refund replay guard. The empty-entries refund row written by
+  // `amount=0, revoke=false, end=true` is not visible to `readPriorRefundSummary`
+  // (which only tracks money + product-revocation), so without this gate the
+  // call is a forever-no-op that accumulates phantom rows on each replay.
+  // The sub's lifecycle state is authoritative here.
+  if (options.amountStripeUnits === 0 && !options.revokeProduct && options.endSubscription) {
+    if (subscription.cancelAtPeriodEnd || subscription.endedAt) {
+      throw new KnownErrors.SchemaError("Subscription is already scheduled to end.");
+    }
+  }
+
   const customerType = subscription.customerType.toLowerCase() as "user" | "team" | "custom";
   const isTestMode = subscription.creationSource === "TEST_MODE";
   const product = subscription.product as InferType<typeof productSchema>;
@@ -384,6 +395,15 @@ async function handleSubscriptionRefund(options: {
     });
     if (!found || found.stripeSubscriptionId !== subscription.stripeSubscriptionId) {
       throw new KnownErrors.SubscriptionInvoiceNotFound(options.invoiceId);
+    }
+    // `revoke_product` is a sub-wide action (the product grant lives on the
+    // sub-start txn, not on renewal txns), so it can only meaningfully be
+    // paired with a refund targeting the creation invoice — or the default
+    // no-invoice-id call which already implies start. Targeting a renewal
+    // invoice with revoke would write a product-revocation entry pointing at
+    // a non-existent entry on the renewal txn.
+    if (options.revokeProduct && !found.isSubscriptionCreationInvoice) {
+      throw new KnownErrors.SchemaError("Cannot revoke product when refunding a renewal invoice — product revocation applies to the subscription as a whole. Omit invoice_id or pass the creation invoice id.");
     }
     invoice = { id: found.id, stripeInvoiceId: found.stripeInvoiceId, amountTotal: found.amountTotal };
     sourceTxnId = found.isSubscriptionCreationInvoice
@@ -477,13 +497,15 @@ async function handleSubscriptionRefund(options: {
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       // Idempotent cancel: the Stripe sub may already be canceled (natural
-      // end before this refund). resource_missing / "already canceled" is
-      // not an error from our perspective.
+      // end before this refund). `resource_missing` is what Stripe returns
+      // when the sub no longer exists; `subscription_already_canceled` is
+      // the documented code for re-cancel on an existing-but-canceled sub.
+      // Neither is an error from our perspective.
       try {
         await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
       } catch (e: unknown) {
         const code = (e as { code?: string }).code;
-        if (code !== "resource_missing" && code !== "subscription_canceled") {
+        if (code !== "resource_missing" && code !== "subscription_already_canceled") {
           throw e;
         }
       }

@@ -223,6 +223,13 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   // partial refunds (and a separate revoke) until both caps are hit, and
   // computes the actual remaining state from the bulldozer ledger. The button
   // stays available; the backend rejects if there's nothing left to do.
+  //
+  // Known UI gap: refund actions are only enabled on `purchase` rows, and the
+  // submit call never passes `invoice_id`. The backend supports refunding a
+  // specific renewal invoice (POST body `invoice_id`), but the dashboard
+  // currently can't reach that path — admins refunding a renewal must use
+  // the API directly. Follow-up: enable the action on `subscription-renewal`
+  // rows and thread `invoice_id` through.
   const canRefund = !!target;
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
   const chargedAmountUsd = moneyTransferEntry ? (moneyTransferEntry.charged_amount.USD ?? null) : null;
