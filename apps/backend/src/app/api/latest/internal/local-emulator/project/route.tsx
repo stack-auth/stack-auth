@@ -404,7 +404,7 @@ export const GET = createSmartRouteHandler({
       SELECT "projectId", "absoluteFilePath", "updatedAt"
       FROM "LocalEmulatorProject"
       ORDER BY "updatedAt" DESC
-      LIMIT 20
+      LIMIT 100
     `);
 
     const projectIds = rows.map((r) => r.projectId);

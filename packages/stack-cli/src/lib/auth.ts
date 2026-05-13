@@ -7,10 +7,6 @@ export const DEFAULT_API_URL = "https://api.stack-auth.com";
 export const DEFAULT_DASHBOARD_URL = "https://app.stack-auth.com";
 export const DEFAULT_PUBLISHABLE_CLIENT_KEY = process.env.STACK_CLI_PUBLISHABLE_CLIENT_KEY ?? "pck_9bbqvqsbh0gdb6smk11d71qg4ktc4rz8ya7cc69yndm7g";
 
-type Flags = {
-  projectId?: string,
-};
-
 export type LoginConfig = {
   apiUrl: string,
   dashboardUrl: string,
@@ -59,14 +55,6 @@ function resolveSecretServerKey(): string | null {
   return process.env.STACK_SECRET_SERVER_KEY ?? null;
 }
 
-function resolveProjectId(flags: Flags): string {
-  const projectId = flags.projectId ?? process.env.STACK_PROJECT_ID;
-  if (!projectId) {
-    throw new AuthError("No project ID specified. Use --project-id or set STACK_PROJECT_ID.");
-  }
-  return projectId;
-}
-
 export function resolveLoginConfig(): LoginConfig {
   return {
     apiUrl: resolveApiUrl(),
@@ -82,19 +70,19 @@ export function resolveSessionAuth(): SessionAuth {
   };
 }
 
-export function resolveAuth(flags: Flags): ProjectAuth {
+export function resolveAuth(projectId: string): ProjectAuth {
   const secretServerKey = resolveSecretServerKey();
   if (secretServerKey) {
     return {
       ...resolveLoginConfig(),
-      projectId: resolveProjectId(flags),
+      projectId,
       secretServerKey,
     };
   }
 
   return {
     ...resolveSessionAuth(),
-    projectId: resolveProjectId(flags),
+    projectId,
   };
 }
 
@@ -143,7 +131,7 @@ export function localEmulatorReadyTimeoutMs(): number {
 async function resolveLocalEmulatorInternalPck(timeoutMs: number): Promise<string> {
   const contents = await pollInternalPck(timeoutMs);
   if (contents === null) {
-    throw new AuthError(`Local emulator publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start the emulator with \`stack emulator start\`, or pass --cloud to use the cloud API.`);
+    throw new AuthError(`Local emulator publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start the emulator with \`stack emulator start\`.`);
   }
   return contents;
 }
@@ -193,7 +181,7 @@ async function localEmulatorSignInWithRetry(apiUrl: string, internalPck: string,
     }
     if (performance.now() >= deadline) {
       const message = lastError instanceof Error ? lastError.message : String(lastError);
-      throw new AuthError(`Cannot reach local emulator at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start it with \`stack emulator start\`, or pass --cloud to use the cloud API.`);
+      throw new AuthError(`Cannot reach local emulator at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start it with \`stack emulator start\`.`);
     }
     const remaining = deadline - performance.now();
     await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
@@ -201,9 +189,8 @@ async function localEmulatorSignInWithRetry(apiUrl: string, internalPck: string,
   }
 }
 
-export async function resolveLocalEmulatorAuth(flags: Flags): Promise<ProjectAuthWithRefreshToken> {
+export async function resolveLocalEmulatorAuth(projectId: string): Promise<ProjectAuthWithRefreshToken> {
   const apiUrl = resolveLocalEmulatorApiUrl();
-  const projectId = resolveProjectId(flags);
   const readyTimeoutMs = localEmulatorReadyTimeoutMs();
   const internalPck = await resolveLocalEmulatorInternalPck(readyTimeoutMs);
 

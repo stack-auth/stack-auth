@@ -1,40 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { resolveExecTarget } from "./exec.js";
+import { parseExecTarget } from "./exec.js";
 
-describe("resolveExecTarget", () => {
-  it("defaults to local when --cloud is not passed and the env var is unset", () => {
-    expect(resolveExecTarget({}, {})).toBe("local");
+describe("parseExecTarget", () => {
+  it("returns a cloud target when --cloud-project-id is set", () => {
+    expect(parseExecTarget({ cloudProjectId: "proj_123" })).toEqual({ kind: "cloud", projectId: "proj_123" });
   });
 
-  it("treats an empty STACK_EXEC_DEFAULT_TARGET as unset", () => {
-    expect(resolveExecTarget({}, { STACK_EXEC_DEFAULT_TARGET: "" })).toBe("local");
+  it("returns a config target when --config-file is set", () => {
+    expect(parseExecTarget({ configFile: "./stack.config.ts" })).toEqual({ kind: "config", configFile: "./stack.config.ts" });
   });
 
-  it("respects STACK_EXEC_DEFAULT_TARGET=cloud", () => {
-    expect(resolveExecTarget({}, { STACK_EXEC_DEFAULT_TARGET: "cloud" })).toBe("cloud");
+  it("rejects passing both --cloud-project-id and --config-file", () => {
+    expect(() => parseExecTarget({ cloudProjectId: "proj_123", configFile: "./stack.config.ts" })).toThrow(/not both/);
   });
 
-  it("respects STACK_EXEC_DEFAULT_TARGET=local explicitly", () => {
-    expect(resolveExecTarget({}, { STACK_EXEC_DEFAULT_TARGET: "local" })).toBe("local");
+  it("rejects passing neither", () => {
+    expect(() => parseExecTarget({})).toThrow(/Specify a target/);
   });
 
-  it("--cloud wins even when STACK_EXEC_DEFAULT_TARGET=local", () => {
-    expect(resolveExecTarget({ cloud: true }, { STACK_EXEC_DEFAULT_TARGET: "local" })).toBe("cloud");
+  it("treats an empty --cloud-project-id as absent", () => {
+    expect(() => parseExecTarget({ cloudProjectId: "" })).toThrow(/Specify a target/);
   });
 
-  it("--cloud wins when the env var is unset", () => {
-    expect(resolveExecTarget({ cloud: true }, {})).toBe("cloud");
-  });
-
-  it("rejects unknown STACK_EXEC_DEFAULT_TARGET values", () => {
-    expect(() => resolveExecTarget({}, { STACK_EXEC_DEFAULT_TARGET: "Cloud" })).toThrow(/Invalid STACK_EXEC_DEFAULT_TARGET/);
-    expect(() => resolveExecTarget({}, { STACK_EXEC_DEFAULT_TARGET: "remote" })).toThrow(/Invalid STACK_EXEC_DEFAULT_TARGET/);
-    expect(() => resolveExecTarget({}, { STACK_EXEC_DEFAULT_TARGET: "1" })).toThrow(/Invalid STACK_EXEC_DEFAULT_TARGET/);
-  });
-
-  it("does not validate the env var when --cloud short-circuits", () => {
-    // --cloud is explicit, so we don't bother surfacing a typo in the env var.
-    // This is intentional: an invalid value shouldn't block the explicit flag.
-    expect(resolveExecTarget({ cloud: true }, { STACK_EXEC_DEFAULT_TARGET: "garbage" })).toBe("cloud");
+  it("treats an empty --config-file as absent", () => {
+    expect(() => parseExecTarget({ configFile: "" })).toThrow(/Specify a target/);
   });
 });

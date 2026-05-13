@@ -23,10 +23,12 @@ function extractConfigObjectString(content: string): string {
 function runCli(
   args: string[],
   envOverrides?: Record<string, string>,
+  cwd?: string,
 ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
   return new Promise((resolve) => {
     execFile("node", [CLI_BIN, ...args], {
       env: { ...baseEnv, ...envOverrides },
+      cwd,
       timeout: 30_000,
     }, (error, stdout, stderr) => {
       resolve({
@@ -135,13 +137,16 @@ describe("Stack CLI", () => {
     expect(stderr).toContain("Not logged in");
   });
 
-  it("errors when no project ID given", async ({ expect }) => {
-    // Exercise the default (local) path: project-ID resolution happens before
-    // any emulator I/O, so the missing-ID error fires regardless of whether
-    // an emulator is running.
+  it("exec errors when neither --cloud-project-id nor --config-file is given", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(["exec", "return 1"]);
     expect(exitCode).toBe(1);
-    expect(stderr).toContain("No project ID");
+    expect(stderr).toContain("Specify a target");
+  });
+
+  it("exec errors when both --cloud-project-id and --config-file are given", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(["exec", "--cloud-project-id", "proj_x", "--config-file", "./stack.config.ts", "return 1"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("not both");
   });
 
   it("logout clears config", async ({ expect }) => {
@@ -158,38 +163,73 @@ describe("Stack CLI", () => {
 
   let createdProjectId: string;
 
-  it("lists projects as empty JSON array", async ({ expect }) => {
-    const { stdout, exitCode } = await runCli(["--json", "project", "list"]);
+  it("lists cloud projects as empty JSON array", async ({ expect }) => {
+    const { stdout, exitCode } = await runCli(["--json", "project", "list", "--cloud"]);
     expect(exitCode).toBe(0);
     const projects = JSON.parse(stdout);
     expect(Array.isArray(projects)).toBe(true);
   });
 
+  it("project create requires --cloud", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(["project", "create", "--display-name", "Should Fail"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--cloud to confirm");
+  });
+
+  it("project list rejects --cloud and --dev together", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(["project", "list", "--cloud", "--dev"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("not both");
+  });
+
   it("creates a project", async ({ expect }) => {
-    const { stdout, exitCode } = await runCli(["--json", "project", "create", "--display-name", "CLI Test"]);
+    const { stdout, exitCode } = await runCli(["--json", "project", "create", "--cloud", "--display-name", "CLI Test"]);
     expect(exitCode).toBe(0);
     const project = JSON.parse(stdout);
     expect(project).toHaveProperty("id");
     expect(project).toHaveProperty("displayName");
+    expect(project.target).toBe("cloud");
     expect(project.displayName).toBe("CLI Test");
     createdProjectId = project.id;
   });
 
-  it("lists projects including created one", async ({ expect }) => {
+  it("lists cloud projects including created one with target=cloud", async ({ expect }) => {
     expect(createdProjectId).toBeDefined();
-    const { stdout, exitCode } = await runCli(["--json", "project", "list"]);
+    const { stdout, exitCode } = await runCli(["--json", "project", "list", "--cloud"]);
     expect(exitCode).toBe(0);
     const projects = JSON.parse(stdout);
     const found = projects.find((p: any) => p.id === createdProjectId);
     expect(found).toBeDefined();
     expect(found.displayName).toBe("CLI Test");
+    expect(found.target).toBe("cloud");
+  });
+
+  it("project list (no flags) emits a stderr warning when the emulator is unreachable", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+    // Default (no flags) tries both sources; the dev branch fails because the
+    // emulator PCK isn't where the CLI expects. We should still get a 0 exit
+    // and cloud results, plus a single stderr warning line.
+    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-list-warn-"));
+    try {
+      const { stdout, stderr, exitCode } = await runCli(["--json", "project", "list"], {
+        STACK_EMULATOR_HOME: fakeEmulatorHome,
+        STACK_EMULATOR_READY_TIMEOUT_MS: "0",
+      });
+      expect(exitCode).toBe(0);
+      expect(stderr).toContain("skipping dev projects");
+      const projects = JSON.parse(stdout);
+      const found = projects.find((p: any) => p.id === createdProjectId);
+      expect(found).toBeDefined();
+      expect(found.target).toBe("cloud");
+    } finally {
+      fs.rmSync(fakeEmulatorHome, { recursive: true });
+    }
   });
 
   it("returns basic expression", async ({ expect }) => {
     expect(createdProjectId).toBeDefined();
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud", "return 1+1"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "return 1+1"],
     );
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe("2");
@@ -197,8 +237,7 @@ describe("Stack CLI", () => {
 
   it("has stackServerApp object available", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud", "return typeof stackServerApp"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "return typeof stackServerApp"],
     );
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe('"object"');
@@ -210,22 +249,22 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("https://docs.stack-auth.com/docs/sdk");
   });
 
-  it("exec help mentions --cloud option", async ({ expect }) => {
+  it("exec help mentions --cloud-project-id and --config-file", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(["exec", "--help"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("--cloud");
+    expect(stdout).toContain("--cloud-project-id");
+    expect(stdout).toContain("--config-file");
   });
 
   it("errors when no javascript is provided", async ({ expect }) => {
-    const { stderr, exitCode } = await runCli(["exec", "--cloud"], { STACK_PROJECT_ID: createdProjectId });
+    const { stderr, exitCode } = await runCli(["exec", "--cloud-project-id", createdProjectId]);
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Missing JavaScript argument");
   });
 
   it("reports syntax error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "--cloud", "return @@invalid"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "return @@invalid"],
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Syntax error");
@@ -233,8 +272,7 @@ describe("Stack CLI", () => {
 
   it("reports runtime error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "--cloud", "throw new Error('boom')"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "throw new Error('boom')"],
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain("boom");
@@ -242,8 +280,7 @@ describe("Stack CLI", () => {
 
   it("reports string runtime error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "--cloud", "throw 'boom-string'"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "throw 'boom-string'"],
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain("boom-string");
@@ -251,8 +288,7 @@ describe("Stack CLI", () => {
 
   it("reports object runtime error", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "--cloud", "throw { code: 123 }"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "throw { code: 123 }"],
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain('{"code":123}');
@@ -260,8 +296,7 @@ describe("Stack CLI", () => {
 
   it("reports undefined variable", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(
-      ["exec", "--cloud", "return nonExistentVar"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "return nonExistentVar"],
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain("nonExistentVar");
@@ -269,8 +304,7 @@ describe("Stack CLI", () => {
 
   it("returns undefined for no return value", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud", "const x = 1"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "const x = 1"],
     );
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe("");
@@ -278,8 +312,7 @@ describe("Stack CLI", () => {
 
   it("returns complex object as JSON", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud", "return {a: 1, b: [2, 3]}"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "return {a: 1, b: [2, 3]}"],
     );
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(stdout);
@@ -288,8 +321,7 @@ describe("Stack CLI", () => {
 
   it("supports async code", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud", "return await Promise.resolve(42)"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "return await Promise.resolve(42)"],
     );
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe("42");
@@ -301,8 +333,7 @@ describe("Stack CLI", () => {
     createdUserEmail = `exec-test-${crypto.randomUUID()}@stack-generated.example.com`;
     const code = `const u = await stackServerApp.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud", code],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, code],
     );
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(stdout);
@@ -314,27 +345,31 @@ describe("Stack CLI", () => {
     expect(createdProjectId).toBeDefined();
     expect(createdUserEmail).toBeDefined();
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud", "const users = await stackServerApp.listUsers(); return users.length"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["exec", "--cloud-project-id", createdProjectId, "const users = await stackServerApp.listUsers(); return users.length"],
     );
     expect(exitCode).toBe(0);
     const count = JSON.parse(stdout);
     expect(count).toBeGreaterThanOrEqual(1);
   });
 
-  it("local-default exec errors when emulator PCK file is missing", async ({ expect }) => {
-    expect(createdProjectId).toBeDefined();
-    // Without --cloud, exec defaults to the local emulator. With
-    // STACK_EMULATOR_HOME pointed at an empty dir, the PCK file lookup fires
-    // before any network call and we get a clear error. Setting
-    // STACK_EMULATOR_READY_TIMEOUT_MS=0 disables the boot-race polling window
-    // so this test fails fast.
+  it("exec --config-file errors when the config file does not exist", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(
+      ["exec", "--config-file", path.join(tmpDir, "missing-stack.config.ts"), "return 1"],
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Config file not found");
+  });
+
+  it("exec --config-file errors when emulator PCK file is missing", async ({ expect }) => {
+    // The file exists on disk but the emulator PCK file isn't where the CLI
+    // expects. PCK lookup fires before any network call so this fails fast.
     const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-fake-emulator-"));
+    const configFile = path.join(tmpDir, `cfg-pck-missing-${crypto.randomUUID()}.config.ts`);
+    fs.writeFileSync(configFile, "");
     try {
       const { stderr, exitCode } = await runCli(
-        ["exec", "return 1"],
+        ["exec", "--config-file", configFile, "return 1"],
         {
-          STACK_PROJECT_ID: createdProjectId,
           STACK_EMULATOR_HOME: fakeEmulatorHome,
           STACK_EMULATOR_READY_TIMEOUT_MS: "0",
         },
@@ -346,20 +381,20 @@ describe("Stack CLI", () => {
     }
   });
 
-  it("local-default exec errors when emulator API is unreachable", async ({ expect }) => {
-    expect(createdProjectId).toBeDefined();
-    // PCK file present (so we get past the file check) but STACK_EMULATOR_API_URL
-    // points at a port nothing is listening on — fetch fails with a clear error.
-    // STACK_EMULATOR_READY_TIMEOUT_MS=0 keeps the retry loop from waiting.
+  it("exec --config-file errors when emulator API is unreachable", async ({ expect }) => {
+    // PCK file present but the API URL points at a port nothing is listening
+    // on — fetch fails with a clear error. READY_TIMEOUT_MS=0 keeps the retry
+    // loop from waiting.
     const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-fake-emulator-"));
+    const configFile = path.join(tmpDir, `cfg-unreachable-${crypto.randomUUID()}.config.ts`);
+    fs.writeFileSync(configFile, "");
     try {
       const pckDir = path.join(fakeEmulatorHome, "run", "vm");
       fs.mkdirSync(pckDir, { recursive: true });
       fs.writeFileSync(path.join(pckDir, "internal-pck"), "pck_stub_for_test");
       const { stderr, exitCode } = await runCli(
-        ["exec", "return 1"],
+        ["exec", "--config-file", configFile, "return 1"],
         {
-          STACK_PROJECT_ID: createdProjectId,
           STACK_EMULATOR_HOME: fakeEmulatorHome,
           STACK_EMULATOR_API_URL: "http://127.0.0.1:1",
           STACK_EMULATOR_READY_TIMEOUT_MS: "0",
@@ -374,15 +409,10 @@ describe("Stack CLI", () => {
 
   // Positive happy-path: only runs when the backend is in local-emulator mode
   // (the password sign-in for local-emulator@stack-auth.com only succeeds
-  // there). Stages a STACK_EMULATOR_HOME with the real internal PCK and
-  // points STACK_EMULATOR_API_URL at the running backend, so the CLI takes
-  // the local-default path and signs in as the emulator admin.
-  //
-  // The CLI signs in as the emulator admin, whose listOwnedProjects() only
-  // returns projects owned by LOCAL_EMULATOR_OWNER_TEAM_ID. createdProjectId
-  // is owned by the test user's team and would be invisible, so we mint a
-  // fresh project via the local-emulator endpoint instead.
-  it.runIf(isLocalEmulator)("local-default exec runs against the local emulator backend", async ({ expect }) => {
+  // there). Mints a project against the local-emulator backend keyed by an
+  // absolute config-file path, then runs `stack exec --config-file <path>`
+  // and expects it to resolve the same project.
+  it.runIf(isLocalEmulator)("exec --config-file runs against the local emulator backend", async ({ expect }) => {
     const emulatorConfigPath = path.join(tmpDir, `stack-emulator-${crypto.randomUUID()}.config.ts`);
     fs.writeFileSync(emulatorConfigPath, "");
     const projectRes = await niceFetch(`${STACK_BACKEND_BASE_URL}/api/v1/internal/local-emulator/project`, {
@@ -399,7 +429,6 @@ describe("Stack CLI", () => {
     if (projectRes.status !== 200) {
       throw new Error(`Failed to mint local emulator project: ${projectRes.status} ${JSON.stringify(projectRes.body)}`);
     }
-    const emulatorProjectId = (projectRes.body as { project_id: string }).project_id;
 
     const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-emu-positive-"));
     try {
@@ -407,9 +436,8 @@ describe("Stack CLI", () => {
       fs.mkdirSync(pckDir, { recursive: true });
       fs.writeFileSync(path.join(pckDir, "internal-pck"), STACK_INTERNAL_PROJECT_CLIENT_KEY);
       const { stdout, stderr, exitCode } = await runCli(
-        ["exec", "return 1+1"],
+        ["exec", "--config-file", emulatorConfigPath, "return 1+1"],
         {
-          STACK_PROJECT_ID: emulatorProjectId,
           STACK_EMULATOR_HOME: fakeEmulatorHome,
           STACK_EMULATOR_API_URL: STACK_BACKEND_BASE_URL,
         },
@@ -429,8 +457,7 @@ describe("Stack CLI", () => {
   it("config pull writes a .ts file", async ({ expect }) => {
     configTsPath = path.join(tmpDir, "config.ts");
     const { stdout, exitCode } = await runCli(
-      ["config", "pull", "--config-file", configTsPath, "--overwrite"],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", configTsPath, "--overwrite"],
     );
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
@@ -442,8 +469,7 @@ describe("Stack CLI", () => {
   it("config push succeeds", async ({ expect }) => {
     expect(configTsPath).toBeDefined();
     const { stdout, exitCode } = await runCli(
-      ["config", "push", "--config-file", configTsPath],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["config", "push", "--cloud-project-id", createdProjectId, "--config-file", configTsPath],
     );
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config pushed successfully");
@@ -452,8 +478,7 @@ describe("Stack CLI", () => {
   it("config pull rejects bad extension", async ({ expect }) => {
     const badPath = path.join(tmpDir, "config.json");
     const { stderr, exitCode } = await runCli(
-      ["config", "pull", "--config-file", badPath],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", badPath],
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain(".ts extension");
@@ -463,8 +488,7 @@ describe("Stack CLI", () => {
     const badConfigPath = path.join(tmpDir, "config-array.ts");
     fs.writeFileSync(badConfigPath, "export const config = [];\n");
     const { stderr, exitCode } = await runCli(
-      ["config", "push", "--config-file", badConfigPath],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["config", "push", "--cloud-project-id", createdProjectId, "--config-file", badConfigPath],
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain("plain `config` object");
@@ -475,12 +499,47 @@ describe("Stack CLI", () => {
     fs.writeFileSync(existingConfigPath, "existing\n");
 
     const { stderr, exitCode } = await runCli(
-      ["config", "pull", "--config-file", existingConfigPath],
-      { STACK_PROJECT_ID: createdProjectId },
+      ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", existingConfigPath],
     );
 
     expect(exitCode).toBe(1);
     expect(stderr).toContain("re-run with --overwrite");
+  });
+
+  it("config pull falls back to ./stack.config.ts in cwd when --config-file is omitted", async ({ expect }) => {
+    // realpathSync normalizes macOS's /var/folders/... → /private/var/folders/...
+    // (Node resolves the symlink when reporting the written path).
+    const cwdDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-config-pull-cwd-")));
+    const expected = path.join(cwdDir, "stack.config.ts");
+    fs.writeFileSync(expected, "// placeholder so the file exists\n");
+    try {
+      const { stdout, exitCode } = await runCli(
+        ["config", "pull", "--cloud-project-id", createdProjectId, "--overwrite"],
+        undefined,
+        cwdDir,
+      );
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain(`Config written to ${expected}`);
+      const content = fs.readFileSync(expected, "utf-8");
+      expect(content).toContain("export const config: StackConfig");
+    } finally {
+      fs.rmSync(cwdDir, { recursive: true });
+    }
+  });
+
+  it("config pull errors when --config-file is omitted and cwd has no stack.config.ts", async ({ expect }) => {
+    const cwdDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-config-pull-empty-")));
+    try {
+      const { stderr, exitCode } = await runCli(
+        ["config", "pull", "--cloud-project-id", createdProjectId],
+        undefined,
+        cwdDir,
+      );
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain("Pass --config-file");
+    } finally {
+      fs.rmSync(cwdDir, { recursive: true });
+    }
   });
 
   // --- init command tests ---
