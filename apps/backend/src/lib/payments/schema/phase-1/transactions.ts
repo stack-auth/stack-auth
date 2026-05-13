@@ -28,13 +28,17 @@ const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
 
 // ── Entry-index constants ──────────────────────────────────────────────
-// These pin the position of the product-grant entry within source
-// transactions. The refund flow uses them for `adjustedEntryIndex` on
-// product-revocation entries; if the layouts above are reordered, both
-// these constants and any persisted refund rows need to be reconciled.
-//   subscription-start: [active-subscription-start, product-grant, money-transfer?, ...]
-//   one-time-purchase:  [product-grant, money-transfer?, ...]
-export const SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX = 1;
+// Position of the product-grant entry as exposed by the public transactions
+// API. Refund product-revocation rows persist `adjustedEntryIndex` purely
+// as a back-reference read by SDK consumers — the value is copied through
+// `mapLedgerEntry` verbatim. That mapper drops the hidden
+// `active-subscription-start` entry, so the public-API layout is:
+//   subscription-start: [product_grant, money_transfer?, ...]
+//   one-time-purchase:  [product_grant, money_transfer?, ...]
+// Both product grants land at index 0 publicly. If the public mapping
+// changes (e.g. `active-subscription-start` becomes visible), these need
+// to move in lockstep and any persisted refund rows reconciled.
+export const SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX = 0;
 export const ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX = 0;
 
 

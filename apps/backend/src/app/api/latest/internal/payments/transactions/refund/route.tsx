@@ -434,14 +434,21 @@ async function handleSubscriptionRefund(options: {
   // Cap = original − sum(prior refunds for this source txn). Test-mode subs
   // have no money flow (amount must be 0 anyway, see check above), so the cap
   // is irrelevant — short-circuit to 0 to avoid a USD-only throw on non-USD
-  // test-mode products. Live mode reads the invoice's amountTotal.
-  const totalStripeUnits = isTestMode
+  // test-mode products. In live mode, `getTotalUsdStripeUnits` enforces
+  // USD-only pricing (throws otherwise). The invoice's `amountTotal` is the
+  // more accurate cap (reflects proration, quantity changes, discounts), but
+  // SubscriptionInvoice doesn't persist the invoice currency — so we only
+  // trust `amountTotal` after the USD pre-flight has succeeded.
+  const productCapStripeUnits = isTestMode
     ? 0
-    : (invoice?.amountTotal ?? getTotalUsdStripeUnits({
+    : getTotalUsdStripeUnits({
       product,
       priceId: subscription.priceId ?? null,
       quantity: subscription.quantity,
-    }));
+    });
+  const totalStripeUnits = isTestMode
+    ? 0
+    : (invoice?.amountTotal ?? productCapStripeUnits);
 
   const prior = await readPriorRefundSummary({
     prisma,

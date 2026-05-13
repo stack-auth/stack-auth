@@ -261,19 +261,24 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     return { canSubmit: true, error: null };
   }, [target, amountUsd, chargedAmountUsd, revokeProduct, endSubscription]);
 
+  // Seed dialog state from the current transaction. Called from the menu
+  // click before opening, because ActionDialog's onOpenChange doesn't fire on
+  // the open transition for a controlled dialog — so without this an admin
+  // opening from the menu would see the initial useState defaults
+  // (`amountUsd: '0'`) and submitting unchanged on a paid purchase would
+  // revoke/end at $0 instead of refunding the charged amount.
+  const seedFromTransaction = () => {
+    setAmountUsd(chargedAmountUsd ?? '0');
+    setRevokeProduct(true);
+    setEndSubscription(isSubscription);
+  };
+
   return (
     <>
       {target ? (
         <ActionDialog
           open={isDialogOpen}
-          onOpenChange={(open) => {
-            if (open) {
-              setAmountUsd(chargedAmountUsd ?? '0');
-              setRevokeProduct(true);
-              setEndSubscription(isSubscription);
-            }
-            setIsDialogOpen(open);
-          }}
+          onOpenChange={setIsDialogOpen}
           title="Refund Transaction"
           danger
           cancelButton
@@ -355,6 +360,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
             if (!target) {
               return;
             }
+            seedFromTransaction();
             setIsDialogOpen(true);
           },
         }]}
