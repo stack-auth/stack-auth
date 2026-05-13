@@ -7,8 +7,8 @@ import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 // ============================================================================
 
 export type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
-export type Price = (Product['prices'] & object)[string];
-export type PricesObject = Exclude<Product['prices'], 'include-by-default'>;
+export type Price = Product['prices'][string];
+export type PricesObject = Product['prices'];
 
 // ============================================================================
 // Constants
@@ -123,18 +123,30 @@ export function formatPriceDisplay(price: Price): string {
 }
 
 /**
- * Converts prices object to array format, handling 'include-by-default' case
+ * Builds a fresh $0 price entry. Used as the "Make free" handler on product forms.
  */
-export function getPricesObject(draft: Product): PricesObject {
-  if (draft.prices === 'include-by-default') {
-    return {
-      "free": {
-        USD: '0.00',
-        serverOnly: false,
-      },
-    };
-  }
-  return draft.prices;
+export function createFreePrice(): { [priceId: string]: Price } {
+  return { [generateUniqueId('price')]: { USD: '0.00', serverOnly: false } };
+}
+
+/**
+ * Returns true if `prices` represents a "free" product: exactly one price entry
+ * whose USD amount is `'0'` or `'0.00'` and which has no interval, free-trial, or
+ * server-only flag set (any of those would change the semantics meaningfully).
+ *
+ * We accept both `'0'` and `'0.00'` for backward-compatibility with rows written
+ * before we standardized on `createFreePrice()` (which emits `'0.00'`). All three
+ * product pages (list, edit, create) call this so the "Free" indicator and the
+ * "Make free" / "Make paid" toggles stay in sync.
+ */
+export function isFreePrices(prices: PricesObject): boolean {
+  const entries = Object.values(prices);
+  if (entries.length !== 1) return false;
+  const [price] = entries;
+  return (price.USD === '0' || price.USD === '0.00')
+    && !price.interval
+    && !price.freeTrial
+    && !price.serverOnly;
 }
 
 // ============================================================================

@@ -5,10 +5,10 @@ import { FormDialog } from "@/components/form-dialog";
 import { CheckboxField, InputField, SelectField } from "@/components/form-fields";
 import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
 import { PriceEditorField } from "@/components/payments/price-editor";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, SimpleTooltip, toast } from "@/components/ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, SimpleTooltip, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { AdminProject } from "@stackframe/stack";
-import { priceOrIncludeByDefaultSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
+import { pricesSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 
@@ -37,8 +37,8 @@ export function ProductDialog({ open, onOpenChange, project, mode, initial }: Pr
     productId: userSpecifiedIdSchema("productId").defined().label("Product ID"),
     displayName: yup.string().defined().label("Display Name"),
     customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
-    prices: priceOrIncludeByDefaultSchema.defined().label("Prices").test("at-least-one-price", (value, context) => {
-      if (value !== "include-by-default" && Object.keys(value).length === 0) {
+    prices: pricesSchema.defined().label("Prices").test("at-least-one-price", (value, context) => {
+      if (Object.keys(value).length === 0) {
         return context.createError({ message: "At least one price is required" });
       }
       return true;
@@ -99,7 +99,7 @@ export function ProductDialog({ open, onOpenChange, project, mode, initial }: Pr
             { value: "custom", label: "Custom" },
           ]} />
 
-          <PriceEditorField control={form.control} name={"prices"} label="Prices" required disabled={form.watch("prices") === "include-by-default"} />
+          <PriceEditorField control={form.control} name={"prices"} label="Prices" required />
           <IncludedItemEditorField itemIds={Object.keys(config.payments.items)} control={form.control} name={"includedItems"} label="Included Items" />
           <Accordion type="single" collapsible>
             <AccordionItem value="item-1" className="border-0">
@@ -122,28 +122,6 @@ export function ProductDialog({ open, onOpenChange, project, mode, initial }: Pr
                       Stackable
                     </SimpleTooltip>
                   }
-                />
-                <FormField
-                  control={form.control}
-                  name={"prices"}
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md p-2">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value === "include-by-default"}
-                          onCheckedChange={(checked) => field.onChange(checked ? "include-by-default" : {})}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>
-                          <SimpleTooltip tooltip="The default product that is included in the group">
-                            Include by default
-                          </SimpleTooltip>
-                        </FormLabel>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
                 />
               </AccordionContent>
             </AccordionItem>

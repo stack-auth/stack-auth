@@ -6,6 +6,7 @@ import { Link, StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
 import {
   ActionCell,
+  Alert,
   AvatarCell,
   Badge,
   Button,
@@ -39,7 +40,7 @@ import {
 } from "@/components/ui";
 import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
-import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
@@ -58,7 +59,7 @@ import {
   priceToEditingPrice,
   type EditingPrice,
 } from "../price-edit-dialog";
-import { DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, shortIntervalLabel, type Price, type Product } from "../utils";
+import { createFreePrice, DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, isFreePrices, shortIntervalLabel, type Price, type Product } from "../utils";
 
 const CUSTOMER_TYPE_COLORS = {
   user: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/30',
@@ -277,6 +278,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // ===== LOCAL STATE FOR DEFERRED SAVE =====
   // Track all pending changes. undefined means "use original value"
   const [pendingChanges, setPendingChanges] = useState<PendingProductChanges>({});
+  // Inline validation error shown above the editable grid. We avoid `window.alert()`
+  // (jarring/blocking) and `toast()` (per AGENTS.md, blocking errors are easily
+  // missed as toasts) in favor of a destructive Alert in the design system.
+  const [saveValidationError, setSaveValidationError] = useState<string | null>(null);
 
   // Computed local values (pending change or original)
   const localDisplayName = pendingChanges.displayName !== undefined ? pendingChanges.displayName : (product.displayName || '');
@@ -308,6 +313,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   // Discard all pending changes
   const handleDiscard = () => {
     setPendingChanges({});
+    setSaveValidationError(null);
     // Reset add-on dialog state
     setIsAddOn(product.isAddOnTo !== false && typeof product.isAddOnTo === 'object');
     setSelectedAddOnProducts(
@@ -319,6 +325,13 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Save all pending changes
   const handleSave = async () => {
+    const effectivePrices = pendingChanges.prices ?? product.prices;
+    if (Object.keys(effectivePrices).length === 0) {
+      setSaveValidationError("A product must have at least one price. Add a price option or make the product free before saving.");
+      return;
+    }
+    setSaveValidationError(null);
+
     const configUpdate: Record<string, any> = {};
 
     // Apply product changes
@@ -532,6 +545,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // ===== PRICES HANDLERS (for deferred save) =====
   const handlePricesChange = (newPrices: Product['prices']) => {
+    // Clear the "needs at least one price" error as soon as the user adds one back.
+    if (Object.keys(newPrices).length > 0) {
+      setSaveValidationError(null);
+    }
     // Deep compare to see if we're back to original
     const originalPrices = product.prices;
     if (JSON.stringify(newPrices) === JSON.stringify(originalPrices)) {
@@ -725,6 +742,11 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   return (
     <>
+      {saveValidationError && (
+        <Alert variant="destructive" className="mb-4">
+          {saveValidationError}
+        </Alert>
+      )}
       <DesignEditableGrid
         items={gridItems}
         columns={2}
@@ -824,25 +846,24 @@ type ProductPricesSectionProps = {
 function ProductPricesSection({ productId, prices, onPricesChange, inline = false }: ProductPricesSectionProps) {
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
+  const [replacePricesOnSave, setReplacePricesOnSave] = useState(false);
 
   const handleSavePrice = (editing: EditingPrice) => {
     const newPrice = editingPriceToPrice(editing);
 
-    const currentPrices = prices === 'include-by-default' ? {} : prices;
-    const updatedPrices = {
-      ...currentPrices,
-      [editing.priceId]: newPrice,
-    };
+    const updatedPrices = replacePricesOnSave
+      ? { [editing.priceId]: newPrice }
+      : { ...prices, [editing.priceId]: newPrice };
 
     onPricesChange(updatedPrices);
     setEditingPrice(null);
     setIsAddingPrice(false);
+    setReplacePricesOnSave(false);
   };
 
   const handleDeletePrice = (priceId: string) => {
-    const currentPrices = prices === 'include-by-default' ? {} : prices;
-    const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
-    onPricesChange(Object.keys(remainingPrices).length > 0 ? remainingPrices : {});
+    const { [priceId]: _, ...remainingPrices } = prices;
+    onPricesChange(remainingPrices);
   };
 
 
@@ -856,46 +877,25 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
     setIsAddingPrice(true);
   };
 
-  const isIncludeByDefault = prices === 'include-by-default';
-  const priceEntries = !isIncludeByDefault ? typedEntries(prices as Record<string, Price>) : [];
-  // Check if the product has a single $0 price (free but not included by default)
-  const isFreeNotIncluded = priceEntries.length === 1 && priceEntries[0][1].USD === '0' || priceEntries.length === 1 && priceEntries[0][1].USD === '0.00';
-  const isFree = isIncludeByDefault || isFreeNotIncluded;
-  const hasNoPrices = !isIncludeByDefault && priceEntries.length === 0;
+  const priceEntries = typedEntries(prices);
+  const isFree = isFreePrices(prices);
+  const hasNoPrices = priceEntries.length === 0;
 
   const handleMakePaid = () => {
-    // Convert from include-by-default to empty prices object, then open add dialog
-    onPricesChange({});
+    setReplacePricesOnSave(true);
     openAddDialog();
   };
 
-  const handleSetIncludeByDefault = () => {
-    onPricesChange('include-by-default');
-  };
-
-  const handleSetFreeNotIncluded = () => {
-    // Set a $0 price to make it free but not included by default
-    const newPriceId = generateUniqueId('price');
-    onPricesChange({
-      [newPriceId]: { USD: '0', serverOnly: false },
-    });
+  const handleMakeFree = () => {
+    onPricesChange(createFreePrice());
   };
 
   const listContent = (
     <div className="pl-1">
       {isFree ? (
-        // Free product - show "Free" with option to toggle include-by-default
         <div className="flex flex-col">
           <div className="flex items-center text-sm leading-6">
             <span className="font-semibold text-foreground">Free</span>
-            <span className="text-muted-foreground mx-1.5">—</span>
-            {isIncludeByDefault ? (
-              <SimpleTooltip tooltip="This product will automatically be given to all new and existing customers">
-                <span className="text-muted-foreground cursor-help border-b border-dotted border-muted-foreground/50">Included by default</span>
-              </SimpleTooltip>
-            ) : (
-              <span className="text-muted-foreground">Not included by default</span>
-            )}
           </div>
           <div className="flex items-center gap-2 mt-1">
             <Button
@@ -907,27 +907,6 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
               <CurrencyDollarIcon className="h-3 w-3 mr-1" />
               Make paid
             </Button>
-            {isIncludeByDefault ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-                onClick={handleSetFreeNotIncluded}
-              >
-                <XIcon className="h-3 w-3 mr-1" />
-                {"Don't include by default"}
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-                onClick={handleSetIncludeByDefault}
-              >
-                <GiftIcon className="h-3 w-3 mr-1" />
-                Include by default
-              </Button>
-            )}
           </div>
         </div>
       ) : hasNoPrices ? (
@@ -949,7 +928,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
               variant="ghost"
               size="sm"
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleSetIncludeByDefault}
+              onClick={handleMakeFree}
             >
               <GiftIcon className="h-3 w-3 mr-1" />
               Make free
@@ -1013,7 +992,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
               variant="ghost"
               size="sm"
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleSetIncludeByDefault}
+              onClick={handleMakeFree}
             >
               <GiftIcon className="h-3 w-3 mr-1" />
               Make free
@@ -1031,6 +1010,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
         if (!open) {
           setEditingPrice(null);
           setIsAddingPrice(false);
+          setReplacePricesOnSave(false);
         }
       }}
       editingPrice={editingPrice}
