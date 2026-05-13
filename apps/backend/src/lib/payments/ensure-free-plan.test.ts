@@ -84,7 +84,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
       prisma,
     });
 
-    await ensureFreePlanForBillingTeam(billingTeamId);
+    expect(await ensureFreePlanForBillingTeam(billingTeamId)).toBe(false);
 
     const subs = await getUnendedSubsForTeam(tenancy.id, billingTeamId, prisma);
     expect(subs).toHaveLength(1);
@@ -114,7 +114,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
       prisma,
     });
 
-    await ensureFreePlanForBillingTeam(billingTeamId);
+    expect(await ensureFreePlanForBillingTeam(billingTeamId)).toBe(false);
 
     const subs = await getUnendedSubsForTeam(tenancy.id, billingTeamId, prisma);
     expect(subs).toHaveLength(1);
@@ -125,19 +125,75 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
     const { tenancy, prisma } = await getInternal();
     const billingTeamId = randomUUID();
 
-    await ensureFreePlanForBillingTeam(billingTeamId);
+    expect(await ensureFreePlanForBillingTeam(billingTeamId)).toBe(true);
 
     const subs = await getUnendedSubsForTeam(tenancy.id, billingTeamId, prisma);
     expect(subs).toHaveLength(1);
     expect(subs[0].productId).toBe("free");
   });
 
-  it("idempotent: sequential double-call creates exactly one free sub", async () => {
+  it("idempotent: sequential double-call creates exactly one free sub (second call returns false)", async () => {
     const { tenancy, prisma } = await getInternal();
     const billingTeamId = randomUUID();
 
-    await ensureFreePlanForBillingTeam(billingTeamId);
-    await ensureFreePlanForBillingTeam(billingTeamId);
+    expect(await ensureFreePlanForBillingTeam(billingTeamId)).toBe(true);
+    expect(await ensureFreePlanForBillingTeam(billingTeamId)).toBe(false);
+
+    const subs = await getUnendedSubsForTeam(tenancy.id, billingTeamId, prisma);
+    expect(subs).toHaveLength(1);
+    expect(subs[0].productId).toBe("free");
+  });
+
+  it("regression: a team whose only sub has ENDED is treated as orphaned and gets a fresh free grant", async () => {
+    // The "occupies the line" predicate gates on endedAt (not status), so a
+    // team whose only sub is canceled+ended in the past should be seen as
+    // orphaned and re-granted free. Pins this against the old "team has any
+    // sub" predicate that earlier scripts relied on.
+    const { tenancy, prisma } = await getInternal();
+    const billingTeamId = randomUUID();
+
+    const teamProduct = getOrUndefined(tenancy.config.payments.products, "team");
+    if (teamProduct == null) throw new Error("Internal tenancy missing `team` product");
+
+    const yesterday = new Date(Date.now() - 24 * 3600 * 1000);
+    const endedSubId = randomUUID();
+    await bulldozerWriteSubscription(prisma, {
+      id: endedSubId,
+      tenancyId: tenancy.id,
+      customerId: billingTeamId,
+      customerType: "TEAM",
+      productId: "team",
+      priceId: null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ProductSnapshot is a structural JSON type
+      product: teamProduct as any,
+      quantity: 1,
+      stripeSubscriptionId: null,
+      status: "canceled",
+      currentPeriodStart: yesterday,
+      currentPeriodEnd: yesterday,
+      cancelAtPeriodEnd: false,
+      canceledAt: yesterday,
+      endedAt: yesterday,
+      refundedAt: null,
+      creationSource: "PURCHASE_PAGE",
+      createdAt: yesterday,
+    });
+
+    // Precondition: the team has exactly one sub on record, and it is the
+    // ended one (no unended subs exist). This is what makes the test
+    // meaningful — without it, a regression that ignored `endedAt` could
+    // still pass by virtue of some other unrelated sub being present.
+    const subMapBefore = await getSubscriptionMapForCustomer({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see `getUnendedSubsForTeam`
+      prisma: prisma as any,
+      tenancyId: tenancy.id,
+      customerType: "team",
+      customerId: billingTeamId,
+    });
+    expect(Object.keys(subMapBefore)).toEqual([endedSubId]);
+    expect(await getUnendedSubsForTeam(tenancy.id, billingTeamId, prisma)).toHaveLength(0);
+
+    expect(await ensureFreePlanForBillingTeam(billingTeamId)).toBe(true);
 
     const subs = await getUnendedSubsForTeam(tenancy.id, billingTeamId, prisma);
     expect(subs).toHaveLength(1);

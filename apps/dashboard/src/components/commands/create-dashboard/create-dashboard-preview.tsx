@@ -21,8 +21,9 @@ import { useChat, type UIMessage } from "@ai-sdk/react";
 import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
-import { DashboardSandboxHost } from "./dashboard-sandbox-host";
+import { DashboardSandboxHost, stampEsmVersion } from "./dashboard-sandbox-host";
 import { StreamingCodeViewer } from "../../streaming-code-viewer";
+import packageJson from "../../../../package.json";
 
 type DashboardArtifact = {
   prompt: string,
@@ -176,18 +177,19 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     phase = "idle";
   }
 
-  const displayCode = toolPart?.code ?? "";
+  const displayCode = toolPart?.code ? stampEsmVersion(toolPart.code, packageJson.version) : "";
 
   if (toolPart?.state === "input-available" && !artifact && !finalizedRef.current) {
     finalizedRef.current = true;
     const sanitized = sanitizeGeneratedCode(toolPart.code);
+    const stamped = stampEsmVersion(sanitized, packageJson.version);
     setArtifact({
       prompt,
       projectId,
       runtimeCodegen: {
         title: prompt.slice(0, 120),
         description: "",
-        uiRuntimeSourceCode: sanitized,
+        uiRuntimeSourceCode: stamped,
       },
     });
     setIframeReady(false);

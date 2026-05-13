@@ -4,6 +4,7 @@ import { it } from "../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
 const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+const supportConversationsPath = "/api/v1/internal/dogfood/support/conversations";
 
 describe("POST /api/v1/internal/feedback", () => {
   it.runIf(!isLocalEmulator)("should send feedback from an authenticated user", async ({ expect }) => {
@@ -44,6 +45,17 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(messages[0].body?.text).toContain(senderEmail);
     expect(messages[0].body?.text).toContain(signInResult.userId);
     expect(messages[0].body?.text).toContain("Authenticated feedback from the dashboard.");
+
+    const listResponse = await niceBackendFetch(supportConversationsPath, {
+      accessType: "client",
+    });
+    expect(listResponse.status).toBe(200);
+    const fromSupportForm = listResponse.body.conversations.find(
+      (c: { subject: string }) => c.subject === subject,
+    );
+    expect(fromSupportForm).toBeDefined();
+    expect(fromSupportForm.source).toBe("api");
+    expect(fromSupportForm.preview).toContain("Authenticated feedback from the dashboard.");
   });
 
   it.runIf(!isLocalEmulator)("should send feedback without authentication (dev tool)", async ({ expect }) => {

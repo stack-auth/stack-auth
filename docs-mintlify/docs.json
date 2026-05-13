@@ -60,6 +60,8 @@
             "pages": [
               "guides/going-further/stack-app",
               "guides/going-further/backend-integration",
+              "guides/going-further/cli",
+              "guides/going-further/local-emulator",
               "guides/going-further/local-development",
               "guides/going-further/user-metadata"
             ]
@@ -131,6 +133,7 @@
             "group": "Other",
             "pages": [
               "guides/other/self-host",
+              "guides/other/known-errors",
               "guides/other/mcp-setup",
               {
                 "group": "Tutorials",
