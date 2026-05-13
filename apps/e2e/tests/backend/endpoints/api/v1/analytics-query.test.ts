@@ -1,10 +1,40 @@
+import { ITEM_IDS, PLAN_LIMITS, PlanId } from "@stackframe/stack-shared/dist/plans";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../helpers";
-import { Project, User, niceBackendFetch } from "../../../backend-helpers";
+import { Project, User, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
+import { waitForItemQuantityToReach } from "../../../payment-quota-helpers";
 
 async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body,
+  });
+
+  return response;
+}
+
+async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  if (planId !== "free") {
+    await withInternalProject(async () => {
+      const grantResponse = await niceBackendFetch(`/api/v1/payments/products/team/${ownerTeamId}`, {
+        method: "POST",
+        accessType: "server",
+        body: { product_id: planId },
+      });
+      if (grantResponse.status !== 200) {
+        throw new StackAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
+      }
+    });
+    await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, PLAN_LIMITS[planId].analyticsTimeoutSeconds);
+  }
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
@@ -75,7 +105,7 @@ it("can fetch query timing by query_id", async ({ expect }) => {
   expect(response.status).toBe(200);
   expect(queryId).toEqual(expect.any(String));
   if (typeof queryId !== "string") {
-    throw new Error("Expected analytics query response to include query_id.");
+    throw new StackAssertionError("Expected analytics query response to include query_id");
   }
 
   const timingResponse = await fetchQueryTimingWithRetry(queryId);
@@ -100,7 +130,7 @@ it("does not allow fetching timing for another project's query", async ({ expect
   expect(projectAQuery.status).toBe(200);
   expect(projectAQueryId).toEqual(expect.any(String));
   if (typeof projectAQueryId !== "string") {
-    throw new Error("Expected analytics query response to include query_id.");
+    throw new StackAssertionError("Expected analytics query response to include query_id");
   }
 
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -154,10 +184,11 @@ it("can execute a query with custom timeout", async ({ expect }) => {
   `);
 });
 
-it("rejects timeouts longer than 2 minutes", async ({ expect }) => {
+it("rejects timeouts longer than max plan limit", async ({ expect }) => {
+  const maxSchemaMs = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
   const response = await runQuery({
     query: "SELECT 1 as value",
-    timeout_ms: 120_001,
+    timeout_ms: maxSchemaMs + 1,
   });
 
   expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
@@ -168,12 +199,12 @@ it("rejects timeouts longer than 2 minutes", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/internal/analytics/query:
-              - body.timeout_ms must be less than or equal to 120000
+              - body.timeout_ms must be less than or equal to ${maxSchemaMs}
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/internal/analytics/query:
-            - body.timeout_ms must be less than or equal to 120000
+            - body.timeout_ms must be less than or equal to ${maxSchemaMs}
         \`,
       },
       "headers": Headers {
@@ -228,6 +259,41 @@ it("handles invalid SQL query", async ({ expect }) => {
         Syntax error: failed at position 1 (INVALID) (line 1, col 1): INVALID SQL QUERY 
         FORMAT JSONEachRow. Expected one of: Query, Query with output, EXPLAIN, EXPLAIN, SELECT query, possibly with UNION, list of union elements, SELECT query, subquery, possibly with UNION, SELECT subquery, SELECT query, WITH, FROM, SELECT, SHOW CREATE QUOTA query, SHOW CREATE, SHOW [FULL] [TEMPORARY] TABLES|DATABASES|CLUSTERS|CLUSTER|MERGES 'name' [[NOT] [I]LIKE 'str'] [LIMIT expr], SHOW, SHOW COLUMNS query, SHOW ENGINES query, SHOW ENGINES, SHOW FUNCTIONS query, SHOW FUNCTIONS, SHOW INDEXES query, SHOW SETTING query, SHOW SETTING, EXISTS or SHOW CREATE query, EXISTS, DESCRIBE FILESYSTEM CACHE query, DESCRIBE, DESC, DESCRIBE query, SHOW PROCESSLIST query, SHOW PROCESSLIST, CREATE TABLE or ATTACH TABLE query, CREATE, ATTACH, REPLACE, CREATE DATABASE query, CREATE VIEW query, CREATE DICTIONARY, CREATE LIVE VIEW query, CREATE WINDOW VIEW query, ALTER query, ALTER TABLE, ALTER TEMPORARY TABLE, ALTER DATABASE, RENAME query, RENAME DATABASE, RENAME TABLE, EXCHANGE TABLES, RENAME DICTIONARY, EXCHANGE DICTIONARIES, RENAME, DROP query, DROP, DETACH, TRUNCATE, UNDROP query, UNDROP, CHECK ALL TABLES, CHECK TABLE, KILL QUERY query, KILL, OPTIMIZE query, OPTIMIZE TABLE, WATCH query, WATCH, SHOW ACCESS query, SHOW ACCESS, ShowAccessEntitiesQuery, SHOW GRANTS query, SHOW GRANTS, SHOW PRIVILEGES query, SHOW PRIVILEGES, BACKUP or RESTORE query, BACKUP, RESTORE, INSERT query, INSERT INTO, USE query, USE, SET ROLE or SET DEFAULT ROLE query, SET ROLE DEFAULT, SET ROLE, SET DEFAULT ROLE, SET query, SET, SYSTEM query, SYSTEM, CREATE USER or ALTER USER query, ALTER USER, CREATE USER, CREATE ROLE or ALTER ROLE query, ALTER ROLE, CREATE ROLE, CREATE QUOTA or ALTER QUOTA query, ALTER QUOTA, CREATE QUOTA, CREATE ROW POLICY or ALTER ROW POLICY query, ALTER POLICY, ALTER ROW POLICY, CREATE POLICY, CREATE ROW POLICY, CREATE SETTINGS PROFILE or ALTER SETTINGS PROFILE query, ALTER SETTINGS PROFILE, ALTER PROFILE, CREATE SETTINGS PROFILE, CREATE PROFILE, CREATE FUNCTION query, DROP FUNCTION query, CREATE WORKLOAD query, DROP WORKLOAD query, CREATE RESOURCE query, DROP RESOURCE query, CREATE NAMED COLLECTION, DROP NAMED COLLECTION query, Alter NAMED COLLECTION query, ALTER, CREATE INDEX query, DROP INDEX query, DROP access entity query, MOVE access entity query, MOVE, GRANT or REVOKE query, REVOKE, GRANT, CHECK GRANT, CHECK GRANT, TCL query, BEGIN TRANSACTION, START TRANSACTION, COMMIT, ROLLBACK, SET TRANSACTION SNAPSHOT, Delete query, DELETE, Update query, UPDATE, COPY query, COPY. 
       \`,
+    }
+  `);
+});
+
+it("does not leak data from the internal cross-project users table via type-mismatch errors", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1",
+  });
+
+  expect(response.status).toBe(400);
+  const errorText = JSON.stringify(response.body);
+  expect(errorText).not.toContain("@");
+  expect(errorText).not.toMatch(/primary_email\s*[:=]\s*['"]/);
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });
@@ -1658,6 +1724,40 @@ it("does not leak column names from restricted tables via illegal type of argume
   `);
 });
 
+it("does not leak data from restricted tables via type-mismatch errors (code 386)", async ({ expect }) => {
+  // ClickHouse resolves types before checking permissions, so a code 386
+  // referencing a restricted table column would otherwise leak its type.
+  // 386 is classified unsafe so the raw message must not reach prod.
+  const response = await runQuery({
+    query: "SELECT if(1, query, 1) FROM system.query_log",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, query, 1) FROM system.query_log. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, query, 1) FROM system.query_log. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("does not leak column names from restricted tables via unknown identifier (code 47)", async ({ expect }) => {
   // ClickHouse resolves identifiers before checking permissions, and suggests
   // real column names ("Maybe you meant: ..."), so code 47 must be unsafe
@@ -1689,6 +1789,92 @@ it("does not leak column names from restricted tables via unknown identifier (co
       },
     }
   `);
+});
+
+it("clamps timeout to free plan limit", async ({ expect }) => {
+  const response = await runQueryWithPlan("free", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: 120000,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(PLAN_LIMITS.free.analyticsTimeoutSeconds);
+});
+
+it("clamps timeout to team plan limit", async ({ expect }) => {
+  const response = await runQueryWithPlan("team", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: 120000,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(PLAN_LIMITS.team.analyticsTimeoutSeconds);
+});
+
+it("clamps timeout to growth plan limit", async ({ expect }) => {
+  const maxSchemaMs = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
+  const response = await runQueryWithPlan("growth", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: maxSchemaMs,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(PLAN_LIMITS.growth.analyticsTimeoutSeconds);
+});
+
+it("does not clamp timeout below the plan limit", async ({ expect }) => {
+  const response = await runQueryWithPlan("team", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: 5000,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(5);
+});
+
+it("rejects analytics queries when the timeout quota is zero (would otherwise send max_execution_time=0 to ClickHouse, i.e. unlimited)", async ({ expect }) => {
+  // Reachable in practice in the gap between a paid plan ending and the
+  // free plan being regranted, or any other billing-misconfigured state
+  // where the team has no plan in the plans line. `Math.min(timeout_ms, 0)`
+  // would produce `max_execution_time: 0`, which ClickHouse interprets as
+  // "no timeout" — the opposite of the intended enforcement.
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  // Drain analytics_timeout_seconds to 0 (free plan starts at 10) via the
+  // internal-tenancy items endpoint.
+  await withInternalProject(async () => {
+    const drainResponse = await niceBackendFetch(
+      `/api/v1/payments/items/team/${ownerTeamId}/analytics_timeout_seconds/update-quantity?allow_negative=false`,
+      {
+        method: "POST",
+        accessType: "server",
+        body: { delta: -PLAN_LIMITS.free.analyticsTimeoutSeconds },
+      },
+    );
+    expect(drainResponse.status).toBe(200);
+  });
+  // Wait for the bulldozer timefold to materialize the drained quota.
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, 0);
+
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      query: "SELECT getSetting('max_execution_time') as max_execution_time",
+      timeout_ms: 5000,
+    },
+  });
+
+  expect(response.status).toBe(400);
+  expect(response.body).toMatchObject({
+    code: "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+    details: { item_id: "analytics_timeout_seconds" },
+  });
 });
 
 it("does not allow numbers table function with large values", async ({ expect }) => {

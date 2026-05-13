@@ -98,11 +98,20 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_page_views: MetricsDataPointsSchema,
   daily_clicks: MetricsDataPointsSchema,
   daily_visitors: MetricsDataPointsSchema,
+  // Token-refresh-derived anonymous-visitor fallback. Populated only when the
+  // analytics app isn't installed (no `$page-view` events) — counts DISTINCT
+  // anonymous users per day from the events table. See
+  // `loadAnonymousVisitorsFromTokenRefresh` in the backend metrics route.
+  //
+  // Optional for one release cycle so older clients/servers don't hard-fail
+  // validation during a staged rollout. Tighten to `.defined()` after.
+  daily_anonymous_visitors_fallback: yupArray(MetricsDataPointSchema).optional().default([]),
   daily_revenue: yupArray(MetricsDailyRevenuePointSchema).defined(),
   total_revenue_cents: yupNumber().integer().defined(),
   total_replays: yupNumber().integer().defined(),
   recent_replays: yupNumber().integer().defined(),
   visitors: yupNumber().integer().defined(),
+  anonymous_visitors_fallback: yupNumber().integer().optional().default(0),
   avg_session_seconds: yupNumber().defined(),
   online_live: yupNumber().integer().defined(),
   revenue_per_visitor: yupNumber().defined(),
@@ -136,11 +145,39 @@ export const MetricsRecentUserSchema = yupObject({
   last_active_at_millis: yupNumber().nullable().defined(),
 }).noUnknown(false).defined();
 
+// Per-user activity heatmap — a simple list of daily event counts for a single
+// user. Backed by ClickHouse `analytics_internal.events` filtered by user_id,
+// project_id, and branch_id. See `/internal/user-activity` on the backend.
+export const UserActivityResponseBodySchema = yupObject({
+  data_points: MetricsDataPointsSchema,
+}).defined();
+
+// Recent "currently live" users keyed by ISO country code. Populated by
+// joining a bounded ClickHouse selection from the live `$token-refresh` window
+// with the corresponding Prisma profile rows, so the overview globe can render
+// real avatars of real users from each country. Optional for one release cycle
+// so clients talking to older servers don't fail validation on the returned
+// body.
+export const MetricsActiveUsersByCountrySchema = yupRecord(
+  yupString().defined(),
+  yupArray(MetricsRecentUserSchema).defined(),
+).optional().default({});
+
 export const MetricsResponseBodySchema = yupObject({
   total_users: yupNumber().integer().defined(),
+  // Count of distinct users seen refreshing a token in the last ~2 minutes —
+  // the "who's online right now" number rendered on the overview globe. Derived
+  // from the same `$token-refresh` window that powers `active_users_by_country`,
+  // so it works for every project regardless of whether the analytics app
+  // (page-view-based `analytics_overview.online_live`) is installed.
+  //
+  // Optional for one release cycle so older servers don't fail schema
+  // validation on the returned body. Tighten to `.defined()` after.
+  live_users: yupNumber().integer().optional().default(0),
   daily_users: MetricsDataPointsSchema,
   daily_active_users: MetricsDataPointsSchema,
   users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
+  active_users_by_country: MetricsActiveUsersByCountrySchema,
   // recently_registered/active are CRUD User objects passed through from the
   // backend. The schema only validates the fields the dashboard actually
   // reads — extra fields from UsersCrud["Admin"]["Read"] are allowed through.
@@ -151,6 +188,11 @@ export const MetricsResponseBodySchema = yupObject({
   payments_overview: MetricsPaymentsOverviewSchema,
   email_overview: MetricsEmailOverviewSchema,
   analytics_overview: MetricsAnalyticsOverviewSchema,
+}).defined();
+
+export const MetricsUserCountsSchema = yupObject({
+  total_users: yupNumber().integer().defined(),
+  anonymous_users: yupNumber().integer().defined(),
 }).defined();
 
 // Derived static types — single source of truth lives in the schemas above.
@@ -168,3 +210,5 @@ export type MetricsAnalyticsOverview = yup.InferType<typeof MetricsAnalyticsOver
 export type MetricsLoginMethodEntry = yup.InferType<typeof MetricsLoginMethodEntrySchema>;
 export type MetricsRecentUser = yup.InferType<typeof MetricsRecentUserSchema>;
 export type MetricsResponse = yup.InferType<typeof MetricsResponseBodySchema>;
+export type MetricsUserCounts = yup.InferType<typeof MetricsUserCountsSchema>;
+export type UserActivityResponse = yup.InferType<typeof UserActivityResponseBodySchema>;

@@ -8,8 +8,10 @@ import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
+import { runBackfillInternalFreePlans } from "./backfill-internal-free-plans";
 import { runBulldozerPaymentsInit } from "./bulldozer-payments-init";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
+import { runRegenInternalSubscriptionsToLatest } from "./regen-internal-subscriptions-to-latest";
 
 const getClickhouseClient = () => getClickhouseAdminClient();
 
@@ -179,12 +181,17 @@ const showHelp = () => {
 Usage: pnpm db-migrations <command> [options]
 
 Commands:
-  reset                    Drop all data and recreate the database, then apply migrations and seed
-  generate-migration-file  Generate a new migration file using Prisma, then reset and migrate
-  seed                     [Advanced] Run database seeding only
-  init                     Apply migrations and seed the database
-  migrate                  Apply migrations
-  help                     Show this help message
+  reset                            Drop all data and recreate the database, then apply migrations and seed
+  generate-migration-file          Generate a new migration file using Prisma, then reset and migrate
+  seed                             [Advanced] Run database seeding only
+  init                             Apply migrations and seed the database
+  migrate                          Apply migrations
+  backfill-internal-free-plans     Grant the free plan to internal-tenancy teams that have no plan. Run AFTER seed.
+  regen-internal-subscriptions-to-latest
+                                   Bring every active internal-tenancy subscription up to the latest version of its
+                                   product (rewrites the stored snapshot; rebases Stripe metadata for live subs).
+                                   Idempotent. Run AFTER seed and AFTER backfill-internal-free-plans.
+  help                             Show this help message
 
 Options:
   --interactive            Prompt before each new migration (not on conditional repeats)
@@ -202,6 +209,7 @@ const main = async () => {
       await dropSchema();
       await migrate(undefined, { interactive });
       await seed();
+      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'generate-migration-file': {
@@ -226,6 +234,24 @@ const main = async () => {
     case 'migrate': {
       await migrate(undefined, { interactive });
       await runBulldozerPaymentsInit(globalPrismaClient);
+      break;
+    }
+    case 'backfill-internal-free-plans': {
+      // Explicit step — callers must guarantee the internal tenancy has been
+      // seeded before invoking this (the backfill throws loudly otherwise).
+      // Bulldozer init runs first so the Subscription LFold the backfill
+      // reads from is populated.
+      await runBulldozerPaymentsInit(globalPrismaClient);
+      await runBackfillInternalFreePlans();
+      break;
+    }
+    case 'regen-internal-subscriptions-to-latest': {
+      // Explicit step — callers must guarantee the internal tenancy has been
+      // seeded. Bulldozer init runs first because the regen reads
+      // `sub.product` via the Subscription LFold; without init the per-sub
+      // equality check would compare against a stale view.
+      await runBulldozerPaymentsInit(globalPrismaClient);
+      await runRegenInternalSubscriptionsToLatest();
       break;
     }
     case 'help': {

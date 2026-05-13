@@ -25,8 +25,6 @@ import {
   DesignBadge,
   DesignButton,
   DesignCard,
-  DesignDialog,
-  DesignDialogClose,
   DesignEmptyState,
   DesignInput,
   DesignMenu,
@@ -460,10 +458,8 @@ function RuleTriggerHistoryDialog({
   const totalLabel = `${allTimeCount.toLocaleString()} total trigger${allTimeCount === 1 ? "" : "s"}`;
 
   return (
-    <DesignDialog
-      open={open}
-      onOpenChange={handleOpenChange}
-      trigger={(
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
         <button
           type="button"
           className="rounded-sm hover:bg-muted/40 px-1 py-0.5 transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -478,94 +474,107 @@ function RuleTriggerHistoryDialog({
             isLoading={isSparklineLoading}
           />
         </button>
-      )}
-      size="2xl"
-      icon={PulseIcon}
-      title="Rule trigger history"
-      description={`${totalLabel} for this rule`}
-      headerContent={(
-        <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
-              {ruleDisplayName}
-            </Typography>
-            <ActionBadge type={ruleActionType} />
-            <DesignBadge
-              label={ruleEnabled ? "Enabled" : "Disabled"}
-              color={ruleEnabled ? "green" : "orange"}
-              size="sm"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <TriggerStatTile
-              label={`Last ${timespanHours}h`}
-              value={countInTimespan.toLocaleString()}
-              hint="recent matches"
-            />
-            <TriggerStatTile
-              label="All-time"
-              value={allTimeCount.toLocaleString()}
-              hint="since rule created"
-            />
-            <TriggerHistoryChart data={sparklineData} />
-          </div>
-        </div>
-      )}
-      footer={(
-        <DesignDialogClose asChild>
-          <DesignButton variant="secondary" size="sm">Close</DesignButton>
-        </DesignDialogClose>
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Recent triggers
-        </span>
-        {!isInitialLoading && triggers.length > 0 && (
-          <Typography variant="secondary" className="text-[11px] tabular-nums">
-            showing {triggers.length}{hasMore ? "+" : ""}
-          </Typography>
-        )}
-      </div>
-
-      {loadingError ? (
-        <DesignAlert variant="error" description={loadingError} />
-      ) : null}
-
-      <div
-        className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
-        onScroll={handleScroll}
+      </DialogTrigger>
+      <DialogContent
+        className="max-w-2xl gap-0 p-0 overflow-hidden border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"
+        overlayProps={{ className: "bg-black/50 backdrop-blur-sm" }}
       >
-        {isInitialLoading ? (
-          <div className="space-y-2 p-3">
-            {["one", "two", "three", "four", "five"].map((skeletonId) => (
-              <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
-            ))}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.06]">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
+              <PulseIcon className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-3">
+              <div className="space-y-1">
+                <DialogTitle className="text-base">Rule trigger history</DialogTitle>
+                <DialogDescription className="text-xs">{totalLabel} for this rule</DialogDescription>
+              </div>
+              <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
+                    {ruleDisplayName}
+                  </Typography>
+                  <ActionBadge type={ruleActionType} />
+                  <DesignBadge
+                    label={ruleEnabled ? "Enabled" : "Disabled"}
+                    color={ruleEnabled ? "green" : "orange"}
+                    size="sm"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <TriggerStatTile
+                    label={`Last ${timespanHours}h`}
+                    value={countInTimespan.toLocaleString()}
+                    hint="recent matches"
+                  />
+                  <TriggerStatTile
+                    label="All-time"
+                    value={allTimeCount.toLocaleString()}
+                    hint="since rule created"
+                  />
+                  <TriggerHistoryChart data={sparklineData} />
+                </div>
+              </div>
+            </div>
           </div>
-        ) : triggers.length === 0 ? (
-          <DesignEmptyState
-            icon={ClockIcon}
-            title="No triggers yet"
-            description={
-              isSparklineLoading
-                ? "Loading recent activity…"
-                : "Once a sign-up matches this rule, you'll see it appear here."
-            }
-          />
-        ) : (
-          <div className="divide-y divide-foreground/[0.06]">
-            {triggers.map((trigger) => (
-              <TriggerRow key={trigger.id} trigger={trigger} />
-            ))}
+        </DialogHeader>
+        <DialogBody className="mx-0 my-0 w-auto px-6 py-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Recent triggers
+            </span>
+            {!isInitialLoading && triggers.length > 0 && (
+              <Typography variant="secondary" className="text-[11px] tabular-nums">
+                showing {triggers.length}{hasMore ? "+" : ""}
+              </Typography>
+            )}
           </div>
-        )}
-        {isLoadingMore ? (
-          <div className="p-3">
-            <DesignSkeleton className="h-9 rounded-lg" />
+
+          {loadingError ? (
+            <DesignAlert variant="error" description={loadingError} />
+          ) : null}
+
+          <div
+            className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
+            onScroll={handleScroll}
+          >
+            {isInitialLoading ? (
+              <div className="space-y-2 p-3">
+                {["one", "two", "three", "four", "five"].map((skeletonId) => (
+                  <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
+                ))}
+              </div>
+            ) : triggers.length === 0 ? (
+              <DesignEmptyState
+                icon={ClockIcon}
+                title="No triggers yet"
+                description={
+                  isSparklineLoading
+                    ? "Loading recent activity..."
+                    : "Once a sign-up matches this rule, you'll see it appear here."
+                }
+              />
+            ) : (
+              <div className="divide-y divide-foreground/[0.06]">
+                {triggers.map((trigger) => (
+                  <TriggerRow key={trigger.id} trigger={trigger} />
+                ))}
+              </div>
+            )}
+            {isLoadingMore ? (
+              <div className="p-3">
+                <DesignSkeleton className="h-9 rounded-lg" />
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-    </DesignDialog>
+        </DialogBody>
+        <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
+          <DialogClose asChild>
+            <DesignButton variant="secondary" size="sm">Close</DesignButton>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -958,11 +967,10 @@ function EmptyState({ onAddRule, disabled }: { onAddRule: () => void, disabled: 
 
 const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
 
-function TestRulesCard({
-  stackAdminApp,
-}: {
-  stackAdminApp: ReturnType<typeof useAdminApp>,
-}) {
+
+// Shared hook used by every TestRulesCard variant - encapsulates all the state
+// and the API call so the variants can focus purely on the UI.
+function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
@@ -1026,39 +1034,69 @@ function TestRulesCard({
     setResult(data);
   }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp, turnstileResultOverride]);
 
+  return {
+    email, setEmail,
+    authMethod, setAuthMethod,
+    oauthProvider, setOauthProvider,
+    countryCodeOverride, setCountryCodeOverride,
+    turnstileResultOverride, setTurnstileResultOverride,
+    botRiskScoreOverride, setBotRiskScoreOverride,
+    freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride,
+    result,
+    runTest,
+    isRunning,
+  };
+}
+
+type TestRulesState = ReturnType<typeof useTestRulesState>;
+
+const DECISION_LABEL: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
+  allow: 'Allowed by rule',
+  reject: 'Rejected by rule',
+  'default-allow': 'Allowed by default',
+  'default-reject': 'Rejected by default',
+};
+
+const STATUS_LABEL: Record<SignUpRulesTestEvaluationStatus, string> = {
+  matched: 'Matched',
+  not_matched: 'No match',
+  disabled: 'Disabled',
+  missing_condition: 'No condition',
+  error: 'Error',
+};
+
+const statusBadgeColor = (status: SignUpRulesTestEvaluationStatus): "green" | "red" | "orange" | "blue" | undefined => {
+  if (status === 'matched') return 'green';
+  if (status === 'missing_condition') return 'orange';
+  if (status === 'error') return 'red';
+  return undefined;
+};
+
+function TestRulesCard({ state }: { state: TestRulesState }) {
+  const {
+    email, setEmail,
+    authMethod, setAuthMethod,
+    oauthProvider, setOauthProvider,
+    countryCodeOverride, setCountryCodeOverride,
+    turnstileResultOverride, setTurnstileResultOverride,
+    botRiskScoreOverride, setBotRiskScoreOverride,
+    freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride,
+    result,
+    runTest,
+    isRunning,
+  } = state;
+
   const evaluations = result?.evaluations ?? [];
   const matchedEvaluations = evaluations.filter((evaluation) => evaluation.status === 'matched');
   const decisionRule = result?.outcome.decision_rule_id
     ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.decision_rule_id)
     : undefined;
   const restrictedRule = result?.outcome.restricted_because_of_rule_id
+    && result.outcome.restricted_because_of_rule_id !== result.outcome.decision_rule_id
     ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.restricted_because_of_rule_id)
     : undefined;
-
   const outcomeLabel = result?.outcome.should_allow ? 'Allow' : 'Reject';
   const outcomeBadgeColor = result?.outcome.should_allow ? 'green' : 'red';
-
-  const statusBadgeColor = (status: SignUpRulesTestEvaluationStatus): "green" | "red" | "orange" | "blue" | undefined => {
-    if (status === 'matched') return 'green';
-    if (status === 'missing_condition') return 'orange';
-    if (status === 'error') return 'red';
-    return undefined;
-  };
-
-  const statusLabel: Record<SignUpRulesTestEvaluationStatus, string> = {
-    matched: 'Matched',
-    not_matched: 'No match',
-    disabled: 'Disabled',
-    missing_condition: 'No condition',
-    error: 'Error',
-  };
-
-  const decisionLabel: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
-    allow: 'Allowed by rule',
-    reject: 'Rejected by rule',
-    'default-allow': 'Allowed by default',
-    'default-reject': 'Rejected by default',
-  };
 
   const fieldLabel = (text: string) => (
     <Typography variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
@@ -1245,7 +1283,7 @@ function TestRulesCard({
                   <DesignBadge label={outcomeLabel} color={outcomeBadgeColor} size="sm" />
                 </div>
                 <Typography variant="secondary" className="text-xs">
-                  {decisionLabel[result.outcome.decision]}
+                  {DECISION_LABEL[result.outcome.decision]}
                 </Typography>
                 {decisionRule && (
                   <Typography variant="secondary" className="text-xs">
@@ -1346,10 +1384,10 @@ function TestRulesCard({
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <ActionBadge type={evaluation.action.type} />
                             {statusColor ? (
-                              <DesignBadge label={statusLabel[evaluation.status]} color={statusColor} size="sm" />
+                              <DesignBadge label={STATUS_LABEL[evaluation.status]} color={statusColor} size="sm" />
                             ) : (
                               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                {statusLabel[evaluation.status]}
+                                {STATUS_LABEL[evaluation.status]}
                               </span>
                             )}
                           </div>
@@ -1401,6 +1439,8 @@ function TestRulesDialog({
   stackAdminApp: ReturnType<typeof useAdminApp>,
   trigger: React.ReactNode,
 }) {
+  const state = useTestRulesState(stackAdminApp);
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -1425,7 +1465,7 @@ function TestRulesDialog({
         </DialogHeader>
 
         <DialogBody className="mx-0 my-0 w-auto px-6 py-4">
-          <TestRulesCard stackAdminApp={stackAdminApp} />
+          <TestRulesCard state={state} />
         </DialogBody>
 
         <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
@@ -1536,7 +1576,9 @@ function useSignUpRulesAnalytics() {
     };
 
     runAsynchronouslyWithAlert(fetchAnalytics);
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [stackAdminApp]);
 
   return { analytics, timespanHours, isLoading };
@@ -1565,7 +1607,7 @@ type PageBodyProps = {
   onToggleEnabled: (id: string, enabled: boolean) => void,
   onDefaultActionChange: (value: 'allow' | 'reject') => void,
   onDragEnd: (event: DragEndEvent) => void,
-  onSaveOrder: () => void,
+  onSaveOrder: () => Promise<void>,
   onDiscardOrder: () => void,
   stackAdminApp: ReturnType<typeof useAdminApp>,
 };
@@ -1652,7 +1694,7 @@ function PageBody(props: PageBodyProps) {
         {props.signUpRules.length === 0 && !props.isCreatingNew && (
           <EmptyState
             onAddRule={props.onAddRule}
-            disabled={props.editingRuleId !== null || props.isCreatingNew || props.hasOrderChanges}
+            disabled={props.editingRuleId !== null || props.hasOrderChanges}
           />
         )}
 
@@ -1861,6 +1903,7 @@ export default function PageClient() {
           onDiscardOrder={handleDiscardOrder}
           stackAdminApp={stackAdminApp}
         />
+
 
         <DeleteRuleDialog
           open={deleteDialogOpen}

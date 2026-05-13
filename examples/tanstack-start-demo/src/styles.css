@@ -1,0 +1,24 @@
+/* stylelint-disable scss/at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* stylelint-enable scss/at-rule-no-unknown */
+
+:root {
+  color-scheme: light;
+  background: rgb(244 244 245);
+}
+
+html:has(head > [data-stack-theme="dark"]) {
+  color-scheme: dark;
+  background: rgb(9 9 11);
+}
+
+body {
+  margin: 0;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
