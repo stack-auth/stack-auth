@@ -251,6 +251,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
                     toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                     useOffWhiteLightMode
                     runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}
+                    composerAttachments
                   />
                 }
               />
