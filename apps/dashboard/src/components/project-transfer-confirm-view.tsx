@@ -7,6 +7,8 @@ import { DesignInput } from "@/components/design-components/input";
 import { Logo } from "@/components/logo";
 import { Spinner } from "@/components/ui";
 import { ArrowsLeftRightIcon } from "@phosphor-icons/react";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 
 export type ProjectTransferConfirmUiState = "loading" | "success" | { type: "error", message: string };
 
@@ -14,7 +16,7 @@ export type ProjectTransferConfirmViewProps = {
   state: ProjectTransferConfirmUiState,
   /** When `state === "success"`, whether the “signed in” branch is shown. */
   signedIn: boolean,
-  /** Label for the disabled “Receiving account” field when signed in. */
+  /** Label for the disabled “Receiving account” field. Required when `state === "success"` and `signedIn === true`. */
   signedInAsLabel?: string,
   onCancel?: () => void | Promise<void>,
   onPrimary?: () => void | Promise<void>,
@@ -26,11 +28,20 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
   const {
     state,
     signedIn,
-    signedInAsLabel = "Signed in as preview@example.com",
+    signedInAsLabel,
     onCancel,
     onPrimary,
     onSwitchAccount,
   } = props;
+
+  if (state === "success") {
+    if (onCancel == null || onPrimary == null) {
+      throw new StackAssertionError("ProjectTransferConfirmView requires `onCancel` and `onPrimary` in the success state");
+    }
+    if (signedIn && (signedInAsLabel == null || onSwitchAccount == null)) {
+      throw new StackAssertionError("ProjectTransferConfirmView requires `signedInAsLabel` and `onSwitchAccount` when `signedIn` is true in the success state");
+    }
+  }
 
   const primaryLabel = signedIn ? "Accept transfer" : "Sign in";
 
@@ -61,7 +72,7 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
             {signedIn ? (
               <>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  You&apos;ll still be able to open this project from the third party&apos;s dashboard after you accept.
+                  {"You'll still be able to open this project from the third party's dashboard after you accept."}
                 </p>
                 <div className="space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -78,8 +89,10 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
                 <DesignButton
                   variant="outline"
                   className="w-full sm:w-auto transition-colors duration-150 hover:transition-none"
-                  onClick={async () => {
-                    await onSwitchAccount?.();
+                  onClick={() => {
+                    runAsynchronouslyWithAlert(async () => {
+                      await onSwitchAccount?.();
+                    });
                   }}
                 >
                   Use a different account
@@ -89,7 +102,7 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
               <DesignAlert
                 variant="info"
                 title="Sign in to continue"
-                description="Transferring a project requires an active Stack Auth account. You can sign in or create one on the next step; we&apos;ll bring you back here automatically."
+                description={"Transferring a project requires an active Stack Auth account. You can sign in or create one on the next step; we'll bring you back here automatically."}
                 glassmorphic
               />
             )}
@@ -110,16 +123,20 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
             <DesignButton
               variant="outline"
               className="transition-colors duration-150 hover:transition-none sm:min-w-[6.5rem]"
-              onClick={async () => {
-                await onCancel?.();
+              onClick={() => {
+                runAsynchronouslyWithAlert(async () => {
+                  await onCancel?.();
+                });
               }}
             >
               Cancel
             </DesignButton>
             <DesignButton
               className="sm:min-w-[6.5rem]"
-              onClick={async () => {
-                await onPrimary?.();
+              onClick={() => {
+                runAsynchronouslyWithAlert(async () => {
+                  await onPrimary?.();
+                });
               }}
             >
               {primaryLabel}

@@ -5,13 +5,21 @@ import { useRouter } from "@/components/router";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@/components/ui";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp, useUser } from "@stackframe/stack";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import NeonLogo from "../../../../public/neon.png";
 
 type NeonTransferState = "loading" | "success" | { type: "error", message: string };
+
+function buildSignUpUrl(): string {
+  const currentUrl = new URL(window.location.href);
+  const signUpSearchParams = new URLSearchParams();
+  signUpSearchParams.set("after_auth_return_to", currentUrl.pathname + currentUrl.search + currentUrl.hash);
+  return `/handler/signup?${signUpSearchParams.toString()}`;
+}
 
 /**
  * Neon project transfer confirmation — legacy UI and copy (unchanged from pre–custom-redesign behavior).
@@ -37,16 +45,15 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
           },
         });
         setState("success");
-      } catch (err: any) {
-        setState({ type: "error", message: err.message });
+      } catch (err: unknown) {
+        console.error("Neon project transfer confirm check failed:", err);
+        setState({
+          type: "error",
+          message: "This transfer link is invalid, has expired, or has already been used. Return to your Neon dashboard and start the transfer again.",
+        });
       }
     });
   }, [app, searchParams]);
-
-  const currentUrl = new URL(window.location.href);
-  const signUpSearchParams = new URLSearchParams();
-  signUpSearchParams.set("after_auth_return_to", currentUrl.pathname + currentUrl.search + currentUrl.hash);
-  const signUpUrl = `/handler/signup?${signUpSearchParams.toString()}`;
 
   return (
     <Card className="max-w-lg text-center">
@@ -92,15 +99,22 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
         </h1>
         {state === "success" && <>
           <Typography className="text-sm">
-            Neon would like to transfer a Stack Auth project and link it to your own account. This will let you access the project from Stack Auth&apos;s dashboard.
+            {"Neon would like to transfer a Stack Auth project and link it to your own account. This will let you access the project from Stack Auth's dashboard."}
           </Typography>
           {user ? (
             <>
               <Typography className="mb-3 text-sm">
-                Which Stack Auth account would you like to transfer the project to? (You&apos;ll still be able to access your project from Neon&apos;s dashboard.)
+                {"Which Stack Auth account would you like to transfer the project to? (You'll still be able to access your project from Neon's dashboard.)"}
               </Typography>
               <Input type="text" disabled prefixItem={<Logo noLink width={15} height={15} />} value={`Signed in as ${user.primaryEmail || user.displayName || "Unnamed user"}`} />
-              <Button variant="secondary" onClick={async () => await user.signOut({ redirectUrl: signUpUrl })}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  runAsynchronouslyWithAlert(async () => {
+                    await user.signOut({ redirectUrl: buildSignUpUrl() });
+                  });
+                }}
+              >
                 Switch account
               </Button>
             </>
@@ -123,24 +137,29 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
           <Button variant="secondary" onClick={() => { window.close(); }}>
             Cancel
           </Button>
-          <Button onClick={async () => {
-            if (user) {
-              const confirmRes = await (app as any)[stackAppInternalsSymbol].sendRequest("/integrations/neon/projects/transfer/confirm", {
-                method: "POST",
-                body: JSON.stringify({
-                  code: searchParams.get("code"),
-                }),
-                headers: {
-                  "Content-Type": "application/json",
-                },
-              });
-              const confirmResJson = await confirmRes.json();
-              router.push(`/projects/${confirmResJson.project_id}`);
-              await wait(3000);
-            } else {
-              router.push(signUpUrl);
-              await wait(3000);
-            }
+          <Button onClick={() => {
+            runAsynchronouslyWithAlert(async () => {
+              if (user) {
+                const confirmRes = await (app as any)[stackAppInternalsSymbol].sendRequest("/integrations/neon/projects/transfer/confirm", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    code: searchParams.get("code"),
+                  }),
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                });
+                const confirmResJson = await confirmRes.json();
+                if (typeof confirmResJson?.project_id !== "string") {
+                  throw new StackAssertionError("Neon project transfer confirm response is missing `project_id`", { confirmResJson });
+                }
+                router.push(`/projects/${confirmResJson.project_id}`);
+                await wait(3000);
+              } else {
+                router.push(buildSignUpUrl());
+                await wait(3000);
+              }
+            });
           }}>
             {user ? "Transfer" : "Sign in"}
           </Button>

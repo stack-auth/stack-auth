@@ -1,29 +1,23 @@
 "use client";
 
-import { DesignAlert } from "@/components/design-components/alert";
 import { ProjectTransferConfirmView, type ProjectTransferConfirmUiState } from "@/components/project-transfer-confirm-view";
 import { useRouter } from "@/components/router";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp, useUser } from "@stackframe/stack";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export function TransferConfirmMissingCodeView() {
-  return (
-    <div className="flex min-h-[100dvh] w-full items-center justify-center px-4 py-8 sm:px-6">
-      <DesignAlert
-        variant="error"
-        title="This transfer link is incomplete"
-        description="Open the full link you received (it includes a transfer code). If the link expired, go back to the partner or integrations screen and start the transfer again."
-        className="max-w-md"
-      />
-    </div>
-  );
+function buildSignUpUrl(): string {
+  const currentUrl = new URL(window.location.href);
+  const signUpSearchParams = new URLSearchParams();
+  signUpSearchParams.set("after_auth_return_to", currentUrl.pathname + currentUrl.search + currentUrl.hash);
+  return `/handler/signup?${signUpSearchParams.toString()}`;
 }
 
 /** Custom integration project transfer — design-components UI. Neon uses `neon-transfer-confirm-page`. */
-export default function IntegrationProjectTransferConfirmPageClient() {
+export default function CustomIntegrationProjectTransferConfirmPageClient() {
   const app = useStackApp();
   const user = useUser({ projectIdMustMatch: "internal" });
   const router = useRouter();
@@ -44,16 +38,15 @@ export default function IntegrationProjectTransferConfirmPageClient() {
           },
         });
         setState("success");
-      } catch (err: any) {
-        setState({ type: "error", message: err.message });
+      } catch (err: unknown) {
+        console.error("Project transfer confirm check failed:", err);
+        setState({
+          type: "error",
+          message: "This transfer link is invalid, has expired, or has already been used. Open the original link from the partner or integrations dashboard, or start the transfer again.",
+        });
       }
     });
   }, [app, searchParams]);
-
-  const currentUrl = new URL(window.location.href);
-  const signUpSearchParams = new URLSearchParams();
-  signUpSearchParams.set("after_auth_return_to", currentUrl.pathname + currentUrl.search + currentUrl.hash);
-  const signUpUrl = `/handler/signup?${signUpSearchParams.toString()}`;
 
   const signedIn = user != null;
   const accountLabel = user
@@ -80,10 +73,13 @@ export default function IntegrationProjectTransferConfirmPageClient() {
             },
           });
           const confirmResJson = await confirmRes.json();
+          if (typeof confirmResJson?.project_id !== "string") {
+            throw new StackAssertionError("Project transfer confirm response is missing `project_id`", { confirmResJson });
+          }
           router.push(`/projects/${confirmResJson.project_id}`);
           await wait(3000);
         } else {
-          router.push(signUpUrl);
+          router.push(buildSignUpUrl());
           await wait(3000);
         }
       }}
@@ -91,7 +87,7 @@ export default function IntegrationProjectTransferConfirmPageClient() {
         if (user == null) {
           return;
         }
-        await user.signOut({ redirectUrl: signUpUrl });
+        await user.signOut({ redirectUrl: buildSignUpUrl() });
       }}
     />
   );
