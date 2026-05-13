@@ -591,13 +591,16 @@ function buildAdjustedByLookupFromRefundRows(rows: unknown[]): Map<string, Trans
     // Legacy fallback: extract source txns from product-revocation entries.
     const entries = Reflect.get(rowData, "entries");
     if (!Array.isArray(entries)) continue;
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
+    for (const entry of entries) {
       if (!isRecord(entry)) continue;
       if (entry.type !== "product-revocation") continue;
       const adjustedTxnId = Reflect.get(entry, "adjustedTransactionId");
       if (typeof adjustedTxnId !== "string" || adjustedTxnId.length === 0) continue;
-      addLink(adjustedTxnId, refundTxnId, i);
+      const adjustedEntryIndex = Reflect.get(entry, "adjustedEntryIndex");
+      const entryIndex = typeof adjustedEntryIndex === "number" && Number.isInteger(adjustedEntryIndex) && adjustedEntryIndex >= 0
+        ? adjustedEntryIndex
+        : 0;
+      addLink(adjustedTxnId, refundTxnId, entryIndex);
     }
   }
   return lookup;

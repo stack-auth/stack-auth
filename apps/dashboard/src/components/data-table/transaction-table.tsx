@@ -15,6 +15,7 @@ import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
 import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
 import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
 import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/currency-constants';
+import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from '../link';
 
@@ -255,11 +256,16 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
         return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.` };
       }
     }
-    if (refundUnits === 0 && !revokeProduct && !endSubscription) {
-      return { canSubmit: false, error: "Refund must do something: enter an amount, revoke product, or end subscription." };
+    if (refundUnits === 0 && !revokeProduct && (!isSubscription || !endSubscription)) {
+      return {
+        canSubmit: false,
+        error: isSubscription
+          ? "Refund must do something: enter an amount, revoke product, or end subscription."
+          : "Refund must do something: enter an amount or revoke product.",
+      };
     }
     return { canSubmit: true, error: null };
-  }, [target, amountUsd, chargedAmountUsd, revokeProduct, endSubscription]);
+  }, [target, amountUsd, chargedAmountUsd, revokeProduct, endSubscription, isSubscription]);
 
   // Seed dialog state from the current transaction. Called from the menu
   // click before opening, because ActionDialog's onOpenChange doesn't fire on
@@ -268,7 +274,12 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   // (`amountUsd: '0'`) and submitting unchanged on a paid purchase would
   // revoke/end at $0 instead of refunding the charged amount.
   const seedFromTransaction = () => {
-    setAmountUsd(chargedAmountUsd ?? '0');
+    // After a prior partial refund the remaining refundable balance is
+    // smaller than the original charge; we don't have it on the transaction
+    // payload, so default to 0 and let the admin enter an amount explicitly
+    // rather than preloading a value that will hit the backend cap.
+    const alreadyAdjusted = transaction.adjusted_by.length > 0;
+    setAmountUsd(alreadyAdjusted ? '0' : (chargedAmountUsd ?? '0'));
     setRevokeProduct(true);
     setEndSubscription(isSubscription);
   };
@@ -288,11 +299,13 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
               if (!validation.canSubmit) {
                 return "prevent-close";
               }
-              await app.refundTransaction({
-                ...target,
-                amountUsd: amountUsd as MoneyAmount,
-                revokeProduct,
-                ...(isSubscription ? { endSubscription } : {}),
+              runAsynchronouslyWithAlert(async () => {
+                await app.refundTransaction({
+                  ...target,
+                  amountUsd: amountUsd as MoneyAmount,
+                  revokeProduct,
+                  ...(isSubscription ? { endSubscription } : {}),
+                });
               });
             },
             props: { disabled: !validation.canSubmit },
