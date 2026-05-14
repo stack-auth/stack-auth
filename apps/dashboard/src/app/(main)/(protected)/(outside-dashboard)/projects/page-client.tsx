@@ -398,6 +398,7 @@ export default function PageClient() {
           </Select>
 
           <Button
+            className="rounded-xl"
             onClick={async () => {
               if (isLocalEmulator) {
                 setOpenConfigFileDialog(true);
