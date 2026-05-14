@@ -4,13 +4,11 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { teamPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
 import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { paginatePermissionDefinitions, permissionDefinitionsListQuerySchema } from "../permission-definitions-pagination";
 
 export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamPermissionDefinitionsCrud, {
   paramsSchema: yupObject({
     permission_id: permissionDefinitionIdSchema.defined(),
   }),
-  querySchema: permissionDefinitionsListQuerySchema,
   async onCreate({ auth, data }) {
     return await createPermissionDefinition(
       globalPrismaClient,
@@ -50,11 +48,13 @@ export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => creat
       }
     );
   },
-  async onList({ auth, query }) {
-    const all = await listPermissionDefinitions({
-      scope: "team",
-      tenancy: auth.tenancy,
-    });
-    return paginatePermissionDefinitions(all, query);
+  async onList({ auth }) {
+    return {
+      items: await listPermissionDefinitions({
+        scope: "team",
+        tenancy: auth.tenancy,
+      }),
+      is_paginated: false,
+    };
   },
 }));

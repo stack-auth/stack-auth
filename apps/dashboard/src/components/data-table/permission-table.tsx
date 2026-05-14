@@ -23,7 +23,6 @@ type AdminPermissionDefinition = {
 
 type PermissionType = 'project' | 'team';
 
-const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 300;
 
 const RefetchPermissionsContext = createContext<() => void>(() => {});
@@ -248,26 +247,16 @@ export function PermissionTable(props: {
       const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
         ? params.quickSearch.trim()
         : undefined;
-      if (props.permissionType === 'project') {
-        // Project permission definitions are expected to be a small set, so we
-        // fetch them all and filter on the client.
-        const all = await stackAdminApp.listProjectPermissionDefinitions();
-        const filtered = search
-          ? all.filter((p) => {
-            const haystack = `${p.id} ${p.description ?? ""}`.toLowerCase();
-            return haystack.includes(search.toLowerCase());
-          })
-          : all;
-        yield { rows: filtered, hasMore: false };
-        return;
-      }
-      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
-      const result = await stackAdminApp.listTeamPermissionDefinitionsPaginated({ limit: PAGE_SIZE, cursor, query: search });
-      yield {
-        rows: result.items,
-        hasMore: result.nextCursor != null,
-        nextCursor: result.nextCursor ?? undefined,
-      };
+      const all = props.permissionType === 'project'
+        ? await stackAdminApp.listProjectPermissionDefinitions()
+        : await stackAdminApp.listTeamPermissionDefinitions();
+      const filtered = search
+        ? all.filter((p) => {
+          const haystack = `${p.id} ${p.description ?? ""}`.toLowerCase();
+          return haystack.includes(search.toLowerCase());
+        })
+        : all;
+      yield { rows: filtered, hasMore: false };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetchKey resets pagination after mutations
     [stackAdminApp, props.permissionType, refetchKey],
