@@ -5,7 +5,7 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Checkbox, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridState } from '@stackframe/dashboard-ui-components';
@@ -213,12 +213,17 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
   };
 }
 
+// Sentinel string for the Select component when the admin chooses to leave
+// the source purchase active (no lifecycle change). The API expects either
+// `"now" | "at-period-end"` or the field omitted entirely; we map "none"
+// → omitted at request time.
+type EndActionChoice = "now" | "at-period-end" | "none";
+
 function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [amountUsd, setAmountUsd] = useState<string>('0');
-  const [revokeProduct, setRevokeProduct] = useState<boolean>(true);
-  const [endSubscription, setEndSubscription] = useState<boolean>(true);
+  const [endAction, setEndAction] = useState<EndActionChoice>("now");
   const target = transaction.type === 'purchase' ? refundTarget : null;
   // Don't gate on `adjusted_by.length` here: the backend supports multiple
   // partial refunds (and a separate revoke) until both caps are hit, and
@@ -256,16 +261,14 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
         return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.` };
       }
     }
-    if (refundUnits === 0 && !revokeProduct && (!isSubscription || !endSubscription)) {
+    if (refundUnits === 0 && endAction === "none") {
       return {
         canSubmit: false,
-        error: isSubscription
-          ? "Refund must do something: enter an amount, revoke product, or end subscription."
-          : "Refund must do something: enter an amount or revoke product.",
+        error: "Refund must do something: enter an amount or change Subscription / Product.",
       };
     }
     return { canSubmit: true, error: null };
-  }, [target, amountUsd, chargedAmountUsd, revokeProduct, endSubscription, isSubscription]);
+  }, [target, amountUsd, chargedAmountUsd, endAction]);
 
   // Seed dialog state from the current transaction. Called from the menu
   // click before opening, because ActionDialog's onOpenChange doesn't fire on
@@ -280,8 +283,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     // rather than preloading a value that will hit the backend cap.
     const alreadyAdjusted = transaction.adjusted_by.length > 0;
     setAmountUsd(alreadyAdjusted ? '0' : (chargedAmountUsd ?? '0'));
-    setRevokeProduct(true);
-    setEndSubscription(isSubscription);
+    setEndAction("now");
   };
 
   return (
@@ -299,22 +301,12 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
               if (!validation.canSubmit) {
                 return "prevent-close";
               }
-              // Translate the existing two-checkbox UI to the new single-knob
-              // API. This is intentionally minimal — the refund dialog is being
-              // redesigned around a tri-state "Subscription / Product" picker
-              // that maps directly to `endAction`; until that lands, derive
-              // the action from the legacy controls:
-              //   revoke ticked            → "now" (immediate end + revoke)
-              //   end-sub ticked (sub only)→ "at-period-end"
-              //   neither                  → undefined (money-only refund)
-              const endAction: "now" | "at-period-end" | undefined = revokeProduct
-                ? "now"
-                : (isSubscription && endSubscription ? "at-period-end" : undefined);
+              const apiEndAction = endAction === "none" ? undefined : endAction;
               runAsynchronouslyWithAlert(async () => {
                 await app.refundTransaction({
                   ...target,
                   amountUsd: amountUsd as MoneyAmount,
-                  ...(endAction !== undefined ? { endAction } : {}),
+                  ...(apiEndAction !== undefined ? { endAction: apiEndAction } : {}),
                 });
               });
             },
@@ -323,9 +315,8 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
           confirmText="Refunds cannot be undone"
         >
           <div className="space-y-4">
-            <p>{`Refund this ${isSubscription ? 'subscription' : 'one-time purchase'}?`}</p>
             <div className="space-y-2">
-              <Label htmlFor={`refund-amount-${transaction.id}`}>Refund amount (USD)</Label>
+              <Label htmlFor={`refund-amount-${transaction.id}`}>Amount (USD)</Label>
               <Input
                 id={`refund-amount-${transaction.id}`}
                 inputMode="decimal"
@@ -338,33 +329,22 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
                 <p className="text-xs text-muted-foreground">No money to refund (test mode or non-USD).</p>
               ) : null}
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id={`revoke-product-${transaction.id}`}
-                checked={revokeProduct}
-                onCheckedChange={(value) => {
-                  const next = value === true;
-                  setRevokeProduct(next);
-                  if (next && isSubscription) setEndSubscription(true);
-                }}
-              />
-              <Label htmlFor={`revoke-product-${transaction.id}`} className="cursor-pointer">
-                Revoke product
-              </Label>
+            <div className="space-y-2">
+              <Label htmlFor={`end-action-${transaction.id}`}>{isSubscription ? 'Subscription' : 'Product'}</Label>
+              <Select
+                value={endAction}
+                onValueChange={(value) => setEndAction(value as EndActionChoice)}
+              >
+                <SelectTrigger id={`end-action-${transaction.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="now">Ends immediately</SelectItem>
+                  {isSubscription ? <SelectItem value="at-period-end">Ends at period end</SelectItem> : null}
+                  <SelectItem value="none">Doesn&apos;t end</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            {isSubscription ? (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id={`end-subscription-${transaction.id}`}
-                  checked={endSubscription}
-                  onCheckedChange={(value) => setEndSubscription(value === true)}
-                  disabled={revokeProduct}
-                />
-                <Label htmlFor={`end-subscription-${transaction.id}`} className="cursor-pointer">
-                  End subscription{revokeProduct ? ' (forced when revoking)' : ''}
-                </Label>
-              </div>
-            ) : null}
             {validation.error ? (
               <Alert variant="destructive">
                 <AlertDescription>{validation.error}</AlertDescription>
