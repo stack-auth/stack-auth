@@ -1,4 +1,3 @@
-import { normalizeEmail } from "@/lib/emails";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -49,15 +48,13 @@ export const POST = createSmartRouteHandler({
       }
     });
 
-    // Normalize the invited email so accept can compare against stored contact channels,
-    // which are themselves normalized on creation.
     const codeObj = await teamInvitationCodeHandler.sendCode({
       tenancy: auth.tenancy,
       data: {
         team_id: body.team_id,
       },
       method: {
-        email: normalizeEmail(body.email),
+        email: body.email,
       },
       callbackUrl: body.callback_url,
     }, {});

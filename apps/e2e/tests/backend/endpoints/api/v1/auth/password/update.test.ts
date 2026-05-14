@@ -2,7 +2,7 @@ import { it } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should update existing passwords", async ({ expect }) => {
-  const signUpRes = await Auth.Password.signUpWithEmail();
+  const signUpRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const oldPassword = signUpRes.password;
   const newPassword = "new-password";
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
@@ -26,7 +26,7 @@ it("should update existing passwords", async ({ expect }) => {
 });
 
 it("should sign out other sessions but not own session when updating password", async ({ expect }) => {
-  const signUpRes = await Auth.Password.signUpWithEmail();
+  const signUpRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const oldPassword = signUpRes.password;
   const newPassword = "new-password";
 
@@ -64,7 +64,7 @@ it("should sign out other sessions but not own session when updating password", 
 });
 
 it("should not update passwords to weak passwords", async ({ expect }) => {
-  const signUpRes = await Auth.Password.signUpWithEmail();
+  const signUpRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const oldPassword = signUpRes.password;
   const newPassword = "short";
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
@@ -92,7 +92,7 @@ it("should not update passwords to weak passwords", async ({ expect }) => {
 });
 
 it("should not update passwords without old password", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const newPassword = "new-password";
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
     method: "POST",
@@ -126,7 +126,7 @@ it("should not update passwords without old password", async ({ expect }) => {
 });
 
 it("should not update passwords if the provided old password is wrong", async ({ expect }) => {
-  await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const newPassword = "new-password";
   const response = await niceBackendFetch("/api/v1/auth/password/update", {
     method: "POST",
