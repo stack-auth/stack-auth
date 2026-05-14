@@ -37,6 +37,7 @@ function EnableEmailVerificationDialog({
   pendingChange: PendingChange | null,
   onDismiss: () => void,
 }) {
+  const [isConfirming, setIsConfirming] = useState(false);
   const description =
     pendingChange == null
       ? undefined
@@ -48,7 +49,7 @@ function EnableEmailVerificationDialog({
     <DesignDialog
       open={pendingChange != null}
       onOpenChange={(open) => {
-        if (!open) {
+        if (!open && !isConfirming) {
           onDismiss();
         }
       }}
@@ -59,18 +60,22 @@ function EnableEmailVerificationDialog({
       footer={(
         <>
           <DesignDialogClose asChild>
-            <DesignButton variant="secondary" size="sm">
+            <DesignButton variant="secondary" size="sm" disabled={isConfirming}>
               <span>Cancel</span>
             </DesignButton>
           </DesignDialogClose>
           <DesignButton
             size="sm"
+            disabled={isConfirming}
             onClick={() => {
-              if (pendingChange == null) return;
-              runAsynchronouslyWithAlert(pendingChange.onConfirm());
+              if (pendingChange == null || isConfirming) return;
+              setIsConfirming(true);
+              runAsynchronouslyWithAlert(
+                pendingChange.onConfirm().finally(() => setIsConfirming(false)),
+              );
             }}
           >
-            <span>Enable</span>
+            <span>{isConfirming ? "Enabling…" : "Enable"}</span>
           </DesignButton>
         </>
       )}

@@ -5,15 +5,6 @@ import { ConditionBuilder, isConditionTreeValid } from "@/components/rule-builde
 import {
   ActionDialog,
   cn,
-  Dialog,
-  DialogBody,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
   Switch,
   Tooltip,
   TooltipContent,
@@ -25,6 +16,8 @@ import {
   DesignBadge,
   DesignButton,
   DesignCard,
+  DesignDialog,
+  DesignDialogClose,
   DesignEmptyState,
   DesignInput,
   DesignMenu,
@@ -432,9 +425,10 @@ function RuleTriggerHistoryDialog({
       if (nextRequestId !== latestRequestIdRef.current) return;
       setLoadingError(error instanceof Error ? error.message : "Failed to load triggers");
     } finally {
-      if (nextRequestId !== latestRequestIdRef.current) return;
-      if (reset) setIsInitialLoading(false);
-      else setIsLoadingMore(false);
+      if (nextRequestId === latestRequestIdRef.current) {
+        if (reset) setIsInitialLoading(false);
+        else setIsLoadingMore(false);
+      }
     }
   };
 
@@ -458,8 +452,14 @@ function RuleTriggerHistoryDialog({
   const totalLabel = `${allTimeCount.toLocaleString()} total trigger${allTimeCount === 1 ? "" : "s"}`;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
+    <DesignDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      size="2xl"
+      icon={PulseIcon}
+      title="Rule trigger history"
+      description={`${totalLabel} for this rule`}
+      trigger={(
         <button
           type="button"
           className="rounded-sm hover:bg-muted/40 px-1 py-0.5 transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -474,107 +474,92 @@ function RuleTriggerHistoryDialog({
             isLoading={isSparklineLoading}
           />
         </button>
-      </DialogTrigger>
-      <DialogContent
-        className="max-w-2xl gap-0 p-0 overflow-hidden border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"
-        overlayProps={{ className: "bg-black/50 backdrop-blur-sm" }}
-      >
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.06]">
-          <div className="flex items-start gap-3">
-            <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
-              <PulseIcon className="h-4 w-4 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0 space-y-3">
-              <div className="space-y-1">
-                <DialogTitle className="text-base">Rule trigger history</DialogTitle>
-                <DialogDescription className="text-xs">{totalLabel} for this rule</DialogDescription>
-              </div>
-              <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
-                    {ruleDisplayName}
-                  </Typography>
-                  <ActionBadge type={ruleActionType} />
-                  <DesignBadge
-                    label={ruleEnabled ? "Enabled" : "Disabled"}
-                    color={ruleEnabled ? "green" : "orange"}
-                    size="sm"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <TriggerStatTile
-                    label={`Last ${timespanHours}h`}
-                    value={countInTimespan.toLocaleString()}
-                    hint="recent matches"
-                  />
-                  <TriggerStatTile
-                    label="All-time"
-                    value={allTimeCount.toLocaleString()}
-                    hint="since rule created"
-                  />
-                  <TriggerHistoryChart data={sparklineData} />
-                </div>
-              </div>
-            </div>
+      )}
+      headerContent={(
+        <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
+              {ruleDisplayName}
+            </Typography>
+            <ActionBadge type={ruleActionType} />
+            <DesignBadge
+              label={ruleEnabled ? "Enabled" : "Disabled"}
+              color={ruleEnabled ? "green" : "orange"}
+              size="sm"
+            />
           </div>
-        </DialogHeader>
-        <DialogBody className="mx-0 my-0 w-auto px-6 py-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Recent triggers
-            </span>
-            {!isInitialLoading && triggers.length > 0 && (
-              <Typography variant="secondary" className="text-[11px] tabular-nums">
-                showing {triggers.length}{hasMore ? "+" : ""}
-              </Typography>
-            )}
+          <div className="grid grid-cols-3 gap-2">
+            <TriggerStatTile
+              label={`Last ${timespanHours}h`}
+              value={countInTimespan.toLocaleString()}
+              hint="recent matches"
+            />
+            <TriggerStatTile
+              label="All-time"
+              value={allTimeCount.toLocaleString()}
+              hint="since rule created"
+            />
+            <TriggerHistoryChart data={sparklineData} />
           </div>
+        </div>
+      )}
+      footer={(
+        <DesignDialogClose asChild>
+          <DesignButton variant="secondary" size="sm">Close</DesignButton>
+        </DesignDialogClose>
+      )}
+    >
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Recent triggers
+          </span>
+          {!isInitialLoading && triggers.length > 0 && (
+            <Typography variant="secondary" className="text-[11px] tabular-nums">
+              showing {triggers.length}{hasMore ? "+" : ""}
+            </Typography>
+          )}
+        </div>
 
-          {loadingError ? (
-            <DesignAlert variant="error" description={loadingError} />
+        {loadingError ? (
+          <DesignAlert variant="error" description={loadingError} />
+        ) : null}
+
+        <div
+          className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
+          onScroll={handleScroll}
+        >
+          {isInitialLoading ? (
+            <div className="space-y-2 p-3">
+              {["one", "two", "three", "four", "five"].map((skeletonId) => (
+                <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
+              ))}
+            </div>
+          ) : triggers.length === 0 ? (
+            <DesignEmptyState
+              icon={ClockIcon}
+              title="No triggers yet"
+              description={
+                isSparklineLoading
+                  ? "Loading recent activity..."
+                  : "Once a sign-up matches this rule, you'll see it appear here."
+              }
+            />
+          ) : (
+            <div className="divide-y divide-foreground/[0.06]">
+              {triggers.map((trigger) => (
+                <TriggerRow key={trigger.id} trigger={trigger} />
+              ))}
+            </div>
+          )}
+          {isLoadingMore ? (
+            <div className="p-3">
+              <DesignSkeleton className="h-9 rounded-lg" />
+            </div>
           ) : null}
-
-          <div
-            className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
-            onScroll={handleScroll}
-          >
-            {isInitialLoading ? (
-              <div className="space-y-2 p-3">
-                {["one", "two", "three", "four", "five"].map((skeletonId) => (
-                  <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
-                ))}
-              </div>
-            ) : triggers.length === 0 ? (
-              <DesignEmptyState
-                icon={ClockIcon}
-                title="No triggers yet"
-                description={
-                  isSparklineLoading
-                    ? "Loading recent activity..."
-                    : "Once a sign-up matches this rule, you'll see it appear here."
-                }
-              />
-            ) : (
-              <div className="divide-y divide-foreground/[0.06]">
-                {triggers.map((trigger) => (
-                  <TriggerRow key={trigger.id} trigger={trigger} />
-                ))}
-              </div>
-            )}
-            {isLoadingMore ? (
-              <div className="p-3">
-                <DesignSkeleton className="h-9 rounded-lg" />
-              </div>
-            ) : null}
-          </div>
-        </DialogBody>
-        <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
-          <DialogClose asChild>
-            <DesignButton variant="secondary" size="sm">Close</DesignButton>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </DesignDialog>
   );
 }
 
@@ -668,7 +653,11 @@ function ActionDropdown({ state, size = "sm", className }: { state: RuleEditorSt
   return (
     <DesignSelectorDropdown
       value={state.actionType}
-      onValueChange={(v) => state.setActionType(v as ActionType)}
+      onValueChange={(v) => {
+        if (v === "allow" || v === "reject" || v === "restrict" || v === "log") {
+          state.setActionType(v);
+        }
+      }}
       size={size}
       className={className ?? "w-40"}
       options={ACTION_DROPDOWN_OPTIONS}
@@ -931,7 +920,9 @@ function DefaultActionRow({
         trigger="button"
         triggerLabel={value === 'allow' ? 'Allow' : 'Reject'}
         value={value}
-        onValueChange={(v) => onChange(v as 'allow' | 'reject')}
+        onValueChange={(v) => {
+          if (v === "allow" || v === "reject") onChange(v);
+        }}
         options={[
           { id: "allow", label: "Allow" },
           { id: "reject", label: "Reject" },
@@ -1437,44 +1428,25 @@ function TestRulesDialog({
   trigger,
 }: {
   stackAdminApp: ReturnType<typeof useAdminApp>,
-  trigger: React.ReactNode,
+  trigger: React.ReactElement,
 }) {
   const state = useTestRulesState(stackAdminApp);
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        {trigger}
-      </DialogTrigger>
-      <DialogContent
-        className="max-w-5xl gap-0 p-0 overflow-hidden border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"
-        overlayProps={{ className: "bg-black/50 backdrop-blur-sm" }}
-      >
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.06]">
-          <div className="flex items-start gap-3">
-            <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
-              <FlaskIcon className="h-4 w-4 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0 space-y-1">
-              <DialogTitle className="text-base">Test sign-up rules</DialogTitle>
-              <DialogDescription className="text-xs">
-                Simulate a sign-up request to preview which rules trigger and how the final decision is made.
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <DialogBody className="mx-0 my-0 w-auto px-6 py-4">
-          <TestRulesCard state={state} />
-        </DialogBody>
-
-        <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
-          <DialogClose asChild>
-            <DesignButton variant="secondary" size="sm">Close</DesignButton>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DesignDialog
+      size="5xl"
+      icon={FlaskIcon}
+      title="Test sign-up rules"
+      description="Simulate a sign-up request to preview which rules trigger and how the final decision is made."
+      trigger={trigger}
+      footer={(
+        <DesignDialogClose asChild>
+          <DesignButton variant="secondary" size="sm">Close</DesignButton>
+        </DesignDialogClose>
+      )}
+    >
+      <TestRulesCard state={state} />
+    </DesignDialog>
   );
 }
 
