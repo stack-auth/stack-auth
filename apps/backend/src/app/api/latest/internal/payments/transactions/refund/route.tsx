@@ -659,9 +659,24 @@ async function handleSubscriptionRefund(options: {
     // at period boundary.
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
-      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-        cancel_at_period_end: true,
-      });
+      // Same idempotent-cancel guard as the endNow branch above. The Stripe
+      // money refund has already been issued at this point (lines ~585-608),
+      // so an unhandled `subscription_already_canceled` / `resource_missing`
+      // error here would propagate up before `bulldozerWriteManualTransaction`
+      // commits the ledger row, leaving the customer refunded with no record.
+      // Reachable when an admin pairs `amount > 0` with `end_action="at-period-end"`
+      // on a sub that's already terminal (the empty-amount case is caught
+      // earlier by the replay guard).
+      try {
+        await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+          cancel_at_period_end: true,
+        });
+      } catch (e: unknown) {
+        const code = (e as { code?: string }).code;
+        if (code !== "resource_missing" && code !== "subscription_already_canceled") {
+          throw e;
+        }
+      }
     }
     updatedSub = await prisma.subscription.update({
       where: { tenancyId_id: { tenancyId: tenancy.id, id: subscription.id } },
