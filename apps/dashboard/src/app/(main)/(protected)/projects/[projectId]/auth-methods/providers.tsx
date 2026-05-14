@@ -42,6 +42,23 @@ type Props = {
   deleteProvider: (id: string) => Promise<void>,
 };
 
+function toTitle(id: string) {
+  return {
+    github: "GitHub",
+    google: "Google",
+    facebook: "Facebook",
+    microsoft: "Microsoft",
+    spotify: "Spotify",
+    discord: "Discord",
+    gitlab: "GitLab",
+    apple: "Apple",
+    bitbucket: "Bitbucket",
+    linkedin: "LinkedIn",
+    twitch: "Twitch",
+    x: "X",
+  }[id];
+}
+
 export const providerFormSchema = yupObject({
   shared: yupBoolean().defined(),
   clientId: yupString()
@@ -72,7 +89,7 @@ function ProviderHeader({ providerId }: { providerId: string }) {
       <ProviderIcon id={providerId} size="sm" />
       <div className="flex flex-col min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-semibold text-foreground">{BrandIcons.toTitle(providerId)}</span>
+          <span className="text-sm font-semibold text-foreground">{toTitle(providerId)}</span>
           <DesignBadge label="OAuth 2.0" color="blue" size="sm" />
         </div>
         <span className="text-[11px] text-muted-foreground">Configure credentials for this provider</span>
@@ -309,7 +326,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
       onSubmit={onSubmit}
       open={props.open}
       onClose={props.onClose}
-      title={`${BrandIcons.toTitle(props.id)} OAuth provider`}
+      title={`${toTitle(props.id)} OAuth provider`}
       cancelButton
       okButton={{ label: 'Save' }}
       contentClassName={PROVIDER_DIALOG_CHROME_CLASS}
@@ -332,12 +349,12 @@ export function TurnOffProviderDialog(props: {
 }) {
   return (
     <ActionDialog
-      title={`Disable ${BrandIcons.toTitle(props.providerId)} OAuth provider`}
+      title={`Disable ${toTitle(props.providerId)} OAuth provider`}
       open={props.open}
       onClose={props.onClose}
       danger
       okButton={{
-        label: `Disable ${BrandIcons.toTitle(props.providerId)}`,
+        label: `Disable ${toTitle(props.providerId)}`,
         onClick: async () => {
           await props.onConfirm();
         },
@@ -348,7 +365,7 @@ export function TurnOffProviderDialog(props: {
       <div className="flex items-center gap-3 mb-1">
         <ProviderIcon id={props.providerId} size="sm" />
         <div className="flex flex-col min-w-0">
-          <span className="text-sm font-semibold text-foreground">{BrandIcons.toTitle(props.providerId)}</span>
+          <span className="text-sm font-semibold text-foreground">{toTitle(props.providerId)}</span>
           <span className="text-xs text-muted-foreground">Will be removed from the sign-in surface</span>
         </div>
       </div>
@@ -397,7 +414,7 @@ export function ProviderSettingSwitch(props: Props) {
           className="flex flex-col items-center justify-center gap-2 py-2 px-2 w-full h-full text-foreground transition-all duration-150 hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1] rounded-2xl"
         >
           <ProviderIcon id={props.id} />
-          <span className="text-sm font-medium">{BrandIcons.toTitle(props.id)}</span>
+          <span className="text-sm font-medium">{toTitle(props.id)}</span>
           {isShared && enabled &&
             <SimpleTooltip tooltip={"Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.\n\nYou should replace these before you go into production."}>
               <DesignBadge label="Shared keys" color="orange" size="sm" />
