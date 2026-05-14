@@ -63,8 +63,7 @@ it("rejects refund when target subscription does not exist", async () => {
       type: "subscription",
       id: missingId,
       amount_usd: "0",
-      revoke_product: true,
-      end_subscription: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(404);
@@ -82,33 +81,14 @@ it("rejects refund when target one-time purchase does not exist", async () => {
       type: "one-time-purchase",
       id: missingId,
       amount_usd: "0",
-      revoke_product: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(404);
   expect(refundRes.body.code).toBe("ONE_TIME_PURCHASE_NOT_FOUND");
 });
 
-it("rejects revoke=true,end=false on a subscription as a footgun", async () => {
-  await setupProjectWithPaymentsConfig();
-
-  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
-    accessType: "admin",
-    method: "POST",
-    body: {
-      type: "subscription",
-      id: randomUUID(),
-      amount_usd: "0",
-      revoke_product: true,
-      end_subscription: false,
-    },
-  });
-  expect(refundRes.status).toBe(400);
-  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
-  expect(refundRes.body.error).toMatch(/Revoking a subscription's product also requires ending the subscription/);
-});
-
-it("rejects no-op refund (amount=0, revoke=false, end=false)", async () => {
+it("rejects end_action='at-period-end' on a one-time purchase", async () => {
   await setupProjectWithPaymentsConfig();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -118,7 +98,24 @@ it("rejects no-op refund (amount=0, revoke=false, end=false)", async () => {
       type: "one-time-purchase",
       id: randomUUID(),
       amount_usd: "0",
-      revoke_product: false,
+      end_action: "at-period-end",
+    },
+  });
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/'at-period-end' is only valid for subscriptions/);
+});
+
+it("rejects no-op refund (amount=0, no end_action)", async () => {
+  await setupProjectWithPaymentsConfig();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: randomUUID(),
+      amount_usd: "0",
     },
   });
   expect(refundRes.status).toBe(400);
@@ -136,14 +133,13 @@ it("rejects negative refund amount", async () => {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "-1",
-      revoke_product: false,
     },
   });
   expect(refundRes.status).toBe(400);
   expect(refundRes.body.code).toBe("SCHEMA_ERROR");
 });
 
-it("refunds a test-mode one-time purchase by revoking the product (no money flow)", async () => {
+it("refunds a test-mode one-time purchase by ending product access (no money flow)", async () => {
   await setupProjectWithPaymentsConfig();
   const { transactionId, userId } = await createTestModeTransaction("otp-product", "single");
 
@@ -159,7 +155,7 @@ it("refunds a test-mode one-time purchase by revoking the product (no money flow
       type: "one-time-purchase",
       id: transactionId,
       amount_usd: "0",
-      revoke_product: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(200);
@@ -184,14 +180,14 @@ it("rejects nonzero amount on a test-mode purchase (no money to refund)", async 
       type: "one-time-purchase",
       id: transactionId,
       amount_usd: "10",
-      revoke_product: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(400);
   expect(refundRes.body.code).toBe("TEST_MODE_PURCHASE_NON_REFUNDABLE");
 });
 
-it("refunds a live-mode OTP fully (money + revoke), surfaces refund row, links via adjusted_by", async () => {
+it("refunds a live-mode OTP fully (money + end_action='now'), surfaces refund row, links via adjusted_by", async () => {
   const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -201,7 +197,7 @@ it("refunds a live-mode OTP fully (money + revoke), surfaces refund row, links v
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "5000",
-      revoke_product: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(200);
@@ -248,7 +244,6 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "2000",
-      revoke_product: false,
     },
   });
   expect(refund1.status).toBe(200);
@@ -261,7 +256,6 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "3000",
-      revoke_product: false,
     },
   });
   expect(refund2.status).toBe(200);
@@ -274,7 +268,6 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "0.01",
-      revoke_product: false,
     },
   });
   expect(refund3.status).toBe(400);
@@ -282,7 +275,7 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
   expect(refund3.body.error).toMatch(/cannot exceed the remaining refundable amount/);
 });
 
-it("rejects revoking a product that has already been revoked", async () => {
+it("rejects ending product access twice on the same OTP (productRevoked short-circuit)", async () => {
   const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
 
   const refund1 = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -292,7 +285,7 @@ it("rejects revoking a product that has already been revoked", async () => {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "0",
-      revoke_product: true,
+      end_action: "now",
     },
   });
   expect(refund1.status).toBe(200);
@@ -304,7 +297,7 @@ it("rejects revoking a product that has already been revoked", async () => {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "0",
-      revoke_product: true,
+      end_action: "now",
     },
   });
   expect(refund2.status).toBe(400);
@@ -322,7 +315,6 @@ it("rejects refund amount exceeding original purchase amount", async () => {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       amount_usd: "5001",
-      revoke_product: false,
     },
   });
   expect(refundRes.status).toBe(400);
@@ -330,7 +322,7 @@ it("rejects refund amount exceeding original purchase amount", async () => {
   expect(refundRes.body.error).toMatch(/cannot exceed the remaining refundable amount/);
 });
 
-it("refunds a test-mode subscription with revoke=true and end=true", async () => {
+it("refunds a test-mode subscription with end_action='now'", async () => {
   const { subscriptionId, userId } = await createTestModeSubscription();
 
   // Customer has the product before refund.
@@ -346,8 +338,7 @@ it("refunds a test-mode subscription with revoke=true and end=true", async () =>
       type: "subscription",
       id: subscriptionId,
       amount_usd: "0",
-      revoke_product: true,
-      end_subscription: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(200);
@@ -371,8 +362,7 @@ it("rejects a second product revocation on the same subscription (productRevoked
       type: "subscription",
       id: subscriptionId,
       amount_usd: "0",
-      revoke_product: true,
-      end_subscription: true,
+      end_action: "now",
     },
   });
   expect(refund1.status).toBe(200);
@@ -384,8 +374,7 @@ it("rejects a second product revocation on the same subscription (productRevoked
       type: "subscription",
       id: subscriptionId,
       amount_usd: "0",
-      revoke_product: true,
-      end_subscription: true,
+      end_action: "now",
     },
   });
   expect(refund2.status).toBe(400);
@@ -393,7 +382,7 @@ it("rejects a second product revocation on the same subscription (productRevoked
   expect(refund2.body.error).toMatch(/already been revoked/);
 });
 
-it("refunds a test-mode subscription with end=true only (no revoke), no money", async () => {
+it("refunds a test-mode subscription with end_action='at-period-end' (no money)", async () => {
   const { subscriptionId } = await createTestModeSubscription();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -403,15 +392,14 @@ it("refunds a test-mode subscription with end=true only (no revoke), no money", 
       type: "subscription",
       id: subscriptionId,
       amount_usd: "0",
-      revoke_product: false,
-      end_subscription: true,
+      end_action: "at-period-end",
     },
   });
   expect(refundRes.status).toBe(200);
   expect(refundRes.body.success).toBe(true);
 });
 
-it("rejects end-only sub refund replay (already scheduled to end)", async () => {
+it("rejects end-at-period-end sub refund replay (already scheduled to end)", async () => {
   const { subscriptionId } = await createTestModeSubscription();
 
   // First end-only refund succeeds and sets cancelAtPeriodEnd.
@@ -422,8 +410,7 @@ it("rejects end-only sub refund replay (already scheduled to end)", async () => 
       type: "subscription",
       id: subscriptionId,
       amount_usd: "0",
-      revoke_product: false,
-      end_subscription: true,
+      end_action: "at-period-end",
     },
   });
   expect(refund1.status).toBe(200);
@@ -437,8 +424,7 @@ it("rejects end-only sub refund replay (already scheduled to end)", async () => 
       type: "subscription",
       id: subscriptionId,
       amount_usd: "0",
-      revoke_product: false,
-      end_subscription: true,
+      end_action: "at-period-end",
     },
   });
   expect(refund2.status).toBe(400);
@@ -578,11 +564,11 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
 it("refunds a renewal invoice (invoice_id path) without money or revoke — sourceTxnId is sub-renewal", async () => {
   const { subscriptionId, renewalInvoiceId } = await createLiveModeSubscriptionWithRenewal();
 
-  // Use amount_usd=0 and end_subscription=true to exercise the invoice_id
-  // resolution path without touching Stripe refund-side calls (which require
-  // the stripe-mock to return an invoice with paid payments — out of scope
-  // for this test). The route must still resolve the renewal invoice and
-  // stamp the refund row with `sourceTxnId = sub-renewal:<id>`.
+  // Use amount_usd=0 and end_action='at-period-end' to exercise the
+  // invoice_id resolution path without touching Stripe refund-side calls
+  // (which require the stripe-mock to return an invoice with paid payments —
+  // out of scope for this test). The route must still resolve the renewal
+  // invoice and stamp the refund row with `sourceTxnId = sub-renewal:<id>`.
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
     method: "POST",
@@ -591,8 +577,7 @@ it("refunds a renewal invoice (invoice_id path) without money or revoke — sour
       id: subscriptionId,
       invoice_id: renewalInvoiceId,
       amount_usd: "0",
-      revoke_product: false,
-      end_subscription: true,
+      end_action: "at-period-end",
     },
   });
   expect(refundRes.status).toBe(200);
@@ -632,11 +617,11 @@ it("refunds a renewal invoice (invoice_id path) without money or revoke — sour
   expect(refundRow).toBeDefined();
 });
 
-it("rejects revoke_product=true when invoice_id targets a renewal invoice", async () => {
+it("rejects end_action='now' when invoice_id targets a renewal invoice", async () => {
   // The product grant lives on the sub-start txn, not on renewals — so a
   // revocation entry referencing a renewal would point at a non-existent
-  // entry. Force admin to revoke against the start invoice (or the default
-  // no-invoice-id call, which already implies start).
+  // entry. Force admin to end-immediately against the start invoice (or the
+  // default no-invoice-id call, which already implies start).
   const { subscriptionId, renewalInvoiceId } = await createLiveModeSubscriptionWithRenewal();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -647,13 +632,12 @@ it("rejects revoke_product=true when invoice_id targets a renewal invoice", asyn
       id: subscriptionId,
       invoice_id: renewalInvoiceId,
       amount_usd: "0",
-      revoke_product: true,
-      end_subscription: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(400);
   expect(refundRes.body.code).toBe("SCHEMA_ERROR");
-  expect(refundRes.body.error).toMatch(/Cannot revoke product when refunding a renewal invoice/);
+  expect(refundRes.body.error).toMatch(/Cannot end product access immediately when refunding a renewal invoice/);
 });
 
 it("rejects refund with invoice_id that does not belong to the subscription", async () => {
@@ -668,8 +652,7 @@ it("rejects refund with invoice_id that does not belong to the subscription", as
       id: subscriptionId,
       invoice_id: unrelatedInvoiceId,
       amount_usd: "0",
-      revoke_product: false,
-      end_subscription: true,
+      end_action: "at-period-end",
     },
   });
   expect(refundRes.status).toBe(404);
@@ -687,7 +670,7 @@ it("rejects invoice_id on a one-time purchase", async () => {
       id: purchaseTransaction.id,
       invoice_id: randomUUID(),
       amount_usd: "0",
-      revoke_product: true,
+      end_action: "now",
     },
   });
   expect(refundRes.status).toBe(400);

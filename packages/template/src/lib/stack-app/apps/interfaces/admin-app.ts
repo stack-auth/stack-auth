@@ -145,8 +145,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       id: string,
       invoiceId?: string,
       amountUsd: MoneyAmount,
-      revokeProduct: boolean,
-      endSubscription?: boolean,
+      endAction?: "now" | "at-period-end",
     }): Promise<{ refundTransactionId: string }>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 

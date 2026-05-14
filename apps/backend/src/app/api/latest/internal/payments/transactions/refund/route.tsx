@@ -362,8 +362,22 @@ export const POST = createSmartRouteHandler({
       id: yupString().defined(),
       invoice_id: yupString().optional(),
       amount_usd: moneyAmountSchema(USD_CURRENCY).defined(),
-      revoke_product: yupBoolean().defined(),
-      end_subscription: yupBoolean().optional(),
+      // `end_action` collapses the previous two-flag API (`revoke_product`,
+      // `end_subscription`) into a single tri-state matching the dashboard's
+      // section-2 lifecycle picker:
+      //   "now"           → end product access immediately. For subs:
+      //                     cancel Stripe immediately + set endedAt=now +
+      //                     write a product-revocation entry on the refund
+      //                     row (which expires outstanding item grants via
+      //                     subscription-end). For OTPs: set revokedAt=now +
+      //                     write product-revocation + emit explicit
+      //                     item-quantity-expire entries (no sub-end exists
+      //                     for OTPs).
+      //   "at-period-end" → cancel-at-period-end on the Stripe sub + set
+      //                     endedAt=currentPeriodEnd. Subscriptions only —
+      //                     OTPs have no period.
+      //   undefined       → no lifecycle change; refund money only.
+      end_action: yupString().oneOf(["now", "at-period-end"]).optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -378,8 +392,7 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const amountUsd = body.amount_usd as MoneyAmount;
     const amountStripeUnits = moneyAmountToStripeUnits(amountUsd, USD_CURRENCY);
-    const revokeProduct = body.revoke_product;
-    const endSubscription = body.end_subscription ?? false;
+    const endAction = body.end_action;
 
     if (amountStripeUnits < 0) {
       throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
@@ -389,11 +402,11 @@ export const POST = createSmartRouteHandler({
       if (body.invoice_id !== undefined) {
         throw new KnownErrors.SchemaError("invoice_id is not applicable to one-time purchases.");
       }
-      if (endSubscription) {
-        throw new KnownErrors.SchemaError("end_subscription is not applicable to one-time purchases.");
+      if (endAction === "at-period-end") {
+        throw new KnownErrors.SchemaError("end_action='at-period-end' is only valid for subscriptions; one-time purchases have no period.");
       }
-      if (amountStripeUnits === 0 && !revokeProduct) {
-        throw new KnownErrors.SchemaError("Refund must do something: specify a non-zero amount or revoke the product.");
+      if (amountStripeUnits === 0 && endAction === undefined) {
+        throw new KnownErrors.SchemaError("Refund must do something: specify a non-zero amount or set end_action='now'.");
       }
       return await handleOneTimePurchaseRefund({
         prisma,
@@ -401,16 +414,13 @@ export const POST = createSmartRouteHandler({
         purchaseId: body.id,
         amountUsd,
         amountStripeUnits,
-        revokeProduct,
+        endNow: endAction === "now",
       });
     }
 
     // subscription path
-    if (revokeProduct && !endSubscription) {
-      throw new KnownErrors.SchemaError("Revoking a subscription's product also requires ending the subscription. Set end_subscription to true.");
-    }
-    if (amountStripeUnits === 0 && !revokeProduct && !endSubscription) {
-      throw new KnownErrors.SchemaError("Refund must do something: specify a non-zero amount, revoke the product, or end the subscription.");
+    if (amountStripeUnits === 0 && endAction === undefined) {
+      throw new KnownErrors.SchemaError("Refund must do something: specify a non-zero amount or set end_action.");
     }
     return await handleSubscriptionRefund({
       prisma,
@@ -419,8 +429,7 @@ export const POST = createSmartRouteHandler({
       invoiceId: body.invoice_id,
       amountUsd,
       amountStripeUnits,
-      revokeProduct,
-      endSubscription,
+      endAction,
     });
   },
 });
@@ -460,18 +469,19 @@ async function handleSubscriptionRefund(options: {
   invoiceId: string | undefined,
   amountUsd: MoneyAmount,
   amountStripeUnits: number,
-  revokeProduct: boolean,
-  endSubscription: boolean,
+  endAction: "now" | "at-period-end" | undefined,
 }) {
   const { prisma, tenancy } = options;
+  const endNow = options.endAction === "now";
+  const endAtPeriodEnd = options.endAction === "at-period-end";
   const subscription = await prisma.subscription.findUnique({
     where: { tenancyId_id: { tenancyId: tenancy.id, id: options.subscriptionId } },
   });
   if (!subscription) {
     throw new KnownErrors.SubscriptionInvoiceNotFound(options.subscriptionId);
   }
-  // Legacy refund backstop: the pre-three-knob flow set `refundedAt` and
-  // gated all further refunds on it. The new bulldozer-derived prior-refund
+  // Legacy refund backstop: the pre-rework flow set `refundedAt` and gated
+  // all further refunds on it. The new bulldozer-derived prior-refund
   // summary doesn't see those legacy refunds, so without this gate an admin
   // could double-refund through Stripe on a previously-refunded purchase.
   // Preserve the legacy `SubscriptionAlreadyRefunded` known-error code so
@@ -480,12 +490,12 @@ async function handleSubscriptionRefund(options: {
     throw new KnownErrors.SubscriptionAlreadyRefunded(subscription.id);
   }
 
-  // End-only refund replay guard. The empty-entries refund row written by
-  // `amount=0, revoke=false, end=true` is not visible to `readPriorRefundSummary`
-  // (which only tracks money + product-revocation), so without this gate the
-  // call is a forever-no-op that accumulates phantom rows on each replay.
-  // The sub's lifecycle state is authoritative here.
-  if (options.amountStripeUnits === 0 && !options.revokeProduct && options.endSubscription) {
+  // End-at-period-end replay guard. The empty-entries refund row written by
+  // `amount=0, end_action="at-period-end"` is not visible to
+  // `readPriorRefundSummary` (which only tracks money + product-revocation),
+  // so without this gate the call is a forever-no-op that accumulates phantom
+  // rows on each replay. The sub's lifecycle state is authoritative here.
+  if (options.amountStripeUnits === 0 && endAtPeriodEnd) {
     if (subscription.cancelAtPeriodEnd || subscription.endedAt) {
       throw new KnownErrors.SchemaError("Subscription is already scheduled to end.");
     }
@@ -510,14 +520,14 @@ async function handleSubscriptionRefund(options: {
     if (!found || found.stripeSubscriptionId !== subscription.stripeSubscriptionId) {
       throw new KnownErrors.SubscriptionInvoiceNotFound(options.invoiceId);
     }
-    // `revoke_product` is a sub-wide action (the product grant lives on the
-    // sub-start txn, not on renewal txns), so it can only meaningfully be
-    // paired with a refund targeting the creation invoice — or the default
+    // `end_action="now"` is a sub-wide action (the product grant lives on
+    // the sub-start txn, not on renewal txns), so it can only meaningfully
+    // be paired with a refund targeting the creation invoice — or the default
     // no-invoice-id call which already implies start. Targeting a renewal
-    // invoice with revoke would write a product-revocation entry pointing at
-    // a non-existent entry on the renewal txn.
-    if (options.revokeProduct && !found.isSubscriptionCreationInvoice) {
-      throw new KnownErrors.SchemaError("Cannot revoke product when refunding a renewal invoice — product revocation applies to the subscription as a whole. Omit invoice_id or pass the creation invoice id.");
+    // invoice with immediate end would write a product-revocation entry
+    // pointing at a non-existent entry on the renewal txn.
+    if (endNow && !found.isSubscriptionCreationInvoice) {
+      throw new KnownErrors.SchemaError("Cannot end product access immediately when refunding a renewal invoice — product revocation applies to the subscription as a whole. Omit invoice_id or pass the creation invoice id.");
     }
     invoice = { id: found.id, stripeInvoiceId: found.stripeInvoiceId, amountTotal: found.amountTotal };
     sourceTxnId = found.isSubscriptionCreationInvoice
@@ -575,7 +585,7 @@ async function handleSubscriptionRefund(options: {
   if (options.amountStripeUnits > remainingStripeUnits) {
     throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
   }
-  if (options.revokeProduct && prior.productRevoked) {
+  if (endNow && prior.productRevoked) {
     throw new KnownErrors.SchemaError("This subscription's product has already been revoked.");
   }
 
@@ -610,7 +620,7 @@ async function handleSubscriptionRefund(options: {
   // ── Lifecycle: Prisma + Stripe ────────────────────────────────────────
   const now = new Date();
   let updatedSub: typeof subscription | null = null;
-  if (options.revokeProduct) {
+  if (endNow) {
     // Immediate end. Stripe sub canceled, Prisma endedAt=now → timefold
     // auto-emits subscription-end with item-quantity-expire entries. Preserve
     // an existing `endedAt` if the sub already ended naturally — clobbering
@@ -644,7 +654,7 @@ async function handleSubscriptionRefund(options: {
         endedAt: subscription.endedAt ?? now,
       },
     });
-  } else if (options.endSubscription) {
+  } else if (endAtPeriodEnd) {
     // End at period end. Items follow natural lifecycle when sub-end fires
     // at period boundary.
     if (!isTestMode && subscription.stripeSubscriptionId) {
@@ -676,7 +686,7 @@ async function handleSubscriptionRefund(options: {
       refundAmountStripeUnits: options.amountStripeUnits,
     }));
   }
-  if (options.revokeProduct) {
+  if (endNow) {
     refundEntries.push(buildProductRevocationEntry({
       customerType,
       customerId: subscription.customerId,
@@ -720,7 +730,7 @@ async function handleOneTimePurchaseRefund(options: {
   purchaseId: string,
   amountUsd: MoneyAmount,
   amountStripeUnits: number,
-  revokeProduct: boolean,
+  endNow: boolean,
 }) {
   const { prisma, tenancy } = options;
   const purchase = await prisma.oneTimePurchase.findUnique({
@@ -765,7 +775,7 @@ async function handleOneTimePurchaseRefund(options: {
   if (options.amountStripeUnits > remainingStripeUnits) {
     throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
   }
-  if (options.revokeProduct && prior.productRevoked) {
+  if (options.endNow && prior.productRevoked) {
     throw new KnownErrors.SchemaError("This purchase's product has already been revoked.");
   }
 
@@ -796,7 +806,7 @@ async function handleOneTimePurchaseRefund(options: {
 
   // ── Lifecycle: Prisma ─────────────────────────────────────────────────
   const now = new Date();
-  if (options.revokeProduct) {
+  if (options.endNow) {
     const updatedPurchase = await prisma.oneTimePurchase.update({
       where: { tenancyId_id: { tenancyId: tenancy.id, id: purchase.id } },
       data: { revokedAt: now },
@@ -813,7 +823,7 @@ async function handleOneTimePurchaseRefund(options: {
       refundAmountStripeUnits: options.amountStripeUnits,
     }));
   }
-  if (options.revokeProduct) {
+  if (options.endNow) {
     refundEntries.push(buildProductRevocationEntry({
       customerType,
       customerId: purchase.customerId,

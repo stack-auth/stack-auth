@@ -896,8 +896,15 @@ export class StackAdminInterface extends StackServerInterface {
     id: string,
     invoiceId?: string,
     amountUsd: MoneyAmount,
-    revokeProduct: boolean,
-    endSubscription?: boolean,
+    /**
+     * Lifecycle action for the source purchase:
+     *   "now"           — end product access immediately (revokes product,
+     *                     expires item grants, cancels Stripe sub if any).
+     *   "at-period-end" — schedule sub cancel-at-period-end; subscriptions
+     *                     only — rejected for one-time purchases.
+     *   undefined       — no lifecycle change; refund money only.
+     */
+    endAction?: "now" | "at-period-end",
   }): Promise<{ success: boolean, refundTransactionId: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
@@ -911,8 +918,7 @@ export class StackAdminInterface extends StackServerInterface {
           id: options.id,
           ...(options.invoiceId !== undefined ? { invoice_id: options.invoiceId } : {}),
           amount_usd: options.amountUsd,
-          revoke_product: options.revokeProduct,
-          ...(options.endSubscription !== undefined ? { end_subscription: options.endSubscription } : {}),
+          ...(options.endAction !== undefined ? { end_action: options.endAction } : {}),
         }),
       },
       null,

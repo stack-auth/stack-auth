@@ -831,16 +831,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     id: string,
     invoiceId?: string,
     amountUsd: MoneyAmount,
-    revokeProduct: boolean,
-    endSubscription?: boolean,
+    endAction?: "now" | "at-period-end",
   }): Promise<{ refundTransactionId: string }> {
     const result = await this._interface.refundTransaction({
       type: options.type,
       id: options.id,
       invoiceId: options.invoiceId,
       amountUsd: options.amountUsd,
-      revokeProduct: options.revokeProduct,
-      endSubscription: options.endSubscription,
+      endAction: options.endAction,
     });
     await this._transactionsCache.invalidateWhere(() => true);
     return { refundTransactionId: result.refundTransactionId };

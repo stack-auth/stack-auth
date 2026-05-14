@@ -299,12 +299,22 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
               if (!validation.canSubmit) {
                 return "prevent-close";
               }
+              // Translate the existing two-checkbox UI to the new single-knob
+              // API. This is intentionally minimal — the refund dialog is being
+              // redesigned around a tri-state "Subscription / Product" picker
+              // that maps directly to `endAction`; until that lands, derive
+              // the action from the legacy controls:
+              //   revoke ticked            → "now" (immediate end + revoke)
+              //   end-sub ticked (sub only)→ "at-period-end"
+              //   neither                  → undefined (money-only refund)
+              const endAction: "now" | "at-period-end" | undefined = revokeProduct
+                ? "now"
+                : (isSubscription && endSubscription ? "at-period-end" : undefined);
               runAsynchronouslyWithAlert(async () => {
                 await app.refundTransaction({
                   ...target,
                   amountUsd: amountUsd as MoneyAmount,
-                  revokeProduct,
-                  ...(isSubscription ? { endSubscription } : {}),
+                  ...(endAction !== undefined ? { endAction } : {}),
                 });
               });
             },
