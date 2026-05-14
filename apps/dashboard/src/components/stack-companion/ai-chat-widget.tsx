@@ -97,7 +97,7 @@ function convertStoredPartsToThreadContent(rawParts: unknown): ThreadLikeContent
       const args = ((raw.args ?? raw.input ?? {}) as unknown) as ThreadLikeToolArgs;
       result.push({
         type: "tool-call",
-        toolCallId: raw.toolCallId,
+        toolCallId: raw.toolCallId ?? crypto.randomUUID(),
         toolName: raw.toolName ?? "tool",
         args,
         argsText: raw.argsText ?? (typeof (raw.args ?? raw.input) === "string"
@@ -117,7 +117,7 @@ function convertStoredPartsToThreadContent(rawParts: unknown): ThreadLikeContent
       const args = ((typeof rawInput === "object" ? rawInput : {}) as unknown) as ThreadLikeToolArgs;
       result.push({
         type: "tool-call",
-        toolCallId: raw.toolCallId,
+        toolCallId: raw.toolCallId ?? crypto.randomUUID(),
         toolName,
         args,
         argsText: typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput),

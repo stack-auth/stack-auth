@@ -92,6 +92,11 @@ export async function sendAiStreamRequest(
       transform(parseResult, controller) {
         if (parseResult.success) {
           controller.enqueue(parseResult.value);
+        } else {
+          captureError("ai-chat-stream-parse", {
+            error: parseResult.error,
+            rawValue: parseResult.rawValue,
+          });
         }
       },
     }),
