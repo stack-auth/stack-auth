@@ -19,8 +19,8 @@ import { CmdKPreviewProps } from "../cmdk-commands";
 
 const RUNNING_STATUS_MESSAGES = ["Thinking..."];
 
-export function AIChatPreview(props: CmdKPreviewProps) {
-  return <AIChatPreviewInner {...props} />;
+export function AIChatPreview({ query, ...rest }: CmdKPreviewProps) {
+  return <AIChatPreviewInner key={query} query={query} {...rest} />;
 }
 
 const AIChatPreviewInner = memo(function AIChatPreview({
