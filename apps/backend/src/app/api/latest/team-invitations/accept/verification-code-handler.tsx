@@ -1,5 +1,5 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
-import { normalizeEmail, sendEmailFromDefaultTemplate } from "@/lib/emails";
+import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
@@ -69,34 +69,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
 
     return codeObj;
   },
-  // Runs before the code is claimed (marked used). Must live here, not in `handler`,
-  // so a mismatched attempt doesn't burn the invitation for the real recipient.
-  async validate(tenancy, { email: invitedEmail }, data, body, user) {
-    if (!user) throw new KnownErrors.UserAuthenticationRequired;
-    if (user.restricted_reason) {
-      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
-    }
-
-    const prisma = await getPrismaClientForTenancy(tenancy);
-    // Contact channels are stored normalized; normalize the invited email to match.
-    // Legacy invitations created before send-code normalized may still hold a non-
-    // normalized `method.email`, so do it at compare time too.
-    const normalized = normalizeEmail(invitedEmail);
-    const invitedChannel = await prisma.contactChannel.findFirst({
-      where: {
-        tenancyId: tenancy.id,
-        projectUserId: user.id,
-        type: "EMAIL",
-        value: normalized,
-        isVerified: true,
-      },
-      select: { id: true },
-    });
-    if (!invitedChannel) {
-      throw new KnownErrors.TeamInvitationEmailMismatch();
-    }
-  },
-  async handler(tenancy, { email: invitedEmail }, data, body, user) {
+  async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
