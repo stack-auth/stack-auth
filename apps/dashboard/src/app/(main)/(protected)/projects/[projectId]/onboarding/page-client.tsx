@@ -65,9 +65,9 @@ function EnableEmailVerificationDialog({
           </DesignDialogClose>
           <DesignButton
             size="sm"
-            onClick={async () => {
+            onClick={() => {
               if (pendingChange == null) return;
-              await pendingChange.onConfirm();
+              runAsynchronouslyWithAlert(pendingChange.onConfirm());
             }}
           >
             <span>Enable</span>
