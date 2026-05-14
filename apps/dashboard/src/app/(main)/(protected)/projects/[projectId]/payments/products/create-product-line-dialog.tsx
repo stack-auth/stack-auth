@@ -9,7 +9,7 @@ import {
 import { Label, SimpleTooltip, Typography } from "@/components/ui";
 import { FolderOpenIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 
 // Helper to convert display name to ID format
@@ -52,7 +52,7 @@ export function CreateProductLineDialog({ open, onOpenChange, onCreate }: Create
       return;
     }
 
-    runAsynchronously(onCreate({ id: productLineId.trim(), displayName: displayName.trim() }));
+    runAsynchronouslyWithAlert(onCreate({ id: productLineId.trim(), displayName: displayName.trim() }));
 
     // Reset form
     setDisplayName("");
