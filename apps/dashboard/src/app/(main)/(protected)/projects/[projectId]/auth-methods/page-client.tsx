@@ -450,9 +450,9 @@ function useEmailVerificationToggle() {
       danger
       okButton={{
         label: "Apply Change",
-        onClick: () => {
+        onClick: async () => {
           if (pendingChange == null) return;
-          runAsynchronouslyWithAlert(pendingChange.onConfirm());
+          await pendingChange.onConfirm();
         },
       }}
       cancelButton={{ label: "Cancel" }}
