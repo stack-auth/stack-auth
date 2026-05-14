@@ -15,7 +15,6 @@ import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
 import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
 import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
 import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/currency-constants';
-import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from '../link';
 
@@ -224,6 +223,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [amountUsd, setAmountUsd] = useState<string>('0');
   const [endAction, setEndAction] = useState<EndActionChoice>("now");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const target = transaction.type === 'purchase' ? refundTarget : null;
   // Don't gate on `adjusted_by.length` here: the backend supports multiple
   // partial refunds (and a separate revoke) until both caps are hit, and
@@ -284,6 +284,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     const alreadyAdjusted = transaction.adjusted_by.length > 0;
     setAmountUsd(alreadyAdjusted ? '0' : (chargedAmountUsd ?? '0'));
     setEndAction("now");
+    setSubmitError(null);
   };
 
   return (
@@ -297,18 +298,28 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
           cancelButton
           okButton={{
             label: "Refund",
+            // Awaiting directly (rather than wrapping in
+            // `runAsynchronouslyWithAlert`) lets ActionDialog drive the
+            // button's loading + disabled state during the request and
+            // keep the dialog open until the network call resolves —
+            // important for a destructive, non-idempotent action where a
+            // double-click would otherwise fire two refunds.
             onClick: async () => {
               if (!validation.canSubmit) {
                 return "prevent-close";
               }
+              setSubmitError(null);
               const apiEndAction = endAction === "none" ? undefined : endAction;
-              runAsynchronouslyWithAlert(async () => {
+              try {
                 await app.refundTransaction({
                   ...target,
                   amountUsd: amountUsd as MoneyAmount,
                   ...(apiEndAction !== undefined ? { endAction: apiEndAction } : {}),
                 });
-              });
+              } catch (e: unknown) {
+                setSubmitError(e instanceof Error ? e.message : "Refund failed. Please try again.");
+                return "prevent-close";
+              }
             },
             props: { disabled: !validation.canSubmit },
           }}
@@ -345,9 +356,9 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
                 </SelectContent>
               </Select>
             </div>
-            {validation.error ? (
+            {validation.error || submitError ? (
               <Alert variant="destructive">
-                <AlertDescription>{validation.error}</AlertDescription>
+                <AlertDescription>{validation.error ?? submitError}</AlertDescription>
               </Alert>
             ) : null}
           </div>
