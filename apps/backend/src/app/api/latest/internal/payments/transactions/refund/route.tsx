@@ -43,8 +43,9 @@ export function buildStripeRefundParams(args: {
 
 /**
  * Formats stripe units as a decimal money string with the currency's full
- * decimal places — this is the shape that round-trips through
- * `moneyAmountToStripeUnits` (which strips the dot and parseInts the result).
+ * decimal places — this is the canonical shape for `moneyAmountToStripeUnits`
+ * (which right-pads the fractional part to currency.decimals before
+ * stripping the dot, so shorter inputs like "5" also round-trip correctly).
  * E.g. for USD: 5000 → "50.00", 1 → "0.01", 100 → "1.00".
  */
 function stripeUnitsToMoneyAmount(stripeUnits: number): string {
@@ -212,6 +213,119 @@ async function readPriorRefundSummary(options: {
     }
   }
   return { refundedStripeUnits, productRevoked };
+}
+
+// ── Bulldozer reads: outstanding item grants for an OTP ────────────────────
+//
+// Subscriptions get their item grants expired automatically: setting
+// `endedAt` triggers the subscription timefold to emit a `subscription-end`
+// event whose `itemQuantityChangesToExpire` covers every still-outstanding
+// grant (initial + item-grant-repeats). OTPs have no equivalent end event —
+// `revokedAt` only stops the OTP timefold from scheduling future repeats —
+// so any items granted by prior `item-grant-repeat` txns (and by the OTP
+// itself with `expiresWhen: "when-purchase-expires"`) would remain valid
+// forever after a revoke. To close that gap, the refund row emits explicit
+// `item-quantity-expire` entries for every outstanding grant whose
+// `expiresWhen` is `"when-purchase-expires"` or `"when-repeated"`. Permanent
+// grants (`expiresWhen: null`) are intentionally left alone, matching the
+// subscription-end filter — see `subscription-timefold-algo.ts:430-441`.
+
+type OutstandingItemGrant = {
+  txnId: string,
+  entryIndex: number,
+  itemId: string,
+  quantity: number,
+};
+
+/**
+ * Pure dedup logic: given the OTP txn and all its item-grant-repeat txns,
+ * collect every `item-quantity-change` entry then subtract any grant already
+ * referenced by a later `item-quantity-expire` entry (which is how
+ * "when-repeated" grants get retired by subsequent IGRs). Entries with
+ * `expiresWhen: null` are excluded — they're permanent by design.
+ */
+export function computeOutstandingItemGrantsForOtp(
+  rows: Array<{ txnId: unknown, entries: unknown }>,
+): OutstandingItemGrant[] {
+  const grants: OutstandingItemGrant[] = [];
+  const expiredKeys = new Set<string>();
+  const grantKey = (txnId: string, entryIndex: number) => `${txnId}:${entryIndex}`;
+
+  for (const row of rows) {
+    const txnId = row.txnId;
+    if (typeof txnId !== "string") continue;
+    const entries = row.entries;
+    if (!Array.isArray(entries)) continue;
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index];
+      if (typeof entry !== "object" || entry === null) continue;
+      const type = Reflect.get(entry, "type");
+      if (type === "item-quantity-change") {
+        const expiresWhen = Reflect.get(entry, "expiresWhen");
+        if (expiresWhen !== "when-purchase-expires" && expiresWhen !== "when-repeated") {
+          // Permanent grants survive revocation (matches sub-end semantics).
+          continue;
+        }
+        const itemId = Reflect.get(entry, "itemId");
+        const quantity = Reflect.get(entry, "quantity");
+        if (typeof itemId !== "string" || typeof quantity !== "number") continue;
+        grants.push({ txnId, entryIndex: index, itemId, quantity });
+      } else if (type === "item-quantity-expire") {
+        const adjustedTxnId = Reflect.get(entry, "adjustedTransactionId");
+        const adjustedIdx = Reflect.get(entry, "adjustedEntryIndex");
+        if (typeof adjustedTxnId !== "string" || typeof adjustedIdx !== "number") continue;
+        expiredKeys.add(grantKey(adjustedTxnId, adjustedIdx));
+      }
+    }
+  }
+
+  return grants.filter((g) => !expiredKeys.has(grantKey(g.txnId, g.entryIndex)));
+}
+
+async function readOutstandingItemGrantsForOtp(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  purchaseId: string,
+}): Promise<OutstandingItemGrant[]> {
+  const executionContext = createBulldozerExecutionContext();
+  const baseSql = toQueryableSqlQuery(paymentsSchema.transactions.listRowsInGroup(executionContext, {
+    start: "start",
+    end: "end",
+    startInclusive: true,
+    endInclusive: true,
+  }));
+  const otpTxnId = `otp:${options.purchaseId}`;
+  const igrPrefix = `igr:${options.purchaseId}:`;
+  // LIKE pattern safety: purchaseId is a UUID and the igr txnId format is
+  // `igr:<purchaseId>:<effectiveAtMillis>` — neither contains LIKE
+  // metacharacters today. Same caveat as `readPriorRefundSummary` above.
+  const sql = `
+    SELECT "__rows"."rowdata" AS "rowData"
+    FROM (${baseSql}) AS "__rows"
+    WHERE "__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}
+      AND "__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}
+      AND "__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}
+      AND (
+        ("__rows"."rowdata"->>'txnId') = ${quoteSqlStringLiteral(otpTxnId).sql}
+        OR (
+          ("__rows"."rowdata"->>'type') = 'item-grant-repeat'
+          AND ("__rows"."rowdata"->>'txnId') LIKE ${quoteSqlStringLiteral(`${igrPrefix}%`).sql}
+        )
+      )
+  `;
+  const rows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(sql)}`;
+  return computeOutstandingItemGrantsForOtp(rows.map((row) => {
+    const rowData = row.rowData;
+    if (typeof rowData !== "object" || rowData === null) {
+      return { txnId: null, entries: null };
+    }
+    return {
+      txnId: Reflect.get(rowData, "txnId"),
+      entries: Reflect.get(rowData, "entries"),
+    };
+  }));
 }
 
 // ── Stripe payment-intent resolution for invoice refunds ───────────────────
@@ -478,6 +592,7 @@ async function handleSubscriptionRefund(options: {
         metadata: {
           tenancyId: tenancy.id,
           subscriptionId: subscription.id,
+          refundTxnId,
           ...(invoice ? { invoiceId: invoice.id } : {}),
         },
       }),
@@ -666,7 +781,7 @@ async function handleOneTimePurchaseRefund(options: {
       buildStripeRefundParams({
         paymentIntentId: purchase.stripePaymentIntentId,
         amountStripeUnits: options.amountStripeUnits,
-        metadata: { tenancyId: tenancy.id, purchaseId: purchase.id },
+        metadata: { tenancyId: tenancy.id, purchaseId: purchase.id, refundTxnId },
       }),
       {
         idempotencyKey: makeStripeIdempotencyKey({
@@ -708,6 +823,27 @@ async function handleOneTimePurchaseRefund(options: {
       productLineId,
       quantity: purchase.quantity,
     }));
+    // Expire outstanding item grants from the OTP txn and any
+    // item-grant-repeat txns. See the helper docs above for the rationale —
+    // OTPs have no equivalent of the subscription-end cascade.
+    const outstandingGrants = await readOutstandingItemGrantsForOtp({
+      prisma,
+      tenancyId: tenancy.id,
+      customerType,
+      customerId: purchase.customerId,
+      purchaseId: purchase.id,
+    });
+    for (const grant of outstandingGrants) {
+      refundEntries.push({
+        type: "item-quantity-expire",
+        customerType,
+        customerId: purchase.customerId,
+        adjustedTransactionId: grant.txnId,
+        adjustedEntryIndex: grant.entryIndex,
+        itemId: grant.itemId,
+        quantity: grant.quantity,
+      });
+    }
   }
 
   const nowMillis = now.getTime();
@@ -755,6 +891,111 @@ import.meta.vitest?.describe("buildStripeRefundParams", (test) => {
     const withoutMeta = buildStripeRefundParams({ paymentIntentId: "pi_x", amountStripeUnits: 1 });
     expect("metadata" in withoutMeta).toBe(false);
     expect(withoutMeta.refund_application_fee).toBe(false);
+  });
+  test("includes refundTxnId in metadata when threaded through", ({ expect }) => {
+    const params = buildStripeRefundParams({
+      paymentIntentId: "pi_x",
+      amountStripeUnits: 1,
+      metadata: { tenancyId: "t1", subscriptionId: "s1", refundTxnId: "refund:sub-start:abc:uuid" },
+    });
+    // Stripe types `metadata` as `MetadataParam | "" | undefined`; we know
+    // we passed an object, so narrow before reading.
+    const metadata = params.metadata;
+    if (typeof metadata !== "object" || metadata === null) {
+      throw new Error("expected metadata object");
+    }
+    expect(metadata.refundTxnId).toBe("refund:sub-start:abc:uuid");
+  });
+});
+
+import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
+  test("returns when-purchase-expires and when-repeated grants from the OTP txn", ({ expect }) => {
+    const otp = {
+      txnId: "otp:p1",
+      entries: [
+        { type: "product-grant", customerType: "user", customerId: "u" },
+        { type: "money-transfer", customerType: "user", customerId: "u" },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "tokens", quantity: 50, expiresWhen: "when-purchase-expires" },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "credits", quantity: 100, expiresWhen: "when-repeated" },
+      ],
+    };
+    const out = computeOutstandingItemGrantsForOtp([otp]);
+    expect(out).toEqual([
+      { txnId: "otp:p1", entryIndex: 2, itemId: "tokens", quantity: 50 },
+      { txnId: "otp:p1", entryIndex: 3, itemId: "credits", quantity: 100 },
+    ]);
+  });
+
+  test("excludes permanent (expiresWhen=null) grants — matches sub-end semantics", ({ expect }) => {
+    const otp = {
+      txnId: "otp:p1",
+      entries: [
+        { type: "product-grant", customerType: "user", customerId: "u" },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "perma", quantity: 10, expiresWhen: null },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "temp", quantity: 5, expiresWhen: "when-purchase-expires" },
+      ],
+    };
+    const out = computeOutstandingItemGrantsForOtp([otp]);
+    expect(out).toEqual([
+      { txnId: "otp:p1", entryIndex: 2, itemId: "temp", quantity: 5 },
+    ]);
+  });
+
+  test("subtracts grants already retired by a later IGR's item-quantity-expire", ({ expect }) => {
+    // OTP grants 100 credits (when-repeated). Then an IGR expires those and grants 100 fresh.
+    // Only the latest 100 remain outstanding.
+    const otp = {
+      txnId: "otp:p1",
+      entries: [
+        { type: "product-grant", customerType: "user", customerId: "u" },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "credits", quantity: 100, expiresWhen: "when-repeated" },
+      ],
+    };
+    const igr = {
+      txnId: "igr:p1:1000",
+      entries: [
+        { type: "item-quantity-expire", customerType: "user", customerId: "u", adjustedTransactionId: "otp:p1", adjustedEntryIndex: 1, itemId: "credits", quantity: 100 },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "credits", quantity: 100, expiresWhen: "when-repeated" },
+      ],
+    };
+    const out = computeOutstandingItemGrantsForOtp([otp, igr]);
+    expect(out).toEqual([
+      { txnId: "igr:p1:1000", entryIndex: 1, itemId: "credits", quantity: 100 },
+    ]);
+  });
+
+  test("accumulates when-purchase-expires grants across multiple IGRs (no auto-expiry)", ({ expect }) => {
+    // Three monthly IGRs each granting 100 bonus tokens that expire only when the purchase does.
+    const otp = {
+      txnId: "otp:p1",
+      entries: [{ type: "product-grant", customerType: "user", customerId: "u" }],
+    };
+    const igrs = [1000, 2000, 3000].map((t) => ({
+      txnId: `igr:p1:${t}`,
+      entries: [
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "bonus", quantity: 100, expiresWhen: "when-purchase-expires" },
+      ],
+    }));
+    const out = computeOutstandingItemGrantsForOtp([otp, ...igrs]);
+    expect(out).toHaveLength(3);
+    expect(out.map((g) => g.txnId)).toEqual(["igr:p1:1000", "igr:p1:2000", "igr:p1:3000"]);
+  });
+
+  test("ignores non-item entries and malformed rows", ({ expect }) => {
+    const out = computeOutstandingItemGrantsForOtp([
+      { txnId: "otp:p1", entries: [
+        { type: "product-grant" },
+        { type: "money-transfer" },
+        { type: "item-quantity-change", itemId: "x", quantity: 1, expiresWhen: "when-purchase-expires" },
+      ] },
+      // malformed: missing entries array
+      { txnId: "otp:bad", entries: null },
+      // malformed: non-string txnId
+      { txnId: 42, entries: [] },
+    ]);
+    expect(out).toEqual([
+      { txnId: "otp:p1", entryIndex: 2, itemId: "x", quantity: 1 },
+    ]);
   });
 });
 
