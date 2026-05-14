@@ -64,7 +64,7 @@ Use this when implementing a new dashboard UI quickly:
 - complex layout containers where design-components does not provide one
 - highly specialized editor internals
 
-For any general-purpose modal surface (rich detail dialogs, tester surfaces, data dialogs, settings popovers presented as modals), use `DesignDialog` instead of wiring `Dialog` + `DialogContent` + `DialogHeader` etc. by hand. `DesignDialog` is the canonical glassmorphic dialog surface for the dashboard — see §22 below.
+For any general-purpose modal surface (rich detail dialogs, tester surfaces, data dialogs, settings popovers presented as modals), use `DesignDialog` instead of wiring `Dialog` + `DialogContent` + `DialogHeader` etc. by hand. `DesignDialog` is the canonical glassmorphic dialog surface for the dashboard — see §4.14 below.
 
 When using a primitive directly:
 

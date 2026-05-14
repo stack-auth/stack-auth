@@ -406,6 +406,7 @@ function RuleTriggerHistoryDialog({
     latestRequestIdRef.current = nextRequestId;
     if (reset) {
       setIsInitialLoading(true);
+      setIsLoadingMore(false);
       setLoadingError(null);
       setHasMore(true);
       setTriggers([]);
@@ -434,9 +435,10 @@ function RuleTriggerHistoryDialog({
       if (nextRequestId !== latestRequestIdRef.current) return;
       setLoadingError(error instanceof Error ? error.message : "Failed to load triggers");
     } finally {
-      if (nextRequestId !== latestRequestIdRef.current) return;
-      if (reset) setIsInitialLoading(false);
-      else setIsLoadingMore(false);
+      if (nextRequestId === latestRequestIdRef.current) {
+        if (reset) setIsInitialLoading(false);
+        else setIsLoadingMore(false);
+      }
     }
   };
 
@@ -444,6 +446,8 @@ function RuleTriggerHistoryDialog({
     setOpen(nextOpen);
     if (!nextOpen) {
       latestRequestIdRef.current += 1;
+      setIsInitialLoading(false);
+      setIsLoadingMore(false);
       return;
     }
     runAsynchronouslyWithAlert(() => fetchTriggerPage({ offset: 0, reset: true }));
@@ -580,6 +584,14 @@ const ACTION_DROPDOWN_OPTIONS: { value: ActionType, label: string }[] = [
   { value: "log", label: "Log only" },
 ];
 
+function isActionType(value: string): value is ActionType {
+  return ACTION_DROPDOWN_OPTIONS.some((option) => option.value === value);
+}
+
+function isDefaultAction(value: string): value is "allow" | "reject" {
+  return value === "allow" || value === "reject";
+}
+
 function useRuleEditorState({
   rule,
   ruleId,
@@ -659,7 +671,12 @@ function ActionDropdown({ state, size = "sm", className }: { state: RuleEditorSt
   return (
     <DesignSelectorDropdown
       value={state.actionType}
-      onValueChange={(v) => state.setActionType(v as ActionType)}
+      onValueChange={(v) => {
+        if (!isActionType(v)) {
+          throw new StackAssertionError(`Unexpected sign-up rule action type: ${v}`);
+        }
+        state.setActionType(v);
+      }}
       size={size}
       className={className ?? "w-40"}
       options={ACTION_DROPDOWN_OPTIONS}
@@ -819,7 +836,11 @@ function SortableRuleRow(props: RuleRowProps) {
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <Switch checked={isEnabled} onCheckedChange={props.onToggleEnabled} />
+      <Switch
+        checked={isEnabled}
+        onCheckedChange={props.onToggleEnabled}
+        aria-label={`${isEnabled ? "Disable" : "Enable"} rule ${ruleName}`}
+      />
     </div>
   );
 
@@ -922,7 +943,12 @@ function DefaultActionRow({
         trigger="button"
         triggerLabel={value === 'allow' ? 'Allow' : 'Reject'}
         value={value}
-        onValueChange={(v) => onChange(v as 'allow' | 'reject')}
+        onValueChange={(v) => {
+          if (!isDefaultAction(v)) {
+            throw new StackAssertionError(`Unexpected default sign-up rule action: ${v}`);
+          }
+          onChange(v);
+        }}
         options={[
           { id: "allow", label: "Allow" },
           { id: "reject", label: "Reject" },
@@ -1507,36 +1533,43 @@ function useSignUpRulesAnalytics() {
     setIsLoading(true);
 
     const fetchAnalytics = async () => {
-      const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
-        '/internal/sign-up-rules-stats',
-        { method: 'GET' },
-        'admin'
-      );
-      if (cancelled) return;
+      try {
+        const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+          '/internal/sign-up-rules-stats',
+          { method: 'GET' },
+          'admin'
+        );
+        if (cancelled) return;
 
-      if (!response.ok) {
-        throw new StackAssertionError(`Failed to fetch sign-up rules stats: ${response.status} ${response.statusText}`);
+        if (!response.ok) {
+          throw new StackAssertionError(`Failed to fetch sign-up rules stats: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        setTimespanHours(data.analytics_hours);
+
+        const analyticsMap = new Map<string, RuleAnalytics>();
+        for (const trigger of data.rule_triggers ?? []) {
+          analyticsMap.set(trigger.rule_id, {
+            ruleId: trigger.rule_id,
+            countInTimespan: trigger.total_count,
+            allTimeCount: trigger.all_time_count,
+            hourlyCounts: trigger.hourly_counts ?? [],
+          });
+        }
+
+        setAnalytics(analyticsMap);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
-
-      const data = await response.json();
-      setTimespanHours(data.analytics_hours);
-
-      const analyticsMap = new Map<string, RuleAnalytics>();
-      for (const trigger of data.rule_triggers ?? []) {
-        analyticsMap.set(trigger.rule_id, {
-          ruleId: trigger.rule_id,
-          countInTimespan: trigger.total_count,
-          allTimeCount: trigger.all_time_count,
-          hourlyCounts: trigger.hourly_counts ?? [],
-        });
-      }
-
-      setAnalytics(analyticsMap);
-      setIsLoading(false);
     };
 
     runAsynchronouslyWithAlert(fetchAnalytics);
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [stackAdminApp]);
 
   return { analytics, timespanHours, isLoading };
@@ -1652,7 +1685,7 @@ function PageBody(props: PageBodyProps) {
         {props.signUpRules.length === 0 && !props.isCreatingNew && (
           <EmptyState
             onAddRule={props.onAddRule}
-            disabled={props.editingRuleId !== null || props.isCreatingNew || props.hasOrderChanges}
+            disabled={props.editingRuleId !== null || props.hasOrderChanges}
           />
         )}
 
@@ -1696,7 +1729,9 @@ export default function PageClient() {
   const configWithRules = config as ConfigWithSignUpRules;
 
   const serverRules = useMemo(() =>
-    typedEntries(configWithRules.auth.signUpRules).map(([id, rule]) => ({ id, rule })),
+    typedEntries(configWithRules.auth.signUpRules)
+      .map(([id, rule]) => ({ id, rule }))
+      .sort((a, b) => b.rule.priority - a.rule.priority),
     [configWithRules.auth.signUpRules]
   );
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -1855,9 +1890,9 @@ export default function PageClient() {
             setDeleteDialogOpen(true);
           }}
           onToggleEnabled={(id, enabled) => runAsynchronouslyWithAlert(handleToggleEnabled(id, enabled))}
-          onDefaultActionChange={(v) => runAsynchronouslyWithAlert(handleDefaultActionChange(v))}
+          onDefaultActionChange={(v) => { runAsynchronouslyWithAlert(handleDefaultActionChange(v)); }}
           onDragEnd={handleDragEnd}
-          onSaveOrder={handleSaveOrderAsync}
+          onSaveOrder={() => { runAsynchronouslyWithAlert(handleSaveOrderAsync()); }}
           onDiscardOrder={handleDiscardOrder}
           stackAdminApp={stackAdminApp}
         />

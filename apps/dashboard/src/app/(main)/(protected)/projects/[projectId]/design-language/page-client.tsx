@@ -1234,7 +1234,7 @@ export default function PageClient() {
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "trigger", type: "ReactNode", description: "Element wrapped in a DialogTrigger. Optional when controlling externally via open/onOpenChange." },
+              { name: "trigger", type: "ReactElement", description: "Element wrapped in a DialogTrigger. Optional when controlling externally via open/onOpenChange." },
               { name: "open / onOpenChange / defaultOpen", type: "boolean / fn / boolean", description: "Standard controlled or uncontrolled state for the dialog." },
               { name: "size", type: "'sm' | 'md' | 'lg' | 'xl' | '2xl' | ... | '7xl' | 'full'", default: "'lg'", description: "Width preset for the modal surface." },
               { name: "variant", type: "'glassmorphic' | 'plain'", default: "'glassmorphic'", description: "Visual style for the surface and overlay." },
@@ -1242,7 +1242,7 @@ export default function PageClient() {
               { name: "title / description", type: "ReactNode", description: "Standard header text. `title` is wired into DialogTitle for a11y." },
               { name: "headerContent", type: "ReactNode", description: "Rich content rendered below the icon/title block (summary cards, badges, etc)." },
               { name: "customHeader", type: "ReactNode", description: "Override the entire header. You become responsible for rendering DialogTitle." },
-              { name: "footer", type: "ReactNode", description: "Footer node. Renders in a styled bottom bar. Wrap close buttons in DialogClose asChild." },
+              { name: "footer", type: "ReactNode", description: "Footer node. Renders in a styled bottom bar. Wrap close buttons in DesignDialogClose asChild." },
               { name: "noBodyPadding", type: "boolean", default: "false", description: "Disable the default px-6 py-4 padding for full-bleed content." },
               { name: "hideTopCloseButton", type: "boolean", default: "false", description: "Hide the top-right close button rendered by DialogContent." },
               { name: "className", type: "string", description: "Extra classes for the modal surface container." },

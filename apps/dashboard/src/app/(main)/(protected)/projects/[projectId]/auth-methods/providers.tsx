@@ -15,6 +15,7 @@ import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/rea
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";
@@ -40,23 +41,6 @@ type Props = {
   updateProvider: (provider: AdminProject['config']['oauthProviders'][number]) => Promise<void>,
   deleteProvider: (id: string) => Promise<void>,
 };
-
-function toTitle(id: string) {
-  return {
-    github: "GitHub",
-    google: "Google",
-    facebook: "Facebook",
-    microsoft: "Microsoft",
-    spotify: "Spotify",
-    discord: "Discord",
-    gitlab: "GitLab",
-    apple: "Apple",
-    bitbucket: "Bitbucket",
-    linkedin: "LinkedIn",
-    twitch: "Twitch",
-    x: "X",
-  }[id];
-}
 
 export const providerFormSchema = yupObject({
   shared: yupBoolean().defined(),
@@ -88,7 +72,7 @@ function ProviderHeader({ providerId }: { providerId: string }) {
       <ProviderIcon id={providerId} size="sm" />
       <div className="flex flex-col min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-semibold text-foreground">{toTitle(providerId)}</span>
+          <span className="text-sm font-semibold text-foreground">{BrandIcons.toTitle(providerId)}</span>
           <DesignBadge label="OAuth 2.0" color="blue" size="sm" />
         </div>
         <span className="text-[11px] text-muted-foreground">Configure credentials for this provider</span>
@@ -142,7 +126,7 @@ function RedirectInline({ providerId }: { providerId: string }) {
     <div className="flex flex-col gap-1">
       <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
       <Typography type="footnote" className="break-all">
-        <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/auth/oauth/callback/${providerId}`}</InlineCode>
+        <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? ''}${urlString`/api/v1/auth/oauth/callback/${providerId}`}`}</InlineCode>
       </Typography>
     </div>
   );
@@ -246,7 +230,7 @@ function GithubNoteInline() {
 function DocsTextLink({ providerId }: { providerId: string }) {
   return (
     <Link
-      href={`https://docs.stack-auth.com/docs/concepts/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
+      href={urlString`https://docs.stack-auth.com/docs/concepts/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
       target="_blank"
       className="inline-flex items-center gap-1 text-xs font-medium text-foreground/70 hover:text-foreground transition-colors"
     >
@@ -325,7 +309,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
       onSubmit={onSubmit}
       open={props.open}
       onClose={props.onClose}
-      title={`${toTitle(props.id)} OAuth provider`}
+      title={`${BrandIcons.toTitle(props.id)} OAuth provider`}
       cancelButton
       okButton={{ label: 'Save' }}
       contentClassName={PROVIDER_DIALOG_CHROME_CLASS}
@@ -348,12 +332,12 @@ export function TurnOffProviderDialog(props: {
 }) {
   return (
     <ActionDialog
-      title={`Disable ${toTitle(props.providerId)} OAuth provider`}
+      title={`Disable ${BrandIcons.toTitle(props.providerId)} OAuth provider`}
       open={props.open}
       onClose={props.onClose}
       danger
       okButton={{
-        label: `Disable ${toTitle(props.providerId)}`,
+        label: `Disable ${BrandIcons.toTitle(props.providerId)}`,
         onClick: async () => {
           await props.onConfirm();
         },
@@ -364,7 +348,7 @@ export function TurnOffProviderDialog(props: {
       <div className="flex items-center gap-3 mb-1">
         <ProviderIcon id={props.providerId} size="sm" />
         <div className="flex flex-col min-w-0">
-          <span className="text-sm font-semibold text-foreground">{toTitle(props.providerId)}</span>
+          <span className="text-sm font-semibold text-foreground">{BrandIcons.toTitle(props.providerId)}</span>
           <span className="text-xs text-muted-foreground">Will be removed from the sign-in surface</span>
         </div>
       </div>
@@ -413,7 +397,7 @@ export function ProviderSettingSwitch(props: Props) {
           className="flex flex-col items-center justify-center gap-2 py-2 px-2 w-full h-full text-foreground transition-all duration-150 hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1] rounded-2xl"
         >
           <ProviderIcon id={props.id} />
-          <span className="text-sm font-medium">{toTitle(props.id)}</span>
+          <span className="text-sm font-medium">{BrandIcons.toTitle(props.id)}</span>
           {isShared && enabled &&
             <SimpleTooltip tooltip={"Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.\n\nYou should replace these before you go into production."}>
               <DesignBadge label="Shared keys" color="orange" size="sm" />
