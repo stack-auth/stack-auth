@@ -27,7 +27,7 @@ async function createTestModeSubscription(): Promise<{ subscriptionId: string, u
           serverOnly: false,
           stackable: false,
           prices: {
-            monthly: { USD: "5000", interval: [1, "month"] },
+            monthly: { USD: "50.00", interval: [1, "month"] },
           },
           includedItems: {},
         },
@@ -196,7 +196,7 @@ it("refunds a live-mode OTP fully (money + end_action='now'), surfaces refund ro
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
+      amount_usd: "50.00",
       end_action: "now",
     },
   });
@@ -243,7 +243,7 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "2000",
+      amount_usd: "20.00",
     },
   });
   expect(refund1.status).toBe(200);
@@ -255,7 +255,7 @@ it("supports multiple partial refunds capped at remaining amount", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "3000",
+      amount_usd: "30.00",
     },
   });
   expect(refund2.status).toBe(200);
@@ -314,7 +314,7 @@ it("rejects refund amount exceeding original purchase amount", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5001",
+      amount_usd: "50.01",
     },
   });
   expect(refundRes.status).toBe(400);
@@ -451,7 +451,7 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
     serverOnly: false,
     stackable: false,
     prices: {
-      monthly: { USD: "1000", interval: [1, "month"] },
+      monthly: { USD: "10.00", interval: [1, "month"] },
     },
     includedItems: {},
   };
