@@ -64,6 +64,9 @@ async function fetchSkill(): Promise<string> {
   const res = await fetch(skillResourceUri, {
     headers: { Accept: "text/markdown" },
   });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch skill from ${skillResourceUri}: ${res.status} ${res.statusText}`);
+  }
   return await res.text();
 }
 

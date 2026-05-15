@@ -10,7 +10,7 @@ const ACRONYMS = new Set(["api", "cli", "mcp", "sdk", "jwt", "jwts", "faq", "url
 function humanizeSegment(seg: string): string {
   return seg
     .split("-")
-    .map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+    .map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
 }
 
@@ -24,15 +24,20 @@ function humanize(slug: string): string {
   return humanizeSegment(last);
 }
 
+function docUrl(slug: string): string {
+  const encoded = slug.split("/").map(encodeURIComponent).join("/");
+  return `${DOCS_BASE}/${encoded}`;
+}
+
 function renderSidebar(pages: SidebarPage[], depth = 0): string[] {
   const lines: string[] = [];
   const indent = "  ".repeat(depth);
   for (const p of pages) {
     if (typeof p === "string") {
-      lines.push(`${indent}- [${humanize(p)}](${DOCS_BASE}/${p})`);
+      lines.push(`${indent}- [${humanize(p)}](${docUrl(p)})`);
     } else {
       const heading = p.root
-        ? `${indent}- **[${p.group}](${DOCS_BASE}/${p.root})**`
+        ? `${indent}- **[${p.group}](${docUrl(p.root)})**`
         : `${indent}- **${p.group}**`;
       lines.push(heading);
       lines.push(...renderSidebar(p.pages, depth + 1));
@@ -41,10 +46,15 @@ function renderSidebar(pages: SidebarPage[], depth = 0): string[] {
   return lines;
 }
 
+type DocsTab = { tab: string; pages: SidebarPage[] };
+type DocsJson = { navigation?: { tabs?: DocsTab[] } };
+
 function buildDocsSection(): string {
-  const tab = (docsJson as { navigation: { tabs: { tab: string; pages: SidebarPage[] }[] } })
-    .navigation.tabs.find((t) => t.tab === "Documentation");
-  if (!tab) return "";
+  const typedDocs = docsJson as DocsJson;
+  const tab: DocsTab | undefined = typedDocs.navigation?.tabs?.find((t) => t.tab === "Documentation");
+  if (tab == null) {
+    throw new Error('buildDocsSection: "Documentation" tab not found in docs-mintlify/docs.json navigation');
+  }
   return renderSidebar(tab.pages).join("\n");
 }
 
@@ -199,7 +209,7 @@ For the full, current flag list and any commands added after this skill was gene
 `;
 
 const COMMON_HEADERS = {
-  "Cache-Control": "public, max-age=60, s-maxage=60",
+  "Cache-Control": "public, max-age=3600, s-maxage=3600",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",

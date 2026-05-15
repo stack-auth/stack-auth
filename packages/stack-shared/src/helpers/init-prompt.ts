@@ -8,7 +8,7 @@ These instructions describe how to set up Stack Auth.
 ${web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
-Install both the Stack Auth skill and the Stack Auth MCP server for the current coding agent. Pick the install scope using this rule: if the project root already contains an agent folder (e.g. \`.claude/\`, \`.agents/\`, \`.cursor/\`, \`.codex/\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, \`.vscode/mcp.json\`), install **per project**; otherwise install **globally** for the detected agent.
+Install both the Stack Auth skill and the Stack Auth MCP server for the current coding agent. Pick the install scope using this rule: if the project root already contains an agent folder or project-scoped MCP/agent config file (e.g. \`.claude/\`, \`.claude.json\`, \`.agents/\`, \`.cursor/\`, \`.cursor/mcp.json\`, \`.codex/\`, \`.codex/config.toml\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, \`.vscode/mcp.json\`), install **per project**; otherwise install **globally** for the detected agent.
 
 ### Install the skill
 
