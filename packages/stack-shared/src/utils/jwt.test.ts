@@ -23,8 +23,8 @@ async function buildOidcCookieKeys(): Promise<string[]> {
 }
 
 // Steady state (not mid-rotation): primary is set, `_OLD` is unset. This is the code
-// path a deployment is in between rotations — exercises the early-return `""` branch in
-// `getOldStackServerSecret` and the falsy short-circuit in `getPrivateJwks`.
+// path a deployment is in between rotations — exercises the early-return `null` branch in
+// `getOldStackServerSecret` and the null-check short-circuit in `getPrivateJwks`.
 function setSteadyStateEnv(secret: string) {
   process.env.STACK_SERVER_SECRET = secret;
   delete process.env.STACK_SERVER_SECRET_OLD;

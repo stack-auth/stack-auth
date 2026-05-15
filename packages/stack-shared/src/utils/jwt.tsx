@@ -21,15 +21,15 @@ function getStackServerSecret() {
 }
 
 /**
- * Returns the previous `STACK_SERVER_SECRET`
+ * Returns the previous `STACK_SERVER_SECRET` during a rotation, or `null` if none is set.
  *
  * When set, keys derived from this secret are accepted for verification (JWTs and OIDC cookies)
  * but never used for signing new artifacts. Remove the env var once the grace window has
  * elapsed — see the self-host rotation runbook.
  */
-export function getOldStackServerSecret(): string {
-  const STACK_SERVER_SECRET_OLD = getEnvVariable("STACK_SERVER_SECRET_OLD", "");
-  if (!STACK_SERVER_SECRET_OLD) return "";
+export function getOldStackServerSecret(): string | null {
+  const STACK_SERVER_SECRET_OLD = process.env.STACK_SERVER_SECRET_OLD;
+  if (!STACK_SERVER_SECRET_OLD) return null;
   try {
     jose.base64url.decode(STACK_SERVER_SECRET_OLD);
   } catch (e) {
@@ -147,7 +147,7 @@ export async function getPrivateJwks(options: {
   const primarySecret = getStackServerSecret();
   const oldSecret = getOldStackServerSecret();
   const primaryPair = await derivePairForSecret(primarySecret);
-  const oldPair = oldSecret && oldSecret !== primarySecret ? await derivePairForSecret(oldSecret) : [];
+  const oldPair = oldSecret !== null && oldSecret !== primarySecret ? await derivePairForSecret(oldSecret) : [];
 
   // Signing uses index 0 (primary secret, legacy derivation). Verify accepts all entries.
   return [...primaryPair, ...oldPair];
