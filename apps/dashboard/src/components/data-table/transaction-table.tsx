@@ -354,9 +354,9 @@ function RefundActionCell({ transaction, refundTarget, onRefunded }: { transacti
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="now">Ends immediately</SelectItem>
-                  {isSubscription ? <SelectItem value="at-period-end">Ends at period end</SelectItem> : null}
-                  <SelectItem value="none">Doesn&apos;t end</SelectItem>
+                  <SelectItem value="now">End now</SelectItem>
+                  {isSubscription ? <SelectItem value="at-period-end">End at period end</SelectItem> : null}
+                  <SelectItem value="none">No change</SelectItem>
                 </SelectContent>
               </Select>
             </div>
