@@ -1,4 +1,4 @@
-import { stackServerApp } from "@/stack";
+import { stackServerApp } from "@/stack/server";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { redirect } from "next/navigation";

@@ -15,8 +15,8 @@ import {
   type WysiwygDebugInfo,
 } from "@/components/vibe-coding";
 import { applyWysiwygEdit, ToolCallContent } from "@/components/vibe-coding/chat-adapters";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
-import { useUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -38,7 +38,7 @@ import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const templates = stackAdminApp.useEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();

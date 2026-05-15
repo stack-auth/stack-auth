@@ -10,11 +10,11 @@ import {
   createHistoryAdapter,
   ToolCallContent
 } from "@/components/vibe-coding/chat-adapters";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { useUser } from "@stackframe/stack";
 import { useCallback, useEffect, useState } from "react";
 
 const BUILDER_STATUS_MESSAGES = [
@@ -32,7 +32,7 @@ import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient({ themeId }: { themeId: string }) {
   const stackAdminApp = useAdminApp();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const theme = stackAdminApp.useEmailTheme(themeId);
   const { setNeedConfirm } = useRouterConfirm();

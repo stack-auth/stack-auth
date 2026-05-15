@@ -53,7 +53,7 @@ describe("local emulator config", () => {
     vi.stubEnv("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", Buffer.from(content).toString("base64"));
 
     await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).rejects.toThrow(
-      "Invalid config in /irrelevant/path/stack.config.ts. The file must export a 'config' object or \"show-onboarding\"."
+      "Invalid config in /irrelevant/path/stack.config.ts. The file must export a plain `config` object or \"show-onboarding\"."
     );
   });
 

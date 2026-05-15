@@ -33,6 +33,12 @@ export type AnalyticsReplayOptions = {
 
 export type AnalyticsOptions = {
   /**
+   * Whether SDK-managed analytics capture is enabled.
+   *
+   * @default true
+   */
+  enabled?: boolean,
+  /**
    * Options for session replay recording. Replays are disabled by default;
    * set `enabled: true` to opt in.
    */

@@ -457,3 +457,27 @@ A: `docs-mintlify/apps-sidebar-filter.js` injects the Apps filter with inline st
 
 ## Q: How should `StackAssertionError` preserve an underlying thrown error?
 A: Pass the underlying error as the `cause` property in the second argument. The `StackAssertionError` constructor only forwards `cause` into `ErrorOptions`, so storing a caught error under an `error` property captures it as ordinary metadata instead of preserving the error cause chain.
+
+## Q: How does the local QEMU emulator expose host-side control channels?
+A: `docker/local-emulator/qemu/run-emulator.sh` daemonizes QEMU with a QMP monitor socket at `$EMULATOR_RUN_DIR/vm/monitor.sock`, a QEMU guest agent socket at `$EMULATOR_RUN_DIR/vm/qga.sock`, and serial output redirected to `$EMULATOR_RUN_DIR/vm/serial.log`. The default user networking forwards only Stack-facing service ports, not SSH.
+
+## Q: Where should remote development environment local state live?
+A: Use `~/.stack/dev-envs.json` on macOS/Linux and `%LOCALAPPDATA%\Stack Auth\dev-envs.json` on Windows for local remote-development-environment state. The CLI and local dashboard both read this file; it stores the local dashboard bearer secret, anonymous refresh token, and config-path-to-project credential mappings with owner-only permissions.
+
+## Q: How should `stack dev` run the local dashboard in a published CLI?
+A: The CLI cannot depend on `apps/dashboard` source being present or run `next dev`. Package a Next.js standalone dashboard build into `packages/stack-cli/dist/dashboard`, copy it to a writable runtime directory next to the RDE state file, replace dashboard `STACK_ENV_VAR_SENTINEL_*` values for that launch, and run the standalone `apps/dashboard/server.js` with `node`, `HOSTNAME=127.0.0.1`, `PORT=26700`, and `NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT=true`.
+
+## Q: Where should the RDE local dashboard self-shutdown lifecycle start?
+A: Start the RDE lifecycle from the dashboard server startup path (`apps/dashboard/src/instrumentation.ts`) when `NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT=true`, not lazily after session registration. Keep the shutdown timer idempotent and use a short initial empty-session grace period so failed session registration still exits instead of leaving an orphaned standalone dashboard process. Once a CLI session has been explicitly closed, the dashboard can skip the startup grace and exit on the next shutdown tick if no sessions or operations remain.
+
+## Q: How should the dashboard Stack app be split for the local remote development environment?
+A: Keep `apps/dashboard/src/stack/client.tsx` as the root `StackProvider` app and handler app so the local RDE dashboard can boot without `STACK_SECRET_SERVER_KEY`. Put `StackServerApp` in `apps/dashboard/src/stack/server.tsx`, inherit from the client app, and only import it from server-only routes that are not needed in local RDE.
+
+## Q: How should `stack dev` handle a local RDE dashboard outage while the child command is still running?
+A: Keep it in the existing heartbeat path. If the heartbeat cannot reach the local dashboard and the dashboard session has passed the 5-second stability window, restart the standalone dashboard and re-register the RDE session; otherwise throw to avoid restart loops.
+
+## Q: How should the local RDE dashboard authenticate in the browser without exposing refresh tokens?
+A: The browser should fetch only a short-lived access token from the local RDE auth endpoint, install it into the memory token store with an empty refresh token, and refresh it by calling the local endpoint before expiry. Shared session logic must allow access-token-only sessions to read a still-valid access token; otherwise the SDK treats the session as absent and may redirect or create a separate anonymous user.
+
+## Q: Why can `stack dev` fail to register an RDE session with `ECONNREFUSED` against `localhost`?
+A: The RDE dashboard does server-side SDK calls from Node. If the backend is configured as `http://localhost:<port>`, Node may resolve or probe loopback differently than the browser; normalize exact `localhost` API base URLs to `127.0.0.1` in the CLI. If the backend process is actually down, the dashboard log will still show `ECONNREFUSED 127.0.0.1:<port>` and the dev server needs to be restarted.

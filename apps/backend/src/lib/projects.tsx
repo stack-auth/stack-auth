@@ -72,6 +72,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         logo_full_dark_mode_url: row.logoFullDarkModeUrl,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
+        is_development_environment: row.isDevelopmentEnvironment,
         owner_team_id: row.ownerTeamId,
         onboarding_status: row.onboardingStatus,
         onboarding_state: onboardingState ?? undefined,
@@ -150,6 +151,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
       project = await tx.project.create({
         data: createData,
       });
+      if (options.data.is_development_environment !== undefined) {
+        await tx.$executeRaw`
+          UPDATE "Project"
+          SET "isDevelopmentEnvironment" = ${options.data.is_development_environment}
+          WHERE "id" = ${project.id}
+        `;
+      }
 
       await tx.tenancy.create({
         data: {
@@ -314,7 +322,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
     configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
     configOverrideOverride['apps.installed.emails.enabled'] ??= true;
   }
-  if (options.type === "create" || Object.keys(configOverrideOverride).length > 0) {
+  const isCreatingDevelopmentEnvironment = options.type === "create" && options.data.is_development_environment === true;
+  if (!isCreatingDevelopmentEnvironment && (options.type === "create" || Object.keys(configOverrideOverride).length > 0)) {
     await overrideEnvironmentConfigOverride({
       projectId: projectId,
       branchId: branchId,

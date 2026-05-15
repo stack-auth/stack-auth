@@ -1,8 +1,7 @@
 import { resetBranchConfigOverrideKeys, resetEnvironmentConfigOverrideKeys } from "@/lib/config";
-import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorProject } from "@/lib/local-emulator";
+import { assertConfigOverrideWriteAllowed } from "@/lib/development-environment";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const levelSchema = yupString().oneOf(["branch", "environment"]).defined();
 
@@ -41,9 +40,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["success"]).defined(),
   }),
   handler: async (req) => {
-    if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
-      throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
-    }
+    await assertConfigOverrideWriteAllowed(req.params.level, req.auth.tenancy.project.id);
 
     const levelConfig = levelConfigs[req.params.level];
 

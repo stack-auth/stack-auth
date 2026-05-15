@@ -25,6 +25,7 @@ model Project {
   displayName      String
   description      String  @default("")
   isProductionMode Boolean
+  isDevelopmentEnvironment Boolean @default(false)
   ownerTeamId      String? @db.Uuid
   onboardingStatus String  @default("completed")
   onboardingState  Json?

@@ -56,6 +56,10 @@ const nextConfig = {
 
   poweredByHeader: false,
 
+  typescript: {
+    ignoreBuildErrors: process.env.NEXT_CONFIG_DISABLE_TYPESCRIPT === "true",
+  },
+
   images: {
     remotePatterns: [
       {

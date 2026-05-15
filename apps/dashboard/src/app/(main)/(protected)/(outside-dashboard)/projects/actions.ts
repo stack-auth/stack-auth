@@ -1,5 +1,5 @@
 "use server";
-import { stackServerApp } from "@/stack";
+import { stackServerApp } from "@/stack/server";
 
 export async function revokeInvitation(teamId: string, invitationId: string) {
   "use server";

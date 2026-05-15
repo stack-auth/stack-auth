@@ -1,0 +1,83 @@
+import { getPublicEnvVar } from "@/lib/env";
+import { NextRequest, NextResponse } from "next/server";
+import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+
+export const runtime = "nodejs";
+
+type HealthResponse = {
+  ok: boolean,
+  restart_command: string,
+};
+
+function requestHostIsLoopback(req: NextRequest): boolean {
+  const host = req.headers.get("host");
+  if (host == null) return false;
+  return isLocalhost(`http://${host}`);
+}
+
+function originIsAllowed(req: NextRequest): boolean {
+  const origin = req.headers.get("origin");
+  if (origin == null) return true;
+  return isLocalhost(origin);
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function devRestartCommand(configFilePath: string | undefined): string {
+  if (configFilePath == null) {
+    return "stack dev --config-file <path-to-stack.config.ts> -- <your app command>";
+  }
+  return `stack dev --config-file ${shellQuote(configFilePath)} -- <your app command>`;
+}
+
+function healthResponse(body: HealthResponse, status: number): NextResponse<HealthResponse> {
+  return NextResponse.json(body, { status });
+}
+
+async function localEmulatorIsHealthy(): Promise<boolean> {
+  const apiBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL");
+  if (apiBaseUrl == null) return false;
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/v1/projects/current`, {
+      cache: "no-store",
+      headers: {
+        "X-Stack-Access-Type": "client",
+        "X-Stack-Project-Id": "internal",
+        "X-Stack-Publishable-Client-Key": getPublicEnvVar("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY") ?? "",
+      },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function GET(req: NextRequest) {
+  if (!requestHostIsLoopback(req) || !originIsAllowed(req)) {
+    return NextResponse.json({ error: "Development environment health checks only accept loopback requests." }, { status: 403 });
+  }
+
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  if (isRemoteDevelopmentEnvironment) {
+    const { getRemoteDevelopmentEnvironmentHealth } = await import("@/lib/remote-development-environment/manager");
+    const health = getRemoteDevelopmentEnvironmentHealth();
+    return healthResponse({
+      ok: health.healthy,
+      restart_command: devRestartCommand(health.configFilePath),
+    }, health.healthy ? 200 : 503);
+  }
+
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  if (isLocalEmulator) {
+    const healthy = await localEmulatorIsHealthy();
+    return healthResponse({
+      ok: healthy,
+      restart_command: devRestartCommand(undefined),
+    }, healthy ? 200 : 503);
+  }
+
+  return NextResponse.json({ error: "Development environment health checks are disabled." }, { status: 404 });
+}
