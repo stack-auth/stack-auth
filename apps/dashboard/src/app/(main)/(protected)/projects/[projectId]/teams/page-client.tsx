@@ -8,6 +8,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { TeamsKpiCards } from "./teams-kpi-cards";
 
 type CreateDialogProps = {
   open: boolean,
@@ -38,6 +39,7 @@ export default function PageClient() {
             <StyledLink href={teamSettingsPath}>Go here</StyledLink>.
           </Alert>
         )}
+        <TeamsKpiCards />
         <div data-walkthrough="teams-table">
           <TeamTable />
         </div>

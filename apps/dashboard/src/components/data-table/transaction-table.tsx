@@ -5,7 +5,7 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@stackframe/dashboard-ui-components';
@@ -184,8 +184,8 @@ function getUsdUnitPrice(entry: ProductGrantEntry): MoneyAmount | null {
   if (!entry.price_id) {
     return null;
   }
-  const product = entry.product as { prices?: Record<string, { USD?: string } | undefined> | "include-by-default" } | null | undefined;
-  if (!product || !product.prices || product.prices === "include-by-default") {
+  const product = entry.product as { prices?: Record<string, { USD?: string } | undefined> } | null | undefined;
+  if (!product || !product.prices) {
     return null;
   }
   const price = product.prices[entry.price_id];
@@ -501,14 +501,11 @@ function TransactionTableBody(props: {
         }
         const { Icon, label } = displayType;
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
-                <Icon className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="left">{label}</TooltipContent>
-          </Tooltip>
+          <SimpleTooltip tooltip={label}>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
+              <Icon className="h-4 w-4" aria-hidden />
+            </span>
+          </SimpleTooltip>
         );
       },
     },
@@ -665,6 +662,7 @@ function TransactionTableBody(props: {
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      fillHeight={false}
       footer={false}
       rowHeight={56}
 

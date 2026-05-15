@@ -13,6 +13,7 @@ import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { UsersKpiCards } from "./users-kpi-cards";
 
 const capturedUsersMetricsErrors = new WeakSet<Error>();
 
@@ -111,6 +112,8 @@ export default function PageClient() {
             Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
           </Alert>
         )}
+
+        <UsersKpiCards />
 
         <div data-walkthrough="users-table">
           <UserTable key={refreshKey} onFilterChange={setExportOptions} />
