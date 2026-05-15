@@ -59,9 +59,9 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     description: 'Define products, pricing, and subscriptions.',
   },
   {
-    id: 'analytics-replays',
-    path: '/analytics/replays',
-    sidebarNavLabel: 'Replays',
+    id: 'session-replays',
+    path: '/session-replays',
+    sidebarNavLabel: 'Session Replays',
     title: 'Session Replays',
     description: 'Watch real user sessions to understand how people use your app.',
   },

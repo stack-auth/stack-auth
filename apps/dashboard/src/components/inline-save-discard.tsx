@@ -26,7 +26,7 @@ export function InlineSaveDiscard({
     <div
       className={cn(
         "flex items-center justify-end gap-2 transition-all duration-200 ease-out",
-        hasChanges ? "opacity-100 max-h-10 mt-3" : "opacity-0 max-h-0 overflow-hidden mt-0",
+        hasChanges ? "opacity-100 max-h-10 mt-3" : "opacity-0 max-h-0 overflow-hidden !mt-0",
         className
       )}
     >

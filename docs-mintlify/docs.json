@@ -31,7 +31,7 @@
     "links": [
       {
         "type": "github",
-        "href": "https://github.com/hexclave/stack-auth"
+        "href": "https://github.com/stack-auth/stack-auth"
       }
     ],
     "primary": {
@@ -134,7 +134,6 @@
             "pages": [
               "guides/other/self-host",
               "guides/other/known-errors",
-              "guides/other/mcp-setup",
               {
                 "group": "Tutorials",
                 "pages": [

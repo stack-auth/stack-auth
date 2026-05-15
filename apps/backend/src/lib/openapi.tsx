@@ -200,8 +200,19 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
   };
 
   switch (field.type) {
-    case 'string':
-    case 'number':
+    case 'string': {
+      const oneOf = (field as any).oneOf as unknown[] | undefined;
+      return {
+        type: 'string',
+        ...oneOf && oneOf.length > 0 ? { enum: oneOf } : {},
+        ...openapiFieldExtra,
+      };
+    }
+    case 'number': {
+      const tests = (field as any).tests as Array<{ name?: string }> | undefined;
+      const isInteger = tests?.some(t => t.name === 'integer') ?? false;
+      return { type: isInteger ? 'integer' : 'number', ...openapiFieldExtra };
+    }
     case 'boolean': {
       return { type: field.type, ...openapiFieldExtra };
     }

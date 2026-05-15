@@ -489,6 +489,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.map((p) => this._serverTeamPermissionDefinitionFromCrud(p));
   }
 
+  async listTeamPermissionDefinitionsPaginated(
+    options: { limit: number, cursor?: string, query?: string },
+  ): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }> {
+    const result = await this._interface.listTeamPermissionDefinitionsPaginated(options);
+    return {
+      items: result.items.map((p) => this._serverTeamPermissionDefinitionFromCrud(p)),
+      nextCursor: result.nextCursor,
+    };
+  }
+
   // IF_PLATFORM react-like
   useTeamPermissionDefinitions(): AdminTeamPermissionDefinition[] {
     const crud = useAsyncCache(this._adminTeamPermissionDefinitionsCache, [], "adminApp.useTeamPermissionDefinitions()");

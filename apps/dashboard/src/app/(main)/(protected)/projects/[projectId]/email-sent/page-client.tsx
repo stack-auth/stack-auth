@@ -8,12 +8,11 @@ import { Spinner, Typography } from "@/components/ui";
 import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@stackframe/stack";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { useCallback, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -116,10 +115,10 @@ function EmailSendDataTable() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
 
-  const [gridState, setGridState] = useState<DataGridState>(() => ({
-    ...createDefaultDataGridState(emailTableColumns),
-    sorting: [{ columnId: "scheduledAt", direction: "desc" }],
-  }));
+  const [gridState, setGridState] = useDataGridUrlState(emailTableColumns, {
+    paramPrefix: "sentemails",
+    initial: { sorting: [{ columnId: "scheduledAt", direction: "desc" }] },
+  });
 
   const dataSource = useMemo<DataGridDataSource<AdminEmailOutbox>>(
     () => async function* (params) {
@@ -172,6 +171,7 @@ function EmailSendDataTable() {
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      fillHeight={false}
       footer={false}
 
       onRowClick={(row) => {

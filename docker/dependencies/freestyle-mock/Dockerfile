@@ -380,8 +380,9 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(8080, () => {
-  console.log(`freestyle-mock listening on :8080 (worker pool size ${POOL_SIZE})`);
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+  console.log(`freestyle-mock listening on :${PORT} (worker pool size ${POOL_SIZE})`);
 });
 EOF
 

@@ -28,6 +28,25 @@ const columns: DataGridColumnDef<Row>[] = [
   },
 ];
 
+const wideColumns: DataGridColumnDef<Row>[] = [
+  {
+    id: "name",
+    header: "Name",
+    accessor: (row) => row.name,
+    width: 320,
+    minWidth: 80,
+    type: "string",
+  },
+  {
+    id: "email",
+    header: "Email",
+    accessor: (row) => `${row.name.toLowerCase().replaceAll(" ", ".")}@example.com`,
+    width: 420,
+    minWidth: 80,
+    type: "string",
+  },
+];
+
 type ObserverRecord = {
   options?: IntersectionObserverInit,
 };
@@ -123,6 +142,22 @@ function InteractiveDataGridHarness(props: {
       onSortChange={props.onSortChange}
       onSelectionChange={props.onSelectionChange}
     />
+  );
+}
+
+function WideDataGridHarness() {
+  const [state, setState] = useState(() => createDefaultDataGridState(wideColumns));
+
+  return (
+    <div style={{ width: 320 }}>
+      <DataGrid<Row>
+        columns={wideColumns}
+        rows={[{ id: "row-1", name: "Row 1" }]}
+        getRowId={(row) => row.id}
+        state={state}
+        onChange={setState}
+      />
+    </div>
   );
 }
 
@@ -266,5 +301,66 @@ describe("DataGrid controlled callbacks", () => {
 
     expect(isDataGridInteractiveRowClickTarget(label.firstChild)).toBe(true);
     expect(isDataGridInteractiveRowClickTarget(cell)).toBe(false);
+  });
+});
+
+describe("DataGrid horizontal scrolling", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function getBoundingClientRect() {
+        return {
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 44,
+          top: 0,
+          left: 0,
+          right: 320,
+          bottom: 44,
+          toJSON() {
+            return this;
+          },
+        } as DOMRect;
+      },
+    );
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("sizes the sticky clipping layer to the full row width", () => {
+    const { container } = render(<WideDataGridHarness />);
+
+    const rowsClip = container.querySelector("[data-data-grid-rows-clip]");
+
+    expect(rowsClip).toBeInstanceOf(HTMLElement);
+    expect((rowsClip as HTMLElement).style.minWidth).toBe("740px");
+  });
+
+  it("lets the columns popover escape the sticky toolbar bounds", () => {
+    const { container, getByTitle } = render(<WideDataGridHarness />);
+
+    fireEvent.click(getByTitle("Columns"));
+
+    const stickyChrome = container.querySelector('[role="grid"]')?.firstElementChild;
+    expect(stickyChrome).toBeInstanceOf(HTMLElement);
+    expect((stickyChrome as HTMLElement).className).toContain("overflow-visible");
+    expect(container.textContent).toContain("Email");
   });
 });

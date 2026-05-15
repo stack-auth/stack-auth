@@ -430,8 +430,11 @@ function RuleTriggerHistoryDialog({
       setLoadingError(error instanceof Error ? error.message : "Failed to load triggers");
     } finally {
       if (nextRequestId === latestRequestIdRef.current) {
-        if (reset) setIsInitialLoading(false);
-        else setIsLoadingMore(false);
+        if (reset) {
+          setIsInitialLoading(false);
+        } else {
+          setIsLoadingMore(false);
+        }
       }
     }
   };

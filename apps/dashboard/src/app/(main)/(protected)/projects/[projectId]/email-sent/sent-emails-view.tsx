@@ -8,11 +8,10 @@ import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminApp, useProjectId } from "../use-admin-app";
@@ -111,10 +110,10 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   const filtered = useMemo(() => emails.filter(filterFn), [emails, filterFn]);
   const stats = useMemo(() => computeEmailStats(filtered), [filtered]);
 
-  const [gridState, setGridState] = useState<DataGridState>(() => ({
-    ...createDefaultDataGridState(emailColumns),
-    sorting: [{ columnId: "scheduledAt", direction: "desc" }],
-  }));
+  const [gridState, setGridState] = useDataGridUrlState(emailColumns, {
+    paramPrefix: "sentview",
+    initial: { sorting: [{ columnId: "scheduledAt", direction: "desc" }] },
+  });
 
   const gridData = useDataSource({
     data: filtered,
@@ -168,6 +167,7 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
               isLoading={gridData.isLoading}
               state={gridState}
               onChange={setGridState}
+              fillHeight={false}
               onRowClick={(row) => {
                 router.push(`/projects/${projectId}/email-viewer/${row.id}`);
               }}

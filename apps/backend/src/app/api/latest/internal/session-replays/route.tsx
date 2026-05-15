@@ -163,17 +163,46 @@ export const GET = createSmartRouteHandler({
       };
     }
 
-    // Handle cursor-based pagination
+    // Handle cursor-based pagination — validate the cursor row still matches
+    // the current filter set so that swapping filters between requests doesn't
+    // anchor pagination on a row that no longer qualifies.
     const cursorId = query.cursor;
     let cursorPivot: { id: string, lastEventAt: Date } | null = null;
     if (cursorId) {
-      cursorPivot = await prisma.sessionReplay.findUnique({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
-        select: { id: true, lastEventAt: true },
-      });
-      if (!cursorPivot) {
+      if (clickQualifiedIds && !clickQualifiedIds.includes(cursorId)) {
         throw new KnownErrors.ItemNotFound(cursorId);
       }
+      const row = await prisma.sessionReplay.findFirst({
+        where: {
+          tenancyId: auth.tenancy.id,
+          id: cursorId,
+          ...userIdsFilter.length > 0 ? { projectUserId: { in: userIdsFilter } } : {},
+          ...lastEventAtFrom ? { lastEventAt: { gte: lastEventAtFrom } } : {},
+          ...lastEventAtTo ? { lastEventAt: { lte: lastEventAtTo } } : {},
+          ...teamIdsFilter.length > 0 ? {
+            projectUser: {
+              teamMembers: {
+                some: {
+                  tenancyId: auth.tenancy.id,
+                  teamId: { in: teamIdsFilter },
+                },
+              },
+            },
+          } : {},
+        },
+        select: { id: true, lastEventAt: true, startedAt: true },
+      });
+      if (!row) {
+        throw new KnownErrors.ItemNotFound(cursorId);
+      }
+      const durationMs = row.lastEventAt.getTime() - row.startedAt.getTime();
+      if (durationMsMin !== null && durationMs < durationMsMin) {
+        throw new KnownErrors.ItemNotFound(cursorId);
+      }
+      if (durationMsMax !== null && durationMs > durationMsMax) {
+        throw new KnownErrors.ItemNotFound(cursorId);
+      }
+      cursorPivot = { id: row.id, lastEventAt: row.lastEventAt };
     }
 
     const suffixSql = Prisma.sql`
@@ -190,9 +219,9 @@ export const GET = createSmartRouteHandler({
         ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
         ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}
         ${cursorPivot ? Prisma.sql`AND (
-          sr."lastEventAt" < ${cursorPivot.lastEventAt}
-          OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
-        )` : Prisma.empty}
+            sr."lastEventAt" < ${cursorPivot.lastEventAt}
+            OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
+          )` : Prisma.empty}
       ORDER BY sr."lastEventAt" DESC, sr."id" DESC
       LIMIT ${limit + 1}
     `;

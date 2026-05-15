@@ -1,11 +1,11 @@
 'use client';
 
 import { CodeBlock } from '@/components/code-block';
+import { DesignButton } from "@/components/design-components";
 import { APIEnvKeys, NextJsEnvKeys, ViteEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { CopyPromptButton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
-import { DesignButton } from "@/components/design-components";
 import { useThemeWatcher } from '@/lib/theme';
 import { BookIcon, SparkleIcon, XIcon } from "@phosphor-icons/react";
 import { use } from "@stackframe/stack-shared/dist/utils/react";

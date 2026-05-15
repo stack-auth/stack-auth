@@ -1,33 +1,10 @@
-import type { CSSProperties } from "react";
 import type { DataGridColumnDef } from "./types";
-
-// CSS variable names for column widths set on the grid container.
-// Cells read these via var(...) so a single setProperty during drag
-// resizes every cell in a column with zero React re-renders.
-
-function colVar(id: string): `--col-${string}` {
-  // Column ids flow into CSS custom-property names. Non-ident chars would
-  // break the cascade silently, so fail loud in dev. Consumers should stick
-  // to stable ascii-ident ids for every column.
-  if (process.env.NODE_ENV !== "production" && !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(id)) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[DataGrid] column id ${JSON.stringify(id)} contains characters that are not safe in a CSS custom property name. Prefer ascii identifiers.`
-    );
-  }
-  return `--col-${id}`;
-}
-
-// When col.minWidth is not set, the effective minimum is derived from
-// the header label text width so the label is never clipped on resize.
-// Uses an offscreen canvas for zero-layout measurement; results are
-// cached per unique label string.
 
 const MIN_COL_WIDTH = 20;
 const MIN_CUSTOM_HEADER_WIDTH = 50;
-// Default upper bound on column width (both initial sizing + resize clamp).
-// Kept generous because consumers can override per-column via `col.maxWidth`.
-const DEFAULT_MAX_COL_WIDTH = 800;
+export const DEFAULT_MAX_COL_WIDTH = 800;
+export const DEFAULT_COL_WIDTH = 150;
+
 // px-3 both sides + gap-1.5 + sort icon (h-3 w-3) + 2px rounding buffer
 const HEADER_CHROME_PX = 12 + 12 + 6 + 12 + 2;
 
@@ -36,36 +13,28 @@ const headerWidthCache = new Map<string, number>();
 
 function measureHeaderLabelWidth(label: string): number {
   const cached = headerWidthCache.get(label);
-  if (cached != null) {
-    return cached;
-  }
-
-  if (typeof document === "undefined") {
-    return 0;
-  }
+  if (cached != null) return cached;
+  if (typeof document === "undefined") return 0;
   if (measureContext == null) {
     measureContext = document.createElement("canvas").getContext("2d");
   }
-  if (measureContext == null) {
-    return 0;
-  }
+  if (measureContext == null) return 0;
 
-  // Match header cell: text-xs (12px) font-semibold (600) uppercase tracking-wider (0.05em)
+  // Match header cell: text-xs (12px) font-semibold uppercase tracking-wider (0.05em)
   measureContext.font = "600 12px system-ui, -apple-system, sans-serif";
   const text = label.toUpperCase();
   const letterSpacingPx = 0.05 * 12;
   const width = Math.ceil(
     measureContext.measureText(text).width + letterSpacingPx * text.length,
   );
-
   headerWidthCache.set(label, width);
   return width;
 }
 
+/** Effective minimum column width. When `col.minWidth` is unset, derive
+ * one from the header label so it never gets clipped during resize. */
 export function getEffectiveMinWidth<TRow>(col: DataGridColumnDef<TRow>): number {
-  if (col.minWidth != null) {
-    return col.minWidth;
-  }
+  if (col.minWidth != null) return col.minWidth;
   const label = typeof col.header === "string" ? col.header : null;
   if (label == null) {
     return typeof col.header === "function" ? MIN_CUSTOM_HEADER_WIDTH : MIN_COL_WIDTH;
@@ -73,40 +42,10 @@ export function getEffectiveMinWidth<TRow>(col: DataGridColumnDef<TRow>): number
   return Math.max(MIN_COL_WIDTH, measureHeaderLabelWidth(label) + HEADER_CHROME_PX);
 }
 
-export function getColumnSizingStyle<TRow>(col: DataGridColumnDef<TRow>): CSSProperties {
-  const w = `var(${colVar(col.id)})`;
-  const grow = col.flex ?? 0;
-  return {
-    flex: `${grow} 0 ${w}`,
-    width: w,
-    minWidth: getEffectiveMinWidth(col),
-    maxWidth: grow > 0 ? undefined : (col.maxWidth ?? DEFAULT_MAX_COL_WIDTH),
-  };
-}
-
-export function createGridSizingStyle(
-  widths: ReadonlyMap<string, number>,
-  totalWidth: number,
-): Record<string, string> {
-  const style: Record<string, string> = { "--grid-total-w": `${totalWidth}px` };
-  for (const [id, w] of widths) {
-    style[colVar(id)] = `${w}px`;
-  }
-  return style;
-}
-
-export function applyDraggedColumnWidth(
-  el: HTMLElement,
-  columnId: string,
-  width: number,
-  totalWidth: number,
-) {
-  el.style.setProperty(colVar(columnId), `${width}px`);
-  el.style.setProperty("--grid-total-w", `${totalWidth}px`);
+export function getEffectiveMaxWidth<TRow>(col: DataGridColumnDef<TRow>): number {
+  return col.maxWidth ?? DEFAULT_MAX_COL_WIDTH;
 }
 
 export function clampColumnWidth<TRow>(col: DataGridColumnDef<TRow>, width: number): number {
-  const minWidth = getEffectiveMinWidth(col);
-  const maxWidth = col.maxWidth ?? DEFAULT_MAX_COL_WIDTH;
-  return Math.max(minWidth, Math.min(maxWidth, width));
+  return Math.max(getEffectiveMinWidth(col), Math.min(getEffectiveMaxWidth(col), width));
 }

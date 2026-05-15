@@ -165,7 +165,7 @@ function TableContent({ tableId }: { tableId: TableId }) {
   const defaultOrderDir = isAiActive ? undefined : tableConfig.defaultOrderDir;
 
   const handleResetChat = useCallback(() => {
-    chat.setMessages([]);
+    chat.clearMessages();
   }, [chat]);
 
   const aiSearchBar = (
