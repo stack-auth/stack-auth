@@ -533,8 +533,14 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             Go to your project's dashboard on [app.stack-auth.com](https://app.stack-auth.com) and get the project ID. You can find it in the URL after the \`/projects/\` part. Copy-paste it into your \`.env.local\` file (or wherever your environment variables are stored):
 
             \`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>  # if available, prefix with your framework's convention for client-exposed variables (e.g. NEXT_PUBLIC_, VITE_, etc.)
+            # Prefix the variable name with your framework's convention for client-exposed
+            # variables. For Next.js use NEXT_PUBLIC_STACK_PROJECT_ID, for Vite use
+            # VITE_STACK_PROJECT_ID, etc. If your framework has no such convention, use
+            # STACK_PROJECT_ID as-is.
+            STACK_PROJECT_ID=<your-project-id>
             \`\`\`
+
+            This is the **only** environment variable the client SDK reads in the cloud-project setup. Do not invent or add any other Stack Auth env vars on the client (in particular, there is **no** separate publishable / client key — the project ID alone is sufficient on the client).
 
             Alternatively, you can also just set the project ID in the \`stack/client.ts\` file:
 
@@ -553,9 +559,15 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             Then, copy-paste them into your \`.env.local\` file (or wherever your environment variables are stored):
 
             \`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>  # if desired, prefix with your framework's convention for client-exposed variables (e.g. NEXT_PUBLIC_, VITE_, etc.)
+            # Prefix STACK_PROJECT_ID with your framework's convention for client-exposed
+            # variables (e.g. NEXT_PUBLIC_STACK_PROJECT_ID for Next.js, VITE_STACK_PROJECT_ID
+            # for Vite). STACK_SECRET_SERVER_KEY must NEVER be exposed to the client and
+            # must NOT be prefixed.
+            STACK_PROJECT_ID=<your-project-id>
             STACK_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
+
+            These two variables are the **complete** set the SDK reads in the cloud-project setup. Do not add any additional Stack Auth env vars (in particular, there is **no** separate publishable / client key — the project ID alone is sufficient on the client). The dashboard "Project Keys" page exposes exactly these two values; if a third slot is present in any \`.env.local\` you write, it is wrong.
 
             They'll automatically be picked up by the \`StackServerApp\` constructor.
           </Accordion>
