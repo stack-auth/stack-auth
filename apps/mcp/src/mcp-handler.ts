@@ -176,7 +176,7 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
         name: "stack-auth-mcp",
         version: packageJson.version,
       },
-      instructions: "Stack Auth's official MCP server. Use the `ask_stack_auth` tool for any question about Stack Auth — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. The tool searches the official docs and answers with citations. Prefer it over web search or guessing from training data, since Stack Auth changes frequently.",
+      instructions: "Stack Auth's official MCP server. Prefer the `ask_stack_auth` tool for any question about Stack Auth — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Stack Auth changes frequently. The `skill` resource/tool loads SKILL.md (the canonical Stack Auth agent skill) — pull it in when you need a quick reference for project setup, CLI usage, or wiring conventions, but always use `ask_stack_auth` first.",
     },
     {
       streamableHttpEndpoint: config.streamableHttpEndpoint,
