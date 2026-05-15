@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Checkbox, Typography } from "@/components/ui";
+import { Button, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { GiftIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -21,10 +21,7 @@ type PricingSectionProps = {
   variant?: 'form' | 'dialog',
   // Free product handling
   isFree?: boolean,
-  freeByDefault?: boolean,
   onMakeFree?: () => void,
-  onMakePaid?: () => void,
-  onFreeByDefaultChange?: (checked: boolean) => void,
 };
 
 export function PricingSection({
@@ -34,10 +31,7 @@ export function PricingSection({
   errorMessage,
   variant = 'form',
   isFree = false,
-  freeByDefault = false,
   onMakeFree,
-  onMakePaid,
-  onFreeByDefaultChange,
 }: PricingSectionProps) {
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
@@ -165,27 +159,12 @@ export function PricingSection({
       >
         <div className="flex-1">
           <div className="font-medium text-sm">Free</div>
-          <div>
-            {onFreeByDefaultChange && (
-              <label className="flex items-center gap-1.5 cursor-pointer mt-1">
-                <Checkbox
-                  id="free-by-default"
-                  checked={freeByDefault}
-                  onCheckedChange={(checked) => onFreeByDefaultChange(checked as boolean)}
-                  className="h-3.5 w-3.5"
-                />
-                <span className="text-xs text-foreground/50">
-                  Include by default for all customers
-                </span>
-              </label>
-            )}
-          </div>
         </div>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
-            onClick={onMakePaid}
+            onClick={() => onPricesChange({})}
           >
             <TrashIcon className="h-4 w-4 text-destructive" />
           </Button>

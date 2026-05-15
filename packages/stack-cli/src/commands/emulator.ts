@@ -2,20 +2,25 @@ import { execFileSync, execSync, spawn } from "child_process";
 import { Command } from "commander";
 import extract from "extract-zip";
 import { chmodSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
-import { homedir } from "os";
 import { dirname, join, resolve } from "path";
 import { createInterface } from "readline";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { fileURLToPath } from "url";
+import {
+  emulatorBackendPort,
+  emulatorDashboardPort,
+  emulatorImageDir,
+  emulatorInbucketPort,
+  emulatorMinioPort,
+  emulatorMockOAuthPort,
+  emulatorRunDir,
+  internalPckPath,
+  pollInternalPck,
+} from "../lib/emulator-paths.js";
 import { CliError } from "../lib/errors.js";
 import { writeIso } from "../lib/iso.js";
 
-const DEFAULT_EMULATOR_BACKEND_PORT = 26701;
-const DEFAULT_EMULATOR_DASHBOARD_PORT = 26700;
-const DEFAULT_EMULATOR_MINIO_PORT = 26702;
-const DEFAULT_EMULATOR_INBUCKET_PORT = 26703;
-const DEFAULT_EMULATOR_MOCK_OAUTH_PORT = 26704;
 const DEFAULT_PORT_PREFIX = "81";
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_REPO = "stack-auth/stack-auth";
@@ -26,55 +31,12 @@ const AARCH64_FIRMWARE_PATHS = [
   "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
 ];
 
-export function envPort(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new CliError(`Invalid ${name}: ${raw}`);
-  }
-  return parsed;
-}
-
-function emulatorDashboardPort(): number {
-  return envPort("EMULATOR_DASHBOARD_PORT", DEFAULT_EMULATOR_DASHBOARD_PORT);
-}
-
-function emulatorBackendPort(): number {
-  return envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
-}
-
-function emulatorHome(): string {
-  return process.env.STACK_EMULATOR_HOME ?? join(homedir(), ".stack", "emulator");
-}
-
-function emulatorRunDir(): string {
-  return join(emulatorHome(), "run");
-}
-
-function emulatorImageDir(): string {
-  return join(emulatorHome(), "images");
-}
-
-function internalPckPath(): string {
-  return join(emulatorRunDir(), "vm", "internal-pck");
-}
-
 async function readInternalPck(timeoutMs = 60_000): Promise<string> {
-  const path = internalPckPath();
-  const deadline = Date.now() + timeoutMs;
-  let delay = 50;
-  while (Date.now() < deadline) {
-    try {
-      const contents = readFileSync(path, "utf-8").trim();
-      if (contents) return contents;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-    }
-    await new Promise((r) => setTimeout(r, delay));
-    delay = Math.min(delay * 2, 2000);
+  const contents = await pollInternalPck(timeoutMs);
+  if (contents === null) {
+    throw new CliError(`Timed out waiting for emulator internal publishable client key at ${internalPckPath()}`);
   }
-  throw new CliError(`Timed out waiting for emulator internal publishable client key at ${path}`);
+  return contents;
 }
 
 type EmulatorCredentials = {
@@ -229,10 +191,17 @@ function baseEnvPath(): string {
 }
 
 function emulatorSpawnEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
+  // run-emulator.sh only reads the unprefixed EMULATOR_*_PORT names, so forward
+  // the resolved values whether they came from the STACK_-prefixed alias or not.
   return {
     ...process.env,
     EMULATOR_RUN_DIR: emulatorRunDir(),
     EMULATOR_IMAGE_DIR: emulatorImageDir(),
+    EMULATOR_BACKEND_PORT: String(emulatorBackendPort()),
+    EMULATOR_DASHBOARD_PORT: String(emulatorDashboardPort()),
+    EMULATOR_MINIO_PORT: String(emulatorMinioPort()),
+    EMULATOR_INBUCKET_PORT: String(emulatorInbucketPort()),
+    EMULATOR_MOCK_OAUTH_PORT: String(emulatorMockOAuthPort()),
     ...extra,
   };
 }
@@ -243,11 +212,11 @@ function prepareRuntimeConfigIso(): void {
   const vmDir = join(emulatorRunDir(), "vm");
   mkdirSync(vmDir, { recursive: true });
   const portPrefix = process.env.PORT_PREFIX ?? process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? DEFAULT_PORT_PREFIX;
-  const dashboardPort = envPort("EMULATOR_DASHBOARD_PORT", DEFAULT_EMULATOR_DASHBOARD_PORT);
-  const backendPort = envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
-  const minioPort = envPort("EMULATOR_MINIO_PORT", DEFAULT_EMULATOR_MINIO_PORT);
-  const inbucketPort = envPort("EMULATOR_INBUCKET_PORT", DEFAULT_EMULATOR_INBUCKET_PORT);
-  const mockOAuthPort = envPort("EMULATOR_MOCK_OAUTH_PORT", DEFAULT_EMULATOR_MOCK_OAUTH_PORT);
+  const dashboardPort = emulatorDashboardPort();
+  const backendPort = emulatorBackendPort();
+  const minioPort = emulatorMinioPort();
+  const inbucketPort = emulatorInbucketPort();
+  const mockOAuthPort = emulatorMockOAuthPort();
 
   const runtimeEnv = [
     `STACK_EMULATOR_PORT_PREFIX=${portPrefix}`,
@@ -313,9 +282,9 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
 }
 
 function printEmulatorWelcome(): void {
-  const dashboardPort = envPort("EMULATOR_DASHBOARD_PORT", DEFAULT_EMULATOR_DASHBOARD_PORT);
-  const backendPort = envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
-  const inbucketPort = envPort("EMULATOR_INBUCKET_PORT", DEFAULT_EMULATOR_INBUCKET_PORT);
+  const dashboardPort = emulatorDashboardPort();
+  const backendPort = emulatorBackendPort();
+  const inbucketPort = emulatorInbucketPort();
 
   console.log("\nEmulator is up.\n");
   console.log("The Stack Auth emulator runs a full local Stack Auth stack (backend, dashboard,");

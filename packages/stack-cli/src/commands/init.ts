@@ -159,7 +159,7 @@ async function runInit(program: Command, opts: InitOptions) {
     console.log("\n" + initPrompt);
   }
 
-  const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+  const { dashboardUrl } = resolveLoginConfig();
   printNextSteps({ mode, projectId, dashboardUrl });
 }
 
@@ -209,17 +209,17 @@ async function handleLinkFromConfigFile(opts: InitOptions): Promise<{ configPath
   return { configPath };
 }
 
-async function ensureLoggedInSession(flags: Record<string, unknown>) {
+async function ensureLoggedInSession() {
   try {
-    return resolveSessionAuth(flags as { projectId?: string });
+    return resolveSessionAuth();
   } catch (e) {
     if (e instanceof AuthError) {
       if (isNonInteractiveEnv()) {
         throw new CliError("Not logged in. Run `stack login` first or set STACK_CLI_REFRESH_TOKEN.");
       }
       console.log("You need to log in first.\n");
-      await performLogin(flags);
-      return resolveSessionAuth(flags as { projectId?: string });
+      await performLogin();
+      return resolveSessionAuth();
     }
     throw e;
   }
@@ -285,11 +285,11 @@ async function writeProjectKeysToEnv(
   }
 }
 
-async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
-  const sessionAuth = await ensureLoggedInSession(flags);
+async function handleCreateCloud(_flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
+  const sessionAuth = await ensureLoggedInSession();
   const user = await getInternalUser(sessionAuth);
 
-  const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+  const { dashboardUrl } = resolveLoginConfig();
   const newProject = await createProjectInteractively(user, {
     displayName: opts.displayName,
     defaultDisplayName: path.basename(outputDir),
@@ -301,8 +301,8 @@ async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptio
   return { projectId: newProject.id };
 }
 
-async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
-  const sessionAuth = await ensureLoggedInSession(flags);
+async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
+  const sessionAuth = await ensureLoggedInSession();
   const user = await getInternalUser(sessionAuth);
   let projects = await user.listOwnedProjects();
   let autoCreatedProjectId: string | null = null;
@@ -321,11 +321,11 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
     });
 
     if (!shouldCreate) {
-      const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+      const { dashboardUrl } = resolveLoginConfig();
       throw new CliError(`You don't own any projects. Create one at ${dashboardUrl} or re-run and choose to create one.`);
     }
 
-    const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+    const { dashboardUrl } = resolveLoginConfig();
     const newProject = await createProjectInteractively(user, {
       defaultDisplayName: path.basename(outputDir),
       dashboardUrl,
@@ -360,8 +360,8 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
   return { projectId };
 }
 
-async function performLogin(flags: Record<string, unknown>) {
-  const config = resolveLoginConfig(flags as { projectId?: string });
+async function performLogin() {
+  const config = resolveLoginConfig();
 
   const app = new StackClientApp({
     projectId: "internal",

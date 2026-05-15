@@ -9,6 +9,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -76,16 +77,14 @@ export const POST = createSmartRouteHandler({
     if (isAddOnProduct(toProduct)) {
       throw new StatusError(400, "Add-on products cannot be selected for plan switching.");
     }
-    const fromIsIncludeByDefault = fromProduct.prices === "include-by-default";
-    if (toProduct.prices === "include-by-default") {
-      throw new StatusError(400, "Include-by-default products cannot be selected for plan switching.");
-    }
-    if (!fromIsIncludeByDefault) {
-      const fromHasIntervalPrice = typedEntries(fromProduct.prices as Exclude<typeof fromProduct.prices, "include-by-default">)
-        .some(([, price]) => price.interval);
-      if (!fromHasIntervalPrice) {
-        throw new StatusError(400, "This subscription cannot be switched.");
-      }
+    const fromPriceEntries = typedEntries(fromProduct.prices);
+    const fromHasIntervalPrice = fromPriceEntries.some(([, price]) => price.interval);
+    // A product with non-interval prices is a one-time purchase and can't be switched.
+    // A product with no prices at all (e.g. auto-migrated from the legacy `include-by-default`
+    // sentinel, or an intentionally free product) is treated as a free plan the customer may
+    // upgrade away from.
+    if (fromPriceEntries.length > 0 && !fromHasIntervalPrice) {
+      throw new StatusError(400, "This subscription cannot be switched.");
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
@@ -119,7 +118,8 @@ export const POST = createSmartRouteHandler({
         Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => s.productId ?? "__null__")
       );
       const hasOtpInProductLine = Object.entries(ownedProducts).some(
-        ([productId, p]) => p.productLineId === fromProduct.productLineId
+        ([productId, p]) => productId !== body.from_product_id
+          && p.productLineId === fromProduct.productLineId
           && p.quantity > 0
           && !activeSubProductIds.has(productId)
       );
@@ -128,17 +128,46 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    // Find the active subscription to switch from
-    const existingSub = !fromIsIncludeByDefault
-      ? Object.values(subMap).find(
-        s => s.productId === body.from_product_id && isActiveSubscription(s)
-      ) ?? null
-      : null;
-    if (!existingSub && !fromIsIncludeByDefault) {
+    // Find the active subscription to switch from. Customers on a free plan (no prices, or
+    // auto-migrated from the legacy `include-by-default` sentinel) won't have a subscription
+    // row — in that case we fall through to the "create a new Stripe subscription" branch.
+    const existingSub = Object.values(subMap).find(
+      s => s.productId === body.from_product_id && isActiveSubscription(s)
+    ) ?? null;
+    // A price counts as "free" only if EVERY supported currency is either absent or zero.
+    // Checking USD alone would misclassify a price that's only set in another supported
+    // currency (e.g. EUR-only) as free, and would let the customer switch from it without
+    // an existing subscription row — bypassing intended billing.
+    const isPriceFree = (price: typeof fromPriceEntries[number][1]) =>
+      SUPPORTED_CURRENCIES.every(c => {
+        const amount = (price as Record<string, unknown>)[c.code];
+        return amount == null || Number(amount) === 0;
+      });
+    const fromIsFreePlan = fromPriceEntries.length === 0
+      || fromPriceEntries.every(([, p]) => isPriceFree(p));
+    if (!existingSub && !fromIsFreePlan) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
+    // Server-granted subscriptions (no stripeSubscriptionId) are immutable via this endpoint;
+    // they must be cancelled through admin tooling before the customer switches plans.
     if (existingSub && !existingSub.stripeSubscriptionId) {
       throw new StatusError(400, "This subscription cannot be switched.");
+    }
+    // Free-plan fallthrough: if the customer claims to be switching "from" a free product
+    // but actually holds a different active subscription in the same product line, reject —
+    // otherwise the new paid subscription would coexist with the existing one.
+    // (`fromProduct.productLineId` is guaranteed truthy here — the same-product-line check
+    // ~80 lines above already throws when it isn't.)
+    if (!existingSub && fromIsFreePlan) {
+      const competingSub = Object.values(subMap).find(
+        s => s.productId !== body.from_product_id
+          && isActiveSubscription(s)
+          && s.productId != null
+          && getOrUndefined(products, s.productId)?.productLineId === fromProduct.productLineId
+      );
+      if (competingSub) {
+        throw new StatusError(400, "Customer has an active subscription in this product line; switch from that product instead.");
+      }
     }
 
     const priceEntries = typedEntries(toProduct.prices)
@@ -265,9 +294,8 @@ export const POST = createSmartRouteHandler({
       });
       await bulldozerWriteSubscription(prisma, updatedSub);
     } else {
-      // DEPRECATED: this path handles switching from include-by-default (free) products
-      // to paid subscriptions. Default products are being removed; this code is kept
-      // for backward compatibility only.
+      // No existing Stripe subscription — create a new one. This happens when
+      // switching from a $0 product (which has no stripeSubscriptionId) to a paid one.
       const applicationFeePercent = getApplicationFeePercentOrUndefined(auth.tenancy.project.id);
       const created = await stripe.subscriptions.create({
         customer: stripeCustomer.id,
