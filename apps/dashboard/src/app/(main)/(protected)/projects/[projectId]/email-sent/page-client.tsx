@@ -171,6 +171,7 @@ function EmailSendDataTable() {
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      fillHeight={false}
       footer={false}
 
       onRowClick={(row) => {

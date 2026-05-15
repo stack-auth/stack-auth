@@ -267,6 +267,7 @@ export function GroupedEmailTable() {
       isLoading={gridData.isLoading}
       state={gridState}
       onChange={setGridState}
+      fillHeight={false}
       onRowClick={(row, _rowId, _event) => {
         if (row.sourceType === "draft" && row.sourceId) {
           router.push(`email-drafts/${row.sourceId}?stage=sent`);
