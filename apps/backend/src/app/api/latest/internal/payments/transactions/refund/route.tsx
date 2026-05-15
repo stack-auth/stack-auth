@@ -237,20 +237,20 @@ async function readPriorRefundSummary(options: {
   return { refundedStripeUnits, productRevoked };
 }
 
-// ── Bulldozer reads: outstanding item grants for an OTP ────────────────────
+// ── Bulldozer reads: outstanding item grants for a refund ──────────────────
 //
-// Subscriptions get their item grants expired automatically: setting
-// `endedAt` triggers the subscription timefold to emit a `subscription-end`
-// event whose `itemQuantityChangesToExpire` covers every still-outstanding
-// grant (initial + item-grant-repeats). OTPs have no equivalent end event —
-// `revokedAt` only stops the OTP timefold from scheduling future repeats —
-// so any items granted by prior `item-grant-repeat` txns (and by the OTP
-// itself with `expiresWhen: "when-purchase-expires"`) would remain valid
-// forever after a revoke. To close that gap, the refund row emits explicit
-// `item-quantity-expire` entries for every outstanding grant whose
-// `expiresWhen` is `"when-purchase-expires"` or `"when-repeated"`. Permanent
-// grants (`expiresWhen: null`) are intentionally left alone, matching the
-// subscription-end filter — see `subscription-timefold-algo.ts:430-441`.
+// A refund that ends product access immediately must expire every still-
+// outstanding item grant tied to the purchase/subscription lifetime — grants
+// from the initial txn (`otp:<id>` / `sub-start:<id>`) and from every
+// `item-grant-repeat` txn — whose `expiresWhen` is `"when-purchase-expires"`
+// or `"when-repeated"`. Permanent grants (`expiresWhen: null`) are left alone
+// by design (matches `subscription-timefold-algo.ts:430-441`).
+//
+// Both refund paths emit these `item-quantity-expire` entries on the refund
+// row itself: OTPs have no end event, and refund-driven subscription ends
+// suppress their `subscription-end` transaction (see phase-1/transactions.ts),
+// so the refund row is the single place the expiry is recorded. The walk is
+// identical for both — only the source txnId and the igr `sourceId` differ.
 
 type OutstandingItemGrant = {
   txnId: string,
@@ -260,13 +260,13 @@ type OutstandingItemGrant = {
 };
 
 /**
- * Pure dedup logic: given the OTP txn and all its item-grant-repeat txns,
- * collect every `item-quantity-change` entry then subtract any grant already
- * referenced by a later `item-quantity-expire` entry (which is how
- * "when-repeated" grants get retired by subsequent IGRs). Entries with
- * `expiresWhen: null` are excluded — they're permanent by design.
+ * Pure dedup logic: given the source txn (`otp:<id>` / `sub-start:<id>`) and
+ * all its item-grant-repeat txns, collect every `item-quantity-change` entry
+ * then subtract any grant already referenced by a later `item-quantity-expire`
+ * entry (which is how "when-repeated" grants get retired by subsequent IGRs).
+ * Entries with `expiresWhen: null` are excluded — they're permanent by design.
  */
-export function computeOutstandingItemGrantsForOtp(
+export function computeOutstandingItemGrants(
   rows: Array<{ txnId: unknown, entries: unknown }>,
 ): OutstandingItemGrant[] {
   const grants: OutstandingItemGrant[] = [];
@@ -304,12 +304,21 @@ export function computeOutstandingItemGrantsForOtp(
   return grants.filter((g) => !expiredKeys.has(grantKey(g.txnId, g.entryIndex)));
 }
 
-async function readOutstandingItemGrantsForOtp(options: {
+/**
+ * Reads the source txn and all its item-grant-repeat txns from bulldozer,
+ * then computes the outstanding item grants. Works for both refund sources:
+ *   - OTPs:          sourceTxnId `otp:<purchaseId>`,  igrSourceId `<purchaseId>`
+ *   - subscriptions: sourceTxnId `sub-start:<subId>`, igrSourceId `<subId>`
+ * `igrSourceId` is the `<sourceId>` segment of the igr txnId
+ * (`igr:<sourceId>:<effectiveAtMillis>`).
+ */
+async function readOutstandingItemGrants(options: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
   customerType: "user" | "team" | "custom",
   customerId: string,
-  purchaseId: string,
+  sourceTxnId: string,
+  igrSourceId: string,
 }): Promise<OutstandingItemGrant[]> {
   const executionContext = createBulldozerExecutionContext();
   const baseSql = toQueryableSqlQuery(paymentsSchema.transactions.listRowsInGroup(executionContext, {
@@ -318,11 +327,10 @@ async function readOutstandingItemGrantsForOtp(options: {
     startInclusive: true,
     endInclusive: true,
   }));
-  const otpTxnId = `otp:${options.purchaseId}`;
-  const igrPrefix = `igr:${options.purchaseId}:`;
-  // LIKE pattern safety: purchaseId is a UUID and the igr txnId format is
-  // `igr:<purchaseId>:<effectiveAtMillis>` — neither contains LIKE
-  // metacharacters today. Same caveat as `readPriorRefundSummary` above.
+  const igrPrefix = `igr:${options.igrSourceId}:`;
+  // LIKE pattern safety: igrSourceId is a UUID (purchase / subscription id)
+  // and the igr txnId format is `igr:<sourceId>:<effectiveAtMillis>` — neither
+  // contains LIKE metacharacters today. Same caveat as `readPriorRefundSummary`.
   const sql = `
     SELECT "__rows"."rowdata" AS "rowData"
     FROM (${baseSql}) AS "__rows"
@@ -330,7 +338,7 @@ async function readOutstandingItemGrantsForOtp(options: {
       AND "__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}
       AND "__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}
       AND (
-        ("__rows"."rowdata"->>'txnId') = ${quoteSqlStringLiteral(otpTxnId).sql}
+        ("__rows"."rowdata"->>'txnId') = ${quoteSqlStringLiteral(options.sourceTxnId).sql}
         OR (
           ("__rows"."rowdata"->>'type') = 'item-grant-repeat'
           AND ("__rows"."rowdata"->>'txnId') LIKE ${quoteSqlStringLiteral(`${igrPrefix}%`).sql}
@@ -338,7 +346,7 @@ async function readOutstandingItemGrantsForOtp(options: {
       )
   `;
   const rows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(sql)}`;
-  return computeOutstandingItemGrantsForOtp(rows.map((row) => {
+  return computeOutstandingItemGrants(rows.map((row) => {
     const rowData = row.rowData;
     if (typeof rowData !== "object" || rowData === null) {
       return { txnId: null, entries: null };
@@ -521,6 +529,26 @@ async function handleSubscriptionRefund(options: {
     if (subscription.cancelAtPeriodEnd || subscription.endedAt) {
       throw new KnownErrors.SchemaError("Subscription is already scheduled to end.");
     }
+  }
+
+  // End-now guard for subscriptions that already ended *naturally* (webhook
+  // cancel, period expiry — `endedAt` in the past, `productRevokedAt` null).
+  // Such a subscription already emitted its `product-revocation` /
+  // `item-quantity-expire` entries at the real `endedAt`. Re-ending it via a
+  // refund would set `productRevokedAt`, making phase-1 drop that original
+  // subscription-end txn and re-emit the lifecycle entries on the refund row
+  // at refund time — silently moving the end forward and corrupting
+  // point-in-time history for the [endedAt, now] window. There is nothing
+  // left to end, so reject: the product is already gone and the admin should
+  // refund the amount without `end_action`.
+  //
+  // Two cases are intentionally NOT caught here: a *future* `endedAt`
+  // (cancel-at-period-end) — `end_action="now"` legitimately pulls that
+  // forward; and a refund-driven end (`productRevokedAt` set) — that's a
+  // replay and is handled below by `shouldRejectSubscriptionProductRevocationReplay`,
+  // which still allows a crashed prior attempt to repair its missing refund row.
+  if (endNow && subscription.endedAt && subscription.endedAt.getTime() <= Date.now() && !subscription.productRevokedAt) {
+    throw new KnownErrors.SchemaError("Subscription has already ended; refund the amount without end_action='now'.");
   }
 
   const customerType = subscription.customerType.toLowerCase() as "user" | "team" | "custom";
@@ -740,15 +768,23 @@ async function handleSubscriptionRefund(options: {
     }));
   }
   if (endNow) {
-    // Canonical product-revocation for refund-driven ends. Paired with the
-    // `productRevokedAt=now` write on the subscription row above: that flag
-    // tells the subscription-end timefold mapper (phase-1/transactions.ts)
-    // to skip its auto-emitted product-revocation, so we get exactly one
-    // entry instead of two. Without that coordination the phase-3
-    // owned-products LFold would subtract `quantity` twice — fine for
-    // single-sub customers thanks to the GREATEST(..., 0) clamp, but
-    // broken for stackable subs where the second subtraction eats into a
-    // sibling sub's still-active grant.
+    // Refund-driven immediate end. The `productRevokedAt=now` write on the
+    // subscription row above makes phase-1 suppress the entire
+    // subscription-end transaction (see phase-1/transactions.ts), so the
+    // refund row carries the full end record itself — active-subscription-end,
+    // product-revocation, and the item-quantity-expire entries — exactly
+    // mirroring how one-time-purchase refunds work. Emitting them here rather
+    // than letting sub-end do it keeps the revocation count correct for
+    // stackable subs: two product-revocation entries against the same source
+    // would double-subtract in the phase-3 owned-products LFold (masked by
+    // the GREATEST(..., 0) clamp for single-sub customers, but corrupting
+    // sibling subs' still-active grants).
+    refundEntries.push({
+      type: "active-subscription-end",
+      customerType,
+      customerId: subscription.customerId,
+      subscriptionId: subscription.id,
+    });
     refundEntries.push(buildProductRevocationEntry({
       customerType,
       customerId: subscription.customerId,
@@ -758,6 +794,29 @@ async function handleSubscriptionRefund(options: {
       productLineId,
       quantity: subscription.quantity,
     }));
+    // Expire outstanding item grants from the sub-start txn and any
+    // item-grant-repeat txns — the same walk used for OTP refunds. `endNow`
+    // is rejected for renewal invoices, so `sourceTxnId` is always
+    // `sub-start:<subId>` here.
+    const outstandingGrants = await readOutstandingItemGrants({
+      prisma,
+      tenancyId: tenancy.id,
+      customerType,
+      customerId: subscription.customerId,
+      sourceTxnId,
+      igrSourceId: subscription.id,
+    });
+    for (const grant of outstandingGrants) {
+      refundEntries.push({
+        type: "item-quantity-expire",
+        customerType,
+        customerId: subscription.customerId,
+        adjustedTransactionId: grant.txnId,
+        adjustedEntryIndex: grant.entryIndex,
+        itemId: grant.itemId,
+        quantity: grant.quantity,
+      });
+    }
   }
 
   const nowMillis = now.getTime();
@@ -896,14 +955,14 @@ async function handleOneTimePurchaseRefund(options: {
       quantity: purchase.quantity,
     }));
     // Expire outstanding item grants from the OTP txn and any
-    // item-grant-repeat txns. See the helper docs above for the rationale —
-    // OTPs have no equivalent of the subscription-end cascade.
-    const outstandingGrants = await readOutstandingItemGrantsForOtp({
+    // item-grant-repeat txns. See the helper docs above for the rationale.
+    const outstandingGrants = await readOutstandingItemGrants({
       prisma,
       tenancyId: tenancy.id,
       customerType,
       customerId: purchase.customerId,
-      purchaseId: purchase.id,
+      sourceTxnId,
+      igrSourceId: purchase.id,
     });
     for (const grant of outstandingGrants) {
       refundEntries.push({
@@ -980,7 +1039,7 @@ import.meta.vitest?.describe("buildStripeRefundParams", (test) => {
   });
 });
 
-import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
+import.meta.vitest?.describe("computeOutstandingItemGrants", (test) => {
   test("returns when-purchase-expires and when-repeated grants from the OTP txn", ({ expect }) => {
     const otp = {
       txnId: "otp:p1",
@@ -991,7 +1050,7 @@ import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
         { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "credits", quantity: 100, expiresWhen: "when-repeated" },
       ],
     };
-    const out = computeOutstandingItemGrantsForOtp([otp]);
+    const out = computeOutstandingItemGrants([otp]);
     expect(out).toEqual([
       { txnId: "otp:p1", entryIndex: 2, itemId: "tokens", quantity: 50 },
       { txnId: "otp:p1", entryIndex: 3, itemId: "credits", quantity: 100 },
@@ -1007,7 +1066,7 @@ import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
         { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "temp", quantity: 5, expiresWhen: "when-purchase-expires" },
       ],
     };
-    const out = computeOutstandingItemGrantsForOtp([otp]);
+    const out = computeOutstandingItemGrants([otp]);
     expect(out).toEqual([
       { txnId: "otp:p1", entryIndex: 2, itemId: "temp", quantity: 5 },
     ]);
@@ -1030,7 +1089,7 @@ import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
         { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "credits", quantity: 100, expiresWhen: "when-repeated" },
       ],
     };
-    const out = computeOutstandingItemGrantsForOtp([otp, igr]);
+    const out = computeOutstandingItemGrants([otp, igr]);
     expect(out).toEqual([
       { txnId: "igr:p1:1000", entryIndex: 1, itemId: "credits", quantity: 100 },
     ]);
@@ -1048,13 +1107,13 @@ import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
         { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "bonus", quantity: 100, expiresWhen: "when-purchase-expires" },
       ],
     }));
-    const out = computeOutstandingItemGrantsForOtp([otp, ...igrs]);
+    const out = computeOutstandingItemGrants([otp, ...igrs]);
     expect(out).toHaveLength(3);
     expect(out.map((g) => g.txnId)).toEqual(["igr:p1:1000", "igr:p1:2000", "igr:p1:3000"]);
   });
 
   test("ignores non-item entries and malformed rows", ({ expect }) => {
-    const out = computeOutstandingItemGrantsForOtp([
+    const out = computeOutstandingItemGrants([
       { txnId: "otp:p1", entries: [
         { type: "product-grant" },
         { type: "money-transfer" },
@@ -1067,6 +1126,34 @@ import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
     ]);
     expect(out).toEqual([
       { txnId: "otp:p1", entryIndex: 2, itemId: "x", quantity: 1 },
+    ]);
+  });
+
+  test("works identically for subscription sources (sub-start + igr txns)", ({ expect }) => {
+    // sub-start txn entries: [active-subscription-start, product-grant,
+    // money-transfer, ...item-quantity-change] — grants start at index 3.
+    const subStart = {
+      txnId: "sub-start:s1",
+      entries: [
+        { type: "active-subscription-start", customerType: "user", customerId: "u" },
+        { type: "product-grant", customerType: "user", customerId: "u" },
+        { type: "money-transfer", customerType: "user", customerId: "u" },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "seats", quantity: 5, expiresWhen: "when-purchase-expires" },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "credits", quantity: 100, expiresWhen: "when-repeated" },
+      ],
+    };
+    // An item-grant-repeat retires the prior when-repeated grant and grants fresh.
+    const igr = {
+      txnId: "igr:s1:1000",
+      entries: [
+        { type: "item-quantity-expire", customerType: "user", customerId: "u", adjustedTransactionId: "sub-start:s1", adjustedEntryIndex: 4, itemId: "credits", quantity: 100 },
+        { type: "item-quantity-change", customerType: "user", customerId: "u", itemId: "credits", quantity: 100, expiresWhen: "when-repeated" },
+      ],
+    };
+    const out = computeOutstandingItemGrants([subStart, igr]);
+    expect(out).toEqual([
+      { txnId: "sub-start:s1", entryIndex: 3, itemId: "seats", quantity: 5 },
+      { txnId: "igr:s1:1000", entryIndex: 1, itemId: "credits", quantity: 100 },
     ]);
   });
 });

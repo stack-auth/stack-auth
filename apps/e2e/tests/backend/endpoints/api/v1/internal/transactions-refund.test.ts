@@ -329,9 +329,10 @@ it("revoking one of two stackable subs leaves the sibling's product grant intact
   // The phase-3 owned-products LFold subtracted twice. Single-sub
   // customers were saved by the GREATEST(..., 0) clamp; stackable subs
   // weren't — the second subtraction ate into the sibling's still-active
-  // grant. The fix coordinates the two emitters via
-  // Subscription.productRevokedAt: when set, the sub-end mapper skips its
-  // product-revocation so only the refund row writes one.
+  // grant. The fix: a refund-driven end sets Subscription.productRevokedAt,
+  // which makes phase-1 suppress the whole subscription-end transaction —
+  // so the refund row is the sole emitter of product-revocation (and of
+  // active-subscription-end / item-quantity-expire).
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
@@ -416,11 +417,85 @@ it("refunds a test-mode subscription with end_action='now'", async () => {
   expect(refundRes.body.success).toBe(true);
   expect(refundRes.body.refund_transaction_id).toMatch(/^refund:sub-start:/);
 
-  // Subscription-end auto-emit should have stripped the customer's product.
+  // The refund row's product-revocation entry strips the customer's product.
   const productsAfter = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
   });
   expect(productsAfter.body.items).toHaveLength(0);
+});
+
+it("expires the subscription's item grants when refunded with end_action='now'", async () => {
+  // Refund-driven ends emit no subscription-end transaction, so the refund
+  // row itself must carry the item-quantity-expire entries — walked from the
+  // sub-start txn (and any item-grant-repeat txns), exactly like OTP refunds.
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      items: {
+        seats: { displayName: "Seats" },
+      },
+      products: {
+        "sub-product": {
+          displayName: "Sub Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            monthly: { USD: "50.00", interval: [1, "month"] },
+          },
+          includedItems: {
+            seats: {
+              quantity: 5,
+              repeat: "never",
+              expires: "when-purchase-expires",
+            },
+          },
+        },
+      },
+    },
+  });
+  const { userId } = await Auth.fastSignUp();
+  const code = await createPurchaseCode({ userId, productId: "sub-product" });
+  const sessionRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    accessType: "admin",
+    method: "POST",
+    body: { full_code: code, price_id: "monthly", quantity: 1 },
+  });
+  expect(sessionRes.status).toBe(200);
+
+  const txnsRes = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  const purchaseTxn = txnsRes.body.transactions.find((tx: any) => tx.type === "purchase");
+  expect(purchaseTxn).toBeDefined();
+
+  // The subscription grants 5 seats before the refund.
+  const seatsBefore = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/seats`, {
+    accessType: "admin",
+  });
+  expect(seatsBefore.status).toBe(200);
+  expect(seatsBefore.body.quantity).toBe(5);
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: purchaseTxn.id,
+      amount_usd: "0",
+      end_action: "now",
+    },
+  });
+  expect(refundRes.status).toBe(200);
+
+  // The refund row's item-quantity-expire entries should have retired the grant.
+  const seatsAfter = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/seats`, {
+    accessType: "admin",
+  });
+  expect(seatsAfter.status).toBe(200);
+  expect(seatsAfter.body.quantity).toBe(0);
 });
 
 it("rejects a second product revocation on the same subscription (productRevoked short-circuit)", async () => {
@@ -451,6 +526,76 @@ it("rejects a second product revocation on the same subscription (productRevoked
   expect(refund2.status).toBe(400);
   expect(refund2.body.code).toBe("SCHEMA_ERROR");
   expect(refund2.body.error).toMatch(/already been revoked/);
+});
+
+it("rejects end_action='now' on a subscription that already ended naturally", async () => {
+  // A naturally-ended subscription already emitted its lifecycle entries at
+  // the real endedAt. Re-ending it via a refund would re-stamp them at refund
+  // time, corrupting point-in-time history — so end_action='now' is rejected.
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      items: {},
+      productLines: {
+        grp: { displayName: "Group" },
+      },
+      products: {
+        base: {
+          displayName: "Base",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "grp",
+          prices: { monthly: { USD: "10.00", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        premium: {
+          displayName: "Premium",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "grp",
+          prices: { monthly: { USD: "20.00", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId } = await Auth.fastSignUp();
+
+  // Grant `base` → creates subscription A.
+  const grantBase = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "base" },
+  });
+  expect(grantBase.status).toBe(200);
+  const subscriptionId: string = grantBase.body.subscription_id;
+
+  // Granting `premium` in the same product line ends subscription A naturally
+  // (endedAt set, productRevokedAt null — no refund involved).
+  const grantPremium = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "premium" },
+  });
+  expect(grantPremium.status).toBe(200);
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      end_action: "now",
+    },
+  });
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/already ended/);
 });
 
 it("refunds a test-mode subscription with end_action='at-period-end' (no money)", async () => {
