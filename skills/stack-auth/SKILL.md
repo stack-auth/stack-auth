@@ -25,7 +25,7 @@ Apply Stack Auth's live instructions — covering user management, auth, payment
 
 Fetch fresh instructions on every invocation:
 
-```
+```text
 https://skill.stack-auth.com
 ```
 
