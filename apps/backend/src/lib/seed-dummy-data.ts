@@ -1636,10 +1636,10 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
     });
   }, {
     // Under cross-arch arm64 TCG in the emulator qcow2 build, this batch
-    // takes ~10s; Prisma's default is 5s. Production (KVM/native) runs it
-    // in well under 1s, so the looser bound only kicks in when the DB is
-    // genuinely slow.
-    timeout: 30_000,
+    // has been observed to take 40-50s; Prisma's default is 5s. Production
+    // (KVM/native) runs it in well under 1s, so the looser bound only kicks
+    // in when the DB is genuinely slow.
+    timeout: 90_000,
   });
 
   if (clickhouseClient && clickhouseRows.length > 0) {

@@ -117,7 +117,6 @@ RUN node -e " \
   fs.writeFileSync('package.json', pkgMatch[1]); \
   const srvMatch = df.match(/cat <<'EOF' > server\\.mjs\\n([\\s\\S]*?)\\nEOF/); \
   let server = srvMatch[1]; \
-  server = server.replace('server.listen(8080)', 'server.listen(process.env.PORT || 8080)'); \
   server = server.replace( \
     'from \"fs/promises\"', \
     'from \"fs/promises\"; import { symlinkSync } from \"fs\"' \
