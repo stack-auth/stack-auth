@@ -1,10 +1,9 @@
 import { Command } from "commander";
-import * as fs from "fs";
-import * as path from "path";
 import { isProjectAuthWithRefreshToken, resolveAuth, resolveLocalEmulatorAuth, type ProjectAuthWithRefreshToken } from "../lib/auth.js";
 import { lookupLocalEmulatorProjectIdByPath } from "../lib/local-emulator-client.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
+import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) {
@@ -69,10 +68,7 @@ export function registerExecCommand(program: Command) {
         }
         auth = cloudAuth;
       } else {
-        const absPath = path.resolve(target.configFile);
-        if (!fs.existsSync(absPath)) {
-          throw new CliError(`Config file not found: ${absPath}`);
-        }
+        const absPath = resolveConfigFilePathOption(target.configFile, { mustExist: true });
         const projectId = await lookupLocalEmulatorProjectIdByPath(absPath);
         auth = await resolveLocalEmulatorAuth(projectId);
       }

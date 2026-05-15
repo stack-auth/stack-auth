@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
   Typography,
 } from "@/components/ui";
+import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
 import { getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
@@ -40,7 +41,6 @@ import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { useAdminApp, useProjectId } from "./use-admin-app";
 
 type Item = {
@@ -188,7 +188,7 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex h-8 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
+    "group flex h-8 w-full items-center justify-between rounded-lg pl-3 pr-0.5 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
     isHighlighted ? (isSection ? activeSectionClasses : activeItemClasses) : inactiveClasses,
     "cursor-pointer"
   );

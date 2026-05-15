@@ -9,13 +9,13 @@ import {
   DesignChartTooltipContent,
   getDesignChartColor,
 } from "@/components/design-components";
-import { Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { WarningCircleIcon } from "@phosphor-icons/react";
+import { Button, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { FunnelXIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { ServerUser } from "@stackframe/stack";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -29,9 +29,11 @@ import { UserPageMetricCard } from "./user-page-metric-card";
 import { UserPageTableSection } from "./user-page-table-section";
 
 const ANALYTICS_WINDOW_DAYS = 30;
+const SUMMARY_WINDOW_DAYS = 7;
+const ANALYTICS_CHART_OFFSET_DAYS = 15;
 const TOP_PAGES_LIMIT = 10;
 const TOP_REFERRERS_LIMIT = 10;
-const RECENT_EVENTS_LIMIT = 50;
+const RECENT_EVENTS_PAGE_SIZE = 50;
 
 // Formats a JS Date as `YYYY-MM-DD HH:MM:SS` UTC - the format ClickHouse
 // expects when the query param is typed as `DateTime`. Keeping this
@@ -62,13 +64,19 @@ type SummaryRow = {
   page_views: number,
   clicks: number,
   sessions: number,
+  prev_total_events: number,
+  prev_page_views: number,
+  prev_clicks: number,
+  prev_sessions: number,
   last_event_at: string | null,
 };
 
 type DailyRow = {
   day: string,
+  total_events: number,
   page_views: number,
   clicks: number,
+  sessions: number,
 };
 
 type TopPageRow = {
@@ -95,7 +103,17 @@ type AnalyticsData = {
   daily: DailyRow[],
   topPages: TopPageRow[],
   topReferrers: TopReferrerRow[],
-  recent: RecentEventRow[],
+};
+
+type RecentEventsState = {
+  rows: RecentEventRow[],
+  hasMore: boolean,
+  isLoadingMore: boolean,
+};
+
+type RecentFetchContext = {
+  params: { userId: string, since: string, until: string },
+  token: { cancelled: boolean },
 };
 
 type LoadState =
@@ -103,27 +121,38 @@ type LoadState =
   | { status: "error" }
   | { status: "ready", data: AnalyticsData };
 
+// Single pass over [prevSince, until). Each metric splits into a current and
+// previous bucket via countIf, so trend deltas come for free. When the caller
+// wants no previous-period comparison (e.g. day filter is active), pass
+// prevSince == since to make the prev_* clauses match an empty range.
 const SUMMARY_QUERY = `
   SELECT
-    toString(count()) AS total_events,
-    toString(countIf(event_type = '$page-view')) AS page_views,
-    toString(countIf(event_type = '$click')) AS clicks,
-    toString(uniqExactIf(session_replay_id, session_replay_id IS NOT NULL)) AS sessions,
-    CAST(max(event_at), 'Nullable(String)') AS last_event_at
+    toString(countIf(event_at >= {since:DateTime})) AS total_events,
+    toString(countIf(event_at >= {since:DateTime} AND event_type = '$page-view')) AS page_views,
+    toString(countIf(event_at >= {since:DateTime} AND event_type = '$click')) AS clicks,
+    toString(uniqExactIf(session_replay_id, session_replay_id IS NOT NULL AND event_at >= {since:DateTime})) AS sessions,
+    toString(countIf(event_at >= {prevSince:DateTime} AND event_at < {since:DateTime})) AS prev_total_events,
+    toString(countIf(event_at >= {prevSince:DateTime} AND event_at < {since:DateTime} AND event_type = '$page-view')) AS prev_page_views,
+    toString(countIf(event_at >= {prevSince:DateTime} AND event_at < {since:DateTime} AND event_type = '$click')) AS prev_clicks,
+    toString(uniqExactIf(session_replay_id, session_replay_id IS NOT NULL AND event_at >= {prevSince:DateTime} AND event_at < {since:DateTime})) AS prev_sessions,
+    CAST(maxIf(event_at, event_at >= {since:DateTime}), 'Nullable(String)') AS last_event_at
   FROM events
   WHERE user_id = {userId:String}
-    AND event_at >= {since:DateTime}
+    AND event_at >= {prevSince:DateTime}
+    AND event_at < {until:DateTime}
 `;
 
 const DAILY_QUERY = `
   SELECT
     toString(toDate(event_at)) AS day,
+    toString(count()) AS total_events,
     toString(countIf(event_type = '$page-view')) AS page_views,
-    toString(countIf(event_type = '$click')) AS clicks
+    toString(countIf(event_type = '$click')) AS clicks,
+    toString(uniqExactIf(session_replay_id, session_replay_id IS NOT NULL)) AS sessions
   FROM events
   WHERE user_id = {userId:String}
     AND event_at >= {since:DateTime}
-    AND event_type IN ('$page-view', '$click')
+    AND event_at < {until:DateTime}
   GROUP BY day
   ORDER BY day ASC
 `;
@@ -150,6 +179,7 @@ const TOP_PAGES_QUERY = `
     WHERE user_id = {userId:String}
       AND event_type = '$page-view'
       AND event_at >= {since:DateTime}
+    AND event_at < {until:DateTime}
   )
   WHERE path IS NOT NULL
   GROUP BY path
@@ -175,6 +205,7 @@ const TOP_REFERRERS_QUERY = `
     WHERE user_id = {userId:String}
       AND event_type = '$page-view'
       AND event_at >= {since:DateTime}
+    AND event_at < {until:DateTime}
   )
   WHERE referrer IS NOT NULL
   GROUP BY referrer
@@ -207,8 +238,10 @@ const RECENT_EVENTS_QUERY = `
   FROM events
   WHERE user_id = {userId:String}
     AND event_at >= {since:DateTime}
+    AND event_at < {until:DateTime}
   ORDER BY event_at DESC
   LIMIT {limit:UInt32}
+  OFFSET {offset:UInt32}
 `;
 
 function parseSummary(rows: Record<string, unknown>[]): SummaryRow {
@@ -221,6 +254,10 @@ function parseSummary(rows: Record<string, unknown>[]): SummaryRow {
     page_views: toNumber(row.page_views),
     clicks: toNumber(row.clicks),
     sessions: toNumber(row.sessions),
+    prev_total_events: toNumber(row.prev_total_events),
+    prev_page_views: toNumber(row.prev_page_views),
+    prev_clicks: toNumber(row.prev_clicks),
+    prev_sessions: toNumber(row.prev_sessions),
     last_event_at: toStringOrNull(row.last_event_at),
   };
 }
@@ -229,8 +266,10 @@ function parseDaily(rows: Record<string, unknown>[]): DailyRow[] {
   return rows
     .map((row) => ({
       day: String(row.day ?? ""),
+      total_events: toNumber(row.total_events),
       page_views: toNumber(row.page_views),
       clicks: toNumber(row.clicks),
+      sessions: toNumber(row.sessions),
     }))
     .filter((r) => r.day.length > 0);
 }
@@ -357,26 +396,59 @@ function eventTypeBadge(eventType: string): { label: string, color: DesignBadgeC
 // Re-emits the list of days into a dense, evenly-spaced series covering the
 // full window. Without this, sparse days collapse together on the X axis and
 // the chart reads "active all month" when really there are only two spikes.
-function densifyDaily(daily: DailyRow[]): DailyRow[] {
+function densifyDaily(daily: DailyRow[], range: { startUtc: Date, endUtcInclusive: Date }): DailyRow[] {
   const byDay = new Map(daily.map((d) => [d.day, d]));
-  const today = new Date();
   const dense: DailyRow[] = [];
-  for (let offset = ANALYTICS_WINDOW_DAYS - 1; offset >= 0; offset--) {
-    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - offset));
-    const day = d.toISOString().slice(0, 10);
+  const cursor = new Date(Date.UTC(
+    range.startUtc.getUTCFullYear(),
+    range.startUtc.getUTCMonth(),
+    range.startUtc.getUTCDate(),
+  ));
+  const end = Date.UTC(
+    range.endUtcInclusive.getUTCFullYear(),
+    range.endUtcInclusive.getUTCMonth(),
+    range.endUtcInclusive.getUTCDate(),
+  );
+  while (cursor.getTime() <= end) {
+    const day = cursor.toISOString().slice(0, 10);
     const existing = byDay.get(day);
     dense.push({
       day,
+      total_events: existing?.total_events ?? 0,
       page_views: existing?.page_views ?? 0,
       clicks: existing?.clicks ?? 0,
+      sessions: existing?.sessions ?? 0,
     });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return dense;
 }
 
-export function UserAnalyticsSection({ user }: { user: ServerUser }) {
+type UserAnalyticsSectionProps = {
+  user: ServerUser,
+  dayFilter?: string | null,
+  onClearDayFilter?: () => void,
+};
+
+function parseDayFilterRange(dayFilter: string): { since: Date, until: Date } | null {
+  const parts = dayFilter.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((p) => !Number.isFinite(p))) return null;
+  const since = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  const until = new Date(since);
+  until.setUTCDate(until.getUTCDate() + 1);
+  return { since, until };
+}
+
+export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: UserAnalyticsSectionProps) {
   const stackAdminApp = useAdminApp();
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [recent, setRecent] = useState<RecentEventsState>({ rows: [], hasMore: false, isLoadingMore: false });
+  const recentContextRef = useRef<RecentFetchContext | null>(null);
+
+  const filterRange = useMemo(
+    () => (dayFilter ? parseDayFilterRange(dayFilter) : null),
+    [dayFilter],
+  );
 
   useEffect(() => {
     // Boxed cancellation flag: `let cancelled = false` works but the lint
@@ -384,11 +456,50 @@ export function UserAnalyticsSection({ user }: { user: ServerUser }) {
     // `if (cancelled)` as "always falsy", so we put it on an object.
     const token = { cancelled: false };
     setState({ status: "loading" });
+    setRecent({ rows: [], hasMore: false, isLoadingMore: false });
+    recentContextRef.current = null;
 
-    const since = new Date(Date.now() - ANALYTICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const since = filterRange ? filterRange.since : new Date(now.getTime() - ANALYTICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const until = filterRange ? filterRange.until : now;
     const baseParams = {
       userId: user.id,
       since: toClickhouseDateTimeParam(since),
+      until: toClickhouseDateTimeParam(until),
+    };
+
+    // Cards show a 7-day total + sparkline + delta vs the prior 7 days. When a
+    // day filter is active, fall back to that single day's window with no
+    // delta — prevSince == since collapses the prev_* clauses to an empty range.
+    const summarySince = filterRange ? filterRange.since : new Date(now.getTime() - SUMMARY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const summaryUntil = filterRange ? filterRange.until : now;
+    const summaryPrevSince = filterRange
+      ? summarySince
+      : new Date(summarySince.getTime() - SUMMARY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const summaryParams = {
+      userId: user.id,
+      since: toClickhouseDateTimeParam(summarySince),
+      until: toClickhouseDateTimeParam(summaryUntil),
+      prevSince: toClickhouseDateTimeParam(summaryPrevSince),
+    };
+
+    // The daily chart should always show context around the selected day
+    // rather than collapsing to a single bucket — so when filtered, we expand
+    // to ±ANALYTICS_CHART_OFFSET_DAYS, clamped to "now" on the upper bound so
+    // we don't render trailing empty days into the future.
+    const dailyRange = filterRange
+      ? {
+        since: new Date(filterRange.since.getTime() - ANALYTICS_CHART_OFFSET_DAYS * 24 * 60 * 60 * 1000),
+        until: new Date(Math.min(
+          filterRange.until.getTime() + ANALYTICS_CHART_OFFSET_DAYS * 24 * 60 * 60 * 1000,
+          now.getTime(),
+        )),
+      }
+      : { since, until };
+    const dailyParams = {
+      userId: user.id,
+      since: toClickhouseDateTimeParam(dailyRange.since),
+      until: toClickhouseDateTimeParam(dailyRange.until),
     };
 
     const runQuery = (query: string, params: Record<string, unknown>) =>
@@ -396,15 +507,22 @@ export function UserAnalyticsSection({ user }: { user: ServerUser }) {
 
     runAsynchronously(async () => {
       const [summaryRes, dailyRes, topPagesRes, topReferrersRes, recentRes] = await Promise.all([
-        runQuery(SUMMARY_QUERY, baseParams),
-        runQuery(DAILY_QUERY, baseParams),
+        runQuery(SUMMARY_QUERY, summaryParams),
+        runQuery(DAILY_QUERY, dailyParams),
         runQuery(TOP_PAGES_QUERY, { ...baseParams, limit: TOP_PAGES_LIMIT }),
         runQuery(TOP_REFERRERS_QUERY, { ...baseParams, limit: TOP_REFERRERS_LIMIT }),
-        runQuery(RECENT_EVENTS_QUERY, { ...baseParams, limit: RECENT_EVENTS_LIMIT }),
+        runQuery(RECENT_EVENTS_QUERY, { ...baseParams, limit: RECENT_EVENTS_PAGE_SIZE, offset: 0 }),
       ]);
 
       if (token.cancelled) return;
 
+      const initialRecentRows = parseRecentEvents(recentRes.result);
+      recentContextRef.current = { params: baseParams, token };
+      setRecent({
+        rows: initialRecentRows,
+        hasMore: initialRecentRows.length >= RECENT_EVENTS_PAGE_SIZE,
+        isLoadingMore: false,
+      });
       setState({
         status: "ready",
         data: {
@@ -412,7 +530,6 @@ export function UserAnalyticsSection({ user }: { user: ServerUser }) {
           daily: parseDaily(dailyRes.result),
           topPages: parseTopPages(topPagesRes.result),
           topReferrers: parseTopReferrers(topReferrersRes.result),
-          recent: parseRecentEvents(recentRes.result),
         },
       });
     }, {
@@ -431,17 +548,79 @@ export function UserAnalyticsSection({ user }: { user: ServerUser }) {
     return () => {
       token.cancelled = true;
     };
-  }, [stackAdminApp, user.id]);
+  }, [stackAdminApp, user.id, filterRange]);
 
-  if (state.status === "loading") {
-    return <UserAnalyticsLoading />;
-  }
+  const onLoadMoreRecent = useCallback(() => {
+    const current = recent;
+    if (current.isLoadingMore || !current.hasMore) return;
+    const ctx = recentContextRef.current;
+    if (!ctx) return;
+    const offset = current.rows.length;
+    setRecent((p) => ({ ...p, isLoadingMore: true }));
+    runAsynchronously(async () => {
+      const res = await stackAdminApp.queryAnalytics({
+        query: RECENT_EVENTS_QUERY,
+        params: { ...ctx.params, limit: RECENT_EVENTS_PAGE_SIZE, offset },
+        timeout_ms: 30_000,
+        include_all_branches: false,
+      });
+      if (ctx.token.cancelled) return;
+      const newRows = parseRecentEvents(res.result);
+      setRecent((p) => ({
+        rows: [...p.rows, ...newRows],
+        hasMore: newRows.length >= RECENT_EVENTS_PAGE_SIZE,
+        isLoadingMore: false,
+      }));
+    }, {
+      noErrorLogging: true,
+      onError: (error) => {
+        if (ctx.token.cancelled) return;
+        captureError("user-analytics-recent-load-more", error);
+        setRecent((p) => ({ ...p, isLoadingMore: false, hasMore: false }));
+      },
+    });
+  }, [stackAdminApp, recent]);
 
-  if (state.status === "error") {
-    return <UserAnalyticsError />;
-  }
+  return (
+    <div className="flex flex-col gap-4">
+      {dayFilter && (
+        <DayFilterBanner dayFilter={dayFilter} onClear={onClearDayFilter} />
+      )}
+      {state.status === "loading" ? (
+        <UserAnalyticsLoading />
+      ) : state.status === "error" ? (
+        <UserAnalyticsError />
+      ) : (
+        <UserAnalyticsLoaded
+          data={state.data}
+          dayFilter={dayFilter ?? null}
+          recent={recent}
+          onLoadMoreRecent={onLoadMoreRecent}
+        />
+      )}
+    </div>
+  );
+}
 
-  return <UserAnalyticsLoaded data={state.data} />;
+function DayFilterBanner({ dayFilter, onClear }: { dayFilter: string, onClear?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Filtered by day
+        </span>
+        <span className="text-sm font-medium text-foreground">
+          {formatDayLong(dayFilter)}
+        </span>
+      </div>
+      {onClear && (
+        <Button variant="outline" size="sm" onClick={onClear} className="gap-1.5">
+          <FunnelXIcon size={14} />
+          Remove filter
+        </Button>
+      )}
+    </div>
+  );
 }
 
 function UserAnalyticsLoading() {
@@ -476,7 +655,17 @@ function UserAnalyticsError() {
   );
 }
 
-function UserAnalyticsLoaded({ data }: { data: AnalyticsData }) {
+function UserAnalyticsLoaded({
+  data,
+  dayFilter,
+  recent,
+  onLoadMoreRecent,
+}: {
+  data: AnalyticsData,
+  dayFilter: string | null,
+  recent: RecentEventsState,
+  onLoadMoreRecent: () => void,
+}) {
   const hasAnyEvent = data.summary.total_events > 0;
   const lastActive = useMemo(() => {
     const raw = data.summary.last_event_at;
@@ -486,7 +675,43 @@ function UserAnalyticsLoaded({ data }: { data: AnalyticsData }) {
     return date;
   }, [data.summary.last_event_at]);
 
-  const dense = useMemo(() => densifyDaily(data.daily), [data.daily]);
+  const dense = useMemo(() => {
+    const now = new Date();
+    if (dayFilter) {
+      const range = parseDayFilterRange(dayFilter);
+      if (!range) return data.daily;
+      const startUtc = new Date(range.since.getTime() - ANALYTICS_CHART_OFFSET_DAYS * 24 * 60 * 60 * 1000);
+      const cap = new Date(range.until.getTime() - 1); // last instant of the selected day
+      const projectedEnd = new Date(cap.getTime() + ANALYTICS_CHART_OFFSET_DAYS * 24 * 60 * 60 * 1000);
+      const endUtcInclusive = projectedEnd.getTime() < now.getTime() ? projectedEnd : now;
+      return densifyDaily(data.daily, { startUtc, endUtcInclusive });
+    }
+    const startUtc = new Date(now.getTime() - (ANALYTICS_WINDOW_DAYS - 1) * 24 * 60 * 60 * 1000);
+    return densifyDaily(data.daily, { startUtc, endUtcInclusive: now });
+  }, [data.daily, dayFilter]);
+
+  const summaryDescription = dayFilter ? formatDayLong(dayFilter) : `Last ${SUMMARY_WINDOW_DAYS} days`;
+  const chartDescription = dayFilter
+    ? `Page views and clicks around ${formatDayLong(dayFilter)}`
+    : `Page views and clicks over the last ${ANALYTICS_WINDOW_DAYS} days`;
+
+  // Sparklines + delta vs prior 7d only make sense in the rolling-window view;
+  // the day-filter view collapses to a single bucket and a synthetic prior.
+  const sparkSeries = useMemo(() => {
+    if (dayFilter) return null;
+    const last7 = dense.slice(-SUMMARY_WINDOW_DAYS);
+    return {
+      total_events: last7.map((d) => d.total_events),
+      page_views: last7.map((d) => d.page_views),
+      clicks: last7.map((d) => d.clicks),
+      sessions: last7.map((d) => d.sessions),
+    };
+  }, [dense, dayFilter]);
+
+  const deltaFor = (current: number, previous: number, label: string) =>
+    dayFilter ? undefined : { current, previous, comparisonLabel: label };
+
+  const comparisonLabel = `vs. previous ${SUMMARY_WINDOW_DAYS} days`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -494,30 +719,40 @@ function UserAnalyticsLoaded({ data }: { data: AnalyticsData }) {
         <UserPageMetricCard
           label="Total Events"
           value={formatCompact(data.summary.total_events)}
-          description={`Last ${ANALYTICS_WINDOW_DAYS} days`}
+          description={summaryDescription}
           gradient="blue"
+          delta={deltaFor(data.summary.total_events, data.summary.prev_total_events, comparisonLabel)}
+          spark={sparkSeries ? { values: sparkSeries.total_events } : undefined}
         />
         <UserPageMetricCard
           label="Page Views"
           value={formatCompact(data.summary.page_views)}
-          description={lastActive ? `Last seen ${lastActive.toLocaleDateString()}` : "No recent activity"}
+          description={lastActive ? `Last seen ${lastActive.toLocaleDateString()}` : summaryDescription}
           gradient="cyan"
+          delta={deltaFor(data.summary.page_views, data.summary.prev_page_views, comparisonLabel)}
+          spark={sparkSeries ? { values: sparkSeries.page_views } : undefined}
         />
         <UserPageMetricCard
           label="Clicks"
           value={formatCompact(data.summary.clicks)}
-          description={`Across ${ANALYTICS_WINDOW_DAYS}-day window`}
+          description={dayFilter ? "On selected day" : summaryDescription}
           gradient="green"
+          delta={deltaFor(data.summary.clicks, data.summary.prev_clicks, comparisonLabel)}
+          spark={sparkSeries ? { values: sparkSeries.clicks } : undefined}
         />
         <UserPageMetricCard
           label="Sessions"
           value={formatCompact(data.summary.sessions)}
           description="Recorded replays"
           gradient="purple"
+          delta={deltaFor(data.summary.sessions, data.summary.prev_sessions, comparisonLabel)}
+          spark={sparkSeries ? { values: sparkSeries.sessions } : undefined}
         />
       </div>
 
-      <ActivityChart daily={dense} hasAnyEvent={hasAnyEvent} />
+      <div className="xl:hidden">
+        <ActivityChart daily={dense} hasAnyEvent={hasAnyEvent} description={chartDescription} />
+      </div>
 
       <div className="flex flex-col gap-6">
         <TopPathsTableSection
@@ -530,13 +765,18 @@ function UserAnalyticsLoaded({ data }: { data: AnalyticsData }) {
           rows={data.topReferrers.map((r) => ({ label: r.referrer, count: r.views }))}
           emptyMessage="No referrer data yet"
         />
-        <RecentEventsTableSection events={data.recent} />
+        <RecentEventsTableSection
+          events={recent.rows}
+          hasMore={recent.hasMore}
+          isLoadingMore={recent.isLoadingMore}
+          onLoadMore={onLoadMoreRecent}
+        />
       </div>
     </div>
   );
 }
 
-function ActivityChart({ daily, hasAnyEvent }: { daily: DailyRow[], hasAnyEvent: boolean }) {
+function ActivityChart({ daily, hasAnyEvent, description }: { daily: DailyRow[], hasAnyEvent: boolean, description: string }) {
   const pageViewColor = getDesignChartColor(0);
   const clickColor = getDesignChartColor(1);
 
@@ -549,7 +789,7 @@ function ActivityChart({ daily, hasAnyEvent }: { daily: DailyRow[], hasAnyEvent:
     <DesignChartCard
       gradient="blue"
       title="Daily activity"
-      description={`Page views and clicks over the last ${ANALYTICS_WINDOW_DAYS} days`}
+      description={description}
     >
       {!hasAnyEvent ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
@@ -683,6 +923,7 @@ function TopPathsTableSection({
   return (
     <UserPageTableSection
       title={title}
+      urlStateKey={title.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12)}
       columns={columns}
       rows={rows}
       getRowId={(row) => row.label}
@@ -695,7 +936,17 @@ type RecentEventTableRow = RecentEventRow & {
   id: string,
 };
 
-function RecentEventsTableSection({ events }: { events: RecentEventRow[] }) {
+function RecentEventsTableSection({
+  events,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
+}: {
+  events: RecentEventRow[],
+  hasMore: boolean,
+  isLoadingMore: boolean,
+  onLoadMore: () => void,
+}) {
   const rows = useMemo<RecentEventTableRow[]>(
     () => events.map((event, index) => ({ ...event, id: `${event.event_at}-${index}` })),
     [events],
@@ -739,10 +990,14 @@ function RecentEventsTableSection({ events }: { events: RecentEventRow[] }) {
   return (
     <UserPageTableSection
       title="Recent activity"
+      urlStateKey="userevents"
       columns={columns}
       rows={rows}
       getRowId={(row) => row.id}
       emptyLabel="No recent events for this user."
+      hasMore={hasMore}
+      isLoadingMore={isLoadingMore}
+      onLoadMore={onLoadMore}
     />
   );
 }

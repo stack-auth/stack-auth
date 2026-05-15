@@ -457,3 +457,6 @@ A: `docs-mintlify/apps-sidebar-filter.js` injects the Apps filter with inline st
 
 ## Q: How should `StackAssertionError` preserve an underlying thrown error?
 A: Pass the underlying error as the `cause` property in the second argument. The `StackAssertionError` constructor only forwards `cause` into `ErrorOptions`, so storing a caught error under an `error` property captures it as ordinary metadata instead of preserving the error cause chain.
+
+## Q: How should Stack CLI `--config-file` options interpret paths?
+A: `--config-file` should point directly to a regular config file. Do not treat an existing directory as a shortcut for `stack.config.ts` inside it; reject directories with a clear error instead. `stack config pull` may default to `./stack.config.ts` when the flag is omitted, but an explicitly provided directory is still invalid.

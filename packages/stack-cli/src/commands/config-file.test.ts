@@ -20,10 +20,19 @@ describe("resolveConfigFilePathForPull", () => {
     expect(resolveConfigFilePathForPull({ configFile: explicit }, tmpDir)).toBe(path.resolve(explicit));
   });
 
+  it("rejects an explicit --config-file path that points to a directory", () => {
+    expect(() => resolveConfigFilePathForPull({ configFile: tmpDir }, tmpDir)).toThrow(/must point to a config file/);
+  });
+
   it("falls back to ./stack.config.ts in cwd when --config-file is omitted", () => {
     const expected = path.join(tmpDir, "stack.config.ts");
     fs.writeFileSync(expected, "// placeholder\n");
     expect(resolveConfigFilePathForPull({}, tmpDir)).toBe(expected);
+  });
+
+  it("rejects the default ./stack.config.ts path when it is a directory", () => {
+    fs.mkdirSync(path.join(tmpDir, "stack.config.ts"));
+    expect(() => resolveConfigFilePathForPull({}, tmpDir)).toThrow(/directory instead of a file/);
   });
 
   it("treats an empty --config-file string as omitted (falls back to cwd)", () => {

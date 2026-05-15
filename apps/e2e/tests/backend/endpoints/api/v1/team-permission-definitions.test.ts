@@ -616,3 +616,55 @@ it("removes deleted permission definition from team creator default permissions"
     [{ "id": "team_admin" }]
   `);
 });
+
+it("paginates and filters team permission definitions via limit, cursor, and query", async ({ expect }) => {
+  backendContext.set({ projectKeys: InternalProjectKeys });
+  const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+  // Page 1 with limit=3 should return the first 3 items + a cursor
+  const page1 = await niceBackendFetch(`/api/v1/team-permission-definitions?limit=3`, {
+    accessType: "admin",
+    method: "GET",
+    headers: { 'x-stack-admin-access-token': adminAccessToken },
+  });
+  expect(page1.status).toBe(200);
+  expect(page1.body.is_paginated).toBe(true);
+  expect(page1.body.items.length).toBe(3);
+  expect(page1.body.pagination.next_cursor).not.toBeNull();
+
+  // Page 2 using the cursor should return the next slice; combined results must be distinct
+  const cursor = page1.body.pagination.next_cursor;
+  const page2 = await niceBackendFetch(`/api/v1/team-permission-definitions?limit=3&cursor=${encodeURIComponent(cursor)}`, {
+    accessType: "admin",
+    method: "GET",
+    headers: { 'x-stack-admin-access-token': adminAccessToken },
+  });
+  expect(page2.status).toBe(200);
+  expect(page2.body.is_paginated).toBe(true);
+  expect(page2.body.items.length).toBeGreaterThan(0);
+  const page1Ids = new Set(page1.body.items.map((p: any) => p.id));
+  for (const item of page2.body.items) {
+    expect(page1Ids.has(item.id)).toBe(false);
+  }
+
+  // `query` performs case-insensitive free-text matching on id and description
+  const queryResp = await niceBackendFetch(`/api/v1/team-permission-definitions?query=ADMIN`, {
+    accessType: "admin",
+    method: "GET",
+    headers: { 'x-stack-admin-access-token': adminAccessToken },
+  });
+  expect(queryResp.status).toBe(200);
+  expect(queryResp.body.items.length).toBeGreaterThan(0);
+  for (const item of queryResp.body.items) {
+    const haystack = `${item.id} ${item.description ?? ""}`.toLowerCase();
+    expect(haystack.includes("admin")).toBe(true);
+  }
+
+  // `cursor` requires `limit`
+  const badCursor = await niceBackendFetch(`/api/v1/team-permission-definitions?cursor=team_admin`, {
+    accessType: "admin",
+    method: "GET",
+    headers: { 'x-stack-admin-access-token': adminAccessToken },
+  });
+  expect(badCursor.status).toBe(400);
+});

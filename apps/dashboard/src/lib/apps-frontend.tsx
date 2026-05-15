@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -393,7 +393,7 @@ export const ALL_APPS_FRONTEND = {
     href: "analytics",
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
-      { displayName: "Replays", href: "./replays" },
+      { displayName: "Replays", href: "../session-replays" },
       { displayName: "Queries", href: "./queries" },
     ],
     screenshots: [],
@@ -401,6 +401,18 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>Analytics provides direct access to your project&apos;s analytics data stored in ClickHouse.</p>
         <p>Browse tables, explore event data, and gain insights into user behavior and system performance.</p>
+      </>
+    ),
+  },
+  "session-replays": {
+    icon: MonitorPlayIcon,
+    href: "session-replays",
+    parentAppId: "analytics",
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Session Replays let you watch real user sessions to understand how people use your app.</p>
+        <p>Built on the same analytics pipeline, replays are scoped per user and surfaced inline on the user page.</p>
       </>
     ),
   },

@@ -44,7 +44,12 @@
             "name": "X-Stack-Access-Type",
             "in": "header",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "client",
+                "server",
+                "admin"
+              ]
             },
             "required": false
           },
@@ -206,7 +211,10 @@
                             ]
                           },
                           "type": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "team"
+                            ]
                           },
                           "team_id": {
                             "type": "string"
@@ -311,7 +319,10 @@
                       "type": "boolean"
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "team"
+                      ]
                     },
                     "team_id": {
                       "type": "string"
@@ -389,7 +400,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "team"
+                      ]
                     },
                     "team_id": {
                       "type": "string"
@@ -484,7 +498,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "team"
+                      ]
                     },
                     "team_id": {
                       "type": "string"
@@ -567,7 +584,10 @@
                             ]
                           },
                           "type": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "user"
+                            ]
                           },
                           "user_id": {
                             "type": "string",
@@ -678,7 +698,10 @@
                       "type": "boolean"
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "user"
+                      ]
                     },
                     "user_id": {
                       "type": "string",
@@ -758,7 +781,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "user"
+                      ]
                     },
                     "user_id": {
                       "type": "string",
@@ -855,7 +881,10 @@
                       ]
                     },
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "user"
+                      ]
                     },
                     "user_id": {
                       "type": "string",
@@ -955,6 +984,11 @@
                   },
                   "mode": {
                     "type": "string",
+                    "enum": [
+                      "check",
+                      "claim-anon-session",
+                      "complete"
+                    ],
                     "default": "complete"
                   },
                   "refresh_token": {
@@ -1032,7 +1066,13 @@
                   "type": "object",
                   "properties": {
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "waiting",
+                        "success",
+                        "expired",
+                        "used"
+                      ]
                     },
                     "refresh_token": {
                       "type": "string"
@@ -1053,7 +1093,13 @@
                   "type": "object",
                   "properties": {
                     "status": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "waiting",
+                        "success",
+                        "expired",
+                        "used"
+                      ]
                     },
                     "refresh_token": {
                       "type": "string"
@@ -1207,6 +1253,9 @@
                           },
                           "type": {
                             "type": "string",
+                            "enum": [
+                              "email"
+                            ],
                             "example": "email",
                             "description": "The type of the contact channel. Currently only \"email\" is supported."
                           },
@@ -1301,6 +1350,9 @@
                   },
                   "type": {
                     "type": "string",
+                    "enum": [
+                      "email"
+                    ],
                     "example": "email",
                     "description": "The type of the contact channel. Currently only \"email\" is supported."
                   },
@@ -1361,6 +1413,9 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "email"
+                      ],
                       "example": "email",
                       "description": "The type of the contact channel. Currently only \"email\" is supported."
                     },
@@ -1582,6 +1637,9 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "email"
+                      ],
                       "example": "email",
                       "description": "The type of the contact channel. Currently only \"email\" is supported."
                     },
@@ -1749,6 +1807,9 @@
                   },
                   "type": {
                     "type": "string",
+                    "enum": [
+                      "email"
+                    ],
                     "example": "email",
                     "description": "The type of the contact channel. Currently only \"email\" is supported."
                   },
@@ -1802,6 +1863,9 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "email"
+                      ],
                       "example": "email",
                       "description": "The type of the contact channel. Currently only \"email\" is supported."
                     },
@@ -2935,7 +2999,11 @@
                     "type": "string"
                   },
                   "feedback_type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "feedback",
+                      "bug"
+                    ]
                   }
                 },
                 "required": [
@@ -3026,6 +3094,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "authenticate",
+                "link"
+              ],
               "default": "authenticate"
             },
             "required": false
@@ -3068,6 +3140,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "json",
+                "redirect"
+              ],
               "default": "redirect"
             },
             "required": false
@@ -3084,7 +3160,11 @@
             "name": "bot_challenge_phase",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "invisible",
+                "visible"
+              ]
             },
             "required": false
           },
@@ -3092,7 +3172,10 @@
             "name": "bot_challenge_unavailable",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             },
             "required": false
           },
@@ -3140,7 +3223,10 @@
             "name": "grant_type",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "authorization_code"
+              ]
             },
             "required": true
           },
@@ -3253,6 +3339,9 @@
                   },
                   "code_challenge_method": {
                     "type": "string",
+                    "enum": [
+                      "S256"
+                    ],
                     "default": "S256"
                   },
                   "after_callback_redirect_url": {
@@ -3308,7 +3397,11 @@
                 "type": "object",
                 "properties": {
                   "grant_type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "authorization_code",
+                      "refresh_token"
+                    ]
                   },
                   "client_id": {
                     "type": "string"
@@ -3394,6 +3487,20 @@
                           },
                           "type": {
                             "type": "string",
+                            "enum": [
+                              "google",
+                              "github",
+                              "microsoft",
+                              "spotify",
+                              "facebook",
+                              "discord",
+                              "gitlab",
+                              "bitbucket",
+                              "linkedin",
+                              "apple",
+                              "x",
+                              "twitch"
+                            ],
                             "example": "google",
                             "description": "OAuth provider type, one of `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, `twitch`"
                           },
@@ -3499,6 +3606,20 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "google",
+                        "github",
+                        "microsoft",
+                        "spotify",
+                        "facebook",
+                        "discord",
+                        "gitlab",
+                        "bitbucket",
+                        "linkedin",
+                        "apple",
+                        "x",
+                        "twitch"
+                      ],
                       "example": "google",
                       "description": "OAuth provider type, one of `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, `twitch`"
                     },
@@ -3662,6 +3783,20 @@
                     },
                     "type": {
                       "type": "string",
+                      "enum": [
+                        "google",
+                        "github",
+                        "microsoft",
+                        "spotify",
+                        "facebook",
+                        "discord",
+                        "gitlab",
+                        "bitbucket",
+                        "linkedin",
+                        "apple",
+                        "x",
+                        "twitch"
+                      ],
                       "example": "google",
                       "description": "OAuth provider type, one of `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, `twitch`"
                     },
@@ -3776,7 +3911,11 @@
                       "type": "object",
                       "properties": {
                         "role": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "assistant"
+                          ]
                         },
                         "content": {
                           "type": "object"
@@ -4008,7 +4147,11 @@
                       "type": "object",
                       "properties": {
                         "role": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "assistant"
+                          ]
                         },
                         "content": {
                           "type": "object"
@@ -4076,7 +4219,12 @@
             "name": "status",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "open",
+                "pending",
+                "closed"
+              ]
             },
             "required": false
           },
@@ -4147,16 +4295,38 @@
                             "type": "string"
                           },
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "open",
+                              "pending",
+                              "closed"
+                            ]
                           },
                           "priority": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "low",
+                              "normal",
+                              "high",
+                              "urgent"
+                            ]
                           },
                           "source": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "manual",
+                              "chat",
+                              "email",
+                              "api"
+                            ]
                           },
                           "lastMessageType": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "message",
+                              "internal-note",
+                              "status-change"
+                            ]
                           },
                           "preview": {
                             "type": "string"
@@ -4275,10 +4445,22 @@
                     "type": "string"
                   },
                   "priority": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "normal",
+                      "high",
+                      "urgent"
+                    ]
                   },
                   "source": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "manual",
+                      "chat",
+                      "email",
+                      "api"
+                    ]
                   }
                 },
                 "required": [
@@ -4384,16 +4566,38 @@
                           "type": "string"
                         },
                         "status": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "pending",
+                            "closed"
+                          ]
                         },
                         "priority": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "low",
+                            "normal",
+                            "high",
+                            "urgent"
+                          ]
                         },
                         "source": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "manual",
+                            "chat",
+                            "email",
+                            "api"
+                          ]
                         },
                         "lastMessageType": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "message",
+                            "internal-note",
+                            "status-change"
+                          ]
                         },
                         "preview": {
                           "type": "string"
@@ -4490,16 +4694,38 @@
                             "type": "string"
                           },
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "open",
+                              "pending",
+                              "closed"
+                            ]
                           },
                           "priority": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "low",
+                              "normal",
+                              "high",
+                              "urgent"
+                            ]
                           },
                           "source": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "manual",
+                              "chat",
+                              "email",
+                              "api"
+                            ]
                           },
                           "messageType": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "message",
+                              "internal-note",
+                              "status-change"
+                            ]
                           },
                           "body": {
                             "type": "string"
@@ -4520,7 +4746,12 @@
                             "type": "object",
                             "properties": {
                               "type": {
-                                "type": "string"
+                                "type": "string",
+                                "enum": [
+                                  "user",
+                                  "agent",
+                                  "system"
+                                ]
                               },
                               "id": {
                                 "type": "string"
@@ -4653,16 +4884,38 @@
                           "type": "string"
                         },
                         "status": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "pending",
+                            "closed"
+                          ]
                         },
                         "priority": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "low",
+                            "normal",
+                            "high",
+                            "urgent"
+                          ]
                         },
                         "source": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "manual",
+                            "chat",
+                            "email",
+                            "api"
+                          ]
                         },
                         "lastMessageType": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "message",
+                            "internal-note",
+                            "status-change"
+                          ]
                         },
                         "preview": {
                           "type": "string"
@@ -4759,16 +5012,38 @@
                             "type": "string"
                           },
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "open",
+                              "pending",
+                              "closed"
+                            ]
                           },
                           "priority": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "low",
+                              "normal",
+                              "high",
+                              "urgent"
+                            ]
                           },
                           "source": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "manual",
+                              "chat",
+                              "email",
+                              "api"
+                            ]
                           },
                           "messageType": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "message",
+                              "internal-note",
+                              "status-change"
+                            ]
                           },
                           "body": {
                             "type": "string"
@@ -4789,7 +5064,12 @@
                             "type": "object",
                             "properties": {
                               "type": {
-                                "type": "string"
+                                "type": "string",
+                                "enum": [
+                                  "user",
+                                  "agent",
+                                  "system"
+                                ]
                               },
                               "id": {
                                 "type": "string"
@@ -4886,7 +5166,10 @@
                 "type": "object",
                 "properties": {
                   "type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "totp"
+                    ]
                   },
                   "totp": {
                     "type": "string"
@@ -4981,10 +5264,17 @@
                     "type": "string"
                   },
                   "bot_challenge_phase": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "invisible",
+                      "visible"
+                    ]
                   },
                   "bot_challenge_unavailable": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "true"
+                    ]
                   }
                 },
                 "required": [
@@ -5310,7 +5600,10 @@
                   "type": "object",
                   "properties": {
                     "success": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "maybe, only if user with e-mail exists"
+                      ]
                     }
                   },
                   "required": [
@@ -5466,10 +5759,17 @@
                     "type": "string"
                   },
                   "bot_challenge_phase": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "invisible",
+                      "visible"
+                    ]
                   },
                   "bot_challenge_unavailable": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "true"
+                    ]
                   }
                 },
                 "required": [
@@ -5593,6 +5893,11 @@
             "in": "path",
             "schema": {
               "type": "string",
+              "enum": [
+                "user",
+                "team",
+                "custom"
+              ],
               "example": "user",
               "description": "The type of customer"
             },
@@ -5676,6 +5981,11 @@
                 "properties": {
                   "customer_type": {
                     "type": "string",
+                    "enum": [
+                      "user",
+                      "team",
+                      "custom"
+                    ],
                     "example": "user",
                     "description": "The type of customer making the purchase"
                   },
@@ -5696,12 +6006,17 @@
                         "type": "string"
                       },
                       "customer_type": {
-                        "type": "string"
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "team",
+                          "custom"
+                        ]
                       },
                       "free_trial": {
                         "type": "array",
                         "items": {
-                          "type": "number"
+                          "type": "integer"
                         }
                       },
                       "server_only": {
@@ -5823,7 +6138,7 @@
                     "description": "The Stack auth price ID to purchase"
                   },
                   "quantity": {
-                    "type": "number",
+                    "type": "integer",
                     "example": 1,
                     "description": "The quantity to purchase",
                     "default": 1
@@ -5923,12 +6238,17 @@
                           "type": "string"
                         },
                         "customer_type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "team",
+                            "custom"
+                          ]
                         },
                         "free_trial": {
                           "type": "array",
                           "items": {
-                            "type": "number"
+                            "type": "integer"
                           }
                         },
                         "server_only": {
@@ -6063,6 +6383,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "example": "true",
               "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed."
             },
@@ -6169,6 +6493,10 @@
             "in": "query",
             "schema": {
               "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
               "example": "true",
               "description": "Whether to list permissions recursively. If set to `false`, only the permission the users directly have will be listed. If set to `true` all the direct and indirect permissions will be listed."
             },
@@ -7252,6 +7580,65 @@
             },
             "description": "Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API",
             "required": false
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at"
+              ],
+              "example": "created_at",
+              "description": "Field to order results by. Currently only `created_at` is supported."
+            },
+            "description": "Field to order results by. Currently only `created_at` is supported.",
+            "required": false
+          },
+          {
+            "name": "desc",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "example": "false",
+              "description": "Whether to order results in descending order. Defaults to false (ascending)."
+            },
+            "description": "Whether to order results in descending order. Defaults to false (ascending).",
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "description": "The maximum number of items to return (capped at 200)."
+            },
+            "description": "The maximum number of items to return (capped at 200).",
+            "required": false
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "The cursor to start the result set from. Requires `limit` to also be set."
+            },
+            "description": "The cursor to start the result set from. Requires `limit` to also be set.",
+            "required": false
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "A search query to filter the results by. Free-text search applied to the team's id (exact-match) and display name."
+            },
+            "description": "A search query to filter the results by. Free-text search applied to the team's id (exact-match) and display name.",
+            "required": false
           }
         ],
         "tags": [
@@ -7754,7 +8141,12 @@
                       "type": "object",
                       "properties": {
                         "type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "anonymous",
+                            "email_not_verified",
+                            "restricted_by_administrator"
+                          ]
                         }
                       },
                       "required": [
@@ -7988,7 +8380,12 @@
                       "type": "object",
                       "properties": {
                         "type": {
-                          "type": "string"
+                          "type": "string",
+                          "enum": [
+                            "anonymous",
+                            "email_not_verified",
+                            "restricted_by_administrator"
+                          ]
                         }
                       },
                       "required": [

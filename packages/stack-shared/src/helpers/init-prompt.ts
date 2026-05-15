@@ -8,13 +8,48 @@ These instructions describe how to set up Stack Auth.
 ${web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
-Install mcp server from https://mcp.stack-auth.com/mcp if not already installed. Global MCP config file paths for popular coding agents:
-- Claude Code: \`~/.claude.json\`
+Install both the Stack Auth skill and the Stack Auth MCP server for the current coding agent. Pick the install scope using this rule: if the project root already contains an agent folder or project-scoped MCP/agent config file (e.g. \`.claude/\`, \`.claude.json\`, \`.agents/\`, \`.cursor/\`, \`.cursor/mcp.json\`, \`.codex/\`, \`.codex/config.toml\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, \`.vscode/mcp.json\`), install **per project**; otherwise install **globally** for the detected agent.
+
+### Install the skill
+
+Preferred (one shot — detects the agent and writes to the right place):
+
+\`\`\`sh
+npx -y skills add stack-auth/stack-auth --skill stack-auth
+\`\`\`
+
+If that command isn't available, fall back to a manual install. Download the canonical skill from \`https://skill.stack-auth.com\` (\`WebFetch\` or \`curl -sSL\`) and write it verbatim to \`<skills-dir>/stack-auth/SKILL.md\`. Do not modify the contents. Create missing parent directories. \`<skills-dir>\` per agent (mirrors \`vercel-labs/skills\`):
+
+| Agent | Project \`<skills-dir>\` | Global \`<skills-dir>\` |
+| --- | --- | --- |
+| Claude Code | \`.claude/skills\` | \`~/.claude/skills\` (or \`$CLAUDE_CONFIG_DIR/skills\`) |
+| Codex | \`.agents/skills\` | \`~/.codex/skills\` (or \`$CODEX_HOME/skills\`) |
+| Cursor | \`.agents/skills\` | \`~/.cursor/skills\` |
+| opencode | \`.agents/skills\` | \`~/.config/opencode/skills\` |
+| Windsurf | \`.windsurf/skills\` | \`~/.codeium/windsurf/skills\` |
+| Amp | \`.agents/skills\` | \`~/.config/agents/skills\` |
+| Antigravity | \`.agents/skills\` | \`~/.gemini/antigravity/skills\` |
+| Cline | \`.agents/skills\` | \`~/.agents/skills\` |
+| Roo Code | \`.roo/skills\` | \`~/.roo/skills\` |
+| Kilo Code | \`.kilocode/skills\` | \`~/.kilocode/skills\` |
+| Augment | \`.augment/skills\` | \`~/.augment/skills\` |
+| Continue | \`.continue/skills\` | \`~/.continue/skills\` |
+| Crush | \`.crush/skills\` | \`~/.config/crush/skills\` |
+
+For agents not listed, follow their documented skills directory or fall back to \`.agents/skills\` (project) / \`~/.<agent>/skills\` (global).
+
+### Install the MCP server
+
+Server URL: \`https://mcp.stack-auth.com/mcp\` (HTTP transport). Common per-agent config locations:
+- Claude Code: run \`claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp\` (or edit \`~/.claude.json\`)
+- VS Code: run \`code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'\`
+- Cursor: \`~/.cursor/mcp.json\` (project-scoped: \`.cursor/mcp.json\`)
 - Codex CLI: \`~/.codex/config.toml\`
-- Cursor: \`~/.cursor/mcp.json\`
 - opencode: \`~/.config/opencode/opencode.json\`
 
-For reference, questions, or information on Stack Auth, you can query the docs on https://docs.stack-auth.com via curl or any tools that you have
+For any other agent, register an HTTP MCP server named \`stack-auth\` pointing at \`https://mcp.stack-auth.com/mcp\` using its standard MCP config file.
+
+For reference, questions, or information on Stack Auth, fetch the docs on https://docs.stack-auth.com via curl or any tools available, or — if the MCP server is registered — call its \`ask_stack_auth\` tool.
 
 ## Setup
 

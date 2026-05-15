@@ -19,6 +19,7 @@ import {
   pollInternalPck,
 } from "../lib/emulator-paths.js";
 import { CliError } from "../lib/errors.js";
+import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { writeIso } from "../lib/iso.js";
 
 const DEFAULT_PORT_PREFIX = "81";
@@ -739,10 +740,7 @@ export function registerEmulatorCommand(program: Command) {
 
       let resolvedConfigFile: string | undefined;
       if (opts.configFile) {
-        resolvedConfigFile = resolve(opts.configFile);
-        if (!existsSync(resolvedConfigFile)) {
-          throw new CliError(`Config file not found: ${resolvedConfigFile}`);
-        }
+        resolvedConfigFile = resolveConfigFilePathOption(opts.configFile, { mustExist: true });
       }
 
       let freshlyStarted = false;
@@ -782,10 +780,7 @@ export function registerEmulatorCommand(program: Command) {
 
       let resolvedConfigFile: string | undefined;
       if (opts.configFile) {
-        resolvedConfigFile = resolve(opts.configFile);
-        if (!existsSync(resolvedConfigFile)) {
-          throw new CliError(`Config file not found: ${resolvedConfigFile}`);
-        }
+        resolvedConfigFile = resolveConfigFilePathOption(opts.configFile, { mustExist: true });
       }
 
       const alreadyRunning = isEmulatorRunning();

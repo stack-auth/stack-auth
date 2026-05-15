@@ -292,13 +292,12 @@ function RuleTriggerHistoryDialog({
       }
       setLoadingError(error instanceof Error ? error.message : "Failed to load triggers");
     } finally {
-      if (nextRequestId !== latestRequestIdRef.current) {
-        return;
-      }
-      if (reset) {
-        setIsInitialLoading(false);
-      } else {
-        setIsLoadingMore(false);
+      if (nextRequestId === latestRequestIdRef.current) {
+        if (reset) {
+          setIsInitialLoading(false);
+        } else {
+          setIsLoadingMore(false);
+        }
       }
     }
   };
@@ -500,7 +499,9 @@ function RuleEditor({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-muted-foreground">Action:</label>
-              <Select value={actionType} onValueChange={(v) => setActionType(v as SignUpRuleAction['type'])}>
+              <Select value={actionType} onValueChange={(v) => {
+                if (v === "allow" || v === "reject" || v === "restrict" || v === "log") setActionType(v);
+              }}>
                 <SelectTrigger className="w-40">
                   <SelectValue />
                 </SelectTrigger>

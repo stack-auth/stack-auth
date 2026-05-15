@@ -1,0 +1,27 @@
+{
+  "name": "@stackframe/skills",
+  "version": "2.8.89",
+  "repository": "https://github.com/stack-auth/stack-auth",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rimraf .next && rimraf node_modules",
+    "typecheck": "tsc --noEmit",
+    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}45",
+    "build": "next build",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}45",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "next": "16.1.7",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/react": "^19.2.3",
+    "@types/react-dom": "^19.2.3",
+    "rimraf": "^5.0.5",
+    "typescript": "5.9.3"
+  }
+}

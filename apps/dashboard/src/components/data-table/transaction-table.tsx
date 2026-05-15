@@ -5,10 +5,10 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
-import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridState } from '@stackframe/dashboard-ui-components';
+import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@stackframe/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
@@ -464,14 +464,11 @@ function TransactionTableBody(props: {
         }
         const { Icon, label } = displayType;
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
-                <Icon className="h-4 w-4" aria-hidden />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="left">{label}</TooltipContent>
-          </Tooltip>
+          <SimpleTooltip tooltip={label}>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
+              <Icon className="h-4 w-4" aria-hidden />
+            </span>
+          </SimpleTooltip>
         );
       },
     },
@@ -566,9 +563,7 @@ function TransactionTableBody(props: {
     },
   ], [handleRefunded]);
 
-  const [gridState, setGridState] = useState<DataGridState>(() =>
-    createDefaultDataGridState(columns)
-  );
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "transactions" });
 
   const gridData = useDataSource({
     dataSource,
@@ -634,6 +629,7 @@ function TransactionTableBody(props: {
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      fillHeight={false}
       footer={false}
       rowHeight={56}
 

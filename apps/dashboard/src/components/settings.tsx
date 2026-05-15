@@ -18,7 +18,7 @@ export const SettingCard = React.memo(function SettingCard(props: {
   className?: string,
 }) {
   return (
-    <Card className={cn("transition-all", props.className)}>
+    <Card className={cn("transition-all border-foreground/[0.06]", props.className)}>
       {(props.title || props.description) && (
         <CardHeader>
           {props.title && <CardTitle>{props.title}</CardTitle>}

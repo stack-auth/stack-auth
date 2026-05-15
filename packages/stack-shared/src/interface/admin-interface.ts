@@ -238,6 +238,21 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
+  async listTeamPermissionDefinitionsPaginated(
+    options: { limit: number, cursor?: string, query?: string },
+  ): Promise<{ items: TeamPermissionDefinitionsCrud['Admin']['Read'][], nextCursor: string | null }> {
+    const params = new URLSearchParams();
+    params.set("limit", String(options.limit));
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.query) params.set("query", options.query);
+    const response = await this.sendAdminRequest(`/team-permission-definitions?${params.toString()}`, {}, null);
+    const result = await response.json() as TeamPermissionDefinitionsCrud['Admin']['List'];
+    return {
+      items: result.items,
+      nextCursor: result.pagination?.next_cursor ?? null,
+    };
+  }
+
   async createTeamPermissionDefinition(data: TeamPermissionDefinitionsCrud['Admin']['Create']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
     const response = await this.sendAdminRequest(
       "/team-permission-definitions",

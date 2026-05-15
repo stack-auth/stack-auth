@@ -1,7 +1,7 @@
 "use client";
 
 import { TeamSearchTable } from "@/components/data-table/team-search-table";
-import { UserSearchPicker } from "@/components/data-table/user-search-picker";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -23,10 +23,10 @@ import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { AppEnabledGuard } from "../../app-enabled-guard";
-import { PageLayout } from "../../page-layout";
-import { useAdminApp } from "../../use-admin-app";
-import { SessionReplayLimitBanner } from "../shared";
+import { AppEnabledGuard } from "../app-enabled-guard";
+import { PageLayout } from "../page-layout";
+import { useAdminApp } from "../use-admin-app";
+import { SessionReplayLimitBanner } from "../analytics/shared";
 import {
   ALLOWED_PLAYER_SPEEDS,
   createInitialState,
@@ -464,11 +464,17 @@ function useReplayMachine(initialSettings: ReplaySettings) {
 
 type PageClientProps = {
   initialReplayId?: string,
+  lockedUserId?: string,
 };
 
-export default function PageClient({ initialReplayId }: PageClientProps) {
+export default function PageClient({ initialReplayId, lockedUserId }: PageClientProps) {
   const adminApp = useAdminApp() as AdminAppWithSessionReplays;
   const isStandaloneReplayPage = initialReplayId != null;
+  const isEmbedded = lockedUserId != null;
+  const baseFilters = useMemo<ReplayFilters>(
+    () => lockedUserId ? { ...EMPTY_FILTERS, userId: lockedUserId } : EMPTY_FILTERS,
+    [lockedUserId],
+  );
 
   // ---- Recording list + filters ----
 
@@ -478,8 +484,13 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [activeFilterDialog, setActiveFilterDialog] = useState<null | "user" | "team" | "duration" | "lastActive" | "clicks">(null);
-  const [appliedFilters, setAppliedFilters] = useState<ReplayFilters>(EMPTY_FILTERS);
-  const [draftFilters, setDraftFilters] = useState<ReplayFilters>(EMPTY_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<ReplayFilters>(baseFilters);
+  const [draftFilters, setDraftFilters] = useState<ReplayFilters>(baseFilters);
+
+  useEffect(() => {
+    if (!lockedUserId) return;
+    setAppliedFilters((prev) => prev.userId === lockedUserId ? prev : { ...prev, userId: lockedUserId, userLabel: prev.userLabel || "" });
+  }, [lockedUserId]);
   const [clickCountsByReplayId, setClickCountsByReplayId] = useState<Map<string, number>>(new Map());
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [standaloneReplay, setStandaloneReplay] = useState<RecordingRow | null>(null);
@@ -1411,7 +1422,10 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
     })).filter(m => m.timeMs >= 0 && m.timeMs <= ms.globalTotalMs);
   }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs]);
 
-  const activeFilterCount = useMemo(() => filtersActiveCount(appliedFilters), [appliedFilters]);
+  const activeFilterCount = useMemo(() => {
+    const count = filtersActiveCount(appliedFilters);
+    return isEmbedded && appliedFilters.userId === lockedUserId ? Math.max(0, count - 1) : count;
+  }, [appliedFilters, isEmbedded, lockedUserId]);
 
   const openFilterDialog = useCallback((dialog: "user" | "team" | "duration" | "lastActive" | "clicks") => {
     setDraftFilters(appliedFilters);
@@ -1436,12 +1450,12 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
   // ---- Rendering ----
 
   return (
-    <AppEnabledGuard appId="analytics">
+    <AppEnabledGuard appId="session-replays">
       <PageLayout
-        title={isStandaloneReplayPage ? "Session Replay" : "Session Replays"}
-        description={isStandaloneReplayPage ? (
+        title={isEmbedded ? undefined : (isStandaloneReplayPage ? "Session Replay" : "Session Replays")}
+        description={!isEmbedded && isStandaloneReplayPage ? (
           <StyledLink
-            href={`/projects/${encodeURIComponent(adminApp.projectId)}/analytics/replays`}
+            href={`/projects/${encodeURIComponent(adminApp.projectId)}/session-replays`}
             className="inline-flex items-center gap-1 text-xs"
           >
             <ArrowLeftIcon className="h-3 w-3" />
@@ -1449,6 +1463,7 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
           </StyledLink>
         ) : undefined}
         fillWidth
+        noPadding={isEmbedded}
       >
         <SessionReplayLimitBanner />
         <PanelGroup data-walkthrough="analytics-replays" direction="horizontal" className="flex-1 min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
@@ -1482,9 +1497,11 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
                           className="w-48"
                           onCloseAutoFocus={(e) => e.preventDefault()}
                         >
-                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
-                            User
-                          </DropdownMenuItem>
+                          {!isEmbedded && (
+                            <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
+                              User
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
                             Team
                           </DropdownMenuItem>
@@ -1503,7 +1520,7 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
 
                     {activeFilterCount > 0 && (
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {appliedFilters.userId && (
+                        {appliedFilters.userId && !isEmbedded && (
                           <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
                             user:{appliedFilters.userLabel || "selected"}
                           </span>
@@ -1530,7 +1547,7 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
                         )}
                         <button
                           className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors hover:transition-none"
-                          onClick={() => setAppliedFilters(EMPTY_FILTERS)}
+                          onClick={() => setAppliedFilters(baseFilters)}
                         >
                           <XIcon className="h-2.5 w-2.5" />
                           clear
@@ -1545,7 +1562,7 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
                         <DialogTitle>User Filter</DialogTitle>
                       </DialogHeader>
                       <div className="space-y-3">
-                        <UserSearchPicker
+                        <UserPickerTable
                           action={(user) => (
                             <Button
                               variant="outline"
@@ -1844,7 +1861,7 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
                       title={replayShareLinkCopied ? "Copied!" : "Copy link to replay"}
                       onClick={() => runAsynchronouslyWithAlert(async () => {
                         await navigator.clipboard.writeText(
-                          `${window.location.origin}/projects/${encodeURIComponent(adminApp.projectId)}/analytics/replays/${encodeURIComponent(selectedRecordingId)}`,
+                          `${window.location.origin}/projects/${encodeURIComponent(adminApp.projectId)}/session-replays/${encodeURIComponent(selectedRecordingId)}`,
                         );
                         setReplayShareLinkCopied(true);
                       })}
