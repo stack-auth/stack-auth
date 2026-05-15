@@ -21,7 +21,7 @@ import { Tenancy } from "./tenancies";
 
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
-type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
+type SelectedPrice = Product["prices"][string];
 
 export async function ensureClientCanAccessCustomer(options: {
   customerType: "user" | "team" | "custom",
@@ -119,6 +119,19 @@ export async function ensureProductIdOrInlineProduct(
 export function isActiveSubscription(subscription: { status: string }): boolean {
   const s = subscription.status;
   return s === "active" || s === SubscriptionStatus.active || s === "trialing" || s === SubscriptionStatus.trialing;
+}
+
+/**
+ * True when the given product config / snapshot declares itself as an add-on
+ * to one or more other products. Add-ons share a product line with their base
+ * plan but don't satisfy "base plan owned" invariants on their own.
+ *
+ * The predicate normalises the three ways a product can signal "not an
+ * add-on" (absent, explicitly `false`, or an empty record) so callers don't
+ * have to reimplement the check.
+ */
+export function isAddOnProduct(product: { isAddOnTo?: false | Record<string, true> | null }): boolean {
+  return product.isAddOnTo != null && product.isAddOnTo !== false && Object.keys(product.isAddOnTo).length > 0;
 }
 
 type OwnedProducts = OwnedProductsRow["ownedProducts"];
@@ -293,7 +306,7 @@ export function productToInlineProduct(product: ProductWithMetadata): yup.InferT
     client_metadata: product.clientMetadata ?? null,
     client_read_only_metadata: product.clientReadOnlyMetadata ?? null,
     server_metadata: product.serverMetadata ?? null,
-    prices: product.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
+    prices: typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
       ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
       interval: value.interval,
       free_trial: value.freeTrial,
@@ -317,12 +330,10 @@ export async function validatePurchaseSession(options: {
   const { prisma, tenancyId, customerType, customerId, product, productId, priceId, quantity } = options;
 
   // Step 1: Resolve the selected price from the product config
-  // (include-by-default products have no prices — kept for compatibility but not currently supported)
   let selectedPrice: SelectedPrice | undefined = undefined;
-  if (!priceId && product.prices !== "include-by-default") {
+  if (!priceId) {
     selectedPrice = typedValues(product.prices)[0];
-  }
-  if (priceId && product.prices !== "include-by-default") {
+  } else {
     const pricesMap = new Map(typedEntries(product.prices));
     selectedPrice = pricesMap.get(priceId);
     if (!selectedPrice) {
@@ -353,12 +364,22 @@ export async function validatePurchaseSession(options: {
 
   // Step 6: Block purchase if customer already owns a product in the same product line.
   // If they do, find active subscriptions to cancel so the caller can replace them.
-  // Exception: add-on products are allowed even if the base product is in the same line.
+  // Two exceptions:
+  //   - Add-on products: allowed even if their base product is in the same line.
+  //   - Stackable same-product: a second purchase of a stackable product is
+  //     additive, not a replacement — don't treat the existing holding as a
+  //     conflict.
   let conflictingSubscriptions: SubscriptionRow[] = [];
   const productLineId = product.productLineId;
   const addOnBaseProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
+  const isStackableSelfMatch = (pid: string) =>
+    productId != null && pid === productId && product.stackable === true;
   const hasConflictingProductLine = productLineId && Object.entries(ownedProducts).some(
-    ([pid, p]) => p.productLineId === productLineId && p.quantity > 0 && !addOnBaseProductIds.includes(pid)
+    ([pid, p]) =>
+      p.productLineId === productLineId
+      && p.quantity > 0
+      && !addOnBaseProductIds.includes(pid)
+      && !isStackableSelfMatch(pid),
   );
   if (hasConflictingProductLine) {
     // Find active subscriptions in this product line that can be canceled/replaced
@@ -367,6 +388,7 @@ export async function validatePurchaseSession(options: {
       isActiveSubscription(s)
       && (s.product as Product).productLineId === productLineId
       && !addOnBaseProductIds.includes(s.productId ?? "")
+      && !isStackableSelfMatch(s.productId ?? ""),
     );
 
     // If no cancelable subscriptions found, the customer owns via OTP — block the purchase.

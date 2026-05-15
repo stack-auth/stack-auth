@@ -60,12 +60,25 @@ const queryEventDataJson = async (params: {
   },
 });
 
+// Defaults give 40 attempts * 500ms = ~20s of polling.
+//
+// The events under test are produced *asynchronously* by the sign-in path:
+// `runAsynchronouslyAndWaitUntil(logEvent)` fires after the HTTP response
+// returns and runs through SDK self-call → quota debit → Postgres insert →
+// ClickHouse async_insert (which is server-buffered, no wait_for_async_insert).
+// Under CI load this whole pipeline can take well over 10s before the row
+// becomes queryable, so the previous 7.5s window was still flaking with
+// "expected 0 to be greater than 0". 20s is conservative; the loop breaks
+// out as soon as the row appears, so there's no cost on the happy path.
+const DEFAULT_QUERY_RETRY_ATTEMPTS = 40;
+const DEFAULT_QUERY_RETRY_DELAY_MS = 500;
+
 const fetchEventDataJsonWithRetry = async (
   params: { userId?: string, eventType?: string },
   options: { attempts?: number, delayMs?: number } = {}
 ) => {
-  const attempts = options.attempts ?? 5;
-  const delayMs = options.delayMs ?? 250;
+  const attempts = options.attempts ?? DEFAULT_QUERY_RETRY_ATTEMPTS;
+  const delayMs = options.delayMs ?? DEFAULT_QUERY_RETRY_DELAY_MS;
 
   let response = await queryEventDataJson(params);
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -87,8 +100,8 @@ const fetchEventsWithRetry = async (
   params: { userId?: string, eventType?: string },
   options: { attempts?: number, delayMs?: number } = {}
 ) => {
-  const attempts = options.attempts ?? 5;
-  const delayMs = options.delayMs ?? 250;
+  const attempts = options.attempts ?? DEFAULT_QUERY_RETRY_ATTEMPTS;
+  const delayMs = options.delayMs ?? DEFAULT_QUERY_RETRY_DELAY_MS;
 
   let response = await queryEvents(params);
   for (let attempt = 0; attempt < attempts; attempt++) {

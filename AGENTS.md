@@ -74,7 +74,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Always run typecheck, lint, and test to make sure your changes are working as expected. You can save time by only linting and testing the files you've changed (and/or related E2E tests).
 - The project uses a custom route handler system in the backend for consistent API responses
 - When writing tests, prefer .toMatchInlineSnapshot over other selectors, if possible. You can check (and modify) the snapshot-serializer.ts file to see how the snapshots are formatted and how non-deterministic values are handled.
-- Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the ./claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked).
+- Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the .claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked).
 - Animations: Keep hover/click transitions snappy and fast. Don't delay the action with a pre-transition (e.g. no fade-in when hovering a button) — it makes the UI feel sluggish. Instead, apply transitions after the action, like a smooth fade-out when the hover ends.
 - Whenever you make changes in the dashboard, provide the user with a deep link to the dashboard page that you've just changed. Usually, this takes the form of `http://localhost:<whatever-is-in-$NEXT_PUBLIC_STACK_PORT_PREFIX>01/projects/-selector-/...`, although sometimes it's different. If $NEXT_PUBLIC_STACK_PORT_PREFIX is set to 91, 92, or 93, use `a.localhost`, `b.localhost`, and `c.localhost` for the domains, respectively.
 - To update the list of apps available, edit `apps-frontend.tsx` and `apps-config.ts`. When you're tasked to implement a new app or a new page, always check existing apps for inspiration on how you could implement the new app or page.
@@ -95,7 +95,8 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
 - The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
 - When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
-- NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT!
+- NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT! if its already staged and you didnt do it then dont unstage it.
+- NEVER run destructive or working-tree-mutating git operations without EXPLICIT user permission in the current turn. This includes (non-exhaustive): `git stash` / `stash pop` / `stash drop` / `stash clear`, `git reset` (any flag), `git checkout -- <path>` / `git restore`, `git clean`, `git rebase`, `git revert`, `git commit --amend`, `git push --force` / `--force-with-lease`, `git branch -D`, `git tag -d`, `git filter-branch`, `git update-ref`. Read-only inspection (`git status`, `git diff`, `git log`, `git blame`, `git show`, `git show HEAD:path`) is fine. If you think a destructive op is the right move, describe it and wait for a yes — do NOT run it to "verify" or "clean up".
 - When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
@@ -111,6 +112,8 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Always let me know about the tradeoffs and decisions you make while implementing a non-trivial change.
 - Whenever you change the URL of a page in the docs (or remove one), add a redirect in the docs-mintlify/docs.json file to make sure we don't lose any SEO juice.
 - When you made frontend (or docs, dashboard, demo, etc.) changes, and you have a browser MCP in your list of MCP tools, make sure to test the changes in the browser MCP.
+- If you're using the browser to test the dashboard and need to sign in, use GitHub OAuth to sign in (by default it should redirect you to the mock OAuth provider page, where you can sign in with admin@example.com).
+- NEVER INSTALL A NEW PACKAGE (or anything else) WITHOUT EXPLICIT APPROVAL FROM THE USER.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

@@ -2,6 +2,7 @@ import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
+import { arePlanLimitsEnforced, getBillingTeamId, getTeamWideAuthUsersCapacity, getTeamWideNonAnonymousUserCount } from "@/lib/plan-entitlements";
 import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, recordExternalDbSyncNotificationPreferenceDeletionsForUser, recordExternalDbSyncOAuthAccountDeletionsForUser, recordExternalDbSyncProjectPermissionDeletionsForUser, recordExternalDbSyncRefreshTokenDeletionsForUser, recordExternalDbSyncTeamMemberDeletionsForUser, recordExternalDbSyncTeamPermissionDeletionsForUser, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
@@ -20,6 +21,7 @@ import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fiel
 import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
@@ -254,6 +256,32 @@ async function checkAuthData(
     if (existingChannelUsedForAuth) {
       throw new KnownErrors.UserWithEmailAlreadyExists(data.primaryEmail);
     }
+  }
+}
+
+async function checkAuthUsersSoftLimit(tenancy: Tenancy) {
+  // Seed creates dummy-project users via raw Prisma before the bulldozer
+  // payments ledger has been ingressed, so every read here would see
+  // capacity=0 and flood logs. Bulldozer's seed-time invariant is that
+  // nothing reads the ledger until runBulldozerPaymentsInit runs post-seed;
+  // we honor that here rather than forcing seed to double-init.
+  if (getEnvVariable('STACK_SEED_MODE', '') === 'true') {
+    return;
+  }
+  if (!arePlanLimitsEnforced()) {
+    return;
+  }
+  const billingTeamId = getBillingTeamId(tenancy.project);
+  if (billingTeamId == null) {
+    return;
+  }
+  const usage = await getTeamWideNonAnonymousUserCount(billingTeamId);
+  const capacity = await getTeamWideAuthUsersCapacity(billingTeamId);
+  if (usage > capacity) {
+    captureError("auth-users-plan-soft-limit-exceeded", new StackAssertionError(
+      "Auth users soft limit exceeded for billing team",
+      { ownerTeamId: billingTeamId, usage, capacity, projectId: tenancy.project.id },
+    ));
   }
 }
 
@@ -494,7 +522,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     team_id: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Only return users who are members of the given team" } }),
     limit: yupNumber().integer().min(1).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The maximum number of items to return" } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The cursor to start the result set from." } }),
-    order_by: yupString().oneOf(['signed_up_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
+    order_by: yupString().oneOf(['signed_up_at', 'last_active_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
     include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false" } }),
@@ -596,13 +624,18 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         {
           [({
             signed_up_at: 'signedUpAt',
+            last_active_at: 'lastActiveAt',
           } as const)[query.order_by ?? 'signed_up_at']]: sortDirection,
         },
         { projectUserId: sortDirection },
       ],
-      // +1 because we need to know if there is a next page
+      // +1 to detect whether a next page exists without a separate count.
       take: query.limit ? query.limit + 1 : undefined,
+      // Cursor convention (matches teams/crud.tsx): the client sends the
+      // id of the LAST row of the previous page; Prisma starts AT that id,
+      // and `skip: 1` drops it so we don't re-emit it.
       ...query.cursor ? {
+        skip: 1,
         cursor: {
           tenancyId_projectUserId: {
             tenancyId: auth.tenancy.id,
@@ -612,13 +645,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     });
 
+    const items = db.slice(0, query.limit).map((user) => userPrismaToCrud(user, auth.tenancy.config));
+    const hasMore = query.limit != null && db.length > query.limit;
     return {
-      // remove the last item because it's the next cursor
-      items: db.map((user) => userPrismaToCrud(user, auth.tenancy.config)).slice(0, query.limit),
+      items,
       is_paginated: true,
       pagination: {
-        // if result is not full length, there is no next cursor
-        next_cursor: query.limit && db.length >= query.limit + 1 ? db[db.length - 1].projectUserId : null,
+        next_cursor: hasMore && items.length > 0 ? items[items.length - 1].id : null,
       },
     };
   },
@@ -792,6 +825,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
 
+    if (!result.is_anonymous) {
+      runAsynchronouslyAndWaitUntil(checkAuthUsersSoftLimit(auth.tenancy));
+    }
+
     runAsynchronouslyAndWaitUntil(sendUserCreatedWebhook({
       projectId: auth.project.id,
       data: result,
@@ -803,7 +840,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const primaryEmail = data.primary_email ? normalizeEmail(data.primary_email) : data.primary_email;
     const passwordHash = await getPasswordHashFromData(data);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const { user } = await retryTransaction(prisma, async (tx) => {
+    const { user, wasAnonymousUpgrade } = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       const config = auth.tenancy.config;
@@ -850,7 +887,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               }
             });
             throw new StackAssertionError("Failed to update team member", {
-              error: e,
+              cause: e,
               tenancy_id: auth.tenancy.id,
               user_id: params.user_id,
               team_id: data.selected_team_id,
@@ -1120,8 +1157,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         }
       }
 
-      // if we went from anonymous to non-anonymous:
-      if (oldUser.isAnonymous && data.is_anonymous === false) {
+      const wasAnonymousUpgrade = oldUser.isAnonymous && data.is_anonymous === false;
+      if (wasAnonymousUpgrade) {
         // rename the personal team
         await tx.team.updateMany({
           where: {
@@ -1197,8 +1234,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       const user = userPrismaToCrud(db, auth.tenancy.config);
       return {
         user,
+        wasAnonymousUpgrade,
       };
     });
+
+    if (wasAnonymousUpgrade) {
+      runAsynchronouslyAndWaitUntil(checkAuthUsersSoftLimit(auth.tenancy));
+    }
 
     // if user password changed, reset all refresh tokens
     if (passwordHash !== undefined) {

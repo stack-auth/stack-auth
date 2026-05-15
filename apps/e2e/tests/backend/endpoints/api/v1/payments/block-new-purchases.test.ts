@@ -205,7 +205,12 @@ it("should block switch endpoint when blockNewPurchases is enabled", async ({ ex
           serverOnly: false,
           stackable: false,
           catalogId: "catalog",
-          prices: "include-by-default",
+          prices: {
+            monthly: {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
           includedItems: {},
         },
         planB: {
@@ -228,12 +233,83 @@ it("should block switch endpoint when blockNewPurchases is enabled", async ({ ex
 
   const { userId } = await Auth.fastSignUp();
 
+  // Note: we don't pre-grant a source subscription here. A server-grant would create
+  // a row with stripeSubscriptionId=null, which the switch endpoint rejects on its own
+  // (route.ts ~line 143), so it wouldn't actually exercise the "would otherwise proceed"
+  // path. The genuine fallthrough scenario is covered by the $0-plan test below.
   const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
     method: "POST",
     accessType: "client",
     body: {
       from_product_id: "planA",
       to_product_id: "planB",
+    },
+  });
+  expect(switchResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": {
+        "code": "NEW_PURCHASES_BLOCKED",
+        "error": "New purchases are currently blocked for this project. Please contact support for more information.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "NEW_PURCHASES_BLOCKED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should block switch endpoint when upgrading from a $0 plan while blockNewPurchases is enabled", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      blockNewPurchases: true,
+      catalogs: {
+        catalog: { displayName: "Plans" },
+      },
+      products: {
+        freePlan: {
+          displayName: "Free",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          catalogId: "catalog",
+          prices: {
+            monthly: {
+              USD: "0.00",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+        paidPlan: {
+          displayName: "Paid",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          catalogId: "catalog",
+          prices: {
+            monthly: {
+              USD: "2000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      from_product_id: "freePlan",
+      to_product_id: "paidPlan",
     },
   });
   expect(switchResponse).toMatchInlineSnapshot(`

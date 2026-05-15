@@ -11,6 +11,7 @@ import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransac
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
+import { type Config } from '@stackframe/stack-shared/dist/config/format';
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -94,18 +95,21 @@ type SeedDummyUsersOptions = {
   teamNameToId: Map<string, string>,
 };
 
+type PaymentsProducts = {
+  [productId: string]: Config | undefined,
+};
+
 type PaymentsSetup = {
-  paymentsProducts: Record<string, unknown>,
-  paymentsBranchOverride: Record<string, unknown>,
-  paymentsEnvironmentOverride: Record<string, unknown>,
+  paymentsProducts: PaymentsProducts,
+  paymentsBranchOverride: Config,
+  paymentsEnvironmentOverride: Config,
 };
 
 type TransactionsSeedOptions = {
   prisma: PrismaClientTransaction,
   tenancyId: string,
   teamNameToId: Map<string, string>,
-  userEmailToId: Map<string, string>,
-  paymentsProducts: Record<string, unknown>,
+  paymentsProducts: PaymentsProducts,
 };
 
 type EmailSeedOptions = {
@@ -171,6 +175,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'github', accountId: 'amelia-chen-gh' },
+      { providerId: 'google', accountId: 'amelia-chen-google' },
     ],
     createdAt: daysAgo(28, 9),
   },
@@ -211,6 +216,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'spotify', accountId: 'priya-narang-spotify' },
+      { providerId: 'github', accountId: 'priya-narang-gh' },
     ],
     createdAt: daysAgo(23, 8),
   },
@@ -233,6 +239,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: true,
     oauthProviders: [
       { providerId: 'google', accountId: 'chioma-mensah-google' },
+      { providerId: 'microsoft', accountId: 'chioma-mensah-msft' },
     ],
     createdAt: daysAgo(21, 17),
   },
@@ -253,6 +260,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'github', accountId: 'mateo-silva-gh' },
+      { providerId: 'google', accountId: 'mateo-silva-google' },
     ],
     createdAt: daysAgo(15, 9),
   },
@@ -262,7 +270,10 @@ const userSeeds: UserSeed[] = [
     teamDisplayNames: ['Growth Loop', 'Customer Advisory Board'],
     primaryEmailVerified: true,
     isAnonymous: false,
-    oauthProviders: [],
+    oauthProviders: [
+      { providerId: 'google', accountId: 'harper-lin-google' },
+      { providerId: 'microsoft', accountId: 'harper-lin-msft' },
+    ],
     createdAt: daysAgo(12, 13),
   },
   {
@@ -272,7 +283,10 @@ const userSeeds: UserSeed[] = [
     teamDisplayNames: ['Prototype Garage', EXPLORATORY_TEAM_DISPLAY_NAME],
     primaryEmailVerified: true,
     isAnonymous: false,
-    oauthProviders: [],
+    oauthProviders: [
+      { providerId: 'github', accountId: 'zara-malik-gh' },
+      { providerId: 'spotify', accountId: 'zara-malik-spotify' },
+    ],
     createdAt: daysAgo(9, 10),
   },
   {
@@ -303,6 +317,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'microsoft', accountId: 'theo-fischer-msft' },
+      { providerId: 'github', accountId: 'theo-fischer-gh' },
     ],
     createdAt: daysAgo(3, 11),
   },
@@ -330,7 +345,6 @@ const DUMMY_SEED_IDS = {
     designSystemsGrowth: 'a296195f-c460-4cd6-b4c4-6cd359b4c643',
     prototypeStarterTrial: '5a255248-4d42-4d61-95f9-f53e97c3f2dd',
     mateoGrowthAnnual: 'c4acea49-302a-43b9-82a7-446b19e0e662',
-    legacyEnterprise: '11664974-38ff-4356-8e39-2fa9105ed84f',
   },
   itemQuantityChanges: {
     designSeatsGrant: '44ca1801-0732-4273-ae14-4fd1c3999e24',
@@ -348,8 +362,6 @@ const DUMMY_SEED_IDS = {
     growthMonthly4: 'b4d5e6f7-a8b9-4012-cd3e-4f5a6b7c8d93',
     growthMonthly5: 'c5e6f7a8-b9c0-4123-de4f-5a6b7c8d9ea4',
     starterCreation: 'd6f7a8b9-c0d1-4234-ef50-6a7b8c9d0fb5',
-    legacyPaid1: 'e7a8b9c0-d1e2-4345-a061-7b8c9d0e1ac6',
-    legacyPaid2: 'f8b9c0d1-e2f3-4456-b172-8c9d0e1f2bd7',
   },
   emails: {
     welcomeAmelia: 'af8cfd90-8912-4bf7-93a7-20ff2be54767',
@@ -389,6 +401,129 @@ async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<strin
   }
 
   return teamNameToId;
+}
+
+type SeedOauthProvider = { providerId: string, accountId: string, email: string };
+
+/**
+ * Idempotently reconcile OAuth provider rows for an existing seeded user.
+ *
+ * `adminCreate` already writes these on first insert, so this usually becomes
+ * a no-op for newly-created users. For users that existed before the seed grew
+ * its OAuth list, this makes the database match the current deterministic seed
+ * output exactly.
+ *
+ * Dedupe key is `(configOAuthProviderId, providerAccountId)`, matching the
+ * `@@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])`
+ * constraint on ProjectUserOAuthAccount.
+ *
+ * Note: writes are sequential, not wrapped in `$transaction`, because the
+ * shared `PrismaClientTransaction` type is a union whose transaction branch
+ * doesn't expose `$transaction`. This is acceptable for a seed.
+ */
+async function syncSeedUserOauthProviders(
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  projectUserId: string,
+  providers: readonly SeedOauthProvider[],
+): Promise<void> {
+  const desiredKey = new Set(providers.map((p) => `${p.providerId}::${p.accountId}`));
+
+  const existing = await prisma.projectUserOAuthAccount.findMany({
+    where: { tenancyId, projectUserId },
+    select: {
+      configOAuthProviderId: true,
+      providerAccountId: true,
+      oauthAuthMethod: {
+        select: {
+          authMethodId: true,
+        },
+      },
+    },
+  });
+  const existingKey = new Set(existing.map((a) => `${a.configOAuthProviderId}::${a.providerAccountId}`));
+
+  for (const account of existing) {
+    const key = `${account.configOAuthProviderId}::${account.providerAccountId}`;
+    if (desiredKey.has(key)) continue;
+
+    if (account.oauthAuthMethod != null) {
+      await prisma.authMethod.delete({
+        where: {
+          tenancyId_id: {
+            tenancyId,
+            id: account.oauthAuthMethod.authMethodId,
+          },
+        },
+      });
+    }
+    await prisma.projectUserOAuthAccount.delete({
+      where: {
+        tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
+          tenancyId,
+          configOAuthProviderId: account.configOAuthProviderId,
+          projectUserId,
+          providerAccountId: account.providerAccountId,
+        },
+      },
+    });
+  }
+
+  for (const provider of providers) {
+    if (existingKey.has(`${provider.providerId}::${provider.accountId}`)) continue;
+
+    const authMethod = await prisma.authMethod.create({
+      data: { tenancyId, projectUserId },
+    });
+    await prisma.projectUserOAuthAccount.create({
+      data: {
+        tenancyId,
+        projectUserId,
+        configOAuthProviderId: provider.providerId,
+        providerAccountId: provider.accountId,
+        email: provider.email,
+        oauthAuthMethod: { create: { authMethodId: authMethod.id } },
+        allowConnectedAccounts: true,
+        allowSignIn: true,
+      },
+    });
+  }
+}
+
+/**
+ * Sample a random subset of OAuth providers for a bulk synthetic user.
+ *
+ * Distribution: ~50% get multiple accounts, ~30% get one, ~20% get none.
+ * Consumes 1 + (roll < 0.5 ? 1 : 0) + n draws from `rand` per call; callers
+ * relying on a deterministic PRNG stream must preserve this invariant.
+ */
+function pickBulkOauthProviders(params: {
+  rand: () => number,
+  available: readonly string[],
+  email: string,
+}): SeedOauthProvider[] {
+  const { rand, available, email } = params;
+  const roll = rand();
+  let n: number;
+  if (roll < 0.5) {
+    n = 2 + Math.floor(rand() * (available.length - 1));
+  } else if (roll < 0.8) {
+    n = 1;
+  } else {
+    n = 0;
+  }
+  const pool = [...available];
+  const picked: string[] = [];
+  for (let i = 0; i < n && pool.length > 0; i++) {
+    const idx = Math.floor(rand() * pool.length);
+    picked.push(pool[idx]!);
+    pool.splice(idx, 1);
+  }
+  return picked.map((providerId) => ({
+    providerId,
+    accountId: `${email}-${providerId}`,
+    email,
+  }));
 }
 
 async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<string, string>> {
@@ -433,6 +568,17 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       });
       userId = createdUser.id;
     }
+
+    await syncSeedUserOauthProviders(
+      prisma,
+      tenancy.id,
+      userId,
+      user.oauthProviders.map((p) => ({
+        providerId: p.providerId,
+        accountId: p.accountId,
+        email: user.email,
+      })),
+    );
 
     if (user.createdAt != null) {
       await prisma.projectUser.updateMany({
@@ -511,10 +657,11 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       const displayName = `${firstName} ${lastName}`;
       const hour = 8 + Math.floor(bulkRand() * 12);
       const bulkCreatedAt = daysAgo(dayBack, hour);
-      const hasOauth = bulkRand() > 0.6;
-      const oauthProvider = hasOauth
-        ? [{ providerId: bulkOauthProviders[Math.floor(bulkRand() * bulkOauthProviders.length)]!, accountId: `${email}-oauth` }]
-        : [];
+      const oauthProvider = pickBulkOauthProviders({
+        rand: bulkRand,
+        available: bulkOauthProviders,
+        email,
+      });
 
       const existing = await prisma.projectUser.findFirst({
         where: {
@@ -538,7 +685,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
             oauth_providers: oauthProvider.map((p) => ({
               id: p.providerId,
               account_id: p.accountId,
-              email,
+              email: p.email,
             })),
             profile_image_url: null,
           },
@@ -547,6 +694,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       } else {
         bulkUserId = existing.projectUserId;
       }
+      await syncSeedUserOauthProviders(prisma, tenancy.id, bulkUserId, oauthProvider);
       await prisma.projectUser.updateMany({
         where: { tenancyId: tenancy.id, projectUserId: bulkUserId },
         data: { createdAt: bulkCreatedAt },
@@ -560,16 +708,16 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
   return userEmailToId;
 }
 
-function buildDummyPaymentsSetup(): PaymentsSetup {
+export function buildDummyPaymentsSetup(): PaymentsSetup {
   const monthlyInterval: DayInterval = [1, 'month'];
   const yearlyInterval: DayInterval = [1, 'year'];
   const twoWeekInterval: DayInterval = [2, 'week'];
 
-  const paymentsProducts: Record<string, unknown> = {
+  const paymentsProducts: PaymentsProducts = {
     'starter': {
       displayName: 'Starter',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       freeTrial: twoWeekInterval as any,
@@ -597,7 +745,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     'growth': {
       displayName: 'Growth',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       prices: {
@@ -633,7 +781,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     'regression-addon': {
       displayName: 'Regression Add-on',
       productLineId: 'add_ons',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: true,
       prices: {
@@ -671,19 +819,19 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     items: {
       studio_seats: {
         displayName: 'Studio Seats',
-        customerType: 'user',
+        customerType: 'team',
       },
       review_passes: {
         displayName: 'Reviewer Passes',
-        customerType: 'user',
+        customerType: 'team',
       },
       automation_minutes: {
         displayName: 'Automation Minutes',
-        customerType: 'user',
+        customerType: 'team',
       },
       snapshot_credits: {
         displayName: 'Snapshot Credits',
-        customerType: 'user',
+        customerType: 'team',
       },
     },
     products: paymentsProducts,
@@ -748,12 +896,10 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
     prisma,
     tenancyId,
     teamNameToId,
-    userEmailToId,
     paymentsProducts,
   } = options;
 
   const resolveTeamId = (teamName: string) => teamNameToId.get(teamName) ?? throwErr(`Unknown dummy project team ${teamName}`);
-  const resolveUserId = (email: string) => userEmailToId.get(email) ?? throwErr(`Unknown dummy project user ${email}`);
   const resolveProduct = (productId: string): Prisma.InputJsonValue => {
     const product = paymentsProducts[productId];
     if (!product) {
@@ -797,8 +943,8 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
     },
     {
       id: DUMMY_SEED_IDS.subscriptions.mateoGrowthAnnual,
-      customerType: CustomerType.USER,
-      customerId: resolveUserId('mateo.silva@dummy.dev'),
+      customerType: CustomerType.TEAM,
+      customerId: resolveTeamId('Growth Loop'),
       productId: 'growth',
       priceId: 'annual',
       product: resolveProduct('growth'),
@@ -810,27 +956,6 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       cancelAtPeriodEnd: true,
       stripeSubscriptionId: null,
       createdAt: new Date('2024-02-01T00:00:00.000Z'),
-    },
-    {
-      id: DUMMY_SEED_IDS.subscriptions.legacyEnterprise,
-      customerType: CustomerType.CUSTOM,
-      customerId: 'enterprise-alpha',
-      productId: 'legacy-enterprise',
-      priceId: undefined,
-      product: cloneJson({
-        displayName: 'Legacy Enterprise Pilot',
-        productLineId: 'workspace',
-        customerType: 'user',
-        prices: 'include-by-default',
-      }),
-      quantity: 1,
-      status: SubscriptionStatus.canceled,
-      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
-      currentPeriodStart: new Date('2023-11-01T00:00:00.000Z'),
-      currentPeriodEnd: new Date('2024-05-01T00:00:00.000Z'),
-      cancelAtPeriodEnd: true,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      createdAt: new Date('2023-11-01T00:00:00.000Z'),
     },
   ];
 
@@ -942,8 +1067,8 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
   const oneTimePurchaseSeeds: OneTimePurchaseSeed[] = [
     {
       id: DUMMY_SEED_IDS.oneTimePurchases.ameliaSeatPack,
-      customerType: CustomerType.USER,
-      customerId: resolveUserId('amelia.chen@dummy.dev'),
+      customerType: CustomerType.TEAM,
+      customerId: resolveTeamId('Design Systems Lab'),
       productId: 'starter',
       priceId: 'monthly',
       product: resolveProduct('starter'),
@@ -1064,24 +1189,6 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       status: 'paid',
       amountTotal: 0,
       createdAt: daysAgo(20, 8),
-    },
-    {
-      id: DUMMY_SEED_IDS.invoices.legacyPaid1,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      stripeInvoiceId: 'in_legacy_ent_001',
-      isSubscriptionCreationInvoice: true,
-      status: 'paid',
-      amountTotal: 49900,
-      createdAt: daysAgo(28, 9),
-    },
-    {
-      id: DUMMY_SEED_IDS.invoices.legacyPaid2,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      stripeInvoiceId: 'in_legacy_ent_002',
-      isSubscriptionCreationInvoice: false,
-      status: 'paid',
-      amountTotal: 49900,
-      createdAt: daysAgo(14, 9),
     },
   ];
 
@@ -1487,10 +1594,10 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
     });
   }, {
     // Under cross-arch arm64 TCG in the emulator qcow2 build, this batch
-    // takes ~10s; Prisma's default is 5s. Production (KVM/native) runs it
-    // in well under 1s, so the looser bound only kicks in when the DB is
-    // genuinely slow.
-    timeout: 30_000,
+    // has been observed to take 40-50s; Prisma's default is 5s. Production
+    // (KVM/native) runs it in well under 1s, so the looser bound only kicks
+    // in when the DB is genuinely slow.
+    timeout: 90_000,
   });
 
   if (clickhouseClient && clickhouseRows.length > 0) {
@@ -1947,7 +2054,6 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     prisma: dummyPrisma,
     tenancyId: dummyTenancy.id,
     teamNameToId,
-    userEmailToId,
     paymentsProducts,
   });
 

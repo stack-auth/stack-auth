@@ -1,23 +1,24 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@/components/ui";
+import { ActionCell, ActionDialog, Typography } from "@/components/ui";
 import { ServerTeam } from '@stackframe/stack';
-import { ColumnDef, Row, Table } from "@tanstack/react-table";
-import { useState } from "react";
+import {
+  DataGrid,
+  useDataGridUrlState,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridDataSource,
+} from "@stackframe/dashboard-ui-components";
+import React, { useCallback, useMemo, useState } from "react";
+import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
 import { InputField } from "../form-fields";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
 
-function toolbarRender<TData>(table: Table<TData>) {
-  return (
-    <>
-      <SearchToolbarItem table={table} keyName="displayName" placeholder="Filter by name" />
-    </>
-  );
-}
+const PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const teamFormSchema = yup.object({
   displayName: yup.string(),
@@ -68,7 +69,7 @@ function DeleteDialog(props: {
   </ActionDialog>;
 }
 
-function Actions({ row }: { row: Row<ServerTeam> }) {
+function TeamActions({ team }: { team: ServerTeam }) {
   const router = useRouter();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -77,14 +78,14 @@ function Actions({ row }: { row: Row<ServerTeam> }) {
 
   return (
     <>
-      <EditDialog team={row.original} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
-      <DeleteDialog team={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
-      <CreateCheckoutDialog open={isCreateCheckoutModalOpen} onOpenChange={setIsCreateCheckoutModalOpen} team={row.original} />
+      <EditDialog team={team} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
+      <DeleteDialog team={team} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
+      <CreateCheckoutDialog open={isCreateCheckoutModalOpen} onOpenChange={setIsCreateCheckoutModalOpen} team={team} />
       <ActionCell
         items={[
           {
             item: "View Members",
-            onClick: () => router.push(`/projects/${adminApp.projectId}/teams/${row.original.id}`),
+            onClick: () => router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/teams/${encodeURIComponent(team.id)}`),
           },
           {
             item: "Edit",
@@ -106,41 +107,119 @@ function Actions({ row }: { row: Row<ServerTeam> }) {
   );
 }
 
-const columns: ColumnDef<ServerTeam>[] =  [
+const columns: DataGridColumnDef<ServerTeam>[] = [
   {
-    accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="ID" />,
-    cell: ({ row }) => <TextCell size={60}>{row.original.id}</TextCell>,
+    id: "id",
+    header: "ID",
+    accessor: "id",
+    width: 120,
+    type: "string",
+    sortable: false,
+    renderCell: ({ value }) => (
+      <span className="truncate font-mono text-xs text-muted-foreground">{String(value)}</span>
+    ),
   },
   {
-    accessorKey: "displayName",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
-    cell: ({ row }) => <TextCell size={200}>{row.original.displayName}</TextCell>,
+    id: "displayName",
+    header: "Display Name",
+    accessor: "displayName",
+    width: 200,
+    flex: 1,
+    type: "string",
+    sortable: false,
+    renderCell: ({ value }) => (
+      <span className="truncate">{String(value ?? "")}</span>
+    ),
   },
   {
-    accessorKey: "createdAt",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Created At" />,
-    cell: ({ row }) => <DateCell date={row.original.createdAt}></DateCell>,
+    id: "createdAt",
+    header: "Created At",
+    accessor: "createdAt",
+    width: 140,
+    type: "dateTime",
   },
   {
     id: "actions",
-    cell: ({ row }) => <Actions row={row} />,
+    header: "",
+    width: 50,
+    minWidth: 50,
+    maxWidth: 50,
+    sortable: false,
+    hideable: false,
+    resizable: false,
+    renderCell: ({ row }) => <TeamActions team={row} />,
   },
 ];
 
-export function TeamTable(props: { teams: ServerTeam[] }) {
+export function TeamTable() {
   const router = useRouter();
   const stackAdminApp = useAdminApp();
 
-  return <DesignDataTable
-    data={props.teams}
-    columns={columns}
-    toolbarRender={toolbarRender}
-    defaultColumnFilters={[]}
-    defaultSorting={[{ id: 'createdAt', desc: true }]}
-    glassmorphic
-    onRowClick={(row) => {
-      router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
-    }}
-  />;
+  const [gridState, setGridState] = useDataGridUrlState(columns, {
+    paramPrefix: "teams",
+    initial: {
+      sorting: [{ columnId: "createdAt", direction: "desc" }],
+    },
+  });
+
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
+
+  const dataSource = useMemo<DataGridDataSource<ServerTeam>>(
+    () => async function* (params) {
+      const activeSort = params.sorting.find((s) => s.columnId === "createdAt");
+      const sortDesc = activeSort?.direction !== "asc";
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const result = await stackAdminApp.listTeams({
+        limit: PAGE_SIZE,
+        orderBy: "createdAt",
+        desc: sortDesc,
+        cursor,
+        query: search,
+      });
+      yield {
+        rows: result,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [stackAdminApp],
+  );
+
+  const getRowId = useCallback((row: ServerTeam) => row.id, []);
+
+  const gridData = useDataSource({
+    dataSource,
+    columns,
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: debouncedQuickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      rowHeight="auto"
+      estimatedRowHeight={44}
+      footer={false}
+      fillHeight={false}
+      onRowClick={(row) => {
+        router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
+      }}
+    />
+  );
 }

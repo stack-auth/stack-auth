@@ -397,7 +397,7 @@ async function main(): Promise<void> {
   }
   console.log();
   console.log("MCP servers installed:");
-  console.log(`  ${colorize.green`https://mcp.stack-auth.com`}`);
+  console.log(`  ${colorize.green`https://mcp.stack-auth.com/mcp`}`);
   console.log();
   console.log("Files written:");
   for (const file of filesModified) {

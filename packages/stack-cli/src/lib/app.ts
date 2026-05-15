@@ -1,13 +1,12 @@
 import { StackClientApp } from "@stackframe/js";
 import type { CurrentInternalUser, AdminOwnedProject } from "@stackframe/js";
 import { AuthError } from "./errors.js";
-import { DEFAULT_PUBLISHABLE_CLIENT_KEY } from "./auth.js";
 import type { SessionAuth, ProjectAuthWithRefreshToken } from "./auth.js";
 
 export function getInternalApp(auth: SessionAuth): StackClientApp<true, "internal"> {
   return new StackClientApp({
     projectId: "internal",
-    publishableClientKey: DEFAULT_PUBLISHABLE_CLIENT_KEY,
+    publishableClientKey: auth.publishableClientKey,
     baseUrl: auth.apiUrl,
     tokenStore: {
       accessToken: "",

@@ -984,11 +984,10 @@ function EmptyState({ onAddRule, disabled }: { onAddRule: () => void, disabled: 
 
 const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
 
-function TestRulesCard({
-  stackAdminApp,
-}: {
-  stackAdminApp: ReturnType<typeof useAdminApp>,
-}) {
+
+// Shared hook used by every TestRulesCard variant - encapsulates all the state
+// and the API call so the variants can focus purely on the UI.
+function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
@@ -1427,6 +1426,8 @@ function TestRulesDialog({
   stackAdminApp: ReturnType<typeof useAdminApp>,
   trigger: React.ReactNode,
 }) {
+  const state = useTestRulesState(stackAdminApp);
+
   return (
     <Dialog>
       <DialogTrigger asChild>

@@ -213,21 +213,7 @@ function mapProductSnapshotToInlineProduct(product: unknown): InlineProduct {
 
   const customerType = readCustomerType(product.customerType, "product snapshot");
   const includedItemsRaw = product.includedItems;
-  // Legacy include-by-default products may have no includedItems in their snapshot
   if (!isRecord(includedItemsRaw)) {
-    if (product.prices === "include-by-default") {
-      return {
-        display_name: typeof product.displayName === "string" ? product.displayName : "Unknown Product",
-        customer_type: customerType,
-        server_only: product.serverOnly === true,
-        stackable: product.stackable === true,
-        prices: {},
-        included_items: {},
-        client_metadata: isRecord(product.clientMetadata) ? product.clientMetadata : null,
-        client_read_only_metadata: isRecord(product.clientReadOnlyMetadata) ? product.clientReadOnlyMetadata : null,
-        server_metadata: isRecord(product.serverMetadata) ? product.serverMetadata : null,
-      };
-    }
     throw new StackAssertionError("Invalid includedItems in product snapshot", { product });
   }
   const includedItems: InlineProduct["included_items"] = {};
@@ -264,29 +250,27 @@ function mapProductSnapshotToInlineProduct(product: unknown): InlineProduct {
   }
 
   const prices: InlineProduct["prices"] = {};
-  if (product.prices !== "include-by-default") {
-    if (!isRecord(product.prices)) {
-      throw new StackAssertionError("Invalid prices in product snapshot", { product });
+  if (!isRecord(product.prices)) {
+    throw new StackAssertionError("Invalid prices in product snapshot", { product });
+  }
+  for (const [priceId, value] of Object.entries(product.prices)) {
+    if (!isRecord(value)) {
+      throw new StackAssertionError("Invalid price config in product snapshot", { priceId, value });
     }
-    for (const [priceId, value] of Object.entries(product.prices)) {
-      if (!isRecord(value)) {
-        throw new StackAssertionError("Invalid price config in product snapshot", { priceId, value });
+    const mappedPrice: InlineProduct["prices"][string] = {};
+    for (const currency of SUPPORTED_CURRENCIES) {
+      const amount = value[currency.code];
+      if (typeof amount === "string") {
+        mappedPrice[currency.code] = amount;
       }
-      const mappedPrice: InlineProduct["prices"][string] = {};
-      for (const currency of SUPPORTED_CURRENCIES) {
-        const amount = value[currency.code];
-        if (typeof amount === "string") {
-          mappedPrice[currency.code] = amount;
-        }
-      }
-      if (value.interval !== undefined && value.interval !== null) {
-        mappedPrice.interval = readDayInterval(value.interval, `price interval for ${priceId}`);
-      }
-      if (value.freeTrial !== undefined && value.freeTrial !== null) {
-        mappedPrice.free_trial = readDayInterval(value.freeTrial, `price freeTrial for ${priceId}`);
-      }
-      prices[priceId] = mappedPrice;
     }
+    if (value.interval !== undefined && value.interval !== null) {
+      mappedPrice.interval = readDayInterval(value.interval, `price interval for ${priceId}`);
+    }
+    if (value.freeTrial !== undefined && value.freeTrial !== null) {
+      mappedPrice.free_trial = readDayInterval(value.freeTrial, `price freeTrial for ${priceId}`);
+    }
+    prices[priceId] = mappedPrice;
   }
 
   return {
@@ -594,6 +578,7 @@ async function getTransactions(options: {
   cursor: string | undefined,
   type: TransactionType | undefined,
   customerType: "user" | "team" | "custom" | undefined,
+  customerId: string | undefined,
 }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
   const ledgerTypes = getLedgerTypesForFilter(options.type);
   if (ledgerTypes.length === 0) {
@@ -615,6 +600,9 @@ async function getTransactions(options: {
   ];
   if (options.customerType) {
     whereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
+  }
+  if (options.customerId) {
+    whereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
   }
   if (decodedCursor) {
     whereClauses.push(`(
@@ -673,6 +661,9 @@ async function getTransactions(options: {
     if (options.customerType) {
       refundWhereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
     }
+    if (options.customerId) {
+      refundWhereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
+    }
     const refundSql = `
       SELECT "__rows"."rowdata" AS "rowData"
       FROM (${baseSql}) AS "__rows"
@@ -729,6 +720,7 @@ export const GET = createSmartRouteHandler({
       limit: yupString().optional(),
       type: yupString().oneOf(TRANSACTION_TYPES).optional(),
       customer_type: yupString().oneOf(['user', 'team', 'custom']).optional(),
+      customer_id: yupString().optional(),
     }).optional(),
   }),
   response: yupObject({
@@ -751,6 +743,7 @@ export const GET = createSmartRouteHandler({
       cursor: query.cursor,
       type: query.type,
       customerType: query.customer_type,
+      customerId: query.customer_id,
     });
 
     return {

@@ -60,6 +60,8 @@
             "pages": [
               "guides/going-further/stack-app",
               "guides/going-further/backend-integration",
+              "guides/going-further/cli",
+              "guides/going-further/local-emulator",
               "guides/going-further/local-development",
               "guides/going-further/user-metadata"
             ]
@@ -121,6 +123,7 @@
           {
             "group": "Integrations",
             "pages": [
+              "guides/integrations/tanstack-start/overview",
               "guides/integrations/supabase/overview",
               "guides/integrations/convex/overview",
               "guides/integrations/vercel/overview"
@@ -130,7 +133,7 @@
             "group": "Other",
             "pages": [
               "guides/other/self-host",
-              "guides/other/mcp-setup",
+              "guides/other/known-errors",
               {
                 "group": "Tutorials",
                 "pages": [
@@ -223,6 +226,9 @@
     "metatags": {
       "robots": "noindex"
     }
+  },
+  "settings": {
+    "customScripts": ["/apps-sidebar-filter.js"]
   },
   "redirects": []
 }

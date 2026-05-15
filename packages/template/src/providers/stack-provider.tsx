@@ -31,6 +31,35 @@ function NextStackProvider({
     </StackProviderClient>
   );
 }
+// ELSE_IF_PLATFORM tanstack-start
+function TanStackStartStackProvider({
+  children,
+  app,
+  lang,
+  translationOverrides,
+}: {
+  lang?: React.ComponentProps<typeof TranslationProvider>['lang'],
+  /**
+   * A mapping of English translations to translated equivalents.
+   *
+   * These will take priority over the translations from the language specified in the `lang` property. Note that the
+   * keys are case-sensitive.
+   */
+  translationOverrides?: Record<string, string>,
+  children: React.ReactNode,
+  // list all three types of apps even though server and admin are subclasses of client so it's clear that you can pass any
+  app: StackClientApp<true>,
+}) {
+  return (
+    <StackProviderClient app={app} serialized={false}>
+      <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
+        <Suspense fallback={null}>
+          {children}
+        </Suspense>
+      </TranslationProvider>
+    </StackProviderClient>
+  );
+}
 // ELSE_PLATFORM
 function ReactStackProvider({
   children,
@@ -63,6 +92,8 @@ function ReactStackProvider({
 
 // IF_PLATFORM next
 export default NextStackProvider;
-/* ELSE_PLATFORM
+/* ELSE_IF_PLATFORM tanstack-start
+export default TanStackStartStackProvider;
+ELSE_PLATFORM
 export default ReactStackProvider;
 END_PLATFORM */

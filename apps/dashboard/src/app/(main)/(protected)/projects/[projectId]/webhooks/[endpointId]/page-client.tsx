@@ -1,7 +1,8 @@
 "use client";
 
 import { DesignAlert, DesignBadge, DesignButton, DesignCard, DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
-import { CopyButton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
+import { CopyButton } from "@/components/ui";
+import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { getPublicEnvVar } from '@/lib/env';
 import { CaretLeftIcon, CaretRightIcon, InfoIcon, KeyIcon, LinkIcon, TextAlignLeftIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
@@ -92,8 +93,56 @@ function EndpointDetails(props: { endpointId: string }) {
   );
 }
 
+type MessageAttempt = {
+  id: string,
+  status: number,
+  timestamp: Date,
+};
+
 function MessageTable(props: { endpointId: string }) {
   const messages = getSvixResult(useEndpointMessageAttempts(props.endpointId, { limit: 10, withMsg: true }));
+
+  const columns = useMemo<DataGridColumnDef<MessageAttempt>[]>(() => [
+    { id: "id", header: "ID", accessor: "id", width: 200, type: "string" },
+    {
+      id: "status",
+      header: "Status",
+      width: 100,
+      renderCell: ({ row }) => (
+        <DesignBadge
+          label={statusToString.get(row.status) ?? "Unknown"}
+          color={
+            row.status === 0
+              ? "green"
+              : row.status === 2
+                ? "red"
+                : row.status === 1
+                  ? "orange"
+                  : "blue"
+          }
+          size="sm"
+        />
+      ),
+    },
+    {
+      id: "timestamp",
+      header: "Timestamp",
+      width: 300,
+      type: "dateTime",
+      accessor: (row) => row.timestamp,
+    },
+  ], []);
+
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "webhookevents" });
+  const gridData = useDataSource({
+    data: (messages.loaded ? messages.data : []) as MessageAttempt[],
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
 
   if (!messages.loaded) return messages.rendered;
 
@@ -108,40 +157,15 @@ function MessageTable(props: { endpointId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="border rounded-md">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[200px]">ID</TableHead>
-              <TableHead className="w-[100px]">Message</TableHead>
-              <TableHead className="w-[300px]">Timestamp</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {messages.data.map(message => (
-              <TableRow key={message.id}>
-                <TableCell>{message.id}</TableCell>
-                <TableCell>
-                  <DesignBadge
-                    label={statusToString.get(message.status) ?? "Unknown"}
-                    color={
-                      message.status === 0
-                        ? "green"
-                        : message.status === 2
-                          ? "red"
-                          : message.status === 1
-                            ? "orange"
-                            : "blue"
-                    }
-                    size="sm"
-                  />
-                </TableCell>
-                <TableCell>{message.timestamp.toLocaleString()}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <DataGrid
+        columns={columns}
+        rows={gridData.rows}
+        getRowId={(row) => row.id}
+        totalRowCount={gridData.totalRowCount}
+        state={gridState}
+        onChange={setGridState}
+        footer={false}
+      />
 
       <div className="flex justify-end gap-4">
         <DesignButton size='sm' variant='secondary' disabled={!messages.hasPrevPage} onClick={messages.prevPage}>
@@ -159,18 +183,11 @@ function MessageTable(props: { endpointId: string }) {
 export default function PageClient(props: { endpointId: string }) {
   const stackAdminApp = useAdminApp();
   const svixToken = stackAdminApp.useSvixToken();
-  const [updateCounter, setUpdateCounter] = useState(0);
-
-  // This is a hack to make sure svix hooks update when content changes
-  const svixTokenUpdated = useMemo(() => {
-    return svixToken + '';
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [svixToken, updateCounter]);
 
   return (
     <AppEnabledGuard appId="webhooks">
       <SvixProvider
-        token={svixTokenUpdated}
+        token={svixToken.token}
         appId={stackAdminApp.projectId}
         options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
       >

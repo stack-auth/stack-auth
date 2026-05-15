@@ -1,0 +1,83 @@
+---
+title: "Known Errors"
+description: "Reference for Stack Auth known errors exposed by public TypeScript SDK types"
+sidebarTitle: "Known Errors"
+---
+
+Stack Auth uses known errors for expected, actionable failures. Some public SDK methods return `Result<..., KnownErrors["..."]>` in their TypeScript signatures. This page lists only the known errors currently exposed through those public TypeScript types.
+
+<Info>
+  Stack Auth has additional internal known errors for API implementation details.
+  They are intentionally not part of this public SDK reference.
+</Info>
+
+At runtime, known errors include a stable `errorCode` value. In the REST API, the same value appears as the JSON `code` field and the `X-Stack-Known-Error` response header.
+
+```json
+{
+  "code": "EMAIL_PASSWORD_MISMATCH",
+  "error": "Wrong e-mail or password."
+}
+```
+
+## Handling known errors
+
+When using SDK methods that return `Result`, check `result.status` and inspect `result.error`.
+
+```ts
+const result = await stackClientApp.signInWithCredential({
+  email,
+  password,
+});
+
+if (result.status === "error") {
+  console.log(result.error.errorCode);
+}
+```
+
+Check specific errors by comparing `error.errorCode`:
+
+```ts
+if (result.error.errorCode === "EMAIL_PASSWORD_MISMATCH") {
+  // Show "wrong email or password" UI.
+}
+```
+
+For REST API calls, read the `code` field from the JSON response body.
+
+<Info>
+  Error messages are human-readable and may include request-specific details.
+  Use `code` for programmatic handling.
+</Info>
+
+## Exposed known errors
+
+| Public TypeScript type | Runtime `errorCode` | Returned by |
+| --- | --- | --- |
+| `KnownErrors["EmailPasswordMismatch"]` | `EMAIL_PASSWORD_MISMATCH` | `stackClientApp.signInWithCredential()` |
+| `KnownErrors["InvalidTotpCode"]` | `INVALID_TOTP_CODE` | `stackClientApp.signInWithCredential()`, `stackClientApp.signInWithMagicLink()`, `stackClientApp.signInWithMfa()`, `stackClientApp.signInWithPasskey()` |
+| `KnownErrors["UserWithEmailAlreadyExists"]` | `USER_EMAIL_ALREADY_EXISTS` | `stackClientApp.signUpWithCredential()` |
+| `KnownErrors["PasswordRequirementsNotMet"]` | `PASSWORD_REQUIREMENTS_NOT_MET` | `stackClientApp.signUpWithCredential()`, `user.updatePassword()`, `user.setPassword()` |
+| `KnownErrors["BotChallengeFailed"]` | `BOT_CHALLENGE_FAILED` | `stackClientApp.signUpWithCredential()`, `stackClientApp.sendMagicLinkEmail()` |
+| `KnownErrors["PasskeyAuthenticationFailed"]` | `PASSKEY_AUTHENTICATION_FAILED` | `stackClientApp.signInWithPasskey()` |
+| `KnownErrors["PasskeyRegistrationFailed"]` | `PASSKEY_REGISTRATION_FAILED` | `user.registerPasskey()` |
+| `KnownErrors["PasskeyWebAuthnError"]` | `PASSKEY_WEBAUTHN_ERROR` | `stackClientApp.signInWithPasskey()`, `user.registerPasskey()` |
+| `KnownErrors["CliAuthError"]` | `CLI_AUTH_ERROR` | `stackClientApp.promptCliLogin()` |
+| `KnownErrors["CliAuthExpiredError"]` | `CLI_AUTH_EXPIRED_ERROR` | `stackClientApp.promptCliLogin()` |
+| `KnownErrors["CliAuthUsedError"]` | `CLI_AUTH_USED_ERROR` | `stackClientApp.promptCliLogin()` |
+| `KnownErrors["UserNotFound"]` | `USER_NOT_FOUND` | `stackClientApp.sendForgotPasswordEmail()` |
+| `KnownErrors["RedirectUrlNotWhitelisted"]` | `REDIRECT_URL_NOT_WHITELISTED` | `stackClientApp.sendMagicLinkEmail()` |
+| `KnownErrors["VerificationCodeError"]` | `VERIFICATION_ERROR` | `stackClientApp.resetPassword()`, `stackClientApp.verifyPasswordResetCode()`, `stackClientApp.verifyTeamInvitationCode()`, `stackClientApp.acceptTeamInvitation()`, `stackClientApp.getTeamInvitationDetails()`, `stackClientApp.verifyEmail()`, `stackClientApp.signInWithMagicLink()`, `stackClientApp.signInWithMfa()` |
+| `KnownErrors["OAuthAccessTokenNotAvailable"]` | `OAUTH_ACCESS_TOKEN_NOT_AVAILABLE` | `connectedAccount.getAccessToken()`, `connectedAccount.useAccessToken()` |
+| `KnownErrors["OAuthProviderAccountIdAlreadyUsedForSignIn"]` | `OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN` | `oauthProvider.update()`, `serverOAuthProvider.update()`, `stackServerApp.createOAuthProvider()` |
+| `KnownErrors["EmailAlreadyVerified"]` | `EMAIL_ALREADY_VERIFIED` | `user.sendVerificationEmail()` |
+| `KnownErrors["PasswordConfirmationMismatch"]` | `PASSWORD_CONFIRMATION_MISMATCH` | `user.updatePassword()` |
+
+## Parent error types
+
+Some exposed types are parent classes for more specific errors. For example:
+
+- `KnownErrors["PasswordRequirementsNotMet"]` may currently have `PASSWORD_TOO_SHORT` or `PASSWORD_TOO_LONG` as the runtime `errorCode`.
+- `KnownErrors["VerificationCodeError"]` may currently have `VERIFICATION_CODE_NOT_FOUND`, `VERIFICATION_CODE_EXPIRED`, `VERIFICATION_CODE_ALREADY_USED`, or `VERIFICATION_CODE_MAX_ATTEMPTS_REACHED` as the runtime `errorCode`.
+
+When you only need broad handling, check the parent type returned in TypeScript. When you need precise UI copy, compare `error.errorCode` against the specific runtime code.

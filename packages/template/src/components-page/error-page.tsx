@@ -84,7 +84,7 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
       <MessageCard
         title={t("OAuth provider is temporarily unavailable")}
         fullPage={!!props.fullPage}
-        primaryButtonText={t("Try sign-in again")}
+        primaryButtonText={t("Try again")}
         primaryAction={() => stackApp.redirectToSignIn()}
         secondaryButtonText={t("Go Home")}
         secondaryAction={() => stackApp.redirectToHome()}

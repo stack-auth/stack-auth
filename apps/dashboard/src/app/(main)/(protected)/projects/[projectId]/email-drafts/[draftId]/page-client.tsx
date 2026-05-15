@@ -1,6 +1,6 @@
 "use client";
 
-import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { DesignButton } from "@/components/design-components";
 import { DesignCard } from "@/components/design-components";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
@@ -16,7 +16,7 @@ import { PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ColumnDef } from "@tanstack/react-table";
+
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -251,6 +251,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
                     toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                     useOffWhiteLightMode
                     runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}
+                    composerAttachments
                   />
                 }
               />
@@ -379,7 +380,7 @@ function RecipientsStage({ draftId, onBack, onNext, onStepClick }: RecipientsSta
                 )}
 
                 {/* Search Table */}
-                <TeamMemberSearchTable
+                <UserPickerTable
                   action={(user) => (
                     <Button
                       type="button"

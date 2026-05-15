@@ -43,6 +43,9 @@ export function EditableInput({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const ghostFieldClasses = "bg-transparent dark:bg-transparent border-transparent dark:border-transparent shadow-none ring-0";
+  const ghostFieldHoverClasses = "hover:bg-white/80 dark:hover:bg-foreground/[0.03] hover:border-black/[0.08] dark:hover:border-white/[0.06] hover:shadow-sm hover:ring-1 hover:ring-black/[0.08] dark:hover:ring-white/[0.06]";
+
   return <div
     ref={containerRef}
     className="flex items-center relative w-full"
@@ -88,7 +91,9 @@ export function EditableInput({
         /* Hover */ !readOnly && "hover:cursor-pointer",
         /* Focus */ !readOnly && "focus:cursor-[unset]",
         readOnly && "focus-visible:ring-0 cursor-default text-muted-foreground",
-        shiftTextToLeft && "ml-[-7px]",
+        shiftTextToLeft && "ml-[-12px]",
+        !editing && ghostFieldClasses,
+        !editing && !readOnly && ghostFieldHoverClasses,
         inputClassName,
       )}
       value={editValue ?? value}

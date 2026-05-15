@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
-import { isBrowserLike } from './env';
+import { getProcessEnv, isBrowserLike } from './env';
 import { captureError, StackAssertionError, throwErr } from "./errors";
 import { createGlobalAsync } from './globals';
 import { ignoreUnhandledRejection, runAsynchronously } from './promises';
@@ -13,7 +13,7 @@ import { traceSpan, withTraceSpan } from './telemetry';
 
 let esbuildInitializePromise: Promise<void> | null = null;
 
-if (process.env.NODE_ENV === 'development' && typeof process !== "undefined" && typeof process.exit === "function") {
+if (typeof process !== "undefined" && typeof process.exit === "function" && getProcessEnv("NODE_ENV") === 'development') {
   // On development Node.js servers, initialize ESBuild as soon as the module is imported so we have to wait less on the first request
   runAsynchronously(async () => {
     try {
