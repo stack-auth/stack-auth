@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
+import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
@@ -121,11 +122,14 @@ function sourceToSdkSource(source: BranchConfigSourceApi):
 // if it isn't there. Exported for unit tests.
 export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd: string): string {
   if (opts.configFile != null && opts.configFile !== "") {
-    return path.resolve(opts.configFile);
+    return resolveConfigFilePathOption(opts.configFile);
   }
   const candidate = path.join(cwd, "stack.config.ts");
   if (!fs.existsSync(candidate)) {
     throw new CliError("No --config-file provided and no stack.config.ts found in the current directory. Pass --config-file <path> or run this command in a directory containing a stack.config.ts file.");
+  }
+  if (fs.statSync(candidate).isDirectory()) {
+    throw new CliError(`Default config path points to a directory instead of a file: ${candidate}`);
   }
   return candidate;
 }
@@ -175,15 +179,11 @@ export function registerConfigCommand(program: Command) {
     .action(async (opts) => {
       const auth = resolveAuth(opts.cloudProjectId);
 
-      const filePath = path.resolve(opts.configFile);
+      const filePath = resolveConfigFilePathOption(opts.configFile, { mustExist: true });
       const ext = path.extname(filePath);
 
       if (ext !== ".js" && ext !== ".ts") {
         throw new CliError("Config file must have a .js or .ts extension.");
-      }
-
-      if (!fs.existsSync(filePath)) {
-        throw new CliError(`Config file not found: ${filePath}`);
       }
 
       const { createJiti } = await import("jiti");

@@ -1,9 +1,10 @@
 import { execFileSync, spawn } from "child_process";
 import { Command } from "commander";
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "fs";
+import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
+import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
 
@@ -203,17 +204,6 @@ function prepareDashboardRuntime(env: NodeJS.ProcessEnv): string {
     throw new CliError("The bundled development-environment dashboard is missing its server entrypoint.");
   }
   return runtimeServerPath;
-}
-
-function resolveConfigFilePath(configFile: string): string {
-  const resolved = resolve(configFile);
-  if (existsSync(resolved) && statSync(resolved).isDirectory()) {
-    return join(resolved, "stack.config.ts");
-  }
-  if (!/\.(ts|js|mjs|cjs)$/i.test(resolved)) {
-    return join(resolved, "stack.config.ts");
-  }
-  return resolved;
 }
 
 async function isDashboardReachable(url: string): Promise<boolean> {
@@ -434,7 +424,7 @@ export function registerDevCommand(program: Command) {
     .command("dev")
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Stack Auth development-environment credentials")
-    .requiredOption("--config-file <path>", "Path to stack.config.ts or a project directory")
+    .requiredOption("--config-file <path>", "Path to stack.config.ts")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {
@@ -444,9 +434,9 @@ export function registerDevCommand(program: Command) {
       const childCommand = splitDevCommandArgs(commandArgs);
       const localDashboardUrl = dashboardUrl();
       const secret = ensureLocalDashboardSecret(DASHBOARD_PORT);
-      const config = resolveLoginConfig(program.opts());
+      const config = resolveLoginConfig();
       const apiBaseUrl = normalizeApiBaseUrl(config.apiUrl || DEFAULT_API_URL);
-      const configFilePath = resolveConfigFilePath(opts.configFile);
+      const configFilePath = resolveConfigFilePathOption(opts.configFile, { mustExist: false });
       await startDashboardIfNeeded({ apiBaseUrl, secret });
       const sessionState: DashboardSessionState = {
         session: await createRemoteDevelopmentEnvironmentSession({

@@ -481,3 +481,6 @@ A: The browser should fetch only a short-lived access token from the local RDE a
 
 ## Q: Why can `stack dev` fail to register an RDE session with `ECONNREFUSED` against `localhost`?
 A: The RDE dashboard does server-side SDK calls from Node. If the backend is configured as `http://localhost:<port>`, Node may resolve or probe loopback differently than the browser; normalize exact `localhost` API base URLs to `127.0.0.1` in the CLI. If the backend process is actually down, the dashboard log will still show `ECONNREFUSED 127.0.0.1:<port>` and the dev server needs to be restarted.
+
+## Q: How should Stack CLI `--config-file` options interpret paths?
+A: `--config-file` should point directly to a regular config file. Do not treat an existing directory as a shortcut for `stack.config.ts` inside it; reject directories with a clear error instead. `stack config pull` may default to `./stack.config.ts` when the flag is omitted, but an explicitly provided directory is still invalid.
