@@ -30,7 +30,6 @@ program
   .name("stack")
   .description("Stack Auth CLI")
   .version(pkg.version)
-  .option("--project-id <id>", "Project ID")
   .option("--json", "Output in JSON format");
 
 registerLoginCommand(program);

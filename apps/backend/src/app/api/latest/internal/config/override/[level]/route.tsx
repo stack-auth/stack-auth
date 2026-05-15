@@ -168,6 +168,34 @@ const writeResponseSchema = yupObject({
   bodyType: yupString().oneOf(["success"]).defined(),
 });
 
+function findIncludeByDefaultPath(value: unknown, path: string[] = []): string | null {
+  if (value === "include-by-default") {
+    // Only flag the deprecated sentinel when it sits at `payments.products.<id>.prices`;
+    // anywhere else it's just a string literal that happens to match. The product-ID
+    // segment can itself contain dots (override keys are dot-paths and we split on
+    // ".", which fragments dotted IDs into multiple path entries), so we anchor on
+    // the leading `payments.products` prefix and the trailing `prices` suffix
+    // instead of an exact path length.
+    if (
+      path.length >= 4
+      && path[0] === "payments"
+      && path[1] === "products"
+      && path[path.length - 1] === "prices"
+    ) {
+      return path.join(".");
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = [...path, ...key.split(".")];
+      const found = findIncludeByDefaultPath(child, childPath);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 async function parseAndValidateConfig(
   configString: string,
   levelConfig: typeof levelConfigs["branch" | "environment" | "project"]
@@ -180,6 +208,17 @@ async function parseAndValidateConfig(
       throw new StatusError(StatusError.BadRequest, 'Invalid config JSON');
     }
     throw e;
+  }
+
+  // Reject writes that use the deprecated `include-by-default` price sentinel. Reads of
+  // old stored configs still get migrated silently (see migrateConfigOverride) so existing
+  // data keeps loading, but new writes must use an explicit $0 price instead.
+  const legacyPath = findIncludeByDefaultPath(parsedConfig);
+  if (legacyPath) {
+    throw new StatusError(
+      StatusError.BadRequest,
+      `"include-by-default" is no longer supported at ${legacyPath}. Use an explicit $0 price instead.`,
+    );
   }
 
   const migratedConfig = levelConfig.migrate(parsedConfig);

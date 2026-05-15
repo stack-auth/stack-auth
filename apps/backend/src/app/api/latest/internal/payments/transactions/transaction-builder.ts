@@ -21,7 +21,7 @@ type ProductPriceEntry = SelectedPrice & ProductPriceEntryExtras;
 
 export type ProductWithPrices = {
   displayName?: string,
-  prices?: Record<string, ProductPriceEntry> | "include-by-default",
+  prices?: Record<string, ProductPriceEntry>,
 } | null | undefined;
 
 type ProductSnapshot = (TransactionEntry & { type: "product_grant" })["product"];
@@ -32,7 +32,7 @@ export function resolveSelectedPriceFromProduct(product: ProductWithPrices, pric
   if (!product) return null;
   if (!priceId) return null;
   const prices = product.prices;
-  if (!prices || prices === "include-by-default") return null;
+  if (!prices) return null;
   const selected = prices[priceId as keyof typeof prices] as ProductPriceEntry | undefined;
   if (!selected) return null;
   const { serverOnly: _serverOnly, freeTrial: _freeTrial, ...rest } = selected as any;

@@ -11,7 +11,7 @@ import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, Pro
 import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import type { ServerUser } from "@stackframe/stack";
 import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
 import { UserPageMetricCard } from "./user-page-metric-card";
@@ -42,7 +42,8 @@ function isProductRevocationEntry(entry: TransactionEntry): entry is ProductRevo
 
 function formatUsd(amount: number): string {
   if (!Number.isFinite(amount)) {
-    throwErr("formatUsd received a non-finite amount");
+    captureError("user-payments-format-usd-non-finite", new Error(`formatUsd received non-finite amount: ${String(amount)}`));
+    return "—";
   }
   return amount.toLocaleString(undefined, {
     style: "currency",
@@ -319,6 +320,7 @@ function ProductsTableSection({ userId, transactions }: { userId: string, transa
   return (
     <UserPageTableSection
       title="Products & subscriptions"
+      urlStateKey="usersubs"
       columns={columns}
       rows={grants}
       getRowId={(grant) => grant.key}
@@ -453,10 +455,12 @@ function TransactionsTableSection({ userId, transactions }: { userId: string, tr
   return (
     <UserPageTableSection
       title="Transaction history"
+      urlStateKey="usertxns"
       columns={columns}
       rows={ordered}
       getRowId={(transaction) => transaction.id}
       emptyLabel="This user has no transactions."
+      paginated
     />
   );
 }

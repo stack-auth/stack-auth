@@ -16,7 +16,7 @@ import { Customer } from "../customers";
 import { NotificationCategory } from "../notification-categories";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
-import { EditableTeamMemberProfile, ReceivedTeamInvitation, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, ServerListTeamsOptions, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 
 const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
@@ -415,7 +415,7 @@ export type ServerBaseUser = {
   }>,
 }
 & AsyncStoreProperty<"team", [id: string], ServerTeam | null, false>
-& AsyncStoreProperty<"teams", [], ServerTeam[], true>
+& AsyncStoreProperty<"teams", [options?: ServerListTeamsOptions], ServerTeam[] & { nextCursor: string | null }, true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { direct?: boolean }], AdminTeamPermission | null, false>
 & AsyncStoreProperty<"permissions", [scope: Team, options?: { direct?: boolean }], AdminTeamPermission[], true>;
 

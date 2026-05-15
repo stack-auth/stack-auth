@@ -1,6 +1,6 @@
 "use client";
 
-import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { TeamSearchTable } from "@/components/data-table/team-search-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { NumberField, SelectField } from "@/components/form-fields";
@@ -20,7 +20,7 @@ import {
   Typography,
   toast,
 } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -350,7 +350,7 @@ function CustomerSelector(props: CustomerSelectorProps) {
   const dialogContent = () => {
     if (props.customerType === "user") {
       return open ? (
-        <TeamMemberSearchTable
+        <UserPickerTable
           action={(user) => (
             <Button
               variant="outline"
@@ -495,7 +495,7 @@ function ItemTable(props: {
     },
   ], [props.customer]);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "customeritems" });
   const gridData = useDataSource({
     data,
     columns,

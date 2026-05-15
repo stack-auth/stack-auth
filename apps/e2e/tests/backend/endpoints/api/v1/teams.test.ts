@@ -83,6 +83,45 @@ it("lists all the teams the current user has on the server", async ({ expect }) 
   `);
 });
 
+it("paginates teams across two pages without duplicates or skips", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  // Create 5 teams. Use a stable, ordered display name so we can assert the
+  // sequence after pagination.
+  const teamCount = 5;
+  for (let i = 0; i < teamCount; i++) {
+    const createResponse = await niceBackendFetch("/api/v1/teams", {
+      accessType: "server",
+      method: "POST",
+      body: { display_name: `Pagination team ${i.toString().padStart(2, "0")}` },
+    });
+    expect(createResponse.status).toBe(201);
+  }
+
+  const limit = 3;
+  const page1 = await niceBackendFetch(`/api/v1/teams?limit=${limit}`, { accessType: "server" });
+  expect(page1.status).toBe(200);
+  expect(page1.body.is_paginated).toBe(true);
+  expect(page1.body.items).toHaveLength(limit);
+  const cursor = page1.body.pagination?.next_cursor;
+  expect(cursor).toEqual(expect.any(String));
+
+  // Cursor should be the id of the last item we received, not a peek-ahead.
+  expect(cursor).toBe(page1.body.items[limit - 1].id);
+
+  const page2 = await niceBackendFetch(`/api/v1/teams?limit=${limit}&cursor=${encodeURIComponent(cursor)}`, { accessType: "server" });
+  expect(page2.status).toBe(200);
+  expect(page2.body.items.length).toBe(teamCount - limit);
+
+  const page1Ids = new Set(page1.body.items.map((t: any) => t.id));
+  const page2Ids = page2.body.items.map((t: any) => t.id);
+  for (const id of page2Ids) {
+    expect(page1Ids.has(id)).toBe(false); // no duplicates across pages
+  }
+  expect(page1.body.items.length + page2.body.items.length).toBe(teamCount); // no skips
+  expect(page2.body.pagination?.next_cursor ?? null).toBeNull();
+});
+
 it("creates a team on the client", async ({ expect }) => {
   await Auth.fastSignUp();
   await Team.createWithCurrentAsCreator();

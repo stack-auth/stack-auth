@@ -14,7 +14,7 @@ import {
   Switch,
   Typography,
 } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
@@ -264,7 +264,7 @@ function SequencerDataGrid({ status, loading }: { status: ExternalDbSyncStatus |
     { name: "DeletedRow", ...status?.sequencer.deleted_rows },
   ]), [status]);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "extdbseq" });
   const gridData = useDataSource({
     data,
     columns,
@@ -301,7 +301,7 @@ function DeletedRowsDataGrid({ rows, loading }: { rows: DeletedRowEntry[], loadi
     { id: "max_seq", header: "Max Seq", width: 100, accessor: "max_sequence_id", renderCell: ({ row }) => <DataValue value={row.max_sequence_id} loading={loading} /> },
   ], [loading]);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "extdbdeleted" });
   const gridData = useDataSource({
     data: rows,
     columns,
@@ -351,7 +351,7 @@ function PollerDataGrid({ status, loading }: { status: ExternalDbSyncStatus | nu
     stale: status?.poller.stale,
   }], [status]);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "extdbpoller" });
   const gridData = useDataSource({
     data,
     columns,
@@ -384,7 +384,7 @@ function SyncEngineDataGrid({ rows, loading }: { rows: MappingStats[], loading: 
     { id: "pending", header: "Pending Rows", width: 120, accessor: "internal_pending_count", renderCell: ({ row }) => <DataValue value={row.internal_pending_count} loading={loading} /> },
   ], [loading]);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "extdbmap" });
   const gridData = useDataSource({
     data: rows,
     columns,

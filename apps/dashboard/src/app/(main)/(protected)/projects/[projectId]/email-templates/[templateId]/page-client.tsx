@@ -296,6 +296,7 @@ export default function PageClient(props: { templateId: string }) {
                 toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode
                 runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}
+                composerAttachments
               />
             }
           />

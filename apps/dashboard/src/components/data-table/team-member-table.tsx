@@ -12,26 +12,34 @@ import {
   SimpleTooltip,
   toast,
 } from "@/components/ui";
-import { Link } from "../link";
 import { ServerTeam, ServerUser } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-  type DataGridState,
+  type DataGridDataSource,
 } from "@stackframe/dashboard-ui-components";
 import { CheckCircleIcon, CopyIcon, XCircleIcon } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useDebounce } from "use-debounce";
 import * as yup from "yup";
+import { Link } from "../link";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
 import { extendUsers, type ExtendedServerUser } from "./user-table";
 
+const PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
+
 type ExtendedServerUserForTeam = ExtendedServerUser & {
-  permissions: string[],
+  // `null` indicates that the permission fetch failed for this user; the UI
+  // surfaces this distinctly from an empty (no permissions) array so admins
+  // don't mistake transient failures for revoked access.
+  permissions: string[] | null,
 };
 
 function formatUserId(id: string) {
@@ -80,11 +88,6 @@ function TeamMemberUserCell(props: { user: ExtendedServerUserForTeam }) {
               {displayName}
             </span>
           </Link>
-          {user.isAnonymous && (
-            <Badge variant="secondary" className="text-xs">
-              Anonymous
-            </Badge>
-          )}
         </div>
       </div>
     </div>
@@ -166,7 +169,7 @@ function RemoveUserDialog(props: {
     onOpenChange={props.onOpenChange}
     okButton={{
       label: "Remove user from team",
-      onClick: async () => { await props.team.removeUser(props.user.id); }
+      onClick: async () => { runAsynchronouslyWithAlert(() => props.team.removeUser(props.user.id)); }
     }}
     cancelButton
     confirmText="I understand this will cause the user to lose access to the team."
@@ -185,6 +188,7 @@ function EditPermissionDialog(props: {
   const stackAdminApp = useAdminApp();
   const permissions = stackAdminApp.useTeamPermissionDefinitions();
 
+  const currentPermissions = props.user.permissions ?? [];
   const formSchema = yup.object({
     permissions: yup.array().of(yup.string().defined()).defined().meta({
       stackFormFieldRender: (innerProps) => (
@@ -192,11 +196,11 @@ function EditPermissionDialog(props: {
           {...innerProps}
           permissions={permissions}
           type="edit-user"
-          containedPermissionIds={props.user.permissions}
+          containedPermissionIds={currentPermissions}
         />
       ),
     }),
-  }).default({ permissions: props.user.permissions });
+  }).default({ permissions: currentPermissions });
 
   return <SmartFormDialog
     open={props.open}
@@ -208,11 +212,11 @@ function EditPermissionDialog(props: {
       const promises = permissions.map(async (p) => {
         if (values.permissions.includes(p.id)) {
           return await props.user.grantPermission(props.team, p.id);
-        } else if (props.user.permissions.includes(p.id)) {
+        } else if (currentPermissions.includes(p.id)) {
           return await props.user.revokePermission(props.team, p.id);
         }
       });
-      await Promise.allSettled(promises);
+      await Promise.all(promises);
       props.onSubmit();
     }}
     cancelButton
@@ -248,6 +252,8 @@ function Actions(props: {
           {
             item: "Edit permissions",
             onClick: () => setIsEditModalOpen(true),
+            disabled: props.user.permissions == null,
+            disabledTooltip: "Permissions failed to load for this user. Reload the table to retry.",
           },
           '-',
           {
@@ -261,17 +267,36 @@ function Actions(props: {
   );
 }
 
-export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }) {
+const PERMISSION_FETCH_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+export function TeamMemberTable(props: { team: ServerTeam }) {
+  const stackAdminApp = useAdminApp();
   const [updateCounter, setUpdateCounter] = useState(0);
+  const [permissions, setPermissions] = useState<Map<string, string[] | null>>(new Map());
+  const permissionRequestIdRef = useRef(0);
 
   const teamMemberColumns = useMemo<DataGridColumnDef<ExtendedServerUserForTeam>[]>(() => [
     {
       id: "user",
       header: "User",
-      width: 160,
+      width: 200,
       flex: 1,
-      minWidth: 110,
-      maxWidth: 220,
       sortable: false,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberUserCell user={row} />,
@@ -280,10 +305,8 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       id: "email",
       header: "Email",
       accessor: (row) => row.primaryEmail ?? "",
-      width: 160,
+      width: 200,
       flex: 1,
-      minWidth: 110,
-      maxWidth: 220,
       sortable: false,
       type: "string",
       renderCell: ({ row }) => <TeamMemberEmailCell user={row} />,
@@ -291,9 +314,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     {
       id: "userId",
       header: "User ID",
-      width: 130,
-      minWidth: 90,
-      maxWidth: 160,
+      width: 140,
       sortable: false,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberUserIdCell user={row} />,
@@ -301,9 +322,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     {
       id: "emailStatus",
       header: "Email Verified",
-      width: 110,
-      minWidth: 80,
-      maxWidth: 130,
+      width: 130,
       sortable: false,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberEmailStatusCell user={row} />,
@@ -312,10 +331,8 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       id: "lastActiveAt",
       header: "Last active",
       accessor: (row) => row.lastActiveAt,
-      width: 110,
-      minWidth: 80,
-      maxWidth: 130,
-      sortable: false,
+      width: 120,
+      sortable: true,
       type: "custom",
       renderCell: ({ row }) => <TeamMemberLastActiveCell user={row} />,
     },
@@ -327,18 +344,24 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
           <SimpleTooltip tooltip="Only showing direct permissions" type='info' />
         </div>
       ),
-      accessor: (row) => row.permissions.join(", "),
-      width: 120,
-      minWidth: 80,
+      accessor: (row) => row.permissions == null ? "" : row.permissions.join(", "),
+      width: 180,
+      flex: 1,
       sortable: false,
       type: "string",
       cellOverflow: "wrap",
       renderCell: ({ row }) => (
-        <div className="flex items-center gap-1 flex-wrap">
-          {row.permissions.map((permissionId) => (
-            <Badge key={permissionId} variant="secondary">{permissionId}</Badge>
-          ))}
-        </div>
+        row.permissions == null ? (
+          <SimpleTooltip tooltip="Failed to load permissions for this user. Reload the table to retry.">
+            <span className="text-xs text-destructive">Failed to load</span>
+          </SimpleTooltip>
+        ) : (
+          <div className="flex items-center gap-1 flex-wrap">
+            {row.permissions.map((permissionId) => (
+              <Badge key={permissionId} variant="secondary">{permissionId}</Badge>
+            ))}
+          </div>
+        )
       ),
     },
     {
@@ -347,7 +370,10 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       sortable: false,
       hideable: false,
       resizable: false,
-      width: 48,
+      width: 56,
+      minWidth: 56,
+      maxWidth: 56,
+      align: "right",
       type: "custom",
       renderCell: ({ row }) => (
         <Actions user={row} team={props.team} setUpdateCounter={setUpdateCounter} />
@@ -355,80 +381,120 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     },
   ], [props.team]);
 
-  const [gridState, setGridState] = useState<DataGridState>(() => {
-    const base = createDefaultDataGridState(teamMemberColumns);
-    return {
-      ...base,
-      columnVisibility: {
-        ...base.columnVisibility,
-        emailStatus: false,
-      },
-    };
+  const [gridState, setGridState] = useDataGridUrlState(teamMemberColumns, {
+    paramPrefix: "members",
+    initial: {
+      sorting: [{ columnId: "lastActiveAt", direction: "desc" }],
+      columnVisibility: { emailStatus: false },
+    },
   });
 
-  const [users, setUsers] = useState<ServerUser[]>([]);
-  const [userPermissions, setUserPermissions] = useState<Map<string, string[]>>(new Map());
-  const [isLoadingExtendedUsers, setIsLoadingExtendedUsers] = useState(true);
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
 
-  const extendedUsers: ExtendedServerUserForTeam[] = useMemo(() => {
-    return extendUsers(users).map((user) => ({
-      ...user,
-      permissions: userPermissions.get(user.id) ?? [],
-    }));
-  }, [users, userPermissions]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      const promises = props.users.map(async user => {
-        const permissions = await user.listPermissions(props.team, { recursive: false });
-        return {
-          user,
-          permissions,
-        };
+  const dataSource = useMemo<DataGridDataSource<ExtendedServerUserForTeam>>(
+    () => async function* (params) {
+      const reqId = ++permissionRequestIdRef.current;
+      const activeSort = params.sorting.find((s) => s.columnId === "lastActiveAt");
+      const sortDesc = activeSort?.direction !== "asc";
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      // Fan the user-list page and the team-wide permissions bulk-fetch
+      // out in parallel — they're independent and the bulk fetch is
+      // cached across pages of the same team.
+      const [result, permsResult] = await Promise.allSettled([
+        stackAdminApp.listUsers({
+          limit: PAGE_SIZE,
+          teamId: props.team.id,
+          orderBy: "lastActiveAt",
+          desc: sortDesc,
+          cursor,
+          query: search,
+          includeAnonymous: true,
+          includeRestricted: true,
+        }),
+        withTimeout(
+          stackAdminApp.listTeamMemberPermissions(props.team.id, { recursive: false }),
+          PERMISSION_FETCH_TIMEOUT_MS,
+          `listTeamMemberPermissions(${props.team.id})`,
+        ),
+      ]);
+      if (result.status === "rejected") throw result.reason;
+      const extended = extendUsers(result.value);
+      let permsByUser: Map<string, string[]> | null = null;
+      if (permsResult.status === "fulfilled") {
+        permsByUser = new Map();
+        for (const { userId, permissionId } of permsResult.value) {
+          const existing = permsByUser.get(userId);
+          if (existing) existing.push(permissionId);
+          else permsByUser.set(userId, [permissionId]);
+        }
+      } else {
+        captureError(
+          "team-member-table-list-permissions",
+          permsResult.reason instanceof Error ? permsResult.reason : new Error(String(permsResult.reason)),
+        );
+      }
+      if (reqId !== permissionRequestIdRef.current) return;
+      const resolved = extended.map((user): readonly [string, string[] | null] =>
+        [user.id, permsByUser ? (permsByUser.get(user.id) ?? []) : null] as const,
+      );
+      setPermissions((prev) => {
+        const next = new Map(prev);
+        for (const [id, perms] of resolved) next.set(id, perms);
+        return next;
       });
-      return await Promise.all(promises);
-    }
+      const permsMap = new Map(resolved);
+      yield {
+        rows: extended.map((user) => ({
+          ...user,
+          permissions: permsMap.has(user.id) ? permsMap.get(user.id) ?? null : null,
+        })),
+        hasMore: result.value.nextCursor != null,
+        nextCursor: result.value.nextCursor ?? undefined,
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateCounter forces refetch after permission edits
+    [stackAdminApp, props.team, updateCounter],
+  );
 
-    setIsLoadingExtendedUsers(true);
-    runAsynchronously(load().then((data) => {
-      if (cancelled) return;
-      setUserPermissions(new Map(
-        props.users.map((user, index) => [user.id, data[index].permissions.map(p => p.id)])
-      ));
-      setUsers(data.map(d => d.user));
-      setIsLoadingExtendedUsers(false);
-    }).catch(() => {
-      if (cancelled) return;
-      setIsLoadingExtendedUsers(false);
-    }));
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.users, props.team, updateCounter]);
+  const getRowId = useCallback((row: ExtendedServerUserForTeam) => row.id, []);
 
   const gridData = useDataSource({
-    data: extendedUsers,
+    dataSource,
     columns: teamMemberColumns,
-    getRowId: (row) => row.id,
+    getRowId,
     sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
+    quickSearch: debouncedQuickSearch,
     pagination: gridState.pagination,
-    paginationMode: "client",
+    paginationMode: "infinite",
   });
+
+  const rowsWithPermissions = useMemo(
+    () => gridData.rows.map((row) => ({
+      ...row,
+      permissions: permissions.has(row.id) ? permissions.get(row.id) ?? null : row.permissions,
+    })),
+    [gridData.rows, permissions],
+  );
 
   return (
     <DataGrid
       columns={teamMemberColumns}
-      rows={gridData.rows}
-      getRowId={(row) => row.id}
-      totalRowCount={gridData.totalRowCount}
-      isLoading={isLoadingExtendedUsers}
+      rows={rowsWithPermissions}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
       rowHeight="auto"
       estimatedRowHeight={44}
+      footer={false}
       fillHeight={false}
     />
   );

@@ -97,6 +97,10 @@
       "persistent": true,
       "cache": false
     },
+    "dev:tui": {
+      "persistent": true,
+      "cache": false
+    },
     "start": {
       "persistent": true,
       "cache": false

@@ -1713,6 +1713,10 @@ code={`type ServerUser =
       // NEXT_LINE_PLATFORM react-like
       ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#serveruserusecontactchannels
 
+      listTeamsPaginated([options]): Promise<{ items: ServerTeam[]; nextCursor: string | null }>; //$stack-link-to:#serveruserlistteamspaginated
+      // NEXT_LINE_PLATFORM react-like
+      ⤷ useTeamsPaginated([options]): { items: ServerTeam[]; nextCursor: string | null }; //$stack-link-to:#serveruseruseteamspaginated
+
       grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
       revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
   };`} />
@@ -1866,6 +1870,93 @@ code={`type ServerUser =
 
       ```typescript
       declare function useContactChannels(): ContactChannel[];
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="serverUser" property="listTeamsPaginated" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists the teams the user belongs to with cursor-based pagination, optional filtering, and ordering. The returned array carries an extra `nextCursor` property; pass it back as `cursor` to load the next page.
+
+      For unpaginated access (returning all matching teams), use `listTeams()`.
+
+      ### Parameters
+
+      <ParamField path="options" type="object">
+        <Accordion title="Show options properties">
+          <ParamField path="cursor" type="string">
+            Cursor returned as `nextCursor` from a previous response.
+          </ParamField>
+          <ParamField path="limit" type="number">
+            Maximum number of items to return. If omitted, all matching teams are returned.
+          </ParamField>
+          <ParamField path="orderBy" type="'createdAt'">
+            The field to sort results by.
+          </ParamField>
+          <ParamField path="desc" type="boolean" default="false">
+            Whether to sort in descending order.
+          </ParamField>
+          <ParamField path="query" type="string">
+            Free-text search on the team's display name (and team ID if the query is a UUID).
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<{ items: ServerTeam[]; nextCursor: string | null }>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listTeamsPaginated(options?: {
+        cursor?: string;
+        limit?: number;
+        orderBy?: "createdAt";
+        desc?: boolean;
+        query?: string;
+      }): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+
+      ```typescript
+      const teams = await serverUser.listTeamsPaginated({ limit: 20 });
+
+      if (teams.nextCursor) {
+        const next = await serverUser.listTeamsPaginated({
+          cursor: teams.nextCursor,
+          limit: 20,
+        });
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM react-like */}
+<CollapsibleTypesSection type="serverUser" property="useTeamsPaginated" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      <Markdown src="../../snippets/use-on-server-callout.mdx" />
+
+      Functionally equivalent to [`listTeamsPaginated()`](#serveruserlistteamspaginated), but as a React hook.
+    </MethodContent>
+    <MethodAside title="Signature">
+
+      ```typescript
+      declare function useTeamsPaginated(options?: {
+        cursor?: string;
+        limit?: number;
+        orderBy?: "createdAt";
+        desc?: boolean;
+        query?: string;
+      }): { items: ServerTeam[]; nextCursor: string | null };
       ```
     </MethodAside>
   </MethodLayout>
