@@ -218,7 +218,7 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
 // → omitted at request time.
 type EndActionChoice = "now" | "at-period-end" | "none";
 
-function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
+function RefundActionCell({ transaction, refundTarget, onRefunded }: { transaction: Transaction, refundTarget: RefundTarget | null, onRefunded: () => void }) {
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [amountUsd, setAmountUsd] = useState<string>('0');
@@ -320,6 +320,11 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
                 setSubmitError(e instanceof Error ? e.message : "Refund failed. Please try again.");
                 return "prevent-close";
               }
+              // Refetch the grid so the new refund row shows up immediately —
+              // `refundTransaction` invalidates the transactions cache, but
+              // this table reads via a `DataGridDataSource` generator that
+              // doesn't subscribe to that cache, so it must be told to reload.
+              onRefunded();
             },
             props: { disabled: !validation.canSubmit },
           }}
@@ -431,6 +436,15 @@ function TransactionTableBody(props: {
   // first and stay stable across paginate/append. Empty initially; filled
   // below once we have rows.
   const summaryByIdRef = useRef<Map<string, ReturnType<typeof getTransactionSummary>>>(new Map());
+
+  // Same ref indirection as `summaryByIdRef`: the stable (`[]`-deps) column
+  // closures need the grid's `reload`, but `gridData` is created below them.
+  // `handleRefunded` is passed to the refund action cell and re-runs the data
+  // source after a successful refund.
+  const reloadRef = useRef<() => void>(() => {});
+  const handleRefunded = useCallback(() => {
+    reloadRef.current();
+  }, []);
 
   const columns = useMemo<DataGridColumnDef<Transaction>[]>(() => [
     {
@@ -546,11 +560,12 @@ function TransactionTableBody(props: {
           <RefundActionCell
             transaction={row}
             refundTarget={summary?.refundTarget ?? null}
+            onRefunded={handleRefunded}
           />
         );
       },
     },
-  ], []);
+  ], [handleRefunded]);
 
   const [gridState, setGridState] = useState<DataGridState>(() =>
     createDefaultDataGridState(columns)
@@ -565,6 +580,9 @@ function TransactionTableBody(props: {
     pagination: gridState.pagination,
     paginationMode: "infinite",
   });
+
+  // Keep the column closures' reload hook pointed at the live grid reload.
+  reloadRef.current = gridData.reload;
 
   // Populate `summaryByIdRef` from the current rows — the `renderCell`
   // closures read this on every render.
