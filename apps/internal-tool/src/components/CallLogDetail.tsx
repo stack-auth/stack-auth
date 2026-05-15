@@ -33,7 +33,7 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Main Component ────────────────────────────────────
 
-export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrection, onMarkReviewed, onUnmarkReviewed }: {
+export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrection, onMarkReviewed, onUnmarkReviewed, onRetryReview }: {
   row: McpCallLogRow;
   allRows: McpCallLogRow[];
   qaEntries: QaEntriesRow[];
@@ -41,6 +41,7 @@ export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrecti
   onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
   onMarkReviewed?: (correlationId: string) => Promise<void> | void;
   onUnmarkReviewed?: (correlationId: string) => Promise<void> | void;
+  onRetryReview?: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
 }) {
   const linkedQa = qaEntries.find(q => q.sourceMcpCorrelationId === row.correlationId);
   const [showReplay, setShowReplay] = useState(false);
@@ -135,7 +136,7 @@ export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrecti
       <MpcCallCard row={row} />
 
       {/* Card 2: AI QA Review */}
-      <QaReviewCard row={row} />
+      <QaReviewCard row={row} onRetryReview={onRetryReview} />
 
       {/* Card 3: Human Correction */}
       <HumanCorrectionCard row={row} qa={linkedQa} onSave={onSaveCorrection} />
@@ -270,17 +271,90 @@ function InnerToolCall({ call }: { call: { toolName: string; toolCallId: string;
 
 type QaFlag = { type: string; severity: string; explanation: string };
 
-function QaReviewCard({ row }: { row: McpCallLogRow }) {
+// Rows older than this without a score or error are treated as failed-to-review:
+// the QA pass never wrote a result, either because it was skipped silently
+// (e.g., missing OpenRouter key) or because the background task died.
+const QA_REVIEW_FAILED_THRESHOLD_MS = 2 * 60 * 1000;
+
+function RetryReviewButton({ row, onRetryReview, label = "Retry review", tone = "indigo" }: {
+  row: McpCallLogRow;
+  onRetryReview: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
+  label?: string;
+  tone?: "indigo" | "red";
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const [justTriggered, setJustTriggered] = useState(false);
+
+  const toneClasses = tone === "red"
+    ? "text-red-700 bg-red-100 hover:bg-red-200 border-red-300"
+    : "text-indigo-700 bg-indigo-100 hover:bg-indigo-200 border-indigo-300";
+
+  return (
+    <button
+      disabled={retrying}
+      onClick={() => {
+        setRetrying(true);
+        runAsynchronouslyWithAlert(
+          Promise.resolve(onRetryReview(row.correlationId, { question: row.question, reason: row.reason, response: row.response }))
+            .then(() => {
+              setJustTriggered(true);
+              setTimeout(() => setJustTriggered(false), 3000);
+            })
+            .catch(err => {
+              captureError("call-log-retry-review", err);
+              throw err;
+            })
+            .finally(() => setRetrying(false))
+        );
+      }}
+      className={clsx(
+        "px-2 py-1 text-[11px] font-medium border rounded",
+        retrying ? "text-gray-400 bg-gray-50 border-gray-200" : toneClasses,
+      )}
+    >
+      {retrying ? "Retrying…" : justTriggered ? "Queued" : label}
+    </button>
+  );
+}
+
+function QaReviewCard({ row, onRetryReview }: {
+  row: McpCallLogRow;
+  onRetryReview?: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
+}) {
   if (row.qaErrorMessage) {
     return (
-      <div className="bg-red-50/50 border border-red-200 rounded-lg p-4">
-        <h3 className="text-xs font-semibold text-red-800 uppercase tracking-wider mb-2">AI QA Review</h3>
-        <p className="text-sm text-red-700">Error: {row.qaErrorMessage}</p>
+      <div className="bg-red-50/50 border border-red-200 rounded-lg p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-red-800 uppercase tracking-wider">AI QA Review</h3>
+          {onRetryReview && <RetryReviewButton row={row} onRetryReview={onRetryReview} tone="red" />}
+        </div>
+        <p className="text-sm text-red-700 whitespace-pre-wrap">Error: {row.qaErrorMessage}</p>
       </div>
     );
   }
 
   if (row.qaOverallScore == null) {
+    const reviewStartedAt = row.qaReviewedAt ?? row.createdAt;
+    const ageMs = Date.now() - toDate(reviewStartedAt).getTime();
+    const reviewFailed = ageMs > QA_REVIEW_FAILED_THRESHOLD_MS;
+
+    if (reviewFailed) {
+      return (
+        <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-semibold text-amber-800 uppercase tracking-wider">AI QA Review</h3>
+              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Review failed</span>
+            </div>
+            {onRetryReview && <RetryReviewButton row={row} onRetryReview={onRetryReview} />}
+          </div>
+          <p className="text-xs text-amber-700">
+            No review completed in {formatDistanceToNow(toDate(reviewStartedAt))}. The reviewer was likely skipped (missing OpenRouter key) or the background task died — click retry to re-run.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-indigo-50/30 border border-indigo-200 rounded-lg p-4">
         <div className="flex items-center gap-2">

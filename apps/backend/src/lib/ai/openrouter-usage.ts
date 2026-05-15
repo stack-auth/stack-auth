@@ -1,3 +1,4 @@
+import { getOpenRouterProxyBaseUrl } from "@/lib/ai/models";
 import { callReducer, opt } from "@/lib/ai/spacetimedb-client";
 import type { OpenRouterUsageAccounting } from "@openrouter/ai-sdk-provider";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -138,13 +139,19 @@ type GenerationRecord = {
 
 async function fetchGenerationOnce(
   generationId: string,
-  apiKey: string,
 ): Promise<GenerationRecord | null | "not_ready"> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), GENERATION_PER_REQUEST_TIMEOUT_MS);
+  const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
+  const url = apiKey && apiKey !== "FORWARD_TO_PRODUCTION"
+    ? `https://openrouter.ai/api/v1/generation?id=${encodeURIComponent(generationId)}`
+    : `${getOpenRouterProxyBaseUrl()}/generation?id=${encodeURIComponent(generationId)}`;
+  const headers = apiKey && apiKey !== "FORWARD_TO_PRODUCTION"
+    ? { "Authorization": `Bearer ${apiKey}` }
+    : undefined;
   try {
-    const res = await fetch(`https://openrouter.ai/api/v1/generation?id=${encodeURIComponent(generationId)}`, {
-      headers: { "Authorization": `Bearer ${apiKey}` },
+    const res = await fetch(url, {
+      headers,
       signal: ctrl.signal,
     });
     if (res.status === 404) return "not_ready";
@@ -163,15 +170,13 @@ export async function refineGenerationCost(opts: {
   generationId: string,
   correlationId: string,
 }): Promise<void> {
-  const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
-  if (!apiKey || apiKey === "FORWARD_TO_PRODUCTION") return;
   const logToken = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
   if (!logToken) return;
 
   for (let attempt = 0; attempt < GENERATION_RETRY_DELAYS_MS.length; attempt++) {
     await new Promise(r => setTimeout(r, GENERATION_RETRY_DELAYS_MS[attempt]));
     try {
-      const result = await fetchGenerationOnce(opts.generationId, apiKey);
+      const result = await fetchGenerationOnce(opts.generationId);
       if (result === "not_ready") continue;
       if (result == null) return;
       await callReducer("update_ai_query_cost", [

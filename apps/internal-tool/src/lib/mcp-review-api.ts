@@ -35,6 +35,13 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
     unmarkReviewed: (body: { correlationId: string }) =>
       post("unmark-reviewed", body, authHeaders),
 
+    retryReview: (body: {
+      correlationId: string;
+      question: string;
+      reason: string;
+      response: string;
+    }) => post("retry-review", body, authHeaders),
+
     updateCorrection: (body: {
       correlationId: string;
       correctedQuestion: string;

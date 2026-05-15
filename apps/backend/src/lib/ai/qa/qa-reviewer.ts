@@ -2,8 +2,8 @@ import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateText, stepCountIs } from "ai";
-import { callReducer, opt } from "../spacetimedb-client";
 import { createOpenRouterProvider } from "../models";
+import { callReducer, opt } from "../spacetimedb-client";
 import { getVerifiedQaContext } from "./verified-qa";
 
 const QA_SYSTEM_PROMPT = `You are a QA reviewer for Stack Auth's AI documentation assistant.
@@ -38,6 +38,14 @@ Set needsHumanReview=true if: score < 50, any critical flag, or you are uncertai
 
 const REVIEW_MODEL_ID = "anthropic/claude-haiku-4.5";
 
+export async function clearMcpQaReview(correlationId: string): Promise<void> {
+  const token = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
+  await callReducer("clear_mcp_qa_review", [
+    token,
+    correlationId,
+  ]);
+}
+
 export async function reviewMcpCall(entry: {
   logPromise: Promise<void>;
   correlationId: string;
@@ -45,10 +53,6 @@ export async function reviewMcpCall(entry: {
   reason: string;
   response: string;
 }): Promise<void> {
-  const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
-  if (!apiKey || apiKey === "FORWARD_TO_PRODUCTION") {
-    return;
-  }
   try {
     await entry.logPromise;
   } catch (err) {

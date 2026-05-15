@@ -344,6 +344,35 @@ export const update_mcp_qa_review = spacetimedb.reducer(
   }
 );
 
+export const clear_mcp_qa_review = spacetimedb.reducer(
+  {
+    token: t.string(),
+    correlationId: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    }
+    ctx.db.mcpCallLog.id.update({
+      ...row,
+      qaReviewedAt: ctx.timestamp,
+      qaNeedsHumanReview: undefined,
+      qaAnswerCorrect: undefined,
+      qaAnswerRelevant: undefined,
+      qaFlagsJson: undefined,
+      qaImprovementSuggestions: undefined,
+      qaOverallScore: undefined,
+      qaReviewModelId: undefined,
+      qaConversationJson: undefined,
+      qaErrorMessage: undefined,
+    });
+  }
+);
+
 export const mark_human_reviewed = spacetimedb.reducer(
   {
     token: t.string(),

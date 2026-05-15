@@ -227,6 +227,9 @@ export default function App() {
                   onUnmarkReviewed={(correlationId) =>
                     getApi().then(api => api.unmarkReviewed({ correlationId }))
                   }
+                  onRetryReview={(correlationId, payload) =>
+                    getApi().then(api => api.retryReview({ correlationId, ...payload }))
+                  }
                 />
               </aside>
             )}

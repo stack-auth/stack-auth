@@ -11,7 +11,18 @@ function truncate(str: string, max: number): string {
 type SortField = "time" | "tool" | "steps" | "duration" | "qa" | "reviewed" | "status";
 type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "ok" | "error";
-type QaFilter = "all" | "pending" | "pass" | "warn" | "fail" | "error" | "needs-review" | "human-reviewed" | "not-reviewed";
+type QaFilter = "all" | "pending" | "review-failed" | "pass" | "warn" | "fail" | "error" | "needs-review" | "human-reviewed" | "not-reviewed";
+
+// Rows older than this without a score or error are treated as failed-to-review:
+// the QA pass never wrote a result, either because it was skipped silently
+// (e.g., missing OpenRouter key) or because the background task died.
+const QA_REVIEW_FAILED_THRESHOLD_MS = 2 * 60 * 1000;
+
+function isQaReviewFailed(row: McpCallLogRow): boolean {
+  if (row.qaOverallScore != null || row.qaErrorMessage) return false;
+  const reviewStartedAt = row.qaReviewedAt ?? row.createdAt;
+  return Date.now() - toDate(reviewStartedAt).getTime() > QA_REVIEW_FAILED_THRESHOLD_MS;
+}
 const PAGE_SIZES = [25, 50, 100, 500] as const;
 type PageSize = typeof PAGE_SIZES[number];
 
@@ -90,7 +101,9 @@ export function CallLogList({
 
     // QA filter
     if (qaFilter === "pending") {
-      result = result.filter(r => r.qaOverallScore == null && !r.qaErrorMessage);
+      result = result.filter(r => r.qaOverallScore == null && !r.qaErrorMessage && !isQaReviewFailed(r));
+    } else if (qaFilter === "review-failed") {
+      result = result.filter(r => isQaReviewFailed(r));
     } else if (qaFilter === "pass") {
       result = result.filter(r => r.qaOverallScore != null && r.qaOverallScore >= 80);
     } else if (qaFilter === "warn") {
@@ -197,6 +210,7 @@ export function CallLogList({
           >
             <option value="all">All QA</option>
             <option value="pending">Pending</option>
+            <option value="review-failed">Review failed</option>
             <option value="pass">Pass (80+)</option>
             <option value="warn">Warning (50-79)</option>
             <option value="fail">Fail (&lt;50)</option>
@@ -294,8 +308,15 @@ export function CallLogList({
                           {row.qaOverallScore}
                           {row.qaNeedsHumanReview && !row.humanReviewedAt && " !"}
                         </span>
+                      ) : isQaReviewFailed(row) ? (
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
+                          title="Review didn't complete — open the row to retry"
+                        >
+                          review failed
+                        </span>
                       ) : (
-                        <span className="text-xs text-gray-300">--</span>
+                        <span className="text-xs text-gray-400" title="Review in progress">…</span>
                       )}
                     </span>
                   </td>
