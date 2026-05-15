@@ -328,7 +328,6 @@ function RefundActionCell({ transaction, refundTarget, onRefunded }: { transacti
             },
             props: { disabled: !validation.canSubmit },
           }}
-          confirmText="Refunds cannot be undone"
         >
           <div className="space-y-4">
             <div className="space-y-2">
