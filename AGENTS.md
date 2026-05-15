@@ -116,3 +116,42 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
+
+## Cursor Cloud specific instructions
+
+### Environment overview
+Stack Auth is a monorepo (pnpm workspaces + Turbo). The core dev services are:
+- **Backend** (Next.js API): port 8102
+- **Dashboard** (Next.js): port 8101
+- **Mock OAuth Server**: port 8114
+- **Docker deps** (Postgres, ClickHouse, Inbucket, Svix, S3 mock, LocalStack, QStash, etc.)
+
+All commands and scripts are documented in the root `README.md` and `package.json`.
+
+### Starting services
+1. Docker must be running. Start deps with `pnpm start-deps` (or `pnpm restart-deps` to reset). This also runs `db:init`.
+2. Start the dev server: `pnpm dev:basic` (backend + dashboard + MCP + mock-oauth-server). Use `pnpm dev` for all services including examples/docs.
+3. The update script handles `pnpm install` only. You must build packages (`pnpm build:packages`) and run codegen (`pnpm codegen`) at least once before starting the dev server. After that, `pnpm dev` watches for changes automatically.
+
+### Docker Hub rate limit (Cloud VM gotcha)
+The shared Cloud VM IP frequently hits Docker Hub's unauthenticated pull rate limit (100 pulls/6h). To work around this, configure a registry mirror before pulling images:
+```json
+// /etc/docker/daemon.json
+{
+  "storage-driver": "fuse-overlayfs",
+  "registry-mirrors": ["https://mirror.gcr.io"]
+}
+```
+Also ensure `fuse-overlayfs` is installed and iptables is set to legacy mode (required for Docker-in-Docker in the Firecracker VM).
+
+### Jaeger container
+The Jaeger (OpenTelemetry tracing) container may fail to start with a cgroup error in the nested container environment. This is optional and does not affect development or testing.
+
+### Testing
+- `pnpm test run` runs all tests (Vitest). Filter with `pnpm test run <file-pattern>`.
+- Tests require the backend to be running on port 8102.
+- Performance tests (e.g. `bulldozer/db/index.perf.test.ts`) may fail in resource-constrained VMs; this is expected.
+- Use `--bail 1` to stop on first failure.
+
+### Dashboard sign-in for testing
+Navigate to http://localhost:8101, click "Sign in with GitHub", and on the mock OAuth page enter `admin@example.com`.
