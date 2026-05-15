@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
 import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/schema/phase-1/transactions";
@@ -792,6 +793,20 @@ async function handleSubscriptionRefund(options: {
 
   if (updatedSub) {
     await bulldozerWriteSubscription(prisma, updatedSub);
+  }
+
+  // Regrant the free plan if a Stack Auth billing team just lost its only
+  // plans-line subscription to this refund. Scoped to the internal tenancy
+  // (which hosts the free/team/growth plans) and team customers, mirroring
+  // the DELETE cancel route and the Stripe webhook sync. Idempotent — no-ops
+  // if the team still occupies the line (e.g. an `at-period-end` refund whose
+  // `endedAt` is still in the future). Crucial for test-mode subs: they have
+  // no Stripe object, so — unlike live-mode refunds — no
+  // `customer.subscription.deleted` webhook fires to run this regrant via
+  // `syncStripeSubscriptions`. Runs after `bulldozerWriteSubscription` so the
+  // fast-path subscription LFold reflects the just-ended sub.
+  if (updatedSub && tenancy.project.id === "internal" && customerType === "team") {
+    await ensureFreePlanForBillingTeam(subscription.customerId);
   }
 
   // ── Refund row ────────────────────────────────────────────────────────
