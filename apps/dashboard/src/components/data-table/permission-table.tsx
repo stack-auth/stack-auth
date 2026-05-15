@@ -3,12 +3,14 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ActionCell, ActionDialog, SimpleTooltip } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
 } from "@stackframe/dashboard-ui-components";
-import { useMemo, useState } from "react";
+import { useCallback, useContext, useMemo, useState, createContext } from "react";
+import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
@@ -21,6 +23,10 @@ type AdminPermissionDefinition = {
 
 type PermissionType = 'project' | 'team';
 
+const SEARCH_DEBOUNCE_MS = 300;
+
+const RefetchPermissionsContext = createContext<() => void>(() => {});
+
 function EditDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
@@ -28,9 +34,10 @@ function EditDialog(props: {
   permissionType: PermissionType,
 }) {
   const stackAdminApp = useAdminApp();
-  const teamPermissions = stackAdminApp.useTeamPermissionDefinitions();
-  const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
-  const permissions = props.permissionType === 'project' ? projectPermissions : teamPermissions;
+  const refetchPermissions = useContext(RefetchPermissionsContext);
+  const permissions = props.permissionType === 'project'
+    ? stackAdminApp.useProjectPermissionDefinitions()
+    : stackAdminApp.useTeamPermissionDefinitions();
 
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
@@ -77,6 +84,7 @@ function EditDialog(props: {
       } else {
         await stackAdminApp.updateTeamPermissionDefinition(props.selectedPermissionId, values);
       }
+      refetchPermissions();
     }}
     cancelButton
   />;
@@ -89,6 +97,7 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
   permissionType: PermissionType,
 }) {
   const stackAdminApp = useAdminApp();
+  const refetchPermissions = useContext(RefetchPermissionsContext);
 
   return <ActionDialog
     open={props.open}
@@ -102,6 +111,7 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
       } else {
         await stackAdminApp.deleteTeamPermissionDefinition(props.permission.id);
       }
+      refetchPermissions();
     } }}
     confirmText="I understand this will remove the permission from all users and other permissions that contain it."
   >
@@ -147,6 +157,7 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       accessor: "id",
       width: 180,
       type: "string",
+      sortable: false,
       renderCell: ({ row }) => (
         <div className="flex max-w-[180px] items-center gap-1">
           <span className="truncate font-mono text-xs text-muted-foreground">{row.id}</span>
@@ -163,6 +174,7 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       width: 200,
       flex: 1,
       type: "string",
+      sortable: false,
       renderCell: ({ value }) => (
         <span className="truncate">{String(value ?? "")}</span>
       ),
@@ -178,6 +190,7 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       accessor: "containedPermissionIds",
       width: 120,
       type: "custom",
+      sortable: false,
       cellOverflow: "wrap",
       formatValue: (value) => (Array.isArray(value) ? value.join(", ") : String(value ?? "")),
       renderCell: ({ row }) => (
@@ -208,37 +221,79 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
   ];
 }
 
-export function PermissionTable<T extends AdminPermissionDefinition>(props: {
-  permissions: T[],
+export function PermissionTable(props: {
   permissionType: PermissionType,
+  version?: number,
 }) {
+  const stackAdminApp = useAdminApp();
   const columns = useMemo(
-    () => createColumns<T>(props.permissionType),
+    () => createColumns<AdminPermissionDefinition>(props.permissionType),
     [props.permissionType],
   );
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, {
+    // Distinct prefixes for project vs team permissions so the two grids
+    // can't collide if ever rendered together, and so bookmarks scoped to
+    // one don't bleed into the other.
+    paramPrefix: props.permissionType === "project" ? "projperms" : "teamperms",
+  });
+  const [internalRefetchKey, setInternalRefetchKey] = useState(0);
+  const refetchPermissions = useCallback(() => setInternalRefetchKey((k) => k + 1), []);
+  const refetchKey = internalRefetchKey + (props.version ?? 0);
+
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
+
+  const dataSource = useMemo<DataGridDataSource<AdminPermissionDefinition>>(
+    () => async function* (params) {
+      const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const all = props.permissionType === 'project'
+        ? await stackAdminApp.listProjectPermissionDefinitions()
+        : await stackAdminApp.listTeamPermissionDefinitions();
+      const filtered = search
+        ? all.filter((p) => {
+          const haystack = `${p.id} ${p.description ?? ""}`.toLowerCase();
+          return haystack.includes(search.toLowerCase());
+        })
+        : all;
+      yield { rows: filtered, hasMore: false };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetchKey resets pagination after mutations
+    [stackAdminApp, props.permissionType, refetchKey],
+  );
+
+  const getRowId = useCallback((row: AdminPermissionDefinition) => row.id, []);
 
   const gridData = useDataSource({
-    data: props.permissions,
+    dataSource,
     columns,
-    getRowId: (row) => row.id,
+    getRowId,
     sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
+    quickSearch: debouncedQuickSearch,
     pagination: gridState.pagination,
-    paginationMode: "client",
+    paginationMode: "infinite",
   });
 
   return (
-    <DataGrid<T>
-      columns={columns}
-      rows={gridData.rows}
-      getRowId={(row) => row.id}
-      totalRowCount={gridData.totalRowCount}
-      state={gridState}
-      onChange={setGridState}
-      rowHeight="auto"
-      estimatedRowHeight={44}
-      strings={{ searchPlaceholder: "Filter" }}
-    />
+    <RefetchPermissionsContext.Provider value={refetchPermissions}>
+      <DataGrid<AdminPermissionDefinition>
+        columns={columns}
+        rows={gridData.rows}
+        getRowId={getRowId}
+        isLoading={gridData.isLoading}
+        isRefetching={gridData.isRefetching}
+        state={gridState}
+        onChange={setGridState}
+        paginationMode="infinite"
+        hasMore={gridData.hasMore}
+        isLoadingMore={gridData.isLoadingMore}
+        onLoadMore={gridData.loadMore}
+        rowHeight="auto"
+        estimatedRowHeight={44}
+        footer={false}
+        fillHeight={false}
+        strings={{ searchPlaceholder: "Filter" }}
+      />
+    </RefetchPermissionsContext.Provider>
   );
 }

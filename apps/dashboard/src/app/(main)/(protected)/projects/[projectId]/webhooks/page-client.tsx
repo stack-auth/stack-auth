@@ -21,8 +21,8 @@ import { useTheme } from "@/lib/theme";
 import { GlobeHemisphereWestIcon } from "@phosphor-icons/react";
 import "svix-react/style.css";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
 } from "@stackframe/dashboard-ui-components";
@@ -443,7 +443,7 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
     },
   ], [props.updateFn, props.onTestRequested]);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "webhooks" });
 
   const endpointRows = useMemo((): Endpoint[] => {
     if (!endpoints.loaded) {
@@ -497,7 +497,7 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
         isLoadingMore={gridData.isLoadingMore}
         onLoadMore={gridData.loadMore}
         footer={false}
-
+        fillHeight={false}
       />
     </DesignCard>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
@@ -15,11 +15,10 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { useEffect, useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
@@ -461,10 +460,10 @@ function EmailLogCard() {
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [gridState, setGridState] = useState<DataGridState>(() => ({
-    ...createDefaultDataGridState(emailTableColumns),
-    sorting: [{ columnId: "sentAt", direction: "desc" }],
-  }));
+  const [gridState, setGridState] = useDataGridUrlState(emailTableColumns, {
+    paramPrefix: "emails",
+    initial: { sorting: [{ columnId: "sentAt", direction: "desc" }] },
+  });
   const gridData = useDataSource({
     data: emailLogs,
     columns: emailTableColumns,
@@ -1235,7 +1234,7 @@ function SendEmailDialog(props: {
           <>
             {renderRecipientsBar()}
             {stage === 'recipients' ? (
-              <TeamMemberSearchTable
+              <UserPickerTable
                 action={(user) => (
                   <Button
                     size="sm"

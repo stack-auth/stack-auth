@@ -22,7 +22,7 @@ import { extendUsers } from "./user-table";
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
 
-export function TeamMemberSearchTable(props: {
+export function UserPickerTable(props: {
   action: (user: ServerUser) => React.ReactNode,
 }) {
   const stackAdminApp = useAdminApp();
@@ -33,14 +33,15 @@ export function TeamMemberSearchTable(props: {
     {
       id: "avatar",
       header: "",
-      width: 50,
-      minWidth: 50,
-      maxWidth: 50,
+      width: 56,
+      minWidth: 56,
+      maxWidth: 56,
+      align: "center",
       sortable: false,
       hideable: false,
       resizable: false,
       renderCell: ({ row }) => (
-        <Avatar className="h-8 w-8">
+        <Avatar className="h-7 w-7">
           <AvatarImage src={row.profileImageUrl ?? undefined} />
           <AvatarFallback className="text-xs">
             {row.displayName?.charAt(0) ?? row.primaryEmail?.charAt(0) ?? "?"}
@@ -52,7 +53,7 @@ export function TeamMemberSearchTable(props: {
       id: "displayName",
       header: "Display Name",
       accessor: "displayName",
-      width: 150,
+      width: 140,
       flex: 1,
       sortable: false,
       type: "string",
@@ -66,7 +67,7 @@ export function TeamMemberSearchTable(props: {
       id: "primaryEmail",
       header: "Email",
       accessor: "primaryEmail",
-      width: 200,
+      width: 160,
       flex: 1,
       sortable: false,
       type: "string",
@@ -80,6 +81,9 @@ export function TeamMemberSearchTable(props: {
       id: "actions",
       header: "",
       width: 100,
+      minWidth: 100,
+      maxWidth: 100,
+      align: "right",
       sortable: false,
       hideable: false,
       resizable: false,
@@ -94,9 +98,6 @@ export function TeamMemberSearchTable(props: {
   // Debounce the toolbar search so we don't hit `listUsers` on every keystroke.
   const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
 
-  // Server-side infinite data source. Identity is stable (no closure state
-  // beyond `stackAdminApp`) so refetches are driven purely by the debounced
-  // `quickSearch` key inside `useDataSource`.
   const dataSource = useMemo<DataGridDataSource<ServerUser>>(
     () => async function* (params) {
       const query = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
@@ -142,6 +143,8 @@ export function TeamMemberSearchTable(props: {
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      fillHeight={false}
+      maxHeight={420}
       footer={false}
       emptyState={
         <div className="text-center py-8">

@@ -154,7 +154,12 @@
                         "type": "object",
                         "properties": {
                           "type": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "anonymous",
+                              "email_not_verified",
+                              "restricted_by_administrator"
+                            ]
                           }
                         },
                         "required": [
@@ -190,10 +195,10 @@
                             "type": "object",
                             "properties": {
                               "bot": {
-                                "type": "number"
+                                "type": "integer"
                               },
                               "free_trial_abuse": {
-                                "type": "number"
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -404,7 +409,12 @@
                         "type": "object",
                         "properties": {
                           "type": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "anonymous",
+                              "email_not_verified",
+                              "restricted_by_administrator"
+                            ]
                           }
                         },
                         "required": [
@@ -440,10 +450,10 @@
                             "type": "object",
                             "properties": {
                               "bot": {
-                                "type": "number"
+                                "type": "integer"
                               },
                               "free_trial_abuse": {
-                                "type": "number"
+                                "type": "integer"
                               }
                             },
                             "required": [

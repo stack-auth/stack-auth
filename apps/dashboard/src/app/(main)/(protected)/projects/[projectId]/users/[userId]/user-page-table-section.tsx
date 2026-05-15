@@ -1,6 +1,6 @@
 "use client";
 
-import { createDefaultDataGridState, DataGrid, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, type DataGridColumnDef, type DataGridSortModel, useDataGridUrlState, useDataSource } from "@stackframe/dashboard-ui-components";
 import { useState, type ReactNode } from "react";
 
 type UserPageTableSectionProps<TRow> = {
@@ -10,7 +10,25 @@ type UserPageTableSectionProps<TRow> = {
   rows: readonly TRow[],
   getRowId: (row: TRow) => string,
   emptyLabel: string,
+  onRowClick?: (row: TRow, rowId: string, event: React.MouseEvent) => void,
+  hasMore?: boolean,
+  isLoadingMore?: boolean,
+  onLoadMore?: () => void,
+  onSortChange?: (model: DataGridSortModel) => void,
+  paginated?: boolean,
+  /** True until the first request settles. When true and rows is empty, show a loading state instead of "empty". */
+  isInitialLoading?: boolean,
+  /** Non-null when the latest fetch failed. Rendered in place of empty/loading state. */
+  error?: ReactNode | null,
+  urlStateKey?: string,
 };
+
+function useGridState<TRow>(columns: readonly DataGridColumnDef<TRow>[], urlStateKey?: string) {
+  // Always call both hooks for rules-of-hooks; return whichever the caller opted into.
+  const urlBacked = useDataGridUrlState(columns, urlStateKey ? { paramPrefix: urlStateKey } : undefined);
+  const localBacked = useState(() => createDefaultDataGridState(columns));
+  return urlStateKey ? urlBacked : localBacked;
+}
 
 export function UserPageTableSection<TRow,>({
   title,
@@ -19,8 +37,26 @@ export function UserPageTableSection<TRow,>({
   rows,
   getRowId,
   emptyLabel,
+  onRowClick,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
+  onSortChange,
+  paginated,
+  isInitialLoading,
+  error,
+  urlStateKey,
 }: UserPageTableSectionProps<TRow>) {
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useGridState(columns, urlStateKey);
+  const gridData = useDataSource({
+    data: paginated ? rows : [],
+    columns,
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
 
   const visibleColumns = columns.filter((column) => gridState.columnVisibility[column.id] !== false);
 
@@ -60,21 +96,32 @@ export function UserPageTableSection<TRow,>({
             ))}
           </div>
           <div className="flex min-h-16 items-center justify-center py-4 text-sm font-medium text-muted-foreground">
-            {emptyLabel}
+            {error
+              ? error
+              : isInitialLoading
+                ? "Loading…"
+                : emptyLabel}
           </div>
         </div>
       ) : (
         <DataGrid
           columns={columns}
-          rows={rows}
+          rows={paginated ? gridData.rows : rows}
           getRowId={getRowId}
+          onRowClick={onRowClick}
           state={gridState}
           onChange={setGridState}
+          onSortChange={onSortChange}
           toolbar={false}
-          footer={false}
+          footer={paginated ? undefined : false}
           fillHeight={false}
           rowHeight="auto"
           estimatedRowHeight={44}
+          paginationMode={paginated ? "paginated" : (onLoadMore ? "infinite" : undefined)}
+          totalRowCount={paginated ? gridData.totalRowCount : undefined}
+          hasMore={hasMore}
+          isLoadingMore={isLoadingMore}
+          onLoadMore={onLoadMore}
           emptyState={
             <div className="mx-auto flex max-w-md flex-col items-center gap-2 py-8">
               <div className="text-sm font-medium text-muted-foreground">{emptyLabel}</div>

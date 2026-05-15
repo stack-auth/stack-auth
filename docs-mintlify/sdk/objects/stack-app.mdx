@@ -526,8 +526,10 @@ type StackServerApp =
 
     getTeam(id): Promise<ServerTeam | null>;
     useTeam(id): ServerTeam;
-    listTeams(): Promise<ServerTeam[]>;
-    useTeams(): ServerTeam[];
+    listTeams([options]): Promise<ServerTeam[]>;
+    useTeams([options]): ServerTeam[];
+    listTeamsPaginated([options]): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
+    useTeamsPaginated([options]): { items: ServerTeam[]; nextCursor: string | null };
     createTeam([options]): Promise<ServerTeam>;
   }
 ```
@@ -934,11 +936,23 @@ Creates a new `StackServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.listTeams()`
+### `stackServerApp.listTeams([options])`
 
 <MethodLayout>
   <MethodContent>
     Lists all teams on the current project.
+
+    For cursor-based pagination over teams, see [`listTeamsPaginated`](#stackserverapplistteamspaginatedoptions).
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.orderBy" type='"createdAt"'>
+        The field to sort results by.
+      </ParamField>
+
+      <ParamField body="options.desc" type="boolean">
+        Whether to sort in descending order. Defaults to `false`.
+      </ParamField>
+    </ContentSection>
 
     <MethodReturns type="Promise<ServerTeam[]>" />
 
@@ -947,7 +961,10 @@ Creates a new `StackServerApp` instance.
   <MethodAside>
     <AsideSection title="Signature">
       ```typescript
-      declare function listTeams(): Promise<ServerTeam[]>;
+      declare function listTeams(options?: {
+        orderBy?: "createdAt";
+        desc?: boolean;
+      }): Promise<ServerTeam[]>;
       ```
     </AsideSection>
 
@@ -961,11 +978,11 @@ Creates a new `StackServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.useTeams()`
+### `stackServerApp.useTeams([options])`
 
 <MethodLayout>
   <MethodContent>
-    Functionally equivalent to [`listTeams()`](#stackserverapplistteams), but as a React hook.
+    Functionally equivalent to [`listTeams()`](#stackserverapplistteamsoptions), but as a React hook.
 
     <Info>This should be used on the server-side only.</Info>
 
@@ -974,7 +991,98 @@ Creates a new `StackServerApp` instance.
   <MethodAside>
     <AsideSection title="Signature">
       ```typescript
-      declare function useTeams(): ServerTeam[];
+      declare function useTeams(options?: {
+        orderBy?: "createdAt";
+        desc?: boolean;
+      }): ServerTeam[];
+      ```
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.listTeamsPaginated([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Lists teams on the current project with cursor-based pagination, optional filtering, and ordering. The returned array carries an extra `nextCursor` property; pass it back as `cursor` to load the next page.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.cursor" type="string">
+        Cursor returned as `nextCursor` from a previous response.
+      </ParamField>
+
+      <ParamField body="options.limit" type="number">
+        Maximum number of items to return. If omitted, all matching teams are returned.
+      </ParamField>
+
+      <ParamField body="options.orderBy" type='"createdAt"'>
+        The field to sort results by.
+      </ParamField>
+
+      <ParamField body="options.desc" type="boolean">
+        Whether to sort in descending order. Defaults to `false`.
+      </ParamField>
+
+      <ParamField body="options.query" type="string">
+        Free-text search on the team's display name (and team ID if the query is a UUID).
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<{ items: ServerTeam[]; nextCursor: string | null }>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function listTeamsPaginated(options?: {
+        cursor?: string;
+        limit?: number;
+        orderBy?: "createdAt";
+        desc?: boolean;
+        query?: string;
+      }): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const teams = await stackServerApp.listTeamsPaginated({ limit: 20 });
+      console.log(teams);
+
+      if (teams.nextCursor) {
+        const nextPageTeams = await stackServerApp.listTeamsPaginated({
+          cursor: teams.nextCursor,
+          limit: 20,
+        });
+        console.log(nextPageTeams);
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.useTeamsPaginated([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Functionally equivalent to [`listTeamsPaginated()`](#stackserverapplistteamspaginatedoptions), but as a React hook.
+
+    <Info>This should be used on the server-side only.</Info>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useTeamsPaginated(options?: {
+        cursor?: string;
+        limit?: number;
+        orderBy?: "createdAt";
+        desc?: boolean;
+        query?: string;
+      }): { items: ServerTeam[]; nextCursor: string | null };
       ```
     </AsideSection>
   </MethodAside>

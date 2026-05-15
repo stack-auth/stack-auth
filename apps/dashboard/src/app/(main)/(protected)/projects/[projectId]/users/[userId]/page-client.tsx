@@ -1,17 +1,20 @@
 "use client";
 
+import { TeamSearchTable } from "@/components/data-table/team-search-table";
 import { DesignCategoryTabs, DesignEditableGrid, DesignMenu, type DesignCategoryTabItem, type DesignEditableGridItem, type DesignMenuActionItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { MetadataSection } from "@/components/metadata-editor";
+import { useRouter } from "@/components/router";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
   ActionCell,
+  ActionDialog,
   Alert,
   AlertDescription,
   AlertTitle,
@@ -27,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Skeleton,
   Textarea,
   Tooltip,
   TooltipContent,
@@ -46,20 +50,36 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
-import { CountryCodeInput } from "@/components/country-code-select";
-import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { useRouter } from "@/components/router";
 import { UserAnalyticsSection } from "./user-analytics";
 import { UserPageTableSection } from "./user-page-table-section";
 import { UserPaymentsSection } from "./user-payments";
+import dynamic from "next/dynamic";
+
+// The session-replays page is ~2k LOC and pulls rrweb in via dynamic imports.
+// Lazy-load it so the user-detail bundle doesn't pay that cost just because
+// the Replays tab *might* be opened.
+const SessionReplaysPageClient = dynamic(
+  () => import("../../session-replays/page-client"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+        Loading session replays…
+      </div>
+    ),
+  },
+);
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -98,7 +118,7 @@ function UserHeader({ user }: UserHeaderProps) {
   const router = useRouter();
 
   return (
-    <div className="flex min-w-0 flex-1 gap-4 items-center">
+    <div className="flex min-w-0 gap-4 items-center">
       <Avatar className="w-20 h-20 shrink-0">
         <AvatarImage src={user.profileImageUrl ?? undefined} alt={name} />
         <AvatarFallback>{name.slice(0, 2)}</AvatarFallback>
@@ -228,12 +248,15 @@ function RestrictionDialog({
   const [publicReason, setPublicReason] = useState(user.restrictedByAdminReason ?? '');
   const [privateDetails, setPrivateDetails] = useState(user.restrictedByAdminPrivateDetails ?? '');
   const [isSaving, setIsSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Reset form when dialog opens
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen) {
       setPublicReason(user.restrictedByAdminReason ?? '');
       setPrivateDetails(user.restrictedByAdminPrivateDetails ?? '');
+      setSubmitError(null);
     }
     onOpenChange(newOpen);
   };
@@ -243,13 +266,18 @@ function RestrictionDialog({
     const trimmedPrivateDetails = privateDetails.trim();
 
     setIsSaving(true);
+    setSubmitError(null);
     try {
       await user.update({
         restrictedByAdmin: true,
         restrictedByAdminReason: trimmedPublicReason.length > 0 ? trimmedPublicReason : null,
         restrictedByAdminPrivateDetails: trimmedPrivateDetails.length > 0 ? trimmedPrivateDetails : null,
       });
+      toast({ title: "User restricted", variant: "success" });
       onOpenChange(false);
+    } catch (error) {
+      captureError(`user-restriction-save-and-restrict-error`, new StackAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
+      setSubmitError(error instanceof Error && error.message ? error.message : "Failed to save the restriction. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -257,13 +285,18 @@ function RestrictionDialog({
 
   const handleRemoveRestriction = async () => {
     setIsSaving(true);
+    setSubmitError(null);
     try {
       await user.update({
         restrictedByAdmin: false,
         restrictedByAdminReason: null,
         restrictedByAdminPrivateDetails: null,
       });
+      toast({ title: "Restriction removed", variant: "success" });
       onOpenChange(false);
+    } catch (error) {
+      captureError(`user-restriction-remove-error`, new StackAssertionError(`Failed to remove restriction for user ${user.id}`, { cause: error }));
+      setSubmitError(error instanceof Error && error.message ? error.message : "Failed to remove the restriction. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -301,6 +334,11 @@ function RestrictionDialog({
             />
           </div>
         </div>
+        {submitError && (
+          <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {submitError}
+          </div>
+        )}
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {user.restrictedByAdmin && (
             <Button
@@ -864,9 +902,9 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
     {
       id: "actions",
       header: "",
-      width: 44,
-      minWidth: 44,
-      maxWidth: 44,
+      width: 56,
+      minWidth: 56,
+      maxWidth: 56,
       sortable: false,
       hideable: false,
       resizable: false,
@@ -897,20 +935,20 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
                 }] : []),
                 {
                   item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
-                  onClick: async () => { await toggleVerified(channel); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => toggleVerified(channel)); },
                 },
                 ...(!channel.isPrimary ? [{
                   item: "Set as primary",
-                  onClick: async () => { await setPrimaryEmail(channel); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => setPrimaryEmail(channel)); },
                 }] : []),
                 {
                   item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
-                  onClick: async () => { await toggleUsedForAuth(channel); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => toggleUsedForAuth(channel)); },
                 },
                 {
                   item: "Delete",
                   danger: true,
-                  onClick: async () => { await channel.delete(); },
+                  onClick: () => { runAsynchronouslyWithAlert(() => channel.delete()); },
                 },
               ]}
             />
@@ -966,6 +1004,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
 
       <UserPageTableSection
         title="Contact Channels"
+        urlStateKey="contactch"
         columns={contactChannelColumns}
         rows={contactChannels}
         getRowId={(channel) => channel.id}
@@ -984,9 +1023,94 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
   );
 }
 
+const MEMBER_AVATAR_LIMIT = 3;
+
+function TeamMembersAvatarsFallback() {
+  return (
+    <div className="flex items-center">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton
+          key={i}
+          className="h-7 w-7 rounded-full border-2 border-background"
+          style={{ marginLeft: i === 0 ? 0 : -10 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TeamMembersAvatars({ team, onMemberClick }: { team: ServerTeam, onMemberClick: (userId: string) => void }) {
+  const members = team.useUsers();
+
+  if (members.length === 0) {
+    return <span className="text-xs text-muted-foreground">No members</span>;
+  }
+
+  const visible = members.slice(0, MEMBER_AVATAR_LIMIT);
+  const remaining = members.length - visible.length;
+
+  return (
+    <div
+      className="group/avatars flex items-center"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {visible.map((member, index) => {
+        const name = member.displayName ?? member.primaryEmail ?? member.id;
+        return (
+          <Tooltip key={member.id} delayDuration={0}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`View ${name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMemberClick(member.id);
+                }}
+                className={cn(
+                  "relative rounded-full transition-[margin,transform] duration-200 ease-out hover:z-20 hover:scale-110 focus:z-20 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  index === 0 ? "ml-0" : "-ml-2.5 group-hover/avatars:ml-1",
+                )}
+                style={{ zIndex: visible.length - index }}
+              >
+                <Avatar className="h-7 w-7 border-2 border-background">
+                  <AvatarImage src={member.profileImageUrl ?? undefined} alt={name} />
+                  <AvatarFallback className="text-[10px]">{name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              {name}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+      {remaining > 0 && (
+        <div
+          className="-ml-2.5 group-hover/avatars:ml-1 transition-[margin] duration-200 ease-out flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-background bg-muted px-1.5 text-[10px] font-medium text-muted-foreground"
+          aria-label={`${remaining} more members`}
+        >
+          +{remaining}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserTeamsSection({ user }: { user: ServerUser }) {
   const stackAdminApp = useAdminApp();
-  const teams = user.useTeams();
+  const router = useRouter();
+  const [sortDesc, setSortDesc] = useState<boolean | undefined>(undefined);
+  const teams = user.useTeams(sortDesc === undefined ? undefined : { orderBy: 'createdAt', desc: sortDesc });
+  const [addTeamDialogOpen, setAddTeamDialogOpen] = useState(false);
+  const [teamToRemove, setTeamToRemove] = useState<ServerTeam | null>(null);
+
+  const navigateToTeam = useCallback((teamId: string) => {
+    router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(teamId)}`);
+  }, [router, stackAdminApp.projectId]);
+
+  const navigateToUser = useCallback((targetUserId: string) => {
+    router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(targetUserId)}`);
+  }, [router, stackAdminApp.projectId]);
 
   const teamColumns = useMemo<DataGridColumnDef<ServerTeam>[]>(() => [
     {
@@ -1013,11 +1137,22 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
       ),
     },
     {
+      id: "members",
+      header: "Members",
+      width: 160,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <Suspense fallback={<TeamMembersAvatarsFallback />}>
+          <TeamMembersAvatars team={row} onMemberClick={navigateToUser} />
+        </Suspense>
+      ),
+    },
+    {
       id: "createdAt",
       accessor: "createdAt",
       header: "Created At",
       width: 140,
-      sortable: false,
+      sortable: true,
       renderCell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
           {row.createdAt.toLocaleDateString()}
@@ -1027,9 +1162,9 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
     {
       id: "actions",
       header: "",
-      width: 44,
-      minWidth: 44,
-      maxWidth: 44,
+      width: 56,
+      minWidth: 56,
+      maxWidth: 56,
       sortable: false,
       hideable: false,
       resizable: false,
@@ -1041,7 +1176,14 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
               {
                 item: "View Team",
                 onClick: () => {
-                  window.open(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`, '_blank', 'noopener');
+                  navigateToTeam(row.id);
+                },
+              },
+              {
+                item: "Remove from team",
+                danger: true,
+                onClick: () => {
+                  setTeamToRemove(row);
                 },
               },
             ]}
@@ -1049,16 +1191,80 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
         </div>
       ),
     },
-  ], [stackAdminApp.projectId]);
+  ], [navigateToTeam, navigateToUser]);
 
   return (
-    <UserPageTableSection
-      title="Teams"
-      columns={teamColumns}
-      rows={teams}
-      getRowId={(team) => team.id}
-      emptyLabel="No teams found"
-    />
+    <>
+      <UserPageTableSection
+        title="Teams"
+        urlStateKey="userteams"
+        columns={teamColumns}
+        rows={teams}
+        getRowId={(team) => team.id}
+        emptyLabel="No teams found"
+        onRowClick={(row) => navigateToTeam(row.id)}
+        onSortChange={(model) => {
+          const entry = model.find((s) => s.columnId === "createdAt");
+          setSortDesc(entry ? entry.direction === "desc" : undefined);
+        }}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAddTeamDialogOpen(true)}
+          >
+            Add to team
+          </Button>
+        }
+      />
+      <Dialog open={addTeamDialogOpen} onOpenChange={setAddTeamDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader className="mb-4">
+            <DialogTitle>Add to team</DialogTitle>
+          </DialogHeader>
+          <TeamSearchTable
+            action={(team) => {
+              const alreadyMember = teams.find((t) => t.id === team.id) !== undefined;
+              return (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={alreadyMember}
+                  onClick={() => {
+                    runAsynchronouslyWithAlert(async () => {
+                      await team.addUser(user.id);
+                      setAddTeamDialogOpen(false);
+                    });
+                  }}
+                >
+                  {alreadyMember ? 'Added' : 'Add'}
+                </Button>
+              );
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+      <ActionDialog
+        title
+        danger
+        open={teamToRemove !== null}
+        onOpenChange={(open) => { if (!open) setTeamToRemove(null); }}
+        okButton={{
+          label: "Remove user from team",
+          onClick: async () => {
+            runAsynchronouslyWithAlert(async () => {
+              if (teamToRemove) {
+                await teamToRemove.removeUser(user.id);
+              }
+            });
+          },
+        }}
+        cancelButton
+        confirmText="I understand this will cause the user to lose access to the team."
+      >
+        {teamToRemove && `Are you sure you want to remove "${user.displayName ?? user.id}" from the team "${teamToRemove.displayName}"?`}
+      </ActionDialog>
+    </>
   );
 }
 
@@ -1247,9 +1453,9 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     } else {
       let successMessage = "";
       if (updates.allowSignIn !== undefined) {
-        successMessage = `Sign-in ${provider.allowSignIn ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+        successMessage = `Sign-in ${updates.allowSignIn ? 'enabled' : 'disabled'} for ${provider.type} provider.`;
       } else if (updates.allowConnectedAccounts !== undefined) {
-        successMessage = `Connected accounts ${provider.allowConnectedAccounts ? 'disabled' : 'enabled'} for ${provider.type} provider.`;
+        successMessage = `Connected accounts ${updates.allowConnectedAccounts ? 'enabled' : 'disabled'} for ${provider.type} provider.`;
       }
       toast({
         title: "Success",
@@ -1264,7 +1470,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
       id: "type",
       accessor: "type",
       header: "Provider",
-      width: 140,
+      width: 110,
       sortable: false,
       renderCell: ({ row }) => (
         <span className="capitalize font-medium">{row.type}</span>
@@ -1274,7 +1480,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
       id: "email",
       accessor: "email",
       header: "Email",
-      width: 180,
+      width: 160,
       flex: 1,
       sortable: false,
       renderCell: ({ row }) => (
@@ -1287,7 +1493,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
       id: "accountId",
       accessor: "accountId",
       header: "Account ID",
-      width: 180,
+      width: 160,
       flex: 1,
       sortable: false,
       renderCell: ({ row }) => (
@@ -1296,8 +1502,8 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     },
     {
       id: "allowSignIn",
-      header: "Used for sign-in",
-      width: 140,
+      header: "Sign-in",
+      width: 90,
       align: "center",
       sortable: false,
       renderCell: ({ row }) => (
@@ -1306,8 +1512,8 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     },
     {
       id: "allowConnectedAccounts",
-      header: "Used for connected accounts",
-      width: 190,
+      header: "Connected",
+      width: 110,
       align: "center",
       sortable: false,
       renderCell: ({ row }) => (
@@ -1317,9 +1523,9 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     {
       id: "actions",
       header: "",
-      width: 44,
-      minWidth: 44,
-      maxWidth: 44,
+      width: 56,
+      minWidth: 56,
+      maxWidth: 56,
       sortable: false,
       hideable: false,
       resizable: false,
@@ -1376,6 +1582,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
 
       <UserPageTableSection
         title="OAuth Providers"
+        urlStateKey="useroauth"
         columns={oauthColumns}
         rows={oauthProviders}
         getRowId={(provider) => provider.id}
@@ -1397,8 +1604,13 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
 const ACTIVITY_GRID_COLUMNS = 7;
 const ACTIVITY_GRID_ROWS = 53;
 const ACTIVITY_GRID_CELLS = ACTIVITY_GRID_COLUMNS * ACTIVITY_GRID_ROWS;
-const ACTIVITY_CELL_SIZE_PX = 8;
+const ACTIVITY_CELL_SIZE_PX = 11;
 const ACTIVITY_GRID_GAP_PX = 2;
+const ACTIVITY_SIDEBAR_WIDTH_PX = 140;
+const ACTIVITY_SIDEBAR_RESERVED_WIDTH_PX = 164;
+const ACTIVITY_GRID_HEIGHT_PX = ACTIVITY_GRID_ROWS * ACTIVITY_CELL_SIZE_PX + (ACTIVITY_GRID_ROWS - 1) * ACTIVITY_GRID_GAP_PX;
+const ACTIVITY_BAR_ESTIMATED_HEIGHT_PX = ACTIVITY_GRID_HEIGHT_PX + 48;
+const ACTIVITY_BAR_TOP_CLEARANCE_PX = 88;
 const ACTIVITY_WEEKDAY_LABELS = [
   { label: "", ariaLabel: null },
   { label: "M", ariaLabel: "Monday" },
@@ -1473,8 +1685,8 @@ function getSundayWeekStart(date: Date): Date {
 
 function ActivityShell({ children }: { children: ReactNode }) {
   return (
-    <div className="hidden xl:flex flex-col items-center gap-1.5 shrink-0 pt-1">
-      <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
+    <div className="flex flex-col items-center gap-2 shrink-0">
+      <span className="text-[11px] font-medium text-muted-foreground tracking-[0.14em] uppercase">Activity</span>
       <div
         className="grid text-[9px] leading-none text-muted-foreground/70"
         style={{
@@ -1525,7 +1737,13 @@ function ActivityLoadingFallback() {
   );
 }
 
-function ActivityGraph({ userId }: { userId: string }) {
+function ActivityGraph({
+  userId,
+  onCellClick,
+}: {
+  userId: string,
+  onCellClick: (isoDate: string) => void,
+}) {
   const stackAdminApp = useAdminApp();
   const { data_points: dataPoints } = useUserActivityOrThrow(stackAdminApp, userId);
 
@@ -1564,10 +1782,12 @@ function ActivityGraph({ userId }: { userId: string }) {
         return (
           <Tooltip key={cell.date} delayDuration={0}>
             <TooltipTrigger asChild>
-              <div
-                aria-hidden
+              <button
+                type="button"
+                aria-label={`View analytics for ${formatActivityDate(cell.date)} (${cell.activity} ${cell.activity === 1 ? "event" : "events"})`}
+                onClick={() => onCellClick(cell.date)}
                 className={cn(
-                  "relative rounded-[2px] transition-none hover:z-10 hover:ring-2 hover:ring-foreground",
+                  "relative rounded-[2px] transition-none hover:z-10 hover:ring-2 hover:ring-foreground focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground cursor-pointer",
                   ACTIVITY_COLORS[level],
                 )}
                 style={{ width: ACTIVITY_CELL_SIZE_PX, height: ACTIVITY_CELL_SIZE_PX }}
@@ -1586,6 +1806,66 @@ function ActivityGraph({ userId }: { userId: string }) {
   );
 }
 
+function UserActivityBar({
+  userId,
+  onCellClick,
+  anchorRef,
+}: {
+  userId: string,
+  onCellClick: (isoDate: string) => void,
+  anchorRef: RefObject<HTMLDivElement | null>,
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [left, setLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const updateLeft = () => {
+      const anchor = anchorRef.current;
+      if (anchor === null) return;
+
+      const rect = anchor.getBoundingClientRect();
+      setLeft(rect.right - ACTIVITY_SIDEBAR_RESERVED_WIDTH_PX + (ACTIVITY_SIDEBAR_RESERVED_WIDTH_PX - ACTIVITY_SIDEBAR_WIDTH_PX) / 2);
+    };
+
+    updateLeft();
+    window.addEventListener("resize", updateLeft);
+
+    const resizeObserver = new ResizeObserver(updateLeft);
+    if (anchorRef.current !== null) {
+      resizeObserver.observe(anchorRef.current);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateLeft);
+      resizeObserver.disconnect();
+    };
+  }, [anchorRef]);
+
+  if (!mounted || left === null) return null;
+
+  return createPortal(
+    <aside
+      className="pointer-events-none fixed z-30 hidden -translate-y-1/2 xl:block"
+      style={{
+        left,
+        width: ACTIVITY_SIDEBAR_WIDTH_PX,
+        top: `max(50vh, ${ACTIVITY_BAR_TOP_CLEARANCE_PX + ACTIVITY_BAR_ESTIMATED_HEIGHT_PX / 2}px)`,
+      }}
+    >
+      <div className="pointer-events-auto flex w-full items-center justify-center">
+        <Suspense fallback={<ActivityLoadingFallback />}>
+          <ActivityGraph userId={userId} onCellClick={onCellClick} />
+        </Suspense>
+      </div>
+    </aside>,
+    document.body,
+  );
+}
+
 type UserPageTabConfig = {
   id: string,
   label: string,
@@ -1599,6 +1879,7 @@ const USER_PAGE_TABS = [
   { id: "teams", label: "Teams", appId: "teams" },
   { id: "payments", label: "Payments", appId: "payments" },
   { id: "analytics", label: "Analytics", appId: "analytics" },
+  { id: "session-replays", label: "Session Replays", appId: "session-replays" },
   { id: "metadata", label: "Metadata", appId: null, icon: DatabaseIcon },
 ] as const satisfies readonly UserPageTabConfig[];
 
@@ -1608,103 +1889,158 @@ function isUserPageTab(id: string): id is UserPageTab {
   return USER_PAGE_TABS.some((tab) => tab.id === id);
 }
 
+function TabContentSkeleton({ sections }: { sections: number }) {
+  return (
+    <div className="flex flex-col gap-6">
+      {Array.from({ length: sections }).map((_, i) => (
+        <section key={i} className="flex flex-col gap-3">
+          <Skeleton className="h-4 w-32" />
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-11 w-full" />
+            <Skeleton className="h-11 w-full" />
+            <Skeleton className="h-11 w-full" />
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+const USER_PAGE_TAB_PARAM = "tab";
+
 function UserPage({ user }: { user: ServerUser }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activityBarAnchorRef = useRef<HTMLDivElement>(null);
 
   const visibleTabs = useMemo(
     () => USER_PAGE_TABS.filter((tab) => tab.appId === null || isAppEnabled(config.apps.installed, tab.appId)),
     [config.apps.installed],
   );
 
-  const [selectedTab, setSelectedTab] = useState<UserPageTab>(
-    () => visibleTabs[0]?.id ?? throwErr("User page has no visible tabs; metadata tab should always be visible"),
-  );
+  const tabParam = searchParams.get(USER_PAGE_TAB_PARAM);
+  const fallbackTab: UserPageTab = visibleTabs[0]?.id ?? throwErr("User page has no visible tabs; metadata tab should always be visible");
+  const activeTab: UserPageTab = (tabParam && isUserPageTab(tabParam) && visibleTabs.some((tab) => tab.id === tabParam))
+    ? tabParam
+    : fallbackTab;
 
-  // If the currently selected tab becomes unavailable (e.g. app uninstalled), fall back to the first visible tab.
-  const activeTab: UserPageTab = visibleTabs.some((tab) => tab.id === selectedTab)
-    ? selectedTab
-    : (visibleTabs[0]?.id ?? throwErr("User page has no visible tabs; metadata tab should always be visible"));
+  const setSelectedTab = useCallback((id: UserPageTab) => {
+    const newParams = new URLSearchParams(searchParams.toString());
+    newParams.set(USER_PAGE_TAB_PARAM, id);
+    const queryString = newParams.toString();
+    router.push(queryString ? `${pathname}?${queryString}` : pathname);
+  }, [pathname, router, searchParams]);
+
+  const [analyticsDayFilter, setAnalyticsDayFilter] = useState<string | null>(null);
+
+  const analyticsTabAvailable = visibleTabs.some((tab) => tab.id === "analytics");
+  const handleActivityCellClick = useCallback((isoDate: string) => {
+    if (!analyticsTabAvailable) return;
+    setAnalyticsDayFilter(isoDate);
+    setSelectedTab("analytics");
+  }, [analyticsTabAvailable, setSelectedTab]);
 
   return (
     <PageLayout>
-      <div className="relative flex flex-col gap-6 xl:pr-36">
+      <div className="relative flex flex-col gap-6">
         <RestrictionBanner user={user} />
-        <div className="absolute right-0 top-0 z-[100] hidden xl:block">
-          <Suspense fallback={<ActivityLoadingFallback />}>
-            <ActivityGraph userId={user.id} />
-          </Suspense>
-        </div>
-        <div className="flex items-start">
-          <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <div ref={activityBarAnchorRef} className="flex min-w-0 flex-col gap-6 xl:pr-[164px]">
+          <div className="flex min-w-0 flex-col gap-4">
             <UserHeader user={user} />
             <UserDetails user={user} />
           </div>
-        </div>
-        {visibleTabs.length > 0 && (
-          <DesignCategoryTabs
-            categories={visibleTabs.map((tab) => ({
-              id: tab.id,
-              label: tab.label,
-              icon: tab.appId === null ? tab.icon : ALL_APPS_FRONTEND[tab.appId].icon,
-            }))}
-            selectedCategory={activeTab}
-            onSelect={(id) => {
-              if (!isUserPageTab(id)) {
-                throw new StackAssertionError(`Unknown user page tab selected: ${id}`);
-              }
-              setSelectedTab(id);
-            }}
-            showBadge={false}
-            size="sm"
-            glassmorphic={false}
-            trailing={(
-              <Button
-                asChild
-                variant="ghost"
-                size="sm"
-                className="h-8 justify-center gap-1.5 rounded-lg bg-transparent px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none"
-              >
-                <Link
-                  href={`/projects/${encodeURIComponent(stackAdminApp.projectId)}/apps`}
-                  className="inline-flex items-center justify-center"
+          {visibleTabs.length > 0 && (
+            <DesignCategoryTabs
+              categories={visibleTabs.map((tab) => ({
+                id: tab.id,
+                label: tab.label,
+                icon: tab.appId === null ? tab.icon : ALL_APPS_FRONTEND[tab.appId].icon,
+              }))}
+              selectedCategory={activeTab}
+              onSelect={(id) => {
+                if (!isUserPageTab(id)) {
+                  throw new StackAssertionError(`Unknown user page tab selected: ${id}`);
+                }
+                setSelectedTab(id);
+              }}
+              showBadge={false}
+              size="sm"
+              glassmorphic={false}
+              trailing={(
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-center gap-1.5 rounded-lg bg-transparent px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none"
                 >
-                  <PlusIcon className="h-3.5 w-3.5" />
-                  <span>Install apps</span>
-                </Link>
-              </Button>
-            )}
-          />
-        )}
-        {activeTab === "authentication" && (
-          <div className="flex flex-col gap-6">
-            <ContactChannelsSection user={user} />
-            <OAuthProvidersSection user={user} />
-            <FraudSection user={user} />
-          </div>
-        )}
-        {activeTab === "teams" && <UserTeamsSection user={user} />}
-        {activeTab === "payments" && <UserPaymentsSection user={user} />}
-        {activeTab === "analytics" && <UserAnalyticsSection user={user} />}
-        {activeTab === "metadata" && (
-          <MetadataSection
-            entityName="user"
-            docsUrl={userMetadataDocsUrl}
-            clientMetadata={user.clientMetadata}
-            clientReadOnlyMetadata={user.clientReadOnlyMetadata}
-            serverMetadata={user.serverMetadata}
-            onUpdateClientMetadata={async (value) => {
-              await user.setClientMetadata(value);
-            }}
-            onUpdateClientReadOnlyMetadata={async (value) => {
-              await user.setClientReadOnlyMetadata(value);
-            }}
-            onUpdateServerMetadata={async (value) => {
-              await user.setServerMetadata(value);
-            }}
-          />
-        )}
+                  <Link
+                    href={`/projects/${encodeURIComponent(stackAdminApp.projectId)}/apps`}
+                    className="inline-flex items-center justify-center"
+                  >
+                    <PlusIcon className="h-3.5 w-3.5" />
+                    <span>Install apps</span>
+                  </Link>
+                </Button>
+              )}
+            />
+          )}
+          {activeTab === "authentication" && (
+            <Suspense fallback={<TabContentSkeleton sections={3} />}>
+              <div className="flex flex-col gap-6">
+                <ContactChannelsSection user={user} />
+                <OAuthProvidersSection user={user} />
+                <FraudSection user={user} />
+              </div>
+            </Suspense>
+          )}
+          {activeTab === "teams" && (
+            <Suspense fallback={<TabContentSkeleton sections={1} />}>
+              <UserTeamsSection user={user} />
+            </Suspense>
+          )}
+          {activeTab === "payments" && (
+            <Suspense fallback={<TabContentSkeleton sections={1} />}>
+              <UserPaymentsSection user={user} />
+            </Suspense>
+          )}
+          {activeTab === "analytics" && (
+            <Suspense fallback={<TabContentSkeleton sections={1} />}>
+              <UserAnalyticsSection
+                user={user}
+                dayFilter={analyticsDayFilter}
+                onClearDayFilter={() => setAnalyticsDayFilter(null)}
+              />
+            </Suspense>
+          )}
+          {activeTab === "session-replays" && (
+            <Suspense fallback={<TabContentSkeleton sections={1} />}>
+              <SessionReplaysPageClient lockedUserId={user.id} />
+            </Suspense>
+          )}
+          {activeTab === "metadata" && (
+            <MetadataSection
+              entityName="user"
+              docsUrl={userMetadataDocsUrl}
+              clientMetadata={user.clientMetadata}
+              clientReadOnlyMetadata={user.clientReadOnlyMetadata}
+              serverMetadata={user.serverMetadata}
+              onUpdateClientMetadata={async (value) => {
+                await user.setClientMetadata(value);
+              }}
+              onUpdateClientReadOnlyMetadata={async (value) => {
+                await user.setClientReadOnlyMetadata(value);
+              }}
+              onUpdateServerMetadata={async (value) => {
+                await user.setServerMetadata(value);
+              }}
+            />
+          )}
+        </div>
+        <UserActivityBar userId={user.id} onCellClick={handleActivityCellClick} anchorRef={activityBarAnchorRef} />
       </div>
     </PageLayout>
   );
