@@ -8,13 +8,29 @@ These instructions describe how to set up Stack Auth.
 ${web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
-Install mcp server from https://mcp.stack-auth.com/mcp if not already installed. Global MCP config file paths for popular coding agents:
-- Claude Code: \`~/.claude.json\`
+Install both the Hexclave MCP server and the Hexclave skill file for the current coding agent. Pick the scope using this rule: if the project root already contains agent config for the detected agent (e.g. \`.claude/\`, \`.cursor/\`, \`.vscode/mcp.json\`, \`.codex/\`, \`.opencode/\`), install **per project**; otherwise install **globally** for the detected agent.
+
+### Install the MCP server
+
+Server URL: \`https://mcp.hexclave.com/mcp\` (HTTP transport). Global MCP config file paths for popular coding agents:
+- Claude Code: \`~/.claude.json\` (or run \`claude mcp add --transport http hexclave https://mcp.hexclave.com/mcp\`)
 - Codex CLI: \`~/.codex/config.toml\`
-- Cursor: \`~/.cursor/mcp.json\`
+- Cursor: \`~/.cursor/mcp.json\` (project-scoped: \`.cursor/mcp.json\`)
+- VS Code: run \`code --add-mcp '{"type":"http","name":"hexclave","url":"https://mcp.hexclave.com/mcp"}'\`
 - opencode: \`~/.config/opencode/opencode.json\`
 
-For reference, questions, or information on Stack Auth, you can query the docs on https://docs.stack-auth.com via curl or any tools that you have
+### Install the skill file
+
+Download the canonical skill from \`https://skill.hexclave.com\` (use \`WebFetch\` or \`curl -sSL\`) and write it verbatim to the agent's skill path. Do not modify the contents. Create any missing parent directories.
+
+| Agent | Project-scoped path | Global path |
+| --- | --- | --- |
+| Claude Code | \`.claude/skills/hexclave/SKILL.md\` | \`~/.claude/skills/hexclave/SKILL.md\` |
+| Cursor | \`.cursor/rules/hexclave.md\` | \`~/.cursor/rules/hexclave.md\` |
+| Codex | \`.codex/skills/hexclave/SKILL.md\` | \`~/.codex/skills/hexclave/SKILL.md\` |
+| opencode | \`.opencode/skills/hexclave/SKILL.md\` | \`~/.config/opencode/skills/hexclave/SKILL.md\` |
+
+For reference, questions, or information on Hexclave, you can query the docs on https://docs.hexclave.com via curl or any tools that you have
 
 ## Setup
 
