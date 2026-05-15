@@ -102,7 +102,7 @@ describe("remote development environment security", () => {
     const { applyRemoteDevelopmentEnvironmentConfigUpdate } = await import("./manager");
     await expect(applyRemoteDevelopmentEnvironmentConfigUpdate({
       sessionId: "missing",
-      config: {},
+      configUpdate: {},
     })).rejects.toThrow(/session is not active/);
   });
 

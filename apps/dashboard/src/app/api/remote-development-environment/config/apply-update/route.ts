@@ -1,28 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyRemoteDevelopmentEnvironmentConfigUpdate } from "@/lib/remote-development-environment/manager";
-import { assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
+import { assertRemoteDevelopmentEnvironmentBrowserRequest, assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const securityResponse = assertRemoteDevelopmentEnvironmentRequest(req);
+  const securityResponse = req.headers.has("authorization")
+    ? assertRemoteDevelopmentEnvironmentRequest(req)
+    : assertRemoteDevelopmentEnvironmentBrowserRequest(req);
   if (securityResponse != null) return securityResponse;
 
   const body = await req.json() as {
     session_id?: unknown,
-    config?: unknown,
+    project_id?: unknown,
+    config_update?: unknown,
+    wait_for_sync?: unknown,
   };
-  if (typeof body.session_id !== "string" || body.config == null || typeof body.config !== "object" || Array.isArray(body.config)) {
-    return NextResponse.json({ error: "session_id and config object are required." }, { status: 400 });
+  if (
+    (body.session_id !== undefined && typeof body.session_id !== "string") ||
+    (body.project_id !== undefined && typeof body.project_id !== "string") ||
+    (body.wait_for_sync !== undefined && typeof body.wait_for_sync !== "boolean") ||
+    (body.session_id === undefined && body.project_id === undefined) ||
+    body.config_update == null ||
+    typeof body.config_update !== "object" ||
+    Array.isArray(body.config_update)
+  ) {
+    return NextResponse.json({ error: "session_id or project_id, and config_update object are required." }, { status: 400 });
   }
-  if (!isValidConfig(body.config)) {
-    return NextResponse.json({ error: "config must be a valid Stack Auth config object." }, { status: 400 });
+  if (!isValidConfig(body.config_update)) {
+    return NextResponse.json({ error: "config_update must be a valid Stack Auth config object." }, { status: 400 });
   }
 
   await applyRemoteDevelopmentEnvironmentConfigUpdate({
     sessionId: body.session_id,
-    config: body.config,
+    projectId: body.project_id,
+    configUpdate: body.config_update,
+    waitForSync: body.wait_for_sync ?? true,
   });
   return NextResponse.json({ ok: true });
 }

@@ -2,6 +2,7 @@
 
 import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import React, { createContext, useCallback, useContext, useState } from "react";
@@ -210,6 +211,27 @@ function useConfigUpdateDialog() {
   return context;
 }
 
+async function updateRemoteDevelopmentEnvironmentConfigFile(
+  adminApp: StackAdminApp<false>,
+  configUpdate: EnvironmentConfigOverrideOverride,
+): Promise<void> {
+  const response = await fetch("/api/remote-development-environment/config/apply-update", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      project_id: adminApp.projectId,
+      config_update: configUpdate,
+      wait_for_sync: false,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update local development environment config (${response.status}): ${await response.text()}`);
+  }
+}
+
 /**
  * Options for the updateConfig utility function.
  */
@@ -264,6 +286,14 @@ export function useUpdateConfig() {
 
   return useCallback(async (options: UpdateConfigOptions): Promise<boolean> => {
     const { adminApp, configUpdate, pushable } = options;
+
+    if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true") {
+      const project = await adminApp.getProject();
+      await updateRemoteDevelopmentEnvironmentConfigFile(adminApp, configUpdate);
+      // Update the remote project immediately so the dashboard reads the new value before the file sync lands.
+      await project.updatePushedConfig(configUpdate);
+      return true;
+    }
 
     if (pushable) {
       // Show dialog (or save directly if unlinked) based on source type

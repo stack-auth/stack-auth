@@ -3,6 +3,7 @@ import "server-only";
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { AdminOwnedProject, StackClientApp } from "@stackframe/stack";
+import { Config, override } from "@stackframe/stack-shared/dist/config/format";
 import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
 import { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { AccessToken } from "@stackframe/stack-shared/dist/sessions";
@@ -41,6 +42,7 @@ type RemoteDevelopmentEnvironmentGlobals = {
   watchers: Map<string, FSWatcher>,
   syncTimers: Map<string, NodeJS.Timeout>,
   syncErrors: Map<string, Error>,
+  synchronouslyUpdatingConfigFiles: Set<string>,
   shutdownTimerStarted: boolean,
   startedAtMs: number,
   activeOperations: number,
@@ -62,6 +64,7 @@ function getGlobals(): RemoteDevelopmentEnvironmentGlobals {
     watchers: new Map(),
     syncTimers: new Map(),
     syncErrors: new Map(),
+    synchronouslyUpdatingConfigFiles: new Set(),
     shutdownTimerStarted: false,
     startedAtMs: performance.now(),
     activeOperations: 0,
@@ -360,8 +363,9 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
     });
     return undefined;
   }
+  const onboardingStatus = await syncRemoteDevelopmentEnvironmentOnboardingStatus(ownedProject, showOnboarding);
   if (project.lastSyncedConfigHash === configHash) {
-    return ownedProject.onboardingStatus;
+    return onboardingStatus;
   }
 
   logRemoteDevelopmentEnvironment("Syncing config to development-environment project", {
@@ -370,7 +374,6 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
     showOnboarding,
   });
   await ownedProject.replaceConfigOverride("branch", config);
-  const onboardingStatus = await syncRemoteDevelopmentEnvironmentOnboardingStatus(ownedProject, showOnboarding);
 
   updateRemoteDevelopmentEnvironmentState((current) => ({
     ...current,
@@ -394,6 +397,12 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
 
 function scheduleSync(configFilePath: string): void {
   const state = getGlobals();
+  if (state.synchronouslyUpdatingConfigFiles.has(configFilePath)) {
+    logRemoteDevelopmentEnvironment("Skipping async config sync during synchronous dashboard update", {
+      configFilePath,
+    });
+    return;
+  }
   const existing = state.syncTimers.get(configFilePath);
   if (existing != null) clearTimeout(existing);
   logRemoteDevelopmentEnvironment("Scheduling config sync after local file change", {
@@ -420,6 +429,18 @@ function scheduleSync(configFilePath: string): void {
   }, SYNC_DEBOUNCE_MS);
   timer.unref();
   state.syncTimers.set(configFilePath, timer);
+}
+
+async function syncConfigToRemoteNow(configFilePath: string): Promise<ProjectOnboardingStatus | undefined> {
+  const state = getGlobals();
+  const pendingTimer = state.syncTimers.get(configFilePath);
+  if (pendingTimer != null) {
+    clearTimeout(pendingTimer);
+    state.syncTimers.delete(configFilePath);
+  }
+  const onboardingStatus = await syncConfigToRemote(configFilePath);
+  state.syncErrors.delete(configFilePath);
+  return onboardingStatus;
 }
 
 function ensureWatcher(configFilePath: string): void {
@@ -511,7 +532,7 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
       configFilePath,
     });
     ensureWatcher(configFilePath);
-    const onboardingStatus = await syncConfigToRemote(configFilePath);
+    const onboardingStatus = await syncConfigToRemoteNow(configFilePath);
     return {
       sessionId,
       env: envVarsForProject(project),
@@ -580,28 +601,62 @@ export function getRemoteDevelopmentEnvironmentHealth(): {
 }
 
 export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
-  sessionId: string,
-  config: Record<string, unknown>,
+  sessionId?: string,
+  projectId?: string,
+  configUpdate: Config,
+  waitForSync?: boolean,
 }): Promise<void> {
   assertRemoteDevelopmentEnvironmentEnabled();
   const endOperation = beginRemoteDevelopmentEnvironmentOperation("config update", {
     sessionId: options.sessionId,
+    projectId: options.projectId,
   });
   try {
-    const session = getGlobals().sessions.get(options.sessionId);
+    const state = getGlobals();
+    const session = (() => {
+      if (options.sessionId != null) {
+        return state.sessions.get(options.sessionId);
+      }
+      if (options.projectId == null) {
+        throw new Error("Remote development environment config update requires a session ID or project ID.");
+      }
+      for (const activeSession of state.sessions.values()) {
+        const stateProject = readRemoteDevelopmentEnvironmentState().projectsByConfigPath[activeSession.configFilePath];
+        if (stateProject?.projectId === options.projectId) {
+          return activeSession;
+        }
+      }
+      return undefined;
+    })();
     if (session == null) {
       throw new Error("Remote development environment session is not active.");
     }
     const configFilePath = session.configFilePath;
     logRemoteDevelopmentEnvironment("Applying config update from local dashboard", {
       sessionId: options.sessionId,
+      projectId: options.projectId,
       configFilePath,
     });
-    writeConfigObject(configFilePath, options.config);
-    await syncConfigToRemote(configFilePath);
+    const currentConfig = readConfigFile(configFilePath).config;
+    if (options.waitForSync === false) {
+      writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+      scheduleSync(configFilePath);
+    } else {
+      state.synchronouslyUpdatingConfigFiles.add(configFilePath);
+      try {
+        writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+      } finally {
+        setTimeout(() => {
+          state.synchronouslyUpdatingConfigFiles.delete(configFilePath);
+        }, SYNC_DEBOUNCE_MS).unref();
+      }
+      await syncConfigToRemoteNow(configFilePath);
+    }
     logRemoteDevelopmentEnvironment("Applied config update from local dashboard", {
       sessionId: options.sessionId,
+      projectId: options.projectId,
       configFilePath,
+      waitForSync: options.waitForSync ?? true,
     });
   } finally {
     endOperation();

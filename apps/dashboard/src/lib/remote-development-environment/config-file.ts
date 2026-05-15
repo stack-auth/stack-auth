@@ -1,6 +1,7 @@
 import "server-only";
 
 import { showOnboardingStackConfigValue } from "@stackframe/stack-shared/dist/config-authoring";
+import { Config, isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 import { parseStackConfigFileContent } from "@stackframe/stack-shared/dist/stack-config-file";
 import { createHash } from "crypto";
@@ -23,11 +24,11 @@ export function ensureConfigFileExists(configFilePath: string): void {
   writeConfigObject(configFilePath, {});
 }
 
-export function readConfigObject(configFilePath: string): Record<string, unknown> {
+export function readConfigObject(configFilePath: string): Config {
   return readConfigFile(configFilePath).config;
 }
 
-export function readConfigFile(configFilePath: string): { config: Record<string, unknown>, showOnboarding: boolean } {
+export function readConfigFile(configFilePath: string): { config: Config, showOnboarding: boolean } {
   ensureConfigFileExists(configFilePath);
   const content = readFileSync(configFilePath, "utf-8");
   const config = parseStackConfigFileContent(content, configFilePath);
@@ -37,13 +38,16 @@ export function readConfigFile(configFilePath: string): { config: Record<string,
       showOnboarding: true,
     };
   }
+  if (!isValidConfig(config)) {
+    throw new Error(`Invalid config in ${configFilePath}.`);
+  }
   return {
     config,
     showOnboarding: false,
   };
 }
 
-export function writeConfigObject(configFilePath: string, config: Record<string, unknown>): void {
+export function writeConfigObject(configFilePath: string, config: Config): void {
   const dir = path.dirname(configFilePath);
   mkdirSync(dir, { recursive: true });
   const importPackage = detectImportPackageFromDir(dir);
