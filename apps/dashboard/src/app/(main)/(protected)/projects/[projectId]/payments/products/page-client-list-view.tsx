@@ -1,8 +1,9 @@
 "use client";
 
+import { Link } from "@/components/link";
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
@@ -303,9 +304,6 @@ function formatPrice(price: (Product['prices'] & object)[string]): string | null
 }
 
 function formatProductPrices(prices: Product['prices']): string {
-  if (prices === 'include-by-default') return 'Free';
-  if (typeof prices !== 'object') return '';
-
   const formattedPrices = Object.values(prices)
     .map(formatPrice)
     .filter(Boolean)
@@ -598,6 +596,64 @@ function ItemsList({
   );
 }
 
+// Surfaces products with empty `prices` (legacy `include-by-default` rewritten by `migrateConfigOverride`).
+function ProductsWithoutPricesAlert({
+  products,
+  projectId,
+}: {
+  products: CompleteConfig['payments']['products'],
+  projectId: string,
+}) {
+  const productsWithoutPrices = useMemo(() => {
+    return typedEntries(products)
+      .filter(([, product]) => Object.keys(product.prices).length === 0)
+      .map(([id, product]) => ({ id, displayName: product.displayName || id }))
+      .sort((a, b) => stringCompare(a.id, b.id));
+  }, [products]);
+
+  if (productsWithoutPrices.length === 0) return null;
+
+  const previewLimit = 5;
+  const preview = productsWithoutPrices.slice(0, previewLimit);
+  const overflow = productsWithoutPrices.length - preview.length;
+
+  return (
+    <Alert variant="destructive" className="mb-4">
+      <AlertTitle>
+        {productsWithoutPrices.length === 1
+          ? "1 product has no prices configured"
+          : `${productsWithoutPrices.length} products have no prices configured`}
+      </AlertTitle>
+      <AlertDescription className="space-y-2">
+        <div>
+          These products were previously set to &quot;include by default&quot;, which is no longer supported.
+          They are no longer purchasable and won&apos;t appear in upgrade flows. Existing owners keep their
+          included items, but no new owners will be granted them. Open each one and either set a price or
+          click &quot;Make free&quot; to restore customer access.
+        </div>
+        <ul className="list-disc pl-5 space-y-0.5">
+          {preview.map(({ id, displayName }) => (
+            <li key={id}>
+              <Link
+                href={`/projects/${projectId}/payments/products/${id}/edit`}
+                className="underline hover:no-underline"
+              >
+                {displayName}
+              </Link>
+              {displayName !== id && <span className="ml-1 font-mono text-xs opacity-70">({id})</span>}
+            </li>
+          ))}
+          {overflow > 0 && (
+            <li className="opacity-80">
+              …and {overflow} more
+            </li>
+          )}
+        </ul>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 export default function PageClient() {
   const projectId = useProjectId();
   const router = useRouter();
@@ -663,8 +719,6 @@ export default function PageClient() {
         }
         // If same customer type and addons, sort by lowest price
         const getPricePriority = (product: Product) => {
-          if (product.prices === 'include-by-default') return 0;
-          if (typeof product.prices !== 'object') return 0;
           return Math.min(...Object.values(product.prices).map(price => +(price.USD ?? Infinity)));
         };
         const priceA = getPricePriority(a.product);
@@ -911,6 +965,7 @@ export default function PageClient() {
 
   return (
     <>
+      <ProductsWithoutPricesAlert products={paymentsConfig.products} projectId={projectId} />
       {innerContent}
 
       {/* Product Dialog */}
