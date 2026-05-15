@@ -241,18 +241,15 @@ export class Mailbox {
     };
 
     this.waitForMessagesWithSubjectCount = async (subject: string, minCount: number, options?: { noBody?: boolean }) => {
-      const timeoutMs = Number(process.env.STACK_MAILBOX_WAIT_TIMEOUT_MS ?? 60000);
-      const intervalMs = 500;
-      const deadline = Date.now() + timeoutMs;
+      const maxRetries = 30;
       let messages: MailboxMessage[] = [];
-      while (true) {
+      for (let i = 0; i < maxRetries; i++) {
         messages = await this.fetchMessages(options);
         const withSubject = messages.filter(m => m.subject.includes(subject));
         if (withSubject.length >= minCount) {
           return withSubject;
         }
-        if (Date.now() >= deadline) break;
-        await wait(intervalMs);
+        await wait(500);
       }
       throw new StackAssertionError(`Expected at least ${minCount} messages with subject containing "${subject}", but found ${messages.filter(m => m.subject.includes(subject)).length}`, { messages });
     };

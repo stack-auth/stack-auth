@@ -616,4 +616,3 @@ it("removes deleted permission definition from team creator default permissions"
     [{ "id": "team_admin" }]
   `);
 });
-
