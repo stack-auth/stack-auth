@@ -148,6 +148,28 @@ function buildMoneyTransferEntry(options: {
   };
 }
 
+export function shouldRejectSubscriptionProductRevocationReplay(options: {
+  endNow: boolean,
+  productRevokedAt: Date | null,
+  priorProductRevoked: boolean,
+}): boolean {
+  // The subscription marker alone is not enough to reject. If the Prisma /
+  // subscription bulldozer write succeeded but the refund manual transaction
+  // failed, the retry must still be allowed to write the canonical refund
+  // product-revocation row.
+  return options.endNow && options.productRevokedAt != null && options.priorProductRevoked;
+}
+
+export function getRefundDrivenImmediateEndedAt(options: {
+  existingEndedAt: Date | null,
+  now: Date,
+}): Date {
+  if (options.existingEndedAt != null && options.existingEndedAt <= options.now) {
+    return options.existingEndedAt;
+  }
+  return options.now;
+}
+
 // ── Bulldozer reads: prior refund summary for a source txn ─────────────────
 
 type PriorRefundSummary = {
@@ -585,7 +607,15 @@ async function handleSubscriptionRefund(options: {
   if (options.amountStripeUnits > remainingStripeUnits) {
     throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
   }
-  if (endNow && prior.productRevoked) {
+  // Replay gate for endNow on subs. Require both the durable subscription
+  // marker and the refund ledger entry before rejecting; if a prior attempt
+  // failed after marking the subscription but before writing the refund row,
+  // the retry must still be able to repair the missing canonical revocation.
+  if (shouldRejectSubscriptionProductRevocationReplay({
+    endNow,
+    productRevokedAt: subscription.productRevokedAt,
+    priorProductRevoked: prior.productRevoked,
+  })) {
     throw new KnownErrors.SchemaError("This subscription's product has already been revoked.");
   }
 
@@ -623,9 +653,12 @@ async function handleSubscriptionRefund(options: {
   if (endNow) {
     // Immediate end. Stripe sub canceled, Prisma endedAt=now → timefold
     // auto-emits subscription-end with item-quantity-expire entries. Preserve
-    // an existing `endedAt` if the sub already ended naturally — clobbering
-    // it with a later `now` would re-trigger the sub-end event with stale
-    // outstandingGrants state.
+    // an existing past `endedAt` if the sub already ended naturally; a future
+    // scheduled end must be pulled forward to now.
+    const endedAt = getRefundDrivenImmediateEndedAt({
+      existingEndedAt: subscription.endedAt,
+      now,
+    });
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       // Idempotent cancel: the Stripe sub may already be canceled (natural
@@ -651,7 +684,12 @@ async function handleSubscriptionRefund(options: {
         // without joining `endedAt`.
         status: "canceled",
         canceledAt: subscription.canceledAt ?? now,
-        endedAt: subscription.endedAt ?? now,
+        endedAt,
+        // Signal to phase-1 that this end was refund-driven, so its sub-end
+        // mapper skips the auto-emitted `product-revocation` entry (the
+        // refund row below already carries one — see the comment on the
+        // entry push for why we need to avoid double-revocation).
+        productRevokedAt: subscription.productRevokedAt ?? now,
       },
     });
   } else if (endAtPeriodEnd) {
@@ -702,6 +740,15 @@ async function handleSubscriptionRefund(options: {
     }));
   }
   if (endNow) {
+    // Canonical product-revocation for refund-driven ends. Paired with the
+    // `productRevokedAt=now` write on the subscription row above: that flag
+    // tells the subscription-end timefold mapper (phase-1/transactions.ts)
+    // to skip its auto-emitted product-revocation, so we get exactly one
+    // entry instead of two. Without that coordination the phase-3
+    // owned-products LFold would subtract `quantity` twice — fine for
+    // single-sub customers thanks to the GREATEST(..., 0) clamp, but
+    // broken for stackable subs where the second subtraction eats into a
+    // sibling sub's still-active grant.
     refundEntries.push(buildProductRevocationEntry({
       customerType,
       customerId: subscription.customerId,
@@ -1023,4 +1070,3 @@ import.meta.vitest?.describe("computeOutstandingItemGrantsForOtp", (test) => {
     ]);
   });
 });
-

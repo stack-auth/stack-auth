@@ -322,6 +322,77 @@ it("rejects refund amount exceeding original purchase amount", async () => {
   expect(refundRes.body.error).toMatch(/cannot exceed the remaining refundable amount/);
 });
 
+it("revoking one of two stackable subs leaves the sibling's product grant intact", async () => {
+  // Regression for the double-revocation bug: when end_action="now" on a
+  // sub, the refund row writes a product-revocation entry AND the
+  // subscription timefold's sub-end event historically also emitted one.
+  // The phase-3 owned-products LFold subtracted twice. Single-sub
+  // customers were saved by the GREATEST(..., 0) clamp; stackable subs
+  // weren't — the second subtraction ate into the sibling's still-active
+  // grant. The fix coordinates the two emitters via
+  // Subscription.productRevokedAt: when set, the sub-end mapper skips its
+  // product-revocation so only the refund row writes one.
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        "stack-sub": {
+          displayName: "Stack Sub",
+          customerType: "user",
+          serverOnly: false,
+          stackable: true,
+          prices: { monthly: { USD: "10.00", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+      items: {},
+    },
+  });
+  const { userId } = await Auth.fastSignUp();
+
+  // Create two subscriptions of the same stackable product.
+  for (let i = 0; i < 2; i++) {
+    const code = await createPurchaseCode({ userId, productId: "stack-sub" });
+    const sessionRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+      accessType: "admin",
+      method: "POST",
+      body: { full_code: code, price_id: "monthly", quantity: 1 },
+    });
+    expect(sessionRes.status).toBe(200);
+  }
+
+  const productsBefore = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  const stackBefore = productsBefore.body.items.find((p: { id: string }) => p.id === "stack-sub");
+  expect(stackBefore?.quantity).toBe(2);
+
+  // Refund (and end) just ONE of the two subs.
+  const txnsRes = await niceBackendFetch("/api/latest/internal/payments/transactions", { accessType: "admin" });
+  const purchases = txnsRes.body.transactions.filter((tx: { type: string }) => tx.type === "purchase");
+  expect(purchases.length).toBe(2);
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: purchases[0].id,
+      amount_usd: "0",
+      end_action: "now",
+    },
+  });
+  expect(refundRes.status).toBe(200);
+
+  // The sibling sub still grants the product — count should be 1, not 0.
+  const productsAfter = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  const stackAfter = productsAfter.body.items.find((p: { id: string }) => p.id === "stack-sub");
+  expect(stackAfter?.quantity).toBe(1);
+});
+
 it("refunds a test-mode subscription with end_action='now'", async () => {
   const { subscriptionId, userId } = await createTestModeSubscription();
 

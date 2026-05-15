@@ -8,7 +8,7 @@
  * {
  *   subscriptionId, tenancyId, customerId, customerType,
  *   productId, product, productLineId, priceId, quantity,
- *   paymentProvider, endedAtMillis,
+ *   paymentProvider, endedAtMillis, productRevokedAtMillis,
  *   chargedAmount,
  *   startTxnId,                    // e.g. "sub-start:<subId>"
  *   startProductGrantEntryIndex,   // always 1 (after active-subscription-start)
@@ -169,6 +169,7 @@ export function getSubscriptionTimeFoldReducerSql(): string {
     'quantity', ${R}->'quantity',
     'paymentProvider', to_jsonb(${provider}),
     'endedAtMillis', ${R}->'endedAtMillis',
+    'productRevokedAtMillis', ${R}->'productRevokedAtMillis',
     'chargedAmount', ${charged},
     'startTxnId', to_jsonb(${startTxnId}),
     'startProductGrantEntryIndex', to_jsonb(1),
@@ -454,6 +455,7 @@ export function getSubscriptionTimeFoldReducerSql(): string {
       'entryIndex', ${stateSql}->'startProductGrantEntryIndex'
     ),
     'itemQuantityChangesToExpire', ${endItemQuantityChangesToExpire(stateSql)},
+    'productRevokedAtMillis', ${stateSql}->'productRevokedAtMillis',
     'paymentProvider', ${stateSql}->'paymentProvider',
     'effectiveAtMillis', ${stateSql}->'endedAtMillis',
     'createdAtMillis', ${stateSql}->'endedAtMillis'

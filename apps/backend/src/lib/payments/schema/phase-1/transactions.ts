@@ -8,7 +8,9 @@
  * Entry ordering follows the spec:
  *   subscription-renewal: [money-transfer]
  *   subscription-cancel:  [active-subscription-change]
- *   subscription-end:     [active-subscription-end, product-revocation, ...item-quantity-expire]
+ *   subscription-end:     [active-subscription-end, product-revocation?, ...item-quantity-expire]
+ *                         (product-revocation is skipped for refund-driven ends —
+ *                          see the subscription-end mapper for the rationale)
  *   subscription-start:   [active-subscription-start, product-grant, money-transfer?, ...item-quantity-change]
  *   item-grant-repeat:    [...item-quantity-expire?, ...item-quantity-change]
  *   one-time-purchase:    [product-grant, money-transfer?, ...item-quantity-change]
@@ -160,6 +162,19 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
 
 
   // ── subscription-end → transaction ─────────────────────
+  // Emits `active-subscription-end`, optionally `product-revocation`, and
+  // any `item-quantity-expire` entries from the carried-through outstanding
+  // grants.
+  //
+  // The `product-revocation` entry is suppressed when the source sub row
+  // has `productRevokedAtMillis` set — that signal means a refund row has
+  // already written its own `product-revocation` against the same source
+  // (sub-start, entry index, quantity). Emitting another one here would
+  // double-subtract from the phase-3 owned-products LFold, which is masked
+  // by the `GREATEST(..., 0)` clamp for single-sub customers but corrupts
+  // the count for stackable subs (refunding one of N drops the count to 0
+  // instead of N-1). The refund row is the canonical source of revocation
+  // for refund-driven ends; sub-end remains canonical for natural ends.
   const subscriptionEndTxns = declareMapTable({
     tableId: "payments-txn-subscription-end",
     fromTable: events.subscriptionEndEvents,
@@ -175,18 +190,25 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
             'customerType', "rowData"->'customerType',
             'customerId', "rowData"->'customerId',
             'subscriptionId', "rowData"->'subscriptionId'
-          ),
-          jsonb_build_object(
-            'type', '"product-revocation"'::jsonb,
-            'customerType', "rowData"->'customerType',
-            'customerId', "rowData"->'customerId',
-            'adjustedTransactionId', "rowData"->'startProductGrantRef'->'transactionId',
-            'adjustedEntryIndex', "rowData"->'startProductGrantRef'->'entryIndex',
-            'quantity', "rowData"->'quantity',
-            'productId', "rowData"->'productId',
-            'productLineId', "rowData"->'productLineId'
           )
         )
+        || CASE
+          WHEN "rowData"->>'productRevokedAtMillis' IS NULL
+            OR "rowData"->'productRevokedAtMillis' = 'null'::jsonb
+          THEN jsonb_build_array(
+            jsonb_build_object(
+              'type', '"product-revocation"'::jsonb,
+              'customerType', "rowData"->'customerType',
+              'customerId', "rowData"->'customerId',
+              'adjustedTransactionId', "rowData"->'startProductGrantRef'->'transactionId',
+              'adjustedEntryIndex', "rowData"->'startProductGrantRef'->'entryIndex',
+              'quantity', "rowData"->'quantity',
+              'productId', "rowData"->'productId',
+              'productLineId', "rowData"->'productLineId'
+            )
+          )
+          ELSE '[]'::jsonb
+        END
         || (
           SELECT COALESCE(jsonb_agg(
             jsonb_build_object(
