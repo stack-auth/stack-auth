@@ -377,6 +377,37 @@ async function resolveInvoicePaymentIntentId(stripe: Stripe, stripeInvoiceId: st
   return paymentIntentId;
 }
 
+/**
+ * True when an error from a Stripe subscription lifecycle write
+ * (`subscriptions.cancel` / `subscriptions.update`) means the subscription is
+ * already terminal, so our write is a moot no-op and can be swallowed.
+ *
+ * Error shapes determined empirically against Stripe API `2025-06-30.basil`
+ * (stripe-node 18.3.0):
+ *   - `cancel()` on an already-canceled or never-existed sub
+ *       → 404, `code: "resource_missing"`.
+ *   - `update()` on a canceled sub (e.g. `cancel_at_period_end`)
+ *       → 400, `rawType: "invalid_request_error"`, message "A canceled
+ *         subscription can only update its cancellation_details and
+ *         metadata.", and crucially **no `code`** — so it can only be matched
+ *         on the message.
+ *
+ * Note `subscription_already_canceled` is intentionally absent: re-cancelling
+ * a canceled sub returns `resource_missing`, not that code — it is never
+ * actually emitted on this path.
+ */
+function isStripeSubscriptionAlreadyTerminalError(e: unknown): boolean {
+  const code = (e as { code?: unknown }).code;
+  if (code === "resource_missing") {
+    return true;
+  }
+  const rawType = (e as { rawType?: unknown }).rawType;
+  const message = (e as { message?: unknown }).message;
+  return rawType === "invalid_request_error"
+    && typeof message === "string"
+    && /canceled subscription can only update/i.test(message);
+}
+
 // ── Route ─────────────────────────────────────────────────────────────────
 
 export const POST = createSmartRouteHandler({
@@ -520,15 +551,23 @@ async function handleSubscriptionRefund(options: {
     throw new KnownErrors.SubscriptionAlreadyRefunded(subscription.id);
   }
 
-  // End-at-period-end replay guard. The empty-entries refund row written by
-  // `amount=0, end_action="at-period-end"` is not visible to
-  // `readPriorRefundSummary` (which only tracks money + product-revocation),
-  // so without this gate the call is a forever-no-op that accumulates phantom
-  // rows on each replay. The sub's lifecycle state is authoritative here.
-  if (options.amountStripeUnits === 0 && endAtPeriodEnd) {
-    if (subscription.cancelAtPeriodEnd || subscription.endedAt) {
-      throw new KnownErrors.SchemaError("Subscription is already scheduled to end.");
-    }
+  // End-at-period-end guard. Scheduling a subscription to end "at period
+  // end" is meaningless once it is already ending or has ended — whether
+  // that is a future cancel-at-period-end, a past natural expiry, or a
+  // prior refund-driven immediate end (all of which leave `cancelAtPeriodEnd`
+  // or `endedAt` set). Two failure modes follow from not catching it here:
+  //   - Logical: the empty-entries refund row written by `amount=0` is
+  //     invisible to `readPriorRefundSummary` (which only tracks money +
+  //     product-revocation), so replays accumulate phantom no-op rows.
+  //   - Hard error: when the sub already ended (e.g. a prior refund with
+  //     end_action="now" canceled the Stripe sub), the endAtPeriodEnd branch
+  //     below calls `stripe.subscriptions.update(..., cancel_at_period_end)`,
+  //     which Stripe rejects outright — "A canceled subscription can only
+  //     update its cancellation_details and metadata" — surfacing as a 500.
+  // Reject the contradictory action regardless of refund amount; the admin
+  // can still refund the money without `end_action`.
+  if (endAtPeriodEnd && (subscription.cancelAtPeriodEnd || subscription.endedAt)) {
+    throw new KnownErrors.SchemaError("Subscription is already scheduled to end; refund the amount without end_action='at-period-end'.");
   }
 
   // End-now guard for subscriptions that already ended *naturally* (webhook
@@ -690,15 +729,13 @@ async function handleSubscriptionRefund(options: {
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       // Idempotent cancel: the Stripe sub may already be canceled (natural
-      // end before this refund). `resource_missing` is what Stripe returns
-      // when the sub no longer exists; `subscription_already_canceled` is
-      // the documented code for re-cancel on an existing-but-canceled sub.
-      // Neither is an error from our perspective.
+      // end before this refund, or a prior refund). Re-cancelling a canceled
+      // sub is not an error from our perspective — see
+      // `isStripeSubscriptionAlreadyTerminalError` for the exact shapes.
       try {
         await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
       } catch (e: unknown) {
-        const code = (e as { code?: string }).code;
-        if (code !== "resource_missing" && code !== "subscription_already_canceled") {
+        if (!isStripeSubscriptionAlreadyTerminalError(e)) {
           throw e;
         }
       }
@@ -725,21 +762,20 @@ async function handleSubscriptionRefund(options: {
     // at period boundary.
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
-      // Same idempotent-cancel guard as the endNow branch above. The Stripe
-      // money refund has already been issued at this point (lines ~585-608),
-      // so an unhandled `subscription_already_canceled` / `resource_missing`
-      // error here would propagate up before `bulldozerWriteManualTransaction`
-      // commits the ledger row, leaving the customer refunded with no record.
-      // Reachable when an admin pairs `amount > 0` with `end_action="at-period-end"`
-      // on a sub that's already terminal (the empty-amount case is caught
-      // earlier by the replay guard).
+      // Idempotent guard, mirroring the endNow branch. The end-at-period-end
+      // guard near the top of this handler already rejects subs that are
+      // ending/ended, so this catch is defence-in-depth: it only fires if the
+      // sub became terminal between that check and here (e.g. a concurrent
+      // cancel). The Stripe money refund has already been issued at this
+      // point, so an unhandled error would propagate before
+      // `bulldozerWriteManualTransaction` commits the ledger row, leaving the
+      // customer refunded with no record.
       try {
         await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
           cancel_at_period_end: true,
         });
       } catch (e: unknown) {
-        const code = (e as { code?: string }).code;
-        if (code !== "resource_missing" && code !== "subscription_already_canceled") {
+        if (!isStripeSubscriptionAlreadyTerminalError(e)) {
           throw e;
         }
       }
