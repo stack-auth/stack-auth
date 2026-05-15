@@ -8,29 +8,48 @@ These instructions describe how to set up Stack Auth.
 ${web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
-Install both the Hexclave MCP server and the Hexclave skill file for the current coding agent. Pick the scope using this rule: if the project root already contains agent config for the detected agent (e.g. \`.claude/\`, \`.cursor/\`, \`.vscode/mcp.json\`, \`.codex/\`, \`.opencode/\`), install **per project**; otherwise install **globally** for the detected agent.
+Install both the Stack Auth skill and the Stack Auth MCP server for the current coding agent. Pick the install scope using this rule: if the project root already contains an agent folder (e.g. \`.claude/\`, \`.agents/\`, \`.cursor/\`, \`.codex/\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, \`.vscode/mcp.json\`), install **per project**; otherwise install **globally** for the detected agent.
+
+### Install the skill
+
+Preferred (one shot — detects the agent and writes to the right place):
+
+\`\`\`sh
+npx -y skills add stack-auth/stack-auth --skill stack-auth
+\`\`\`
+
+If that command isn't available, fall back to a manual install. Download the canonical skill from \`https://skill.stack-auth.com\` (\`WebFetch\` or \`curl -sSL\`) and write it verbatim to \`<skills-dir>/stack-auth/SKILL.md\`. Do not modify the contents. Create missing parent directories. \`<skills-dir>\` per agent (mirrors \`vercel-labs/skills\`):
+
+| Agent | Project \`<skills-dir>\` | Global \`<skills-dir>\` |
+| --- | --- | --- |
+| Claude Code | \`.claude/skills\` | \`~/.claude/skills\` (or \`$CLAUDE_CONFIG_DIR/skills\`) |
+| Codex | \`.agents/skills\` | \`~/.codex/skills\` (or \`$CODEX_HOME/skills\`) |
+| Cursor | \`.agents/skills\` | \`~/.cursor/skills\` |
+| opencode | \`.agents/skills\` | \`~/.config/opencode/skills\` |
+| Windsurf | \`.windsurf/skills\` | \`~/.codeium/windsurf/skills\` |
+| Amp | \`.agents/skills\` | \`~/.config/agents/skills\` |
+| Antigravity | \`.agents/skills\` | \`~/.gemini/antigravity/skills\` |
+| Cline | \`.agents/skills\` | \`~/.agents/skills\` |
+| Roo Code | \`.roo/skills\` | \`~/.roo/skills\` |
+| Kilo Code | \`.kilocode/skills\` | \`~/.kilocode/skills\` |
+| Augment | \`.augment/skills\` | \`~/.augment/skills\` |
+| Continue | \`.continue/skills\` | \`~/.continue/skills\` |
+| Crush | \`.crush/skills\` | \`~/.config/crush/skills\` |
+
+For agents not listed, follow their documented skills directory or fall back to \`.agents/skills\` (project) / \`~/.<agent>/skills\` (global).
 
 ### Install the MCP server
 
-Server URL: \`https://mcp.hexclave.com/mcp\` (HTTP transport). Global MCP config file paths for popular coding agents:
-- Claude Code: \`~/.claude.json\` (or run \`claude mcp add --transport http hexclave https://mcp.hexclave.com/mcp\`)
-- Codex CLI: \`~/.codex/config.toml\`
+Server URL: \`https://mcp.stack-auth.com/mcp\` (HTTP transport). Common per-agent config locations:
+- Claude Code: run \`claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp\` (or edit \`~/.claude.json\`)
+- VS Code: run \`code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'\`
 - Cursor: \`~/.cursor/mcp.json\` (project-scoped: \`.cursor/mcp.json\`)
-- VS Code: run \`code --add-mcp '{"type":"http","name":"hexclave","url":"https://mcp.hexclave.com/mcp"}'\`
+- Codex CLI: \`~/.codex/config.toml\`
 - opencode: \`~/.config/opencode/opencode.json\`
 
-### Install the skill file
+For any other agent, register an HTTP MCP server named \`stack-auth\` pointing at \`https://mcp.stack-auth.com/mcp\` using its standard MCP config file.
 
-Download the canonical skill from \`https://skill.hexclave.com\` (use \`WebFetch\` or \`curl -sSL\`) and write it verbatim to the agent's skill path. Do not modify the contents. Create any missing parent directories.
-
-| Agent | Project-scoped path | Global path |
-| --- | --- | --- |
-| Claude Code | \`.claude/skills/hexclave/SKILL.md\` | \`~/.claude/skills/hexclave/SKILL.md\` |
-| Cursor | \`.cursor/rules/hexclave.md\` | \`~/.cursor/rules/hexclave.md\` |
-| Codex | \`.codex/skills/hexclave/SKILL.md\` | \`~/.codex/skills/hexclave/SKILL.md\` |
-| opencode | \`.opencode/skills/hexclave/SKILL.md\` | \`~/.config/opencode/skills/hexclave/SKILL.md\` |
-
-For reference, questions, or information on Hexclave, you can query the docs on https://docs.hexclave.com via curl or any tools that you have
+For reference, questions, or information on Stack Auth, fetch the docs on https://docs.stack-auth.com via curl or any tools available, or — if the MCP server is registered — call its \`ask_stack_auth\` tool.
 
 ## Setup
 
