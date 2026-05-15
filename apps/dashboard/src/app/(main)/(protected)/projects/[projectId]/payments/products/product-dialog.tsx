@@ -67,8 +67,7 @@ export function ProductDialog({
   const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
-  const [freeByDefault, setFreeByDefault] = useState(editingProduct?.prices === "include-by-default" || false);
-  const [prices, setPrices] = useState<Record<string, Price>>(editingProduct?.prices === "include-by-default" ? {} : editingProduct?.prices || {});
+  const [prices, setPrices] = useState<Record<string, Price>>(editingProduct?.prices || {});
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(editingProduct?.includedItems || {});
   const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(editingProduct?.freeTrial || undefined);
   const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);
@@ -162,13 +161,18 @@ export function ProductDialog({
   };
 
   const handleSave = async () => {
+    if (Object.keys(prices).length === 0) {
+      setErrors({ prices: "At least one price is required" });
+      return;
+    }
+
     const product: Product = {
       displayName,
       customerType,
       productLineId: productLineId || undefined,
       isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
       stackable,
-      prices: freeByDefault ? "include-by-default" : prices,
+      prices,
       includedItems,
       serverOnly,
       freeTrial,
@@ -189,7 +193,6 @@ export function ProductDialog({
       setIsAddOn(false);
       setIsAddOnTo([]);
       setStackable(false);
-      setFreeByDefault(false);
       setPrices({});
       setIncludedItems({});
     }
@@ -608,38 +611,28 @@ export function ProductDialog({
                 </div>
 
                 <div className="space-y-4 mt-6">
-                  {/* Free by default */}
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="free-default"
-                      checked={freeByDefault}
-                      onCheckedChange={(checked) => {
-                        setFreeByDefault(checked as boolean);
-                        if (checked) {
-                          setPrices({});
-                        }
-                      }}
-                    />
-                    <Label htmlFor="free-default" className="cursor-pointer">
-                      Free & included by default
-                    </Label>
+                  <div className="border rounded-lg">
+                    <ListSection title="Prices">
+                      <PricingSection
+                        prices={prices}
+                        onPricesChange={(newPrices) => {
+                          setPrices(newPrices);
+                          if (errors.prices && Object.keys(newPrices).length > 0) {
+                            setErrors(prev => {
+                              const { prices: _, ...rest } = prev;
+                              return rest;
+                            });
+                          }
+                        }}
+                        variant="dialog"
+                      />
+                    </ListSection>
                   </div>
-                  <Typography type="label" className="text-muted-foreground -mt-2">
-                    This product will be automatically included for all customers at no cost
-                  </Typography>
-
-                  {/* Prices list */}
-                  {!freeByDefault && (
-                    <div className="border rounded-lg">
-                      <ListSection title="Prices">
-                        <PricingSection
-                          prices={prices}
-                          onPricesChange={setPrices}
-                          variant="dialog"
-                        />
-                      </ListSection>
-                    </div>
-                  )}
+                  {errors.prices ? (
+                    <Typography type="p" className="text-destructive text-sm">
+                      {errors.prices}
+                    </Typography>
+                  ) : null}
                 </div>
               </div>
             </StepperPage>

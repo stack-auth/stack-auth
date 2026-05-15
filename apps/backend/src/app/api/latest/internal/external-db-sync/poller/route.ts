@@ -1,5 +1,6 @@
 import type { OutgoingRequest } from "@/generated/prisma/client";
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
+import { recoverStaleOutgoingRequests, type RecoverStaleResult } from "@/lib/external-db-sync-queue";
 import { upstash } from "@/lib/upstash";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -85,13 +86,11 @@ export const GET = createSmartRouteHandler({
       const startTime = performance.now();
       const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
       const pollIntervalMs = 50;
-      const staleClaimIntervalMinutes = 5;
       const pollerClaimLimit = getPollerClaimLimit();
 
       span.setAttribute("stack.external-db-sync.max-duration-ms", maxDurationMs);
       span.setAttribute("stack.external-db-sync.poll-interval-ms", pollIntervalMs);
       span.setAttribute("stack.external-db-sync.poller-claim-limit", pollerClaimLimit);
-      span.setAttribute("stack.external-db-sync.stale-claim-minutes", staleClaimIntervalMinutes);
 
       let totalRequestsProcessed = 0;
       let iterationCount = 0;
@@ -115,6 +114,55 @@ export const GET = createSmartRouteHandler({
         });
       }
 
+      async function handleStaleRequests(): Promise<RecoverStaleResult> {
+        return await traceSpan("external-db-sync.poller.handleStaleRequests", async (staleSpan) => {
+          // Recovery is best-effort: any failure here must not abort the rest of the poller iteration,
+          // because the loop still owns processing the pending queue.
+          let result: RecoverStaleResult;
+          try {
+            result = await recoverStaleOutgoingRequests(STALE_REQUEST_THRESHOLD_MS);
+          } catch (error) {
+            staleSpan.setAttribute("stack.external-db-sync.stale-recovery-error", true);
+            captureError("poller-stale-recovery-error", error);
+            return { resetIds: [], deletedIds: [] };
+          }
+          const { resetIds, deletedIds } = result;
+          const total = resetIds.length + deletedIds.length;
+
+          staleSpan.setAttribute("stack.external-db-sync.stale-reset-count", resetIds.length);
+          staleSpan.setAttribute("stack.external-db-sync.stale-deleted-count", deletedIds.length);
+
+          if (total > 0) {
+            const ID_SAMPLE_LIMIT = 10;
+            captureError(
+              "poller-stale-outgoing-requests",
+              new StackAssertionError(
+                [
+                  `Recovered ${total} stale outgoing request(s) (reset=${resetIds.length}, deleted=${deletedIds.length}) older than ${STALE_REQUEST_THRESHOLD_MS}ms.`,
+                  `Stale rows are claims that never got cleared after publishing — the most likely cause is a poller lambda dying between the UPDATE that set startedFulfillingAt and the DELETE that should have removed the row.`,
+                  `Recovery deletes the stale row if any active sibling (pending OR fresh-in-flight) already represents the work; among multiple stale rows for the same deduplicationKey it resets the oldest and deletes the rest; otherwise it resets startedFulfillingAt to NULL so the row can be re-claimed.`,
+                  `If this fires repeatedly, look for nearby unhandled-promise-rejection events (which trigger process.exit(1) via the polyfill) or function-timeout signals on the external-db-sync poller route.`,
+                ].join(" "),
+                {
+                  totalRecovered: total,
+                  staleResetCount: resetIds.length,
+                  staleDeletedCount: deletedIds.length,
+                  staleResetIdsSample: resetIds.slice(0, ID_SAMPLE_LIMIT),
+                  staleDeletedIdsSample: deletedIds.slice(0, ID_SAMPLE_LIMIT),
+                  staleResetIdsSampleNote: resetIds.length > ID_SAMPLE_LIMIT
+                    ? `Showing first ${ID_SAMPLE_LIMIT} of ${resetIds.length} reset ids; remainder omitted to bound payload size.`
+                    : `All ${resetIds.length} reset ids included.`,
+                  staleDeletedIdsSampleNote: deletedIds.length > ID_SAMPLE_LIMIT
+                    ? `Showing first ${ID_SAMPLE_LIMIT} of ${deletedIds.length} deleted ids; remainder omitted to bound payload size.`
+                    : `All ${deletedIds.length} deleted ids included.`,
+                },
+              ),
+            );
+          }
+          return { resetIds, deletedIds };
+        });
+      }
+
       async function deleteOutgoingRequest(id: string): Promise<void> {
         await retryTransaction(globalPrismaClient, async (tx) => {
           await tx.outgoingRequest.delete({ where: { id } });
@@ -130,7 +178,7 @@ export const GET = createSmartRouteHandler({
       async function processRequest(request: OutgoingRequest): Promise<void> {
         // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
         const options = request.qstashOptions as any;
-        const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+        const baseUrl = getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") || getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 
         let fullUrl = new URL(options.url, baseUrl).toString();
 
@@ -157,7 +205,7 @@ export const GET = createSmartRouteHandler({
       function buildUpstashRequest(request: OutgoingRequest): UpstashRequest {
         // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
         const options = request.qstashOptions as any;
-        const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+        const baseUrl = getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") || getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 
         let fullUrl = new URL(options.url, baseUrl).toString();
 
@@ -205,6 +253,9 @@ export const GET = createSmartRouteHandler({
           }
 
           if (requests.length === 0) {
+            // Performance optimization: skip the upstash batch call when the
+            // caller passed no claimed rows (i.e. claimPendingRequests returned
+            // an empty array).
             processSpan.setAttribute("stack.external-db-sync.processed-count", 0);
             return 0;
           }
@@ -243,23 +294,9 @@ export const GET = createSmartRouteHandler({
             return { stopReason: "disabled", processed: 0 };
           }
 
-          const staleRequests = await globalPrismaClient.$queryRaw<{ id: string, startedFulfillingAt: Date }[]>`
-            SELECT "id", "startedFulfillingAt"
-            FROM "OutgoingRequest"
-            WHERE "startedFulfillingAt" IS NOT NULL
-              AND "startedFulfillingAt" < NOW() - ${STALE_REQUEST_THRESHOLD_MS} * INTERVAL '1 millisecond'
-            LIMIT 10
-          `;
-          iterationSpan.setAttribute("stack.external-db-sync.stale-count", staleRequests.length);
-          if (staleRequests.length > 0) {
-            captureError(
-              "poller-stale-outgoing-requests",
-              new StackAssertionError(
-                `Found ${staleRequests.length} outgoing request(s) with startedFulfillingAt older than ${STALE_REQUEST_THRESHOLD_MS}ms`,
-                { staleRequestIds: staleRequests.map(r => r.id) },
-              ),
-            );
-          }
+          const stale = await handleStaleRequests();
+          iterationSpan.setAttribute("stack.external-db-sync.stale-reset-count", stale.resetIds.length);
+          iterationSpan.setAttribute("stack.external-db-sync.stale-deleted-count", stale.deletedIds.length);
 
           const pendingRequests = await claimPendingRequests();
           iterationSpan.setAttribute("stack.external-db-sync.pending-count", pendingRequests.length);

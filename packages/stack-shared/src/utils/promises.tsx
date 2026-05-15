@@ -1,7 +1,9 @@
 import { KnownError } from "..";
+import { getProcessEnv } from "./env";
 import { StackAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
 import { DependenciesMap } from "./maps";
 import { Result } from "./results";
+import { traceSpan } from "./telemetry";
 import { generateUuid } from "./uuids";
 
 export type ReactPromise<T> = Promise<T> & (
@@ -264,7 +266,9 @@ export async function wait(ms: number) {
   if (ms >= 2**31) {
     throw new StackAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
   }
-  return await new Promise<void>(resolve => setTimeout(resolve, ms));
+  return await traceSpan({ description: 'wait(...)', attributes: { 'stack.wait.ms': ms } }, async (span) => {
+    return await new Promise<void>(resolve => setTimeout(resolve, ms));
+  });
 }
 import.meta.vitest?.test("wait", async ({ expect }) => {
   // Test with valid input
@@ -315,10 +319,11 @@ export function runAsynchronouslyWithAlert(...args: Parameters<typeof runAsynchr
     {
       ...args[1],
       onError: error => {
-        if (KnownError.isKnownError(error) && typeof process !== "undefined" && (process.env.NODE_ENV as any)?.includes("production")) {
+        const nodeEnv = getProcessEnv("NODE_ENV");
+        if (KnownError.isKnownError(error) && nodeEnv?.includes("production")) {
           alert(error.message);
         } else {
-          alert(`An unhandled error occurred. Please ${process.env.NODE_ENV === "development" ? `check the browser console for the full error.` : "report this to the developer."}\n\n${error}`);
+          alert(`An unhandled error occurred. Please ${nodeEnv === "development" ? `check the browser console for the full error.` : "report this to the developer."}\n\n${error}`);
         }
         args[1]?.onError?.(error);
       },

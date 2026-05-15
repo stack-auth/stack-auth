@@ -5,6 +5,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Button, Typography } from "@/components/ui";
+import { getShortcutModifierKeyLabel } from "@/lib/keyboard-shortcuts";
 import { useUpdateConfig } from "@/lib/config-update";
 import {
   ChartBarIcon,
@@ -12,6 +13,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import { DesignCard } from "@stackframe/dashboard-ui-components";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useMemo, useState } from "react";
 import * as yup from "yup";
@@ -27,15 +29,18 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
+  const modifierKeyLabel = getShortcutModifierKeyLabel();
   const updateConfig = useUpdateConfig();
   const router = useRouter();
   const [deleteDialogId, setDeleteDialogId] = useState<string | null>(null);
 
   const dashboards = useMemo((): DashboardEntry[] => {
-    return Object.entries(config.customDashboards).map(([id, dashboard]) => ({
-      id,
-      displayName: (dashboard as { displayName: string }).displayName,
-    }));
+    return Object.entries(config.customDashboards)
+      .map(([id, dashboard]) => ({
+        id,
+        displayName: (dashboard as { displayName: string }).displayName,
+      }))
+      .sort((a, b) => stringCompare(a.displayName, b.displayName) || stringCompare(a.id, b.id));
   }, [config.customDashboards]);
 
   const dashboardToDelete = deleteDialogId
@@ -74,7 +79,9 @@ export default function PageClient() {
             <div>
               <Typography className="font-semibold text-foreground">No dashboards yet</Typography>
               <Typography variant="secondary" className="text-sm mt-1">
-                Create a dashboard from the command palette (Cmd+K) or click &quot;New Dashboard&quot; above.
+                Create a dashboard from the command palette (
+                <span suppressHydrationWarning>{modifierKeyLabel} K</span>
+                ) or click &quot;New Dashboard&quot; above.
               </Typography>
             </div>
           </div>

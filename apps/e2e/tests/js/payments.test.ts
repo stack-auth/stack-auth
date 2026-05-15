@@ -231,7 +231,9 @@ it("client can cancel their own subscription", async ({ expect }) => {
 
   await clientApp.cancelSubscription({ productId: "pro-sub" });
   const after = await user.listProducts();
-  expect(after.some((p) => p.id === "pro-sub")).toBe(false);
+  // Cancel marks the subscription as cancelAtPeriodEnd but doesn't end it immediately —
+  // the product stays owned until the subscription period ends.
+  expect(after.some((p) => p.id === "pro-sub")).toBe(true);
 }, { timeout: 60_000 });
 
 it("team admin can cancel a team's subscription", async ({ expect }) => {
@@ -260,7 +262,9 @@ it("team admin can cancel a team's subscription", async ({ expect }) => {
 
   await clientApp.cancelSubscription({ productId: "team-sub", teamId: team.id });
   const after = await team.listProducts();
-  expect(after.some((p) => p.id === "team-sub")).toBe(false);
+  // Cancel marks the subscription as cancelAtPeriodEnd but doesn't end it immediately —
+  // the product stays owned until the subscription period ends.
+  expect(after.some((p) => p.id === "team-sub")).toBe(true);
 }, { timeout: 60_000 });
 
 

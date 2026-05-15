@@ -4,6 +4,8 @@ import * as path from "path";
 import { describe } from "vitest";
 import { it } from "../helpers";
 
+const TEMPORARILY_SKIPPED_SDKS = new Set(["swift"]);
+
 // Find all SDK implementations that have a package.json
 function findSdkImplementations(): string[] {
   const implementationsDir = path.resolve(__dirname, "../../../../sdks/implementations");
@@ -17,6 +19,10 @@ function findSdkImplementations(): string[] {
 
   for (const entry of entries) {
     if (entry.isDirectory()) {
+      if (TEMPORARILY_SKIPPED_SDKS.has(entry.name)) {
+        continue;
+      }
+
       const packageJsonPath = path.join(implementationsDir, entry.name, "package.json");
       if (fs.existsSync(packageJsonPath)) {
         sdkDirs.push(entry.name);

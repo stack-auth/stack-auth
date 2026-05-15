@@ -1,5 +1,5 @@
 import type { Tenancy } from "@/lib/tenancies";
-import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import type { getPrismaClientForTenancy } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -17,7 +17,6 @@ import { fetchAllTransactionsForProject } from "./stripe-payout-integrity";
 export type CustomerType = "user" | "team" | "custom";
 
 type PaymentsConfig = OrganizationRenderedConfig["payments"];
-type PaymentsProduct = PaymentsConfig["products"][string];
 
 type LedgerTransaction = {
   amount: number,
@@ -37,8 +36,6 @@ type ExpectedOwnedProduct = {
   quantity: number,
 };
 
-const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z");
-
 type IncludedItemConfig = {
   quantity?: number,
   repeat?: DayInterval | "never" | null,
@@ -52,6 +49,7 @@ type SubscriptionSnapshot = {
   currentPeriodStart: Date,
   currentPeriodEnd: Date | null,
   cancelAtPeriodEnd: boolean,
+  endedAt: Date | null,
   createdAt: Date,
   refundedAt: Date | null,
 };
@@ -256,7 +254,6 @@ function addOneTimeIncludedItems(options: {
 
 function buildExpectedItemQuantitiesForCustomer(options: {
   entries: CustomerTransactionEntry[],
-  defaultProducts: Array<{ productId: string, product: PaymentsProduct }>,
   extraItemQuantityChanges: Array<{
     itemId: string,
     quantity: number,
@@ -332,20 +329,6 @@ function buildExpectedItemQuantitiesForCustomer(options: {
     });
   }
 
-  for (const { product } of options.defaultProducts) {
-    addSubscriptionIncludedItems({
-      ledgerByItemId,
-      includedItems: product.includedItems,
-      subscription: {
-        quantity: 1,
-        currentPeriodStart: DEFAULT_PRODUCT_START_DATE,
-        currentPeriodEnd: null,
-        createdAt: DEFAULT_PRODUCT_START_DATE,
-      },
-      now: options.now,
-    });
-  }
-
   const results = new Map<string, number>();
   for (const [itemId, ledger] of ledgerByItemId) {
     results.set(itemId, computeLedgerBalanceAtNow(ledger, options.now));
@@ -355,7 +338,6 @@ function buildExpectedItemQuantitiesForCustomer(options: {
 
 function buildExpectedOwnedProductsForCustomer(options: {
   entries: CustomerTransactionEntry[],
-  defaultProducts: Array<{ productId: string, product: PaymentsProduct }>,
   subscriptionById: Map<string, SubscriptionSnapshot>,
   oneTimePurchaseById: Map<string, OneTimePurchaseSnapshot>,
 }) {
@@ -368,12 +350,18 @@ function buildExpectedOwnedProductsForCustomer(options: {
       if (!subscription) {
         continue;
       }
-      if (subscription.status !== SubscriptionStatus.active && subscription.status !== SubscriptionStatus.trialing) {
+      // A subscription still grants ownership if it hasn't actually ended yet.
+      // Canceled subs keep granting until endedAt; only skip if endedAt is in the past.
+      if (subscription.endedAt != null && subscription.endedAt <= new Date()) {
         continue;
       }
+      // The API reports type based on whether an active subscription exists,
+      // not whether the product was originally granted via subscription.
+      const isActive = subscription.status === SubscriptionStatus.active
+        || subscription.status === SubscriptionStatus.trialing;
       expected.push({
         id: entry.product_id ?? null,
-        type: "subscription",
+        type: isActive ? "subscription" : "one_time",
         quantity: subscription.quantity,
       });
       continue;
@@ -400,72 +388,24 @@ function buildExpectedOwnedProductsForCustomer(options: {
     });
   }
 
-  for (const { productId } of options.defaultProducts) {
-    expected.push({
-      id: productId,
-      type: "subscription",
-      quantity: 1,
-    });
-  }
-
   return expected;
 }
 
-function getDefaultProductsForCustomer(options: {
-  paymentsConfig: PaymentsConfig,
-  customerType: CustomerType,
-  subscribedProductLineIds: Set<string>,
-  subscribedProductIds: Set<string>,
-}) {
-  const defaultsByProductLine = new Map<string, { productId: string, product: PaymentsProduct }>();
-  const ungroupedDefaults: Array<{ productId: string, product: PaymentsProduct }> = [];
-
-  for (const [productId, product] of Object.entries(options.paymentsConfig.products)) {
-    if (product.customerType !== options.customerType) continue;
-    if (product.prices !== "include-by-default") continue;
-
-    if (product.productLineId) {
-      if (!defaultsByProductLine.has(product.productLineId)) {
-        defaultsByProductLine.set(product.productLineId, { productId, product });
-      }
-      continue;
-    }
-
-    ungroupedDefaults.push({ productId, product });
-  }
-
-  const defaults: Array<{ productId: string, product: PaymentsProduct }> = [];
-  for (const [productLineId, product] of defaultsByProductLine) {
-    if (options.subscribedProductLineIds.has(productLineId)) continue;
-    defaults.push(product);
-  }
-  for (const product of ungroupedDefaults) {
-    if (options.subscribedProductIds.has(product.productId)) continue;
-    defaults.push(product);
-  }
-  return defaults;
-}
-
-function getIncludeByDefaultConflicts(paymentsConfig: PaymentsConfig) {
-  const conflicts = new Map<string, string[]>();
-  for (const productLineId of Object.keys(paymentsConfig.productLines)) {
-    const defaultProducts = Object.entries(paymentsConfig.products)
-      .filter(([_, product]) => product.productLineId === productLineId && product.prices === "include-by-default")
-      .map(([productId]) => productId);
-    if (defaultProducts.length > 1) {
-      conflicts.set(productLineId, defaultProducts);
-    }
-  }
-  return conflicts;
-}
-
 function normalizeOwnedProducts(list: ExpectedOwnedProduct[]) {
-  return list
-    .map((item) => ({
-      id: item.id ?? null,
-      type: item.type,
-      quantity: item.quantity,
-    }))
+  // Aggregate entries by (id, type) — the bulldozer LFold sums quantities per product
+  const merged = new Map<string, ExpectedOwnedProduct>();
+  for (const item of list) {
+    const id = item.id === "__null__" ? null : (item.id ?? null);
+    const key = `${id ?? "__null__"}:${item.type}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.quantity += item.quantity;
+    } else {
+      merged.set(key, { id, type: item.type, quantity: item.quantity });
+    }
+  }
+  return Array.from(merged.values())
+    .filter((item) => item.quantity > 0)
     .sort((a, b) => {
       const aId = a.id ?? "";
       const bId = b.id ?? "";
@@ -515,18 +455,6 @@ export async function createPaymentsVerifier(options: {
   prisma: PrismaForTenancy,
   expectStatusCode: ExpectStatusCode,
 }) {
-  const includeByDefaultConflicts = getIncludeByDefaultConflicts(options.paymentsConfig);
-  if (includeByDefaultConflicts.size > 0) {
-    const conflictSummary = Array.from(includeByDefaultConflicts.entries())
-      .map(([productLineId, productIds]) => `${productLineId}: ${productIds.join(", ")}`)
-      .join("; ");
-    console.warn(`Skipping payments verification for project ${options.projectId} due to include-by-default conflicts (${conflictSummary}).`);
-    return {
-      verifyCustomerPayments: async () => { },
-      customCustomerIds: new Set<string>(),
-    };
-  }
-
   const transactions = await fetchAllTransactionsForProject({
     projectId: options.projectId,
     expectStatusCode: options.expectStatusCode,
@@ -586,6 +514,7 @@ export async function createPaymentsVerifier(options: {
         currentPeriodStart: true,
         currentPeriodEnd: true,
         cancelAtPeriodEnd: true,
+        endedAt: true,
         createdAt: true,
         refundedAt: true,
       },
@@ -644,38 +573,8 @@ export async function createPaymentsVerifier(options: {
     });
     const missingItemQuantityChanges = extraItemQuantityChanges.filter((change) => !entryItemQuantityChangeIds.has(change.id));
 
-    const subscribedProductLineIds = new Set<string>();
-    const subscribedProductIds = new Set<string>();
-    const dbSubscriptions = await options.prisma.subscription.findMany({
-      where: {
-        tenancyId: options.tenancyId,
-        customerId: customer.customerId,
-        customerType: typedToUppercase(customer.customerType),
-      },
-      select: {
-        productId: true,
-      },
-    });
-    for (const { productId } of dbSubscriptions) {
-      if (!productId) continue;
-      subscribedProductIds.add(productId);
-      const configProduct = paymentsConfig.products[productId] as PaymentsProduct | undefined;
-      if (!configProduct) continue;
-      if (configProduct.productLineId) {
-        subscribedProductLineIds.add(configProduct.productLineId);
-      }
-    }
-
-    const defaultProducts = getDefaultProductsForCustomer({
-      paymentsConfig,
-      customerType: customer.customerType,
-      subscribedProductLineIds,
-      subscribedProductIds,
-    });
-
     const expectedItems = buildExpectedItemQuantitiesForCustomer({
       entries,
-      defaultProducts,
       extraItemQuantityChanges: missingItemQuantityChanges,
       itemQuantityChangeById,
       subscriptionById,
@@ -698,7 +597,7 @@ export async function createPaymentsVerifier(options: {
       if (response.quantity !== expectedQuantity) {
         const dbQuantity = await getItemQuantityForCustomer({
           prisma: options.prisma,
-          tenancy: options.tenancy,
+          tenancyId: options.tenancy.id,
           itemId,
           customerId: customer.customerId,
           customerType: customer.customerType,
@@ -718,7 +617,6 @@ export async function createPaymentsVerifier(options: {
 
     const expectedProducts = buildExpectedOwnedProductsForCustomer({
       entries,
-      defaultProducts,
       subscriptionById,
       oneTimePurchaseById,
     });

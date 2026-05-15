@@ -1,6 +1,7 @@
 import { traceSpan } from '@/utils/telemetry';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
@@ -27,11 +28,13 @@ function createFreestyleEngine(): JsEngine {
       let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", "") || undefined;
 
       if (apiKey === "mock_stack_freestyle_key") {
-        if (!["development", "test"].includes(getNodeEnvironment())) {
+        if (!["development", "test"].includes(getNodeEnvironment()) && !isLocalEmulatorEnabled()) {
           throw new StackAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
         }
-        const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-        baseUrl = `http://localhost:${prefix}22`;
+        if (!baseUrl) {
+          const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+          baseUrl = `http://localhost:${prefix}22`;
+        }
       }
 
       const freestyle = new FreestyleClient({
@@ -147,7 +150,7 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
 
       return await runWithFallback(code, options);
     } else {
-      if (getNodeEnvironment().includes("prod")) {
+      if (getNodeEnvironment().includes("prod") && !isLocalEmulatorEnabled()) {
         throw new StackAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
       }
 
@@ -233,7 +236,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
 
   captureError(`js-execution-freestyle-failed`, new StackAssertionError(
     `JS execution freestyle engine failed, falling back to vercel sandbox engine`,
-    { error: retryResult.error, innerCode: code, innerOptions: options }
+    { cause: retryResult.error, innerCode: code, innerOptions: options }
   ));
 
   try {
@@ -242,7 +245,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
   } catch (error){
       captureError(`js-execution-vercel-sandbox-failed`, new StackAssertionError(
         `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
-        { error: error, innerCode: code, innerOptions: options }
+        { cause: error, innerCode: code, innerOptions: options }
       ));
       throw new StackAssertionError("Vercel Sandbox service unavailable", { cause: error, innerCode: code, innerOptions: options });
   }

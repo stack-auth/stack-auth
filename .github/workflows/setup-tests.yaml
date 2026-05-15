@@ -16,6 +16,7 @@ env:
 
 jobs:
   setup-tests:
+    if: ${{ (github.head_ref || github.ref_name) == 'dev' }}
     runs-on: ubicloud-standard-16
     env:
       STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"

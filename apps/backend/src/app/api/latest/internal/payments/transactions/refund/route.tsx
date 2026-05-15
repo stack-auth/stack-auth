@@ -1,4 +1,6 @@
 import { buildOneTimePurchaseTransaction, buildSubscriptionTransaction, resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
+import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -8,10 +10,34 @@ import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yup
 import { moneyAmountToStripeUnits } from "@stackframe/stack-shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import type Stripe from "stripe";
 import { InferType } from "yup";
 
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
   ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
+
+/**
+ * Builds the parameters object for `stripe.refunds.create`. Centralised so the
+ * platform-fee invariant — that we never let Stripe reverse our charge-leg
+ * 0.9% application fee on refund — has exactly one source of truth and one
+ * place to test.
+ *
+ * Stripe's default for `refund_application_fee` on a Connect direct charge is
+ * `true`, which proportionally reverses the application fee along with the
+ * refund. We always set it to `false` so the platform retains its cut.
+ */
+export function buildStripeRefundParams(args: {
+  paymentIntentId: string,
+  amountStripeUnits: number,
+  metadata?: Record<string, string>,
+}): Stripe.RefundCreateParams {
+  return {
+    payment_intent: args.paymentIntentId,
+    amount: args.amountStripeUnits,
+    ...(args.metadata ? { metadata: args.metadata } : {}),
+    refund_application_fee: false,
+  };
+}
 
 function getTotalUsdStripeUnits(options: { product: InferType<typeof productSchema>, priceId: string | null, quantity: number }) {
   const selectedPrice = resolveSelectedPriceFromProduct(options.product, options.priceId ?? null);
@@ -75,6 +101,95 @@ function getRefundAmountStripeUnits(refundEntries: RefundEntrySelection[]) {
     total += moneyAmountToStripeUnits(refundEntry.amount_usd, USD_CURRENCY);
   }
   return total;
+}
+
+function stripeUnitsToMoneyAmount(stripeUnits: number): string {
+  if (!Number.isFinite(stripeUnits) || Math.trunc(stripeUnits) !== stripeUnits) {
+    throw new StackAssertionError("Stripe units must be an integer", { stripeUnits });
+  }
+  const absolute = Math.abs(stripeUnits);
+  const decimals = USD_CURRENCY.decimals;
+  const units = absolute.toString().padStart(decimals + 1, "0");
+  const integerPart = units.slice(0, -decimals) || "0";
+  const fractionalPart = units.slice(-decimals).replace(/0+$/, "");
+  return fractionalPart.length > 0 ? `${integerPart}.${fractionalPart}` : integerPart;
+}
+
+function negateMoneyAmount(amount: string): string {
+  if (amount === "0") {
+    return "0";
+  }
+  return `-${amount}`;
+}
+
+function readProductLineId(product: InferType<typeof productSchema>): string | null {
+  const productLineId = Reflect.get(product, "productLineId");
+  return typeof productLineId === "string" ? productLineId : null;
+}
+
+function getProductGrantEntry(options: { entries: TransactionEntry[], entryIndex: number }): Extract<TransactionEntry, { type: "product_grant" }> {
+  const entry = options.entries[options.entryIndex];
+  if (entry.type !== "product_grant") {
+    throw new StackAssertionError("Refund entry must reference a product grant entry", { entryIndex: options.entryIndex, entry });
+  }
+  return entry;
+}
+
+function buildRefundManualTransaction(options: {
+  sourceKind: "subscription" | "one-time-purchase",
+  sourceId: string,
+  sourceTransactionId: string,
+  tenancyId: string,
+  sourceEntries: TransactionEntry[],
+  refundEntries: RefundEntrySelection[],
+  refundAmountStripeUnits: number,
+  productLineId: string | null,
+  paymentProvider: "test_mode" | "stripe",
+  refundedAt: Date,
+}): { rowId: string, rowData: ManualTransactionRow } {
+  const productGrantEntry = getProductGrantEntry({ entries: options.sourceEntries, entryIndex: 0 });
+  const revocationEntries = options.refundEntries.map((refundEntry) => {
+    const adjustedEntry = getProductGrantEntry({
+      entries: options.sourceEntries,
+      entryIndex: refundEntry.entry_index,
+    });
+    return {
+      type: "product-revocation" as const,
+      customerType: adjustedEntry.customer_type,
+      customerId: adjustedEntry.customer_id,
+      adjustedTransactionId: options.sourceTransactionId,
+      adjustedEntryIndex: refundEntry.entry_index,
+      quantity: refundEntry.quantity,
+      productId: adjustedEntry.product_id,
+      productLineId: options.productLineId,
+    };
+  });
+  const refundAmount = negateMoneyAmount(stripeUnitsToMoneyAmount(options.refundAmountStripeUnits));
+  const createdAtMillis = options.refundedAt.getTime();
+  return {
+    rowId: `refund:${options.sourceKind}:${options.sourceId}`,
+    rowData: {
+      txnId: `${options.sourceId}:refund`,
+      tenancyId: options.tenancyId,
+      effectiveAtMillis: createdAtMillis,
+      type: "refund",
+      entries: [
+        ...revocationEntries,
+        {
+          type: "money-transfer",
+          customerType: productGrantEntry.customer_type,
+          customerId: productGrantEntry.customer_id,
+          chargedAmount: {
+            USD: refundAmount,
+          },
+        },
+      ],
+      customerType: productGrantEntry.customer_type,
+      customerId: productGrantEntry.customer_id,
+      paymentProvider: options.paymentProvider,
+      createdAtMillis,
+    },
+  };
 }
 
 export const POST = createSmartRouteHandler({
@@ -153,7 +268,6 @@ export const POST = createSmartRouteHandler({
       if (!paymentIntentId || typeof paymentIntentId !== "string") {
         throw new StackAssertionError("Payment has no payment intent", { invoiceId: subscriptionInvoice.stripeInvoiceId });
       }
-      let refundAmountStripeUnits: number | null = null;
       const transaction = buildSubscriptionTransaction({ subscription });
       validateRefundEntries({
         entries: transaction.entries,
@@ -165,17 +279,18 @@ export const POST = createSmartRouteHandler({
         priceId: subscription.priceId ?? null,
         quantity: subscription.quantity,
       });
-      refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
+      const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
       if (refundAmountStripeUnits < 0) {
         throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
       }
       if (refundAmountStripeUnits > totalStripeUnits) {
         throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
       }
-      await stripe.refunds.create({
-        payment_intent: paymentIntentId,
-        amount: refundAmountStripeUnits,
-      });
+      await stripe.refunds.create(buildStripeRefundParams({
+        paymentIntentId,
+        amountStripeUnits: refundAmountStripeUnits,
+      }));
+      const refundedAt = new Date();
       if (refundedQuantity > 0) {
         if (!subscription.stripeSubscriptionId) {
           throw new StackAssertionError("Stripe subscription id missing for refund", { subscriptionId: subscription.id });
@@ -211,15 +326,33 @@ export const POST = createSmartRouteHandler({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
           data: {
             cancelAtPeriodEnd: newQuantity === 0,
-            refundedAt: new Date(),
+            refundedAt,
           },
         });
       } else {
         await prisma.subscription.update({
           where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-          data: { refundedAt: new Date() },
+          data: { refundedAt },
         });
       }
+      // dual write - prisma and bulldozer
+      const updatedSub = await prisma.subscription.findUniqueOrThrow({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+      });
+      await bulldozerWriteSubscription(prisma, updatedSub);
+      const manualRefund = buildRefundManualTransaction({
+        sourceKind: "subscription",
+        sourceId: subscription.id,
+        sourceTransactionId: `sub-start:${subscription.id}`,
+        tenancyId: auth.tenancy.id,
+        sourceEntries: transaction.entries,
+        refundEntries,
+        refundAmountStripeUnits,
+        productLineId: readProductLineId(subscription.product as InferType<typeof productSchema>),
+        paymentProvider: subscription.creationSource === "TEST_MODE" ? "test_mode" : "stripe",
+        refundedAt,
+      });
+      await bulldozerWriteManualTransaction(prisma, manualRefund.rowId, manualRefund.rowData);
     } else {
       const purchase = await prisma.oneTimePurchase.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
@@ -237,7 +370,6 @@ export const POST = createSmartRouteHandler({
       if (!purchase.stripePaymentIntentId) {
         throw new KnownErrors.OneTimePurchaseNotFound(body.id);
       }
-      let refundAmountStripeUnits: number | null = null;
       const transaction = buildOneTimePurchaseTransaction({ purchase });
       validateRefundEntries({
         entries: transaction.entries,
@@ -248,25 +380,44 @@ export const POST = createSmartRouteHandler({
         priceId: purchase.priceId ?? null,
         quantity: purchase.quantity,
       });
-      refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
+      const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
       if (refundAmountStripeUnits < 0) {
         throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
       }
       if (refundAmountStripeUnits > totalStripeUnits) {
         throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
       }
-      await stripe.refunds.create({
-        payment_intent: purchase.stripePaymentIntentId,
-        amount: refundAmountStripeUnits,
+      await stripe.refunds.create(buildStripeRefundParams({
+        paymentIntentId: purchase.stripePaymentIntentId,
+        amountStripeUnits: refundAmountStripeUnits,
         metadata: {
           tenancyId: auth.tenancy.id,
           purchaseId: purchase.id,
         },
-      });
+      }));
+      const refundedAt = new Date();
       await prisma.oneTimePurchase.update({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-        data: { refundedAt: new Date() },
+        data: { refundedAt },
       });
+      // dual write - prisma and bulldozer
+      const updatedPurchase = await prisma.oneTimePurchase.findUniqueOrThrow({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+      });
+      await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
+      const manualRefund = buildRefundManualTransaction({
+        sourceKind: "one-time-purchase",
+        sourceId: purchase.id,
+        sourceTransactionId: `otp:${purchase.id}`,
+        tenancyId: auth.tenancy.id,
+        sourceEntries: transaction.entries,
+        refundEntries,
+        refundAmountStripeUnits,
+        productLineId: readProductLineId(purchase.product as InferType<typeof productSchema>),
+        paymentProvider: "stripe",
+        refundedAt,
+      });
+      await bulldozerWriteManualTransaction(prisma, manualRefund.rowId, manualRefund.rowData);
     }
 
     return {
@@ -277,4 +428,32 @@ export const POST = createSmartRouteHandler({
       },
     };
   },
+});
+
+import.meta.vitest?.describe("buildStripeRefundParams", (test) => {
+  test("always sets refund_application_fee: false to keep our 0.9% with the platform", ({ expect }) => {
+    const params = buildStripeRefundParams({ paymentIntentId: "pi_test", amountStripeUnits: 5000 });
+    expect(params.refund_application_fee).toBe(false);
+  });
+  test("propagates payment_intent and amount as-is", ({ expect }) => {
+    const params = buildStripeRefundParams({ paymentIntentId: "pi_abc", amountStripeUnits: 1234 });
+    expect(params.payment_intent).toBe("pi_abc");
+    expect(params.amount).toBe(1234);
+  });
+  test("propagates metadata when provided and omits the key when not", ({ expect }) => {
+    const withMeta = buildStripeRefundParams({
+      paymentIntentId: "pi_x",
+      amountStripeUnits: 1,
+      metadata: { tenancyId: "t1", purchaseId: "p1" },
+    });
+    expect(withMeta.metadata).toEqual({ tenancyId: "t1", purchaseId: "p1" });
+    // refund_application_fee invariant must hold even when metadata is set —
+    // pin this explicitly so a future change to the metadata branch can't
+    // accidentally strip the fee flag.
+    expect(withMeta.refund_application_fee).toBe(false);
+
+    const withoutMeta = buildStripeRefundParams({ paymentIntentId: "pi_x", amountStripeUnits: 1 });
+    expect("metadata" in withoutMeta).toBe(false);
+    expect(withoutMeta.refund_application_fee).toBe(false);
+  });
 });

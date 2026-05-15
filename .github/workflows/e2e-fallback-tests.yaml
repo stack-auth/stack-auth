@@ -68,6 +68,7 @@ jobs:
           cp examples/middleware/.env.development examples/middleware/.env.test.local
           cp examples/supabase/.env.development examples/supabase/.env.test.local
           cp examples/convex/.env.development examples/convex/.env.test.local
+          cp apps/internal-tool/.env.development apps/internal-tool/.env.test.local
 
       - name: Build
         run: pnpm build

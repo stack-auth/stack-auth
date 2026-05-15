@@ -31,6 +31,7 @@ async function main() {
 
   for (const endpoint of endpoints) {
     runAsynchronously(async () => {
+      await wait(30_000); // Wait 30 seconds to make sure the server is fully started
       while (true) {
         const runResult = await Result.fromPromise(run(endpoint));
         if (runResult.status === "error") {

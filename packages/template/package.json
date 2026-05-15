@@ -2,8 +2,8 @@
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY, INSTEAD EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@stackframe/template",
   "private": true,
-  "version": "2.8.83",
-  "repository": "https://github.com/stack-auth/stack-auth",
+  "version": "2.8.89",
+  "repository": "https://github.com/hexclave/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,17 @@
       },
       "require": {
         "default": "./dist/index.js"
+      }
+    },
+    "./tanstack-start-server-context": {
+      "types": "./dist/tanstack-start-server-context.combined.d.ts",
+      "import": {
+        "browser": "./dist/esm/tanstack-start-server-context.default.js",
+        "default": "./dist/esm/tanstack-start-server-context.server.js"
+      },
+      "require": {
+        "browser": "./dist/tanstack-start-server-context.default.js",
+        "default": "./dist/tanstack-start-server-context.server.js"
       }
     },
     "./convex.config": {
@@ -42,7 +53,7 @@
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
     "build": "rimraf dist && pnpm run css && tsdown",
-    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
+    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css",
     "codegen:watch": "concurrently -n \"css\" -k \"pnpm run css:watch\"",
     "css": "pnpm run css-tw && pnpm run css-sc",
@@ -94,6 +105,8 @@
     "@types/react-dom": ">=18.3.0",
     "react-dom": ">=18.3.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
+    "@tanstack/react-router": ">=1.100.0",
+    "@tanstack/react-start": ">=1.100.0",
     "react": ">=18.3.0"
   },
   "peerDependenciesMeta": {
@@ -117,6 +130,8 @@
     "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
     "next": "^14.2.35",
+    "@tanstack/react-router": "^1.167.4",
+    "@tanstack/react-start": "^1.166.15",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",
     "react": "^19.0.0",

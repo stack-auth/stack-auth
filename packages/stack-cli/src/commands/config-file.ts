@@ -1,17 +1,133 @@
 import { Command } from "commander";
 import * as path from "path";
 import * as fs from "fs";
-import { resolveAuth } from "../lib/auth.js";
+import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
+import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+const SHOW_ONBOARDING_STACK_CONFIG_VALUE = "show-onboarding";
+
+function isConfigOverride(value: unknown): value is EnvironmentConfigOverrideOverride {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function parseConfigOverride(value: unknown): EnvironmentConfigOverrideOverride | null {
+  if (value === SHOW_ONBOARDING_STACK_CONFIG_VALUE) {
+    return {};
+  }
+  return isConfigOverride(value) ? value : null;
+}
+
+type BranchConfigSourceApi =
+  | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string }
+  | { type: "pushed-from-unknown" }
+  | { type: "unlinked" };
+
+function parseGitHubRepository(): { owner: string, repo: string } | null {
+  const repository = process.env.GITHUB_REPOSITORY;
+  if (!repository) {
+    return null;
+  }
+
+  const slashIndex = repository.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= repository.length - 1) {
+    return null;
+  }
+
+  return {
+    owner: repository.slice(0, slashIndex),
+    repo: repository.slice(slashIndex + 1),
+  };
+}
+
+function buildConfigPushSource(configFilePath: string): BranchConfigSourceApi {
+  const repository = parseGitHubRepository();
+  const sha = process.env.GITHUB_SHA;
+  const branch = process.env.GITHUB_REF_NAME;
+
+  if (repository && sha && branch) {
+    return {
+      type: "pushed-from-github",
+      owner: repository.owner,
+      repo: repository.repo,
+      branch,
+      commit_hash: sha,
+      config_file_path: configFilePath,
+    };
+  }
+
+  return { type: "pushed-from-unknown" };
+}
+
+async function pushConfigWithSecretServerKey(
+  auth: ProjectAuthWithSecretServerKey,
+  config: EnvironmentConfigOverrideOverride,
+  source: BranchConfigSourceApi,
+) {
+  const endpoint = `${auth.apiUrl.replace(/\/$/, "")}/api/v1/internal/config/override/branch`;
+  const response = await fetch(endpoint, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      "x-stack-project-id": auth.projectId,
+      "x-stack-access-type": "server",
+      "x-stack-secret-server-key": auth.secretServerKey,
+    },
+    body: JSON.stringify({
+      config_string: JSON.stringify(config),
+      source,
+    }),
+  });
+
+  if (response.ok) {
+    return;
+  }
+
+  const responseText = await response.text();
+  const message = responseText.length > 0
+    ? responseText
+    : `Request failed with status ${response.status}.`;
+  throw new CliError(`Failed to push config with STACK_SECRET_SERVER_KEY: ${message}`);
+}
+
+function sourceToSdkSource(source: BranchConfigSourceApi):
+  { type: "pushed-from-github", owner: string, repo: string, branch: string, commitHash: string, configFilePath: string }
+  | { type: "pushed-from-unknown" }
+  | { type: "unlinked" } {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commitHash: source.commit_hash,
+      configFilePath: source.config_file_path,
+    };
+  }
+  if (source.type === "pushed-from-unknown") {
+    return { type: "pushed-from-unknown" };
+  }
+  return { type: "unlinked" };
+}
+
+// Resolve the path for `config pull` when `--config-file` was omitted. Falls
+// back to `./stack.config.ts` in cwd, and throws a CliError with a clear hint
+// if it isn't there. Exported for unit tests.
+export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd: string): string {
+  if (opts.configFile != null && opts.configFile !== "") {
+    return path.resolve(opts.configFile);
+  }
+  const candidate = path.join(cwd, "stack.config.ts");
+  if (!fs.existsSync(candidate)) {
+    throw new CliError("No --config-file provided and no stack.config.ts found in the current directory. Pass --config-file <path> or run this command in a directory containing a stack.config.ts file.");
+  }
+  return candidate;
 }
 
 export function registerConfigCommand(program: Command) {
@@ -22,15 +138,18 @@ export function registerConfigCommand(program: Command) {
   config
     .command("pull")
     .description("Pull branch config to a local file")
-    .requiredOption("--config-file <path>", "Path to write config file (.ts)")
+    .requiredOption("--cloud-project-id <id>", "Cloud project ID to pull config from")
+    .option("--config-file <path>", "Path to write config file (.ts); defaults to ./stack.config.ts in the current directory")
     .option("--overwrite", "Overwrite an existing config file")
     .action(async (opts) => {
-      const flags = program.opts();
-      const auth = resolveAuth(flags);
+      const auth = resolveAuth(opts.cloudProjectId);
+      if (!isProjectAuthWithRefreshToken(auth)) {
+        throw new CliError("`stack config pull` requires `stack login`. Remove STACK_SECRET_SERVER_KEY and try again.");
+      }
       const project = await getAdminProject(auth);
 
       const configOverride = await project.getConfigOverride("branch");
-      const filePath = path.resolve(opts.configFile);
+      const filePath = resolveConfigFilePathForPull(opts, process.cwd());
       const ext = path.extname(filePath);
 
       if (ext !== ".ts") {
@@ -51,11 +170,10 @@ export function registerConfigCommand(program: Command) {
   config
     .command("push")
     .description("Push a local config file to branch config")
+    .requiredOption("--cloud-project-id <id>", "Cloud project ID to push config to")
     .requiredOption("--config-file <path>", "Path to config file (.js or .ts)")
     .action(async (opts) => {
-      const flags = program.opts();
-      const auth = resolveAuth(flags);
-      const project = await getAdminProject(auth);
+      const auth = resolveAuth(opts.cloudProjectId);
 
       const filePath = path.resolve(opts.configFile);
       const ext = path.extname(filePath);
@@ -72,13 +190,26 @@ export function registerConfigCommand(program: Command) {
       const jiti = createJiti(import.meta.url);
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
-      const config = configModule.config;
-      if (!isPlainObject(config)) {
+      const config = parseConfigOverride(configModule.config);
+      if (config == null) {
         const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@stackframe/js";
-        throw new CliError(`Config file must export a plain \`config\` object. Example: import type { StackConfig } from "${examplePkg}"; export const config: StackConfig = { ... };`);
+        throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { StackConfig } from "${examplePkg}"; export const config: StackConfig = { ... };`);
       }
 
-      await project.replaceConfigOverride("branch", config);
+      const source = buildConfigPushSource(opts.configFile);
+
+      if (isProjectAuthWithSecretServerKey(auth)) {
+        await pushConfigWithSecretServerKey(auth, config, source);
+      } else {
+        if (!isProjectAuthWithRefreshToken(auth)) {
+          throw new CliError("`stack config push` requires either STACK_SECRET_SERVER_KEY or `stack login`.");
+        }
+        const project = await getAdminProject(auth);
+        await project.pushConfig(config, {
+          source: sourceToSdkSource(source),
+        });
+      }
+
       console.log("Config pushed successfully.");
     });
 }

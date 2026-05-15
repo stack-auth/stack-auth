@@ -5,23 +5,35 @@ import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { useMetricsUserCountsOrThrow } from "@/lib/stack-app-internals";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+const capturedUsersMetricsErrors = new WeakSet<Error>();
+
+function captureUsersMetricsErrorOnce(error: Error) {
+  if (capturedUsersMetricsErrors.has(error)) {
+    return;
+  }
+  capturedUsersMetricsErrors.add(error);
+  captureError("users-total-metrics-error-boundary", error);
+}
+
 function TotalUsersDisplay() {
   const stackAdminApp = useAdminApp();
-  const metrics = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(false);
-  const metricsIncludingAnonymous = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(true);
+  const metrics = useMetricsUserCountsOrThrow(stackAdminApp);
 
-  const anonymousUsersCount = metricsIncludingAnonymous.total_users - metrics.total_users;
+  const anonymousUsersCount = metrics.anonymous_users;
+  const nonAnonymousUsersCount = metrics.total_users - anonymousUsersCount;
 
   return (
     <>
-      {metrics.total_users}
+      {nonAnonymousUsersCount}
       {anonymousUsersCount > 0 ? (
         <>
           {" "}(+ {anonymousUsersCount}{" "}
@@ -36,6 +48,11 @@ function TotalUsersDisplay() {
       ) : null}
     </>
   );
+}
+
+function TotalUsersErrorComponent(props: { error: Error }) {
+  captureUsersMetricsErrorOnce(props.error);
+  return <>Unavailable</>;
 }
 
 export default function PageClient() {
@@ -60,9 +77,11 @@ export default function PageClient() {
         title="Users"
         description={<>
           Total:{" "}
-          <Suspense fallback={<Skeleton className="inline"><span>Calculating</span></Skeleton>}>
-            <TotalUsersDisplay key={refreshKey} />
-          </Suspense>
+          <ErrorBoundary errorComponent={TotalUsersErrorComponent}>
+            <Suspense fallback={<Skeleton className="inline"><span>Calculating</span></Skeleton>}>
+              <TotalUsersDisplay key={refreshKey} />
+            </Suspense>
+          </ErrorBoundary>
         </>}
         actions={
           <div className="flex gap-2">

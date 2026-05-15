@@ -1,4 +1,5 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists } from "@/lib/payments";
+import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -93,7 +94,7 @@ export const GET = createSmartRouteHandler({
     });
     const totalQuantity = await getItemQuantityForCustomer({
       prisma,
-      tenancy,
+      tenancyId: tenancy.id,
       itemId: req.params.item_id,
       customerId: req.params.customer_id,
       customerType: req.params.customer_type,

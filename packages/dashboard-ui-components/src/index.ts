@@ -40,7 +40,7 @@ export type { DesignChartConfig } from "./components/chart-container";
 
 export { DesignChartTooltip, DesignChartTooltipContent } from "./components/chart-tooltip";
 
-export { DesignChartLegend, DesignChartLegendContent } from "./components/chart-legend";
+export { DesignChartLegendContent } from "./components/chart-legend";
 
 export { DesignChartCard } from "./components/chart-card";
 export type { DesignChartCardProps } from "./components/chart-card";
@@ -53,3 +53,7 @@ export type { DesignProgressBarProps } from "./components/progress-bar";
 
 export { DesignEmptyState } from "./components/empty-state";
 export type { DesignEmptyStateProps } from "./components/empty-state";
+
+export * from "./components/analytics-chart";
+
+export * from "./components/data-grid";

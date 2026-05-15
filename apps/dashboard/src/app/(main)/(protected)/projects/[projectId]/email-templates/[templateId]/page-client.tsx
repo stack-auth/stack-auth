@@ -22,6 +22,16 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const BUILDER_STATUS_MESSAGES = [
+  "Reading your current template...",
+  "Understanding your changes...",
+  "Planning the update...",
+  "Crafting components...",
+  "Refining the layout...",
+  "Polishing the details...",
+  "Almost there...",
+];
+
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -116,6 +126,10 @@ export default function PageClient(props: { templateId: string }) {
     setNeedConfirm(true);
     return () => setNeedConfirm(false);
   }, [setNeedConfirm, template, currentCode, selectedThemeId]);
+
+  const [isRunning, setIsRunning] = useState(false);
+  const handleRunStart = useCallback(() => setIsRunning(true), []);
+  const handleRunEnd = useCallback(() => setIsRunning(false), []);
 
   const handleCodeUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);
@@ -277,10 +291,11 @@ export default function PageClient(props: { templateId: string }) {
             }
             chatComponent={
               <AssistantChat
-                chatAdapter={createChatAdapter(backendBaseUrl, "email-template", handleCodeUpdate, () => currentCode, currentUser)}
+                chatAdapter={createChatAdapter(backendBaseUrl, "email-template", handleCodeUpdate, () => currentCode, currentUser, handleRunStart, handleRunEnd)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
                 toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode
+                runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}
               />
             }
           />

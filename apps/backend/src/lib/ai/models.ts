@@ -1,8 +1,11 @@
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
-export type ModelQuality = "dumb" | "smart" | "smartest";
-export type ModelSpeed = "slow" | "fast";
+export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
+export const MODEL_SPEEDS = ["slow", "fast"] as const;
+export type ModelQuality = typeof MODEL_QUALITIES[number];
+export type ModelSpeed = typeof MODEL_SPEEDS[number];
 
 type ModelConfig = {
   modelId: string,
@@ -59,7 +62,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 export function createOpenRouterProvider() {
-  const baseURL = getNodeEnvironment() === "development"
+  const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
     : "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1";
   return createOpenRouter({
@@ -68,15 +71,22 @@ export function createOpenRouterProvider() {
   });
 }
 
+export function createDirectOpenRouterProvider(apiKey: string) {
+  return createOpenRouter({ apiKey });
+}
+
 export function selectModel(
   quality: ModelQuality,
   speed: ModelSpeed,
-  isAuthenticated: boolean
+  isAuthenticated: boolean,
+  directApiKey?: string,
 ) {
   const config =
     MODEL_SELECTION_MATRIX[quality][speed][isAuthenticated ? "authenticated" : "unauthenticated"];
 
-  const openrouter = createOpenRouterProvider();
+  const openrouter = directApiKey
+    ? createDirectOpenRouterProvider(directApiKey)
+    : createOpenRouterProvider();
   const model = openrouter(config.modelId);
   return model;
 }

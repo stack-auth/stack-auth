@@ -61,9 +61,11 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
     });
   };
 
-  if (!stripeAccountInfo) {
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+
+  if (!stripeAccountInfo && !isLocalEmulator) {
     return (
-      <div className="mx-auto max-w-sm h-full flex items-center">
+      <div className="mx-auto flex w-full max-w-sm min-h-[calc(100vh-4.5rem)] items-center justify-center px-3 py-8">
         <Card className="w-full">
           <CardContent className="p-8 text-center">
             <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
@@ -172,7 +174,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-      ) : !stripeAccountInfo.details_submitted && (
+      ) : stripeAccountInfo && !stripeAccountInfo.details_submitted && (
         <div className="flex justify-center px-4 pt-4 sm:px-6 sm:pt-6">
           <div className={cn(
             "w-full max-w-[1250px] rounded-2xl p-4 sm:p-5",
@@ -236,7 +238,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
-      {getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") !== "true" && (
+      {getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") !== "true" && getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") !== "true" && (
         <div className={cn(bannerHasItems && "p-4", "flex justify-center")}>
           <div style={{ maxWidth: 1250, width: '100%' }}>
             <ConnectNotificationBanner

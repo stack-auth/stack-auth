@@ -165,8 +165,8 @@ export default function PageClient() {
           ) : (
             <p className="text-xs text-muted-foreground">
               {requirePublishableClientKey
-                ? "You&apos;ll receive a publishable client key and a secret server key for this project."
-                : "You&apos;ll receive a secret server key for this project."}
+                ? "You'll receive a publishable client key and a secret server key for this project."
+                : "You'll receive a secret server key for this project."}
             </p>
           ),
         },
@@ -411,7 +411,7 @@ export default function PageClient() {
           <DesignCard
             glassmorphic
             title="Need more detail?"
-            subtitle="See Vercel&apos;s documentation on environment variables for more details."
+            subtitle="See Vercel's documentation on environment variables for more details."
             icon={ClockIcon}
           >
             <DesignButton asChild variant="secondary">

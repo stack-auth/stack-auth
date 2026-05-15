@@ -181,18 +181,25 @@ export const branchPaymentsSchema = yupObject({
   'Product customer type must match its product line customer type',
   function(this: yup.TestContext<yup.AnyObject>, value) {
     if (!value) return true;
-    for (const [productId, product] of Object.entries(value.products)) {
-      if (!product.productLineId) continue;
-      const productLine = getOrUndefined(value.productLines, product.productLineId);
+    const products = value.products;
+    if (!isObjectLike(products)) return true;
+
+    const productLines = value.productLines;
+    for (const [productId, product] of Object.entries(products)) {
+      if (!isObjectLike(product)) continue;
+      const productLineId = product.productLineId;
+      if (typeof productLineId !== "string" || productLineId.length === 0) continue;
+      const productLine = isObjectLike(productLines) ? getOrUndefined(productLines, productLineId) : undefined;
       if (productLine === undefined) {
         return this.createError({
-          message: `Product "${productId}" specifies product line ID "${product.productLineId}", but that product line does not exist`,
+          message: `Product "${productId}" specifies product line ID "${productLineId}", but that product line does not exist`,
           path: `${this.path}.products.${productId}.productLineId`,
         });
       }
+      if (!isObjectLike(productLine)) continue;
       if (product.customerType !== productLine.customerType) {
         return this.createError({
-          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${product.productLineId}" has customer type "${productLine.customerType}"`,
+          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${productLineId}" has customer type "${productLine.customerType}"`,
           path: `${this.path}.products.${productId}.customerType`,
         });
       }
@@ -200,6 +207,95 @@ export const branchPaymentsSchema = yupObject({
     return true;
   }
 );
+import.meta.vitest?.test("branchPaymentsSchema accepts partial payments config without products", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    blockNewPurchases: true,
+  }, { abortEarly: false })).resolves.toMatchObject({
+    blockNewPurchases: true,
+  });
+});
+
+import.meta.vitest?.test("branchPaymentsSchema accepts product lines without products", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    productLines: {
+      pro: {
+        displayName: "Pro",
+        customerType: "user",
+      },
+    },
+  }, { abortEarly: false })).resolves.toMatchObject({
+    productLines: {
+      pro: {
+        displayName: "Pro",
+        customerType: "user",
+      },
+    },
+  });
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects a product that references a missing product line", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "missing-line",
+        prices: {},
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" specifies product line ID "missing-line", but that product line does not exist]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects null product entries without throwing a raw TypeError", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    products: {
+      pro: null,
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: products cannot be null]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects null product line entries without throwing a raw TypeError", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    productLines: {
+      teamLine: null,
+    },
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "teamLine",
+        prices: {},
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLines cannot be null]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects a product whose customer type differs from its product line", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    productLines: {
+      teamLine: {
+        customerType: "team",
+      },
+    },
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "teamLine",
+        prices: {},
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" has customer type "user" but its product line "teamLine" has customer type "team"]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema lets productLineId schema reject empty IDs", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "",
+        prices: {},
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen]`);
+});
 
 const branchDomain = yupObject({});
 
@@ -452,6 +548,19 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-04-21: `include-by-default` product prices are no longer supported. Rewrite to an empty price map so legacy configs continue to load.
+  if (isBranchOrHigher) {
+    // Match `payments.products.<productId>.prices` regardless of how many segments the
+    // product-ID portion contributes. mapProperty splits dot-notation override keys on
+    // ".", so a product whose ID itself contains "." (e.g. "my.product") would produce
+    // a path with >4 segments and silently miss an exact-length match.
+    res = mapProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "prices", (value) => {
+      if (value === "include-by-default") return {};
+      return value;
+    });
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -488,6 +597,23 @@ import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) =>
   expect(mapProperty({ "a.b": { c: 1 } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ "a.b": { c: 2 } });
 
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
+
+  // The include-by-default migration uses a prefix/suffix path predicate against dot-notation
+  // keys: `payments.products.<productId>.prices`, where the product-ID portion may be one or
+  // more segments (since override keys are dot-paths and a product ID may itself contain ".").
+  // Verify it matches whether the override is fully nested, dot-notation at the root, a mix,
+  // or contains a dotted product ID.
+  const sentinelToEmpty = (v: any) => v === "include-by-default" ? {} : v;
+  const sentinelPred = (p: string[]) => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "prices";
+  expect(mapProperty({ "payments.products.x.prices": "include-by-default" }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products.x.prices": {} });
+  expect(mapProperty({ payments: { products: { x: { prices: "include-by-default" } } } }, sentinelPred, sentinelToEmpty))
+    .toEqual({ payments: { products: { x: { prices: {} } } } });
+  expect(mapProperty({ "payments.products": { x: { prices: "include-by-default" } } }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products": { x: { prices: {} } } });
+  // Dotted product ID: "my.product" expands to two path segments, total 5.
+  expect(mapProperty({ "payments.products.my.product.prices": "include-by-default" }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products.my.product.prices": {} });
 });
 
 function renameProperty(obj: Record<string, any>, oldPath: string | ((path: string[]) => boolean), newName: string | ((path: string[]) => string)): any {
@@ -948,12 +1074,12 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     const isAddOnTo = product.isAddOnTo === false ?
       false as const :
       typedFromEntries(Object.keys(product.isAddOnTo).map((key) => [key, true as const]));
-    const prices = product.prices === "include-by-default" ?
-      "include-by-default" as const :
-      typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
-        const data = { serverOnly: false, ...(value ?? {}) };
-        return [key, data];
-      }));
+    type PriceEntry = Partial<typeof product.prices[string]> & { serverOnly: boolean };
+    // `serverOnly` is guaranteed to be a boolean by the applyDefaults step above.
+    const prices: Record<string, PriceEntry> = typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
+      const data: PriceEntry = { ...value };
+      return [key, data];
+    }));
     return [key, {
       ...product,
       isAddOnTo,
@@ -1156,6 +1282,9 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
 
   for (const [key, value] of Object.entries(configOverride)) {
     if (value === undefined) continue;
+    if (/^payments\.products\.[^.]+\.prices$/.test(key) && value === "include-by-default") {
+      return Result.error(`${key} must not be one of the following values: include-by-default`);
+    }
     const subSchema = getSubSchema(schema, key);
     if (!subSchema) {
       // find smallest key prefix that is invalid

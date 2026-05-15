@@ -28,4 +28,17 @@ if [ -z "$(ls -A "$PGDATA" 2>/dev/null)" ]; then
   gosu postgres "$PG_BIN/pg_ctl" -D "$PGDATA" stop -w
 fi
 
+# Generate a fresh CRON_SECRET per container start. The cron endpoints are
+# internal — nothing outside the container calls them — so we don't want the
+# baked-in mock value from .env.development to be a usable credential against
+# a running emulator. Overriding here propagates to both the backend and the
+# run-cron-jobs.sh loop via supervisord's inherited environment.
+#
+# In snapshot-build mode the VM supplies a deterministic placeholder via the
+# --env-file so the baked snapshot doesn't contain a real secret; on resume,
+# /usr/local/bin/rotate-secrets swaps in a fresh per-install value.
+if [ -z "${CRON_SECRET:-}" ]; then
+  export CRON_SECRET="$(openssl rand -hex 32)"
+fi
+
 exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf

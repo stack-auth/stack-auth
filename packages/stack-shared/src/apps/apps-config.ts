@@ -96,6 +96,12 @@ export const ALL_APPS = {
     tags: ["comms"],
     stage: "stable",
   },
+  "support": {
+    displayName: "Support",
+    subtitle: "Customer conversations, team replies, and internal notes",
+    tags: ["comms", "operations"],
+    stage: "alpha",
+  },
   "email-api": {
     displayName: "Email API",
     subtitle: "Programmatic email sending and delivery",
@@ -149,6 +155,12 @@ export const ALL_APPS = {
     subtitle: "Deploy your Stack Auth project to Vercel",
     tags: ["integration", "developers"],
     stage: "stable",
+  },
+  "tanstack-start": {
+    displayName: "TanStack Start",
+    subtitle: "Use Stack Auth in TanStack Start apps",
+    tags: ["integration", "developers"],
+    stage: "alpha",
   },
   "analytics": {
     displayName: "Analytics",

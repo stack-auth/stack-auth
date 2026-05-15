@@ -28,6 +28,12 @@ export async function ensureUpstashSignature(fullReq: SmartRequest): Promise<voi
   if ((nodeEnv.includes("development") || nodeEnv.includes("test")) && url.hostname === "localhost") {
     url.hostname = "host.docker.internal";
   }
+  // The backend binds to 0.0.0.0, so Next.js reports the incoming URL with that
+  // hostname. QStash signs the URL we told it to call (e.g. localhost), so
+  // normalize 0.0.0.0 back to localhost for signature verification.
+  if (url.hostname === "0.0.0.0") {
+    url.hostname = "localhost";
+  }
 
   const isValid = await upstashReceiver.verify({
     signature: upstashSignature,

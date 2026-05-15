@@ -6,6 +6,15 @@ export type DesignSeparatorProps = {
   orientation?: "horizontal" | "vertical",
 } & React.HTMLAttributes<HTMLDivElement>;
 
+/**
+ * Thin divider line. Use `orientation="vertical"` inside a flex row to
+ * separate inline groups, or omit for a horizontal rule between sections.
+ *
+ * ```tsx
+ * <DesignSeparator />
+ * <DesignSeparator orientation="vertical" className="h-6" />
+ * ```
+ */
 export function DesignSeparator({
   orientation = "horizontal",
   className,

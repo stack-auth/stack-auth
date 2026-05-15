@@ -1,16 +1,19 @@
 import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamInvitationDeletionsForTeam, recordExternalDbSyncTeamMemberDeletionsForTeam, recordExternalDbSyncTeamPermissionDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { createFreePlanSubscriptionRow } from "@/lib/payments/ensure-free-plan";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, PurchaseCreationSource } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { addUserToTeam } from "../team-memberships/crud";
 
@@ -72,7 +75,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const db = await retryTransaction(prisma, async (tx) => {
+    const { db, freePlanSubscription } = await retryTransaction(prisma, async (tx) => {
       const db = await tx.team.create({
         data: withExternalDbSyncUpdate({
           displayName: data.display_name,
@@ -96,8 +99,36 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         });
       }
 
-      return db;
+      // Grant the free plan to every new internal-project team in the same
+      // transaction as the team create, so either both commit or neither
+      // does. Bulldozer write runs after the tx (it issues its own
+      // BEGIN/COMMIT and can't nest); if that fails, the sub still exists
+      // in Prisma and will be reconciled on the next sync/webhook.
+      //
+      // Silently skip if the `free` product isn't configured (or isn't a
+      // team-typed product in a product line) — we don't want to block
+      // team creation for callers in non-internal projects or in test
+      // setups where the payments config may not be fully hydrated.
+      const freePlanProduct = getOrUndefined(auth.tenancy.config.payments.products, "free");
+      const shouldGrantFreePlan = auth.project.id === "internal"
+        && freePlanProduct != null
+        && freePlanProduct.customerType === "team"
+        && freePlanProduct.productLineId != null;
+      const freePlanSubscription = shouldGrantFreePlan
+        ? await createFreePlanSubscriptionRow({
+          prisma: tx,
+          internalTenancy: auth.tenancy,
+          billingTeamId: db.teamId,
+          creationSource: PurchaseCreationSource.API_GRANT,
+        })
+        : null;
+
+      return { db, freePlanSubscription };
     });
+
+    if (freePlanSubscription != null) {
+      await bulldozerWriteSubscription(prisma, freePlanSubscription);
+    }
 
     const result = teamPrismaToCrud(db);
 

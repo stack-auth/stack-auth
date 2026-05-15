@@ -166,7 +166,7 @@ export function RepeatingInput({
           disabled={disabled || readOnly}
           className={cn(
             "rounded-r-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0",
-            prefix && "pl-7",
+            prefix && "!pl-7",
             inputClassName
           )}
         />

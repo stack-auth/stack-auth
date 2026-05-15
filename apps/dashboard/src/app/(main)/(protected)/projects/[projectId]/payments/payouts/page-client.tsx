@@ -8,12 +8,13 @@ import { StripeConnectProvider } from "@/components/payments/stripe-connect-prov
 
 export default function PageClient() {
   const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return (
     <PageLayout title="Payouts">
-      {isPreview ? (
+      {isPreview || isLocalEmulator ? (
         <Alert>
-          Payouts are unavailable in preview mode.
+          Payouts are unavailable in {isLocalEmulator ? "the local emulator" : "preview mode"}.
         </Alert>
       ) : (
         <StripeConnectProvider>

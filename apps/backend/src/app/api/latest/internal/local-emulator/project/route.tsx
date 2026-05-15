@@ -1,17 +1,30 @@
 import { Prisma } from "@/generated/prisma/client";
+import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
   LOCAL_EMULATOR_OWNER_TEAM_ID,
   isLocalEmulatorEnabled,
+  isLocalEmulatorOnboardingEnabledInConfig,
   readConfigFromFile,
   resolveEmulatorPath,
   writeConfigToFile,
+  writeShowOnboardingConfigToFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import {
+  clientOrHigherAuthTypeSchema,
+  projectOnboardingStatusSchema,
+  projectOnboardingStatusValues,
+  type ProjectOnboardingStatus,
+  yupArray,
+  yupBoolean,
+  yupNumber,
+  yupObject,
+  yupString,
+} from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -21,6 +34,18 @@ import * as path from "path";
 type LocalEmulatorProjectMappingRow = {
   projectId: string,
 };
+
+function isProjectOnboardingStatus(value: string): value is ProjectOnboardingStatus {
+  return projectOnboardingStatusValues.some((status) => status === value);
+}
+
+function deriveDisplayLabel(absoluteFilePath: string): string {
+  const base = path.basename(absoluteFilePath);
+  if (base.toLowerCase() === "stack.config.ts") {
+    return path.basename(path.dirname(absoluteFilePath)) || base;
+  }
+  return base;
+}
 
 async function assertLocalEmulatorOwnerTeamReadiness() {
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
@@ -58,14 +83,15 @@ async function assertLocalEmulatorOwnerTeamReadiness() {
   }
 }
 
-async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<string> {
+async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<{ projectId: string, created: boolean }> {
   const existingRows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
     SELECT "projectId"
     FROM "LocalEmulatorProject"
     WHERE "absoluteFilePath" = ${absoluteFilePath}
     LIMIT 1
   `);
-  const projectId = existingRows[0] ? existingRows[0].projectId : generateUuid();
+  const existingRow = existingRows.length > 0 ? existingRows[0] : undefined;
+  const projectId = existingRow ? existingRow.projectId : generateUuid();
 
   await globalPrismaClient.project.upsert({
     where: {
@@ -74,7 +100,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     update: {},
     create: {
       id: projectId,
-      displayName: `Local Emulator: ${path.basename(absoluteFilePath) || "Project"}`,
+      displayName: `Local Emulator: ${deriveDisplayLabel(absoluteFilePath) || "Project"}`,
       description: `Local emulator project for ${absoluteFilePath}`,
       isProductionMode: false,
       ownerTeamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
@@ -98,6 +124,25 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     },
   });
 
+  const created = existingRow === undefined;
+
+  // Seed environment-level defaults BEFORE registering as a LocalEmulatorProject:
+  // once registered, setEnvironmentConfigOverride refuses to write.
+  //   - domains.allowLocalhost: fresh emulator projects allow localhost redirects
+  //     so developers don't hit "Redirect URL not whitelisted" before configuring
+  //     trustedDomains.
+  //   - payments.testMode: emulator payments always go through stripe-mock.
+  if (created) {
+    await overrideEnvironmentConfigOverride({
+      projectId,
+      branchId: DEFAULT_BRANCH_ID,
+      environmentConfigOverrideOverride: {
+        "domains.allowLocalhost": true,
+        "payments.testMode": true,
+      },
+    });
+  }
+
   await globalPrismaClient.$executeRaw(Prisma.sql`
     INSERT INTO "LocalEmulatorProject" ("absoluteFilePath", "projectId", "createdAt", "updatedAt")
     VALUES (${absoluteFilePath}, ${projectId}, NOW(), NOW())
@@ -107,7 +152,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       "updatedAt" = NOW()
   `);
 
-  return projectId;
+  return { projectId, created };
 }
 
 async function getOrCreateCredentials(projectId: string) {
@@ -142,7 +187,7 @@ async function getOrCreateCredentials(projectId: string) {
     },
   });
 
-  if (!keySet.secretServerKey || !keySet.superSecretAdminKey) {
+  if (!keySet.publishableClientKey || !keySet.secretServerKey || !keySet.superSecretAdminKey) {
     throw new StackAssertionError("Local emulator key set is missing required keys.", {
       projectId,
       keySetId: keySet.id,
@@ -150,9 +195,70 @@ async function getOrCreateCredentials(projectId: string) {
   }
 
   return {
+    publishableClientKey: keySet.publishableClientKey,
     secretServerKey: keySet.secretServerKey,
     superSecretAdminKey: keySet.superSecretAdminKey,
   };
+}
+
+async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboarding: boolean): Promise<ProjectOnboardingStatus> {
+  const onboardingStateColumnExistsRows = await globalPrismaClient.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'Project'
+        AND column_name = 'onboardingState'
+    ) AS "exists"
+  `);
+  const onboardingStateColumnExists = onboardingStateColumnExistsRows[0]?.exists === true;
+
+  const rows = await globalPrismaClient.$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
+    SELECT "onboardingStatus"
+    FROM "Project"
+    WHERE "id" = ${projectId}
+    LIMIT 1
+  `);
+  const row = rows.length > 0 ? rows[0] : undefined;
+  if (!row) {
+    throw new StackAssertionError("Local emulator project not found while syncing onboarding state.", { projectId });
+  }
+  if (!isProjectOnboardingStatus(row.onboardingStatus)) {
+    throw new StackAssertionError("Project onboarding status in DB is invalid.", {
+      projectId,
+      onboardingStatus: row.onboardingStatus,
+    });
+  }
+  const currentOnboardingStatus = row.onboardingStatus;
+
+  if (!showOnboarding) {
+    if (onboardingStateColumnExists) {
+      await globalPrismaClient.$executeRaw(Prisma.sql`
+        UPDATE "Project"
+        SET "onboardingStatus" = 'completed',
+            "onboardingState" = NULL
+        WHERE "id" = ${projectId}
+      `);
+    } else {
+      await globalPrismaClient.$executeRaw(Prisma.sql`
+        UPDATE "Project"
+        SET "onboardingStatus" = 'completed'
+        WHERE "id" = ${projectId}
+      `);
+    }
+    return "completed";
+  }
+
+  if (currentOnboardingStatus === "completed") {
+    await globalPrismaClient.$executeRaw(Prisma.sql`
+      UPDATE "Project"
+      SET "onboardingStatus" = 'config_choice'
+      WHERE "id" = ${projectId}
+    `);
+    return "config_choice";
+  }
+
+  return currentOnboardingStatus;
 }
 
 export const POST = createSmartRouteHandler({
@@ -179,23 +285,42 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       project_id: yupString().defined(),
+      publishable_client_key: yupString().defined(),
       secret_server_key: yupString().defined(),
       super_secret_admin_key: yupString().defined(),
       branch_config_override_string: yupString().defined(),
+      onboarding_status: projectOnboardingStatusSchema.defined(),
+      onboarding_outstanding: yupBoolean().defined(),
     }).defined(),
   }),
   handler: async (req) => {
     if (!isLocalEmulatorEnabled()) {
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
     }
-    if (!path.isAbsolute(req.body.absolute_file_path)) {
-      throw new StatusError(StatusError.BadRequest, "absolute_file_path must be an absolute path.");
+    if (!path.posix.isAbsolute(req.body.absolute_file_path)) {
+      const looksWindows = path.win32.isAbsolute(req.body.absolute_file_path);
+      throw new StatusError(
+        StatusError.BadRequest,
+        looksWindows
+          ? "absolute_file_path must be a POSIX absolute path. The local emulator runs in a Linux VM and does not accept Windows-style paths. Use the in-VM path or run the emulator from WSL."
+          : "absolute_file_path must be an absolute path.",
+      );
     }
 
-    const absoluteFilePath = path.resolve(req.body.absolute_file_path);
-    const resolvedFilePath = resolveEmulatorPath(absoluteFilePath);
+    const inputPath = path.resolve(req.body.absolute_file_path);
+    let inputStat;
+    try {
+      inputStat = await fs.stat(resolveEmulatorPath(inputPath));
+    } catch {
+      inputStat = undefined;
+    }
 
-    // Validate file exists before creating a project
+    const looksLikeConfigFile = /\.(ts|js|mjs)$/i.test(inputPath);
+    const absoluteFilePath = (inputStat?.isDirectory() || (!inputStat && !looksLikeConfigFile))
+      ? path.join(inputPath, "stack.config.ts")
+      : inputPath;
+
+    const resolvedFilePath = resolveEmulatorPath(absoluteFilePath);
     let fileExists: boolean;
     try {
       await fs.access(resolvedFilePath);
@@ -204,29 +329,102 @@ export const POST = createSmartRouteHandler({
       fileExists = false;
     }
     if (!fileExists) {
-      throw new StatusError(StatusError.BadRequest, `Config file not found: ${absoluteFilePath}`);
-    }
-
-    // If the file is empty, write a default config
-    const fileContent = await fs.readFile(resolvedFilePath, "utf-8");
-    if (fileContent.trim() === "") {
       await writeConfigToFile(absoluteFilePath, {});
     }
 
+    const fileContent = await fs.readFile(resolvedFilePath, "utf-8");
+    const shouldWriteShowOnboardingConfig = fileContent.trim() === "";
+
     await assertLocalEmulatorOwnerTeamReadiness();
 
-    const projectId = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
+    const { projectId } = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
+    const showOnboarding = shouldWriteShowOnboardingConfig || await isLocalEmulatorOnboardingEnabledInConfig(absoluteFilePath);
+    const onboardingStatus = await syncLocalEmulatorOnboardingStatus(projectId, showOnboarding);
     const credentials = await getOrCreateCredentials(projectId);
     const fileConfig = await readConfigFromFile(absoluteFilePath);
+    if (shouldWriteShowOnboardingConfig) {
+      await writeShowOnboardingConfigToFile(absoluteFilePath);
+    }
 
     return {
       statusCode: 200 as const,
       bodyType: "json" as const,
       body: {
         project_id: projectId,
+        publishable_client_key: credentials.publishableClientKey,
         secret_server_key: credentials.secretServerKey,
         super_secret_admin_key: credentials.superSecretAdminKey,
         branch_config_override_string: JSON.stringify(fileConfig),
+        onboarding_status: onboardingStatus,
+        onboarding_outstanding: onboardingStatus !== "completed",
+      },
+    };
+  },
+});
+
+type LocalEmulatorProjectListRow = {
+  projectId: string,
+  absoluteFilePath: string,
+  updatedAt: Date,
+};
+
+export const GET = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+    summary: "List recent local emulator projects",
+    description: "Returns previously opened local emulator project mappings, most-recent first.",
+    tags: ["Local Emulator"],
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: clientOrHigherAuthTypeSchema.defined(),
+      project: yupObject({
+        id: yupString().oneOf(["internal"]).defined(),
+      }).defined(),
+    }).defined(),
+    method: yupString().oneOf(["GET"]).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      projects: yupArray(yupObject({
+        project_id: yupString().defined(),
+        absolute_file_path: yupString().defined(),
+        display_name: yupString().defined(),
+      }).defined()).defined(),
+    }).defined(),
+  }),
+  handler: async () => {
+    if (!isLocalEmulatorEnabled()) {
+      throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
+    }
+
+    const rows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
+      SELECT "projectId", "absoluteFilePath", "updatedAt"
+      FROM "LocalEmulatorProject"
+      ORDER BY "updatedAt" DESC
+      LIMIT 100
+    `);
+
+    const projectIds = rows.map((r) => r.projectId);
+    const projects = projectIds.length > 0
+      ? await globalPrismaClient.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, displayName: true },
+      })
+      : [];
+    const displayNameById = new Map(projects.map((p) => [p.id, p.displayName]));
+
+    return {
+      statusCode: 200 as const,
+      bodyType: "json" as const,
+      body: {
+        projects: rows.map((r) => ({
+          project_id: r.projectId,
+          absolute_file_path: r.absoluteFilePath,
+          display_name: displayNameById.get(r.projectId) ?? deriveDisplayLabel(r.absoluteFilePath),
+        })),
       },
     };
   },

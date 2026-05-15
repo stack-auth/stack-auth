@@ -17,12 +17,18 @@ import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorProject } fro
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 const levelSchema = yupString().oneOf(["project", "branch", "environment"]).defined();
+
+function assertServerAccessAllowed(accessType: "server" | "admin", level: yup.InferType<typeof levelSchema>) {
+  if (accessType === "server" && level !== "branch") {
+    throw new StatusError(StatusError.Forbidden, "Server access can only manage branch config overrides.");
+  }
+}
 
 function shouldEnqueueExternalDbSync(config: unknown): boolean {
   if (!config || typeof config !== "object") return false;
@@ -124,7 +130,7 @@ export const GET = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema,
+      type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     params: yupObject({
@@ -139,6 +145,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req) => {
+    assertServerAccessAllowed(req.auth.type, req.params.level);
+
     const levelConfig = levelConfigs[req.params.level];
     const config = await levelConfig.get({
       projectId: req.auth.tenancy.project.id,
@@ -160,6 +168,34 @@ const writeResponseSchema = yupObject({
   bodyType: yupString().oneOf(["success"]).defined(),
 });
 
+function findIncludeByDefaultPath(value: unknown, path: string[] = []): string | null {
+  if (value === "include-by-default") {
+    // Only flag the deprecated sentinel when it sits at `payments.products.<id>.prices`;
+    // anywhere else it's just a string literal that happens to match. The product-ID
+    // segment can itself contain dots (override keys are dot-paths and we split on
+    // ".", which fragments dotted IDs into multiple path entries), so we anchor on
+    // the leading `payments.products` prefix and the trailing `prices` suffix
+    // instead of an exact path length.
+    if (
+      path.length >= 4
+      && path[0] === "payments"
+      && path[1] === "products"
+      && path[path.length - 1] === "prices"
+    ) {
+      return path.join(".");
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = [...path, ...key.split(".")];
+      const found = findIncludeByDefaultPath(child, childPath);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 async function parseAndValidateConfig(
   configString: string,
   levelConfig: typeof levelConfigs["branch" | "environment" | "project"]
@@ -172,6 +208,17 @@ async function parseAndValidateConfig(
       throw new StatusError(StatusError.BadRequest, 'Invalid config JSON');
     }
     throw e;
+  }
+
+  // Reject writes that use the deprecated `include-by-default` price sentinel. Reads of
+  // old stored configs still get migrated silently (see migrateConfigOverride) so existing
+  // data keeps loading, but new writes must use an explicit $0 price instead.
+  const legacyPath = findIncludeByDefaultPath(parsedConfig);
+  if (legacyPath) {
+    throw new StatusError(
+      StatusError.BadRequest,
+      `"include-by-default" is no longer supported at ${legacyPath}. Use an explicit $0 price instead.`,
+    );
   }
 
   const migratedConfig = levelConfig.migrate(parsedConfig);
@@ -207,7 +254,7 @@ export const PUT = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema,
+      type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     params: yupObject({
@@ -221,6 +268,8 @@ export const PUT = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    assertServerAccessAllowed(req.auth.type, req.params.level);
+
     if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
     }
@@ -266,7 +315,7 @@ export const PATCH = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema,
+      type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     params: yupObject({
@@ -278,6 +327,8 @@ export const PATCH = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    assertServerAccessAllowed(req.auth.type, req.params.level);
+
     if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
     }

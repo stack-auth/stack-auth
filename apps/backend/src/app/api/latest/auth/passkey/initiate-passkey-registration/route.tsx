@@ -56,10 +56,12 @@ export const POST = createSmartRouteHandler({
     };
 
     const registrationOptionsRaw = await generateRegistrationOptions(opts);
-    const registrationOptions = registrationOptionsRaw.hints != null && registrationOptionsRaw.hints.length === 0
+    const registrationHints = Reflect.get(registrationOptionsRaw, "hints");
+    const registrationOptions = Array.isArray(registrationHints) && registrationHints.length === 0
       ? (() => {
-        const { hints: _, ...rest } = registrationOptionsRaw;
-        return rest;
+        const optionsWithoutHints = { ...registrationOptionsRaw };
+        Reflect.deleteProperty(optionsWithoutHints, "hints");
+        return optionsWithoutHints;
       })()
       : registrationOptionsRaw;
 

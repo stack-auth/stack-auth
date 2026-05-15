@@ -1,4 +1,5 @@
 import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
+import { preprocessProxyBody } from "@/private";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -29,6 +30,10 @@ function sanitizeBody(raw: ArrayBuffer): Uint8Array {
   if (parsed.metadata?.user_id && parsed.metadata.user_id.length > 128) {
     parsed.metadata.user_id = parsed.metadata.user_id.slice(0, 128);
   }
+
+  parsed = preprocessProxyBody({
+    parsedBody: parsed,
+  });
 
   return new TextEncoder().encode(JSON.stringify(parsed));
 }

@@ -24,14 +24,21 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth }) => {
     const stripe = getStackStripe();
+    const dashboardBaseUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL");
 
     const project = await globalPrismaClient.project.findUnique({
       where: { id: auth.project.id },
-      select: { stripeAccountId: true },
+      select: { onboardingStatus: true, stripeAccountId: true },
     });
 
     let stripeAccountId = project?.stripeAccountId || null;
-    const returnToUrl = new URL(`/projects/${auth.project.id}/payments`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL")).toString();
+    const returnToUrl = project?.onboardingStatus === "payments_setup"
+      ? (() => {
+        const onboardingUrl = new URL("/new-project", dashboardBaseUrl);
+          onboardingUrl.searchParams.set("project_id", auth.project.id);
+          return onboardingUrl.toString();
+      })()
+      : new URL(`/projects/${encodeURIComponent(auth.project.id)}/payments`, dashboardBaseUrl).toString();
 
     if (!stripeAccountId) {
       const account = await stripe.accounts.create({

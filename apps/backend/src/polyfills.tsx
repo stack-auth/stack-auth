@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
 import * as util from "util";
+import { runAsynchronouslyAndWaitUntil } from "./utils/background-tasks";
 
 function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
@@ -11,10 +12,12 @@ function expandStackPortPrefix(value?: string | null) {
 
 const sentryErrorSink = (location: string, error: unknown) => {
   if (!("captureException" in Sentry)) {
-    // this happens if somehow this is called outside of a Next.js script (eg. in the Prisma seed.ts), just ignore
+    // this happens if somehow this is called outside of a Next.js script (eg. in the Prisma seed.ts), just log and ignore
+    console.log("Attempted to capture Sentry error outside of Next.js script, ignoring");
     return;
   }
   Sentry.captureException(error, { extra: { location } });
+  runAsynchronouslyAndWaitUntil(Sentry.flush());
 };
 
 export function ensurePolyfilled() {
@@ -47,8 +50,8 @@ export function ensurePolyfilled() {
       captureError("unhandled-promise-rejection", reason);
       if (getNodeEnvironment() === "development") {
         console.error("\x1b[41mUnhandled promise rejection. Some production environments (particularly Vercel) will kill the server in this case, so the server will now exit. Please use the `ignoreUnhandledRejection` function to signal that you've handled the error.\x1b[0m", reason);
+        (globalThis as any).process.exit(1);
       }
-      (globalThis as any).process.exit(1);
     });
   }
 }

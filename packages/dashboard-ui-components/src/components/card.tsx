@@ -80,6 +80,34 @@ type WithoutTitleProps = {
 
 export type DesignCardProps = DesignCardBaseProps & (WithTitleProps | WithoutTitleProps);
 
+/**
+ * General-purpose card for grouping related content: section headers,
+ * description blocks, chart-less panels, etc. If the content is a
+ * big-number metric, use `DesignMetricCard` instead. If it contains a
+ * chart, wrap it in `DesignChartCard`.
+ *
+ * Two shapes, picked automatically by the props you pass:
+ *
+ * ```tsx
+ * // With a header (title requires icon):
+ * <DesignCard title="Recent activity" icon={ActivityIcon}>
+ *   ...body...
+ * </DesignCard>
+ *
+ * // Body-only (no header):
+ * <DesignCard>
+ *   <h2 className="text-2xl font-semibold">Dashboard</h2>
+ *   <p className="text-muted-foreground">Overview of your user base</p>
+ * </DesignCard>
+ * ```
+ *
+ * Rules:
+ * - DO NOT add padding classes (`p-6`, `p-5`, etc.) to `className` — the
+ *   component already has built-in padding and extra padding will look wrong.
+ * - If you set `title`, you MUST also set `icon`. The TS types enforce this,
+ *   but writing `title` without `icon` will fail.
+ * - Body-only cards (no `title`) automatically go transparent in dark mode.
+ */
 export function DesignCard({
   title,
   subtitle,

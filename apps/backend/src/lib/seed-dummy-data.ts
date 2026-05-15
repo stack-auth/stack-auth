@@ -7,17 +7,59 @@ import { getClickhouseAdminClient } from '@/lib/clickhouse';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
-import { type PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransaction } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
+import { type Config } from '@stackframe/stack-shared/dist/config/format';
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { createHash } from 'node:crypto';
 
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
+
+/**
+ * Derive a stable v4-shaped UUID from a namespaced string so seed re-runs
+ * upsert into existing rows instead of creating duplicates.
+ */
+function deterministicUuid(namespace: string): string {
+  const hex = createHash('sha256').update(namespace).digest('hex');
+  const a = hex.slice(0, 8);
+  const b = hex.slice(8, 12);
+  const c = '4' + hex.slice(13, 16);
+  const d = ((parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + hex.slice(17, 20);
+  const e = hex.slice(20, 32);
+  return `${a}-${b}-${c}-${d}-${e}`;
+}
+
+/** Mulberry32 — small, fast, deterministic PRNG. */
+function deterministicPrng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Convert a string into a deterministic 32-bit seed for `deterministicPrng`. */
+function seedFromString(input: string): number {
+  const hex = createHash('sha256').update(input).digest('hex').slice(0, 8);
+  return parseInt(hex, 16) >>> 0;
+}
+
+function daysAgo(d: number, h: number = 12): Date {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - d);
+  date.setHours(h, 0, 0, 0);
+  return date;
+}
 
 // ============= Types =============
 
@@ -39,6 +81,7 @@ type UserSeed = {
   primaryEmailVerified: boolean,
   isAnonymous: boolean,
   oauthProviders: UserSeedOauthProvider[],
+  createdAt?: Date,
 };
 
 type SeedDummyTeamsOptions = {
@@ -52,18 +95,21 @@ type SeedDummyUsersOptions = {
   teamNameToId: Map<string, string>,
 };
 
+type PaymentsProducts = {
+  [productId: string]: Config | undefined,
+};
+
 type PaymentsSetup = {
-  paymentsProducts: Record<string, unknown>,
-  paymentsBranchOverride: Record<string, unknown>,
-  paymentsEnvironmentOverride: Record<string, unknown>,
+  paymentsProducts: PaymentsProducts,
+  paymentsBranchOverride: Config,
+  paymentsEnvironmentOverride: Config,
 };
 
 type TransactionsSeedOptions = {
   prisma: PrismaClientTransaction,
   tenancyId: string,
   teamNameToId: Map<string, string>,
-  userEmailToId: Map<string, string>,
-  paymentsProducts: Record<string, unknown>,
+  paymentsProducts: PaymentsProducts,
 };
 
 type EmailSeedOptions = {
@@ -86,6 +132,17 @@ type SessionActivityEventSeedOptions = {
   tenancyId: string,
   projectId: string,
   userEmailToId: Map<string, string>,
+};
+
+type BulkActivityRegion = {
+  country: string,
+  region: string,
+  city: string,
+  lat: number,
+  lon: number,
+  tz: string,
+  weight: number,
+  ipPrefix: string,
 };
 
 type SeedDummyProjectOptions = {
@@ -118,7 +175,9 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'github', accountId: 'amelia-chen-gh' },
+      { providerId: 'google', accountId: 'amelia-chen-google' },
     ],
+    createdAt: daysAgo(28, 9),
   },
   {
     email: 'leo.park@dummy.dev',
@@ -126,6 +185,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: false,
     isAnonymous: false,
     oauthProviders: [],
+    createdAt: daysAgo(28, 15),
   },
   {
     displayName: 'Some-long-display-name with-middle-name with-last-name',
@@ -137,6 +197,7 @@ const userSeeds: UserSeed[] = [
       { providerId: 'google', accountId: 'isla-rodriguez-google' },
       { providerId: 'microsoft', accountId: 'isla-rodriguez-msft' },
     ],
+    createdAt: daysAgo(25, 10),
   },
   {
     displayName: 'Al',
@@ -145,6 +206,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: true,
     isAnonymous: true,
     oauthProviders: [],
+    createdAt: daysAgo(25, 16),
   },
   {
     displayName: 'Priya Narang',
@@ -154,7 +216,9 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'spotify', accountId: 'priya-narang-spotify' },
+      { providerId: 'github', accountId: 'priya-narang-gh' },
     ],
+    createdAt: daysAgo(23, 8),
   },
   {
     displayName: 'Jonas Richter',
@@ -164,6 +228,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: true,
     isAnonymous: false,
     oauthProviders: [],
+    createdAt: daysAgo(21, 14),
   },
   {
     displayName: 'Chioma Mensah',
@@ -174,7 +239,9 @@ const userSeeds: UserSeed[] = [
     isAnonymous: true,
     oauthProviders: [
       { providerId: 'google', accountId: 'chioma-mensah-google' },
+      { providerId: 'microsoft', accountId: 'chioma-mensah-msft' },
     ],
+    createdAt: daysAgo(21, 17),
   },
   {
     displayName: 'Nia Holloway',
@@ -183,6 +250,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: true,
     isAnonymous: false,
     oauthProviders: [],
+    createdAt: daysAgo(18, 11),
   },
   {
     displayName: 'Mateo Silva',
@@ -192,7 +260,9 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'github', accountId: 'mateo-silva-gh' },
+      { providerId: 'google', accountId: 'mateo-silva-google' },
     ],
+    createdAt: daysAgo(15, 9),
   },
   {
     displayName: 'Harper Lin',
@@ -200,7 +270,11 @@ const userSeeds: UserSeed[] = [
     teamDisplayNames: ['Growth Loop', 'Customer Advisory Board'],
     primaryEmailVerified: true,
     isAnonymous: false,
-    oauthProviders: [],
+    oauthProviders: [
+      { providerId: 'google', accountId: 'harper-lin-google' },
+      { providerId: 'microsoft', accountId: 'harper-lin-msft' },
+    ],
+    createdAt: daysAgo(12, 13),
   },
   {
     displayName: 'Zara Malik',
@@ -209,7 +283,11 @@ const userSeeds: UserSeed[] = [
     teamDisplayNames: ['Prototype Garage', EXPLORATORY_TEAM_DISPLAY_NAME],
     primaryEmailVerified: true,
     isAnonymous: false,
-    oauthProviders: [],
+    oauthProviders: [
+      { providerId: 'github', accountId: 'zara-malik-gh' },
+      { providerId: 'spotify', accountId: 'zara-malik-spotify' },
+    ],
+    createdAt: daysAgo(9, 10),
   },
   {
     displayName: 'Luca Bennett',
@@ -218,6 +296,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: false,
     isAnonymous: false,
     oauthProviders: [],
+    createdAt: daysAgo(6, 16),
   },
   {
     displayName: 'Evelyn Brooks',
@@ -227,6 +306,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: true,
     isAnonymous: false,
     oauthProviders: [],
+    createdAt: daysAgo(4, 8),
   },
   {
     displayName: 'Theo Fischer',
@@ -237,7 +317,9 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'microsoft', accountId: 'theo-fischer-msft' },
+      { providerId: 'github', accountId: 'theo-fischer-gh' },
     ],
+    createdAt: daysAgo(3, 11),
   },
   {
     email: 'naomi.patel@dummy.dev',
@@ -245,6 +327,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: false,
     isAnonymous: false,
     oauthProviders: [],
+    createdAt: daysAgo(1, 9),
   },
   {
     displayName: 'Kai Romero',
@@ -253,6 +336,7 @@ const userSeeds: UserSeed[] = [
     primaryEmailVerified: true,
     isAnonymous: false,
     oauthProviders: [],
+    createdAt: daysAgo(1, 15),
   },
 ];
 
@@ -261,7 +345,6 @@ const DUMMY_SEED_IDS = {
     designSystemsGrowth: 'a296195f-c460-4cd6-b4c4-6cd359b4c643',
     prototypeStarterTrial: '5a255248-4d42-4d61-95f9-f53e97c3f2dd',
     mateoGrowthAnnual: 'c4acea49-302a-43b9-82a7-446b19e0e662',
-    legacyEnterprise: '11664974-38ff-4356-8e39-2fa9105ed84f',
   },
   itemQuantityChanges: {
     designSeatsGrant: '44ca1801-0732-4273-ae14-4fd1c3999e24',
@@ -271,6 +354,14 @@ const DUMMY_SEED_IDS = {
   oneTimePurchases: {
     ameliaSeatPack: '0b696a83-c54e-4a74-ae47-3ac5a4db49e6',
     launchCouncilUpfront: '10766081-37fd-410c-8b2e-1c3351e2d364',
+  },
+  invoices: {
+    growthMonthly1: 'e1a2b3c4-d5e6-4f78-9a0b-1c2d3e4f5a60',
+    growthMonthly2: 'f2b3c4d5-e6f7-4890-ab1c-2d3e4f5a6b71',
+    growthMonthly3: 'a3c4d5e6-f7a8-4901-bc2d-3e4f5a6b7c82',
+    growthMonthly4: 'b4d5e6f7-a8b9-4012-cd3e-4f5a6b7c8d93',
+    growthMonthly5: 'c5e6f7a8-b9c0-4123-de4f-5a6b7c8d9ea4',
+    starterCreation: 'd6f7a8b9-c0d1-4234-ef50-6a7b8c9d0fb5',
   },
   emails: {
     welcomeAmelia: 'af8cfd90-8912-4bf7-93a7-20ff2be54767',
@@ -310,6 +401,129 @@ async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<strin
   }
 
   return teamNameToId;
+}
+
+type SeedOauthProvider = { providerId: string, accountId: string, email: string };
+
+/**
+ * Idempotently reconcile OAuth provider rows for an existing seeded user.
+ *
+ * `adminCreate` already writes these on first insert, so this usually becomes
+ * a no-op for newly-created users. For users that existed before the seed grew
+ * its OAuth list, this makes the database match the current deterministic seed
+ * output exactly.
+ *
+ * Dedupe key is `(configOAuthProviderId, providerAccountId)`, matching the
+ * `@@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])`
+ * constraint on ProjectUserOAuthAccount.
+ *
+ * Note: writes are sequential, not wrapped in `$transaction`, because the
+ * shared `PrismaClientTransaction` type is a union whose transaction branch
+ * doesn't expose `$transaction`. This is acceptable for a seed.
+ */
+async function syncSeedUserOauthProviders(
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  projectUserId: string,
+  providers: readonly SeedOauthProvider[],
+): Promise<void> {
+  const desiredKey = new Set(providers.map((p) => `${p.providerId}::${p.accountId}`));
+
+  const existing = await prisma.projectUserOAuthAccount.findMany({
+    where: { tenancyId, projectUserId },
+    select: {
+      configOAuthProviderId: true,
+      providerAccountId: true,
+      oauthAuthMethod: {
+        select: {
+          authMethodId: true,
+        },
+      },
+    },
+  });
+  const existingKey = new Set(existing.map((a) => `${a.configOAuthProviderId}::${a.providerAccountId}`));
+
+  for (const account of existing) {
+    const key = `${account.configOAuthProviderId}::${account.providerAccountId}`;
+    if (desiredKey.has(key)) continue;
+
+    if (account.oauthAuthMethod != null) {
+      await prisma.authMethod.delete({
+        where: {
+          tenancyId_id: {
+            tenancyId,
+            id: account.oauthAuthMethod.authMethodId,
+          },
+        },
+      });
+    }
+    await prisma.projectUserOAuthAccount.delete({
+      where: {
+        tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
+          tenancyId,
+          configOAuthProviderId: account.configOAuthProviderId,
+          projectUserId,
+          providerAccountId: account.providerAccountId,
+        },
+      },
+    });
+  }
+
+  for (const provider of providers) {
+    if (existingKey.has(`${provider.providerId}::${provider.accountId}`)) continue;
+
+    const authMethod = await prisma.authMethod.create({
+      data: { tenancyId, projectUserId },
+    });
+    await prisma.projectUserOAuthAccount.create({
+      data: {
+        tenancyId,
+        projectUserId,
+        configOAuthProviderId: provider.providerId,
+        providerAccountId: provider.accountId,
+        email: provider.email,
+        oauthAuthMethod: { create: { authMethodId: authMethod.id } },
+        allowConnectedAccounts: true,
+        allowSignIn: true,
+      },
+    });
+  }
+}
+
+/**
+ * Sample a random subset of OAuth providers for a bulk synthetic user.
+ *
+ * Distribution: ~50% get multiple accounts, ~30% get one, ~20% get none.
+ * Consumes 1 + (roll < 0.5 ? 1 : 0) + n draws from `rand` per call; callers
+ * relying on a deterministic PRNG stream must preserve this invariant.
+ */
+function pickBulkOauthProviders(params: {
+  rand: () => number,
+  available: readonly string[],
+  email: string,
+}): SeedOauthProvider[] {
+  const { rand, available, email } = params;
+  const roll = rand();
+  let n: number;
+  if (roll < 0.5) {
+    n = 2 + Math.floor(rand() * (available.length - 1));
+  } else if (roll < 0.8) {
+    n = 1;
+  } else {
+    n = 0;
+  }
+  const pool = [...available];
+  const picked: string[] = [];
+  for (let i = 0; i < n && pool.length > 0; i++) {
+    const idx = Math.floor(rand() * pool.length);
+    picked.push(pool[idx]!);
+    pool.splice(idx, 1);
+  }
+  return picked.map((providerId) => ({
+    providerId,
+    accountId: `${email}-${providerId}`,
+    email,
+  }));
 }
 
 async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<string, string>> {
@@ -355,6 +569,24 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       userId = createdUser.id;
     }
 
+    await syncSeedUserOauthProviders(
+      prisma,
+      tenancy.id,
+      userId,
+      user.oauthProviders.map((p) => ({
+        providerId: p.providerId,
+        accountId: p.accountId,
+        email: user.email,
+      })),
+    );
+
+    if (user.createdAt != null) {
+      await prisma.projectUser.updateMany({
+        where: { tenancyId: tenancy.id, projectUserId: userId },
+        data: { createdAt: user.createdAt },
+      });
+    }
+
     userEmailToId.set(user.email, userId);
 
     for (const teamName of user.teamDisplayNames) {
@@ -379,19 +611,113 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
     }
   }
 
+  // Generate additional bulk users for realistic chart data
+  // Uses seeded PRNG for reproducibility — each day gets a varying number of sign-ups
+  const bulkFirstNames = [
+    'Alex', 'Jordan', 'Taylor', 'Morgan', 'Riley', 'Quinn', 'Avery', 'Dakota',
+    'Casey', 'Hayden', 'Cameron', 'Rowan', 'Sage', 'Blake', 'Emery', 'Skyler',
+    'Reese', 'Peyton', 'Eden', 'Finley', 'Kendall', 'Aubrey', 'Drew', 'Jesse',
+    'Parker', 'Robin', 'Sydney', 'River', 'Harley', 'Milan',
+  ];
+  const bulkLastNames = [
+    'Kim', 'Liu', 'Patel', 'Garcia', 'Brown', 'Davis', 'Wilson', 'Martinez',
+    'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Clark', 'Lewis',
+    'Robinson', 'Walker', 'Young', 'Allen', 'Scott', 'Adams', 'Nelson',
+    'Hill', 'Moore', 'Hall', 'King', 'Wright', 'Green', 'Baker', 'Turner',
+  ];
+  const bulkOauthProviders = ['google', 'github', 'microsoft'];
+
+  // Seeded LCG PRNG for reproducibility
+  let bulkSeed = 42;
+  const bulkRand = () => {
+    bulkSeed = (bulkSeed * 1664525 + 1013904223) & 0x7fffffff;
+    return bulkSeed / 0x7fffffff;
+  };
+
+  // Per-day sign-up counts (day 0 = 30 days ago, day 29 = yesterday)
+  // Pattern: gradual growth with realistic variance and weekend dips
+  const dailySignUpCounts = [
+    1, 0, 2, 1, 3, 0, 1,   // week 1 (low, starting out)
+    2, 3, 1, 2, 4, 1, 0,   // week 2 (picking up)
+    3, 2, 4, 3, 2, 5, 1,   // week 3 (steady growth)
+    4, 3, 5, 2, 6, 3, 2, 4, // week 4+ (peak recent activity)
+  ];
+
+  let bulkIndex = 0;
+  for (let dayOffset = 0; dayOffset < dailySignUpCounts.length; dayOffset++) {
+    const count = dailySignUpCounts[dayOffset];
+    const dayBack = dailySignUpCounts.length - dayOffset;
+
+    for (let j = 0; j < count; j++) {
+      const fnIdx = Math.floor(bulkRand() * bulkFirstNames.length);
+      const lnIdx = Math.floor(bulkRand() * bulkLastNames.length);
+      const firstName = bulkFirstNames[fnIdx]!;
+      const lastName = bulkLastNames[lnIdx]!;
+      const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}.bulk${bulkIndex}@dummy.dev`;
+      const displayName = `${firstName} ${lastName}`;
+      const hour = 8 + Math.floor(bulkRand() * 12);
+      const bulkCreatedAt = daysAgo(dayBack, hour);
+      const oauthProvider = pickBulkOauthProviders({
+        rand: bulkRand,
+        available: bulkOauthProviders,
+        email,
+      });
+
+      const existing = await prisma.projectUser.findFirst({
+        where: {
+          tenancyId: tenancy.id,
+          contactChannels: { some: { type: 'EMAIL', value: email } },
+        },
+        select: { projectUserId: true },
+      });
+
+      let bulkUserId: string;
+      if (!existing) {
+        const created = await usersCrudHandlers.adminCreate({
+          tenancy,
+          data: {
+            display_name: displayName,
+            primary_email: email,
+            primary_email_auth_enabled: true,
+            primary_email_verified: bulkRand() > 0.3,
+            otp_auth_enabled: false,
+            is_anonymous: false,
+            oauth_providers: oauthProvider.map((p) => ({
+              id: p.providerId,
+              account_id: p.accountId,
+              email: p.email,
+            })),
+            profile_image_url: null,
+          },
+        });
+        bulkUserId = created.id;
+      } else {
+        bulkUserId = existing.projectUserId;
+      }
+      await syncSeedUserOauthProviders(prisma, tenancy.id, bulkUserId, oauthProvider);
+      await prisma.projectUser.updateMany({
+        where: { tenancyId: tenancy.id, projectUserId: bulkUserId },
+        data: { createdAt: bulkCreatedAt },
+      });
+      userEmailToId.set(email, bulkUserId);
+
+      bulkIndex++;
+    }
+  }
+
   return userEmailToId;
 }
 
-function buildDummyPaymentsSetup(): PaymentsSetup {
+export function buildDummyPaymentsSetup(): PaymentsSetup {
   const monthlyInterval: DayInterval = [1, 'month'];
   const yearlyInterval: DayInterval = [1, 'year'];
   const twoWeekInterval: DayInterval = [2, 'week'];
 
-  const paymentsProducts: Record<string, unknown> = {
+  const paymentsProducts: PaymentsProducts = {
     'starter': {
       displayName: 'Starter',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       freeTrial: twoWeekInterval as any,
@@ -419,7 +745,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     'growth': {
       displayName: 'Growth',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       prices: {
@@ -452,6 +778,31 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
         },
       },
     },
+    'regression-addon': {
+      displayName: 'Regression Add-on',
+      productLineId: 'add_ons',
+      customerType: 'team',
+      serverOnly: false,
+      stackable: true,
+      prices: {
+        monthly: {
+          USD: '199',
+          interval: monthlyInterval as any,
+          serverOnly: false,
+        },
+      },
+      includedItems: {
+        snapshot_credits: {
+          quantity: 500,
+          repeat: monthlyInterval as any,
+          expires: 'when-repeated',
+        },
+      },
+      isAddOnTo: {
+        'starter': true,
+        'growth': true,
+      },
+    },
   };
 
   const paymentsBranchOverride = {
@@ -460,19 +811,27 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
         displayName: 'Workspace Plans',
         customerType: 'team',
       },
+      add_ons: {
+        displayName: 'Add-ons',
+        customerType: 'team',
+      },
     },
     items: {
       studio_seats: {
         displayName: 'Studio Seats',
-        customerType: 'user',
+        customerType: 'team',
       },
       review_passes: {
         displayName: 'Reviewer Passes',
-        customerType: 'user',
+        customerType: 'team',
       },
       automation_minutes: {
         displayName: 'Automation Minutes',
-        customerType: 'user',
+        customerType: 'team',
+      },
+      snapshot_credits: {
+        displayName: 'Snapshot Credits',
+        customerType: 'team',
       },
     },
     products: paymentsProducts,
@@ -537,12 +896,10 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
     prisma,
     tenancyId,
     teamNameToId,
-    userEmailToId,
     paymentsProducts,
   } = options;
 
   const resolveTeamId = (teamName: string) => teamNameToId.get(teamName) ?? throwErr(`Unknown dummy project team ${teamName}`);
-  const resolveUserId = (email: string) => userEmailToId.get(email) ?? throwErr(`Unknown dummy project user ${email}`);
   const resolveProduct = (productId: string): Prisma.InputJsonValue => {
     const product = paymentsProducts[productId];
     if (!product) {
@@ -586,8 +943,8 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
     },
     {
       id: DUMMY_SEED_IDS.subscriptions.mateoGrowthAnnual,
-      customerType: CustomerType.USER,
-      customerId: resolveUserId('mateo.silva@dummy.dev'),
+      customerType: CustomerType.TEAM,
+      customerId: resolveTeamId('Growth Loop'),
       productId: 'growth',
       priceId: 'annual',
       product: resolveProduct('growth'),
@@ -599,27 +956,6 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       cancelAtPeriodEnd: true,
       stripeSubscriptionId: null,
       createdAt: new Date('2024-02-01T00:00:00.000Z'),
-    },
-    {
-      id: DUMMY_SEED_IDS.subscriptions.legacyEnterprise,
-      customerType: CustomerType.CUSTOM,
-      customerId: 'enterprise-alpha',
-      productId: 'legacy-enterprise',
-      priceId: undefined,
-      product: cloneJson({
-        displayName: 'Legacy Enterprise Pilot',
-        productLineId: 'workspace',
-        customerType: 'user',
-        prices: 'include-by-default',
-      }),
-      quantity: 1,
-      status: SubscriptionStatus.canceled,
-      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
-      currentPeriodStart: new Date('2023-11-01T00:00:00.000Z'),
-      currentPeriodEnd: new Date('2024-05-01T00:00:00.000Z'),
-      cancelAtPeriodEnd: true,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      createdAt: new Date('2023-11-01T00:00:00.000Z'),
     },
   ];
 
@@ -731,8 +1067,8 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
   const oneTimePurchaseSeeds: OneTimePurchaseSeed[] = [
     {
       id: DUMMY_SEED_IDS.oneTimePurchases.ameliaSeatPack,
-      customerType: CustomerType.USER,
-      customerId: resolveUserId('amelia.chen@dummy.dev'),
+      customerType: CustomerType.TEAM,
+      customerId: resolveTeamId('Design Systems Lab'),
       productId: 'starter',
       priceId: 'monthly',
       product: resolveProduct('starter'),
@@ -785,6 +1121,98 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
         creationSource: purchase.creationSource,
         stripePaymentIntentId: purchase.stripePaymentIntentId ?? null,
         createdAt: purchase.createdAt,
+      },
+    });
+  }
+
+  type InvoiceSeed = {
+    id: string,
+    stripeSubscriptionId: string,
+    stripeInvoiceId: string,
+    isSubscriptionCreationInvoice: boolean,
+    status: string,
+    amountTotal: number,
+    createdAt: Date,
+  };
+
+  const invoiceSeeds: InvoiceSeed[] = [
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly1,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_001',
+      isSubscriptionCreationInvoice: true,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(25, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly2,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_002',
+      isSubscriptionCreationInvoice: false,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(18, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly3,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_003',
+      isSubscriptionCreationInvoice: false,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(11, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly4,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_004',
+      isSubscriptionCreationInvoice: false,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(4, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly5,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_005',
+      isSubscriptionCreationInvoice: false,
+      status: 'succeeded',
+      amountTotal: 15900,
+      createdAt: daysAgo(1, 14),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.starterCreation,
+      stripeSubscriptionId: 'sub_starter_prototype',
+      stripeInvoiceId: 'in_starter_proto_001',
+      isSubscriptionCreationInvoice: true,
+      status: 'paid',
+      amountTotal: 0,
+      createdAt: daysAgo(20, 8),
+    },
+  ];
+
+  for (const invoice of invoiceSeeds) {
+    await prisma.subscriptionInvoice.upsert({
+      where: {
+        tenancyId_id: {
+          tenancyId,
+          id: invoice.id,
+        },
+      },
+      update: {
+        status: invoice.status,
+        amountTotal: invoice.amountTotal,
+      },
+      create: {
+        tenancyId,
+        id: invoice.id,
+        stripeSubscriptionId: invoice.stripeSubscriptionId,
+        stripeInvoiceId: invoice.stripeInvoiceId,
+        isSubscriptionCreationInvoice: invoice.isSubscriptionCreationInvoice,
+        status: invoice.status,
+        amountTotal: invoice.amountTotal,
+        createdAt: invoice.createdAt,
       },
     });
   }
@@ -907,50 +1335,181 @@ const sessionActivityLocations = [
   { countryCode: 'CH', regionCode: 'ZH', cityName: 'Zurich', latitude: 47.3769, longitude: 8.5417, tzIdentifier: 'Europe/Zurich' },
 ];
 
+// ── Bulk activity seed fixtures ─────────────────────────────────────────────
+
+const BULK_ACTIVITY_REGIONS: BulkActivityRegion[] = [
+  // North America
+  { country: 'US', region: 'CA', city: 'San Francisco', lat: 37.7749, lon: -122.4194, tz: 'America/Los_Angeles', weight: 18, ipPrefix: '104.16' },
+  { country: 'US', region: 'NY', city: 'New York', lat: 40.7128, lon: -74.0060, tz: 'America/New_York', weight: 14, ipPrefix: '23.56' },
+  { country: 'US', region: 'TX', city: 'Austin', lat: 30.2672, lon: -97.7431, tz: 'America/Chicago', weight: 6, ipPrefix: '68.54' },
+  { country: 'US', region: 'WA', city: 'Seattle', lat: 47.6062, lon: -122.3321, tz: 'America/Los_Angeles', weight: 5, ipPrefix: '52.10' },
+  { country: 'CA', region: 'ON', city: 'Toronto', lat: 43.6532, lon: -79.3832, tz: 'America/Toronto', weight: 5, ipPrefix: '99.240' },
+  { country: 'CA', region: 'BC', city: 'Vancouver', lat: 49.2827, lon: -123.1207, tz: 'America/Vancouver', weight: 3, ipPrefix: '206.75' },
+  { country: 'MX', region: 'CMX', city: 'Mexico City', lat: 19.4326, lon: -99.1332, tz: 'America/Mexico_City', weight: 2, ipPrefix: '189.148' },
+  // Europe
+  { country: 'GB', region: 'ENG', city: 'London', lat: 51.5074, lon: -0.1278, tz: 'Europe/London', weight: 10, ipPrefix: '90.196' },
+  { country: 'DE', region: 'BE', city: 'Berlin', lat: 52.5200, lon: 13.4050, tz: 'Europe/Berlin', weight: 7, ipPrefix: '91.64' },
+  { country: 'FR', region: 'IDF', city: 'Paris', lat: 48.8566, lon: 2.3522, tz: 'Europe/Paris', weight: 5, ipPrefix: '82.64' },
+  { country: 'NL', region: 'NH', city: 'Amsterdam', lat: 52.3676, lon: 4.9041, tz: 'Europe/Amsterdam', weight: 3, ipPrefix: '145.14' },
+  { country: 'ES', region: 'MD', city: 'Madrid', lat: 40.4168, lon: -3.7038, tz: 'Europe/Madrid', weight: 3, ipPrefix: '85.55' },
+  { country: 'IT', region: 'LAZ', city: 'Rome', lat: 41.9028, lon: 12.4964, tz: 'Europe/Rome', weight: 2, ipPrefix: '93.41' },
+  { country: 'PL', region: 'MZ', city: 'Warsaw', lat: 52.2297, lon: 21.0122, tz: 'Europe/Warsaw', weight: 2, ipPrefix: '178.42' },
+  { country: 'SE', region: 'AB', city: 'Stockholm', lat: 59.3293, lon: 18.0686, tz: 'Europe/Stockholm', weight: 2, ipPrefix: '81.229' },
+  { country: 'IE', region: 'D', city: 'Dublin', lat: 53.3498, lon: -6.2603, tz: 'Europe/Dublin', weight: 2, ipPrefix: '185.2' },
+  // Asia-Pacific
+  { country: 'IN', region: 'KA', city: 'Bangalore', lat: 12.9716, lon: 77.5946, tz: 'Asia/Kolkata', weight: 9, ipPrefix: '157.48' },
+  { country: 'IN', region: 'MH', city: 'Mumbai', lat: 19.0760, lon: 72.8777, tz: 'Asia/Kolkata', weight: 4, ipPrefix: '14.140' },
+  { country: 'JP', region: '13', city: 'Tokyo', lat: 35.6762, lon: 139.6503, tz: 'Asia/Tokyo', weight: 5, ipPrefix: '126.209' },
+  { country: 'SG', region: '01', city: 'Singapore', lat: 1.3521, lon: 103.8198, tz: 'Asia/Singapore', weight: 3, ipPrefix: '165.21' },
+  { country: 'AU', region: 'NSW', city: 'Sydney', lat: -33.8688, lon: 151.2093, tz: 'Australia/Sydney', weight: 3, ipPrefix: '203.2' },
+  { country: 'KR', region: '11', city: 'Seoul', lat: 37.5665, lon: 126.9780, tz: 'Asia/Seoul', weight: 2, ipPrefix: '211.34' },
+  { country: 'CN', region: 'SH', city: 'Shanghai', lat: 31.2304, lon: 121.4737, tz: 'Asia/Shanghai', weight: 2, ipPrefix: '114.88' },
+  { country: 'ID', region: 'JK', city: 'Jakarta', lat: -6.2088, lon: 106.8456, tz: 'Asia/Jakarta', weight: 1, ipPrefix: '103.47' },
+  // South America / MEA
+  { country: 'BR', region: 'SP', city: 'São Paulo', lat: -23.5505, lon: -46.6333, tz: 'America/Sao_Paulo', weight: 3, ipPrefix: '177.66' },
+  { country: 'AR', region: 'C', city: 'Buenos Aires', lat: -34.6037, lon: -58.3816, tz: 'America/Argentina/Buenos_Aires', weight: 1, ipPrefix: '181.45' },
+  { country: 'ZA', region: 'GT', city: 'Johannesburg', lat: -26.2041, lon: 28.0473, tz: 'Africa/Johannesburg', weight: 1, ipPrefix: '41.76' },
+  { country: 'AE', region: 'DU', city: 'Dubai', lat: 25.2048, lon: 55.2708, tz: 'Asia/Dubai', weight: 1, ipPrefix: '94.200' },
+  { country: 'NG', region: 'LA', city: 'Lagos', lat: 6.5244, lon: 3.3792, tz: 'Africa/Lagos', weight: 1, ipPrefix: '102.89' },
+];
+
+const BULK_ACTIVITY_REGION_WEIGHT_TOTAL = BULK_ACTIVITY_REGIONS.reduce((sum, r) => sum + r.weight, 0);
+
+function pickBulkActivityRegion(rand: () => number): BulkActivityRegion {
+  const roll = rand() * BULK_ACTIVITY_REGION_WEIGHT_TOTAL;
+  let acc = 0;
+  for (const r of BULK_ACTIVITY_REGIONS) {
+    acc += r.weight;
+    if (roll < acc) return r;
+  }
+  return BULK_ACTIVITY_REGIONS[BULK_ACTIVITY_REGIONS.length - 1]!;
+}
+
+const BULK_FIRST_NAMES = [
+  'Alex', 'Jordan', 'Taylor', 'Morgan', 'Riley', 'Quinn', 'Avery', 'Dakota',
+  'Casey', 'Hayden', 'Cameron', 'Rowan', 'Sage', 'Blake', 'Emery', 'Skyler',
+  'Reese', 'Peyton', 'Eden', 'Finley', 'Kendall', 'Aubrey', 'Drew', 'Jesse',
+  'Parker', 'Robin', 'Sydney', 'River', 'Harley', 'Milan', 'Aarav', 'Yuki',
+  'Mateo', 'Nia', 'Omar', 'Priya', 'Kai', 'Luca', 'Zara', 'Ines', 'Noa',
+];
+const BULK_LAST_NAMES = [
+  'Kim', 'Liu', 'Patel', 'Garcia', 'Brown', 'Davis', 'Wilson', 'Martinez',
+  'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Clark', 'Lewis',
+  'Robinson', 'Walker', 'Young', 'Allen', 'Scott', 'Adams', 'Nelson', 'Hill',
+  'Moore', 'Hall', 'King', 'Wright', 'Green', 'Baker', 'Turner', 'Okafor',
+  'Suzuki', 'Schneider', 'Dubois', 'Rossi', 'Nakamura', 'Silva', 'Ivanov',
+];
+const BULK_REFERRERS = [
+  { url: 'https://www.google.com/', weight: 32 },
+  { url: 'https://github.com/', weight: 18 },
+  { url: 'https://twitter.com/', weight: 12 },
+  { url: 'https://www.producthunt.com/', weight: 8 },
+  { url: '', weight: 20 },  // direct traffic
+  { url: 'https://news.ycombinator.com/', weight: 6 },
+  { url: 'https://www.reddit.com/', weight: 4 },
+];
+const BULK_REFERRER_WEIGHT_TOTAL = BULK_REFERRERS.reduce((sum, r) => sum + r.weight, 0);
+
+function pickBulkReferrer(rand: () => number): string {
+  const roll = rand() * BULK_REFERRER_WEIGHT_TOTAL;
+  let acc = 0;
+  for (const r of BULK_REFERRERS) {
+    acc += r.weight;
+    if (roll < acc) return r.url;
+  }
+  return '';
+}
+
+const BULK_PAGE_PATHS = [
+  '/', '/pricing', '/docs', '/docs/getting-started', '/docs/api-reference',
+  '/blog', '/blog/announcing-v2', '/about', '/contact', '/changelog',
+  '/dashboard', '/settings', '/settings/profile', '/settings/billing',
+  '/integrations', '/features', '/enterprise',
+];
+
+function bulkFakeIp(prefix: string, rand: () => number): string {
+  const c = Math.floor(rand() * 256);
+  const d = Math.floor(rand() * 254) + 1;
+  return `${prefix}.${c}.${d}`;
+}
+
+function bulkRandomTimestampOnDay(now: Date, daysAgo: number, rand: () => number): Date {
+  const ts = new Date(now);
+  ts.setUTCDate(ts.getUTCDate() - daysAgo);
+  const hour = 8 + Math.floor(rand() * 14);
+  ts.setUTCHours(hour, Math.floor(rand() * 60), Math.floor(rand() * 60), Math.floor(rand() * 1000));
+  return ts;
+}
+
+function distributeBulkSignups(count: number, days: number, rand: () => number, now: Date): number[] {
+  const dayWeights: number[] = [];
+  for (let d = 0; d < days; d++) {
+    const ramp = 0.5 + (d / Math.max(1, days - 1));
+    const jitter = 0.75 + rand() * 0.5;
+    const date = new Date(now);
+    date.setUTCDate(date.getUTCDate() - (days - 1 - d));
+    const dow = date.getUTCDay();
+    const weekend = (dow === 0 || dow === 6) ? 0.65 : 1.0;
+    dayWeights.push(ramp * jitter * weekend);
+  }
+  const total = dayWeights.reduce((a, b) => a + b, 0);
+  const offsets: number[] = [];
+  for (let d = 0; d < days; d++) {
+    const share = Math.round((dayWeights[d]! / total) * count);
+    const daysAgoOffset = days - 1 - d;
+    for (let i = 0; i < share; i++) offsets.push(daysAgoOffset);
+  }
+  while (offsets.length < count) offsets.push(Math.floor(rand() * days));
+  while (offsets.length > count) offsets.pop();
+  return offsets;
+}
+
+function formatClickhouseTimestamp(date: Date): string {
+  return date.toISOString().replace('T', ' ').slice(0, 23);
+}
+
 async function seedDummySessionActivityEvents(options: SessionActivityEventSeedOptions) {
   const { tenancyId, projectId, userEmailToId } = options;
 
-  const now = new Date();
-  const twoMonthsAgo = new Date(now);
+  // Anchor on midnight today so the seeded window is stable across re-runs
+  // within the same day. Across days the window legitimately shifts forward.
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const twoMonthsAgo = new Date(todayUtc);
   twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+  const windowMs = todayUtc.getTime() - twoMonthsAgo.getTime();
 
-  const userEmails = Array.from(userEmailToId.keys());
+  const userIds = Array.from(userEmailToId.values());
+  const systemEventTypeIds = ['$session-activity', '$user-activity', '$project-activity', '$project'];
 
-  const ipInfoBatch: Prisma.EventIpInfoCreateManyInput[] = [];
-  const eventBatch: Prisma.EventCreateManyInput[] = [];
-  const clickhouseBatch: Array<{
-    event_type: string,
-    event_at: Date,
-    data: Record<string, unknown>,
-    project_id: string,
-    branch_id: string,
-    user_id: string | null,
-    team_id: string | null,
-    refresh_token_id: string | null,
-    session_replay_id: string | null,
-    session_replay_segment_id: string | null,
-  }> = [];
+  console.log(`Seeding session activity events for ${userIds.length} users...`);
 
-  for (const email of userEmails) {
-    const userId = userEmailToId.get(email);
-    if (!userId) continue;
+  const eventIpInfos: Prisma.EventIpInfoCreateManyInput[] = [];
+  const events: Prisma.EventCreateManyInput[] = [];
+  const clickhouseRows: Array<Record<string, unknown>> = [];
 
-    const eventCount = 15 + Math.floor(Math.random() * 11);
+  const clickhouseUrl = getEnvVariable('STACK_CLICKHOUSE_URL', '');
+  const shouldSeedClickhouse = clickhouseUrl !== '';
+  const clickhouseClient = shouldSeedClickhouse ? getClickhouseAdminClient() : null;
+
+  for (const userId of userIds) {
+    // Per-user seeded PRNG so event count, timestamps, and locations are
+    // deterministic across re-runs. Deterministic IDs mean seeded rows can be
+    // replaced in bulk while staying idempotent across runs.
+    const userRand = deterministicPrng(seedFromString(`session-events:${tenancyId}:${userId}`));
+    const eventCount = 15 + Math.floor(userRand() * 11); // 15-25 events
 
     for (let i = 0; i < eventCount; i++) {
-      const randomTime = new Date(
-        twoMonthsAgo.getTime() + Math.random() * (now.getTime() - twoMonthsAgo.getTime())
-      );
+      const randomTime = new Date(twoMonthsAgo.getTime() + userRand() * windowMs);
+      const location = sessionActivityLocations[Math.floor(userRand() * sessionActivityLocations.length)]!;
+      const sessionId = `session-${userId.substring(0, 8)}-${i.toString().padStart(3, '0')}`;
+      const ipAddress = `${10 + Math.floor(userRand() * 200)}.${Math.floor(userRand() * 256)}.${Math.floor(userRand() * 256)}.${Math.floor(userRand() * 256)}`;
+      const refreshTokenId = deterministicUuid(`session-events-refresh-token:${tenancyId}:${userId}:${i}`);
 
-      const location = sessionActivityLocations[Math.floor(Math.random() * sessionActivityLocations.length)];
-      const sessionId = `session-${userId.substring(0, 8)}-${i.toString().padStart(3, '0')}-${randomTime.getTime().toString(36)}`;
-      const ipAddress = `${10 + Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
-      const refreshTokenId = `seed-refresh-${generateUuid()}`;
+      const ipInfoId = deterministicUuid(`event-ip-info:${tenancyId}:${userId}:${i}`);
+      const eventId = deterministicUuid(`event:${tenancyId}:${userId}:${i}`);
 
-      const ipInfoId = generateUuid();
-      const eventId = generateUuid();
-
-      ipInfoBatch.push({
+      eventIpInfos.push({
         id: ipInfoId,
         ip: ipAddress,
         countryCode: location.countryCode,
@@ -963,9 +1522,9 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
         updatedAt: randomTime,
       });
 
-      eventBatch.push({
+      events.push({
         id: eventId,
-        systemEventTypeIds: ['$session-activity', '$user-activity', '$project-activity', '$project'],
+        systemEventTypeIds,
         data: {
           projectId,
           branchId: DEFAULT_BRANCH_ID,
@@ -982,59 +1541,362 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
         updatedAt: randomTime,
       });
 
-      // Also create $token-refresh events for ClickHouse (used by globe + analytics)
-      clickhouseBatch.push({
-        event_type: '$token-refresh',
-        event_at: randomTime,
-        data: {
-          refresh_token_id: refreshTokenId,
-          is_anonymous: false,
-          ip_info: {
-            ip: ipAddress,
-            is_trusted: true,
-            country_code: location.countryCode,
-            region_code: location.regionCode,
-            city_name: location.cityName,
-            latitude: location.latitude,
-            longitude: location.longitude,
-            tz_identifier: location.tzIdentifier,
+      if (clickhouseClient) {
+        clickhouseRows.push({
+          event_type: '$token-refresh',
+          event_at: randomTime,
+          data: {
+            refresh_token_id: refreshTokenId,
+            is_anonymous: false,
+            ip_info: {
+              ip: ipAddress,
+              is_trusted: true,
+              country_code: location.countryCode,
+              region_code: location.regionCode,
+              city_name: location.cityName,
+              latitude: location.latitude,
+              longitude: location.longitude,
+              tz_identifier: location.tzIdentifier,
+            },
           },
+          project_id: projectId,
+          branch_id: DEFAULT_BRANCH_ID,
+          user_id: userId,
+          team_id: null,
+          refresh_token_id: refreshTokenId,
+          session_replay_id: null,
+          session_replay_segment_id: null,
+        });
+      }
+    }
+  }
+
+  await globalPrismaClient.$transaction(async (tx) => {
+    const eventIds = events.map((event) => event.id ?? throwErr('Seeded event row is missing id'));
+    const ipInfoIds = eventIpInfos.map((info) => info.id ?? throwErr('Seeded event IP info row is missing id'));
+
+    await tx.event.deleteMany({
+      where: {
+        id: { in: eventIds },
+      },
+    });
+    await tx.eventIpInfo.deleteMany({
+      where: {
+        id: { in: ipInfoIds },
+      },
+    });
+
+    await tx.eventIpInfo.createMany({
+      data: eventIpInfos,
+    });
+    await tx.event.createMany({
+      data: events,
+    });
+  }, {
+    // Under cross-arch arm64 TCG in the emulator qcow2 build, this batch
+    // has been observed to take 40-50s; Prisma's default is 5s. Production
+    // (KVM/native) runs it in well under 1s, so the looser bound only kicks
+    // in when the DB is genuinely slow.
+    timeout: 90_000,
+  });
+
+  if (clickhouseClient && clickhouseRows.length > 0) {
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < clickhouseRows.length; i += BATCH_SIZE) {
+      await clickhouseClient.insert({
+        table: 'analytics_internal.events',
+        values: clickhouseRows.slice(i, i + BATCH_SIZE),
+        format: 'JSONEachRow',
+        clickhouse_settings: {
+          date_time_input_format: 'best_effort',
+          async_insert: 1,
         },
-        project_id: projectId,
-        branch_id: DEFAULT_BRANCH_ID,
-        user_id: userId,
-        team_id: null,
-        refresh_token_id: refreshTokenId,
-        session_replay_id: null,
-        session_replay_segment_id: null,
       });
     }
   }
 
-  // Batch insert into Postgres
-  await globalPrismaClient.eventIpInfo.createMany({
-    data: ipInfoBatch,
-    skipDuplicates: true,
+  console.log(`Finished seeding session activity events (${events.length} events)`);
+}
+
+/**
+ * Seeds the dummy project with a bulk batch of fake user sign-ups and
+ * realistic activity data spread across recent history and various
+ * geographic regions. Populates:
+ *
+ *   1. ProjectUser rows with back-dated signedUpAt/createdAt
+ *   2. $token-refresh events in ClickHouse with geolocated ip_info
+ *   3. $page-view events in ClickHouse for daily visitors/page views/referrers
+ *   4. $click events in ClickHouse for the clicks chart
+ */
+async function seedBulkSignupsAndActivity(options: {
+  tenancy: Tenancy,
+  prisma: PrismaClientTransaction,
+  count?: number,
+  days?: number,
+}) {
+  const count = options.count ?? 500;
+  const days = options.days ?? 60;
+  const now = new Date();
+  const rand = deterministicPrng(0xC0FFEE);
+  const { tenancy, prisma } = options;
+  const clickhouse = getClickhouseAdminClient();
+
+  console.log(`[seed-activity] Target: ${count} users across ${days} days in project "${tenancy.project.id}" branch "${tenancy.branchId}"`);
+
+  const dayOffsets = distributeBulkSignups(count, days, rand, now);
+  const clickhouseRows: Array<Record<string, unknown>> = [];
+
+  let created = 0;
+  let updated = 0;
+
+  const seedUsers: Array<{
+    index: number,
+    email: string,
+    displayName: string,
+    signedUpAt: Date,
+    signupDaysAgo: number,
+    region: BulkActivityRegion,
+    primaryEmailVerified: boolean,
+    projectUserId: string,
+  }> = [];
+  for (let i = 0; i < count; i++) {
+    const firstName = BULK_FIRST_NAMES[Math.floor(rand() * BULK_FIRST_NAMES.length)]!;
+    const lastName = BULK_LAST_NAMES[Math.floor(rand() * BULK_LAST_NAMES.length)]!;
+    const displayName = `${firstName} ${lastName}`;
+    const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}.signupseed${i}@dummy.dev`;
+    const signedUpAt = bulkRandomTimestampOnDay(now, dayOffsets[i]!, rand);
+    const region = pickBulkActivityRegion(rand);
+    const primaryEmailVerified = rand() > 0.25;
+    seedUsers.push({
+      index: i,
+      email,
+      displayName,
+      signedUpAt,
+      signupDaysAgo: dayOffsets[i]!,
+      region,
+      primaryEmailVerified,
+      projectUserId: deterministicUuid(`bulk-signup-user:${tenancy.id}:${email}`),
+    });
+  }
+
+  const existingContactChannels = await prisma.contactChannel.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      type: 'EMAIL',
+      isPrimary: 'TRUE',
+      usedForAuth: 'TRUE',
+      value: { in: seedUsers.map((seedUser) => seedUser.email) },
+    },
+    select: {
+      value: true,
+      projectUserId: true,
+    },
   });
 
-  await globalPrismaClient.event.createMany({
-    data: eventBatch,
-    skipDuplicates: true,
-  });
+  const existingUserIdByEmail = new Map<string, string>();
+  for (const existingContactChannel of existingContactChannels) {
+    const existingUserId = existingUserIdByEmail.get(existingContactChannel.value);
+    if (existingUserId != null && existingUserId !== existingContactChannel.projectUserId) {
+      throwErr(`Expected one authenticated user per seed email (${existingContactChannel.value}), found multiple project users`);
+    }
+    existingUserIdByEmail.set(existingContactChannel.value, existingContactChannel.projectUserId);
+  }
 
-  // Batch insert into ClickHouse for analytics/globe
-  const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
-  if (clickhouseUrl) {
-    const clickhouseClient = getClickhouseAdminClient();
-    await clickhouseClient.insert({
-      table: "analytics_internal.events",
-      values: clickhouseBatch,
-      format: "JSONEachRow",
+  const projectUsersToCreate: Prisma.ProjectUserCreateManyInput[] = [];
+  const contactChannelsToCreate: Prisma.ContactChannelCreateManyInput[] = [];
+  const userActivity: Array<{ userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
+
+  for (const seedUser of seedUsers) {
+    const userId = existingUserIdByEmail.get(seedUser.email) ?? seedUser.projectUserId;
+    const existingUserId = existingUserIdByEmail.get(seedUser.email);
+    if (existingUserId == null) {
+      created++;
+      projectUsersToCreate.push({
+        tenancyId: tenancy.id,
+        projectUserId: userId,
+        mirroredProjectId: tenancy.project.id,
+        mirroredBranchId: tenancy.branchId,
+        displayName: seedUser.displayName,
+        isAnonymous: false,
+        createdAt: seedUser.signedUpAt,
+        lastActiveAt: seedUser.signedUpAt,
+        signedUpAt: seedUser.signedUpAt,
+        signUpRiskScoreBot: 0,
+        signUpRiskScoreFreeTrialAbuse: 0,
+      });
+      contactChannelsToCreate.push({
+        tenancyId: tenancy.id,
+        projectUserId: userId,
+        type: 'EMAIL',
+        isPrimary: 'TRUE',
+        usedForAuth: 'TRUE',
+        isVerified: seedUser.primaryEmailVerified,
+        value: seedUser.email,
+        createdAt: seedUser.signedUpAt,
+        updatedAt: seedUser.signedUpAt,
+      });
+    } else {
+      updated++;
+    }
+
+    userActivity.push({
+      userId,
+      signupDaysAgo: seedUser.signupDaysAgo,
+      region: seedUser.region,
+      signedUpAt: seedUser.signedUpAt,
+    });
+
+    const ipInfoForUser = {
+      ip: bulkFakeIp(seedUser.region.ipPrefix, rand),
+      is_trusted: true,
+      country_code: seedUser.region.country,
+      region_code: seedUser.region.region,
+      city_name: seedUser.region.city,
+      latitude: seedUser.region.lat,
+      longitude: seedUser.region.lon,
+      tz_identifier: seedUser.region.tz,
+    };
+
+    clickhouseRows.push({
+      event_type: '$token-refresh',
+      event_at: formatClickhouseTimestamp(seedUser.signedUpAt),
+      data: {
+        refresh_token_id: generateUuid(),
+        is_anonymous: false,
+        ip_info: ipInfoForUser,
+      },
+      project_id: tenancy.project.id,
+      branch_id: tenancy.branchId,
+      user_id: userId,
+      team_id: null,
+    });
+
+    if ((seedUser.index + 1) % 100 === 0) {
+      console.log(`[seed-activity] ${seedUser.index + 1}/${count} users processed (${created} new, ${updated} updated)`);
+    }
+  }
+
+  if (projectUsersToCreate.length > 0) {
+    await prisma.projectUser.createMany({
+      data: projectUsersToCreate,
+      skipDuplicates: true,
+    });
+  }
+  if (contactChannelsToCreate.length > 0) {
+    await prisma.contactChannel.createMany({
+      data: contactChannelsToCreate,
+      skipDuplicates: true,
+    });
+  }
+
+  if (userActivity.length > 0) {
+    const seededTimestampRows = userActivity.map((activity) => Prisma.sql`(${activity.userId}::uuid, ${activity.signedUpAt}::timestamptz)`);
+    await prisma.$executeRaw`
+      UPDATE "ProjectUser" AS pu
+      SET "createdAt" = seeded.signed_up_at,
+          "signedUpAt" = seeded.signed_up_at
+      FROM (VALUES ${Prisma.join(seededTimestampRows)}) AS seeded(project_user_id, signed_up_at)
+      WHERE pu."tenancyId" = ${tenancy.id}
+        AND pu."projectUserId" = seeded.project_user_id
+    `;
+  }
+
+  console.log(`[seed-activity] Generating multi-day activity events for ${userActivity.length} users...`);
+
+  for (const { userId, signupDaysAgo, region } of userActivity) {
+    if (signupDaysAgo === 0) continue;
+    const isReturning = rand() < 0.7;
+    if (!isReturning) continue;
+
+    const returnVisits = 2 + Math.floor(rand() * 7);
+    const ipInfo = {
+      ip: bulkFakeIp(region.ipPrefix, rand),
+      is_trusted: true,
+      country_code: region.country,
+      region_code: region.region,
+      city_name: region.city,
+      latitude: region.lat,
+      longitude: region.lon,
+      tz_identifier: region.tz,
+    };
+
+    for (let v = 0; v < returnVisits; v++) {
+      const visitDaysAgo = Math.floor(rand() * signupDaysAgo);
+      const visitTime = bulkRandomTimestampOnDay(now, visitDaysAgo, rand);
+
+      clickhouseRows.push({
+        event_type: '$token-refresh',
+        event_at: formatClickhouseTimestamp(visitTime),
+        data: {
+          refresh_token_id: generateUuid(),
+          is_anonymous: false,
+          ip_info: ipInfo,
+        },
+        project_id: tenancy.project.id,
+        branch_id: tenancy.branchId,
+        user_id: userId,
+        team_id: null,
+      });
+
+      const pageViewCount = 1 + Math.floor(rand() * 4);
+      for (let p = 0; p < pageViewCount; p++) {
+        const pvOffset = Math.floor(rand() * 3600) * 1000;
+        const pvTime = new Date(visitTime.getTime() + pvOffset);
+        clickhouseRows.push({
+          event_type: '$page-view',
+          event_at: formatClickhouseTimestamp(pvTime),
+          data: {
+            path: BULK_PAGE_PATHS[Math.floor(rand() * BULK_PAGE_PATHS.length)],
+            referrer: p === 0 ? pickBulkReferrer(rand) : '',
+            is_anonymous: false,
+          },
+          project_id: tenancy.project.id,
+          branch_id: tenancy.branchId,
+          user_id: userId,
+          team_id: null,
+        });
+      }
+
+      if (rand() < 0.4) {
+        const clickOffset = Math.floor(rand() * 1800) * 1000;
+        const clickTime = new Date(visitTime.getTime() + clickOffset);
+        clickhouseRows.push({
+          event_type: '$click',
+          event_at: formatClickhouseTimestamp(clickTime),
+          data: {
+            selector: 'button.cta-primary',
+            is_anonymous: false,
+          },
+          project_id: tenancy.project.id,
+          branch_id: tenancy.branchId,
+          user_id: userId,
+          team_id: null,
+        });
+      }
+    }
+  }
+
+  console.log(`[seed-activity] Flushing ${clickhouseRows.length} events to ClickHouse...`);
+  const BATCH = 500;
+  for (let i = 0; i < clickhouseRows.length; i += BATCH) {
+    const batch = clickhouseRows.slice(i, i + BATCH);
+    await clickhouse.insert({
+      table: 'analytics_internal.events',
+      values: batch,
+      format: 'JSONEachRow',
       clickhouse_settings: {
-        date_time_input_format: "best_effort",
+        date_time_input_format: 'best_effort',
+        async_insert: 1,
       },
     });
   }
+
+  const tokenRefreshCount = clickhouseRows.filter(r => r.event_type === '$token-refresh').length;
+  const pageViewCount = clickhouseRows.filter(r => r.event_type === '$page-view').length;
+  const clickCount = clickhouseRows.filter(r => r.event_type === '$click').length;
+
+  console.log(`[seed-activity] Done. created=${created} updated=${updated}`);
+  console.log(`[seed-activity] Events: $token-refresh=${tokenRefreshCount} $page-view=${pageViewCount} $click=${clickCount} total=${clickhouseRows.length}`);
 }
 
 /**
@@ -1192,7 +2054,6 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     prisma: dummyPrisma,
     tenancyId: dummyTenancy.id,
     teamNameToId,
-    userEmailToId,
     paymentsProducts,
   });
 
@@ -1214,6 +2075,11 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     }),
   ]);
 
+  await seedBulkSignupsAndActivity({
+    tenancy: dummyTenancy,
+    prisma: dummyPrisma,
+  });
+
   return projectId;
 }
 
@@ -1221,63 +2087,59 @@ async function seedDummySessionReplays({
   prisma,
   tenancyId,
   userEmailToId,
+  targetSessionReplayCount = 250,
 }: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
   userEmailToId: Map<string, string>,
+  targetSessionReplayCount?: number,
 }) {
-  const now = new Date();
-  const usersToReplay = [
-    'amelia.chen@dummy.dev',
-    'mateo.silva@dummy.dev',
-    'priya.narang@dummy.dev',
-  ];
+  const userIds = Array.from(userEmailToId.values());
+  if (userIds.length === 0) {
+    throw new Error('Cannot seed session replays: no dummy project users exist');
+  }
 
-  for (const email of usersToReplay) {
-    const userId = userEmailToId.get(email);
-    if (!userId) continue;
+  // Anchor on midnight today so the seeded window is stable across re-runs
+  // within the same day.
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const twoWeeksAgo = new Date(todayUtc);
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+  const windowMs = todayUtc.getTime() - twoWeeksAgo.getTime();
 
-    const replayId = generateUuid();
-    const batchId = generateUuid();
-    const chunkId = generateUuid();
-    const segmentId = generateUuid();
-    const browserSessionId = generateUuid();
-    const refreshTokenId = generateUuid();
+  // Single seeded PRNG keyed off tenancy so the whole replay set is
+  // deterministic across re-runs and identical IDs upsert in place.
+  const rand = deterministicPrng(seedFromString(`session-replays:${tenancyId}`));
 
-    // Each replay started 1-7 days ago, lasted ~8 seconds
-    const daysAgo = 1 + Math.floor(Math.random() * 7);
-    const startedAt = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-    const lastEventAt = new Date(startedAt.getTime() + 8000);
+  const seeds: Prisma.SessionReplayCreateManyInput[] = [];
+  for (let i = 0; i < targetSessionReplayCount; i++) {
+    const startedAt = new Date(twoWeeksAgo.getTime() + rand() * windowMs);
+    const durationMs = 10_000 + Math.floor(rand() * (20 * 60 * 1000)); // 10s..20m
+    const lastEventAt = new Date(startedAt.getTime() + durationMs);
+    const projectUserId = userIds[Math.floor(rand() * userIds.length)]!;
 
-    await prisma.sessionReplay.upsert({
-      where: { tenancyId_id: { tenancyId, id: replayId } },
-      update: {},
-      create: {
-        id: replayId,
-        tenancyId,
-        projectUserId: userId,
-        refreshTokenId,
-        startedAt,
-        lastEventAt,
-      },
-    });
-
-    await prisma.sessionReplayChunk.upsert({
-      where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
-      update: {},
-      create: {
-        id: chunkId,
-        tenancyId,
-        sessionReplayId: replayId,
-        batchId,
-        sessionReplaySegmentId: segmentId,
-        browserSessionId,
-        s3Key: `preview://${replayId}/${batchId}`,
-        eventCount: 8,
-        byteLength: 0,
-        firstEventAt: startedAt,
-        lastEventAt,
-      },
+    seeds.push({
+      tenancyId,
+      refreshTokenId: deterministicUuid(`session-replay-refresh-token:${tenancyId}:${i}`),
+      projectUserId,
+      id: deterministicUuid(`session-replay:${tenancyId}:${i}`),
+      startedAt,
+      lastEventAt,
     });
   }
+
+  // Delete existing deterministic IDs first, then bulk-insert (Prisma createMany
+  // doesn't support upsert, so we delete+recreate to refresh timestamps).
+  const seedIds = seeds.map((s) => s.id!);
+  await prisma.sessionReplay.deleteMany({
+    where: {
+      tenancyId,
+      id: { in: seedIds },
+    },
+  });
+  await prisma.sessionReplay.createMany({
+    data: seeds,
+  });
+
+  console.log(`Seeded ${targetSessionReplayCount} session replays`);
 }

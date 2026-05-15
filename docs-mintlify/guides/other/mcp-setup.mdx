@@ -17,7 +17,7 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
     {
       "mcpServers": {
         "stack-auth": {
-          "url": "https://mcp.stack-auth.com/"
+          "url": "https://mcp.stack-auth.com/mcp"
         }
       }
     }
@@ -32,17 +32,42 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
     Open a terminal and run the following command:
 
     ```sh title="Terminal"
-    code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/"}'
+    code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'
     ```
 
     Then, from inside VS Code, open the `.vscode/mcp.json` file and click "Start server".
+  </Tab>
+
+  <Tab title="Codex">
+    Configure Stack Auth MCP in Codex CLI and the Codex IDE extension. The configuration is shared between both.
+
+    Open a terminal and run the following command:
+
+    ```sh title="Terminal"
+    codex mcp add stack-auth --url https://mcp.stack-auth.com/mcp
+    ```
+
+    Verify it is configured:
+
+    ```sh title="Terminal"
+    codex mcp list
+    ```
+
+    ### Manual Installation
+
+    Alternatively, add the following to `~/.codex/config.toml`:
+
+    ```toml title="config.toml"
+    [mcp_servers.stack-auth]
+    url = "https://mcp.stack-auth.com/mcp"
+    ```
   </Tab>
 
   <Tab title="Claude Code">
     Open a terminal and run the following command:
 
     ```sh title="Terminal"
-    claude mcp add --transport http stack-auth https://mcp.stack-auth.com/
+    claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp
     ```
 
     From within Claude Code, you can use the `/mcp` command to get more information about the server.
@@ -51,7 +76,7 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
   <Tab title="Claude Desktop">
     Open Claude Desktop and navigate to **Settings > Connectors > Add Custom Connector**.
 
-    Enter the name as `stack-auth` and the remote MCP server URL as `https://mcp.stack-auth.com/`.
+    Enter the name as `stack-auth` and the remote MCP server URL as `https://mcp.stack-auth.com/mcp`.
   </Tab>
 
   <Tab title="Windsurf">
@@ -61,7 +86,7 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
     {
       "mcpServers": {
         "stack-auth": {
-          "serverUrl": "https://mcp.stack-auth.com/"
+          "serverUrl": "https://mcp.stack-auth.com/mcp"
         }
       }
     }
@@ -73,7 +98,7 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
     In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission to set this.
     </Info>
 
-    Navigate to **Settings > Connectors** and add a custom connector with the server URL: `https://mcp.stack-auth.com`
+    Navigate to **Settings > Connectors** and add a custom connector with the server URL: `https://mcp.stack-auth.com/mcp`
 
     After this, it should be visible in Composer > Deep Research Tool.
 
@@ -89,7 +114,7 @@ Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code 
     {
       "mcpServers": {
         "stack-auth": {
-          "httpUrl": "https://mcp.stack-auth.com/",
+          "httpUrl": "https://mcp.stack-auth.com/mcp",
           "headers": {
             "Accept": "application/json, text/event-stream"
           }
@@ -109,7 +134,7 @@ If you want to include instructions for all clients in your project's README.md 
   <summary>Cursor</summary>
 
   #### Installation Link
-  [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS8ifQ==)
+  [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS9tY3AifQ==)
 
   #### Manual Installation
   Add the following to your `mcp.json` file:
@@ -118,7 +143,7 @@ If you want to include instructions for all clients in your project's README.md 
   {
   "mcpServers": {
     "stack-auth": {
-      "url": "https://mcp.stack-auth.com/"
+      "url": "https://mcp.stack-auth.com/mcp"
     }
   }
   }
@@ -129,16 +154,36 @@ If you want to include instructions for all clients in your project's README.md 
   <summary>VSCode</summary>
 
   #### Installation Link
-  [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2F%22%7D)
+  [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2Fmcp%22%7D)
 
   #### Manual Installation
   Open a terminal and run the following command:
 
   ```
-  code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/"}'
+  code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'
   ```
 
   Then, from inside VS Code, open the .vscode/mcp.json file and click "Start server".
+</details>
+
+<details name="mcp-install-instructions">
+  <summary>Codex</summary>
+
+  Open a terminal and run the following command:
+  ```
+  codex mcp add stack-auth --url https://mcp.stack-auth.com/mcp
+  ```
+
+  Verify it is configured:
+  ```
+  codex mcp list
+  ```
+
+  Alternatively, add the following to `~/.codex/config.toml`:
+  ```toml
+  [mcp_servers.stack-auth]
+  url = "https://mcp.stack-auth.com/mcp"
+  ```
 </details>
 
 <details name="mcp-install-instructions">
@@ -146,7 +191,7 @@ If you want to include instructions for all clients in your project's README.md 
 
   Open a terminal and run the following command:
   ```
-  claude mcp add --transport http stack-auth https://mcp.stack-auth.com/
+  claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp
   ```
   From within Claude Code, you can use the `/mcp` command to get more information about the server.
 </details>
@@ -156,7 +201,7 @@ If you want to include instructions for all clients in your project's README.md 
 
   Open Claude Desktop and navigate to Settings > Connectors > Add Custom Connector.
 
-  Enter the name as `stack-auth` and the remote MCP server URL as `https://mcp.stack-auth.com/`.
+  Enter the name as `stack-auth` and the remote MCP server URL as `https://mcp.stack-auth.com/mcp`.
 </details>
 
 <details name="mcp-install-instructions">
@@ -167,7 +212,7 @@ If you want to include instructions for all clients in your project's README.md 
   {
   "mcpServers": {
     "stack-auth": {
-      "serverUrl": "https://mcp.stack-auth.com/"
+      "serverUrl": "https://mcp.stack-auth.com/mcp"
     }
   }
   }
@@ -180,7 +225,7 @@ If you want to include instructions for all clients in your project's README.md 
   *Note: In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission*
 
   - Navigate to **Settings > Connectors**
-  - Add a custom connector with the server URL: `https://mcp.stack-auth.com/`
+  - Add a custom connector with the server URL: `https://mcp.stack-auth.com/mcp`
   - It should then be visible in the Composer > Deep research tool
   - You may need to add the server as a source
 
@@ -195,7 +240,7 @@ If you want to include instructions for all clients in your project's README.md 
   {
   "mcpServers": {
     "stack-auth": {
-      "httpUrl": "https://mcp.stack-auth.com/",
+      "httpUrl": "https://mcp.stack-auth.com/mcp",
       "headers": {
         "Accept": "application/json, text/event-stream"
       }

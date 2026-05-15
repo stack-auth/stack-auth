@@ -124,7 +124,7 @@ const branchSchemaFuzzerConfig = [{
         catalogId: ["some-product-line-id", "some-other-product-line-id"],  // ensure migration works
         groupId: ["some-product-line-id", "some-other-product-line-id"],  // ensure migration works
         isAddOnTo: [false, { "some-product-id": [true], "some-other-product-id": [true] }] as const,
-        prices: ["include-by-default" as "include-by-default", {
+        prices: [{
           "some-price-id": [{
             ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, ["100_00", "not a number", "Infinity", "0"]])),
             interval: [[[0, 1, -3, 100, 0.333, Infinity], ["day", "week", "month", "year"]]] as const,
@@ -368,4 +368,10 @@ import.meta.vitest?.test("fuzz schemas", async ({ expect }) => {
       throw new StackAssertionError(`Error in iteration ${i}/${totalIterations} of schema fuzz: ${e}`, { cause: e });
     }
   }
+});
+
+import.meta.vitest?.test("rejects include-by-default product prices in config overrides", async ({ expect }) => {
+  await expect(assertNoConfigOverrideErrors(branchConfigSchema, {
+    "payments.products.free.prices": "include-by-default",
+  })).rejects.toThrow(/payments\.products\.free\.prices must not be one of the following values: include-by-default/);
 });

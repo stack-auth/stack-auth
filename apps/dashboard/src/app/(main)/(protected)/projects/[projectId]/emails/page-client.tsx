@@ -3,66 +3,33 @@
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableColumnHeader, DataTableViewOptions, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
+import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
-import { cn } from "@/lib/utils";
-import { CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
+import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
+import { useEffect, useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-// Glassmorphic card component following design guide
-function GlassCard({
-  children,
-  className,
-  gradientColor = "blue"
-}: {
-  children: React.ReactNode,
-  className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate" | "cyan",
-}) {
-  const hoverTints: Record<string, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
-    slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
-  };
-
-  return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
-      <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
+import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
+function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
   return (
     <div className="flex items-center gap-2">
       <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
@@ -99,6 +66,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return (
     <AppEnabledGuard appId="emails">
@@ -118,6 +86,8 @@ export default function PageClient() {
         }
       >
         <div className="flex flex-col gap-5">
+          {isLocalEmulator && <EmulatorModeCard />}
+
           {/* Email Server Card */}
           <EmailServerCard emailConfig={emailConfig} />
 
@@ -126,6 +96,44 @@ export default function PageClient() {
         </div>
       </PageLayout>
     </AppEnabledGuard>
+  );
+}
+
+function EmulatorModeCard() {
+  const inbucketWebUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_INBUCKET_WEB_URL");
+  const inbucketMonitorUrl = inbucketWebUrl == null
+    ? null
+    : `${inbucketWebUrl.replace(/\/$/, "")}/monitor`;
+
+  return (
+    <DesignAnalyticsCard gradient="purple" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-5">
+          <div className="flex-1 min-w-0">
+            <SectionHeader icon={HardDrive} title="Mock Emails" />
+            <Typography variant="secondary" className="text-sm mt-1">
+              View all emails sent through the emulator in Inbucket
+            </Typography>
+          </div>
+          <Button
+            variant='secondary'
+            size="sm"
+            className="h-8 px-3 text-xs gap-1.5 flex-shrink-0"
+            disabled={inbucketMonitorUrl == null}
+            title={inbucketMonitorUrl == null ? "Set NEXT_PUBLIC_STACK_INBUCKET_WEB_URL to open Inbucket" : undefined}
+            onClick={() => {
+              if (inbucketMonitorUrl == null) {
+                throwErr("NEXT_PUBLIC_STACK_INBUCKET_WEB_URL must be configured to open Inbucket monitor.");
+              }
+              window.open(inbucketMonitorUrl, "_blank", "noopener,noreferrer");
+            }}
+          >
+            <ArrowSquareOut className="h-3.5 w-3.5" />
+            Open Inbox
+          </Button>
+        </div>
+      </div>
+    </DesignAnalyticsCard>
   );
 }
 
@@ -144,7 +152,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
       : emailConfig.senderEmail;
 
   return (
-    <GlassCard gradientColor="slate">
+    <DesignAnalyticsCard gradient="slate" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className="p-5">
         <div className="flex items-start justify-between gap-5">
           <div className="flex-1 min-w-0">
@@ -238,7 +246,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
           )}
         </div>
       </div>
-    </GlassCard>
+    </DesignAnalyticsCard>
   );
 }
 
@@ -449,10 +457,26 @@ function ManagedEmailSetupDialog(props: {
 
 function EmailLogCard() {
   const stackAdminApp = useAdminApp();
+  const router = useRouter();
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [table, setTable] = useState<TableType<AdminSentEmail> | null>(null);
+  const [gridState, setGridState] = useState<DataGridState>(() => ({
+    ...createDefaultDataGridState(emailTableColumns),
+    sorting: [{ columnId: "sentAt", direction: "desc" }],
+  }));
+  const gridData = useDataSource({
+    data: emailLogs,
+    columns: emailTableColumns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    // `listSentEmails()` returns a flat array (no cursor support in the
+    // SDK), so client-mode paginate is the right fit until the server API
+    // grows cursor pagination.
+    paginationMode: "client",
+  });
 
   // Fetch email logs when component mounts
   useEffect(() => {
@@ -478,7 +502,7 @@ function EmailLogCard() {
 
   if (loading) {
     return (
-      <GlassCard gradientColor="slate" className="overflow-hidden">
+      <DesignAnalyticsCard gradient="slate" className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
         <div className="p-5">
           <SectionHeader icon={Envelope} title="Email Log" />
           <Typography variant="secondary" className="text-sm mt-1">
@@ -495,13 +519,13 @@ function EmailLogCard() {
             </Typography>
           </div>
         </div>
-      </GlassCard>
+      </DesignAnalyticsCard>
     );
   }
 
   if (error) {
     return (
-      <GlassCard gradientColor="slate" className="overflow-hidden">
+      <DesignAnalyticsCard gradient="slate" className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
         <div className="p-5">
           <SectionHeader icon={Envelope} title="Email Log" />
           <Typography variant="secondary" className="text-sm mt-1">
@@ -521,13 +545,13 @@ function EmailLogCard() {
             </div>
           </div>
         </div>
-      </GlassCard>
+      </DesignAnalyticsCard>
     );
   }
 
   if (emailLogs.length === 0) {
     return (
-      <GlassCard gradientColor="slate" className="overflow-hidden">
+      <DesignAnalyticsCard gradient="slate" className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
         <div className="p-5">
           <SectionHeader icon={Envelope} title="Email Log" />
           <Typography variant="secondary" className="text-sm mt-1">
@@ -547,12 +571,12 @@ function EmailLogCard() {
             </div>
           </div>
         </div>
-      </GlassCard>
+      </DesignAnalyticsCard>
     );
   }
 
   return (
-    <GlassCard gradientColor="slate" className="overflow-hidden">
+    <DesignAnalyticsCard gradient="slate" className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className="p-5">
         <div className="flex w-full items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -561,31 +585,23 @@ function EmailLogCard() {
               View and manage email sending history
             </Typography>
           </div>
-          {table && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <DataTableViewOptions
-                table={table}
-              />
-            </div>
-          )}
         </div>
       </div>
       <div className="border-t border-foreground/[0.05] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
-        <DataTable
-          data={emailLogs}
-          defaultColumnFilters={[]}
+        <DataGrid
           columns={emailTableColumns}
-          defaultSorting={[{ id: 'sentAt', desc: true }]}
-          showDefaultToolbar={false}
-          showResetFilters={false}
-          onTableReady={(tableInstance) => {
-            if (table !== tableInstance) {
-              setTable(tableInstance);
-            }
+          rows={gridData.rows}
+          getRowId={(row) => row.id}
+          totalRowCount={gridData.totalRowCount}
+          isLoading={gridData.isLoading}
+          state={gridState}
+          onChange={setGridState}
+          onRowClick={(row) => {
+            router.push(`email-viewer/${row.id}`);
           }}
         />
       </div>
-    </GlassCard>
+    </DesignAnalyticsCard>
   );
 }
 
@@ -1032,51 +1048,41 @@ function TestSendingDialog(props: {
   />;
 }
 
-const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
+const emailTableColumns: DataGridColumnDef<AdminSentEmail>[] = [
   {
-    accessorKey: 'recipient',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Recipient" />,
-    cell: ({ row }) => (
-      <span className="text-sm font-medium text-foreground">{row.original.recipient}</span>
-    ),
-  },
-  {
-    accessorKey: 'subject',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Subject" />,
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground truncate max-w-[300px] block">
-        {row.original.subject}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'sentAt',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Sent At" />,
-    cell: ({ row }) => {
-      const date = row.original.sentAt;
-      return (
-        <span className="text-sm text-muted-foreground tabular-nums font-mono">
-          {date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          })} {date.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-          })}
-        </span>
-      );
+    id: "recipient",
+    header: "Recipient",
+    width: 200,
+    type: "string",
+    accessor: (row) => row.to[0] ?? row.recipient,
+    renderCell: ({ row }) => {
+      const recipientEmail = row.to[0] ?? row.recipient;
+      return recipientEmail || "No recipient";
     },
   },
   {
-    id: 'status',
-    accessorFn: (row) => (row.error ? 'failed' : 'sent'),
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-    cell: ({ row }) => (
+    id: "subject",
+    header: "Subject",
+    width: 240,
+    flex: 1,
+    type: "string",
+    accessor: "subject",
+  },
+  {
+    id: "sentAt",
+    header: "Sent At",
+    accessor: "sentAt",
+    width: 180,
+    type: "dateTime",
+  },
+  {
+    id: "status",
+    header: "Status",
+    width: 120,
+    renderCell: ({ row }) => (
       <StatusBadge
-        status={row.original.error ? 'failed' : 'sent'}
-        error={row.original.error ? String(row.original.error) : null}
+        status={row.error ? "failed" : "sent"}
+        error={row.error != null ? String(row.error) : null}
       />
     ),
   },

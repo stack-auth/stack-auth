@@ -39,7 +39,8 @@ export type CustomerProduct = {
   customerType: "user" | "team" | "custom",
   isServerOnly: boolean,
   stackable: boolean,
-  type: "one_time" | "subscription",
+  /** @deprecated Product ownership is independent of purchase type. Will be removed in a future version. */
+  type?: "one_time" | "subscription",
   subscription: null | {
     subscriptionId: string | null,
     currentPeriodEnd: Date | null,

@@ -17,6 +17,7 @@ export function createClickhouseClient(authType: "admin" | "external", database?
       password: getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD"),
     },
     database,
+    request_timeout: 10 * 60 * 1000, // 10 minutes
   });
 }
 

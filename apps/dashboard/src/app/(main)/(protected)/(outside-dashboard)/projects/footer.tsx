@@ -13,7 +13,7 @@ export default function Footer () {
             {[
               { href: "https://discord.stack-auth.com/", icon: FaDiscord },
               { href: "https://www.linkedin.com/company/stackframe-inc", icon: FaLinkedin },
-              { href: "https://github.com/stack-auth/stack-auth", icon: FaGithub },
+              { href: "https://github.com/hexclave/stack-auth", icon: FaGithub },
             ].map(({ href, icon: Icon }) => (
               <li key={href}>
                 <Link href={href}>

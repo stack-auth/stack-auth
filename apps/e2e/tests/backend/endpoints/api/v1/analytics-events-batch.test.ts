@@ -1,7 +1,16 @@
-import { randomUUID } from "node:crypto";
+import { ITEM_IDS, PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { randomBytes, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { it } from "../../../../helpers";
-import { Auth, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
+import {
+  getItemQuantity,
+  setItemQuantity,
+  waitForItemQuantityToReach,
+  waitForItemQuantityToStabilize,
+} from "../../../payment-quota-helpers";
 
 async function uploadEventBatch(options: {
   sessionReplaySegmentId: string,
@@ -155,6 +164,115 @@ it("accepts valid $click events", async ({ expect }) => {
     NiceResponse {
       "status": 200,
       "body": { "inserted": 1 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("accepts a gzipped binary body (adblocker-evasion encoding)", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const payload = {
+    session_replay_segment_id: randomUUID(),
+    batch_id: randomUUID(),
+    sent_at_ms: now,
+    events: [
+      {
+        event_type: "$click",
+        event_at_ms: now - 50,
+        data: {
+          tag_name: "button",
+          text: "Encoded",
+          href: null,
+          selector: "button.encoded",
+          x: 1, y: 2, page_x: 1, page_y: 2,
+          viewport_width: 100, viewport_height: 100,
+        },
+      },
+    ],
+  };
+  const compressed = gzipSync(Buffer.from(JSON.stringify(payload), "utf-8"));
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: compressed,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 1 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: new Uint8Array([0, 1, 2, 3, 4, 5]),
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid encoded analytics body",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a binary body larger than the compressed size cap", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  // Random bytes don't compress, so even before gunzip the byteLength check
+  // fires. 1.1 MB > the 1 MB MAX_COMPRESSED_BYTES cap.
+  const oversized = new Uint8Array(randomBytes(Math.floor(1.1 * 1024 * 1024)));
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: oversized,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Encoded analytics body too large",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a gzipped body that decompresses past the server size cap", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  // 9 MB of zeros gzips to ~9 KB but decompresses past the 8 MB server cap.
+  const bomb = gzipSync(Buffer.alloc(9 * 1024 * 1024));
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: bomb,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid encoded analytics body",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -472,4 +590,133 @@ it("inserted events are queryable via analytics query endpoint", async ({ expect
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+// ============================================================================
+// Analytics event limit enforcement tests
+// ============================================================================
+
+async function setupProjectWithPlan(planId: PlanId) {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  if (planId !== "free") {
+    await withInternalProject(async () => {
+      const grantResponse = await niceBackendFetch(`/api/v1/payments/products/team/${ownerTeamId}`, {
+        method: "POST",
+        accessType: "server",
+        body: { product_id: planId },
+      });
+      if (grantResponse.status !== 200) {
+        throw new StackAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
+      }
+    });
+  }
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsEvents, PLAN_LIMITS[planId].analyticsEvents);
+  return { ownerTeamId };
+}
+
+it("rejects batch when analytics event quota is exhausted", async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("free");
+  await Auth.Otp.signIn();
+
+  await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 0);
+
+  const res = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: Date.now(),
+    events: [{ event_type: "$page-view", event_at_ms: Date.now(), data: {} }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
+});
+
+it("accepts batch and debits event quota correctly", async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("free");
+  await Auth.Otp.signIn();
+
+  // Drain async logEvent debits (sign-in triggers token-refresh/sign-up-rule
+  // events asynchronously) before measuring baseline. The
+  // `minimumElapsedMs` guards against the failure mode where stability is
+  // declared before the async events have had a chance to fire — without
+  // it the test reads e.g. 100000, declares it stable, then ~5s later the
+  // async events land and the post-batch read is short by 2.
+  const quantityBeforeBatch = await waitForItemQuantityToStabilize(
+    ownerTeamId,
+    ITEM_IDS.analyticsEvents,
+    { minimumElapsedMs: 5000 },
+  );
+
+  const now = Date.now();
+  const eventCount = 3;
+  const res = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: now,
+    events: Array.from({ length: eventCount }, (_, i) => ({
+      event_type: "$page-view" as const,
+      event_at_ms: now - i,
+      data: { url: `https://example.com/page-${i}`, path: `/page-${i}` },
+    })),
+  });
+
+  expect(res.status).toBe(200);
+  expect(res.body.inserted).toBe(eventCount);
+
+  const afterQuantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  expect(afterQuantity).toBe(quantityBeforeBatch - eventCount);
+});
+
+// We don't support metered pricing or partial batches for now, so the entire
+// batch is rejected when remaining quota is less than the batch size, and
+// the quota must remain unchanged (no partial debit).
+it("rejects batch when remaining quota is less than batch size and does not debit", async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("free");
+  await Auth.Otp.signIn();
+
+  // Drain async logEvent debits before forcing the quota down to a known
+  // value — otherwise a trailing in-flight debit would push it negative
+  // after we set it to 2 and break the post-condition.
+  // `minimumElapsedMs` guards against returning before the async events
+  // have started firing.
+  await waitForItemQuantityToStabilize(
+    ownerTeamId,
+    ITEM_IDS.analyticsEvents,
+    { minimumElapsedMs: 5000 },
+  );
+  await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 2);
+
+  const res = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: Date.now(),
+    events: Array.from({ length: 5 }, (_, i) => ({
+      event_type: "$page-view" as const,
+      event_at_ms: Date.now() - i,
+      data: {},
+    })),
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
+
+  const quantityAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  expect(quantityAfter).toBe(2);
+});
+
+it("free plan starts with correct analytics event allocation", async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("free");
+
+  const quantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  expect(quantity).toBe(PLAN_LIMITS.free.analyticsEvents);
+});
+
+it("team plan starts with correct analytics event allocation", async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("team");
+
+  const quantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  expect(quantity).toBe(PLAN_LIMITS.team.analyticsEvents);
 });

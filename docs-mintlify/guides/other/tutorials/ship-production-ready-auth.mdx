@@ -1,12 +1,177 @@
 ---
 title: Ship Production-Ready Auth
-description: Tutorial stub for hardening a Stack Auth deployment before launch.
+description: Lock down page and API access, handle secrets and environments, then align domains, OAuth, email, webhooks, and dashboard production mode with Stack Auth.
 ---
 
-This tutorial is coming soon.
+Going live is not only “turning on production mode.” This guide focuses on **what must be true** so only signed-in users reach protected surfaces, **secrets stay server-only**, and Stack’s dev-friendly defaults are replaced with **your** domains, OAuth apps, and email.
 
-## Planned coverage
+If you are still wiring Stack into your app, complete [Build a SaaS with Stack Auth](/guides/other/tutorials/build-a-saas-with-stack-auth) first. For team RBAC before launch, see [Build a team-based app](/guides/other/tutorials/build-a-team-based-app).
 
-- Environment and key management strategy
-- Provider, email, and webhook production checks
-- Launch readiness and rollback planning
+## What you will have at the end
+
+- A clear model for **protecting pages**, layouts, route handlers, and server actions—and when to use middleware vs in-render checks.
+- Awareness of **Next.js + sensitive HTML** so you do not leak data through composition.
+- A **secrets and environment** split that keeps the server key out of the browser.
+- A **launch-aligned** checklist (domains, OAuth, email, production mode) with pointers to deeper docs.
+- A **webhook** verification mindset (signed payloads only).
+
+## 1. Protect a page (and know what that actually guarantees)
+
+You typically combine **one or more** of:
+
+1. **Middleware** — cheap gate when the URL alone tells you the area is private (for example everything under `/app`).
+2. **Server Components / server loaders** — `await stackServerApp.getUser({ or: "redirect" })` (or handle `null`) on the route that renders sensitive UI.
+3. **Client Components** — `useUser({ or: "redirect" })` for UX; **never** the only layer for authorization.
+
+<Tabs>
+  <Tab title="Middleware (route prefix)">
+    ```tsx title="middleware.ts"
+    import { NextRequest, NextResponse } from "next/server";
+    import { stackServerApp } from "@/stack/server";
+
+    export async function middleware(request: NextRequest) {
+      const user = await stackServerApp.getUser();
+      if (!user) {
+        return NextResponse.redirect(new URL("/handler/sign-in", request.url));
+      }
+      return NextResponse.next();
+    }
+
+    export const config = {
+      matcher: "/app/:path*",
+    };
+    ```
+
+    Match **only** prefixes that should be gated. Do **not** blanket-match `/` or you can block static assets and Stack’s **`/handler`** routes (sign-in, sign-up, callbacks).
+
+    If your project uses **custom handler base paths**, use the sign-in URL from `stackServerApp.urls.signIn` as the redirect target instead of hard-coding `/handler/sign-in` (it may be an absolute URL depending on configuration—`NextResponse.redirect` accepts that).
+  </Tab>
+  <Tab title="Server Component">
+    ```tsx title="app/app/dashboard/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function DashboardPage() {
+      await stackServerApp.getUser({ or: "redirect" });
+      return <h1>Dashboard</h1>;
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component (UX gate)">
+    ```tsx title="app/app/settings/client-gate.tsx"
+    "use client";
+
+    import { useUser } from "@stackframe/stack";
+
+    export function SettingsGate({ children }: { children: React.ReactNode }) {
+      useUser({ or: "redirect" });
+      return <>{children}</>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### `redirect` vs `throw`
+
+- **`{ or: "redirect" }`** — use when a browser navigation is appropriate (pages, most Server Components).
+- **`{ or: "throw" }`** — use in **server actions**, **route handlers**, and other places where redirecting would be wrong; map errors to `401`/`403` responses yourself.
+
+```tsx title="app/api/me/route.ts"
+import { stackServerApp } from "@/stack/server";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  try {
+    const user = await stackServerApp.getUser({ or: "throw" });
+    return NextResponse.json({ id: user.id });
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+}
+```
+
+### Sensitive content and Next.js composition
+
+Authentication prevents **impersonation**, but **HTML composition** still matters:
+
+- **Client Components** ship to the browser; gating with hooks does not hide their bundled code.
+- **Server Components**: a protected parent does **not** guarantee an unprotected child (or an unprotected segment under a layout) never reaches the client. Anything that embeds **secrets or PII** should **itself** call `getUser({ or: "redirect" })` / `getUser({ or: "throw" })` (or otherwise avoid rendering that data when unauthenticated).
+- **Middleware**: on **Next.js 15.2.3+**, middleware-only protection does not leak unprotected server-rendered fragments the way older versions could; still treat **authorization** (who may perform an action) as a **server** concern.
+
+Read the full discussion in [User fundamentals — Protecting a page](/guides/getting-started/user-fundamentals#protecting-a-page).
+
+<Info>
+  Treat **client-side** checks as **UX only**. Anything that mutates data or exposes another customer’s data must be enforced on the server (Server Components, server actions, route handlers, or your backend with the **secret server key** or validated tokens). For team-scoped apps, re-check [RBAC](/guides/apps/rbac/overview) on the server, not only with `usePermission`.
+</Info>
+
+## 2. Secrets, keys, and environments
+
+<Warning>
+  **`STACK_SECRET_SERVER_KEY`** (or `ssk_...`) must **only** exist in server-side environments (SSR, route handlers, server actions, your backend). Never prefix it with `NEXT_PUBLIC_`, never import it from code that runs in the browser, and never log it. See [Stack App](/guides/going-further/stack-app) and the [REST API overview](/api/overview).
+</Warning>
+
+Practical split:
+
+| Variable | Typical exposure | Use |
+|----------|------------------|-----|
+| `NEXT_PUBLIC_STACK_PROJECT_ID` | Browser + server | Identifies the project to the hosted UI and client SDK. |
+| `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` (if used) | Browser + server | Client-safe key where your project uses publishable keys. |
+| `STACK_SECRET_SERVER_KEY` | **Server only** | Elevated server SDK and REST **server** API. |
+
+Use **separate** Stack projects or at least **separate** env values for production vs staging when possible. Rotate keys from the dashboard if a secret is exposed.
+
+## 3. Domains, OAuth, email, and production mode
+
+Stack’s dev defaults (localhost callbacks, shared OAuth keys, shared mail) are convenient but **not** what you want for real users.
+
+<Steps>
+  <Step title="Domains and callbacks">
+    Add your real **`https://…` origin** under **Domain & Handlers** and disable **Allow all localhost callbacks** when you no longer need local redirects against production configuration. Details: [Launch checklist — Domains](/guides/apps/launch-checklist/overview#domains).
+  </Step>
+  <Step title="OAuth providers">
+    Create **your own** OAuth clients per provider, set the provider callback URLs Stack documents, then paste **your** client ID and secret in the dashboard (leave shared keys for local dev only). Details: [Launch checklist — OAuth providers](/guides/apps/launch-checklist/overview#oauth-providers) and [Auth providers](/guides/apps/authentication/auth-providers).
+  </Step>
+  <Step title="Email">
+    Point outbound mail at **your** SMTP/domain so magic links and invitations come from a domain users trust. Details: [Launch checklist — Email server](/guides/apps/launch-checklist/overview#email-server) and [Emails](/guides/apps/emails/overview).
+  </Step>
+  <Step title="Enable production mode">
+    After the above, turn on **production mode** in **Project Settings** so dashboard guardrails match how you run in prod ([Launch checklist — Enabling production mode](/guides/apps/launch-checklist/overview#enabling-production-mode)).
+  </Step>
+</Steps>
+
+## 4. Webhooks
+
+If you consume Stack webhooks, **verify every payload** (for example with Svix and `STACK_WEBHOOK_SECRET`) before acting on events—treat unsigned or failed verification as `400`. Implementation patterns: [Webhooks](/guides/apps/webhooks/overview).
+
+## 5. Before you flip traffic
+
+- **Smoke-test** sign-in, sign-up, password reset, and OAuth **on the production domain** after DNS and env vars are final.
+- **Confirm** redirect URLs in third-party consoles (OAuth, IdP) match the Stack callback URLs you use in prod.
+- **Align** session / cookie behavior with your hosting (same-site, HTTPS, reverse proxies) per your platform docs.
+- **Plan rollback**: keep prior env values or a maintenance window note so you can revert dashboard or env changes quickly.
+
+## Related guides
+
+| Topic | Guide |
+|--------|--------|
+| First integration | [Build a SaaS with Stack Auth](/guides/other/tutorials/build-a-saas-with-stack-auth) |
+| Page protection details | [User fundamentals](/guides/getting-started/user-fundamentals) |
+| Domains, OAuth, email, prod mode | [Launch checklist](/guides/apps/launch-checklist/overview) |
+| `StackServerApp` and keys | [Stack App](/guides/going-further/stack-app) |
+| Webhook verification | [Webhooks](/guides/apps/webhooks/overview) |
+| REST from your backend | [API overview](/api/overview) |
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Is middleware enough to protect my API?">
+    Middleware runs on **matching routes** and is great for coarse “must be logged in” gates. **Route handlers** and **server actions** should still call `getUser({ or: "throw" })` (or equivalent) and return proper HTTP errors—middleware will not run for every internal call path, and **authorization** (what that user may do) belongs next to your business logic.
+  </Accordion>
+
+  <Accordion title="Should production and development share one Stack project?">
+    Prefer **separate projects** (or strictly separated keys and OAuth clients) so you never point production OAuth callbacks at localhost, and so a leaked dev key cannot touch production data.
+  </Accordion>
+
+  <Accordion title="Where do teams and RBAC fit for launch?">
+    Model permissions in the dashboard, then enforce them on the server for every sensitive operation. Walkthrough: [Build a team-based app](/guides/other/tutorials/build-a-team-based-app).
+  </Accordion>
+</AccordionGroup>

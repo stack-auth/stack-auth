@@ -28,6 +28,19 @@ export type AdminListSessionReplaysResponse = {
   },
 };
 
+export type AdminGetSessionReplayResponse = {
+  id: string,
+  project_user: {
+    id: string,
+    display_name: string | null,
+    primary_email: string | null,
+  },
+  started_at_millis: number,
+  last_event_at_millis: number,
+  chunk_count: number,
+  event_count: number,
+};
+
 export type AdminListSessionReplayChunksOptions = {
   limit?: number,
   cursor?: string,

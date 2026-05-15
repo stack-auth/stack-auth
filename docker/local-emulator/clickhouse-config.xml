@@ -15,6 +15,8 @@
 
     <max_server_memory_usage_to_ram_ratio>0.5</max_server_memory_usage_to_ram_ratio>
 
+    <custom_settings_prefixes>SQL_</custom_settings_prefixes>
+
     <user_directories>
         <users_xml>
             <path>users.xml</path>

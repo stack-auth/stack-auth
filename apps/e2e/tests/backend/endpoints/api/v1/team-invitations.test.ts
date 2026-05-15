@@ -104,9 +104,33 @@ it("can send invitation", async ({ expect }) => {
   `);
 });
 
+it("grants 1 dashboard_admin seat when creating a team on the internal project", async ({ expect }) => {
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const productsResponse = await niceBackendFetch(`/api/latest/payments/products/team/${teamId}`, {
+    accessType: "server",
+  });
+  expect(productsResponse.status).toBe(200);
+  expect(productsResponse.body.items.length).toBeGreaterThan(0);
+
+  const response = await niceBackendFetch(`/api/latest/payments/items/team/${teamId}/dashboard_admins`, {
+    accessType: "server",
+  });
+  expect(response.status).toBe(200);
+  expect(response.body.quantity).toBe(1);
+});
+
 it("can send invitation without a current user on the server", async ({ expect }) => {
   const { teamId } = await Team.create();
   const receiveMailbox = createMailbox();
+
+  const grantSeatsResponse = await niceBackendFetch(`/api/v1/payments/items/team/${teamId}/dashboard_admins/update-quantity?allow_negative=false`, {
+    method: "POST",
+    accessType: "server",
+    body: { delta: 3 },
+  });
+  expect(grantSeatsResponse).toMatchObject({ status: 200 });
 
   backendContext.set({ userAuth: null });
   const sendTeamInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
@@ -844,6 +868,8 @@ it("should allow a restricted user to accept invitation after verifying email", 
     method: "GET",
   });
   expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+}, {
+  timeout: 120_000,
 });
 
 

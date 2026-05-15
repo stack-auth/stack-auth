@@ -1,8 +1,8 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.8.83",
-  "repository": "https://github.com/stack-auth/stack-auth",
+  "version": "2.8.89",
+  "repository": "https://github.com/hexclave/stack-auth",
   "type": "module",
   "scripts": {
     "dev": "vite --force --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}20",

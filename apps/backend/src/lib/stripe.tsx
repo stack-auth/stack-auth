@@ -1,4 +1,6 @@
 import { CustomerType } from "@/generated/prisma/client";
+import { bulldozerWriteSubscription, bulldozerWriteSubscriptionInvoice } from "@/lib/payments/bulldozer-dual-write";
+import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -8,15 +10,18 @@ import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dis
 import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
 import type * as yup from "yup";
+import { isLocalEmulatorEnabled } from "./local-emulator";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
-const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
+export const useStripeMock = isLocalEmulatorEnabled()
+  || (stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment()));
 const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+const stripeMockPort = Number(getEnvVariable("STACK_STRIPE_MOCK_PORT", "") || `${stackPortPrefix}23`);
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
   host: "localhost",
-  port: Number(`${stackPortPrefix}23`),
+  port: stripeMockPort,
 } : {};
 
 /** Product type as stored in Stripe metadata (same as config product schema) */
@@ -99,7 +104,7 @@ export async function resolveProductFromStripeMetadata(options: {
           tenancyId: options.tenancyId,
           productString,
           metadata: options.metadata,
-          error,
+          cause: error,
         }
       );
     }
@@ -182,7 +187,6 @@ import.meta.vitest?.describe("resolveProductFromStripeMetadata", (test) => {
     });
   });
 });
-
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
     throw new StackAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
@@ -232,6 +236,33 @@ const getTenancyFromStripeAccountIdOrThrow = async (stripe: Stripe, stripeAccoun
   return tenancy;
 };
 
+const TERMINAL_STRIPE_STATUSES = ["canceled", "incomplete_expired", "unpaid"] as const;
+
+function getEndedAtForSync(subscription: Stripe.Subscription, sanitizedEnd: Date): { endedAt: Date } | {} {
+  if (!TERMINAL_STRIPE_STATUSES.includes(subscription.status as typeof TERMINAL_STRIPE_STATUSES[number])) {
+    return {};
+  }
+  // Prefer Stripe's `ended_at` — real Stripe always sets it on transitions into
+  // a terminal status. If the webhook payload omits it (mocks, older API
+  // versions), fall back to the already-past period boundary so the timefold
+  // can fire sub-end inline; absolute last resort is `now`.
+  if (subscription.ended_at) {
+    return { endedAt: new Date(subscription.ended_at * 1000) };
+  }
+  //fallback for if stripe didnt set ended_at but sub definitely ended i.e current_period_end <= now
+  if (sanitizedEnd <= new Date()) {
+    return { endedAt: sanitizedEnd };
+  }
+  return { endedAt: new Date() };
+}
+
+function getCanceledAtForSync(subscription: Stripe.Subscription): { canceledAt: Date } | {} {
+  if (subscription.canceled_at) {
+    return { canceledAt: new Date(subscription.canceled_at * 1000) };
+  }
+  return {};
+}
+
 export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
@@ -272,7 +303,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       context: { subscriptionId: subscription.id },
     });
 
-    await prisma.subscription.upsert({
+    // dual write - prisma and bulldozer
+    const upsertedSub = await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {
           tenancyId: tenancy.id,
@@ -287,6 +319,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         priceId: priceId ?? null,
+        ...getEndedAtForSync(subscription, sanitizedDates.end),
+        ...getCanceledAtForSync(subscription),
       },
       create: {
         tenancyId: tenancy.id,
@@ -304,6 +338,15 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         creationSource: "PURCHASE_PAGE"
       },
     });
+    await bulldozerWriteSubscription(prisma, upsertedSub);
+  }
+
+  // If this was a cancellation on our own billing (internal tenancy hosts the
+  // free/team/growth plans), regrant free so the team doesn't end up at zero
+  // entitlements. No-op if the team still owns another plan in the line, or
+  // for customer projects' own Stripe webhooks.
+  if (tenancy.project.id === "internal" && customerType === CustomerType.TEAM) {
+    await ensureFreePlanForBillingTeam(customerId);
   }
 }
 
@@ -327,7 +370,8 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  await prisma.subscriptionInvoice.upsert({
+  // dual write - prisma and bulldozer
+  const upsertedInvoice = await prisma.subscriptionInvoice.upsert({
     where: {
       tenancyId_stripeInvoiceId: {
         tenancyId: tenancy.id,
@@ -351,4 +395,5 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
+  await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
 }
