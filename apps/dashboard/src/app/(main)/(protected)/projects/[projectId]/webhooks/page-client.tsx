@@ -497,7 +497,7 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
         isLoadingMore={gridData.isLoadingMore}
         onLoadMore={gridData.loadMore}
         footer={false}
-
+        fillHeight={false}
       />
     </DesignCard>
   );
