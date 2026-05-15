@@ -54,7 +54,7 @@
         ".env.production.local"
       ],
       "dependsOn": [
-        "^build"
+        "build"
       ],
       "outputs": [
         ".next/**",
