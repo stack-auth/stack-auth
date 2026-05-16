@@ -1,13 +1,11 @@
 /* eslint-disable no-restricted-syntax */
-import { teamMembershipsCrudHandlers } from '@/app/api/latest/team-memberships/crud';
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
-import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
+import { BooleanTrue, ContactChannelType, CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { getClickhouseAdminClient } from '@/lib/clickhouse';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
-import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransaction } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
@@ -16,10 +14,12 @@ import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
-import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
+
+/** The full Prisma client returned for a tenancy — supports `$transaction` / `retryTransaction`. */
+type TenancyPrismaClient = Awaited<ReturnType<typeof getPrismaClientForTenancy>>;
 
 /**
  * Derive a stable v4-shaped UUID from a namespaced string so seed re-runs
@@ -90,7 +90,7 @@ type SeedDummyTeamsOptions = {
 };
 
 type SeedDummyUsersOptions = {
-  prisma: PrismaClientTransaction,
+  prisma: TenancyPrismaClient,
   tenancy: Tenancy,
   teamNameToId: Map<string, string>,
 };
@@ -406,91 +406,6 @@ async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<strin
 type SeedOauthProvider = { providerId: string, accountId: string, email: string };
 
 /**
- * Idempotently reconcile OAuth provider rows for an existing seeded user.
- *
- * `adminCreate` already writes these on first insert, so this usually becomes
- * a no-op for newly-created users. For users that existed before the seed grew
- * its OAuth list, this makes the database match the current deterministic seed
- * output exactly.
- *
- * Dedupe key is `(configOAuthProviderId, providerAccountId)`, matching the
- * `@@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])`
- * constraint on ProjectUserOAuthAccount.
- *
- * Note: writes are sequential, not wrapped in `$transaction`, because the
- * shared `PrismaClientTransaction` type is a union whose transaction branch
- * doesn't expose `$transaction`. This is acceptable for a seed.
- */
-async function syncSeedUserOauthProviders(
-  prisma: PrismaClientTransaction,
-  tenancyId: string,
-  projectUserId: string,
-  providers: readonly SeedOauthProvider[],
-): Promise<void> {
-  const desiredKey = new Set(providers.map((p) => `${p.providerId}::${p.accountId}`));
-
-  const existing = await prisma.projectUserOAuthAccount.findMany({
-    where: { tenancyId, projectUserId },
-    select: {
-      configOAuthProviderId: true,
-      providerAccountId: true,
-      oauthAuthMethod: {
-        select: {
-          authMethodId: true,
-        },
-      },
-    },
-  });
-  const existingKey = new Set(existing.map((a) => `${a.configOAuthProviderId}::${a.providerAccountId}`));
-
-  for (const account of existing) {
-    const key = `${account.configOAuthProviderId}::${account.providerAccountId}`;
-    if (desiredKey.has(key)) continue;
-
-    if (account.oauthAuthMethod != null) {
-      await prisma.authMethod.delete({
-        where: {
-          tenancyId_id: {
-            tenancyId,
-            id: account.oauthAuthMethod.authMethodId,
-          },
-        },
-      });
-    }
-    await prisma.projectUserOAuthAccount.delete({
-      where: {
-        tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
-          tenancyId,
-          configOAuthProviderId: account.configOAuthProviderId,
-          projectUserId,
-          providerAccountId: account.providerAccountId,
-        },
-      },
-    });
-  }
-
-  for (const provider of providers) {
-    if (existingKey.has(`${provider.providerId}::${provider.accountId}`)) continue;
-
-    const authMethod = await prisma.authMethod.create({
-      data: { tenancyId, projectUserId },
-    });
-    await prisma.projectUserOAuthAccount.create({
-      data: {
-        tenancyId,
-        projectUserId,
-        configOAuthProviderId: provider.providerId,
-        providerAccountId: provider.accountId,
-        email: provider.email,
-        oauthAuthMethod: { create: { authMethodId: authMethod.id } },
-        allowConnectedAccounts: true,
-        allowSignIn: true,
-      },
-    });
-  }
-}
-
-/**
  * Sample a random subset of OAuth providers for a bulk synthetic user.
  *
  * Distribution: ~50% get multiple accounts, ~30% get one, ~20% get none.
@@ -531,86 +446,6 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
 
   const userEmailToId = new Map<string, string>();
 
-  for (const user of userSeeds) {
-    const existingUser = await prisma.projectUser.findFirst({
-      where: {
-        tenancyId: tenancy.id,
-        contactChannels: {
-          some: {
-            type: 'EMAIL',
-            value: user.email,
-          },
-        },
-      },
-      select: {
-        projectUserId: true,
-      },
-    });
-
-    let userId = existingUser?.projectUserId;
-    if (!userId) {
-      const createdUser = await usersCrudHandlers.adminCreate({
-        tenancy,
-        data: {
-          display_name: user.displayName ?? null,
-          primary_email: user.email,
-          primary_email_auth_enabled: true,
-          primary_email_verified: user.primaryEmailVerified,
-          otp_auth_enabled: false,
-          is_anonymous: user.isAnonymous,
-          oauth_providers: user.oauthProviders.map((provider) => ({
-            id: provider.providerId,
-            account_id: provider.accountId,
-            email: user.email,
-          })),
-          profile_image_url: user.profileImageUrl ?? null,
-        },
-      });
-      userId = createdUser.id;
-    }
-
-    await syncSeedUserOauthProviders(
-      prisma,
-      tenancy.id,
-      userId,
-      user.oauthProviders.map((p) => ({
-        providerId: p.providerId,
-        accountId: p.accountId,
-        email: user.email,
-      })),
-    );
-
-    if (user.createdAt != null) {
-      await prisma.projectUser.updateMany({
-        where: { tenancyId: tenancy.id, projectUserId: userId },
-        data: { createdAt: user.createdAt },
-      });
-    }
-
-    userEmailToId.set(user.email, userId);
-
-    for (const teamName of user.teamDisplayNames) {
-      const teamId = teamNameToId.get(teamName) ?? throwErr(`Unknown dummy project team ${teamName}`);
-      const existingMembership = await prisma.teamMember.findUnique({
-        where: {
-          tenancyId_projectUserId_teamId: {
-            tenancyId: tenancy.id,
-            projectUserId: userId,
-            teamId,
-          },
-        },
-      });
-      if (existingMembership) continue;
-
-      await teamMembershipsCrudHandlers.adminCreate({
-        tenancy,
-        team_id: teamId,
-        user_id: userId,
-        data: {},
-      });
-    }
-  }
-
   // Generate additional bulk users for realistic chart data
   // Uses seeded PRNG for reproducibility — each day gets a varying number of sign-ups
   const bulkFirstNames = [
@@ -643,6 +478,16 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
     4, 3, 5, 2, 6, 3, 2, 4, // week 4+ (peak recent activity)
   ];
 
+  // Phase 1 (sequential): derive every bulk-user spec from the PRNG up front,
+  // so the seed stays deterministic regardless of creation order/concurrency.
+  type BulkUserSpec = {
+    email: string,
+    displayName: string,
+    createdAt: Date,
+    oauthProviders: ReturnType<typeof pickBulkOauthProviders>,
+    primaryEmailVerified: boolean,
+  };
+  const bulkUserSpecs: BulkUserSpec[] = [];
   let bulkIndex = 0;
   for (let dayOffset = 0; dayOffset < dailySignUpCounts.length; dayOffset++) {
     const count = dailySignUpCounts[dayOffset];
@@ -656,53 +501,199 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}.bulk${bulkIndex}@dummy.dev`;
       const displayName = `${firstName} ${lastName}`;
       const hour = 8 + Math.floor(bulkRand() * 12);
-      const bulkCreatedAt = daysAgo(dayBack, hour);
-      const oauthProvider = pickBulkOauthProviders({
+      const oauthProviders = pickBulkOauthProviders({
         rand: bulkRand,
         available: bulkOauthProviders,
         email,
       });
-
-      const existing = await prisma.projectUser.findFirst({
-        where: {
-          tenancyId: tenancy.id,
-          contactChannels: { some: { type: 'EMAIL', value: email } },
-        },
-        select: { projectUserId: true },
+      const primaryEmailVerified = bulkRand() > 0.3;
+      bulkUserSpecs.push({
+        email,
+        displayName,
+        createdAt: daysAgo(dayBack, hour),
+        oauthProviders,
+        primaryEmailVerified,
       });
-
-      let bulkUserId: string;
-      if (!existing) {
-        const created = await usersCrudHandlers.adminCreate({
-          tenancy,
-          data: {
-            display_name: displayName,
-            primary_email: email,
-            primary_email_auth_enabled: true,
-            primary_email_verified: bulkRand() > 0.3,
-            otp_auth_enabled: false,
-            is_anonymous: false,
-            oauth_providers: oauthProvider.map((p) => ({
-              id: p.providerId,
-              account_id: p.accountId,
-              email: p.email,
-            })),
-            profile_image_url: null,
-          },
-        });
-        bulkUserId = created.id;
-      } else {
-        bulkUserId = existing.projectUserId;
-      }
-      await syncSeedUserOauthProviders(prisma, tenancy.id, bulkUserId, oauthProvider);
-      await prisma.projectUser.updateMany({
-        where: { tenancyId: tenancy.id, projectUserId: bulkUserId },
-        data: { createdAt: bulkCreatedAt },
-      });
-      userEmailToId.set(email, bulkUserId);
-
       bulkIndex++;
     }
+  }
+
+  // Unified list of every user to seed (named seeds + bulk users), so they can
+  // all be created with the same bulk-insert path.
+  type UserToSeed = {
+    email: string,
+    displayName: string | null,
+    primaryEmailVerified: boolean,
+    isAnonymous: boolean,
+    profileImageUrl: string | null,
+    createdAt: Date | null,
+    oauthProviders: SeedOauthProvider[],
+  };
+  const usersToSeed: UserToSeed[] = [
+    ...userSeeds.map((u): UserToSeed => ({
+      email: u.email,
+      displayName: u.displayName ?? null,
+      primaryEmailVerified: u.primaryEmailVerified,
+      isAnonymous: u.isAnonymous,
+      profileImageUrl: u.profileImageUrl ?? null,
+      createdAt: u.createdAt ?? null,
+      oauthProviders: u.oauthProviders.map((p) => ({ providerId: p.providerId, accountId: p.accountId, email: u.email })),
+    })),
+    ...bulkUserSpecs.map((s): UserToSeed => ({
+      email: s.email,
+      displayName: s.displayName,
+      primaryEmailVerified: s.primaryEmailVerified,
+      isAnonymous: false,
+      profileImageUrl: null,
+      createdAt: s.createdAt,
+      oauthProviders: s.oauthProviders,
+    })),
+  ];
+
+  // Idempotency: in one query, find every email that already has a user, and
+  // skip re-creating it (seedDummyProject may run against an existing project).
+  const existingChannels = await prisma.contactChannel.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      type: 'EMAIL',
+      value: { in: usersToSeed.map((u) => u.email) },
+    },
+    select: { value: true, projectUserId: true },
+  });
+  const existingIdByEmail = new Map(existingChannels.map((c) => [c.value, c.projectUserId]));
+
+  // Build every row up front, with all UUIDs pre-generated so foreign keys
+  // wire up without round-tripping. This replaces ~N per-user adminCreate
+  // transactions with one createMany per table.
+  const defaultPermissionIds = Object.keys(tenancy.config.rbac.defaultPermissions.signUp);
+  const projectUserRows: Prisma.ProjectUserCreateManyInput[] = [];
+  const contactChannelRows: Prisma.ContactChannelCreateManyInput[] = [];
+  const authMethodRows: Prisma.AuthMethodCreateManyInput[] = [];
+  const oauthAccountRows: Prisma.ProjectUserOAuthAccountCreateManyInput[] = [];
+  const oauthAuthMethodRows: Prisma.OAuthAuthMethodCreateManyInput[] = [];
+  const directPermissionRows: Prisma.ProjectUserDirectPermissionCreateManyInput[] = [];
+
+  for (const user of usersToSeed) {
+    const existingId = existingIdByEmail.get(user.email);
+    if (existingId != null) {
+      userEmailToId.set(user.email, existingId);
+      continue;
+    }
+    const projectUserId = randomUUID();
+    userEmailToId.set(user.email, projectUserId);
+
+    projectUserRows.push({
+      tenancyId: tenancy.id,
+      projectUserId,
+      mirroredProjectId: tenancy.project.id,
+      mirroredBranchId: tenancy.branchId,
+      displayName: user.displayName,
+      isAnonymous: user.isAnonymous,
+      profileImageUrl: user.profileImageUrl,
+      // Only createdAt is back-dated (mirrors adminCreate + the old updateMany);
+      // signedUpAt / lastActiveAt fall back to their now() defaults.
+      createdAt: user.createdAt ?? undefined,
+    });
+    contactChannelRows.push({
+      tenancyId: tenancy.id,
+      projectUserId,
+      id: randomUUID(),
+      type: ContactChannelType.EMAIL,
+      value: user.email,
+      isVerified: user.primaryEmailVerified,
+      isPrimary: BooleanTrue.TRUE,
+      usedForAuth: BooleanTrue.TRUE,
+    });
+    for (const provider of user.oauthProviders) {
+      const authMethodId = randomUUID();
+      authMethodRows.push({ tenancyId: tenancy.id, id: authMethodId, projectUserId });
+      oauthAccountRows.push({
+        tenancyId: tenancy.id,
+        id: randomUUID(),
+        projectUserId,
+        configOAuthProviderId: provider.providerId,
+        providerAccountId: provider.accountId,
+        email: provider.email,
+        allowConnectedAccounts: true,
+        allowSignIn: true,
+      });
+      oauthAuthMethodRows.push({
+        tenancyId: tenancy.id,
+        authMethodId,
+        projectUserId,
+        configOAuthProviderId: provider.providerId,
+        providerAccountId: provider.accountId,
+      });
+    }
+    for (const permissionId of defaultPermissionIds) {
+      directPermissionRows.push({
+        id: randomUUID(),
+        tenancyId: tenancy.id,
+        projectUserId,
+        permissionId,
+      });
+    }
+  }
+
+  // One createMany per table, all inside a single transaction. Order matters
+  // for foreign keys: ProjectUser first, OAuthAuthMethod after its referents.
+  if (projectUserRows.length > 0) {
+    await retryTransaction(prisma, async (tx) => {
+      await tx.projectUser.createMany({ data: projectUserRows });
+      await tx.contactChannel.createMany({ data: contactChannelRows });
+      if (authMethodRows.length > 0) {
+        await tx.authMethod.createMany({ data: authMethodRows });
+        await tx.projectUserOAuthAccount.createMany({ data: oauthAccountRows });
+        await tx.oAuthAuthMethod.createMany({ data: oauthAuthMethodRows });
+      }
+      if (directPermissionRows.length > 0) {
+        await tx.projectUserDirectPermission.createMany({ data: directPermissionRows });
+      }
+    });
+  }
+
+  // Team memberships for the named seed users — bulk-inserted the same way.
+  // This mirrors `addUserToTeam`: a TeamMember row plus the project's default
+  // team-member permissions (TeamMemberDirectPermission rows). Webhooks are
+  // intentionally skipped, as everywhere else in the seed.
+  const desiredMemberships: Array<{ userId: string, teamId: string }> = [];
+  for (const user of userSeeds) {
+    const userId = userEmailToId.get(user.email) ?? throwErr(`Seeded user ${user.email} is missing an id`);
+    for (const teamName of user.teamDisplayNames) {
+      const teamId = teamNameToId.get(teamName) ?? throwErr(`Unknown dummy project team ${teamName}`);
+      desiredMemberships.push({ userId, teamId });
+    }
+  }
+  const namedUserIds = [...new Set(desiredMemberships.map((m) => m.userId))];
+  const existingMemberships = namedUserIds.length === 0 ? [] : await prisma.teamMember.findMany({
+    where: { tenancyId: tenancy.id, projectUserId: { in: namedUserIds } },
+    select: { projectUserId: true, teamId: true },
+  });
+  const existingMembershipKeys = new Set(existingMemberships.map((m) => `${m.projectUserId}:${m.teamId}`));
+  const defaultTeamPermissionIds = Object.keys(tenancy.config.rbac.defaultPermissions.teamMember);
+
+  const teamMemberRows: Prisma.TeamMemberCreateManyInput[] = [];
+  const teamMemberPermissionRows: Prisma.TeamMemberDirectPermissionCreateManyInput[] = [];
+  for (const { userId, teamId } of desiredMemberships) {
+    if (existingMembershipKeys.has(`${userId}:${teamId}`)) continue;
+    teamMemberRows.push({ tenancyId: tenancy.id, projectUserId: userId, teamId });
+    for (const permissionId of defaultTeamPermissionIds) {
+      teamMemberPermissionRows.push({
+        id: randomUUID(),
+        tenancyId: tenancy.id,
+        projectUserId: userId,
+        teamId,
+        permissionId,
+      });
+    }
+  }
+  if (teamMemberRows.length > 0) {
+    await retryTransaction(prisma, async (tx) => {
+      await tx.teamMember.createMany({ data: teamMemberRows });
+      if (teamMemberPermissionRows.length > 0) {
+        await tx.teamMemberDirectPermission.createMany({ data: teamMemberPermissionRows });
+      }
+    });
   }
 
   return userEmailToId;
@@ -1601,18 +1592,22 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   });
 
   if (clickhouseClient && clickhouseRows.length > 0) {
-    const BATCH_SIZE = 500;
+    // Large batches: ClickHouse ingests tens of thousands of rows per insert
+    // happily, so a bigger batch means far fewer HTTP round-trips.
+    const BATCH_SIZE = 10_000;
+    const clickhouseBatches: Array<typeof clickhouseRows> = [];
     for (let i = 0; i < clickhouseRows.length; i += BATCH_SIZE) {
-      await clickhouseClient.insert({
-        table: 'analytics_internal.events',
-        values: clickhouseRows.slice(i, i + BATCH_SIZE),
-        format: 'JSONEachRow',
-        clickhouse_settings: {
-          date_time_input_format: 'best_effort',
-          async_insert: 1,
-        },
-      });
+      clickhouseBatches.push(clickhouseRows.slice(i, i + BATCH_SIZE));
     }
+    await Promise.all(clickhouseBatches.map((batch) => clickhouseClient.insert({
+      table: 'analytics_internal.events',
+      values: batch,
+      format: 'JSONEachRow',
+      clickhouse_settings: {
+        date_time_input_format: 'best_effort',
+        async_insert: 1,
+      },
+    })));
   }
 
   console.log(`Finished seeding session activity events (${events.length} events)`);
@@ -1705,6 +1700,10 @@ async function seedBulkSignupsAndActivity(options: {
   const projectUsersToCreate: Prisma.ProjectUserCreateManyInput[] = [];
   const contactChannelsToCreate: Prisma.ContactChannelCreateManyInput[] = [];
   const userActivity: Array<{ userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
+  // Only users that already existed need a timestamp UPDATE afterwards — the
+  // `createMany` below already writes correct createdAt/signedUpAt for every
+  // newly-inserted row, so re-updating them would be pure wasted work.
+  const usersToBackdate: Array<{ userId: string, signedUpAt: Date }> = [];
 
   for (const seedUser of seedUsers) {
     const userId = existingUserIdByEmail.get(seedUser.email) ?? seedUser.projectUserId;
@@ -1737,6 +1736,7 @@ async function seedBulkSignupsAndActivity(options: {
       });
     } else {
       updated++;
+      usersToBackdate.push({ userId, signedUpAt: seedUser.signedUpAt });
     }
 
     userActivity.push({
@@ -1761,7 +1761,7 @@ async function seedBulkSignupsAndActivity(options: {
       event_type: '$token-refresh',
       event_at: formatClickhouseTimestamp(seedUser.signedUpAt),
       data: {
-        refresh_token_id: generateUuid(),
+        refresh_token_id: randomUUID(),
         is_anonymous: false,
         ip_info: ipInfoForUser,
       },
@@ -1789,8 +1789,8 @@ async function seedBulkSignupsAndActivity(options: {
     });
   }
 
-  if (userActivity.length > 0) {
-    const seededTimestampRows = userActivity.map((activity) => Prisma.sql`(${activity.userId}::uuid, ${activity.signedUpAt}::timestamptz)`);
+  if (usersToBackdate.length > 0) {
+    const seededTimestampRows = usersToBackdate.map((u) => Prisma.sql`(${u.userId}::uuid, ${u.signedUpAt}::timestamptz)`);
     await prisma.$executeRaw`
       UPDATE "ProjectUser" AS pu
       SET "createdAt" = seeded.signed_up_at,
@@ -1828,7 +1828,7 @@ async function seedBulkSignupsAndActivity(options: {
         event_type: '$token-refresh',
         event_at: formatClickhouseTimestamp(visitTime),
         data: {
-          refresh_token_id: generateUuid(),
+          refresh_token_id: randomUUID(),
           is_anonymous: false,
           ip_info: ipInfo,
         },
@@ -1877,19 +1877,22 @@ async function seedBulkSignupsAndActivity(options: {
   }
 
   console.log(`[seed-activity] Flushing ${clickhouseRows.length} events to ClickHouse...`);
-  const BATCH = 500;
+  // Large batches: ClickHouse ingests tens of thousands of rows per insert
+  // happily, so a bigger batch means far fewer HTTP round-trips.
+  const BATCH = 10_000;
+  const clickhouseBatches: Array<Array<Record<string, unknown>>> = [];
   for (let i = 0; i < clickhouseRows.length; i += BATCH) {
-    const batch = clickhouseRows.slice(i, i + BATCH);
-    await clickhouse.insert({
-      table: 'analytics_internal.events',
-      values: batch,
-      format: 'JSONEachRow',
-      clickhouse_settings: {
-        date_time_input_format: 'best_effort',
-        async_insert: 1,
-      },
-    });
+    clickhouseBatches.push(clickhouseRows.slice(i, i + BATCH));
   }
+  await Promise.all(clickhouseBatches.map((batch) => clickhouse.insert({
+    table: 'analytics_internal.events',
+    values: batch,
+    format: 'JSONEachRow',
+    clickhouse_settings: {
+      date_time_input_format: 'best_effort',
+      async_insert: 1,
+    },
+  })));
 
   const tokenRefreshCount = clickhouseRows.filter(r => r.event_type === '$token-refresh').length;
   const pageViewCount = clickhouseRows.filter(r => r.event_type === '$page-view').length;
@@ -1904,7 +1907,7 @@ async function seedBulkSignupsAndActivity(options: {
  * Used by both the seed script and the preview project creation endpoint.
  */
 export async function seedDummyProject(options: SeedDummyProjectOptions): Promise<string> {
-  const projectId = options.projectId ?? generateUuid();
+  const projectId = options.projectId ?? randomUUID();
 
   const baseProjectData = {
     display_name: 'Demo Project',
@@ -1959,12 +1962,23 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     prisma: dummyPrisma,
     tenancy: dummyTenancy,
   });
+
   const userEmailToId = await seedDummyUsers({
     prisma: dummyPrisma,
     tenancy: dummyTenancy,
     teamNameToId,
   });
   const { paymentsProducts, paymentsBranchOverride } = buildDummyPaymentsSetup();
+
+  // seedBulkSignupsAndActivity is also a Postgres-write-heavy bulk job, so we
+  // deliberately do NOT overlap it with user seeding — two bulk writers on the
+  // same database contend and each slows down. Kick it off here, once user
+  // seeding is done, to overlap with the lighter (and partly ClickHouse-bound)
+  // remaining steps instead.
+  const bulkSignupsPromise = seedBulkSignupsAndActivity({
+    tenancy: dummyTenancy,
+    prisma: dummyPrisma,
+  });
 
   await Promise.all([
     overrideBranchConfigOverride({
@@ -2050,14 +2064,13 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     }),
   ]);
 
-  await seedDummyTransactions({
-    prisma: dummyPrisma,
-    tenancyId: dummyTenancy.id,
-    teamNameToId,
-    paymentsProducts,
-  });
-
   await Promise.all([
+    seedDummyTransactions({
+      prisma: dummyPrisma,
+      tenancyId: dummyTenancy.id,
+      teamNameToId,
+      paymentsProducts,
+    }),
     seedDummyEmails({
       prisma: dummyPrisma,
       tenancyId: dummyTenancy.id,
@@ -2075,10 +2088,8 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     }),
   ]);
 
-  await seedBulkSignupsAndActivity({
-    tenancy: dummyTenancy,
-    prisma: dummyPrisma,
-  });
+  // Wait for the concurrently-started bulk signup/activity seeding to finish.
+  await bulkSignupsPromise;
 
   return projectId;
 }
