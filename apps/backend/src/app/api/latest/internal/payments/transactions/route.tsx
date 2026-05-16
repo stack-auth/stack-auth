@@ -27,6 +27,8 @@ type LedgerCursor = {
 type LedgerTransactionRow = {
   type: LedgerTransactionType,
   txnId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
   effectiveAtMillis: number,
   createdAtMillis: number,
   entries: unknown[],
@@ -116,6 +118,7 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
   }
   const txnId = Reflect.get(rowData, "txnId");
   const type = Reflect.get(rowData, "type");
+  const customerId = Reflect.get(rowData, "customerId");
   const effectiveAtMillis = Reflect.get(rowData, "effectiveAtMillis");
   const createdAtMillis = Reflect.get(rowData, "createdAtMillis");
   const entries = Reflect.get(rowData, "entries");
@@ -125,6 +128,9 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
 
   if (typeof txnId !== "string" || txnId.length === 0) {
     throw new StackAssertionError("Ledger transaction row is missing txnId", { rowData });
+  }
+  if (typeof customerId !== "string" || customerId.length === 0) {
+    throw new StackAssertionError("Ledger transaction row is missing customerId", { rowData });
   }
   if (
     type !== "subscription-start" &&
@@ -154,6 +160,8 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
   return {
     type,
     txnId,
+    customerType: readCustomerType(Reflect.get(rowData, "customerType"), "ledger transaction row"),
+    customerId,
     effectiveAtMillis,
     createdAtMillis,
     entries,
@@ -717,6 +725,8 @@ async function getTransactions(options: {
       created_at_millis: row.createdAtMillis,
       effective_at_millis: row.effectiveAtMillis,
       type: mapLedgerTransactionTypeToApiType(row.type),
+      customer_type: row.customerType,
+      customer_id: row.customerId,
       entries,
       adjusted_by: buildAdjustedByFromRefunds({
         row,

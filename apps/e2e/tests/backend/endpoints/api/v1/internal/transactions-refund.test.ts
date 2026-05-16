@@ -424,6 +424,46 @@ it("refunds a test-mode subscription with end_action='now'", async () => {
   expect(productsAfter.body.items).toHaveLength(0);
 });
 
+it("surfaces customer_type and customer_id on a test-mode subscription refund row", async () => {
+  // A test-mode subscription refund row's only public entry is a
+  // product_revocation (or none, for at-period-end) — neither carries
+  // customer fields. The transaction-level customer_type/customer_id let the
+  // dashboard render the customer column instead of a blank row.
+  const { subscriptionId, userId } = await createTestModeSubscription();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      end_action: "now",
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  const refundTxnId = refundRes.body.refund_transaction_id as string;
+
+  const transactionsAfter = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  expect(transactionsAfter.status).toBe(200);
+
+  const refundRow = transactionsAfter.body.transactions.find((tx: any) => tx.id === refundTxnId);
+  expect(refundRow).toBeDefined();
+  expect(refundRow.type).toBe("refund");
+  expect(refundRow.customer_type).toBe("user");
+  expect(refundRow.customer_id).toBe(userId);
+  expect(refundRow.test_mode).toBe(true);
+
+  // Every transaction in the listing carries customer attribution, not just
+  // refund rows.
+  for (const tx of transactionsAfter.body.transactions) {
+    expect(tx.customer_type).toBe("user");
+    expect(tx.customer_id).toBe(userId);
+  }
+});
+
 it("expires the subscription's item grants when refunded with end_action='now'", async () => {
   // Refund-driven ends emit no subscription-end transaction, so the refund
   // row itself must carry the item-quantity-expire entries — walked from the

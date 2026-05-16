@@ -36,16 +36,11 @@ type TransactionSummary = {
   refunded: boolean,
 };
 
-type EntryWithCustomer = Extract<TransactionEntry, { customer_type: string, customer_id: string }>;
 type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money_transfer' }>;
 type ProductGrantEntry = Extract<TransactionEntry, { type: 'product_grant' }>;
 type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item_quantity_change' }>;
 type RefundTarget = { type: 'subscription' | 'one-time-purchase', id: string };
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === 'USD');
-
-function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustomer {
-  return 'customer_type' in entry && 'customer_id' in entry;
-}
 
 function isMoneyTransferEntry(entry: TransactionEntry): entry is MoneyTransferEntry {
   return entry.type === 'money_transfer';
@@ -174,7 +169,15 @@ function getProductDisplayName(entry: ProductGrantEntry): string {
   return product?.display_name ?? entry.product_id ?? 'Product';
 }
 
-function describeDetail(transaction: Transaction, sourceType: SourceType): string {
+export function describeDetail(transaction: Transaction, sourceType: SourceType): string {
+  // Refund rows carry no product_grant — and a no-money refund (every
+  // test-mode refund, plus end-only live refunds) has only a
+  // product_revocation entry or no entries at all. Describe the lifecycle
+  // effect so the row isn't a bare "-".
+  if (transaction.type === 'refund') {
+    const revokedProduct = transaction.entries.some((entry) => entry.type === 'product_revocation');
+    return revokedProduct ? 'Product access revoked' : 'Refund';
+  }
   const productGrant = transaction.entries.find(isProductGrantEntry);
   if (productGrant) {
     const name = getProductDisplayName(productGrant);
@@ -193,9 +196,8 @@ function describeDetail(transaction: Transaction, sourceType: SourceType): strin
   return '-';
 }
 
-function getTransactionSummary(transaction: Transaction): TransactionSummary {
+export function getTransactionSummary(transaction: Transaction): TransactionSummary {
   const sourceType = deriveSourceType(transaction);
-  const customerEntry = transaction.entries.find(isEntryWithCustomer);
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
   const refundTarget = getRefundTarget(transaction);
   const refunded = transaction.adjusted_by.length > 0;
@@ -203,8 +205,11 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
   return {
     sourceType,
     displayType: formatTransactionTypeLabel(transaction.type),
-    customerType: customerEntry?.customer_type ?? null,
-    customerId: customerEntry?.customer_id ?? null,
+    // Customer comes from the transaction-level fields — entry-derived
+    // customer was null on refund rows whose only entry is a
+    // product_revocation (no customer fields), or which have no entries.
+    customerType: transaction.customer_type,
+    customerId: transaction.customer_id,
     detail: describeDetail(transaction, sourceType),
     amountDisplay: transaction.test_mode ? 'Test mode' : pickChargedAmountDisplay(moneyTransferEntry),
     refundTarget,
