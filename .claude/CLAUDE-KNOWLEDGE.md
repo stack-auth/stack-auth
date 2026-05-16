@@ -490,3 +490,6 @@ A: Use the shared RDE browser security helper for browser-local endpoints, mark 
 
 ## Q: How should local RDE endpoints trust browser origins and API base URLs?
 A: Browser-only RDE endpoints should accept only the exact local dashboard origin derived from the dashboard env/state, such as `http://127.0.0.1:26700`, and reject arbitrary localhost subdomains like `evil.localhost`. CLI bearer endpoints should require the bearer secret and a loopback host but should not use broad localhost origins as trust signals. RDE session registration should accept only `https://api.stack-auth.com`, the exact API base URL passed into the local dashboard by the CLI, or exact custom URLs from a `STACK_`-prefixed allowlist.
+
+## Q: How should the Stack CLI depend on the dashboard RDE standalone build in CI?
+A: Do not invoke a nested `turbo run build:rde-standalone` from `packages/stack-cli`'s `build` script. When the outer CI is already running `turbo run build`, that nested Turbo process can start `apps/dashboard`'s Next build while the outer graph is also building it, causing `.next/lock` failures. Model the dependency in `turbo.json` instead with `@stackframe/stack-cli#build` depending on `@stackframe/dashboard#build:rde-standalone`, and let the CLI script only run `tsdown` plus runtime asset copying.

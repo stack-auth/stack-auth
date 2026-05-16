@@ -90,6 +90,15 @@
         "codegen"
       ]
     },
+    "@stackframe/stack-cli#build": {
+      "dependsOn": [
+        "^build",
+        "@stackframe/dashboard#build:rde-standalone"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
     "clean": {
       "cache": false
     },
