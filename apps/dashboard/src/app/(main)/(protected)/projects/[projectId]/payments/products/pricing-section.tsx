@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Typography } from "@/components/ui";
+import { Button, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { GiftIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -192,13 +192,15 @@ export function PricingSection({
               Add Price
             </Button>
             {onMakeFree && (
-              <Button
-                variant="outline"
-                onClick={onMakeFree}
-              >
-                <GiftIcon className="h-4 w-4 mr-2" />
-                Make Free
-              </Button>
+              <SimpleTooltip tooltip="Mark this product as free. Customers won't be charged, and no prices can be added.">
+                <Button
+                  variant="outline"
+                  onClick={onMakeFree}
+                >
+                  <GiftIcon className="h-4 w-4 mr-2" />
+                  Make Free
+                </Button>
+              </SimpleTooltip>
             )}
           </div>
           {hasError && errorMessage && (
@@ -250,13 +252,15 @@ export function PricingSection({
               Add Price
             </Button>
             {onMakeFree && (
-              <Button
-                variant="outline"
-                onClick={onMakeFree}
-              >
-                <GiftIcon className="h-4 w-4 mr-2" />
-                Make Free
-              </Button>
+              <SimpleTooltip tooltip="Replace all configured prices with a single free tier. Customers won't be charged.">
+                <Button
+                  variant="outline"
+                  onClick={onMakeFree}
+                >
+                  <GiftIcon className="h-4 w-4 mr-2" />
+                  Make Free
+                </Button>
+              </SimpleTooltip>
             )}
           </div>
         </div>
