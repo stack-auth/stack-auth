@@ -487,3 +487,6 @@ A: `--config-file` should point directly to a regular config file. Do not treat 
 
 ## Q: How should RDE PR-review fixes handle the local dashboard and CLI lifecycle?
 A: Use the shared RDE browser security helper for browser-local endpoints, mark bearer-token responses `Cache-Control: private, no-store`, and return 400 for malformed local endpoint JSON. `stack dev` should fail loudly if a bundled dashboard sentinel has no environment value, validate session response shapes at runtime before using `env`, recover from HTTP heartbeat failures the same way as network heartbeat failures, and make heartbeat shutdown interruptible so child-process exit is not delayed by the full heartbeat interval.
+
+## Q: How should local RDE endpoints trust browser origins and API base URLs?
+A: Browser-only RDE endpoints should accept only the exact local dashboard origin derived from the dashboard env/state, such as `http://127.0.0.1:26700`, and reject arbitrary localhost subdomains like `evil.localhost`. CLI bearer endpoints should require the bearer secret and a loopback host but should not use broad localhost origins as trust signals. RDE session registration should accept only `https://api.stack-auth.com`, the exact API base URL passed into the local dashboard by the CLI, or exact custom URLs from a `STACK_`-prefixed allowlist.

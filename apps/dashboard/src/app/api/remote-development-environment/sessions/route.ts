@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAllowedRemoteDevelopmentEnvironmentApiBaseUrl } from "@/lib/remote-development-environment/api-base-url";
 import { registerRemoteDevelopmentEnvironmentSession } from "@/lib/remote-development-environment/manager";
 import { assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
-import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 
 export const runtime = "nodejs";
 
@@ -14,12 +14,6 @@ async function readJsonBody(req: NextRequest): Promise<unknown | NextResponse> {
     }
     throw error;
   }
-}
-
-function isAllowedApiBaseUrl(value: string): boolean {
-  const url = createUrlIfValid(value);
-  if (url == null || (url.protocol !== "http:" && url.protocol !== "https:")) return false;
-  return isLocalhost(url) || url.hostname === "api.stack-auth.com" || url.hostname.endsWith(".stack-auth.com");
 }
 
 export async function POST(req: NextRequest) {
@@ -36,7 +30,7 @@ export async function POST(req: NextRequest) {
   if (typeof body.api_base_url !== "string" || typeof body.config_path !== "string") {
     return NextResponse.json({ error: "api_base_url and config_path are required." }, { status: 400 });
   }
-  if (!isAllowedApiBaseUrl(body.api_base_url)) {
+  if (!isAllowedRemoteDevelopmentEnvironmentApiBaseUrl(body.api_base_url)) {
     return NextResponse.json({ error: "api_base_url is not allowed for remote development environments." }, { status: 400 });
   }
 

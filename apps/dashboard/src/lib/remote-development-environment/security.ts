@@ -1,9 +1,15 @@
 import "server-only";
 
+import { getPublicEnvVar } from "@/lib/env";
 import { NextRequest, NextResponse } from "next/server";
-import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import { isRemoteDevelopmentEnvironmentEnabled } from "./env";
 import { readRemoteDevelopmentEnvironmentState } from "./state";
+
+function urlOrigin(value: string | undefined): string | null {
+  if (value == null || value.length === 0) return null;
+  return createUrlIfValid(value)?.origin ?? null;
+}
 
 function requestHostIsLoopback(req: NextRequest): boolean {
   const host = req.headers.get("host");
@@ -11,10 +17,31 @@ function requestHostIsLoopback(req: NextRequest): boolean {
   return isLocalhost(`http://${host}`);
 }
 
-function originIsAllowed(req: NextRequest): boolean {
+function requestHostOrigin(req: NextRequest): string | null {
+  const host = req.headers.get("host");
+  if (host == null) return null;
+  return urlOrigin(`http://${host}`);
+}
+
+function expectedDashboardOrigins(): Set<string> {
+  const state = readRemoteDevelopmentEnvironmentState();
+  return new Set([
+    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
+    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL")),
+    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL")),
+    state.localDashboard?.port == null ? null : `http://127.0.0.1:${state.localDashboard.port}`,
+  ].filter((origin): origin is string => origin != null));
+}
+
+function browserRequestOriginIsAllowed(req: NextRequest): boolean {
+  const allowedOrigins = expectedDashboardOrigins();
+  const requestOrigin = requestHostOrigin(req);
+  if (requestOrigin == null || !allowedOrigins.has(requestOrigin)) return false;
+
   const origin = req.headers.get("origin");
   if (origin == null) return true;
-  return isLocalhost(origin);
+  const parsedOrigin = urlOrigin(origin);
+  return parsedOrigin != null && allowedOrigins.has(parsedOrigin);
 }
 
 export function assertRemoteDevelopmentEnvironmentRequest(req: NextRequest): NextResponse | null {
@@ -28,7 +55,7 @@ export function assertRemoteDevelopmentEnvironmentRequest(req: NextRequest): Nex
     return NextResponse.json({ error: "Remote development environment is not active." }, { status: 404 });
   }
 
-  if (!requestHostIsLoopback(req) || !originIsAllowed(req)) {
+  if (!requestHostIsLoopback(req)) {
     return NextResponse.json({ error: "Remote development environment endpoints only accept loopback requests." }, { status: 403 });
   }
 
@@ -45,7 +72,7 @@ export function assertRemoteDevelopmentEnvironmentBrowserRequest(req: NextReques
     return NextResponse.json({ error: "Remote development environment endpoints are disabled." }, { status: 404 });
   }
 
-  if (!requestHostIsLoopback(req) || !originIsAllowed(req)) {
+  if (!requestHostIsLoopback(req) || !browserRequestOriginIsAllowed(req)) {
     return NextResponse.json({ error: "Remote development environment endpoints only accept loopback requests." }, { status: 403 });
   }
 

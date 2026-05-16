@@ -60,7 +60,7 @@ describe("remote development environment security", () => {
     expect(response?.status).toBe(401);
   });
 
-  it("rejects non-loopback host and origin", async () => {
+  it("rejects non-loopback hosts for bearer requests", async () => {
     useTempStateFile();
     const { assertRemoteDevelopmentEnvironmentRequest } = await import("./security");
     const badHost = assertRemoteDevelopmentEnvironmentRequest(request({
@@ -68,13 +68,6 @@ describe("remote development environment security", () => {
       authorization: "Bearer secret",
     }));
     expect(badHost?.status).toBe(403);
-
-    const badOrigin = assertRemoteDevelopmentEnvironmentRequest(request({
-      host: "127.0.0.1:26700",
-      origin: "https://example.com",
-      authorization: "Bearer secret",
-    }));
-    expect(badOrigin?.status).toBe(403);
   });
 
   it("allows same-origin browser auth without exposing the CLI bearer token", async () => {
@@ -82,9 +75,21 @@ describe("remote development environment security", () => {
     const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");
     const response = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
       host: "127.0.0.1:26700",
+      origin: "http://127.0.0.1:26700",
       "sec-fetch-site": "same-origin",
     }));
     expect(response).toBeNull();
+  });
+
+  it("rejects browser auth from arbitrary localhost origins", async () => {
+    useTempStateFile();
+    const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");
+    const response = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
+      host: "127.0.0.1:26700",
+      origin: "http://evil.localhost:26700",
+      "sec-fetch-site": "same-origin",
+    }));
+    expect(response?.status).toBe(403);
   });
 
   it("rejects cross-site browser auth navigation", async () => {
@@ -95,6 +100,17 @@ describe("remote development environment security", () => {
       "sec-fetch-site": "cross-site",
     }));
     expect(response?.status).toBe(403);
+  });
+
+  it("accepts CLI bearer requests from loopback without trusting arbitrary origins", async () => {
+    useTempStateFile();
+    const { assertRemoteDevelopmentEnvironmentRequest } = await import("./security");
+    const response = assertRemoteDevelopmentEnvironmentRequest(request({
+      host: "127.0.0.1:26700",
+      origin: "http://evil.localhost:26700",
+      authorization: "Bearer secret",
+    }));
+    expect(response).toBeNull();
   });
 
   it("rejects config writes without an active session", async () => {
