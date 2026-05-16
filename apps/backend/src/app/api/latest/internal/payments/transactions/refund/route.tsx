@@ -593,11 +593,22 @@ async function handleSubscriptionRefund(options: {
 
   const customerType = subscription.customerType.toLowerCase() as "user" | "team" | "custom";
   const isTestMode = subscription.creationSource === "TEST_MODE";
+  // Only `PURCHASE_PAGE` subscriptions went through Stripe — they alone have a
+  // creation invoice and a money flow. `TEST_MODE` and `API_GRANT` (server-/
+  // admin-granted products, free/internal plans) have neither: there is no
+  // `SubscriptionInvoice` to look up and no payment to refund. Both take the
+  // same no-invoice, lifecycle-only refund path. Branching on `isTestMode`
+  // alone (the pre-fix behaviour) sent `API_GRANT` subs down the Stripe path,
+  // where the missing creation invoice threw `SubscriptionInvoiceNotFound`.
+  const hasStripeInvoice = subscription.creationSource === "PURCHASE_PAGE";
   const product = subscription.product as InferType<typeof productSchema>;
   const productLineId = readProductLineId(product);
 
-  if (isTestMode && options.amountStripeUnits > 0) {
-    throw new KnownErrors.TestModePurchaseNonRefundable();
+  if (options.amountStripeUnits > 0 && !hasStripeInvoice) {
+    if (isTestMode) {
+      throw new KnownErrors.TestModePurchaseNonRefundable();
+    }
+    throw new KnownErrors.SchemaError("This subscription was granted, not purchased through Stripe — there is no payment to refund. Retry without a refund amount (end_action only).");
   }
 
   // Determine which invoice this refund targets — defaults to the start invoice.
@@ -623,7 +634,7 @@ async function handleSubscriptionRefund(options: {
     sourceTxnId = found.isSubscriptionCreationInvoice
       ? `sub-start:${subscription.id}`
       : `sub-renewal:${found.id}`;
-  } else if (!isTestMode) {
+  } else if (hasStripeInvoice) {
     const startInvoices = await prisma.subscriptionInvoice.findMany({
       where: {
         tenancyId: tenancy.id,
@@ -641,28 +652,30 @@ async function handleSubscriptionRefund(options: {
     invoice = { id: startInvoice.id, stripeInvoiceId: startInvoice.stripeInvoiceId, amountTotal: startInvoice.amountTotal };
     sourceTxnId = `sub-start:${subscription.id}`;
   } else {
-    // test-mode sub has no invoice; refund references the synthetic start txn.
+    // Test-mode / API-granted sub has no Stripe invoice; refund references
+    // the synthetic start txn.
     sourceTxnId = `sub-start:${subscription.id}`;
   }
 
-  // Cap = original − sum(prior refunds for this source txn). Test-mode subs
-  // have no money flow (amount must be 0 anyway, see check above), so the cap
-  // is irrelevant — short-circuit to 0 to avoid a USD-only throw on non-USD
-  // test-mode products. In live mode, `getTotalUsdStripeUnits` enforces
-  // USD-only pricing (throws otherwise). The invoice's `amountTotal` is the
-  // more accurate cap (reflects proration, quantity changes, discounts), but
-  // SubscriptionInvoice doesn't persist the invoice currency — so we only
-  // trust `amountTotal` after the USD pre-flight has succeeded.
-  const productCapStripeUnits = isTestMode
-    ? 0
-    : getTotalUsdStripeUnits({
+  // Cap = original − sum(prior refunds for this source txn). Test-mode and
+  // API-granted subs have no money flow (amount must be 0 anyway, see check
+  // above), so the cap is irrelevant — short-circuit to 0 to avoid a USD-only
+  // throw on non-USD granted/test-mode products. For Stripe purchases,
+  // `getTotalUsdStripeUnits` enforces USD-only pricing (throws otherwise). The
+  // invoice's `amountTotal` is the more accurate cap (reflects proration,
+  // quantity changes, discounts), but SubscriptionInvoice doesn't persist the
+  // invoice currency — so we only trust `amountTotal` after the USD pre-flight
+  // has succeeded.
+  const productCapStripeUnits = hasStripeInvoice
+    ? getTotalUsdStripeUnits({
       product,
       priceId: subscription.priceId ?? null,
       quantity: subscription.quantity,
-    });
-  const totalStripeUnits = isTestMode
-    ? 0
-    : (invoice?.amountTotal ?? productCapStripeUnits);
+    })
+    : 0;
+  const totalStripeUnits = hasStripeInvoice
+    ? (invoice?.amountTotal ?? productCapStripeUnits)
+    : 0;
 
   const prior = await readPriorRefundSummary({
     prisma,
@@ -879,7 +892,9 @@ async function handleSubscriptionRefund(options: {
     entries: refundEntries,
     customerType,
     customerId: subscription.customerId,
-    paymentProvider: isTestMode ? "test_mode" : "stripe",
+    // API-granted subs are neither test-mode nor Stripe-backed — `null`
+    // payment provider (the listing route derives `test_mode: false` from it).
+    paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
   };
   await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);

@@ -52,6 +52,97 @@ async function createTestModeSubscription(): Promise<{ subscriptionId: string, u
   return { subscriptionId: purchaseTxn.id, userId };
 }
 
+/**
+ * Create a server-granted (`API_GRANT`) subscription — granted via the
+ * server products endpoint rather than purchased through Stripe, so it has
+ * no `SubscriptionInvoice` and no money flow.
+ */
+async function createApiGrantSubscription(): Promise<{ subscriptionId: string, userId: string }> {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        "sub-product": {
+          displayName: "Sub Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            monthly: { USD: "50.00", interval: [1, "month"] },
+          },
+          includedItems: {},
+        },
+      },
+      items: {},
+    },
+  });
+  const { userId } = await Auth.fastSignUp();
+  const grantRes = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+    accessType: "server",
+    method: "POST",
+    body: { product_id: "sub-product" },
+  });
+  expect(grantRes.status).toBe(200);
+  const txnsRes = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  const purchaseTxn = txnsRes.body.transactions.find((tx: any) => tx.type === "purchase");
+  expect(purchaseTxn).toBeDefined();
+  return { subscriptionId: purchaseTxn.id, userId };
+}
+
+it("refunds a server-granted (API_GRANT) subscription with end_action='now'", async () => {
+  // API_GRANT subs have no SubscriptionInvoice. The refund route must take
+  // the no-invoice path for them instead of throwing SubscriptionInvoiceNotFound.
+  const { subscriptionId, userId } = await createApiGrantSubscription();
+
+  const productsBefore = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsBefore.body.items).toHaveLength(1);
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "0",
+      end_action: "now",
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body.success).toBe(true);
+  expect(refundRes.body.refund_transaction_id).toMatch(/^refund:sub-start:/);
+
+  const productsAfter = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfter.body.items).toHaveLength(0);
+});
+
+it("rejects a money refund on a server-granted (API_GRANT) subscription", async () => {
+  // A granted subscription has no payment — a nonzero amount must be rejected
+  // with a clear message (and a distinct error from test-mode's).
+  const { subscriptionId } = await createApiGrantSubscription();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "subscription",
+      id: subscriptionId,
+      amount_usd: "10.00",
+      end_action: "now",
+    },
+  });
+  expect(refundRes.status).toBe(400);
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+  expect(refundRes.body.error).toMatch(/granted, not purchased/);
+});
+
 it("rejects refund when target subscription does not exist", async () => {
   await setupProjectWithPaymentsConfig();
 
