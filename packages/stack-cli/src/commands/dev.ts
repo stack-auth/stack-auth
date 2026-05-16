@@ -25,6 +25,7 @@ type SessionResponse = {
 };
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
+const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_PORT = 26700;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
@@ -168,7 +169,12 @@ function replaceSentinels(content: string, env: NodeJS.ProcessEnv): string {
     if (!sentinel.startsWith(SENTINEL_PREFIX)) {
       return sentinel;
     }
-    return env[sentinel.slice(SENTINEL_PREFIX.length)] ?? sentinel;
+    const envVarName = sentinel.slice(SENTINEL_PREFIX.length);
+    const value = env[envVarName];
+    if (value == null) {
+      throw new CliError(`Missing environment variable ${envVarName} while preparing the bundled dashboard runtime.`);
+    }
+    return value;
   });
 }
 
@@ -297,6 +303,31 @@ async function dashboardRequest(path: string, options: RequestInit, secret: stri
   }
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === "string")
+  );
+}
+
+function isSessionResponse(value: unknown): value is SessionResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "session_id" in value &&
+    typeof value.session_id === "string" &&
+    "project_id" in value &&
+    typeof value.project_id === "string" &&
+    "onboarding_outstanding" in value &&
+    typeof value.onboarding_outstanding === "boolean" &&
+    "env" in value &&
+    isStringRecord(value.env)
+  );
+}
+
 async function createRemoteDevelopmentEnvironmentSession(options: {
   apiBaseUrl: string,
   configFilePath: string,
@@ -315,13 +346,8 @@ async function createRemoteDevelopmentEnvironmentSession(options: {
   if (!response.ok) {
     throw new CliError(`Failed to register development environment session (${response.status}): ${await response.text()}`);
   }
-  const body = await response.json() as SessionResponse;
-  if (
-    typeof body.session_id !== "string" ||
-    typeof body.project_id !== "string" ||
-    typeof body.onboarding_outstanding !== "boolean" ||
-    typeof body.env !== "object"
-  ) {
+  const body: unknown = await response.json();
+  if (!isSessionResponse(body)) {
     throw new CliError("Local dashboard returned an invalid development environment session response.");
   }
   return body;
@@ -370,6 +396,16 @@ async function restartDashboardForHeartbeat(options: {
   });
 }
 
+async function waitForHeartbeatIntervalOrStop(shouldStop: () => boolean): Promise<boolean> {
+  const startedAtMs = performance.now();
+  while (!shouldStop()) {
+    const remainingMs = HEARTBEAT_INTERVAL_MS - (performance.now() - startedAtMs);
+    if (remainingMs <= 0) return false;
+    await wait(Math.min(remainingMs, HEARTBEAT_STOP_POLL_MS));
+  }
+  return true;
+}
+
 async function heartbeatUntilStopped(sessionState: DashboardSessionState, options: {
   apiBaseUrl: string,
   configFilePath: string,
@@ -377,15 +413,22 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
   shouldStop: () => boolean,
 }): Promise<void> {
   while (!options.shouldStop()) {
-    await wait(HEARTBEAT_INTERVAL_MS);
-    if (options.shouldStop()) return;
+    if (await waitForHeartbeatIntervalOrStop(options.shouldStop)) return;
 
     let response: Response;
+    const controller = new AbortController();
+    const abortOnStop = setInterval(() => {
+      if (options.shouldStop()) {
+        controller.abort();
+      }
+    }, HEARTBEAT_STOP_POLL_MS);
     try {
       response = await dashboardRequest(`/api/remote-development-environment/sessions/${encodeURIComponent(sessionState.session.session_id)}/heartbeat`, {
         method: "POST",
+        signal: controller.signal,
       }, options.secret);
     } catch {
+      if (options.shouldStop()) return;
       sessionState.session = await restartDashboardForHeartbeat({
         apiBaseUrl: options.apiBaseUrl,
         configFilePath: options.configFilePath,
@@ -395,11 +438,20 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
       sessionState.dashboardReachableSinceMs = performance.now();
       logDev(`Stack Auth dashboard running at ${dashboardUrl()}`);
       continue;
+    } finally {
+      clearInterval(abortOnStop);
     }
 
     if (!response.ok) {
       logDev(`Development environment heartbeat failed (${response.status}): ${await response.text()}`);
-      return;
+      sessionState.session = await restartDashboardForHeartbeat({
+        apiBaseUrl: options.apiBaseUrl,
+        configFilePath: options.configFilePath,
+        dashboardReachableSinceMs: sessionState.dashboardReachableSinceMs,
+        secret: options.secret,
+      });
+      sessionState.dashboardReachableSinceMs = performance.now();
+      logDev(`Stack Auth dashboard running at ${dashboardUrl()}`);
     }
   }
 }

@@ -206,10 +206,11 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
       if (queryResult.length > 1) {
         throw new StackAssertionError(`Expected 0 or 1 environment config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
       }
+      const storedConfigOverride = migrateConfigOverride("environment", queryResult[0]?.config ?? {});
       if (queryResult[0]?.isDevelopmentEnvironment === true) {
-        return DEVELOPMENT_ENVIRONMENT_CONFIG_OVERRIDE;
+        return override(storedConfigOverride, DEVELOPMENT_ENVIRONMENT_CONFIG_OVERRIDE);
       }
-      return migrateConfigOverride("environment", queryResult[0]?.config ?? {});
+      return storedConfigOverride;
     },
   };
 }

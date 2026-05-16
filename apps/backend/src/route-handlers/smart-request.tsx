@@ -209,6 +209,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string, allowAnonymous: boolean }) => {
     const result = await decodeAccessToken(options.token, {
       allowAnonymous: options.allowAnonymous,
+      // Anonymous dev-environment tokens may be restricted; non-anonymous restricted tokens are rejected below after decoding.
       allowRestricted: options.allowAnonymous,
     });
     if (result.status === "error") {

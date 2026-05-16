@@ -5,6 +5,17 @@ import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/uti
 
 export const runtime = "nodejs";
 
+async function readJsonBody(req: NextRequest): Promise<unknown | NextResponse> {
+  try {
+    return await req.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: "Malformed JSON request body." }, { status: 400 });
+    }
+    throw error;
+  }
+}
+
 function isAllowedApiBaseUrl(value: string): boolean {
   const url = createUrlIfValid(value);
   if (url == null || (url.protocol !== "http:" && url.protocol !== "https:")) return false;
@@ -15,7 +26,10 @@ export async function POST(req: NextRequest) {
   const securityResponse = assertRemoteDevelopmentEnvironmentRequest(req);
   if (securityResponse != null) return securityResponse;
 
-  const body = await req.json() as {
+  const parsedBody = await readJsonBody(req);
+  if (parsedBody instanceof NextResponse) return parsedBody;
+
+  const body = parsedBody as {
     api_base_url?: unknown,
     config_path?: unknown,
   };

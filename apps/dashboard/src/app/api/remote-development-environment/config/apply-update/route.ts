@@ -5,13 +5,27 @@ import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 
 export const runtime = "nodejs";
 
+async function readJsonBody(req: NextRequest): Promise<unknown | NextResponse> {
+  try {
+    return await req.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: "Malformed JSON request body." }, { status: 400 });
+    }
+    throw error;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const securityResponse = req.headers.has("authorization")
     ? assertRemoteDevelopmentEnvironmentRequest(req)
     : assertRemoteDevelopmentEnvironmentBrowserRequest(req);
   if (securityResponse != null) return securityResponse;
 
-  const body = await req.json() as {
+  const parsedBody = await readJsonBody(req);
+  if (parsedBody instanceof NextResponse) return parsedBody;
+
+  const body = parsedBody as {
     session_id?: unknown,
     project_id?: unknown,
     config_update?: unknown,

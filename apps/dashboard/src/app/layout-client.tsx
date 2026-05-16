@@ -37,6 +37,7 @@ function isDevEnvironmentHealthResponse(value: unknown): value is { ok: boolean,
 let devEnvironmentHealthSnapshot: DevEnvironmentHealthSnapshot = { status: "checking" };
 const devEnvironmentHealthSubscribers = new Set<() => void>();
 let devEnvironmentHealthTimer: ReturnType<typeof setInterval> | undefined;
+let devEnvironmentHealthRequestSequence = 0;
 
 function setDevEnvironmentHealthSnapshot(snapshot: DevEnvironmentHealthSnapshot) {
   devEnvironmentHealthSnapshot = snapshot;
@@ -46,6 +47,13 @@ function setDevEnvironmentHealthSnapshot(snapshot: DevEnvironmentHealthSnapshot)
 }
 
 async function refreshDevEnvironmentHealth() {
+  const requestSequence = ++devEnvironmentHealthRequestSequence;
+  const setSnapshotIfCurrent = (snapshot: DevEnvironmentHealthSnapshot) => {
+    if (requestSequence === devEnvironmentHealthRequestSequence) {
+      setDevEnvironmentHealthSnapshot(snapshot);
+    }
+  };
+
   try {
     const response = await fetch("/api/development-environment/health", {
       cache: "no-store",
@@ -58,11 +66,11 @@ async function refreshDevEnvironmentHealth() {
       throw new Error("Development environment health endpoint returned an invalid response.");
     }
 
-    setDevEnvironmentHealthSnapshot(body.ok && response.ok
+    setSnapshotIfCurrent(body.ok && response.ok
       ? { status: "healthy" }
       : { status: "unhealthy", restartCommand: body.restart_command });
   } catch {
-    setDevEnvironmentHealthSnapshot({
+    setSnapshotIfCurrent({
       status: "unhealthy",
       restartCommand: "stack dev --config-file <path-to-stack.config.ts> -- <your app command>",
     });

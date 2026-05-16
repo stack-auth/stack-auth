@@ -4,6 +4,8 @@ import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 
 export const runtime = "nodejs";
 
+const LOCAL_EMULATOR_HEALTH_TIMEOUT_MS = 2_000;
+
 type HealthResponse = {
   ok: boolean,
   restart_command: string,
@@ -40,9 +42,12 @@ async function localEmulatorIsHealthy(): Promise<boolean> {
   const apiBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL");
   if (apiBaseUrl == null) return false;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOCAL_EMULATOR_HEALTH_TIMEOUT_MS);
   try {
     const response = await fetch(`${apiBaseUrl}/api/v1/projects/current`, {
       cache: "no-store",
+      signal: controller.signal,
       headers: {
         "X-Stack-Access-Type": "client",
         "X-Stack-Project-Id": "internal",
@@ -52,6 +57,8 @@ async function localEmulatorIsHealthy(): Promise<boolean> {
     return response.ok;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

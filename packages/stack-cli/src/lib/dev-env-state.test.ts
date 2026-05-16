@@ -1,7 +1,7 @@
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess, writeDevEnvState } from "./dev-env-state";
 
 let tempDir: string | undefined;
@@ -14,6 +14,7 @@ function useTempStateFile() {
 afterEach(() => {
   delete process.env.STACK_DEV_ENVS_PATH;
   delete process.env.LOCALAPPDATA;
+  vi.restoreAllMocks();
   if (tempDir != null) {
     rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
@@ -22,14 +23,9 @@ afterEach(() => {
 
 describe("dev env state", () => {
   it("uses the Windows local app data directory by default on Windows", () => {
-    const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
-    Object.defineProperty(process, "platform", { value: "win32" });
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
     process.env.LOCALAPPDATA = "C:\\Users\\Test\\AppData\\Local";
-    try {
-      expect(devEnvStatePath()).toBe(join("C:\\Users\\Test\\AppData\\Local", "Stack Auth", "dev-envs.json"));
-    } finally {
-      Object.defineProperty(process, "platform", platformDescriptor ?? { value: process.platform });
-    }
+    expect(devEnvStatePath()).toBe(join("C:\\Users\\Test\\AppData\\Local", "Stack Auth", "dev-envs.json"));
   });
 
   it("returns an empty v1 state when no file exists", () => {
@@ -76,7 +72,9 @@ describe("dev env state", () => {
       throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
     }
     const content = readFileSync(statePath, "utf-8");
-    expect(statSync(statePath).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(statePath).mode & 0o777).toBe(0o600);
+    }
     expect(JSON.parse(content)).toMatchObject({
       version: 1,
       anonymousRefreshToken: "rt",
@@ -84,6 +82,9 @@ describe("dev env state", () => {
   });
 
   it("repairs state file permissions before reading", () => {
+    if (process.platform === "win32") {
+      return;
+    }
     useTempStateFile();
     const statePath = process.env.STACK_DEV_ENVS_PATH;
     if (statePath == null) {
@@ -97,5 +98,21 @@ describe("dev env state", () => {
       projectsByConfigPath: {},
     });
     expect(statSync(statePath).mode & 0o777).toBe(0o600);
+  });
+
+  it("does not enforce POSIX state file permissions on Windows", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    writeFileSync(statePath, JSON.stringify({ version: 1, projectsByConfigPath: {} }));
+    chmodSync(statePath, 0o644);
+
+    expect(readDevEnvState()).toEqual({
+      version: 1,
+      projectsByConfigPath: {},
+    });
   });
 });

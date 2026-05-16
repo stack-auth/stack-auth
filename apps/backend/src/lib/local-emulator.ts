@@ -79,7 +79,7 @@ async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorC
     return parseStackConfigFileContent(content, filePath);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    throw new StatusError(StatusError.BadRequest, message);
+    throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);
   }
 }
 

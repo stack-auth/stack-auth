@@ -484,3 +484,6 @@ A: The RDE dashboard does server-side SDK calls from Node. If the backend is con
 
 ## Q: How should Stack CLI `--config-file` options interpret paths?
 A: `--config-file` should point directly to a regular config file. Do not treat an existing directory as a shortcut for `stack.config.ts` inside it; reject directories with a clear error instead. `stack config pull` may default to `./stack.config.ts` when the flag is omitted, but an explicitly provided directory is still invalid.
+
+## Q: How should RDE PR-review fixes handle the local dashboard and CLI lifecycle?
+A: Use the shared RDE browser security helper for browser-local endpoints, mark bearer-token responses `Cache-Control: private, no-store`, and return 400 for malformed local endpoint JSON. `stack dev` should fail loudly if a bundled dashboard sentinel has no environment value, validate session response shapes at runtime before using `env`, recover from HTTP heartbeat failures the same way as network heartbeat failures, and make heartbeat shutdown interruptible so child-process exit is not delayed by the full heartbeat interval.
