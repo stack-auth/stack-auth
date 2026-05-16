@@ -6,6 +6,11 @@ import {
   useInfiniteListWindow,
   type DesignAnalyticsChartConfig
 } from "@/components/design-components";
+import {
+  ANALYTICS_CHART_DEFAULT_STATE,
+  AnalyticsChart,
+  type AnalyticsChartState,
+} from "@stackframe/dashboard-ui-components";
 import { useRouter } from "@/components/router";
 import {
   cn,
@@ -1910,10 +1915,6 @@ export function DonutChartDisplay({
   const total = datapoints.reduce((sum, d) => sum + d.count, 0);
   const hasData = datapoints.length > 0 && total > 0;
 
-  // Static snapshot pie — uses Recharts directly rather than forcing a
-  // time-series chart (AnalyticsChart) to render a single "fake" bucket.
-  // Lightweight, no state, and the pieces of data we actually need here are
-  // just a color + label per slice.
   const pieData = useMemo(
     () => datapoints.map((d) => {
       const brand = BRAND_CONFIG_MAP.get(d.method);
@@ -1924,9 +1925,53 @@ export function DonutChartDisplay({
     [datapoints],
   );
 
-  const innerRadius = compact ? 40 : 60;
-  const outerRadius = compact ? 55 : 85;
-  const sizeClass = compact ? "h-[150px] w-[150px]" : "h-[200px] w-[200px]";
+  const chartData = useMemo(
+    () => [{ ts: 0, values: { primary: total } }],
+    [total],
+  );
+  const chartSegments = useMemo(
+    () => [pieData.map((s) => s.value)],
+    [pieData],
+  );
+  const chartSegmentSeries = useMemo(
+    () => pieData.map((s) => ({ key: s.key, label: s.label })),
+    [pieData],
+  );
+  const chartPalette = useMemo(() => {
+    const colors = pieData.map((s) => s.color);
+    return {
+      primary: { kind: "explicit" as const, light: colors, dark: colors },
+    };
+  }, [pieData]);
+
+  const [chartState, setChartState] = useState<AnalyticsChartState>(() => ({
+    ...ANALYTICS_CHART_DEFAULT_STATE,
+    view: "pie",
+    layers: ANALYTICS_CHART_DEFAULT_STATE.layers.map((l) => {
+      if (l.kind === "primary") {
+        return { ...l, segmented: true, segments: chartSegments, segmentSeries: chartSegmentSeries };
+      }
+      if (l.kind === "compare") {
+        return { ...l, visible: false };
+      }
+      return l;
+    }),
+  }));
+
+  // Keep segments + series in sync when datapoints change.
+  const liveChartState = useMemo<AnalyticsChartState>(() => ({
+    ...chartState,
+    layers: chartState.layers.map((l) => {
+      if (l.kind === "primary") {
+        return { ...l, segmented: true, segments: chartSegments, segmentSeries: chartSegmentSeries };
+      }
+      return l;
+    }),
+  }), [chartState, chartSegments, chartSegmentSeries]);
+
+  const pieSize = compact
+    ? { innerRadius: 32, outerRadius: 48, className: "h-[140px]" }
+    : { innerRadius: 48, outerRadius: 72, className: "h-[180px]" };
 
   return (
     <ChartCard
@@ -1956,47 +2001,16 @@ export function DonutChartDisplay({
             </Typography>
           </div>
         ) : (
-          <>
-            <div className={cn("relative aspect-square", sizeClass)}>
-              <PieChart width={compact ? 150 : 200} height={compact ? 150 : 200}>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="label"
-                  innerRadius={innerRadius}
-                  outerRadius={outerRadius}
-                  paddingAngle={1}
-                  isAnimationActive={false}
-                  stroke="none"
-                >
-                  {pieData.map((slice) => (
-                    <Cell key={slice.key} fill={slice.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</span>
-                <span className="text-base font-semibold tabular-nums text-foreground">
-                  {total.toLocaleString()}
-                </span>
-              </div>
-            </div>
-            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs min-w-0 w-full">
-              {pieData.map((slice) => (
-                <li key={slice.key} className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="h-2 w-2 rounded-full shrink-0"
-                    style={{ backgroundColor: slice.color }}
-                    aria-hidden
-                  />
-                  <span className="truncate text-muted-foreground">{slice.label}</span>
-                  <span className="ml-auto tabular-nums text-foreground">
-                    {slice.value.toLocaleString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
+          <div className="w-full">
+            <AnalyticsChart
+              data={chartData}
+              state={liveChartState}
+              onChange={setChartState}
+              palette={chartPalette}
+              pie={pieSize}
+              plotMargin={{ top: 4, right: 8, bottom: 4, left: 8 }}
+            />
+          </div>
         )}
       </div>
     </ChartCard>

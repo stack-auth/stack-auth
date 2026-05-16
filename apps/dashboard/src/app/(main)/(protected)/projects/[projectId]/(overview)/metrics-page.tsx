@@ -825,7 +825,7 @@ function ReferrersWithAnalyticsCard({
       <div className="px-4 py-3 border-b border-foreground/[0.05]">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Referrers</span>
       </div>
-      <div ref={listWindow.scrollRef} className="p-4 pt-3 flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+      <div ref={listWindow.scrollRef} className="p-4 pt-3 flex-1 min-h-0 max-h-[320px] overflow-y-auto flex flex-col gap-2">
         {!analyticsEnabled ? (
           <SetupAppPrompt projectId={projectId} appId="analytics" appLabel="Analytics" metricLabel="referrer metrics" />
         ) : topReferrers.length === 0 ? (

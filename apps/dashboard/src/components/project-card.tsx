@@ -2,7 +2,7 @@
 import { DesignBadge } from "@/components/design-components/badge";
 import { DesignCard } from "@/components/design-components/card";
 import { Link } from "@/components/link";
-import { ProjectWeeklyUsersMetric } from "@/components/project-weekly-users-metric";
+import { ProjectUsersMetric } from "@/components/project-users-metric";
 import { useFromNow } from '@/hooks/use-from-now';
 import { FolderOpenIcon } from "@phosphor-icons/react";
 import { AdminProject } from '@stackframe/stack';
@@ -12,10 +12,10 @@ export function ProjectCard(props: {
   project: AdminProject,
   href?: string,
   showIncompleteBadge?: boolean,
-  weeklyUsers?: number,
-  weeklyUsersChart?: { date: string, activity: number }[],
-  weeklyUsersLoading?: boolean,
-  weeklyUsersError?: boolean,
+  totalUsers?: number,
+  dailySignups?: { date: string, activity: number }[],
+  metricsLoading?: boolean,
+  metricsError?: boolean,
 }) {
   const createdAt = useFromNow(props.project.createdAt);
   const href = props.href ?? urlString`/projects/${props.project.id}`;
@@ -52,11 +52,11 @@ export function ProjectCard(props: {
         </div>
 
         <div className="-mx-3 -mb-3 mt-3 overflow-hidden rounded-b-2xl border-t border-black/[0.08] dark:border-white/[0.06] px-3 pt-3 pb-3">
-          <ProjectWeeklyUsersMetric
-            weeklyUsers={props.weeklyUsers}
-            data={props.weeklyUsersChart}
-            loading={props.weeklyUsersLoading}
-            error={props.weeklyUsersError}
+          <ProjectUsersMetric
+            totalUsers={props.totalUsers}
+            data={props.dailySignups}
+            loading={props.metricsLoading}
+            error={props.metricsError}
           />
         </div>
       </DesignCard>
