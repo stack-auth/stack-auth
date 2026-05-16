@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip, Typography } from "@/components/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Interval = [number, 'day' | 'week' | 'month' | 'year'] | 'never';
 type ExpiresOption = 'never' | 'when-purchase-expires' | 'when-repeated';
@@ -69,6 +69,25 @@ export function IncludedItemDialog({
   });
   const [expires, setExpires] = useState<ExpiresOption>(editingItem?.expires || 'never');
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Sync internal state whenever the dialog opens, since the component stays
+  // mounted across opens and the useState initializers only run once.
+  useEffect(() => {
+    if (!open) return;
+    setSelectedItemId(editingItemId || "");
+    setQuantity(editingItem?.quantity.toString() || "1");
+    const hasRepeatValue = editingItem?.repeat !== undefined && editingItem.repeat !== 'never';
+    setHasRepeat(hasRepeatValue);
+    if (editingItem?.repeat && editingItem.repeat !== 'never') {
+      setRepeatCount(editingItem.repeat[0].toString());
+      setRepeatUnit(editingItem.repeat[1]);
+    } else {
+      setRepeatCount("1");
+      setRepeatUnit("month");
+    }
+    setExpires(editingItem?.expires || 'never');
+    setErrors({});
+  }, [open, editingItemId, editingItem]);
 
   const validateAndSave = () => {
     const newErrors: Record<string, string> = {};
@@ -143,7 +162,10 @@ export function IncludedItemDialog({
           {/* Item Selection */}
           <div className="grid gap-2">
             <Label htmlFor="item-select">
-              <SimpleTooltip tooltip="Choose which item to include with this product">
+              <SimpleTooltip
+                tooltip="Choose which item to include with this product"
+                disabled={!!editingItem}
+              >
                 Select Item
               </SimpleTooltip>
             </Label>
