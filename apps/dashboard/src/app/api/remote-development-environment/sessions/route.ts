@@ -1,26 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAllowedRemoteDevelopmentEnvironmentApiBaseUrl } from "@/lib/remote-development-environment/api-base-url";
 import { registerRemoteDevelopmentEnvironmentSession } from "@/lib/remote-development-environment/manager";
+import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-development-environment/route-json";
 import { assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 
 export const runtime = "nodejs";
-
-async function readJsonBody(req: NextRequest): Promise<unknown | NextResponse> {
-  try {
-    return await req.json();
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Malformed JSON request body." }, { status: 400 });
-    }
-    throw error;
-  }
-}
 
 export async function POST(req: NextRequest) {
   const securityResponse = assertRemoteDevelopmentEnvironmentRequest(req);
   if (securityResponse != null) return securityResponse;
 
-  const parsedBody = await readJsonBody(req);
+  const parsedBody = await readRemoteDevelopmentEnvironmentJsonBody(req);
   if (parsedBody instanceof NextResponse) return parsedBody;
 
   const body = parsedBody as {
