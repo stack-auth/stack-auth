@@ -17,6 +17,7 @@ import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import sodium from "libsodium-wrappers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { RemoteSearchCombobox, type ComboboxItem } from "./link-existing-combobox";
 import { OnboardingPage } from "./components";
 import {
   buildWorkflowYaml,
@@ -358,6 +359,26 @@ function parseGitTreePaths(value: unknown): { paths: string[], truncated: boolea
   return { paths, truncated };
 }
 
+// `/repos/{owner}/{repo}/git/matching-refs/heads/{prefix}` returns refs prefixed
+// with `refs/heads/`. Strip the prefix so callers see plain branch names.
+function parseGithubMatchingRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const HEADS_PREFIX = "refs/heads/";
+  const branches: string[] = [];
+  for (const item of value) {
+    if (!isObject(item)) {
+      continue;
+    }
+    const ref = getObjectString(item, "ref");
+    if (ref != null && ref.startsWith(HEADS_PREFIX)) {
+      branches.push(ref.slice(HEADS_PREFIX.length));
+    }
+  }
+  return branches;
+}
+
 function parseGitReferenceSha(value: unknown): string {
   if (!isObject(value)) {
     throw new Error("GitHub returned an invalid branch reference response.");
@@ -464,6 +485,12 @@ export function LinkExistingOnboarding(props: Props) {
   const repositoriesLoadedAccountRef = useRef<string | null>(null);
   const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "stack.config.ts");
   const [packageRunner, setPackageRunner] = useState<PackageRunner>("npx");
+  const [repoSearchQuery, setRepoSearchQuery] = useState("");
+  const [repoSearchResults, setRepoSearchResults] = useState<GithubRepository[]>([]);
+  const [loadingRepoSearch, setLoadingRepoSearch] = useState(false);
+  const [branchSearchQuery, setBranchSearchQuery] = useState("");
+  const [branchSearchResults, setBranchSearchResults] = useState<string[]>([]);
+  const [loadingBranchSearch, setLoadingBranchSearch] = useState(false);
 
   const persistState = useCallback((partial: Partial<PersistedLinkExistingState>) => {
     const existingState = readPersistedLinkExistingState(project.id);
@@ -1140,6 +1167,92 @@ export function LinkExistingOnboarding(props: Props) {
     });
   }, [loadRepositories, selectedGithubAccount, step]);
 
+  // Debounced GitHub search for repositories. /user/repos only returns the
+  // first 100 entries, so for users with many repos we hit /search/repositories
+  // as they type. Server-side search includes private repos when authenticated.
+  useEffect(() => {
+    const trimmed = repoSearchQuery.trim();
+    if (step !== "github-repository" || trimmed.length === 0 || selectedGithubAccount == null) {
+      setRepoSearchResults([]);
+      setLoadingRepoSearch(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingRepoSearch(true);
+    const handle = setTimeout(() => {
+      runAsynchronouslyWithAlert(async () => {
+        try {
+          const queryString = new URLSearchParams({
+            q: `${trimmed} fork:true`,
+            per_page: "30",
+            sort: "updated",
+          }).toString();
+          const json = await githubFetch(`/search/repositories?${queryString}`);
+          if (cancelled) {
+            return;
+          }
+          if (isObject(json) && Array.isArray(json.items)) {
+            setRepoSearchResults(parseGithubRepositories(json.items));
+          } else {
+            setRepoSearchResults([]);
+          }
+        } finally {
+          if (!cancelled) {
+            setLoadingRepoSearch(false);
+          }
+        }
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [githubFetch, repoSearchQuery, selectedGithubAccount, step]);
+
+  // Debounced GitHub search for branches. The branches endpoint has no search,
+  // but /git/matching-refs/heads/{prefix} returns prefix-matched refs and is
+  // the right tool for repos with many branches.
+  useEffect(() => {
+    const trimmed = branchSearchQuery.trim();
+    if (step !== "github-repository" || trimmed.length === 0 || selectedRepository == null) {
+      setBranchSearchResults([]);
+      setLoadingBranchSearch(false);
+      return;
+    }
+    let owner: string;
+    let repo: string;
+    try {
+      ({ owner, repo } = parseRepositoryFullName(selectedRepository.fullName));
+    } catch {
+      setBranchSearchResults([]);
+      setLoadingBranchSearch(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingBranchSearch(true);
+    const handle = setTimeout(() => {
+      runAsynchronouslyWithAlert(async () => {
+        try {
+          const json = await githubFetch(
+            githubRepositoryApiPath(owner, repo, urlString`/git/matching-refs/heads/${trimmed}`),
+          );
+          if (cancelled) {
+            return;
+          }
+          setBranchSearchResults(parseGithubMatchingRefs(json));
+        } finally {
+          if (!cancelled) {
+            setLoadingBranchSearch(false);
+          }
+        }
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [branchSearchQuery, githubFetch, selectedRepository, step]);
+
   let title = "Link an existing config";
   let subtitle = "Connect GitHub automation or push your local stack.config file.";
   let content: React.ReactNode;
@@ -1276,11 +1389,16 @@ export function LinkExistingOnboarding(props: Props) {
     title = "Choose repository and branch";
     subtitle = "Connect your GitHub account, then choose where the workflow should run.";
 
-    const repoOptions = repositories.map((repository) => ({
+    const repoComboboxItems: ComboboxItem[] = (
+      repoSearchQuery.trim().length > 0 ? repoSearchResults : repositories
+    ).map((repository) => ({
       value: repository.fullName,
-      label: repository.isPrivate ? `${repository.fullName} (private)` : repository.fullName,
+      label: repository.fullName,
+      description: repository.isPrivate ? "private" : undefined,
     }));
-    const branchOptions = branches.map((branch) => ({
+    const branchComboboxItems: ComboboxItem[] = (
+      branchSearchQuery.trim().length > 0 ? branchSearchResults : branches
+    ).map((branch) => ({
       value: branch,
       label: branch,
     }));
@@ -1356,48 +1474,51 @@ export function LinkExistingOnboarding(props: Props) {
 
             <div className="space-y-2">
               <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Repository</Typography>
-              <DesignSelectorDropdown
+              <RemoteSearchCombobox
                 value={selectedRepositoryFullName}
-                onValueChange={(nextRepository) => runAsynchronouslyWithAlert(async () => {
+                selectedLabel={selectedRepositoryFullName}
+                items={repoComboboxItems}
+                query={repoSearchQuery}
+                onQueryChange={setRepoSearchQuery}
+                onSelect={(nextRepository) => runAsynchronouslyWithAlert(async () => {
                   setSelectedRepositoryFullNameWithPersistence(nextRepository);
                   setBranches([]);
                   setSelectedBranchWithPersistence("");
+                  setBranchSearchQuery("");
+                  setBranchSearchResults([]);
                   setConfigPathSuggestions([]);
                   setGitTreeTruncated(false);
+                  setRepoSearchQuery("");
                   if (nextRepository.length > 0) {
                     await loadBranches(nextRepository);
                   }
                 })}
-                options={repoOptions}
-                placeholder={loadingRepositories ? "Loading repositories..." : "Select a repository"}
-                size="md"
-                disabled={repositories.length === 0}
+                triggerPlaceholder={loadingRepositories ? "Loading repositories..." : "Select a repository"}
+                inputPlaceholder="Search GitHub repositories..."
+                loading={loadingRepoSearch || (loadingRepositories && repositories.length === 0)}
+                emptyMessage={repoSearchQuery.trim().length === 0 ? "No repositories loaded yet." : "No matching repositories."}
+                disabled={selectedGithubAccount == null}
               />
             </div>
 
             <div className="space-y-2">
               <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Branch</Typography>
-              <div className="flex gap-2">
-                <DesignSelectorDropdown
-                  value={selectedBranch}
-                  onValueChange={setSelectedBranchWithPersistence}
-                  options={branchOptions}
-                  placeholder={loadingBranches ? "Loading branches..." : "Select a branch"}
-                  size="md"
-                  disabled={branches.length === 0}
-                  className="flex-1"
-                />
-                <DesignButton
-                  variant="outline"
-                  loading={loadingBranches}
-                  disabled={selectedRepositoryFullName.length === 0}
-                  onClick={() => runAsynchronouslyWithAlert(async () => {
-                    await loadBranches(selectedRepositoryFullName);
-                  })}
-                >
-                  Refresh
-                </DesignButton>
-              </div>
+              <RemoteSearchCombobox
+                value={selectedBranch}
+                selectedLabel={selectedBranch}
+                items={branchComboboxItems}
+                query={branchSearchQuery}
+                onQueryChange={setBranchSearchQuery}
+                onSelect={(nextBranch) => {
+                  setSelectedBranchWithPersistence(nextBranch);
+                  setBranchSearchQuery("");
+                }}
+                triggerPlaceholder={loadingBranches ? "Loading branches..." : "Select a branch"}
+                inputPlaceholder="Search branches..."
+                loading={loadingBranchSearch || (loadingBranches && branches.length === 0)}
+                emptyMessage={branchSearchQuery.trim().length === 0 ? "No branches loaded yet." : "No matching branches."}
+                disabled={selectedRepositoryFullName.length === 0}
+              />
             </div>
           </div>
         </DesignCard>
