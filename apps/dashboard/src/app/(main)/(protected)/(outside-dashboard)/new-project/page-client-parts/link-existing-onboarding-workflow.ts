@@ -7,9 +7,16 @@ function encodeYamlScalar(value: string): string {
   return JSON.stringify(value);
 }
 
+// GitHub Actions `on.push.paths` filters are repo-relative and do not match a
+// leading `./`. Config-path suggestions and manual input may include one, so
+// strip it to keep the push trigger (and the checked-out file path) canonical.
+export function normalizeConfigPath(configPath: string): string {
+  return configPath.trim().replace(/^(?:\.\/)+/, "");
+}
+
 export function buildWorkflowYaml(branch: string, configPath: string): string {
   const encodedBranch = encodeYamlScalar(branch);
-  const encodedConfigPath = encodeYamlScalar(configPath);
+  const encodedConfigPath = encodeYamlScalar(normalizeConfigPath(configPath));
   const encodedWorkflowPath = encodeYamlScalar(WORKFLOW_FILE_PATH);
 
   return `name: Stack Auth Config Sync
@@ -36,6 +43,6 @@ jobs:
           STACK_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
           STACK_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
           STACK_AUTH_CONFIG_PATH: ${encodedConfigPath}
-        run: pnpx @stackframe/stack-cli@latest config push --config-file "$STACK_AUTH_CONFIG_PATH"
+        run: pnpx @stackframe/stack-cli@latest config push --cloud-project-id "$STACK_PROJECT_ID" --config-file "$STACK_AUTH_CONFIG_PATH"
 `;
 }

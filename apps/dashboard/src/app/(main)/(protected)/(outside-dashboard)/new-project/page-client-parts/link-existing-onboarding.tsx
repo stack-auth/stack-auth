@@ -13,7 +13,7 @@ import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import sodium from "libsodium-wrappers";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { OnboardingPage } from "./components";
 import {
@@ -400,9 +400,10 @@ async function encryptSecretValue(value: string, base64PublicKey: string): Promi
 }
 
 function buildConfigPathSuggestions(paths: string[]): string[] {
+  // Keep suggestions repo-relative (no `./` prefix) so they match both the
+  // workflow's push `paths` filter and the default config path input.
   return paths
     .filter((path) => path.endsWith("/stack.config.ts") || path.endsWith("/stack.config.js") || path === "stack.config.ts" || path === "stack.config.js")
-    .map((path) => path.startsWith("./") ? path : `./${path}`)
     .sort((a, b) => stringCompare(a, b));
 }
 
@@ -455,6 +456,7 @@ export function LinkExistingOnboarding(props: Props) {
   const capturedWorkflowFailureRef = useRef<string | null>(null);
   const localAutoMonitoringKeyRef = useRef<string | null>(null);
   const githubLogsAutoPollingKeyRef = useRef<string | null>(null);
+  const repositoriesLoadedAccountRef = useRef<string | null>(null);
   const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "stack.config.ts");
 
   const persistState = useCallback((partial: Partial<PersistedLinkExistingState>) => {
@@ -804,8 +806,9 @@ export function LinkExistingOnboarding(props: Props) {
     if (options?.forceConnect) {
       await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
     }
-    await loadRepositories();
-  }, [appendLog, loadRepositories, setStepWithPersistence, user]);
+    // Repositories load via the github-repository effect once an account is
+    // selected, which also covers returning here after a connect redirect.
+  }, [appendLog, setStepWithPersistence, user]);
 
   const loadBranches = useCallback(async (repositoryFullName: string): Promise<string> => {
     if (repositoryFullName.length === 0) {
@@ -1004,9 +1007,18 @@ export function LinkExistingOnboarding(props: Props) {
         commitDescription,
       );
 
-      appendLog("Dispatching workflow run...");
-      await triggerGithubWorkflow(owner, repo, selectedBranch);
-      appendLog("Workflow dispatched. Waiting for Stack Auth push...");
+      // workflow_dispatch only works once the workflow exists on the default
+      // branch, so it 404s for runs targeting other branches. The workflow-file
+      // commit above already triggers a run via the push `paths` filter, so a
+      // failed dispatch is non-fatal — continue and let the logs step monitor.
+      try {
+        appendLog("Dispatching workflow run...");
+        await triggerGithubWorkflow(owner, repo, selectedBranch);
+        appendLog("Workflow dispatched. Waiting for Stack Auth push...");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        appendLog(`Could not dispatch the workflow directly (${message}). The workflow commit should still trigger a run; continuing to monitor.`);
+      }
 
       setStepWithPersistence("github-logs");
       setIsCommitDialogOpen(false);
@@ -1097,9 +1109,34 @@ export function LinkExistingOnboarding(props: Props) {
   const localCommand = useMemo(() => {
     return deindent`
       pnpx @stackframe/stack-cli@latest login
-      pnpx @stackframe/stack-cli@latest config push --config-file <path-to-your-config-file> --project-id "${project.id}"
+      pnpx @stackframe/stack-cli@latest config push --config-file <path-to-your-config-file> --cloud-project-id "${project.id}"
     `;
   }, [project.id]);
+
+  // Load repositories whenever the github-repository step has a selected
+  // account we haven't loaded yet. This also covers landing back on this step
+  // after a connect-account OAuth redirect or a page reload.
+  useEffect(() => {
+    if (step !== "github-repository") {
+      return;
+    }
+    const account = selectedGithubAccount;
+    if (account == null) {
+      return;
+    }
+    if (repositoriesLoadedAccountRef.current === account.providerAccountId) {
+      return;
+    }
+    repositoriesLoadedAccountRef.current = account.providerAccountId;
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        await loadRepositories({ accountOverride: account });
+      } catch (error) {
+        repositoriesLoadedAccountRef.current = null;
+        throw error;
+      }
+    });
+  }, [loadRepositories, selectedGithubAccount, step]);
 
   let title = "Link an existing config";
   let subtitle = "Connect GitHub automation or push your local stack.config file.";
@@ -1221,18 +1258,30 @@ export function LinkExistingOnboarding(props: Props) {
                 Connected GitHub account
               </Typography>
               {githubAccounts.length === 0 ? (
-                <DesignAlert
-                  variant="info"
-                  description="No connected GitHub account found. Connect one to continue."
-                  glassmorphic
-                />
+                <div className="space-y-3">
+                  <DesignAlert
+                    variant="info"
+                    description="No connected GitHub account found. Connect one to continue."
+                    glassmorphic
+                  />
+                  <DesignButton
+                    className="w-full rounded-full"
+                    onClick={() => runAsynchronouslyWithAlert(async () => {
+                      await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
+                    })}
+                  >
+                    Connect GitHub account
+                  </DesignButton>
+                </div>
               ) : (
                 <DesignSelectorDropdown
                   value={selectedGithubAccount?.providerAccountId ?? ""}
                   onValueChange={(value) => runAsynchronouslyWithAlert(async () => {
                     if (value === CONNECT_NEW_GITHUB_ACCOUNT_OPTION) {
-                      await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
-                      await loadRepositories();
+                      // linkConnectedAccount always starts a fresh OAuth flow;
+                      // getOrLinkConnectedAccount would just return the existing
+                      // account and never let the user add another one.
+                      await user.linkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
                       return;
                     }
 
@@ -1241,8 +1290,9 @@ export function LinkExistingOnboarding(props: Props) {
                       throw new Error("Selected GitHub account not found.");
                     }
 
+                    // Switching the selected account triggers the
+                    // github-repository effect, which reloads repositories.
                     setSelectedGithubAccountIdWithPersistence(value);
-                    await loadRepositories({ accountOverride: account });
                   })}
                   options={[
                     {
