@@ -780,7 +780,7 @@ export class StackClientInterface {
 
       if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {
         // Some Vercel deployments seem to have an odd infinite loop bug. In that case, retry.
-        // See: https://github.com/stack-auth/stack-auth/issues/319
+        // See: https://github.com/hexclave/stack-auth/issues/319
         return Result.error(errorObj);
       }
 

@@ -1,7 +1,7 @@
 {
   "name": "@stackframe/example-tanstack-start-demo",
   "version": "2.8.89",
-  "repository": "https://github.com/stack-auth/stack-auth",
+  "repository": "https://github.com/hexclave/stack-auth",
   "description": "TanStack Start demo app for Stack Auth",
   "private": true,
   "type": "module",

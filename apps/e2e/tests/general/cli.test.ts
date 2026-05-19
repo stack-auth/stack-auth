@@ -608,7 +608,7 @@ describe("Stack CLI", () => {
       "init", "--mode", "link-config", "--config-file", "/nonexistent/stack.config.ts",
     ]);
     expect(exitCode).toBe(1);
-    expect(stderr).toContain("File not found");
+    expect(stderr).toContain("Config file not found");
   });
 
   it("init link-cloud creates .env with API keys", async ({ expect }) => {

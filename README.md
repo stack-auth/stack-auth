@@ -95,14 +95,14 @@ Check out the [documentation](https://docs.stack-auth.com/getting-started/setup)
 Have your own? Happy to feature it if you create a PR or message us on [Discord](https://discord.stack-auth.com).
 
 ### Templates
-- [Stack Auth Template by Stack Auth Team](https://github.com/stack-auth/stack-auth-template)
+- [Stack Auth Template by Stack Auth Team](https://github.com/hexclave/stack-auth-template)
 - [Next SaaSkit by wolfgunblood](https://github.com/wolfgunblood/nextjs-saaskit)
 - [SaaS Boilerplate by Robin Faraj](https://github.com/robinfaraj/saas-boilerplate)
 
 ### Examples
 - [Stack Auth Example by career-tokens](https://github.com/career-tokens/StackYCAuth)
-- [Stack Auth Demo by the Stack Auth team](https://github.com/stack-auth/stack-auth/tree/dev/examples/demo)
-- [Stack Auth E-Commerce Example by the Stack Auth team](https://github.com/stack-auth/stack-auth/tree/dev/examples/e-commerce)
+- [Stack Auth Demo by the Stack Auth team](https://github.com/hexclave/stack-auth/tree/dev/examples/demo)
+- [Stack Auth E-Commerce Example by the Stack Auth team](https://github.com/hexclave/stack-auth/tree/dev/examples/e-commerce)
 
 ## 🏗 Development & Contribution
 
@@ -193,6 +193,6 @@ Note: When working with AI, you should keep a terminal tab with the dev server o
 
 ## ❤ Contributors
 
-<a href="https://github.com/stack-auth/stack-auth/graphs/contributors">
+<a href="https://github.com/hexclave/stack-auth/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=stack-auth/stack&columns=9" width="100%" />
 </a>
