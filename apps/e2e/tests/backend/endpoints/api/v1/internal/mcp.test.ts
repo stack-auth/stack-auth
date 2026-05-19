@@ -128,8 +128,8 @@ it("public MCP endpoint should expose prompts and resources without method-not-f
     result: {
       resources: [
         {
-          uri: "stack-auth://mcp/setup",
-          name: "stack-auth-mcp-setup",
+          uri: "https://skill.stack-auth.com",
+          name: "skill",
         },
       ],
     },
