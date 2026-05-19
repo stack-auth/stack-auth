@@ -36,6 +36,19 @@ const SENTINEL_PREFIX = "STACK_ENV_VAR_SENTINEL_";
 const USE_INLINE_ENV_VARS_SENTINEL = "STACK_ENV_VAR_SENTINEL_USE_INLINE_ENV_VARS";
 const SENTINEL_REGEX = /STACK_ENV_VAR_SENTINEL(?:_[A-Z0-9_]+)?/g;
 const LOG_PREFIX = "[Stack Auth] ";
+const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
+  "NEXT_PUBLIC_STACK_API_URL",
+  "NEXT_PUBLIC_BROWSER_STACK_API_URL",
+  "NEXT_PUBLIC_SERVER_STACK_API_URL",
+  "NEXT_PUBLIC_STACK_DASHBOARD_URL",
+  "NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL",
+  "NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL",
+  "NEXT_PUBLIC_STACK_PROJECT_ID",
+  "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY",
+  "NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR",
+  "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT",
+  "NEXT_PUBLIC_STACK_IS_PREVIEW",
+]);
 
 type ProgressLogger = {
   stop: (finalMessage?: string) => void,
@@ -172,7 +185,10 @@ function replaceSentinels(content: string, env: NodeJS.ProcessEnv): string {
     const envVarName = sentinel.slice(SENTINEL_PREFIX.length);
     const value = env[envVarName];
     if (value == null) {
-      throw new CliError(`Missing environment variable ${envVarName} while preparing the bundled dashboard runtime.`);
+      if (REQUIRED_DASHBOARD_RUNTIME_ENV_VARS.has(envVarName)) {
+        throw new CliError(`Missing environment variable ${envVarName} while preparing the bundled dashboard runtime.`);
+      }
+      return sentinel;
     }
     return value;
   });
