@@ -14,7 +14,6 @@ export type ComboboxItem = {
 
 type Props = {
   value: string,
-  selectedLabel: string,
   items: ComboboxItem[],
   onSelect: (value: string) => void,
   query: string,
@@ -26,12 +25,9 @@ type Props = {
   disabled?: boolean,
 };
 
-// Combobox built on the same Popover + cmdk pattern the dashboard already uses
-// in faceted-filter, so it inherits the project's visual language. The parent
-// owns `items` and `query`, which lets us drive options from a debounced GitHub
-// API call rather than the cmdk default client-side filter.
 export function RemoteSearchCombobox(props: Props) {
   const [open, setOpen] = useState(false);
+  const selectedLabel = props.items.find((item) => item.value === props.value)?.label ?? props.value;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -48,8 +44,8 @@ export function RemoteSearchCombobox(props: Props) {
             "dark:border-white/[0.06] dark:bg-background/60 dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
           )}
         >
-          <span className={cn("truncate text-left", props.selectedLabel.length === 0 && "text-muted-foreground")}>
-            {props.selectedLabel.length > 0 ? props.selectedLabel : (props.triggerPlaceholder ?? "Select")}
+          <span className={cn("truncate text-left", selectedLabel.length === 0 && "text-muted-foreground")}>
+            {selectedLabel.length > 0 ? selectedLabel : (props.triggerPlaceholder ?? "Select")}
           </span>
           <CaretSortIcon className="ml-2 h-4 w-4 shrink-0 opacity-60" />
         </button>

@@ -483,6 +483,7 @@ export function LinkExistingOnboarding(props: Props) {
   const localAutoMonitoringKeyRef = useRef<string | null>(null);
   const githubLogsAutoPollingKeyRef = useRef<string | null>(null);
   const repositoriesLoadedAccountRef = useRef<string | null>(null);
+  const loadRepositoriesRunIdRef = useRef(0);
   const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "stack.config.ts");
   const [packageRunner, setPackageRunner] = useState<PackageRunner>("npx");
   const [repoSearchQuery, setRepoSearchQuery] = useState("");
@@ -785,9 +786,12 @@ export function LinkExistingOnboarding(props: Props) {
       throw new Error("Connect a GitHub account before loading repositories.");
     }
 
+    const runId = ++loadRepositoriesRunIdRef.current;
+    const isCurrent = () => loadRepositoriesRunIdRef.current === runId;
     setLoadingRepositories(true);
     try {
       const userResponse = await githubFetch("/user", undefined, account);
+      if (!isCurrent()) return;
       const githubUser = parseGithubUser(userResponse);
       setGithubAccountLogins((previous) => {
         const next = new Map(previous);
@@ -800,6 +804,7 @@ export function LinkExistingOnboarding(props: Props) {
         undefined,
         account,
       );
+      if (!isCurrent()) return;
       const parsedRepositories = parseGithubRepositories(response);
       setRepositories(parsedRepositories);
       setBranches([]);
@@ -829,7 +834,9 @@ export function LinkExistingOnboarding(props: Props) {
         }
       }
     } finally {
-      setLoadingRepositories(false);
+      if (isCurrent()) {
+        setLoadingRepositories(false);
+      }
     }
   }, [githubFetch, selectedGithubAccount, selectedRepositoryFullName, setSelectedBranchWithPersistence, setSelectedRepositoryFullNameWithPersistence]);
 
@@ -839,8 +846,6 @@ export function LinkExistingOnboarding(props: Props) {
     if (options?.forceConnect) {
       await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
     }
-    // Repositories load via the github-repository effect once an account is
-    // selected, which also covers returning here after a connect redirect.
   }, [appendLog, setStepWithPersistence, user]);
 
   const loadBranches = useCallback(async (repositoryFullName: string): Promise<string> => {
@@ -1142,9 +1147,9 @@ export function LinkExistingOnboarding(props: Props) {
   const loginCommand = `${packageRunner} @stackframe/stack-cli@latest login`;
   const configPushCommand = `${packageRunner} @stackframe/stack-cli@latest config push --cloud-project-id "${project.id}" --config-file <path-to-your-config-file>`;
 
-  // Load repositories whenever the github-repository step has a selected
-  // account we haven't loaded yet. This also covers landing back on this step
-  // after a connect-account OAuth redirect or a page reload.
+  // Also covers landing back on this step after the connect-account OAuth
+  // redirect or a page reload, since the effect runs whenever the account
+  // resolves and we have not yet loaded for it.
   useEffect(() => {
     if (step !== "github-repository") {
       return;
@@ -1161,7 +1166,9 @@ export function LinkExistingOnboarding(props: Props) {
       try {
         await loadRepositories({ accountOverride: account });
       } catch (error) {
-        repositoriesLoadedAccountRef.current = null;
+        if (repositoriesLoadedAccountRef.current === account.providerAccountId) {
+          repositoriesLoadedAccountRef.current = null;
+        }
         throw error;
       }
     });
@@ -1219,15 +1226,7 @@ export function LinkExistingOnboarding(props: Props) {
       setLoadingBranchSearch(false);
       return;
     }
-    let owner: string;
-    let repo: string;
-    try {
-      ({ owner, repo } = parseRepositoryFullName(selectedRepository.fullName));
-    } catch {
-      setBranchSearchResults([]);
-      setLoadingBranchSearch(false);
-      return;
-    }
+    const { owner, repo } = parseRepositoryFullName(selectedRepository.fullName);
     let cancelled = false;
     setLoadingBranchSearch(true);
     const handle = setTimeout(() => {
@@ -1453,8 +1452,6 @@ export function LinkExistingOnboarding(props: Props) {
                       throw new Error("Selected GitHub account not found.");
                     }
 
-                    // Switching the selected account triggers the
-                    // github-repository effect, which reloads repositories.
                     setSelectedGithubAccountIdWithPersistence(value);
                   })}
                   options={[
@@ -1476,7 +1473,6 @@ export function LinkExistingOnboarding(props: Props) {
               <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Repository</Typography>
               <RemoteSearchCombobox
                 value={selectedRepositoryFullName}
-                selectedLabel={selectedRepositoryFullName}
                 items={repoComboboxItems}
                 query={repoSearchQuery}
                 onQueryChange={setRepoSearchQuery}
@@ -1505,7 +1501,6 @@ export function LinkExistingOnboarding(props: Props) {
               <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Branch</Typography>
               <RemoteSearchCombobox
                 value={selectedBranch}
-                selectedLabel={selectedBranch}
                 items={branchComboboxItems}
                 query={branchSearchQuery}
                 onQueryChange={setBranchSearchQuery}
