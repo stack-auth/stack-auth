@@ -23,6 +23,9 @@ type DevEnvironmentHealthSnapshot =
   | { status: "checking" | "healthy" }
   | { status: "unhealthy", restartCommand: string };
 
+const CHECKING_DEV_ENVIRONMENT_HEALTH_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "checking" };
+const HEALTHY_DEV_ENVIRONMENT_HEALTH_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "healthy" };
+
 function isDevEnvironmentHealthResponse(value: unknown): value is { ok: boolean, restart_command: string } {
   return (
     value != null &&
@@ -34,7 +37,7 @@ function isDevEnvironmentHealthResponse(value: unknown): value is { ok: boolean,
   );
 }
 
-let devEnvironmentHealthSnapshot: DevEnvironmentHealthSnapshot = { status: "checking" };
+let devEnvironmentHealthSnapshot: DevEnvironmentHealthSnapshot = CHECKING_DEV_ENVIRONMENT_HEALTH_SNAPSHOT;
 const devEnvironmentHealthSubscribers = new Set<() => void>();
 let devEnvironmentHealthTimer: ReturnType<typeof setInterval> | undefined;
 let devEnvironmentHealthRequestSequence = 0;
@@ -67,7 +70,7 @@ async function refreshDevEnvironmentHealth() {
     }
 
     setSnapshotIfCurrent(body.ok && response.ok
-      ? { status: "healthy" }
+      ? HEALTHY_DEV_ENVIRONMENT_HEALTH_SNAPSHOT
       : { status: "unhealthy", restartCommand: body.restart_command });
   } catch {
     setSnapshotIfCurrent({
@@ -80,7 +83,7 @@ async function refreshDevEnvironmentHealth() {
 function subscribeDevEnvironmentHealth(callback: () => void) {
   devEnvironmentHealthSubscribers.add(callback);
   if (devEnvironmentHealthSubscribers.size === 1) {
-    setDevEnvironmentHealthSnapshot({ status: "checking" });
+    setDevEnvironmentHealthSnapshot(CHECKING_DEV_ENVIRONMENT_HEALTH_SNAPSHOT);
     runAsynchronouslyWithAlert(refreshDevEnvironmentHealth());
     devEnvironmentHealthTimer = setInterval(() => {
       runAsynchronouslyWithAlert(refreshDevEnvironmentHealth());
@@ -101,7 +104,7 @@ function getDevEnvironmentHealthSnapshot() {
 }
 
 function getServerDevEnvironmentHealthSnapshot(): DevEnvironmentHealthSnapshot {
-  return { status: "checking" };
+  return CHECKING_DEV_ENVIRONMENT_HEALTH_SNAPSHOT;
 }
 
 function subscribeHealthyDevEnvironment(_callback: () => void) {
@@ -109,7 +112,7 @@ function subscribeHealthyDevEnvironment(_callback: () => void) {
 }
 
 function getHealthyDevEnvironmentSnapshot(): DevEnvironmentHealthSnapshot {
-  return { status: "healthy" };
+  return HEALTHY_DEV_ENVIRONMENT_HEALTH_SNAPSHOT;
 }
 
 function DevEnvironmentStoppedScreen(props: { restartCommand: string }) {
