@@ -810,7 +810,7 @@ it("admin events endpoint does not allow fetching a chunk via the wrong session 
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // session1: upload under first refresh token
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const batchId = randomUUID();
   const upload1 = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -823,7 +823,7 @@ it("admin events endpoint does not allow fetching a chunk via the wrong session 
   const recording1 = upload1.body?.session_replay_id;
 
   // session2: upload under a different refresh token
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const upload2 = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -971,12 +971,28 @@ async function listReplays(queryParams: Record<string, string> = {}) {
   });
 }
 
+async function listReplaysWithRetry(
+  queryParams: Record<string, string>,
+  predicate: (res: Awaited<ReturnType<typeof listReplays>>) => boolean,
+  options: { attempts?: number, delayMs?: number } = {},
+) {
+  const attempts = options.attempts ?? 30;
+  const delayMs = options.delayMs ?? 500;
+  let res = await listReplays(queryParams);
+  for (let i = 0; i < attempts; i++) {
+    if (predicate(res)) return res;
+    await wait(delayMs);
+    res = await listReplays(queryParams);
+  }
+  return res;
+}
+
 it("admin list session replays filters by user_ids", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // User A
-  const userA = await Auth.Otp.signIn();
+  const userA = await Auth.fastSignUp();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -987,8 +1003,7 @@ it("admin list session replays filters by user_ids", async ({ expect }) => {
   expect(uploadA.status).toBe(200);
 
   // User B
-  await bumpEmailAddress();
-  const userB = await Auth.Otp.signIn();
+  const userB = await Auth.fastSignUp();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -997,6 +1012,14 @@ it("admin list session replays filters by user_ids", async ({ expect }) => {
     events: [{ type: 1, timestamp: 1_700_000_000_200 }],
   });
   expect(uploadB.status).toBe(200);
+
+  // Wait for ClickHouse to ingest both replays before asserting filters
+  const resBoth = await listReplaysWithRetry(
+    { user_ids: `${userA.userId},${userB.userId}` },
+    (res) => res.status === 200 && res.body?.items?.length === 2,
+  );
+  expect(resBoth.status).toBe(200);
+  expect(resBoth.body?.items?.length).toBe(2);
 
   // Filter by user A only
   const resA = await listReplays({ user_ids: userA.userId });
@@ -1009,11 +1032,6 @@ it("admin list session replays filters by user_ids", async ({ expect }) => {
   expect(resB.status).toBe(200);
   expect(resB.body?.items?.length).toBe(1);
   expect(resB.body?.items?.[0]?.project_user?.id).toBe(userB.userId);
-
-  // Filter by both users
-  const resBoth = await listReplays({ user_ids: `${userA.userId},${userB.userId}` });
-  expect(resBoth.status).toBe(200);
-  expect(resBoth.body?.items?.length).toBe(2);
 
   // Filter by nonexistent user
   const resNone = await listReplays({ user_ids: randomUUID() });
@@ -1183,7 +1201,7 @@ it("admin list session replays filters by click_count_min", async ({ expect }) =
   const now = Date.now();
 
   // Replay A: user with 3 clicks
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const segmentIdA = randomUUID();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -1222,8 +1240,7 @@ it("admin list session replays filters by click_count_min", async ({ expect }) =
   expect(eventBatchA.status).toBe(200);
 
   // Replay B: user with 1 click
-  await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const segmentIdB = randomUUID();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -1246,21 +1263,20 @@ it("admin list session replays filters by click_count_min", async ({ expect }) =
   });
   expect(eventBatchB.status).toBe(200);
 
-  // Retry loop for ClickHouse eventual consistency
-  let foundOnlyA = false;
-  for (let i = 0; i < 15; i++) {
-    const res = await listReplays({ click_count_min: "2" });
-    expect(res.status).toBe(200);
-    if (res.body?.items?.length === 1 && res.body?.items?.[0]?.id === replayIdA) {
-      foundOnlyA = true;
-      break;
-    }
-    await wait(500);
-  }
-  expect(foundOnlyA).toBe(true);
+  // Wait for ClickHouse to ingest click events and replays
+  const resClickMin = await listReplaysWithRetry(
+    { click_count_min: "2" },
+    (res) => res.status === 200 && res.body?.items?.length === 1 && res.body?.items?.[0]?.id === replayIdA,
+  );
+  expect(resClickMin.status).toBe(200);
+  expect(resClickMin.body?.items?.length).toBe(1);
+  expect(resClickMin.body?.items?.[0]?.id).toBe(replayIdA);
 
   // click_count_min=0 should return both (no-op filter)
-  const resAll = await listReplays({ click_count_min: "0" });
+  const resAll = await listReplaysWithRetry(
+    { click_count_min: "0" },
+    (res) => res.status === 200 && (res.body?.items?.length ?? 0) >= 2,
+  );
   expect(resAll.status).toBe(200);
   expect(resAll.body?.items?.length).toBeGreaterThanOrEqual(2);
 });
