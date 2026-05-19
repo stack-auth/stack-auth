@@ -1162,7 +1162,7 @@ export function LinkExistingOnboarding(props: Props) {
   const canContinue = pushedConfigSource != null && pushedConfigSource.type !== "unlinked";
 
   const loginCommand = `${packageRunner} @stackframe/stack-cli@latest login`;
-  const configPushCommand = `${packageRunner} @stackframe/stack-cli@latest config push --cloud-project-id "${project.id}" --config-file <path-to-your-config-file>`;
+  const configPushCommand = `${packageRunner} @stackframe/stack-cli@latest config push --cloud-project-id ${JSON.stringify(project.id)} --config-file <path-to-your-config-file>`;
 
   // Also covers landing back on this step after the connect-account OAuth
   // redirect or a page reload, since the effect runs whenever the account
