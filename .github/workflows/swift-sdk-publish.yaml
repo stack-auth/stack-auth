@@ -51,7 +51,7 @@ jobs:
       - name: Clone target repo
         if: steps.check-tag.outputs.exists == 'false'
         run: |
-          git clone https://x-access-token:${{ secrets.SWIFT_SDK_PUBLISH_TOKEN }}@github.com/stack-auth/swift-sdk-prerelease.git target
+          git clone https://x-access-token:${{ secrets.SWIFT_SDK_PUBLISH_TOKEN }}@github.com/hexclave/swift-sdk-prerelease.git target
 
       - name: Copy Swift SDK to target repo
         if: steps.check-tag.outputs.exists == 'false'

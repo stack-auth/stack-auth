@@ -402,7 +402,7 @@ function renderHtml(): string {
 
   <footer>
     <span>© Stack Auth</span>
-    <a href="https://github.com/stack-auth/stack-auth" rel="noreferrer">GitHub&nbsp;↗</a>
+    <a href="https://github.com/hexclave/stack-auth" rel="noreferrer">GitHub&nbsp;↗</a>
   </footer>
 </main>
 <script>
