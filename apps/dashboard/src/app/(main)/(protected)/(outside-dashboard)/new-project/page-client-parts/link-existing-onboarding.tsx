@@ -1108,8 +1108,8 @@ export function LinkExistingOnboarding(props: Props) {
 
   const localCommand = useMemo(() => {
     return deindent`
-      pnpx @stackframe/stack-cli@latest login
-      pnpx @stackframe/stack-cli@latest config push --config-file <path-to-your-config-file> --cloud-project-id "${project.id}"
+      npx @stackframe/stack-cli@latest login
+      npx @stackframe/stack-cli@latest config push --config-file <path-to-your-config-file> --cloud-project-id "${project.id}"
     `;
   }, [project.id]);
 

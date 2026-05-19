@@ -38,11 +38,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Push Stack Auth config
         env:
           STACK_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
           STACK_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
           STACK_AUTH_CONFIG_PATH: ${encodedConfigPath}
-        run: pnpx @stackframe/stack-cli@latest config push --cloud-project-id "$STACK_PROJECT_ID" --config-file "$STACK_AUTH_CONFIG_PATH"
+        run: npx --yes @stackframe/stack-cli@latest config push --cloud-project-id "$STACK_PROJECT_ID" --config-file "$STACK_AUTH_CONFIG_PATH"
 `;
 }
