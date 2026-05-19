@@ -41,7 +41,7 @@ const stackAuthReminders = deindent`
   - Take extra care to always have great error handling and loading states whenever necessary (including in button onClick handlers; Stack Auth's code examples often use a special onClick class which handles loading states, but your own button may not). Stack Auth's SDK tends to return errors that need to be handled explicitly in its return types.
   - Language, framework, and library-specific details:
     - JavaScript & TypeScript:
-      - Stack Auth has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @stackframe/js (JavaScript/TypeScript), @stackframe/stack (Next.js), @stackframe/react (React). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
+      - Stack Auth has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @stackframe/js (JavaScript/TypeScript), @stackframe/stack (Next.js), @stackframe/react (React), @stackframe/tanstack-start (TanStack Start). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
       - The \`Result<T, E>\` type is \`{ status: "ok", data: T } | { status: "error", error: E }\`.
       - \`KnownErrors[KNOWN_ERROR_CODE]\` refers to a specific known error type. Each KnownError may have its own properties, but they all inherit from \`Error & { statusCode: number, humanReadableMessage: string, details?: Json }\`.
       - React & Next.js:
@@ -112,8 +112,8 @@ function createCustomPagePrompt(options: {
     |---|---|
     | \`signIn\`, \`signUp\` | Render the forms described in this prompt (or its sign-in / sign-up counterpart). |
     | \`oauthCallback\` | On mount, call \`await stackApp.callOAuthCallback()\`. The SDK exchanges the \`code\`/\`state\` query params for tokens and then redirects to \`afterSignIn\`. |
-    | \`signOut\` | On mount, call \`await stackApp.signOut()\` then \`await stackApp.redirectToAfterSignOut({ replace: true })\`. |
-    | \`magicLinkCallback\` | Complete the magic-link exchange when the link is opened directly (separate from the OTP flow inside the sign-in page). |
+    | \`signOut\` | Read the current user, then sign them out via \`use(cacheSignOut(user))\` (which calls \`user.signOut()\` inside a cached function so the page stays idempotent on refresh). Show a confirmation state with a "Go home" button that calls \`stackApp.redirectToHome()\`. |
+    | \`magicLinkCallback\` | Complete the magic-link exchange when the link is opened directly (separate from the OTP flow inside the sign-in page). Call \`await stackApp.signInWithMagicLink(code)\` with the \`code\` query param. |
     | \`forgotPassword\`, \`passwordReset\`, \`emailVerification\`, \`accountSettings\`, \`teamInvitation\`, \`mfa\`, \`error\`, \`onboarding\`, \`cliAuthConfirm\` | Each is its own URL target; customize as needed. |
 
     Any URL target you do NOT customize will keep bouncing through the hosted domain — that may be intentional, but it should be a deliberate choice, not an accident. Always whitelist every origin you redirect to (your app's origin in production, \`http://localhost:<port>\` in dev, and the \`<projectId>.built-with-stack-auth.com\` host if you keep any handlers on hosted). In development you can also flip the "Allow localhost callbacks" toggle on the Trusted Domains page.
