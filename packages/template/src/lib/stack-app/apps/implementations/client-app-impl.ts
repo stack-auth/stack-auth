@@ -655,7 +655,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return anonUser._internalSession;
     };
 
-    if (isBrowserLike() && this._hasPersistentTokenStore() && this._analyticsOptions?.replays?.enabled === true) {
+    const analyticsEnabled = this._analyticsOptions?.enabled !== false;
+
+    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
@@ -665,7 +667,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._sessionRecorder.start();
     }
 
-    if (isBrowserLike() && this._hasPersistentTokenStore()) {
+    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {

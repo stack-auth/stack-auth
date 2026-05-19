@@ -13,8 +13,15 @@ import { useEffect, useRef } from "react";
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const app = useStackApp();
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
-  const user = useUser();
+  const user = useUser(
+    isRemoteDevelopmentEnvironment
+      ? {
+        or: "anonymous-if-exists[deprecated]",
+      }
+      : undefined
+  );
   const autoLoginStarted = useRef(false);
 
   useEffect(() => {
@@ -25,6 +32,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
     // The session then settles on one user while a project may have been
     // created for the other, which surfaces as a 404 on the project page.
     if (user || autoLoginStarted.current) return;
+    if (isRemoteDevelopmentEnvironment) return;
     autoLoginStarted.current = true;
 
     const autoLogin = async () => {
@@ -44,9 +52,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       }
     };
     runAsynchronouslyWithAlert(autoLogin());
-  }, [user, app, isLocalEmulator, isPreview]);
+  }, [user, app, isLocalEmulator, isRemoteDevelopmentEnvironment, isPreview]);
 
-  if ((isLocalEmulator || isPreview) && !user) {
+  if ((isLocalEmulator || isRemoteDevelopmentEnvironment || isPreview) && !user) {
     return <Loading />;
   } else {
     return (

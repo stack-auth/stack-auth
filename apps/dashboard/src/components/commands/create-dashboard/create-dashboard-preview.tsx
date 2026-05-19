@@ -8,10 +8,10 @@ import { createUnifiedAiTransport } from "@/components/assistant-ui/chat-stream"
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import type { AppId } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { FloppyDiskIcon } from "@phosphor-icons/react";
-import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -88,7 +88,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
   const adminApp = useAdminApp(projectId);
   const project = adminApp.useProject();
   const config = project.useConfig();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
   const browserBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? backendBaseUrl;
   const updateConfig = useUpdateConfig();

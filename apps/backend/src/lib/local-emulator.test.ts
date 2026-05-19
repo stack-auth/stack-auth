@@ -53,7 +53,16 @@ describe("local emulator config", () => {
     vi.stubEnv("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", Buffer.from(content).toString("base64"));
 
     await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).rejects.toThrow(
-      "Invalid config in /irrelevant/path/stack.config.ts. The file must export a 'config' object or \"show-onboarding\"."
+      "Error evaluating config in /irrelevant/path/stack.config.ts: Invalid config in /irrelevant/path/stack.config.ts. The file must export a plain `config` object or \"show-onboarding\"."
+    );
+  });
+
+  it("includes the config file path when static config parsing fails", async () => {
+    const content = `export const config = makeConfig();\n`;
+    vi.stubEnv("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", Buffer.from(content).toString("base64"));
+
+    await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).rejects.toThrow(
+      "Error evaluating config in /irrelevant/path/stack.config.ts: Unsupported config expression: CallExpression"
     );
   });
 

@@ -48,6 +48,16 @@ type EmulatorCredentials = {
   onboarding_outstanding: boolean,
 };
 
+type EmulatorChildOptions = {
+  arch?: string,
+  configFile?: string,
+};
+
+export type EmulatorChildCommand = {
+  command: string,
+  args: string[],
+};
+
 async function fetchEmulatorCredentials(pck: string, backendPort: number, configFile: string): Promise<EmulatorCredentials> {
   const url = `http://127.0.0.1:${backendPort}/api/v1/internal/local-emulator/project`;
   const res = await fetch(url, {
@@ -124,6 +134,14 @@ function maybeOpenOnboardingPage(credentials: EmulatorCredentials): void {
   } else {
     console.warn(`Onboarding is still pending for project ${credentials.project_id}. Open this URL manually: ${url}`);
   }
+}
+
+export function splitEmulatorCommandArgs(commandArgs: string[], commandName = "run"): EmulatorChildCommand {
+  if (commandArgs.length === 0) {
+    throw new CliError(`Missing command. Usage: stack emulator ${commandName} -- <command> [args...]`);
+  }
+  const command = commandArgs[0];
+  return { command, args: commandArgs.slice(1) };
 }
 
 // Resolve a GitHub auth token. We try GITHUB_TOKEN first so users can pin a
@@ -282,6 +300,107 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
   await runEmulator("start", { EMULATOR_ARCH: arch, STACK_EMULATOR_CLI_WROTE_ISO: "1" });
 }
 
+function resolveEmulatorConfigFile(configFile: string | undefined): string | undefined {
+  if (configFile === undefined) {
+    return undefined;
+  }
+  return resolveConfigFilePathOption(configFile, { mustExist: true });
+}
+
+async function buildEmulatorChildEnv(resolvedConfigFile: string | undefined): Promise<NodeJS.ProcessEnv> {
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  if (resolvedConfigFile === undefined) {
+    return childEnv;
+  }
+
+  const pck = await readInternalPck();
+  const backendPort = emulatorBackendPort();
+  const creds = await fetchEmulatorCredentials(pck, backendPort, resolvedConfigFile);
+  maybeOpenOnboardingPage(creds);
+  const apiUrl = `http://127.0.0.1:${backendPort}`;
+  childEnv.STACK_PROJECT_ID = creds.project_id;
+  childEnv.NEXT_PUBLIC_STACK_PROJECT_ID = creds.project_id;
+  childEnv.VITE_STACK_PROJECT_ID = creds.project_id;
+  childEnv.EXPO_PUBLIC_STACK_PROJECT_ID = creds.project_id;
+  childEnv.STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
+  childEnv.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
+  childEnv.VITE_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
+  childEnv.EXPO_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
+  childEnv.STACK_SECRET_SERVER_KEY = creds.secret_server_key;
+  childEnv.STACK_API_URL = apiUrl;
+  childEnv.NEXT_PUBLIC_STACK_API_URL = apiUrl;
+  childEnv.VITE_STACK_API_URL = apiUrl;
+  childEnv.EXPO_PUBLIC_STACK_API_URL = apiUrl;
+  return childEnv;
+}
+
+function runChildProcess(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(command, args, { stdio: "inherit", env });
+
+    const forward = (signal: NodeJS.Signals) => () => child.kill(signal);
+    const onSigint = forward("SIGINT");
+    const onSigterm = forward("SIGTERM");
+    const cleanup = () => {
+      process.off("SIGINT", onSigint);
+      process.off("SIGTERM", onSigterm);
+    };
+
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
+
+    child.on("close", (code) => {
+      cleanup();
+      resolvePromise(code ?? 1);
+    });
+    child.on("error", (err) => {
+      cleanup();
+      reject(new CliError(`Failed to run ${command}: ${err.message}`));
+    });
+  });
+}
+
+async function stopEmulatorAfterChild(): Promise<void> {
+  console.log("\nStopping emulator...");
+  try {
+    await runEmulator("stop");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    process.stderr.write(`Failed to stop emulator cleanly: ${msg}\n`);
+  }
+}
+
+async function runWithLocalEmulator(
+  commandName: string,
+  opts: EmulatorChildOptions,
+  runChild: (env: NodeJS.ProcessEnv) => Promise<number>,
+): Promise<void> {
+  const arch = resolveArch(opts.arch);
+  preflightForVmStart(commandName, arch);
+  const resolvedConfigFile = resolveEmulatorConfigFile(opts.configFile);
+
+  let startedByThisCommand = false;
+  const exitCode = await (async () => {
+    try {
+      if (isEmulatorRunning()) {
+        console.log("Emulator already running, reusing existing instance.");
+      } else {
+        await startEmulator(arch);
+        startedByThisCommand = true;
+      }
+
+      const childEnv = await buildEmulatorChildEnv(resolvedConfigFile);
+      return await runChild(childEnv);
+    } finally {
+      if (startedByThisCommand) {
+        await stopEmulatorAfterChild();
+      }
+    }
+  })();
+
+  process.exit(exitCode);
+}
+
 function printEmulatorWelcome(): void {
   const dashboardPort = emulatorDashboardPort();
   const backendPort = emulatorBackendPort();
@@ -301,7 +420,7 @@ function printEmulatorWelcome(): void {
   console.log("  stack emulator status   Check service health");
   console.log("  stack emulator stop     Stop the VM (keeps data)");
   console.log("  stack emulator reset    Wipe all state and start fresh");
-  console.log("  stack emulator run <cmd>  Start the emulator, run <cmd>, stop on exit");
+  console.log("  stack emulator run -- <cmd>  Start the emulator, run <cmd>, stop on exit");
   console.log("");
 }
 
@@ -770,73 +889,14 @@ export function registerEmulatorCommand(program: Command) {
 
   emulator
     .command("run")
+    .usage("[options] -- <command> [args...]")
     .description("Start the emulator, run a command, and stop the emulator when the command exits")
-    .argument("<cmd>", "Command to run (e.g. \"npm run dev\")")
+    .argument("<command...>", "Command and arguments to run after -- (e.g. -- npm run dev)")
     .option("--arch <arch>", "Target architecture")
     .option("--config-file <path>", "Path to a config file; fetches credentials and injects STACK_PROJECT_ID / STACK_PUBLISHABLE_CLIENT_KEY / STACK_SECRET_SERVER_KEY into the child")
-    .action(async (cmd: string, opts: { arch?: string, configFile?: string }) => {
-      const arch = resolveArch(opts.arch);
-      preflightForVmStart("run", arch);
-
-      let resolvedConfigFile: string | undefined;
-      if (opts.configFile) {
-        resolvedConfigFile = resolveConfigFilePathOption(opts.configFile, { mustExist: true });
-      }
-
-      const alreadyRunning = isEmulatorRunning();
-      if (alreadyRunning) {
-        console.log("Emulator already running, reusing existing instance.");
-      } else {
-        await startEmulator(arch);
-      }
-
-      const childEnv: Record<string, string> = { ...process.env as Record<string, string> };
-      if (resolvedConfigFile) {
-        const pck = await readInternalPck();
-        const backendPort = emulatorBackendPort();
-        const creds = await fetchEmulatorCredentials(pck, backendPort, resolvedConfigFile);
-        maybeOpenOnboardingPage(creds);
-        const apiUrl = `http://127.0.0.1:${backendPort}`;
-        childEnv.STACK_PROJECT_ID = creds.project_id;
-        childEnv.NEXT_PUBLIC_STACK_PROJECT_ID = creds.project_id;
-        childEnv.VITE_STACK_PROJECT_ID = creds.project_id;
-        childEnv.EXPO_PUBLIC_STACK_PROJECT_ID = creds.project_id;
-        childEnv.STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
-        childEnv.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
-        childEnv.VITE_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
-        childEnv.EXPO_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
-        childEnv.STACK_SECRET_SERVER_KEY = creds.secret_server_key;
-        childEnv.STACK_API_URL = apiUrl;
-        childEnv.NEXT_PUBLIC_STACK_API_URL = apiUrl;
-        childEnv.VITE_STACK_API_URL = apiUrl;
-        childEnv.EXPO_PUBLIC_STACK_API_URL = apiUrl;
-      }
-
-      const child = spawn(cmd, { shell: true, stdio: "inherit", env: childEnv });
-
-      const forward = (signal: NodeJS.Signals) => () => child.kill(signal);
-      const onSigint = forward("SIGINT");
-      const onSigterm = forward("SIGTERM");
-      process.on("SIGINT", onSigint);
-      process.on("SIGTERM", onSigterm);
-
-      child.on("close", (code) => {
-        process.off("SIGINT", onSigint);
-        process.off("SIGTERM", onSigterm);
-        const exitCode = code ?? 1;
-        if (alreadyRunning) {
-          process.exit(exitCode);
-        } else {
-          console.log("\nStopping emulator...");
-          const warnStopFailed = (e: unknown) => {
-            const msg = e instanceof Error ? e.message : String(e);
-            process.stderr.write(`Failed to stop emulator cleanly: ${msg}\n`);
-          };
-          runEmulator("stop")
-            .catch(warnStopFailed)
-            .finally(() => process.exit(exitCode));
-        }
-      });
+    .action(async (commandArgs: string[], opts: EmulatorChildOptions) => {
+      const childCommand = splitEmulatorCommandArgs(commandArgs);
+      await runWithLocalEmulator("run", opts, (env) => runChildProcess(childCommand.command, childCommand.args, env));
     });
 
   emulator

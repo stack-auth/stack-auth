@@ -88,7 +88,7 @@ export default function PageClient() {
           {isLocalEmulator && <EmulatorModeCard />}
 
           {/* Email Server Card */}
-          <EmailServerCard emailConfig={emailConfig} />
+          <EmailServerCard emailConfig={emailConfig} isDevelopmentEnvironment={project.isDevelopmentEnvironment} />
 
           {/* Email Log Card */}
           <EmailLogCard />
@@ -136,8 +136,7 @@ function EmulatorModeCard() {
   );
 }
 
-function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails']['server'] }) {
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+function EmailServerCard({ emailConfig, isDevelopmentEnvironment }: { emailConfig: CompleteConfig['emails']['server'], isDevelopmentEnvironment: boolean }) {
   const serverType = emailConfig.isShared
     ? 'Shared'
     : emailConfig.provider === 'managed'
@@ -157,13 +156,13 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
           <div className="flex-1 min-w-0">
             <SectionHeader icon={HardDrive} title="Email Server" />
             <Typography variant="secondary" className="text-sm mt-1">
-              {isLocalEmulator
-                ? "Email server settings are read-only in the local emulator"
+              {isDevelopmentEnvironment
+                ? "Email server settings are read-only in development environments"
                 : "Configure the email server and sender address for outgoing emails"}
             </Typography>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {!emailConfig.isShared && !isLocalEmulator && (
+            {!emailConfig.isShared && !isDevelopmentEnvironment && (
               <TestSendingDialog
                 trigger={
                   <Button variant='ghost' size="sm" className="h-8 px-3 text-xs gap-1.5">
@@ -173,7 +172,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
                 }
               />
             )}
-            {!isLocalEmulator ? (
+            {!isDevelopmentEnvironment ? (
               <>
                 <ManagedEmailSetupDialog
                   trigger={
@@ -195,10 +194,10 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
             ) : null}
           </div>
         </div>
-        {isLocalEmulator && (
+        {isDevelopmentEnvironment && (
           <Alert className="mt-4">
             <AlertDescription>
-              Email server settings cannot be changed in the local emulator. Update these settings in your production deployment.
+              Email server settings cannot be changed in development environments. Update these settings in your production deployment.
             </AlertDescription>
           </Alert>
         )}

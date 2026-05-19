@@ -487,16 +487,16 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
       </Step>
 
       <Step title="Setting up the project">
-        It's now time to create a development setup for Stack Auth.
+        It's now time to connect your code to a Stack Auth project.
 
-        You can either run Stack Auth locally, or connect to a project hosted in the cloud.
+        You can either run Stack Auth's dev environment locally, or connect to a production project hosted in the cloud.
 
         ${isAiPrompt ? deindent`
           If you already use Stack Auth for your product, we recommend you re-use the same project to share your configuration between the two.
         ` : ""}
 
         <AccordionGroup>
-          <Accordion title="Option 1: Running Stack Auth locally (recommended)" defaultOpen>
+          <Accordion title="Option 1: Running Stack Auth's dev environment (recommended)" defaultOpen>
             First, create a \`stack.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts stack.config.ts
@@ -506,20 +506,28 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             export const config: StackConfig = "show-onboarding";
             \`\`\`
 
-            To run your application with Stack Auth, you then need to start the emulator and set environment variables expected by your application. The \`emulator run\` CLI command does both of these, so you can simply wrap your existing \`dev\` script in your package.json:
+            To run your application with Stack Auth, you can then start the dev environment and set environment variables expected by your application. Stack Auth's CLI has a \`dev\` command does both of these, so let's install it as a dev dependency and wrap your existing \`dev\` script in your package.json:
+
+            \`\`\`sh
+            npm i -D @stackframe/stack-cli
+            # or: pnpm i -D @stackframe/stack-cli
+            # or: yarn add -D @stackframe/stack-cli
+            # or: bun add --dev @stackframe/stack-cli
+            \`\`\`
 
             \`\`\`json package.json
             {
               // ...
               "scripts": {
                 // ...
-                "dev": "npx @stackframe/stack-cli emulator run --config-file ./stack.config.ts -- <your-existing-dev-script>"
+                "dev": "stack dev --config-file ./stack.config.ts -- npm run dev:without-stack-auth",
+                "dev:without-stack-auth": "<your-existing-dev-script>"
               }
             }
             \`\`\`
           </Accordion>
 
-          <Accordion title="Option 2: Connecting a cloud project">
+          <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
             ${isAiPrompt ? deindent`
               Note: If you're an AI agent, and you don't already have the information you need from the Cloud project, you may have to ask the user for help on this step. You can either ask them to provide the environment variables, or just leave them empty for now and ask the user to complete them at the end.
             ` : ""}

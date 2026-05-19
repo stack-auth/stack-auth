@@ -15,6 +15,8 @@ import { seedDummyProject } from '@/lib/seed-dummy-data';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
+import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
+import { AdminUserProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
 import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/dist/plans';
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -23,6 +25,7 @@ import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/ut
 const MONTHLY_REPEAT: DayInterval = [1, "month"];
 
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
+const DEVELOPMENT_ENVIRONMENT_PROJECT_ID = '5f2a45c8-9096-4f0b-b987-7640a47f7a79';
 
 let didEnableSeedLogTimestamps = false;
 
@@ -401,6 +404,49 @@ export async function seed() {
       projectId: DUMMY_PROJECT_ID,
       ownerTeamId: internalTeamId,
       oauthProviderIds,
+    });
+  }
+
+  const developmentEnvironmentProjectData = {
+    display_name: 'Development Environment Project',
+    description: 'Seeded project for debugging development-environment dashboard behavior.',
+    is_production_mode: false,
+    is_development_environment: true,
+    owner_team_id: internalTeamId,
+    config: {
+      allow_localhost: true,
+      sign_up_enabled: true,
+      credential_enabled: true,
+      magic_link_enabled: true,
+      passkey_enabled: true,
+      client_team_creation_enabled: true,
+      client_user_deletion_enabled: true,
+      allow_user_api_keys: true,
+      allow_team_api_keys: true,
+      create_team_on_sign_up: false,
+      email_theme: DEFAULT_EMAIL_THEME_ID,
+      email_config: {
+        type: 'shared',
+      },
+      oauth_providers: oauthProviderIds.map((id) => ({
+        id: id as any,
+        type: 'shared',
+      })),
+      domains: [],
+    },
+  } satisfies AdminUserProjectsCrud["Admin"]["Create"];
+  if (await getProject(DEVELOPMENT_ENVIRONMENT_PROJECT_ID)) {
+    await createOrUpdateProjectWithLegacyConfig({
+      type: 'update',
+      projectId: DEVELOPMENT_ENVIRONMENT_PROJECT_ID,
+      branchId: DEFAULT_BRANCH_ID,
+      data: developmentEnvironmentProjectData,
+    });
+  } else {
+    await createOrUpdateProjectWithLegacyConfig({
+      type: 'create',
+      projectId: DEVELOPMENT_ENVIRONMENT_PROJECT_ID,
+      data: developmentEnvironmentProjectData,
     });
   }
 
