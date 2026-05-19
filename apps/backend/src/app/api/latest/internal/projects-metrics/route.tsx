@@ -5,7 +5,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { MetricsDataPointsSchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const SIGNUPS_WINDOW_DAYS = 30;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -101,75 +101,72 @@ export const GET = createSmartRouteHandler({
         daily_signups: emptySeries(),
       });
     }
-    const projectsResponse = () => Object.fromEntries(byProject);
+    const buildResponse = () => ({
+      statusCode: 200 as const,
+      bodyType: "json" as const,
+      body: { projects: Object.fromEntries(byProject) },
+    });
 
     if (projectIds.length === 0) {
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: { projects: projectsResponse() },
-      };
+      return buildResponse();
     }
 
-    let totals: { projectId: string, totalUsers: number }[] = [];
-    let signups: { projectId: string, day: string, signups: number }[] = [];
+    let totalRows: Array<{ projectId: string, totalUsers: bigint | number }>;
+    let signupRows: Array<{ projectId: string, day: Date | string, signups: bigint | number }>;
     try {
-      const totalRows = await globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, totalUsers: bigint | number }>>(
-        `
-          SELECT "mirroredProjectId" AS "projectId", COUNT(*)::int AS "totalUsers"
-          FROM "ProjectUser"
-          WHERE "mirroredProjectId" = ANY($1::text[])
-            AND "mirroredBranchId" = $2
-            AND "isAnonymous" = false
-          GROUP BY "mirroredProjectId"
-        `,
+      [totalRows, signupRows] = await Promise.all([
+        globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, totalUsers: bigint | number }>>(
+          `
+            SELECT "mirroredProjectId" AS "projectId", COUNT(*)::bigint AS "totalUsers"
+            FROM "ProjectUser"
+            WHERE "mirroredProjectId" = ANY($1::text[])
+              AND "mirroredBranchId" = $2
+              AND "isAnonymous" = false
+            GROUP BY "mirroredProjectId"
+          `,
+          projectIds,
+          DEFAULT_BRANCH_ID,
+        ),
+        globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, day: Date | string, signups: bigint | number }>>(
+          `
+            SELECT
+              "mirroredProjectId" AS "projectId",
+              date_trunc('day', COALESCE("signedUpAt", "createdAt") AT TIME ZONE 'UTC')::date AS "day",
+              COUNT(*)::bigint AS "signups"
+            FROM "ProjectUser"
+            WHERE "mirroredProjectId" = ANY($1::text[])
+              AND "mirroredBranchId" = $2
+              AND "isAnonymous" = false
+              AND COALESCE("signedUpAt", "createdAt") >= $3
+              AND COALESCE("signedUpAt", "createdAt") < $4
+            GROUP BY "mirroredProjectId", "day"
+          `,
+          projectIds,
+          DEFAULT_BRANCH_ID,
+          since,
+          untilExclusive,
+        ),
+      ]);
+    } catch (cause) {
+      throw new StackAssertionError("Failed to load project metrics.", {
+        cause,
+        userId: req.auth.user.id,
         projectIds,
-        DEFAULT_BRANCH_ID,
-      );
-      totals = totalRows.map((r) => ({ projectId: r.projectId, totalUsers: Number(r.totalUsers) }));
+        signupsSince: since.toISOString(),
+        signupsUntilExclusive: untilExclusive.toISOString(),
+      });
+    }
 
-      const signupRows = await globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, day: Date | string, signups: bigint | number }>>(
-        `
-          SELECT
-            "mirroredProjectId" AS "projectId",
-            date_trunc('day', "createdAt" AT TIME ZONE 'UTC')::date AS "day",
-            COUNT(*)::int AS "signups"
-          FROM "ProjectUser"
-          WHERE "mirroredProjectId" = ANY($1::text[])
-            AND "mirroredBranchId" = $2
-            AND "isAnonymous" = false
-            AND "createdAt" >= $3
-            AND "createdAt" < $4
-          GROUP BY "mirroredProjectId", "day"
-        `,
-        projectIds,
-        DEFAULT_BRANCH_ID,
-        since,
-        untilExclusive,
-      );
-      signups = signupRows.map((r) => ({
+    applyProjectMetricsRows(
+      byProject,
+      totalRows.map((r) => ({ projectId: r.projectId, totalUsers: Number(r.totalUsers) })),
+      signupRows.map((r) => ({
         projectId: r.projectId,
         day: r.day instanceof Date ? r.day.toISOString() : String(r.day),
         signups: Number(r.signups),
-      }));
-    } catch (error) {
-      captureError("internal-projects-metrics-unexpected-error", new StackAssertionError(
-        "Failed to load project metrics.",
-        { cause: error, projectCount: projectIds.length },
-      ));
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: { projects: projectsResponse() },
-      };
-    }
+      })),
+    );
 
-    applyProjectMetricsRows(byProject, totals, signups);
-
-    return {
-      statusCode: 200,
-      bodyType: "json",
-      body: { projects: projectsResponse() },
-    };
+    return buildResponse();
   },
 });

@@ -11,6 +11,7 @@ import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack
 import { isPaidPlan } from "@stackframe/stack-shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -127,7 +128,7 @@ export default function PageClient() {
 
   useEffect(() => {
     let cancelled = false;
-    runAsynchronouslyWithAlert(async () => {
+    runAsynchronously(async () => {
       if (!cancelled) {
         setLoadingProjectMetrics(true);
         setProjectMetricsError(false);
@@ -174,15 +175,15 @@ export default function PageClient() {
           }
           dailySignupsMap.set(projectId, points);
         }
+
         if (!cancelled) {
           setProjectTotalUsers(totalUsersMap);
           setProjectDailySignups(dailySignupsMap);
         }
       } catch (error) {
-        if (!cancelled) {
-          setProjectMetricsError(true);
-        }
-        throw error;
+        if (cancelled) return;
+        setProjectMetricsError(true);
+        captureError("projects-page-load-metrics", error);
       } finally {
         if (!cancelled) {
           setLoadingProjectMetrics(false);
