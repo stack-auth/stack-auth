@@ -111,7 +111,7 @@ it("public MCP endpoint should expose prompts and resources without method-not-f
     result: {
       prompts: [
         {
-          name: "ask_stack_auth",
+          name: "skill",
         },
       ],
     },
