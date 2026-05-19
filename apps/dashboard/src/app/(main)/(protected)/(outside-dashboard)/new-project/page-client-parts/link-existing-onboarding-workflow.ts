@@ -16,7 +16,11 @@ export function normalizeConfigPath(configPath: string): string {
 
 export function buildWorkflowYaml(branch: string, configPath: string): string {
   const encodedBranch = encodeYamlScalar(branch);
-  const encodedConfigPath = encodeYamlScalar(normalizeConfigPath(configPath));
+  const normalizedConfigPath = normalizeConfigPath(configPath);
+  if (normalizedConfigPath.length === 0) {
+    throw new Error("Expected a non-empty config path after normalization (input must not be blank or only './').");
+  }
+  const encodedConfigPath = encodeYamlScalar(normalizedConfigPath);
   const encodedWorkflowPath = encodeYamlScalar(WORKFLOW_FILE_PATH);
 
   return `name: Stack Auth Config Sync
