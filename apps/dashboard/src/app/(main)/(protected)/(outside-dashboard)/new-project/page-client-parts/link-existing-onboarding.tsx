@@ -1227,9 +1227,6 @@ export function LinkExistingOnboarding(props: Props) {
                 language="bash"
                 content={loginCommand}
               />
-              <Typography variant="secondary" className="text-xs leading-relaxed">
-                Skip this if you have already signed in with the CLI.
-              </Typography>
             </div>
 
             <div className="space-y-1.5">
@@ -1243,7 +1240,7 @@ export function LinkExistingOnboarding(props: Props) {
                 content={configPushCommand}
               />
               <Typography variant="secondary" className="text-xs leading-relaxed">
-                Replace <code>&lt;path-to-your-config-file&gt;</code> with your local config file path. This pushes the config for project <code>{project.id}</code>.
+                Replace <code>&lt;path-to-your-config-file&gt;</code> with your local config file path.
               </Typography>
             </div>
           </div>
