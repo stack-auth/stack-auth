@@ -64,6 +64,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
       canceledAt: null,
       endedAt: null,
       refundedAt: null,
+      productRevokedAt: null,
       creationSource: "PURCHASE_PAGE",
       createdAt: now,
     });
@@ -175,6 +176,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
       canceledAt: yesterday,
       endedAt: yesterday,
       refundedAt: null,
+      productRevokedAt: null,
       creationSource: "PURCHASE_PAGE",
       createdAt: yesterday,
     });
