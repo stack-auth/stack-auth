@@ -151,14 +151,6 @@ export async function createOrUpdateProjectWithLegacyConfig(
       project = await tx.project.create({
         data: createData,
       });
-      if (options.data.is_development_environment !== undefined) {
-        await tx.$executeRaw`
-          UPDATE "Project"
-          SET "isDevelopmentEnvironment" = ${options.data.is_development_environment}
-          WHERE "id" = ${project.id}
-        `;
-      }
-
       await tx.tenancy.create({
         data: {
           projectId: project.id,
@@ -328,6 +320,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
       branchId: branchId,
       environmentConfigOverrideOverride: configOverrideOverride,
     });
+  }
+  if (options.type === "create" && options.data.is_development_environment !== undefined) {
+    await globalPrismaClient.$executeRaw`
+      UPDATE "Project"
+      SET "isDevelopmentEnvironment" = ${options.data.is_development_environment}
+      WHERE "id" = ${projectId}
+    `;
   }
   const result = await getProject(projectId);
   if (!result) {

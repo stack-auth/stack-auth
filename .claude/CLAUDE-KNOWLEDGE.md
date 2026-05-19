@@ -496,3 +496,6 @@ A: Do not invoke a nested `turbo run build:rde-standalone` from `packages/stack-
 
 ## Q: How should local RDE/browser health endpoints handle active state and origins?
 A: Browser-only RDE endpoints should require RDE to be enabled, a local dashboard state entry with a non-empty secret, loopback host, exact dashboard origin, and same-origin/none fetch metadata. Development-environment health checks should not trust broad localhost origins; reject origins like `evil.localhost` and only allow the exact expected dashboard origins (or no Origin header for same-origin polling).
+
+## Q: How should development-environment project creation seed environment config?
+A: Seed the normal initial environment config before marking the project as `isDevelopmentEnvironment=true`. Existing development-environment projects should continue to reject environment config override writes, but creation needs to populate defaults like RBAC permissions, password sign-in, and installed apps first; otherwise the write guard throws during setup/restart-deps.
