@@ -1,6 +1,6 @@
 # Stack Auth: Open-source Clerk/Auth0 alternative
 
-## [📘 Docs](https://docs.stack-auth.com) | [☁️ Hosted Version](https://stack-auth.com/) | [✨ Demo](https://demo.stack-auth.com/) | [🎮 Discord](https://discord.stack-auth.com) | [GitHub](https://github.com/stack-auth/stack-auth)
+## [📘 Docs](https://docs.stack-auth.com) | [☁️ Hosted Version](https://stack-auth.com/) | [✨ Demo](https://demo.stack-auth.com/) | [🎮 Discord](https://discord.stack-auth.com) | [GitHub](https://github.com/hexclave/stack-auth)
 
 Stack Auth is a managed user authentication solution. It is developer-friendly and fully open-source (licensed under MIT and AGPL).
 

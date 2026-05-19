@@ -31,7 +31,7 @@
     "links": [
       {
         "type": "github",
-        "href": "https://github.com/stack-auth/stack-auth"
+        "href": "https://github.com/hexclave/stack-auth"
       }
     ],
     "primary": {
@@ -218,7 +218,7 @@
   "footer": {
     "socials": {
       "x": "https://x.com/stack_auth",
-      "github": "https://github.com/stack-auth/stack",
+      "github": "https://github.com/hexclave/stack",
       "discord": "https://discord.stack-auth.com"
     }
   },

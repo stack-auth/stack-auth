@@ -68,6 +68,7 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
       canceledAtMillis: null,
       endedAtMillis: 3000,
       refundedAtMillis: null,
+      productRevokedAtMillis: null,
       creationSource: "PURCHASE_PAGE",
       createdAtMillis: 1000,
     })));

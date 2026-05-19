@@ -14,7 +14,7 @@ export function createDefaultPaymentsConfig(testMode: boolean | undefined) {
           serverOnly: false,
           stackable: false,
           prices: {
-            single: { USD: "5000" },
+            single: { USD: "50.00" },
           },
           includedItems: {},
         },

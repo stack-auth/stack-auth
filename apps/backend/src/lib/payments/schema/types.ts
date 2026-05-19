@@ -91,6 +91,14 @@ export type SubscriptionRow = {
   canceledAtMillis: number | null,
   endedAtMillis: number | null,
   refundedAtMillis: number | null,
+  /**
+   * Set when a refund explicitly revoked product access (end_action="now").
+   * Distinct from `endedAtMillis` so phase-1 can tell refund-driven ends
+   * from natural ends: refund-driven ends are filtered out and emit no
+   * subscription-end transaction (the refund row carries the end entries
+   * itself). Null for subscriptions that ended naturally / via webhook cancel.
+   */
+  productRevokedAtMillis: number | null,
   creationSource: PurchaseCreationSource,
   createdAtMillis: number,
 };
@@ -380,6 +388,14 @@ export type SubscriptionEndEventRow = {
     itemId: string,
     quantity: number,
   }>,
+  /**
+   * Mirrors `SubscriptionRow.productRevokedAtMillis`. When non-null, this
+   * end was driven by a refund; phase-1 filters the event out entirely so
+   * no subscription-end transaction is produced — the refund row carries
+   * `active-subscription-end` / `product-revocation` / `item-quantity-expire`
+   * itself. See refund/route.tsx and phase-1/transactions.ts.
+   */
+  productRevokedAtMillis: number | null,
   paymentProvider: PaymentProvider,
   effectiveAtMillis: number,
   createdAtMillis: number,
