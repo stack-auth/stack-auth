@@ -6,6 +6,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import React, { createContext, useCallback, useContext, useState } from "react";
+import React, { createContext, useCallback, useContext, useState } from "react";
 
 type ConfigUpdateDialogState = {
   isOpen: boolean,
@@ -288,6 +289,11 @@ export function useUpdateConfig() {
     const { adminApp, configUpdate, pushable } = options;
 
     if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true") {
+      if (!pushable) {
+        throw new StackAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
+        return false;
+      }
+
       const project = await adminApp.getProject();
       await updateRemoteDevelopmentEnvironmentConfigFile(adminApp, configUpdate);
       // Update the remote project immediately so the dashboard reads the new value before the file sync lands.
