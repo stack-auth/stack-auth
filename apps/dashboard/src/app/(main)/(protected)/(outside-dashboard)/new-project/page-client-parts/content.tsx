@@ -26,7 +26,7 @@ import { PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, useStackApp, useUser } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
@@ -72,7 +72,6 @@ function PageClientInner() {
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
   const [loadingStatuses, setLoadingStatuses] = useState(true);
-  const [, startStatusTransition] = useTransition();
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -214,12 +213,10 @@ function PageClientInner() {
       throw new Error(`Failed to update onboarding status: ${response.status} ${await response.text()}`);
     }
 
-    startStatusTransition(() => {
-      setProjectStatuses((previous) => {
-        const next = new Map(previous);
-        next.set(project.id, status);
-        return next;
-      });
+    setProjectStatuses((previous) => {
+      const next = new Map(previous);
+      next.set(project.id, status);
+      return next;
     });
 
     await appInternals.refreshOwnedProjects();
