@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isRetryableFetchError, localEmulatorReadyTimeoutMs } from "./auth.js";
+import { isRetryableFetchError, localEmulatorReadyTimeoutMs, resolveProjectId } from "./auth.js";
 
 describe("isRetryableFetchError", () => {
   it("retries TypeError (Node fetch wraps connection errors as TypeError)", () => {
@@ -67,5 +67,39 @@ describe("localEmulatorReadyTimeoutMs", () => {
     expect(() => localEmulatorReadyTimeoutMs()).toThrow(/Invalid STACK_EMULATOR_READY_TIMEOUT_MS/);
     process.env.STACK_EMULATOR_READY_TIMEOUT_MS = "abc";
     expect(() => localEmulatorReadyTimeoutMs()).toThrow(/Invalid STACK_EMULATOR_READY_TIMEOUT_MS/);
+  });
+});
+
+describe("resolveProjectId", () => {
+  const SAVED = process.env.STACK_PROJECT_ID;
+  beforeEach(() => {
+    delete process.env.STACK_PROJECT_ID;
+  });
+  afterEach(() => {
+    if (SAVED === undefined) delete process.env.STACK_PROJECT_ID;
+    else process.env.STACK_PROJECT_ID = SAVED;
+  });
+
+  it("uses the --cloud-project-id option when provided", () => {
+    expect(resolveProjectId("proj_from_flag")).toBe("proj_from_flag");
+  });
+
+  it("falls back to the STACK_PROJECT_ID env var when the option is omitted", () => {
+    process.env.STACK_PROJECT_ID = "proj_from_env";
+    expect(resolveProjectId(undefined)).toBe("proj_from_env");
+  });
+
+  it("prefers the option over the env var", () => {
+    process.env.STACK_PROJECT_ID = "proj_from_env";
+    expect(resolveProjectId("proj_from_flag")).toBe("proj_from_flag");
+  });
+
+  it("treats an empty option string as absent and falls back to the env var", () => {
+    process.env.STACK_PROJECT_ID = "proj_from_env";
+    expect(resolveProjectId("")).toBe("proj_from_env");
+  });
+
+  it("throws a CliError with help text when neither is provided", () => {
+    expect(() => resolveProjectId(undefined)).toThrow(/STACK_PROJECT_ID/);
   });
 });

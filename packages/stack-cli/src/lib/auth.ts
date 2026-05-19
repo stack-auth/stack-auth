@@ -86,6 +86,18 @@ export function resolveAuth(projectId: string): ProjectAuth {
   };
 }
 
+// Resolve the cloud project ID from the `--cloud-project-id` option, falling
+// back to the STACK_PROJECT_ID environment variable. Empty strings are treated
+// as absent so callers can pass through optional option values directly.
+export function resolveProjectId(projectIdOption?: string): string {
+  for (const candidate of [projectIdOption, process.env.STACK_PROJECT_ID]) {
+    if (candidate != null && candidate !== "") {
+      return candidate;
+    }
+  }
+  throw new CliError("No project ID provided. Pass --cloud-project-id <id> or set the STACK_PROJECT_ID environment variable.");
+}
+
 export function isProjectAuthWithSecretServerKey(auth: ProjectAuth): auth is ProjectAuthWithSecretServerKey {
   return "secretServerKey" in auth;
 }

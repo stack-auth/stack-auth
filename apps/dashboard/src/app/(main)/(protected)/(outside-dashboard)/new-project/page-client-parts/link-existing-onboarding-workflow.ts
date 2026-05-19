@@ -47,6 +47,6 @@ jobs:
           STACK_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
           STACK_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
           STACK_AUTH_CONFIG_PATH: ${encodedConfigPath}
-        run: npx --yes @stackframe/stack-cli@latest config push --cloud-project-id "$STACK_PROJECT_ID" --config-file "$STACK_AUTH_CONFIG_PATH"
+        run: npx --yes @stackframe/stack-cli@latest config push --config-file "$STACK_AUTH_CONFIG_PATH"
 `;
 }
