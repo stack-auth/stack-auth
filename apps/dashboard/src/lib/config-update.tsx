@@ -5,6 +5,7 @@ import { ActionDialog } from "@/components/ui/action-dialog";
 import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import React, { createContext, useCallback, useContext, useState } from "react";
 
 type ConfigUpdateDialogState = {
@@ -44,7 +45,6 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     // Fetch the source first
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
-    const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
     let shouldUpdate = true;
     if (source.type !== "unlinked") {
@@ -65,7 +65,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
 
     if (shouldUpdate) {
       await project.updatePushedConfig(configUpdate);
-      if (!isLocalEmulator) {
+      if (!project.isDevelopmentEnvironment) {
         await project.resetConfigOverrideKeys("environment", Object.keys(configUpdate));
       }
       return true;
@@ -212,6 +212,27 @@ function useConfigUpdateDialog() {
   return context;
 }
 
+async function updateRemoteDevelopmentEnvironmentConfigFile(
+  adminApp: StackAdminApp<false>,
+  configUpdate: EnvironmentConfigOverrideOverride,
+): Promise<void> {
+  const response = await fetch("/api/remote-development-environment/config/apply-update", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      project_id: adminApp.projectId,
+      config_update: configUpdate,
+      wait_for_sync: false,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update local development environment config (${response.status}): ${await response.text()}`);
+  }
+}
+
 /**
  * Options for the updateConfig utility function.
  */
@@ -263,26 +284,37 @@ export type UpdateConfigOptions = {
  */
 export function useUpdateConfig() {
   const { showPushableDialog } = useConfigUpdateDialog();
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return useCallback(async (options: UpdateConfigOptions): Promise<boolean> => {
     const { adminApp, configUpdate, pushable } = options;
+
+    if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true") {
+      if (!pushable) {
+        throw new StackAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
+      }
+
+      const project = await adminApp.getProject();
+      await updateRemoteDevelopmentEnvironmentConfigFile(adminApp, configUpdate);
+      // Update the remote project immediately so the dashboard reads the new value before the file sync lands.
+      await project.updatePushedConfig(configUpdate);
+      return true;
+    }
 
     if (pushable) {
       // Show dialog (or save directly if unlinked) based on source type
       return await showPushableDialog(adminApp, configUpdate);
     } else {
-      if (isLocalEmulator) {
-        alert("These settings are read-only in the local emulator. Update them in your production deployment instead.");
-        return false;
-      }
       // Update environment config directly
       const project = await adminApp.getProject();
+      if (project.isDevelopmentEnvironment) {
+        alert("These settings are read-only in a development environment. Update them in your production deployment instead.");
+        return false;
+      }
       // eslint-disable-next-line no-restricted-syntax -- this is the hook implementation itself
       await project.updateConfig(configUpdate);
       return true;
     }
-  }, [isLocalEmulator, showPushableDialog]);
+  }, [showPushableDialog]);
 }
 
 /**

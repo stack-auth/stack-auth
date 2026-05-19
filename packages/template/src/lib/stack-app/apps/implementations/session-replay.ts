@@ -33,6 +33,12 @@ export type AnalyticsReplayOptions = {
 
 export type AnalyticsOptions = {
   /**
+   * Whether SDK-managed analytics capture is enabled.
+   *
+   * @default true
+   */
+  enabled?: boolean,
+  /**
    * Options for session replay recording. Replays are disabled by default;
    * set `enabled: true` to opt in.
    */
@@ -50,6 +56,7 @@ export function analyticsOptionsToJson(options: AnalyticsOptions | undefined): A
   const { blockClass, ...rest } = options.replays;
   if (!(blockClass instanceof RegExp)) return options;
   return {
+    ...options,
     replays: {
       ...rest,
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -68,6 +75,7 @@ export function analyticsOptionsFromJson(json: AnalyticsOptions | undefined): An
   if (typeof blockClass === 'object' && '__regexp' in blockClass) {
     const bc = blockClass as unknown as { __regexp: string, __flags: string };
     return {
+      ...json,
       replays: {
         ...rest,
         blockClass: new RegExp(bc.__regexp, bc.__flags),

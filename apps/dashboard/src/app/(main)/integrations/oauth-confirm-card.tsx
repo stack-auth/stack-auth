@@ -1,7 +1,8 @@
 "use client";
 
 import { Logo } from "@/components/logo";
-import { AdminProject, useUser } from "@stackframe/stack";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
+import { AdminProject } from "@stackframe/stack";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -12,7 +13,7 @@ export default function ConfirmCard(props: {
   onContinue: (options: { projectId: string, projectName?: string }) => Promise<{ error: string } | undefined>,
   type: "neon" | "custom",
 }) {
-  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const projects = user.useOwnedProjects();
   const searchParams = useSearchParams();
 

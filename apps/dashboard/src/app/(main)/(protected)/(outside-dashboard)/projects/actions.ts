@@ -1,8 +1,16 @@
 "use server";
-import { stackServerApp } from "@/stack";
+import { isRemoteDevelopmentEnvironmentEnabled } from "@/lib/remote-development-environment/env";
+
+async function getStackServerApp() {
+  if (isRemoteDevelopmentEnvironmentEnabled()) {
+    throw new Error("Team invitation management is not available in the remote development environment dashboard.");
+  }
+  return (await import("@/stack/server")).stackServerApp;
+}
 
 export async function revokeInvitation(teamId: string, invitationId: string) {
   "use server";
+  const stackServerApp = await getStackServerApp();
   const user = await stackServerApp.getUser();
   const team = await user?.getTeam(teamId);
   if (!team) {
@@ -16,6 +24,7 @@ export async function revokeInvitation(teamId: string, invitationId: string) {
 }
 
 export async function listInvitations(teamId: string) {
+  const stackServerApp = await getStackServerApp();
   const user = await stackServerApp.getUser();
   const team = await user?.getTeam(teamId);
   if (!team) {
@@ -30,6 +39,7 @@ export async function listInvitations(teamId: string) {
 }
 
 export async function inviteUser(teamId: string, email: string, origin: string) {
+  const stackServerApp = await getStackServerApp();
   const callbackUrl = new URL(stackServerApp.urls.teamInvitation, origin).toString();
   const user = await stackServerApp.getUser();
   const team = await user?.getTeam(teamId);

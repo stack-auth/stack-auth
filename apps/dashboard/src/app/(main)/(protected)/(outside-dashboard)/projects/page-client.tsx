@@ -11,12 +11,15 @@ import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack
 import { isPaidPlan } from "@stackframe/stack-shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { inviteUser, listInvitations, revokeInvitation } from "./actions";
+import Footer from "./footer";
+import PreviewProjectRedirect from "./preview-project-redirect";
 
 type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
@@ -54,13 +57,42 @@ function isProjectOnboardingStatus(value: unknown): value is ProjectOnboardingSt
 }
 
 export default function PageClient() {
+  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+
+  return (
+    <>
+      <DottedBackground />
+      {isPreview ? <PreviewProjectRedirect /> : <ProjectsListPage />}
+      <Footer />
+    </>
+  );
+}
+
+function DottedBackground() {
+  return (
+    <div
+      inert
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'radial-gradient(circle, rgba(127, 127, 127, 0.15) 1px, transparent 1px)',
+        backgroundSize: '10px 10px',
+      }}
+    />
+  );
+}
+
+function ProjectsListPage() {
   const app = useStackApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  const user = useUser({
+    or: isRemoteDevelopmentEnvironment ? "anonymous-if-exists[deprecated]" : "redirect",
+    projectIdMustMatch: "internal",
+  }) ?? throwErr("Projects page expected a user because useUser was called with an explicit required user mode.");
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
-  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
   const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
@@ -77,10 +109,10 @@ export default function PageClient() {
   const router = useRouter();
 
   useEffect(() => {
-    if (rawProjects.length === 0 && !isLocalEmulator && !isPreview) {
+    if (rawProjects.length === 0 && !isLocalEmulator && !isRemoteDevelopmentEnvironment) {
       router.push('/new-project');
     }
-  }, [isLocalEmulator, isPreview, router, rawProjects]);
+  }, [isLocalEmulator, isRemoteDevelopmentEnvironment, router, rawProjects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -397,17 +429,19 @@ export default function PageClient() {
             </SelectContent>
           </Select>
 
-          <Button
-            onClick={async () => {
-              if (isLocalEmulator) {
-                setOpenConfigFileDialog(true);
-                return;
-              }
-              router.push("/new-project");
-              return await wait(2000);
-            }}
-          >{isLocalEmulator ? "Open a project" : "Create Project"}
-          </Button>
+          {!isRemoteDevelopmentEnvironment && (
+            <Button
+              onClick={async () => {
+                if (isLocalEmulator) {
+                  setOpenConfigFileDialog(true);
+                  return;
+                }
+                router.push("/new-project");
+                return await wait(2000);
+              }}
+            >{isLocalEmulator ? "Open a project" : "Create Project"}
+            </Button>
+          )}
         </div>
       </div>
 
