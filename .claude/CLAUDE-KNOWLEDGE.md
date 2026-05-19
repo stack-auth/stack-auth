@@ -499,3 +499,6 @@ A: Browser-only RDE endpoints should require RDE to be enabled, a local dashboar
 
 ## Q: How should development-environment project creation seed environment config?
 A: Seed the normal initial environment config before marking the project as `isDevelopmentEnvironment=true`. Existing development-environment projects should continue to reject environment config override writes, but creation needs to populate defaults like RBAC permissions, password sign-in, and installed apps first; otherwise the write guard throws during setup/restart-deps.
+
+## Q: What can cause React error #185 immediately on dashboard load?
+A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
