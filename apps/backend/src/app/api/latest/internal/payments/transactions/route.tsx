@@ -2,6 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
+import { REFUND_TXN_PREFIX, parseRefundTxnId } from "@/lib/payments/refund-txn-id";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { TRANSACTION_TYPES, transactionSchema, type Transaction, type TransactionEntry, type TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -15,7 +16,8 @@ type LedgerTransactionType =
   | "subscription-start"
   | "one-time-purchase"
   | "manual-item-quantity-change"
-  | "subscription-renewal";
+  | "subscription-renewal"
+  | "refund";
 
 type LedgerCursor = {
   createdAtMillis: number,
@@ -25,6 +27,8 @@ type LedgerCursor = {
 type LedgerTransactionRow = {
   type: LedgerTransactionType,
   txnId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
   effectiveAtMillis: number,
   createdAtMillis: number,
   entries: unknown[],
@@ -41,6 +45,7 @@ const DEFAULT_LEDGER_TRANSACTION_TYPES: readonly LedgerTransactionType[] = [
   "one-time-purchase",
   "manual-item-quantity-change",
   "subscription-renewal",
+  "refund",
 ];
 
 function parseCursor(cursor: string): LedgerCursor {
@@ -89,6 +94,9 @@ function getLedgerTypesForFilter(type: string | undefined): readonly LedgerTrans
     case "subscription-renewal": {
       return ["subscription-renewal"];
     }
+    case "refund": {
+      return ["refund"];
+    }
     case "subscription-cancellation":
     case "chargeback":
     case "product-change": {
@@ -110,6 +118,7 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
   }
   const txnId = Reflect.get(rowData, "txnId");
   const type = Reflect.get(rowData, "type");
+  const customerId = Reflect.get(rowData, "customerId");
   const effectiveAtMillis = Reflect.get(rowData, "effectiveAtMillis");
   const createdAtMillis = Reflect.get(rowData, "createdAtMillis");
   const entries = Reflect.get(rowData, "entries");
@@ -120,11 +129,15 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
   if (typeof txnId !== "string" || txnId.length === 0) {
     throw new StackAssertionError("Ledger transaction row is missing txnId", { rowData });
   }
+  if (typeof customerId !== "string" || customerId.length === 0) {
+    throw new StackAssertionError("Ledger transaction row is missing customerId", { rowData });
+  }
   if (
     type !== "subscription-start" &&
     type !== "one-time-purchase" &&
     type !== "manual-item-quantity-change" &&
-    type !== "subscription-renewal"
+    type !== "subscription-renewal" &&
+    type !== "refund"
   ) {
     throw new StackAssertionError("Unexpected ledger transaction type", { rowData });
   }
@@ -147,6 +160,8 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
   return {
     type,
     txnId,
+    customerType: readCustomerType(Reflect.get(rowData, "customerType"), "ledger transaction row"),
+    customerId,
     effectiveAtMillis,
     createdAtMillis,
     entries,
@@ -173,6 +188,13 @@ function parseSourceId(row: LedgerTransactionRow): string {
       throw new StackAssertionError("manual-item-quantity-change transaction id has invalid prefix", { txnId: row.txnId });
     }
     return row.txnId.slice("miqc:".length);
+  }
+  if (row.type === "refund") {
+    // Return the full ledger txnId. Source rows link to refunds via
+    // `adjusted_by.transaction_id`, which carries the full refund txnId
+    // (matching what the refund route returns as `refund_transaction_id`).
+    // The listing's `id` field must match for the dashboard to join the two.
+    return row.txnId;
   }
   if (!row.txnId.startsWith("sub-renewal:")) {
     throw new StackAssertionError("subscription-renewal transaction id has invalid prefix", { txnId: row.txnId });
@@ -511,6 +533,9 @@ function mapLedgerTransactionTypeToApiType(type: LedgerTransactionType): Transac
   if (type === "subscription-renewal") {
     return "subscription-renewal";
   }
+  if (type === "refund") {
+    return "refund";
+  }
   return "purchase";
 }
 
@@ -522,50 +547,52 @@ function buildAdjustedByFromRefunds(options: {
   return adjustedByFromRefunds ?? [];
 }
 
+/**
+ * Builds the source-txn → refunds lookup. New-format refunds are linked by
+ * parsing the txnId (`refund:<sourceTxnId>:<uuid>`). Legacy refund rows
+ * (`<sourceId>:refund`, written by the pre-three-knob flow) don't have a
+ * parseable txnId, so we fall back to scanning their `product-revocation`
+ * entries for `adjustedTransactionId`. This keeps the "refunded" badge
+ * accurate across both formats.
+ */
 function buildAdjustedByLookupFromRefundRows(rows: unknown[]): Map<string, Transaction["adjusted_by"]> {
   const lookup = new Map<string, Transaction["adjusted_by"]>();
+  // Note on `entry_index`: for new-format refunds we always emit `0`. The
+  // SDK contract still exposes this field, but with the three-knob refund
+  // model there is no longer a per-source-entry refund concept — a refund
+  // is "amount + revoke + end-sub" against the whole source. The dashboard
+  // doesn't render based on this value. Legacy refund rows keep their
+  // original entry index for back-compat with any external readers.
+  const addLink = (sourceTxnId: string, refundTxnId: string, entryIndex: number) => {
+    const existing = lookup.get(sourceTxnId) ?? [];
+    lookup.set(sourceTxnId, [...existing, { transaction_id: refundTxnId, entry_index: entryIndex }]);
+  };
   for (const rowData of rows) {
     if (!isRecord(rowData)) {
       throw new StackAssertionError("Refund transaction rowData is not an object", { rowData });
     }
     const refundTxnId = Reflect.get(rowData, "txnId");
-    const entries = Reflect.get(rowData, "entries");
     if (typeof refundTxnId !== "string" || refundTxnId.length === 0) {
       throw new StackAssertionError("Refund transaction row is missing txnId", { rowData });
     }
-    if (!Array.isArray(entries)) {
-      throw new StackAssertionError("Refund transaction row has invalid entries", { rowData });
+    const parsed = parseRefundTxnId(refundTxnId);
+    if (parsed) {
+      addLink(parsed.sourceTxnId, refundTxnId, 0);
+      continue;
     }
-    for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
-      const entry = entries[entryIdx];
-      if (!isRecord(entry)) {
-        throw new StackAssertionError("Refund transaction entry is not an object", { entry, rowData });
-      }
-      if (entry.type !== "product-revocation") {
-        continue;
-      }
-      const adjustedTransactionId = Reflect.get(entry, "adjustedTransactionId");
+    // Legacy fallback: extract source txns from product-revocation entries.
+    const entries = Reflect.get(rowData, "entries");
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!isRecord(entry)) continue;
+      if (entry.type !== "product-revocation") continue;
+      const adjustedTxnId = Reflect.get(entry, "adjustedTransactionId");
+      if (typeof adjustedTxnId !== "string" || adjustedTxnId.length === 0) continue;
       const adjustedEntryIndex = Reflect.get(entry, "adjustedEntryIndex");
-      if (
-        typeof adjustedTransactionId !== "string" ||
-        adjustedTransactionId.length === 0 ||
-        typeof adjustedEntryIndex !== "number" ||
-        !Number.isInteger(adjustedEntryIndex) ||
-        adjustedEntryIndex < 0
-      ) {
-        throw new StackAssertionError("Refund transaction has invalid product-revocation back reference", {
-          entry,
-          rowData,
-        });
-      }
-      const existing = lookup.get(adjustedTransactionId) ?? [];
-      lookup.set(adjustedTransactionId, [
-        ...existing,
-        {
-          transaction_id: refundTxnId,
-          entry_index: entryIdx,
-        },
-      ]);
+      const entryIndex = typeof adjustedEntryIndex === "number" && Number.isInteger(adjustedEntryIndex) && adjustedEntryIndex >= 0
+        ? adjustedEntryIndex
+        : 0;
+      addLink(adjustedTxnId, refundTxnId, entryIndex);
     }
   }
   return lookup;
@@ -645,18 +672,33 @@ async function getTransactions(options: {
 
   const hasMore = parsedRows.length > options.limit;
   const pageRows = hasMore ? parsedRows.slice(0, options.limit) : parsedRows;
+  // Source rows are anything that could be refunded — refund rows themselves
+  // can't be the target of another refund. We only look up refunds for these.
+  const pageSourceRows = pageRows.filter((row) => row.type !== "refund");
   let refundRows: Array<{ rowData: unknown }> = [];
-  if (pageRows.length > 0) {
-    const adjustedTransactionIdsSql = pageRows.map((row) => quoteSqlStringLiteral(row.txnId).sql).join(", ");
+  if (pageSourceRows.length > 0) {
+    // New-format refunds: txnId starts with 'refund:<sourceTxnId>:'.
+    // LIKE pattern is safe today because source txnIds (sub-start:<uuid>,
+    // sub-renewal:<id>, otp:<id>, etc.) contain no LIKE metacharacters
+    // (percent / underscore / backslash). Escape if a future source-id format
+    // includes them.
+    const refundLikeClauses = pageSourceRows
+      .map((row) => `"__rows"."rowdata"->>'txnId' LIKE ${quoteSqlStringLiteral(`${REFUND_TXN_PREFIX}${row.txnId}:%`).sql}`)
+      .join(" OR ");
+    // Legacy refunds (`<sourceId>:refund`) link via product-revocation entries.
+    const adjustedTransactionIdsSql = pageSourceRows
+      .map((row) => quoteSqlStringLiteral(row.txnId).sql)
+      .join(", ");
+    const legacyRefundClause = `EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements("__rows"."rowdata"->'entries') AS "__entry"
+      WHERE "__entry"->>'type' = 'product-revocation'
+        AND "__entry"->>'adjustedTransactionId' IN (${adjustedTransactionIdsSql})
+    )`;
     const refundWhereClauses = [
       `"__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
       `"__rows"."rowdata"->>'type' = 'refund'`,
-      `EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements("__rows"."rowdata"->'entries') AS "__entry"
-        WHERE "__entry"->>'type' = 'product-revocation'
-          AND "__entry"->>'adjustedTransactionId' IN (${adjustedTransactionIdsSql})
-      )`,
+      `((${refundLikeClauses}) OR ${legacyRefundClause})`,
     ];
     if (options.customerType) {
       refundWhereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
@@ -683,6 +725,8 @@ async function getTransactions(options: {
       created_at_millis: row.createdAtMillis,
       effective_at_millis: row.effectiveAtMillis,
       type: mapLedgerTransactionTypeToApiType(row.type),
+      customer_type: row.customerType,
+      customer_id: row.customerId,
       entries,
       adjusted_by: buildAdjustedByFromRefunds({
         row,
