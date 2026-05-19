@@ -4,7 +4,7 @@ import { InputField, SwitchField } from "@/components/form-fields";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { SettingCard, SettingSwitch } from "@/components/settings";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Typography } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -330,7 +330,7 @@ function DomainDataGrid({ domains }: { domains: DomainEntry[] }) {
     },
   ], [domains]);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "domains" });
   const gridData = useDataSource({
     data: domains,
     columns,

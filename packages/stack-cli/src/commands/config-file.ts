@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
+import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
@@ -116,6 +117,23 @@ function sourceToSdkSource(source: BranchConfigSourceApi):
   return { type: "unlinked" };
 }
 
+// Resolve the path for `config pull` when `--config-file` was omitted. Falls
+// back to `./stack.config.ts` in cwd, and throws a CliError with a clear hint
+// if it isn't there. Exported for unit tests.
+export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd: string): string {
+  if (opts.configFile != null && opts.configFile !== "") {
+    return resolveConfigFilePathOption(opts.configFile);
+  }
+  const candidate = path.join(cwd, "stack.config.ts");
+  if (!fs.existsSync(candidate)) {
+    throw new CliError("No --config-file provided and no stack.config.ts found in the current directory. Pass --config-file <path> or run this command in a directory containing a stack.config.ts file.");
+  }
+  if (fs.statSync(candidate).isDirectory()) {
+    throw new CliError(`Default config path points to a directory instead of a file: ${candidate}`);
+  }
+  return candidate;
+}
+
 export function registerConfigCommand(program: Command) {
   const config = program
     .command("config")
@@ -124,18 +142,18 @@ export function registerConfigCommand(program: Command) {
   config
     .command("pull")
     .description("Pull branch config to a local file")
-    .requiredOption("--config-file <path>", "Path to write config file (.ts)")
+    .requiredOption("--cloud-project-id <id>", "Cloud project ID to pull config from")
+    .option("--config-file <path>", "Path to write config file (.ts); defaults to ./stack.config.ts in the current directory")
     .option("--overwrite", "Overwrite an existing config file")
     .action(async (opts) => {
-      const flags = program.opts();
-      const auth = resolveAuth(flags);
+      const auth = resolveAuth(opts.cloudProjectId);
       if (!isProjectAuthWithRefreshToken(auth)) {
         throw new CliError("`stack config pull` requires `stack login`. Remove STACK_SECRET_SERVER_KEY and try again.");
       }
       const project = await getAdminProject(auth);
 
       const configOverride = await project.getConfigOverride("branch");
-      const filePath = path.resolve(opts.configFile);
+      const filePath = resolveConfigFilePathForPull(opts, process.cwd());
       const ext = path.extname(filePath);
 
       if (ext !== ".ts") {
@@ -156,20 +174,16 @@ export function registerConfigCommand(program: Command) {
   config
     .command("push")
     .description("Push a local config file to branch config")
+    .requiredOption("--cloud-project-id <id>", "Cloud project ID to push config to")
     .requiredOption("--config-file <path>", "Path to config file (.js or .ts)")
     .action(async (opts) => {
-      const flags = program.opts();
-      const auth = resolveAuth(flags);
+      const auth = resolveAuth(opts.cloudProjectId);
 
-      const filePath = path.resolve(opts.configFile);
+      const filePath = resolveConfigFilePathOption(opts.configFile, { mustExist: true });
       const ext = path.extname(filePath);
 
       if (ext !== ".js" && ext !== ".ts") {
         throw new CliError("Config file must have a .js or .ts extension.");
-      }
-
-      if (!fs.existsSync(filePath)) {
-        throw new CliError(`Config file not found: ${filePath}`);
       }
 
       const { createJiti } = await import("jiti");

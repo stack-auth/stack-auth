@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, VideoCameraIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -393,7 +393,7 @@ export const ALL_APPS_FRONTEND = {
     href: "analytics",
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
-      { displayName: "Replays", href: "./replays" },
+      { displayName: "Replays", href: "../session-replays" },
       { displayName: "Queries", href: "./queries" },
     ],
     screenshots: [],
@@ -405,14 +405,14 @@ export const ALL_APPS_FRONTEND = {
     ),
   },
   "session-replays": {
-    icon: VideoCameraIcon,
-    href: "analytics/replays",
+    icon: MonitorPlayIcon,
+    href: "session-replays",
     parentAppId: "analytics",
     screenshots: [],
     storeDescription: (
       <>
-        <p>Session Replays help you understand the moments behind your analytics.</p>
-        <p>Inspect recorded user sessions, replay timelines, and connect behavior back to product and auth events.</p>
+        <p>Session Replays let you watch real user sessions to understand how people use your app.</p>
+        <p>Built on the same analytics pipeline, replays are scoped per user and surfaced inline on the user page.</p>
       </>
     ),
   },

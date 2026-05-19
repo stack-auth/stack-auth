@@ -5,7 +5,7 @@ import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
-import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
+import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
@@ -68,6 +68,17 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
 
+    /**
+     * Returns every direct (or recursive) team permission grant for every
+     * member of the given team in one request. Use this instead of calling
+     * `user.listPermissions(team)` per row when rendering a roster — that
+     * pattern produces an N+1 over the team-member endpoint.
+     */
+    listTeamMemberPermissions(teamId: string, options?: { recursive?: boolean }): Promise<{ userId: string, permissionId: string }[]>,
+    // IF_PLATFORM react-like
+    useTeamMemberPermissions(teamId: string, options?: { recursive?: boolean }): { userId: string, permissionId: string }[],
+    // END_PLATFORM
+
     // TODO this should actually be on ServerUser
     createOAuthProvider(options: {
       userId: string,
@@ -89,7 +100,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
-  & AsyncStoreProperty<"teams", [], ServerTeam[], true>
+  & AsyncStoreProperty<"teams", [options?: ServerListTeamsOptions], ServerTeam[] & { nextCursor: string | null }, true>
   & AsyncStoreProperty<"dataVaultStore", [id: string], DataVaultStore, false>
   & AsyncStoreProperty<
     "item",

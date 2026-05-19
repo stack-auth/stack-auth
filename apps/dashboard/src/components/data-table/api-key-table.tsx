@@ -2,8 +2,8 @@
 import { InternalApiKey } from '@stackframe/stack';
 import { ActionCell, ActionDialog, Badge, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
 } from "@stackframe/dashboard-ui-components";
@@ -172,7 +172,7 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
   // Grid state is initialized lazily on first mount; DataGrid tolerates columns
   // whose ids vanish (clientKey toggle) so we do NOT reinit state when columns
   // change — that would wipe user-adjusted widths/sort/search.
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "apikeys" });
 
   // Default to "valid" so the page looks the same as before the DataGrid
   // migration (the old faceted filter defaulted to ['valid']).

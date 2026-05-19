@@ -489,6 +489,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.map((p) => this._serverTeamPermissionDefinitionFromCrud(p));
   }
 
+  async listTeamPermissionDefinitionsPaginated(
+    options: { limit: number, cursor?: string, query?: string },
+  ): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }> {
+    const result = await this._interface.listTeamPermissionDefinitionsPaginated(options);
+    return {
+      items: result.items.map((p) => this._serverTeamPermissionDefinitionFromCrud(p)),
+      nextCursor: result.nextCursor,
+    };
+  }
+
   // IF_PLATFORM react-like
   useTeamPermissionDefinitions(): AdminTeamPermissionDefinition[] {
     const crud = useAsyncCache(this._adminTeamPermissionDefinitionsCache, [], "adminApp.useTeamPermissionDefinitions()");
@@ -829,14 +839,19 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async refundTransaction(options: {
     type: "subscription" | "one-time-purchase",
     id: string,
-    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-  }): Promise<void> {
-    await this._interface.refundTransaction({
+    invoiceId?: string,
+    amountUsd: MoneyAmount,
+    endAction?: "now" | "at-period-end",
+  }): Promise<{ refundTransactionId: string }> {
+    const result = await this._interface.refundTransaction({
       type: options.type,
       id: options.id,
-      refundEntries: options.refundEntries,
+      invoiceId: options.invoiceId,
+      amountUsd: options.amountUsd,
+      endAction: options.endAction,
     });
     await this._transactionsCache.invalidateWhere(() => true);
+    return { refundTransactionId: result.refundTransactionId };
   }
 
   async listTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {

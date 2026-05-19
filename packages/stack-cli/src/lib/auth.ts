@@ -1,17 +1,16 @@
+import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
 import { readConfigValue } from "./config.js";
-import { AuthError } from "./errors.js";
+import { emulatorBackendPort, emulatorDashboardPort, internalPckPath, pollInternalPck } from "./emulator-paths.js";
+import { AuthError, CliError } from "./errors.js";
 
 export const DEFAULT_API_URL = "https://api.stack-auth.com";
 export const DEFAULT_DASHBOARD_URL = "https://app.stack-auth.com";
 export const DEFAULT_PUBLISHABLE_CLIENT_KEY = process.env.STACK_CLI_PUBLISHABLE_CLIENT_KEY ?? "pck_9bbqvqsbh0gdb6smk11d71qg4ktc4rz8ya7cc69yndm7g";
 
-type Flags = {
-  projectId?: string,
-};
-
 export type LoginConfig = {
   apiUrl: string,
   dashboardUrl: string,
+  publishableClientKey: string,
 };
 
 export type SessionAuth = LoginConfig & {
@@ -56,41 +55,34 @@ function resolveSecretServerKey(): string | null {
   return process.env.STACK_SECRET_SERVER_KEY ?? null;
 }
 
-function resolveProjectId(flags: Flags): string {
-  const projectId = flags.projectId ?? process.env.STACK_PROJECT_ID;
-  if (!projectId) {
-    throw new AuthError("No project ID specified. Use --project-id or set STACK_PROJECT_ID.");
-  }
-  return projectId;
-}
-
-export function resolveLoginConfig(flags: Flags): LoginConfig {
+export function resolveLoginConfig(): LoginConfig {
   return {
     apiUrl: resolveApiUrl(),
     dashboardUrl: resolveDashboardUrl(),
+    publishableClientKey: DEFAULT_PUBLISHABLE_CLIENT_KEY,
   };
 }
 
-export function resolveSessionAuth(flags: Flags): SessionAuth {
+export function resolveSessionAuth(): SessionAuth {
   return {
-    ...resolveLoginConfig(flags),
+    ...resolveLoginConfig(),
     refreshToken: resolveRefreshToken(),
   };
 }
 
-export function resolveAuth(flags: Flags): ProjectAuth {
+export function resolveAuth(projectId: string): ProjectAuth {
   const secretServerKey = resolveSecretServerKey();
   if (secretServerKey) {
     return {
-      ...resolveLoginConfig(flags),
-      projectId: resolveProjectId(flags),
+      ...resolveLoginConfig(),
+      projectId,
       secretServerKey,
     };
   }
 
   return {
-    ...resolveSessionAuth(flags),
-    projectId: resolveProjectId(flags),
+    ...resolveSessionAuth(),
+    projectId,
   };
 }
 
@@ -100,4 +92,143 @@ export function isProjectAuthWithSecretServerKey(auth: ProjectAuth): auth is Pro
 
 export function isProjectAuthWithRefreshToken(auth: ProjectAuth): auth is ProjectAuthWithRefreshToken {
   return "refreshToken" in auth;
+}
+
+function resolveLocalEmulatorUrl(envName: "STACK_EMULATOR_API_URL" | "STACK_EMULATOR_DASHBOARD_URL", port: number): string {
+  return process.env[envName]
+    ?? readConfigValue(envName)
+    ?? `http://127.0.0.1:${port}`;
+}
+
+export function resolveLocalEmulatorApiUrl(): string {
+  return resolveLocalEmulatorUrl("STACK_EMULATOR_API_URL", emulatorBackendPort());
+}
+
+export function resolveLocalEmulatorDashboardUrl(): string {
+  return resolveLocalEmulatorUrl("STACK_EMULATOR_DASHBOARD_URL", emulatorDashboardPort());
+}
+
+// Per-phase budget for "absorb the race between `stack emulator start` and the
+// next CLI invocation". Applied independently to (a) waiting for the PCK file
+// to appear and (b) the sign-in retry loop, so the worst-case wall-clock is up
+// to ~2× this value when both phases hit the deadline. Override via
+// STACK_EMULATOR_READY_TIMEOUT_MS (in milliseconds).
+const DEFAULT_LOCAL_EMULATOR_READY_TIMEOUT_MS = 10_000;
+const LOCAL_EMULATOR_PER_REQUEST_TIMEOUT_MS = 5_000;
+
+// Exported for unit tests. Reads the env var, validates, and returns the
+// resolved timeout in milliseconds.
+export function localEmulatorReadyTimeoutMs(): number {
+  const raw = process.env.STACK_EMULATOR_READY_TIMEOUT_MS;
+  if (!raw) return DEFAULT_LOCAL_EMULATOR_READY_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new CliError(`Invalid STACK_EMULATOR_READY_TIMEOUT_MS: ${raw}. Must be a non-negative integer (milliseconds).`);
+  }
+  return parsed;
+}
+
+async function resolveLocalEmulatorInternalPck(timeoutMs: number): Promise<string> {
+  const contents = await pollInternalPck(timeoutMs);
+  if (contents === null) {
+    throw new AuthError(`Local emulator publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start the emulator with \`stack emulator start\`.`);
+  }
+  return contents;
+}
+
+type SignInBody = {
+  email: string,
+  password: string,
+};
+
+// Retry on transport-level failures (connection refused, DNS, abort/timeout).
+// HTTP errors come back as a Response with !ok and are handled separately —
+// they are not retried because the emulator is reachable, just unhappy.
+export function isRetryableFetchError(err: unknown): boolean {
+  if (!(err instanceof Error)) return true;
+  if (err.name === "AbortError" || err.name === "TimeoutError") return true;
+  return err.name === "TypeError" || /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET/i.test(err.message);
+}
+
+async function attemptLocalEmulatorSignIn(apiUrl: string, internalPck: string, body: SignInBody, perRequestTimeoutMs: number): Promise<Response> {
+  return await fetch(`${apiUrl}/api/v1/auth/password/sign-in`, {
+    method: "POST",
+    signal: AbortSignal.timeout(perRequestTimeoutMs),
+    headers: {
+      "Content-Type": "application/json",
+      "X-Stack-Project-Id": "internal",
+      "X-Stack-Access-Type": "client",
+      "X-Stack-Publishable-Client-Key": internalPck,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function localEmulatorSignInWithRetry(apiUrl: string, internalPck: string, body: SignInBody, totalTimeoutMs: number): Promise<Response> {
+  const deadline = performance.now() + totalTimeoutMs;
+  let delay = 100;
+  let lastError: unknown = null;
+  while (true) {
+    // Cap each request so the user-set total budget is actually honored — a
+    // 5s default per-request would otherwise overshoot a small total.
+    const remainingForRequest = Math.max(1, deadline - performance.now());
+    const perRequestTimeoutMs = Math.min(LOCAL_EMULATOR_PER_REQUEST_TIMEOUT_MS, remainingForRequest);
+    try {
+      return await attemptLocalEmulatorSignIn(apiUrl, internalPck, body, perRequestTimeoutMs);
+    } catch (err) {
+      if (!isRetryableFetchError(err)) throw err;
+      lastError = err;
+    }
+    if (performance.now() >= deadline) {
+      const message = lastError instanceof Error ? lastError.message : String(lastError);
+      throw new AuthError(`Cannot reach local emulator at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start it with \`stack emulator start\`.`);
+    }
+    const remaining = deadline - performance.now();
+    await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
+    delay = Math.min(delay * 2, 1_000);
+  }
+}
+
+export async function resolveLocalEmulatorAuth(projectId: string): Promise<ProjectAuthWithRefreshToken> {
+  const apiUrl = resolveLocalEmulatorApiUrl();
+  const readyTimeoutMs = localEmulatorReadyTimeoutMs();
+  const internalPck = await resolveLocalEmulatorInternalPck(readyTimeoutMs);
+
+  const res = await localEmulatorSignInWithRetry(
+    apiUrl,
+    internalPck,
+    { email: LOCAL_EMULATOR_ADMIN_EMAIL, password: LOCAL_EMULATOR_ADMIN_PASSWORD },
+    readyTimeoutMs,
+  );
+
+  if (!res.ok) {
+    let body: string;
+    try {
+      body = await res.text();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+    }
+    throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+  }
+
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new AuthError(`Local emulator sign-in returned a non-JSON response: ${message}.`);
+  }
+  if (data === null || typeof data !== "object" || typeof (data as { refresh_token?: unknown }).refresh_token !== "string") {
+    throw new AuthError("Local emulator sign-in response was missing a refresh token.");
+  }
+  const refreshToken = (data as { refresh_token: string }).refresh_token;
+
+  return {
+    apiUrl,
+    dashboardUrl: resolveLocalEmulatorDashboardUrl(),
+    publishableClientKey: internalPck,
+    refreshToken,
+    projectId,
+  };
 }

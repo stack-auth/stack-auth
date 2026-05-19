@@ -150,6 +150,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
                 toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode
                 runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}
+                composerAttachments
               />
             }
           />

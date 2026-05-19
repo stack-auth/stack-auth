@@ -10,11 +10,12 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { Prisma, PurchaseCreationSource } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { addUserToTeam } from "../team-memberships/crud";
 
 
@@ -35,6 +36,11 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API', exampleValue: 'me' } }),
     /** @deprecated use creator_user_id in the body instead */
     add_current_user: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: ['Create'], hidden: true } }),
+    order_by: yupString().oneOf(["created_at"]).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Field to order results by. Currently only `created_at` is supported.', exampleValue: 'created_at' } }),
+    desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Whether to order results in descending order. Defaults to false (ascending).', exampleValue: 'false' } }),
+    limit: yupNumber().integer().min(1).max(200).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The maximum number of items to return (capped at 200).' } }),
+    cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The cursor to start the result set from. Requires `limit` to also be set.' } }),
+    query: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "A search query to filter the results by. Free-text search applied to the team's id (exact-match) and display name." } }),
   }),
   paramsSchema: yupObject({
     team_id: yupString().uuid().defined(),
@@ -273,7 +279,28 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       }
     }
 
+    if (query.cursor && !query.limit) {
+      throw new StatusError(StatusError.BadRequest, "`cursor` requires `limit` to also be set.");
+    }
+
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const sortDirection = query.desc === 'true' ? 'desc' : 'asc';
+
+    let queryFilter: Prisma.TeamWhereInput | undefined;
+    if (query.query) {
+      queryFilter = {
+        OR: [
+          ...isUuid(query.query) ? [{ teamId: { equals: query.query } }] : [],
+          {
+            displayName: {
+              contains: query.query,
+              mode: 'insensitive' as const,
+            },
+          },
+        ],
+      };
+    }
+
     const db = await prisma.team.findMany({
       where: {
         tenancyId: auth.tenancy.id,
@@ -284,11 +311,35 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
             },
           },
         } : {},
+        ...queryFilter ?? {},
       },
-      orderBy: {
-        createdAt: 'asc',
-      },
+      orderBy: [
+        { createdAt: sortDirection },
+        { teamId: sortDirection },
+      ],
+      take: query.limit ? query.limit + 1 : undefined,
+      ...query.cursor ? {
+        skip: 1,
+        cursor: {
+          tenancyId_teamId: {
+            tenancyId: auth.tenancy.id,
+            teamId: query.cursor,
+          },
+        },
+      } : {},
     });
+
+    if (query.limit) {
+      const items = db.slice(0, query.limit).map(teamPrismaToCrud);
+      const hasMore = db.length > query.limit;
+      return {
+        items,
+        is_paginated: true,
+        pagination: {
+          next_cursor: hasMore && items.length > 0 ? items[items.length - 1].id : null,
+        },
+      };
+    }
 
     return {
       items: db.map(teamPrismaToCrud),

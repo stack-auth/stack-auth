@@ -1,7 +1,7 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { UserSearchPicker } from "@/components/data-table/user-search-picker";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { useRouter } from "@/components/router";
 import { DesignAlert, DesignBadge, DesignCard, DesignCategoryTabs, DesignInput, DesignSelectorDropdown } from "@/components/design-components";
 import {
@@ -630,7 +630,7 @@ function NewConversationDialog(props: {
                 </Button>
               </div>
             ) : (
-              <UserSearchPicker
+              <UserPickerTable
                 action={(user) => (
                   <Button
                     size="sm"

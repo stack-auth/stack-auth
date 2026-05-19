@@ -68,6 +68,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: "pi-int-1",
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 1000,
       })));
@@ -149,6 +150,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: null,
         endedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 2000,
       })));
@@ -222,6 +224,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: "pi-int-u2",
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 3000,
       })));
@@ -287,6 +290,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 4000,
         endedAtMillis: 5000,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 0,
       })));
@@ -400,6 +404,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: null,
         endedAtMillis: 25 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
@@ -464,6 +469,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: "pi-refundable",
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 6000,
       })));
@@ -556,6 +562,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: null,
         endedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 0,
       })));
@@ -628,6 +635,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: null,
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 10000,
       })));
@@ -650,6 +658,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: null,
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 10000,
       })));
@@ -707,6 +716,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: null,
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 20000,
       })));
@@ -729,6 +739,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: null,
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 21000,
       })));
@@ -805,6 +816,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 5 * DAY_MS,
         endedAtMillis: 10 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
@@ -836,6 +848,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 15 * DAY_MS,
         endedAtMillis: 30 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 1000,
       })));
@@ -941,6 +954,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 14 * DAY_MS,
         endedAtMillis: 14 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
@@ -1050,6 +1064,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         stripePaymentIntentId: null,
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
@@ -1153,6 +1168,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 2 * DAY_MS,
         endedAtMillis: 5 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
@@ -1216,6 +1232,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 10 * DAY_MS,
         endedAtMillis: 10 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
@@ -1245,6 +1262,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 20 * DAY_MS,
         endedAtMillis: 20 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 11 * DAY_MS,
       })));
@@ -1328,6 +1346,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: null,
         endedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 1000,
       })));
@@ -1360,6 +1379,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         canceledAtMillis: 1500,
         endedAtMillis: 2000,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 1000,
       })));

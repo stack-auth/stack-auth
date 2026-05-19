@@ -5,11 +5,10 @@ import { Spinner, Typography } from "@/components/ui";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-  type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { useEffect, useMemo, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
@@ -234,10 +233,10 @@ export function GroupedEmailTable() {
     [emails, draftsMap, templatesMap]
   );
 
-  const [gridState, setGridState] = useState<DataGridState>(() => ({
-    ...createDefaultDataGridState(groupedEmailGridColumns),
-    sorting: [{ columnId: "recipientCount", direction: "desc" }],
-  }));
+  const [gridState, setGridState] = useDataGridUrlState(groupedEmailGridColumns, {
+    paramPrefix: "sentgroup",
+    initial: { sorting: [{ columnId: "recipientCount", direction: "desc" }] },
+  });
 
   const gridData = useDataSource({
     data: groupedRows,
@@ -268,6 +267,7 @@ export function GroupedEmailTable() {
       isLoading={gridData.isLoading}
       state={gridState}
       onChange={setGridState}
+      fillHeight={false}
       onRowClick={(row, _rowId, _event) => {
         if (row.sourceType === "draft" && row.sourceId) {
           router.push(`email-drafts/${row.sourceId}?stage=sent`);

@@ -6,8 +6,8 @@ import { useUpdateConfig } from "@/lib/config-update";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
-  createDefaultDataGridState,
   DataGrid,
+  useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
 } from "@stackframe/dashboard-ui-components";
@@ -88,7 +88,7 @@ export function PaymentProductTable({ products }: { products: Record<string, Bra
       ...product,
     }));
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "products" });
   const gridData = useDataSource({
     data,
     columns,

@@ -38,7 +38,7 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -1537,7 +1537,7 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
     },
   ], []);
 
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "productcustomers" });
   const gridData = useDataSource({
     data: gridRows,
     columns,

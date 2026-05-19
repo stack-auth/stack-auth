@@ -336,6 +336,7 @@ model ProjectUser {
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
   @@index([tenancyId, isAnonymous, signedUpAt(sort: Asc)], name: "ProjectUser_signedUpAt_asc")
+  @@index([tenancyId, isAnonymous, lastActiveAt], name: "ProjectUser_lastActiveAt")
   @@index([tenancyId, isAnonymous, signUpIp, signedUpAt], name: "ProjectUser_signUpIp_recent_idx")
   @@index([tenancyId, isAnonymous, signUpEmailNormalized, signedUpAt], name: "ProjectUser_signUpEmailNormalized_recent_idx")
   @@index([tenancyId, isAnonymous, signUpEmailBase, signedUpAt], name: "ProjectUser_signUpEmailBase_recent_idx")
@@ -1299,6 +1300,14 @@ model Subscription {
   endedAt                DateTime?
 
   refundedAt DateTime?
+
+  // Set when a refund explicitly ends product access via end_action="now".
+  // Distinct from `endedAt` (which fires for natural expiry, webhook cancel,
+  // etc.) so phase-1's subscription-end mapper can tell refund-driven ends
+  // apart and avoid emitting a second product-revocation entry — the refund
+  // row already carries one. See refund/route.tsx and phase-1/transactions.ts
+  // for the consumer side.
+  productRevokedAt DateTime?
 
   creationSource PurchaseCreationSource
   createdAt      DateTime               @default(now())

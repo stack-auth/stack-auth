@@ -94,6 +94,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
     updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions): Promise<void>,
     deleteTeamPermissionDefinition(permissionId: string): Promise<void>,
+    /**
+     * @param options.query Free-text search; matches against permission ID and description.
+     */
+    listTeamPermissionDefinitionsPaginated(options: { limit: number, cursor?: string, query?: string }): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }>,
 
     createProjectPermissionDefinition(data: AdminProjectPermissionDefinitionCreateOptions): Promise<AdminProjectPermission>,
     updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions): Promise<void>,
@@ -143,8 +147,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     refundTransaction(options: {
       type: "subscription" | "one-time-purchase",
       id: string,
-      refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-    }): Promise<void>,
+      invoiceId?: string,
+      amountUsd: MoneyAmount,
+      endAction?: "now" | "at-period-end",
+    }): Promise<{ refundTransactionId: string }>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,

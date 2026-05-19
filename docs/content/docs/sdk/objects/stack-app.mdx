@@ -530,9 +530,12 @@ exposing [`SECRET_SERVER_KEY`](../../rest-api/overview.mdx) on the client.
       getTeam(id): Promise<ServerTeam | null>; //$stack-link-to:#stackserverappgetteamid
       // NEXT_LINE_PLATFORM react-like
       ⤷ useTeam(id): ServerTeam; //$stack-link-to:#stackserverappuseteamid
-      listTeams(): Promise<ServerTeam[]>; //$stack-link-to:#stackserverapplistteams
+      listTeams([options]): Promise<ServerTeam[]>; //$stack-link-to:#stackserverapplistteamsoptions
       // NEXT_LINE_PLATFORM react-like
-      ⤷ useTeams(): ServerTeam[]; //$stack-link-to:#stackserverappuseteams
+      ⤷ useTeams([options]): ServerTeam[]; //$stack-link-to:#stackserverappuseteamsoptions
+      listTeamsPaginated([options]): Promise<{ items: ServerTeam[], nextCursor: string | null }>; //$stack-link-to:#stackserverapplistteamspaginatedoptions
+      // NEXT_LINE_PLATFORM react-like
+      ⤷ useTeamsPaginated([options]): { items: ServerTeam[], nextCursor: string | null }; //$stack-link-to:#stackserverappuseteamspaginatedoptions
       createTeam([options]): Promise<ServerTeam>; //$stack-link-to:#stackserverappcreateteamoptions
     }`} />
 
@@ -913,18 +916,36 @@ Functionally equivalent to [`getTeam(id)`](#stackserverappgetteamid), but as a R
 </CollapsibleMethodSection>
 {/* END_PLATFORM */}
 
-<CollapsibleMethodSection method="listTeams" appType="StackServerApp" defaultOpen={false}>
+<CollapsibleMethodSection method="listTeams" signature="[options]" appType="StackServerApp" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
       Lists all teams on the current project.
 
+**Parameters:**
+
+  <ParamField path="options" type="object">
+    <Accordion title="Show options properties">
+      <ParamField path="orderBy" type="'createdAt'">
+        The field to sort the results by. Currently, only `createdAt` is supported.
+      </ParamField>
+      <ParamField path="desc" type="boolean" default="false">
+        Whether to sort the results in descending order.
+      </ParamField>
+    </Accordion>
+  </ParamField>
+
 **Returns:** `Promise<ServerTeam[]>`
+
+For cursor-based pagination over teams, see [`listTeamsPaginated`](#stackserverapplistteamspaginatedoptions).
   </MethodContent>
   <MethodAside>
     <AsideSection title="Signature">
 
     ```typescript
-    declare function listTeams(): Promise<ServerTeam[]>;
+    declare function listTeams(options?: {
+      orderBy?: "createdAt";
+      desc?: boolean;
+    }): Promise<ServerTeam[]>;
     ```
     </AsideSection>
     <AsideSection title="Examples">
@@ -939,9 +960,80 @@ Functionally equivalent to [`getTeam(id)`](#stackserverappgetteamid), but as a R
 </CollapsibleMethodSection>
 
 {/* IF_PLATFORM react-like */}
-<CollapsibleMethodSection method="useTeams" appType="StackServerApp" defaultOpen={false}>
+<CollapsibleMethodSection method="useTeams" signature="[options]" appType="StackServerApp" defaultOpen={false}>
 
-Functionally equivalent to [`listTeams()`](#stackserverapplistteams), but as a React hook.
+Functionally equivalent to [`listTeams()`](#stackserverapplistteamsoptions), but as a React hook.
+
+<Info type="info"> This should be used on the server-side only.</Info>
+
+</CollapsibleMethodSection>
+{/* END_PLATFORM */}
+
+<CollapsibleMethodSection method="listTeamsPaginated" signature="[options]" appType="StackServerApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists teams on the current project with cursor-based pagination, optional filtering, and ordering. The returned array carries an extra `nextCursor` property; pass it back as `cursor` to load the next page.
+
+**Parameters:**
+
+  <ParamField path="options" type="object">
+    <Accordion title="Show options properties">
+      <ParamField path="cursor" type="string">
+        The cursor to start the result set from. Use `nextCursor` from a previous response.
+      </ParamField>
+      <ParamField path="limit" type="number">
+        The maximum number of items to return. If omitted, all matching teams are returned.
+      </ParamField>
+      <ParamField path="orderBy" type="'createdAt'">
+        The field to sort the results by. Currently, only `createdAt` is supported.
+      </ParamField>
+      <ParamField path="desc" type="boolean" default="false">
+        Whether to sort the results in descending order.
+      </ParamField>
+      <ParamField path="query" type="string">
+        A free-text query that matches against the team's display name (and team ID if the query is a UUID).
+      </ParamField>
+    </Accordion>
+  </ParamField>
+
+**Returns:** `Promise<{ items: ServerTeam[]; nextCursor: string | null }>`
+  </MethodContent>
+  <MethodAside>
+    <AsideSection title="Signature">
+
+    ```typescript
+    declare function listTeamsPaginated(options?: {
+      cursor?: string;
+      limit?: number;
+      orderBy?: "createdAt";
+      desc?: boolean;
+      query?: string;
+    }): Promise<{ items: ServerTeam[]; nextCursor: string | null }>;
+    ```
+    </AsideSection>
+    <AsideSection title="Examples">
+
+    ```typescript
+    const { items, nextCursor } = await stackServerApp.listTeamsPaginated({ limit: 20 });
+    console.log(items);
+
+    if (nextCursor) {
+      const nextPage = await stackServerApp.listTeamsPaginated({
+        cursor: nextCursor,
+        limit: 20,
+      });
+      console.log(nextPage.items);
+    }
+    ```
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
+</CollapsibleMethodSection>
+
+{/* IF_PLATFORM react-like */}
+<CollapsibleMethodSection method="useTeamsPaginated" signature="[options]" appType="StackServerApp" defaultOpen={false}>
+
+Functionally equivalent to [`listTeamsPaginated()`](#stackserverapplistteamspaginatedoptions), but as a React hook.
 
 <Info type="info"> This should be used on the server-side only.</Info>
 

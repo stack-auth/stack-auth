@@ -5,6 +5,7 @@ import { CursorBlastEffect } from "@stackframe/dashboard-ui-components";
 import { ConfigUpdateDialogProvider } from "@/lib/config-update";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@stackframe/stack";
+import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useEffect } from "react";
@@ -20,8 +21,8 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       if (user) return;
       if (isLocalEmulator) {
         await app.signInWithCredential({
-          email: "local-emulator@stack-auth.com",
-          password: "LocalEmulatorPassword",
+          email: LOCAL_EMULATOR_ADMIN_EMAIL,
+          password: LOCAL_EMULATOR_ADMIN_PASSWORD,
         });
       } else if (isPreview) {
         const id = generateUuid();

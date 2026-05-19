@@ -1,26 +1,26 @@
 export { DataGrid, isDataGridInteractiveRowClickTarget } from "./data-grid";
-
 export { DataGridToolbar } from "./data-grid-toolbar";
 
-export { getEffectiveMinWidth } from "./data-grid-sizing";
+// Sizing helpers — re-exported so external consumers that depended on the
+// previous API can still measure column widths consistently with the grid.
+export {
+  getEffectiveMinWidth,
+  getEffectiveMaxWidth,
+  clampColumnWidth,
+  DEFAULT_COL_WIDTH,
+  DEFAULT_MAX_COL_WIDTH,
+} from "./data-grid-sizing";
 
 export { useDataSource } from "./use-data-source";
 export type { UseDataSourceResult } from "./use-data-source";
 
+export { useDataGridUrlState } from "./use-url-state";
+
 export {
   createDefaultDataGridState,
   resolveColumnValue,
-  resolveColumnWidth,
-  isColumnVisible,
-  toggleSort,
-  getSortDirection,
-  getSortIndex,
   buildRowComparator,
   paginateRows,
-  getTotalPages,
-  toggleRowSelection,
-  selectAll,
-  clearSelection,
   exportToCsv,
   defaultParseDate,
   defaultFormatRelative,
@@ -28,15 +28,9 @@ export {
   formatGridDate,
   defaultMatchRow,
   applyQuickSearch,
-  EMPTY_SORT_MODEL,
-  EMPTY_SELECTION,
-  DEFAULT_PAGINATION,
 } from "./state";
 
-export {
-  DATA_GRID_DEFAULT_STRINGS,
-  resolveDataGridStrings,
-} from "./strings";
+export { DATA_GRID_DEFAULT_STRINGS, resolveDataGridStrings } from "./strings";
 
 export type {
   RowId,
