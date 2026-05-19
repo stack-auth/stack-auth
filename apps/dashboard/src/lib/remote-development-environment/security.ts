@@ -4,7 +4,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { NextRequest, NextResponse } from "next/server";
 import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import { isRemoteDevelopmentEnvironmentEnabled } from "./env";
-import { readRemoteDevelopmentEnvironmentState } from "./state";
+import { RemoteDevelopmentEnvironmentState, readRemoteDevelopmentEnvironmentState } from "./state";
 
 function urlOrigin(value: string | undefined): string | null {
   if (value == null || value.length === 0) return null;
@@ -23,8 +23,7 @@ function requestHostOrigin(req: NextRequest): string | null {
   return urlOrigin(`http://${host}`);
 }
 
-function expectedDashboardOrigins(): Set<string> {
-  const state = readRemoteDevelopmentEnvironmentState();
+function expectedDashboardOrigins(state: RemoteDevelopmentEnvironmentState): Set<string> {
   return new Set([
     urlOrigin(getPublicEnvVar("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
     urlOrigin(getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL")),
@@ -33,8 +32,8 @@ function expectedDashboardOrigins(): Set<string> {
   ].filter((origin): origin is string => origin != null));
 }
 
-function browserRequestOriginIsAllowed(req: NextRequest): boolean {
-  const allowedOrigins = expectedDashboardOrigins();
+function browserRequestOriginIsAllowed(req: NextRequest, state: RemoteDevelopmentEnvironmentState): boolean {
+  const allowedOrigins = expectedDashboardOrigins(state);
   const requestOrigin = requestHostOrigin(req);
   if (requestOrigin == null || !allowedOrigins.has(requestOrigin)) return false;
 
@@ -72,7 +71,13 @@ export function assertRemoteDevelopmentEnvironmentBrowserRequest(req: NextReques
     return NextResponse.json({ error: "Remote development environment endpoints are disabled." }, { status: 404 });
   }
 
-  if (!requestHostIsLoopback(req) || !browserRequestOriginIsAllowed(req)) {
+  const state = readRemoteDevelopmentEnvironmentState();
+  const expectedSecret = state.localDashboard?.secret;
+  if (expectedSecret == null || expectedSecret.length === 0) {
+    return NextResponse.json({ error: "Remote development environment is not active." }, { status: 404 });
+  }
+
+  if (!requestHostIsLoopback(req) || !browserRequestOriginIsAllowed(req, state)) {
     return NextResponse.json({ error: "Remote development environment endpoints only accept loopback requests." }, { status: 403 });
   }
 

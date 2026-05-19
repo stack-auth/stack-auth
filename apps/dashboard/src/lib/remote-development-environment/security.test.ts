@@ -81,6 +81,17 @@ describe("remote development environment security", () => {
     expect(response).toBeNull();
   });
 
+  it("rejects browser auth without an active local dashboard", async () => {
+    useTempStateFile("");
+    const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");
+    const response = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
+      host: "127.0.0.1:26700",
+      origin: "http://127.0.0.1:26700",
+      "sec-fetch-site": "same-origin",
+    }));
+    expect(response?.status).toBe(404);
+  });
+
   it("rejects browser auth from arbitrary localhost origins", async () => {
     useTempStateFile();
     const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");

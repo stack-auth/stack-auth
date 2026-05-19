@@ -1,6 +1,6 @@
 import { getPublicEnvVar } from "@/lib/env";
 import { NextRequest, NextResponse } from "next/server";
-import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 
 export const runtime = "nodejs";
 
@@ -17,10 +17,25 @@ function requestHostIsLoopback(req: NextRequest): boolean {
   return isLocalhost(`http://${host}`);
 }
 
+function urlOrigin(value: string | undefined): string | null {
+  if (value == null || value.length === 0) return null;
+  return createUrlIfValid(value)?.origin ?? null;
+}
+
+function expectedDashboardOrigins(): Set<string> {
+  return new Set([
+    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
+    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL")),
+    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL")),
+    "http://127.0.0.1:26700",
+  ].filter((origin): origin is string => typeof origin === "string"));
+}
+
 function originIsAllowed(req: NextRequest): boolean {
   const origin = req.headers.get("origin");
   if (origin == null) return true;
-  return isLocalhost(origin);
+  const parsedOrigin = urlOrigin(origin);
+  return parsedOrigin != null && expectedDashboardOrigins().has(parsedOrigin);
 }
 
 function shellQuote(value: string): string {

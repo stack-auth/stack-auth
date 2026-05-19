@@ -322,8 +322,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
     configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
     configOverrideOverride['apps.installed.emails.enabled'] ??= true;
   }
-  const isCreatingDevelopmentEnvironment = options.type === "create" && options.data.is_development_environment === true;
-  if (!isCreatingDevelopmentEnvironment && (options.type === "create" || Object.keys(configOverrideOverride).length > 0)) {
+  if (options.type === "create" || Object.keys(configOverrideOverride).length > 0) {
     await overrideEnvironmentConfigOverride({
       projectId: projectId,
       branchId: branchId,
