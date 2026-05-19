@@ -291,7 +291,6 @@ export function useUpdateConfig() {
     if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true") {
       if (!pushable) {
         throw new StackAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
-        return false;
       }
 
       const project = await adminApp.getProject();
