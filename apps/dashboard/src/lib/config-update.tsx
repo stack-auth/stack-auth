@@ -5,7 +5,7 @@ import { ActionDialog } from "@/components/ui/action-dialog";
 import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import React, { createContext, useCallback, useContext, useState } from "react";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import React, { createContext, useCallback, useContext, useState } from "react";
 
 type ConfigUpdateDialogState = {
