@@ -8,7 +8,7 @@ import { DesignCard } from "@/components/design-components/card";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { ActionDialog, Spinner, Typography, cn } from "@/components/ui";
-import { GithubLogoIcon, LinkBreakIcon, TerminalWindowIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, GithubLogoIcon, LinkBreakIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import { type AdminOwnedProject, type PushedConfigSource, useUser } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -425,6 +425,14 @@ async function encryptSecretValue(value: string, base64PublicKey: string): Promi
   return sodium.to_base64(encryptedBytes, sodium.base64_variants.ORIGINAL);
 }
 
+// GitHub returns 403/429 with a "rate limit" message when the primary or
+// secondary rate limit is hit. We surface these as inline messages in the
+// combobox rather than firing an alert, since they self-resolve.
+function isGithubRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /rate limit/i.test(error.message);
+}
+
 function buildConfigPathSuggestions(paths: string[]): string[] {
   // Keep suggestions repo-relative (no `./` prefix) so they match both the
   // workflow's push `paths` filter and the default config path input.
@@ -489,9 +497,11 @@ export function LinkExistingOnboarding(props: Props) {
   const [repoSearchQuery, setRepoSearchQuery] = useState("");
   const [repoSearchResults, setRepoSearchResults] = useState<GithubRepository[]>([]);
   const [loadingRepoSearch, setLoadingRepoSearch] = useState(false);
+  const [repoSearchError, setRepoSearchError] = useState<string | null>(null);
   const [branchSearchQuery, setBranchSearchQuery] = useState("");
   const [branchSearchResults, setBranchSearchResults] = useState<string[]>([]);
   const [loadingBranchSearch, setLoadingBranchSearch] = useState(false);
+  const [branchSearchError, setBranchSearchError] = useState<string | null>(null);
 
   const persistState = useCallback((partial: Partial<PersistedLinkExistingState>) => {
     const existingState = readPersistedLinkExistingState(project.id);
@@ -1055,7 +1065,13 @@ export function LinkExistingOnboarding(props: Props) {
         appendLog("Workflow dispatched. Waiting for Stack Auth push...");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
-        appendLog(`Could not dispatch the workflow directly (${message}). The workflow commit should still trigger a run; continuing to monitor.`);
+        appendLog(
+          "Skipping direct workflow dispatch — this is expected when the " +
+          "workflow file is not yet on the repository's default branch. " +
+          "The workflow commit above triggers a run via the push filter, " +
+          "so we'll continue monitoring."
+        );
+        appendLog(`(Dispatch error: ${message})`);
       }
 
       setStepWithPersistence("github-logs");
@@ -1176,12 +1192,20 @@ export function LinkExistingOnboarding(props: Props) {
 
   // Debounced GitHub search for repositories. /user/repos only returns the
   // first 100 entries, so for users with many repos we hit /search/repositories
-  // as they type. Server-side search includes private repos when authenticated.
+  // as they type. We scope the query with `user:LOGIN` so results stay within
+  // the connected user's repos — without it, /search/repositories is global
+  // and would surface unrelated public repos ahead of the user's own.
+  // Note: this also excludes repos the user only has access to via org
+  // membership; those still appear via the prefetched /user/repos list.
+  const selectedGithubLogin = selectedGithubAccount != null
+    ? githubAccountLogins.get(selectedGithubAccount.providerAccountId) ?? null
+    : null;
   useEffect(() => {
     const trimmed = repoSearchQuery.trim();
     if (step !== "github-repository" || trimmed.length === 0 || selectedGithubAccount == null) {
       setRepoSearchResults([]);
       setLoadingRepoSearch(false);
+      setRepoSearchError(null);
       return;
     }
     let cancelled = false;
@@ -1189,8 +1213,9 @@ export function LinkExistingOnboarding(props: Props) {
     const handle = setTimeout(() => {
       runAsynchronouslyWithAlert(async () => {
         try {
+          const qualifiers = selectedGithubLogin != null ? ` user:${selectedGithubLogin}` : "";
           const queryString = new URLSearchParams({
-            q: `${trimmed} fork:true`,
+            q: `${trimmed}${qualifiers} fork:true`,
             per_page: "30",
             sort: "updated",
           }).toString();
@@ -1203,6 +1228,16 @@ export function LinkExistingOnboarding(props: Props) {
           } else {
             setRepoSearchResults([]);
           }
+          setRepoSearchError(null);
+        } catch (error) {
+          if (cancelled) return;
+          if (isGithubRateLimitError(error)) {
+            setRepoSearchResults([]);
+            setRepoSearchError("GitHub rate-limited the search. Wait a moment and try again.");
+            return;
+          }
+          setRepoSearchError(null);
+          throw error;
         } finally {
           if (!cancelled) {
             setLoadingRepoSearch(false);
@@ -1214,7 +1249,7 @@ export function LinkExistingOnboarding(props: Props) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [githubFetch, repoSearchQuery, selectedGithubAccount, step]);
+  }, [githubFetch, repoSearchQuery, selectedGithubAccount, selectedGithubLogin, step]);
 
   // Debounced GitHub search for branches. The branches endpoint has no search,
   // but /git/matching-refs/heads/{prefix} returns prefix-matched refs and is
@@ -1224,6 +1259,7 @@ export function LinkExistingOnboarding(props: Props) {
     if (step !== "github-repository" || trimmed.length === 0 || selectedRepository == null) {
       setBranchSearchResults([]);
       setLoadingBranchSearch(false);
+      setBranchSearchError(null);
       return;
     }
     const { owner, repo } = parseRepositoryFullName(selectedRepository.fullName);
@@ -1239,6 +1275,16 @@ export function LinkExistingOnboarding(props: Props) {
             return;
           }
           setBranchSearchResults(parseGithubMatchingRefs(json));
+          setBranchSearchError(null);
+        } catch (error) {
+          if (cancelled) return;
+          if (isGithubRateLimitError(error)) {
+            setBranchSearchResults([]);
+            setBranchSearchError("GitHub rate-limited the search. Wait a moment and try again.");
+            return;
+          }
+          setBranchSearchError(null);
+          throw error;
         } finally {
           if (!cancelled) {
             setLoadingBranchSearch(false);
@@ -1492,28 +1538,57 @@ export function LinkExistingOnboarding(props: Props) {
                 triggerPlaceholder={loadingRepositories ? "Loading repositories..." : "Select a repository"}
                 inputPlaceholder="Search GitHub repositories..."
                 loading={loadingRepoSearch || (loadingRepositories && repositories.length === 0)}
-                emptyMessage={repoSearchQuery.trim().length === 0 ? "No repositories loaded yet." : "No matching repositories."}
+                emptyMessage={
+                  repoSearchError
+                    ?? (repoSearchQuery.trim().length === 0 ? "No repositories loaded yet." : "No matching repositories.")
+                }
                 disabled={selectedGithubAccount == null}
               />
             </div>
 
             <div className="space-y-2">
               <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Branch</Typography>
-              <RemoteSearchCombobox
-                value={selectedBranch}
-                items={branchComboboxItems}
-                query={branchSearchQuery}
-                onQueryChange={setBranchSearchQuery}
-                onSelect={(nextBranch) => {
-                  setSelectedBranchWithPersistence(nextBranch);
-                  setBranchSearchQuery("");
-                }}
-                triggerPlaceholder={loadingBranches ? "Loading branches..." : "Select a branch"}
-                inputPlaceholder="Search branches..."
-                loading={loadingBranchSearch || (loadingBranches && branches.length === 0)}
-                emptyMessage={branchSearchQuery.trim().length === 0 ? "No branches loaded yet." : "No matching branches."}
-                disabled={selectedRepositoryFullName.length === 0}
-              />
+              <div className="flex gap-2">
+                <div className="min-w-0 flex-1">
+                  <RemoteSearchCombobox
+                    value={selectedBranch}
+                    items={branchComboboxItems}
+                    query={branchSearchQuery}
+                    onQueryChange={setBranchSearchQuery}
+                    onSelect={(nextBranch) => {
+                      setSelectedBranchWithPersistence(nextBranch);
+                      setBranchSearchQuery("");
+                    }}
+                    triggerPlaceholder={loadingBranches ? "Loading branches..." : "Select a branch"}
+                    inputPlaceholder="Search branches..."
+                    loading={loadingBranchSearch || (loadingBranches && branches.length === 0)}
+                    emptyMessage={
+                      branchSearchError
+                        ?? (branchSearchQuery.trim().length === 0 ? "No branches loaded yet." : "No matching branches.")
+                    }
+                    disabled={selectedRepositoryFullName.length === 0}
+                  />
+                </div>
+                <button
+                  type="button"
+                  aria-label="Refresh branches"
+                  title="Refresh branches"
+                  disabled={selectedRepositoryFullName.length === 0 || loadingBranches}
+                  onClick={() => runAsynchronouslyWithAlert(async () => {
+                    await loadBranches(selectedRepositoryFullName);
+                  })}
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                    "border border-black/[0.08] bg-white/80 shadow-sm ring-1 ring-black/[0.08]",
+                    "transition-all duration-150 hover:transition-none hover:ring-black/[0.12]",
+                    "focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/30",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "dark:border-white/[0.06] dark:bg-background/60 dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
+                  )}
+                >
+                  <ArrowsClockwiseIcon className={cn("h-4 w-4 opacity-70", loadingBranches && "animate-spin")} />
+                </button>
+              </div>
             </div>
           </div>
         </DesignCard>
