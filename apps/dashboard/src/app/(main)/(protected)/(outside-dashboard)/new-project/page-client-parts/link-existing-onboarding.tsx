@@ -1309,6 +1309,15 @@ export function LinkExistingOnboarding(props: Props) {
                     Connect GitHub account
                   </DesignButton>
                 </div>
+              ) : selectedGithubAccount != null && !githubAccountLogins.has(selectedGithubAccount.providerAccountId) ? (
+                // Hide the dropdown until the GitHub /user fetch populates the
+                // login, so we never briefly show the numeric providerAccountId.
+                <div className="flex items-center gap-2 py-1.5">
+                  <Spinner size={14} />
+                  <Typography variant="secondary" className="text-sm">
+                    Loading GitHub account...
+                  </Typography>
+                </div>
               ) : (
                 <DesignSelectorDropdown
                   value={selectedGithubAccount?.providerAccountId ?? ""}
