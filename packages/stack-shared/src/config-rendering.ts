@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { isValidConfig, normalize } from "./config/format";
+import { parseStackConfigFileContent } from "./stack-config-file";
+export { parseStackConfigFileContent };
 
 /**
  * Packages that export the `StackConfig` type, in priority order.
@@ -89,6 +91,33 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
     }
   }
 };`);
+});
+
+import.meta.vitest?.test("parseStackConfigFileContent parses static config exports", ({ expect }) => {
+  expect(parseStackConfigFileContent(`
+    import type { StackConfig } from "@stackframe/js";
+    export const config: StackConfig = {
+      auth: { allowSignUp: true },
+      payments: { testMode: false },
+    };
+  `, "stack.config.ts")).toMatchInlineSnapshot(`
+    {
+      "auth": {
+        "allowSignUp": true,
+      },
+      "payments": {
+        "testMode": false,
+      },
+    }
+  `);
+});
+
+import.meta.vitest?.test("parseStackConfigFileContent parses show-onboarding", ({ expect }) => {
+  expect(parseStackConfigFileContent('export const config = "show-onboarding";', "stack.config.ts")).toBe("show-onboarding");
+});
+
+import.meta.vitest?.test("parseStackConfigFileContent rejects dynamic config exports", ({ expect }) => {
+  expect(() => parseStackConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {

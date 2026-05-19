@@ -43,6 +43,25 @@
       ],
       "outputLogs": "new-only"
     },
+    "build:rde-standalone": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env",
+        ".env.local",
+        ".env.development",
+        ".env.development.local",
+        ".env.production",
+        ".env.production.local"
+      ],
+      "dependsOn": [
+        "build"
+      ],
+      "outputs": [
+        ".next/**",
+        "src/generated/bundled-type-definitions.ts"
+      ],
+      "outputLogs": "new-only"
+    },
     "docker-build": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -69,6 +88,15 @@
     "@stackframe/backend#build": {
       "dependsOn": [
         "codegen"
+      ]
+    },
+    "@stackframe/stack-cli#build": {
+      "dependsOn": [
+        "^build",
+        "@stackframe/dashboard#build:rde-standalone"
+      ],
+      "outputs": [
+        "dist/**"
       ]
     },
     "clean": {

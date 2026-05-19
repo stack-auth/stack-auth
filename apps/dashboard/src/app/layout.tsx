@@ -1,11 +1,6 @@
-import { DevErrorNotifier } from '@/components/dev-error-notifier';
-import { RouterProvider } from '@/components/router';
-import { SiteLoadingIndicatorDisplay } from '@/components/site-loading-indicator';
 import { StyleLink } from '@/components/style-link';
-import { Toaster, cn } from '@/components/ui';
+import { cn } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
-import { stackServerApp } from '@/stack';
-import { StackProvider, StackTheme } from '@stackframe/stack';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -14,14 +9,9 @@ import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Inter as FontSans } from "next/font/google";
 import React from 'react';
-// import { VersionAlerter } from '../components/version-alerter';
-import { VersionAlerter } from '@/components/version-alerter';
 import '../polyfills';
-import { BackgroundShine } from './background-shine';
-import { ClientPolyfill } from './client-polyfill';
-import { DevelopmentPortDisplay } from './development-port-display';
 import './globals.css';
-import { UserIdentity } from './providers';
+import { LayoutClient } from './layout-client';
 
 export const metadata: Metadata = {
   metadataBase: new URL(getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || ''),
@@ -103,21 +93,9 @@ export default function RootLayout({
       >
         <Analytics />
         <SpeedInsights />
-        <StackProvider app={stackServerApp} lang={translationLocale as any}>
-          <StackTheme>
-            <ClientPolyfill />
-            <RouterProvider>
-              <UserIdentity />
-              <VersionAlerter />
-              <BackgroundShine />
-              {children}
-              <DevelopmentPortDisplay />
-            </RouterProvider>
-          </StackTheme>
-        </StackProvider>
-        <DevErrorNotifier />
-        <Toaster />
-        <SiteLoadingIndicatorDisplay />
+        <LayoutClient translationLocale={translationLocale}>
+          {children}
+        </LayoutClient>
       </body>
     </html>
   );

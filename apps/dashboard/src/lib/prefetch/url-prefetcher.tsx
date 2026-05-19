@@ -1,7 +1,8 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { stackAppInternalsSymbol, useUser } from "@stackframe/stack";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
+import { stackAppInternalsSymbol } from "@stackframe/stack";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
 import { memo, useEffect, useMemo, useState } from "react";
@@ -210,11 +211,11 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
       useAdminApp(projectId).useProject().useProductionModeErrors();
     },
     () => {
-      useUser({ or: "redirect", projectIdMustMatch: "internal" });
+      useDashboardInternalUser();
     },
     ([_, projectId]) => {
       const project = useAdminApp(projectId).useProject();
-      const teams = useUser({ or: "redirect", projectIdMustMatch: "internal" }).useTeams();
+      const teams = useDashboardInternalUser().useTeams();
       const ownerTeam = teams.find((team) => team.id === project.ownerTeamId);
       if (ownerTeam) {
         return [() => {

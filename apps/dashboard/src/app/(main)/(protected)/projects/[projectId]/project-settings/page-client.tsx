@@ -11,9 +11,10 @@ import {
   type DesignEditableGridItem,
 } from "@/components/design-components";
 import { ActionDialog, Avatar, AvatarFallback, AvatarImage, SimpleTooltip, Switch, useToast } from "@/components/ui";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource } from "@stackframe/stack";
-import { TeamSwitcher, useUser } from "@stackframe/stack";
+import { TeamSwitcher } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ArrowsLeftRightIcon, BuildingsIcon, GearIcon, GlobeHemisphereWestIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react";
@@ -55,7 +56,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const productionModeErrors = project.useProductionModeErrors();
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const teams = user.useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);

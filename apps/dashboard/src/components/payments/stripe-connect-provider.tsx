@@ -13,7 +13,6 @@ import { useEffect } from "react";
 import { appearanceVariablesForTheme } from "./stripe-theme-variables";
 
 const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
-const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
 type StripeConnectProviderProps = {
   children: React.ReactNode,
@@ -35,9 +34,10 @@ export function getStripeConnectInstance(adminApp: StackAdminApp) {
 
 export function StripeConnectProvider({ children }: StripeConnectProviderProps) {
   const adminApp = useAdminApp();
+  const project = adminApp.useProject();
   const { resolvedTheme } = useTheme();
 
-  const stripeConnectInstance = isPreview || isLocalEmulator ? null : getStripeConnectInstance(adminApp);
+  const stripeConnectInstance = isPreview || project.isDevelopmentEnvironment ? null : getStripeConnectInstance(adminApp);
 
   useEffect(() => {
     if (!stripeConnectInstance) return;
@@ -48,7 +48,7 @@ export function StripeConnectProvider({ children }: StripeConnectProviderProps) 
     });
   }, [resolvedTheme, stripeConnectInstance]);
 
-  // In preview/emulator mode, skip Stripe Connect initialization entirely
+  // Preview and development-environment projects do not initialize Stripe Connect.
   if (!stripeConnectInstance) {
     return <>{children}</>;
   }

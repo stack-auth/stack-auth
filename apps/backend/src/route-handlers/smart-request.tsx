@@ -206,8 +206,12 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     };
   };
 
-  const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string }) => {
-    const result = await decodeAccessToken(options.token, { allowAnonymous: false, allowRestricted: false });
+  const extractUserFromAdminAccessToken = async (options: { token: string, projectId: string, allowAnonymous: boolean }) => {
+    const result = await decodeAccessToken(options.token, {
+      allowAnonymous: options.allowAnonymous,
+      // Anonymous dev-environment tokens may be restricted; non-anonymous restricted tokens are rejected below after decoding.
+      allowRestricted: options.allowAnonymous,
+    });
     if (result.status === "error") {
       if (KnownErrors.AccessTokenExpired.isInstance(result.error)) {
         throw new KnownErrors.AdminAccessTokenExpired(result.error.constructorArgs[0]);
@@ -217,6 +221,12 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     }
 
     if (result.data.projectId !== "internal") {
+      throw new KnownErrors.AdminAccessTokenIsNotAdmin();
+    }
+    if (result.data.restrictedReason != null && !result.data.isAnonymous) {
+      throw new KnownErrors.AdminAccessTokenIsNotAdmin();
+    }
+    if (result.data.isAnonymous && !options.allowAnonymous) {
       throw new KnownErrors.AdminAccessTokenIsNotAdmin();
     }
 
@@ -272,7 +282,11 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     if (result.status === "error") throw new StatusError(401, "Invalid development key override");
   } else if (adminAccessToken) {
     // TODO put this into the bundled queries above (not so important because this path is quite rare)
-    await extractUserFromAdminAccessToken({ token: adminAccessToken, projectId });  // assert that the admin token is valid
+    await extractUserFromAdminAccessToken({
+      token: adminAccessToken,
+      projectId,
+      allowAnonymous: project.is_development_environment,
+    });  // assert that the admin token is valid
   } else {
     switch (requestType) {
       case "client": {

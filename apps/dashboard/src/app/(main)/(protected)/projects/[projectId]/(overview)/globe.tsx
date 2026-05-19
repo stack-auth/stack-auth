@@ -1,8 +1,9 @@
 import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
+import { useDashboardUser } from '@/lib/dashboard-user';
 import { useThemeWatcher } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import useResizeObserver from '@react-hook/resize-observer';
-import { UserAvatar, useUser } from '@stackframe/stack';
+import { UserAvatar } from '@stackframe/stack';
 import type { MetricsRecentUser } from '@stackframe/stack-shared/dist/interface/admin-metrics';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
@@ -652,7 +653,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     }
   };
 
-  const user = useUser({ or: "redirect" });
+  const user = useDashboardUser();
   const displayName = user.displayName ?? user.primaryEmail;
 
   const { theme, mounted } = useThemeWatcher();

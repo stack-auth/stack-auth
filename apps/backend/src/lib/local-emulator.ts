@@ -1,23 +1,22 @@
 import { globalPrismaClient } from "@/prisma-client";
+import { showOnboardingStackConfigValue } from "@stackframe/stack-shared/dist/config-authoring";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
+import { parseStackConfigFileContent } from "@stackframe/stack-shared/dist/stack-config-file";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import fs from "fs/promises";
-import { createJiti } from "jiti";
 import path from "path";
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
 export const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
 export { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD };
 
-export const LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE =
-  "Environment configuration overrides cannot be changed in the local emulator. Update this in your production deployment instead.";
 export const LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE =
   "This endpoint is only available in local emulator mode (set NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true).";
 export const LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV = "STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT";
-export const LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE = "show-onboarding" as const;
+export const LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE = showOnboardingStackConfigValue;
 
 type LocalEmulatorConfigValue = Record<string, unknown> | typeof LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE;
 
@@ -76,27 +75,12 @@ async function readConfigContent(filePath: string): Promise<string> {
 
 async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorConfigValue> {
   const content = await readConfigContent(filePath);
-  if (content.trim() === "") {
-    return {};
-  }
-
-  const evalFilename = /\.[cm]?tsx?$/.test(filePath) ? filePath : `${filePath}.ts`;
-  const jiti = createJiti(import.meta.url, { cache: false });
-  let mod: Record<string, unknown>;
   try {
-    mod = jiti.evalModule(content, { filename: evalFilename }) as Record<string, unknown>;
+    return parseStackConfigFileContent(content, filePath);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);
   }
-  const config = mod.config;
-  if (config === LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE) {
-    return config;
-  }
-  if (!isValidConfig(config)) {
-    throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object or "show-onboarding".`);
-  }
-  return config;
 }
 
 export async function isLocalEmulatorOnboardingEnabledInConfig(filePath: string): Promise<boolean> {
