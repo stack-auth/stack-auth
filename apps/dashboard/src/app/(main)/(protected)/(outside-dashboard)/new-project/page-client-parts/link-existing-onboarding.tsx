@@ -1,5 +1,7 @@
 "use client";
 
+import { CodeBlock } from "@/components/code-block";
+import { DesignPillToggle } from "@/components/design-components";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignCard } from "@/components/design-components/card";
@@ -10,7 +12,7 @@ import { GithubLogoIcon, LinkBreakIcon, TerminalWindowIcon } from "@phosphor-ico
 import { type AdminOwnedProject, type PushedConfigSource, useUser } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import sodium from "libsodium-wrappers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -100,6 +102,9 @@ function createRepositoryReference(fullName: string, defaultBranch: string): Git
 const GITHUB_SCOPE_REQUIREMENTS = ["repo", "workflow"];
 const CONNECT_NEW_GITHUB_ACCOUNT_OPTION = "__connect-new-github-account__";
 const LINK_EXISTING_STEPS: LinkExistingStep[] = ["choose-method", "local", "github-repository", "github-config-path", "github-logs"];
+
+type PackageRunner = "npx" | "pnpx" | "bunx";
+const PACKAGE_RUNNERS: PackageRunner[] = ["npx", "pnpx", "bunx"];
 
 function getLinkExistingStorageKey(projectId: string): string {
   return `stack-auth-link-existing-onboarding:${projectId}`;
@@ -458,6 +463,7 @@ export function LinkExistingOnboarding(props: Props) {
   const githubLogsAutoPollingKeyRef = useRef<string | null>(null);
   const repositoriesLoadedAccountRef = useRef<string | null>(null);
   const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "stack.config.ts");
+  const [packageRunner, setPackageRunner] = useState<PackageRunner>("npx");
 
   const persistState = useCallback((partial: Partial<PersistedLinkExistingState>) => {
     const existingState = readPersistedLinkExistingState(project.id);
@@ -1106,12 +1112,8 @@ export function LinkExistingOnboarding(props: Props) {
 
   const canContinue = pushedConfigSource != null && pushedConfigSource.type !== "unlinked";
 
-  const localCommand = useMemo(() => {
-    return deindent`
-      npx @stackframe/stack-cli@latest login
-      npx @stackframe/stack-cli@latest config push --config-file <path-to-your-config-file> --cloud-project-id "${project.id}"
-    `;
-  }, [project.id]);
+  const loginCommand = `${packageRunner} @stackframe/stack-cli@latest login`;
+  const configPushCommand = `${packageRunner} @stackframe/stack-cli@latest config push --cloud-project-id "${project.id}" --config-file <path-to-your-config-file>`;
 
   // Load repositories whenever the github-repository step has a selected
   // account we haven't loaded yet. This also covers landing back on this step
@@ -1199,14 +1201,51 @@ export function LinkExistingOnboarding(props: Props) {
     content = (
       <div className="space-y-4">
         <DesignCard glassmorphic className="border-0 bg-white/70 dark:bg-background/60">
-          <div className="space-y-3">
-            <Typography className="text-sm font-semibold">CLI command</Typography>
-            <pre className="overflow-x-auto rounded-xl bg-foreground/[0.04] p-3 text-xs leading-relaxed text-foreground">
-              {localCommand}
-            </pre>
-            <Typography variant="secondary" className="text-xs leading-relaxed">
-              This signs in to Stack Auth, then pushes your local config file for project <code>{project.id}</code>.
-            </Typography>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Typography className="text-sm font-semibold">CLI commands</Typography>
+              <DesignPillToggle
+                options={PACKAGE_RUNNERS.map((runner) => ({ id: runner, label: runner }))}
+                selected={packageRunner}
+                onSelect={(id) => {
+                  const runner = PACKAGE_RUNNERS.find((entry) => entry === id);
+                  if (runner != null) {
+                    setPackageRunner(runner);
+                  }
+                }}
+                size="sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Typography variant="secondary" className="text-xs font-medium">
+                1. Sign in to Stack Auth
+              </Typography>
+              <CodeBlock
+                title="Sign in"
+                icon="terminal"
+                language="bash"
+                content={loginCommand}
+              />
+              <Typography variant="secondary" className="text-xs leading-relaxed">
+                Skip this if you have already signed in with the CLI.
+              </Typography>
+            </div>
+
+            <div className="space-y-1.5">
+              <Typography variant="secondary" className="text-xs font-medium">
+                2. Push your config
+              </Typography>
+              <CodeBlock
+                title="Push config"
+                icon="terminal"
+                language="bash"
+                content={configPushCommand}
+              />
+              <Typography variant="secondary" className="text-xs leading-relaxed">
+                Replace <code>&lt;path-to-your-config-file&gt;</code> with your local config file path. This pushes the config for project <code>{project.id}</code>.
+              </Typography>
+            </div>
           </div>
         </DesignCard>
 
