@@ -52,7 +52,7 @@ export function writeConfigObject(configFilePath: string, config: Config): void 
   mkdirSync(dir, { recursive: true });
   const importPackage = detectImportPackageFromDir(dir);
   const content = renderConfigFileContent(config, importPackage);
-  const tempPath = path.join(dir, `.stack.config.${process.pid}.${Date.now()}.tmp`);
+  const tempPath = path.join(dir, `.stack.config.${Math.random().toString(36).slice(2)}.tmp`);
   writeFileSync(tempPath, content, "utf-8");
   renameSync(tempPath, configFilePath);
 }
