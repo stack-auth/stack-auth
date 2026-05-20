@@ -139,6 +139,10 @@ export function formatPriceDisplay(price: Price): string {
  * interval is arbitrary but matches the most common free-tier expectation; it
  * also governs when included items with `expires: 'when-purchase-expires'` or
  * `'when-repeated'` get re-granted.
+ *
+ * TODO(default-plans): replace the [1, 'month'] interval default with the
+ * default-plan grant flow once that exists; the interval is only here to
+ * keep Stripe's recurring-sub path happy.
  */
 export function createFreePrice(): { [priceId: string]: Price } {
   return {

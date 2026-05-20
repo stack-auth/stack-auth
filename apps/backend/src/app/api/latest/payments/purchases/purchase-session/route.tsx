@@ -9,7 +9,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -45,11 +45,11 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      client_secret: yupString().defined().meta({
+      client_secret: yupString().optional().meta({
         openapiField: {
-          description: "The Stripe client secret for completing the payment",
-          exampleValue: "1234567890abcdef_secret_xyz123"
-        }
+          description: "Stripe client secret used by the browser to confirm payment via Stripe Elements. Omitted when no payment step is required from the customer; in that case the purchase is being settled without a confirmation step and the caller should skip mounting Stripe Elements.",
+          exampleValue: "1234567890abcdef_secret_xyz123",
+        },
       }),
     }),
   }),
@@ -79,6 +79,14 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("Price not resolved for purchase session");
     }
 
+    // TODO(default-plans): when default/free plans become first-class, route
+    // these directly via an ensureDefaultPlan-style grant instead of forcing
+    // callers to configure an interval just to make Stripe happy.
+    const isFreePrice = Number(selectedPrice.USD) === 0;
+    if (isFreePrice && !selectedPrice.interval) {
+      throw new StatusError(400, "Free products must have a billing interval");
+    }
+
     const productVersionId = await upsertProductVersion({
       prisma,
       tenancyId: tenancy.id,
@@ -94,6 +102,11 @@ export const POST = createSmartRouteHandler({
         const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
           const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
+          // TODO(default-plans): $0 subs currently piggyback on the Stripe
+          // subscription lifecycle. Once default plans land, free subs should be
+          // granted directly (Prisma insert + bulldozer write, mirroring
+          // ensureFreePlanForBillingTeam) and skip Stripe entirely.
+          //
           const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
@@ -118,11 +131,24 @@ export const POST = createSmartRouteHandler({
             },
             ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
           });
+          if (isFreePrice) {
+            // Stripe activates $0 subs synchronously (status=active, invoice=paid)
+            // and produces no PaymentIntent / confirmation_secret, so we have
+            // nothing to hand to Stripe Elements. The DB row is written when
+            // the `invoice.paid` webhook lands, exactly like paid purchases
+            // after card confirmation.
+            await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
+            return { statusCode: 200, bodyType: "json", body: {} };
+          }
+          // Extract the client secret BEFORE revoking the code: if Stripe
+          // returns a malformed sub (no secret), we throw 500 here and the
+          // customer can retry with the same code. Revoking first would burn
+          // the code on every transient Stripe anomaly.
           const clientSecretUpdated = getClientSecretFromStripeSubscription(updated);
-          await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
           if (typeof clientSecretUpdated !== "string") {
             throwErr(500, "No client secret returned from Stripe for subscription");
           }
+          await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
           return { statusCode: 200, bodyType: "json", body: { client_secret: clientSecretUpdated } };
         } else {
           await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
@@ -181,6 +207,14 @@ export const POST = createSmartRouteHandler({
       name: data.product.displayName ?? "Subscription",
     });
     const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
+    // TODO(default-plans): $0 subs currently piggyback on the Stripe
+    // subscription lifecycle. Once default plans land, free subs should be
+    // granted directly (Prisma insert + bulldozer write, mirroring
+    // ensureFreePlanForBillingTeam) and skip Stripe entirely.
+    //
+    // Note on $0 subs: Stripe auto-activates them on create (status="active",
+    // invoice="paid") regardless of `default_incomplete` so we keep the same
+    // call shape and only diverge in how we read the response below.
     const created = await stripe.subscriptions.create({
       customer: data.stripeCustomerId,
       payment_behavior: 'default_incomplete',
@@ -205,15 +239,28 @@ export const POST = createSmartRouteHandler({
       },
       ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
     });
+    if (isFreePrice) {
+      // Stripe activates $0 subs synchronously (status=active, invoice=paid)
+      // and produces no PaymentIntent / confirmation_secret, so we have
+      // nothing to hand to Stripe Elements. The DB row is written when the
+      // `invoice.paid` webhook lands, exactly like paid purchases after card
+      // confirmation.
+      await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {},
+      };
+    }
+    // Extract the client secret BEFORE revoking the code: if Stripe returns a
+    // malformed sub (no secret), we throw 500 here and the customer can retry
+    // with the same code. Revoking first would burn the code on every
+    // transient Stripe anomaly.
     const clientSecret = getClientSecretFromStripeSubscription(created);
     if (typeof clientSecret !== "string") {
       throwErr(500, "No client secret returned from Stripe for subscription");
     }
-
-    await purchaseUrlVerificationCodeHandler.revokeCode({
-      tenancy,
-      id: codeId,
-    });
+    await purchaseUrlVerificationCodeHandler.revokeCode({ tenancy, id: codeId });
     return {
       statusCode: 200,
       bodyType: "json",
