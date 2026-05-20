@@ -107,6 +107,14 @@ export function DesignDialog({
   const shouldRenderTopHeaderRow = Icon != null || title != null || description != null;
   const shouldRenderHeader = customHeader != null || shouldRenderTopHeaderRow || headerContent != null;
   const shouldRenderBody = React.Children.count(children) > 0;
+  const hasStandardTitle = title != null;
+  const needsAccessibleTitleFallback = !hasStandardTitle && customHeader == null;
+
+  if (process.env.NODE_ENV !== "production" && needsAccessibleTitleFallback) {
+    console.warn(
+      "[DesignDialog] Rendered without a `title` or `customHeader`. Every dialog needs an accessible name — pass `title`, or render a `DialogTitle` inside `customHeader`.",
+    );
+  }
 
   return (
     <Dialog {...dialogRootProps}>
@@ -126,6 +134,9 @@ export function DesignDialog({
         overlayProps={resolvedOverlayClass ? { className: resolvedOverlayClass } : undefined}
         noCloseButton={hideTopCloseButton}
       >
+        {needsAccessibleTitleFallback && (
+          <DialogTitle className="sr-only">Dialog</DialogTitle>
+        )}
         {shouldRenderHeader && (
           <DialogHeader className={cn("px-6 pt-6 pb-4 border-b border-foreground/[0.06]", headerClassName)}>
             {customHeader ?? (
