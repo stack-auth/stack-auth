@@ -80,10 +80,17 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("Price not resolved for purchase session");
     }
 
+    // Validate the price amount up-front so a malformed config can't slip past
+    // the Stripe-minimum guards below and produce a raw Stripe error at
+    // PaymentIntent/Subscription.create time.
+    const priceAmount = Number(selectedPrice.USD);
+    if (!Number.isFinite(priceAmount) || priceAmount < 0) {
+      throw new StatusError(400, `Price amount must be a finite, non-negative number (got ${JSON.stringify(selectedPrice.USD)})`);
+    }
     // TODO(default-plans): when default/free plans become first-class, route
     // these directly via an ensureDefaultPlan-style grant instead of forcing
     // callers to configure an interval just to make Stripe happy.
-    const isFreePrice = Number(selectedPrice.USD) === 0;
+    const isFreePrice = priceAmount === 0;
     if (isFreePrice && !selectedPrice.interval) {
       throw new StatusError(400, "Free products must have a billing interval");
     }
@@ -92,7 +99,6 @@ export const POST = createSmartRouteHandler({
     // and return a clean 400 instead of a raw Stripe error at
     // PaymentIntent.create time. Recurring sub items don't have this minimum
     // (handled above for the $0 case).
-    const priceAmount = Number(selectedPrice.USD);
     const stripeOneTimeMin = getStripeOneTimeMinAmount('USD');
     if (!selectedPrice.interval && priceAmount > 0 && priceAmount < stripeOneTimeMin) {
       throw new StatusError(400, `One-time prices must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum)`);
