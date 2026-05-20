@@ -211,7 +211,7 @@ For the full, current flag list and any commands added after this skill was gene
 const COMMON_HEADERS = {
   "Cache-Control": "public, max-age=3600, s-maxage=3600",
   // CDN must cache markdown (curl/agents) and HTML (browser navigate) separately.
-  "Vary": "Sec-Fetch-Mode, Sec-Fetch-Dest",
+  "Vary": "Accept",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",
@@ -432,11 +432,10 @@ function renderHtml(): string {
 }
 
 function wantsHtml(req: Request): boolean {
-  // Browsers navigating to a top-level URL send Sec-Fetch-Mode: navigate.
-  // curl, fetch(), and agent fetchers do not, so they keep getting markdown.
-  if (req.headers.get("sec-fetch-mode") === "navigate") return true;
-  if (req.headers.get("sec-fetch-dest") === "document") return true;
-  return false;
+  // Browsers send `Accept: text/html,...` before `*/*`; curl/fetch/agents send
+  // `*/*` (or omit Accept). Serve HTML only when text/html is explicitly listed.
+  const accept = req.headers.get("accept") ?? "";
+  return accept.split(",").some((part) => part.trim().split(";")[0] === "text/html");
 }
 
 export function GET(req: Request) {
