@@ -263,12 +263,12 @@ it("cannot delete current session as client", async ({ expect }) => {
 });
 
 it("cannot read another user's sessions as client", async ({ expect }) => {
-  // Create first user and sign up
-  const user1 = await Auth.Password.signUpWithEmail();
+  // Create first user and sign up (skip email wait — not needed for this test)
+  const user1 = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // Create second user and sign up
   backendContext.set({ userAuth: null, mailbox: createMailbox() }); // Clear first user's auth
-  const user2 = await Auth.Password.signUpWithEmail();
+  const user2 = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   // Try to read user1's sessions while authenticated as user2
   const listResponse = await niceBackendFetch("/api/v1/auth/sessions", {

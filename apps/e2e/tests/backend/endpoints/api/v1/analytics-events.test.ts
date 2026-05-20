@@ -171,11 +171,11 @@ it("stores $token-refresh data in snake_case without row identity fields", async
 it("cannot read events from other projects", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const projectAKeys = backendContext.value.projectKeys;
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Switch to another project and generate its own event
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  const { userId: projectBUserId } = await Auth.Otp.signIn();
+  const { userId: projectBUserId } = await Auth.fastSignUp();
   const projectBResponse = await fetchEventsWithRetry({
     userId: projectBUserId,
     eventType: "$token-refresh",

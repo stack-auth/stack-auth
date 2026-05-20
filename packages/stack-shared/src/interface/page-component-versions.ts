@@ -104,20 +104,6 @@ function createCustomPagePrompt(options: {
       },
     \`\`\`
 
-    **Important — overriding one URL target does NOT override the others.** Every handler URL is independent and falls back to \`urls.default\`. If \`default\` is \`{ type: "hosted" }\`, customizing only this page will cause the browser to **visibly redirect through \`<projectId>.built-with-stack-auth.com\`** during OAuth, magic-link, sign-out, email-verification, password-reset, and similar flows — even though your sign-in / sign-up pages render locally. That hosted subdomain must also be on the project's Trusted Domains list, or the API rejects the redirect with \`REDIRECT_URL_NOT_WHITELISTED\`.
-
-    To keep auth flows entirely on your own origin, override every related URL target. The complete set of handler URLs and the SDK call each custom page must invoke:
-
-    | URL target | What the custom page must do |
-    |---|---|
-    | \`signIn\`, \`signUp\` | Render the forms described in this prompt (or its sign-in / sign-up counterpart). |
-    | \`oauthCallback\` | On mount, call \`await stackApp.callOAuthCallback()\`. The SDK exchanges the \`code\`/\`state\` query params for tokens and then redirects to \`afterSignIn\`. |
-    | \`signOut\` | Read the current user, then sign them out via \`use(cacheSignOut(user))\` (which calls \`user.signOut()\` inside a cached function so the page stays idempotent on refresh). Show a confirmation state with a "Go home" button that calls \`stackApp.redirectToHome()\`. |
-    | \`magicLinkCallback\` | Complete the magic-link exchange when the link is opened directly (separate from the OTP flow inside the sign-in page). Call \`await stackApp.signInWithMagicLink(code)\` with the \`code\` query param. |
-    | \`forgotPassword\`, \`passwordReset\`, \`emailVerification\`, \`accountSettings\`, \`teamInvitation\`, \`mfa\`, \`error\`, \`onboarding\`, \`cliAuthConfirm\` | Each is its own URL target; customize as needed. |
-
-    Any URL target you do NOT customize will keep bouncing through the hosted domain — that may be intentional, but it should be a deliberate choice, not an accident. Always whitelist every origin you redirect to (your app's origin in production, \`http://localhost:<port>\` in dev, and the \`<projectId>.built-with-stack-auth.com\` host if you keep any handlers on hosted). In development you can also flip the "Allow localhost callbacks" toggle on the Trusted Domains page.
-
     ${stackAuthReminders}
   `;
   const versions = {
@@ -169,7 +155,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
           ? "- If sign-ups are enabled (\\`project = await stackApp.getProject(); project.config.signUpEnabled\\`), show a link to the sign-up page."
           : "- If sign-ups are disabled (\\`project = await stackApp.getProject(); !project.config.signUpEnabled\\`), show a message that sign-up is disabled."}
         - Show a ${authVerb} screen. The auth methods that should render:
-          - For each OAuth provider (\`project.config.oauthProviders: { readonly id: string }[]\`), render an OAuth button. Clicking the button calls \`await stackApp.signInWithOAuth("<providerId>")\`. Note: this triggers a redirect through \`urls.oauthCallback\`. If that target is hosted (the default unless you override it), the browser will visibly visit \`<projectId>.built-with-stack-auth.com\` before returning. To keep the flow on your origin, also customize \`urls.oauthCallback\` with a page that calls \`stackApp.callOAuthCallback()\` on mount — see the URL-config note at the end of this prompt.
+          - For each OAuth provider (\`project.config.oauthProviders: { readonly id: string }[]\`), render an OAuth button. Clicking the button calls \`await stackApp.signInWithOAuth("<providerId>")\`.
           ${isSignIn ? "- If \\`project.config.passkeyEnabled\\`, render a passkey button. Clicking the button calls \\`await stackApp.signInWithPasskey()\\`." : ""}
           - If \`project.config.credentialEnabled\`, render a credential ${authVerb} form:
             - Email + password${isSignIn ? "" : " + repeat password"}

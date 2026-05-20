@@ -70,6 +70,7 @@ it("should be able to provision a new project if client details are correct", as
         "description": "Project created by an external integration",
         "display_name": "Test project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,

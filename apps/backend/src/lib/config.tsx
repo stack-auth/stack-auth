@@ -1091,7 +1091,12 @@ import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes for develop
 
   const developmentEnvironment = await import("./development-environment");
 
-  const isDevelopmentEnvironmentProjectSpy = vi.spyOn(developmentEnvironment, "isDevelopmentEnvironmentProject").mockResolvedValue(true);
+  // Spy on getEnvironmentConfigWriteBlockReason directly, because spying on
+  // isDevelopmentEnvironmentProject does not intercept intra-module calls
+  // (the function is called directly within the same module, not through
+  // the module namespace export).
+  const spy = vi.spyOn(developmentEnvironment, "getEnvironmentConfigWriteBlockReason")
+    .mockResolvedValue(DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE);
 
   try {
     await expect(setEnvironmentConfigOverride({
@@ -1100,7 +1105,7 @@ import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes for develop
       environmentConfigOverride: {},
     })).rejects.toThrow(DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE);
   } finally {
-    isDevelopmentEnvironmentProjectSpy.mockRestore();
+    spy.mockRestore();
   }
 });
 

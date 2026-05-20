@@ -6,7 +6,7 @@ import { it } from "../../../../../helpers";
 import { backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
-const blockedMessage = "cannot be changed in the local emulator";
+const blockedMessage = "cannot be changed in a development environment";
 const localEmulatorProjectEndpoint = "/api/v1/internal/local-emulator/project";
 
 async function switchToLocalEmulatorProject() {

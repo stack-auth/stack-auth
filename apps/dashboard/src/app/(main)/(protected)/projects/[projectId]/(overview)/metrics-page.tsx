@@ -1234,7 +1234,7 @@ function MetricsContent({
         )}
       >
         {shouldShowGlobe && (
-          <div className={cn(
+          <div data-walkthrough="overview-globe" className={cn(
             "hidden lg:flex lg:col-span-5 h-full relative items-center justify-center overflow-hidden",
             "rounded-2xl bg-white/90 backdrop-blur-xl ring-1 ring-black/[0.06] shadow-sm",
             "dark:bg-transparent dark:backdrop-blur-none dark:ring-0 dark:shadow-none dark:rounded-none",
@@ -1256,7 +1256,7 @@ function MetricsContent({
           </div>
         )}
 
-        <div className={cn(
+        <div data-walkthrough="overview-metrics" className={cn(
           "h-full",
           shouldShowGlobe ? "lg:col-span-7" : "lg:col-span-12",
         )}>

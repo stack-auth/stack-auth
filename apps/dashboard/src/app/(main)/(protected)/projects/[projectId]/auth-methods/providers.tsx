@@ -15,6 +15,7 @@ import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/rea
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useState, type ReactNode } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";
@@ -142,7 +143,7 @@ function RedirectInline({ providerId }: { providerId: string }) {
     <div className="flex flex-col gap-1">
       <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
       <Typography type="footnote" className="break-all">
-        <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')}/api/v1/auth/oauth/callback/${providerId}`}</InlineCode>
+        <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? ''}${urlString`/api/v1/auth/oauth/callback/${providerId}`}`}</InlineCode>
       </Typography>
     </div>
   );
@@ -246,7 +247,7 @@ function GithubNoteInline() {
 function DocsTextLink({ providerId }: { providerId: string }) {
   return (
     <Link
-      href={`https://docs.stack-auth.com/docs/concepts/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
+      href={urlString`https://docs.stack-auth.com/docs/concepts/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
       target="_blank"
       className="inline-flex items-center gap-1 text-xs font-medium text-foreground/70 hover:text-foreground transition-colors"
     >

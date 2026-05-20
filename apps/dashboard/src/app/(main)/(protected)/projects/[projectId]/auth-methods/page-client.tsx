@@ -302,19 +302,23 @@ function MethodToggleRow({
   const iconSize = density === "card" ? 20 : 18;
 
   return (
-    <Label
-      htmlFor={id}
+    <div
+      role="group"
       className={`flex items-center gap-3 cursor-pointer ${innerRing} ${padding}`}
+      onClick={(e) => {
+        if (e.target instanceof HTMLElement && e.target.closest('[role="switch"]')) return;
+        onCheckedChange(!checked);
+      }}
     >
       <div className="p-2 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04] shrink-0">
         <Icon size={iconSize} className="text-foreground/70 dark:text-muted-foreground" aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-foreground truncate">{label}</div>
+        <Label htmlFor={id} className="text-sm font-medium text-foreground truncate cursor-pointer">{label}</Label>
         {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
       </div>
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
-    </Label>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
+    </div>
   );
 }
 
@@ -411,6 +415,7 @@ function useEmailVerificationToggle() {
 
   const handleChange = async (next: boolean) => {
     if (next && !projectConfig.onboarding.requireEmailVerification) {
+      // any cast needed: previewAffectedUsersByOnboardingChange is a dynamically-typed admin API method
       const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
         { requireEmailVerification: true },
         10,
@@ -651,7 +656,10 @@ export default function PageClient() {
     setLocalAllowSignUp(checked === config.auth.allowSignUp ? undefined : checked);
   };
   const onMergeStrategyChange = (value: string) => {
-    const next = value as OAuthAccountMergeStrategy;
+    if (value !== "link_method" && value !== "raise_error" && value !== "allow_duplicates") {
+      throw new StackAssertionError(`Unknown OAuth account merge strategy: ${value}`);
+    }
+    const next: OAuthAccountMergeStrategy = value;
     setLocalMergeStrategy(next === config.auth.oauth.accountMergeStrategy ? undefined : next);
   };
   const onAllowClientDeletionChange = (checked: boolean) => {

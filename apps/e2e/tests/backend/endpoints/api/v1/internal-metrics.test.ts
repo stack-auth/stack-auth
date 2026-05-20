@@ -173,7 +173,12 @@ it("should return metrics data with users", async ({ expect }) => {
   backendContext.set({ mailbox: mailboxes[2], ipData: { country: "CH", ipAddress: "127.0.0.1", city: "Zurich", region: "ZH", latitude: 47.3769, longitude: 8.5417, tzIdentifier: "Europe/Zurich" } });
   await Auth.Otp.signIn();
 
-  const response = await waitForMetricsToIncludeUsersByCountry({ countryCode: "CH", expectedCount: 1 });
+  const response = await waitForMetricsMatch(
+    false,
+    (r) =>
+      r.body?.users_by_country?.["CH"] === 1 &&
+      (r.body?.active_users_by_country?.["AQ"]?.length ?? 0) >= 2,
+  );
   expect(response).toMatchSnapshot(`metrics_result_with_users`);
 
   await ensureAnonymousUsersAreStillExcluded(response);
