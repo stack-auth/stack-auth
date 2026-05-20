@@ -26,7 +26,35 @@ import { ClockIcon, HardDriveIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
+import { getStripeOneTimeMinAmount } from "@stackframe/stack-shared/dist/payments/stripe-limits";
 import { DEFAULT_INTERVAL_UNITS, PRICE_INTERVAL_UNITS, type Price } from "./utils";
+
+/**
+ * We block $0 + sub-minimum one-time prices client-side so users don't hit a
+ * cryptic Stripe error at checkout time. Recurring $0 subs are still allowed
+ * (Stripe accepts them — see createFreePrice in ./utils). The actual minimum
+ * lives in stack-shared/payments/stripe-limits so the backend and the UI
+ * can't drift apart.
+ */
+function validateEditingPriceAmount(editing: EditingPrice): string | null {
+  const amount = Number(editing.amount);
+  if (editing.amount === '' || Number.isNaN(amount)) {
+    return "Enter a price";
+  }
+  if (amount < 0) {
+    return "Price cannot be negative";
+  }
+  if (editing.intervalSelection === 'one-time') {
+    const minOneTime = getStripeOneTimeMinAmount('USD');
+    if (amount > 0 && amount < minOneTime) {
+      return `One-time prices must be at least $${minOneTime.toFixed(2)} (Stripe minimum)`;
+    }
+    if (amount === 0) {
+      return "One-time prices must be greater than $0 — switch to a recurring interval to offer a free tier";
+    }
+  }
+  return null;
+}
 
 export type EditingPrice = {
   priceId: string,
@@ -65,6 +93,8 @@ export function PriceEditDialog({
     onEditingPriceChange(null);
     onOpenChange(false);
   };
+
+  const amountError = editingPrice ? validateEditingPriceAmount(editingPrice) : null;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
@@ -121,6 +151,9 @@ export function PriceEditDialog({
                 onIntervalUnitChange={(v) => onEditingPriceChange({ ...editingPrice, priceInterval: v })}
                 allowedUnits={PRICE_INTERVAL_UNITS}
               />
+              {amountError && (
+                <p className="text-xs text-destructive">{amountError}</p>
+              )}
             </div>
 
             {/* Free Trial & Server Only as EditableGrid */}
@@ -236,7 +269,10 @@ export function PriceEditDialog({
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={editingPrice ? () => runAsynchronouslyWithAlert(() => onSave(editingPrice, isAdding)) : undefined}>
+          <Button
+            disabled={!editingPrice || amountError !== null}
+            onClick={editingPrice && amountError === null ? () => runAsynchronouslyWithAlert(() => onSave(editingPrice, isAdding)) : undefined}
+          >
             {isAdding ? "Add Price" : "Save Changes"}
           </Button>
         </DialogFooter>

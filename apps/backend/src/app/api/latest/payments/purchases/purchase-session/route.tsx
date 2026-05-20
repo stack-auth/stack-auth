@@ -8,6 +8,7 @@ import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { getStripeOneTimeMinAmount } from "@stackframe/stack-shared/dist/payments/stripe-limits";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
@@ -85,6 +86,16 @@ export const POST = createSmartRouteHandler({
     const isFreePrice = Number(selectedPrice.USD) === 0;
     if (isFreePrice && !selectedPrice.interval) {
       throw new StatusError(400, "Free products must have a billing interval");
+    }
+    // Mirror Stripe's per-currency one-time minimum (shared with the dashboard
+    // UI via stack-shared/payments/stripe-limits so the two can't drift apart)
+    // and return a clean 400 instead of a raw Stripe error at
+    // PaymentIntent.create time. Recurring sub items don't have this minimum
+    // (handled above for the $0 case).
+    const priceAmount = Number(selectedPrice.USD);
+    const stripeOneTimeMin = getStripeOneTimeMinAmount('USD');
+    if (!selectedPrice.interval && priceAmount > 0 && priceAmount < stripeOneTimeMin) {
+      throw new StatusError(400, `One-time prices must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum)`);
     }
 
     const productVersionId = await upsertProductVersion({

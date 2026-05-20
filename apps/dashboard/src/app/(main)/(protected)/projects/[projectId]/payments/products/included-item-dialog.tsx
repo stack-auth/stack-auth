@@ -70,8 +70,12 @@ export function IncludedItemDialog({
   const [expires, setExpires] = useState<ExpiresOption>(editingItem?.expires || 'never');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Sync internal state whenever the dialog opens, since the component stays
-  // mounted across opens and the useState initializers only run once.
+  // Sync internal state whenever the dialog opens or the user switches which
+  // item is being edited. We intentionally key off `open` + `editingItemId`
+  // (stable identities) and NOT `editingItem` itself: if the parent re-derives
+  // `editingItem` as a fresh object on each render, including it here would
+  // re-run this effect mid-edit and silently wipe whatever the user has typed.
+  // The latest `editingItem` is still read via the closure when this fires.
   useEffect(() => {
     if (!open) return;
     setSelectedItemId(editingItemId || "");
@@ -87,7 +91,8 @@ export function IncludedItemDialog({
     }
     setExpires(editingItem?.expires || 'never');
     setErrors({});
-  }, [open, editingItemId, editingItem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editingItemId]);
 
   const validateAndSave = () => {
     const newErrors: Record<string, string> = {};
