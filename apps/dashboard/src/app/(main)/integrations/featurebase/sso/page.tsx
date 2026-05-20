@@ -1,4 +1,4 @@
-import { stackServerApp } from "@/stack/server";
+import { getStackServerApp } from "@/stack/server";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
@@ -21,7 +21,7 @@ export default async function FeaturebaseSSO({
     return <div>Missing return_to parameter. Please go back and try again.</div>;
   }
 
-  const user = await stackServerApp.getUser();
+  const user = await getStackServerApp().getUser();
   if (!user) {
     redirect(urlString`/handler/sign-in?after_auth_return_to=${urlString`/integrations/featurebase/sso?return_to=${returnTo}`}`);
   }

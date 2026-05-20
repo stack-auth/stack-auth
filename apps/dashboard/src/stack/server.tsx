@@ -5,10 +5,16 @@ import { StackServerApp } from "@stackframe/stack";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stackClientApp } from "./client";
 
-if (isRemoteDevelopmentEnvironmentEnabled()) {
-  throw new StackAssertionError("stackServerApp is not available in the local remote development environment dashboard.");
-}
+let _stackServerApp: StackServerApp | undefined;
 
-export const stackServerApp = new StackServerApp({
-  inheritsFrom: stackClientApp,
-});
+export function getStackServerApp(): StackServerApp {
+  if (!_stackServerApp) {
+    if (isRemoteDevelopmentEnvironmentEnabled()) {
+      throw new StackAssertionError("stackServerApp is not available in the local remote development environment dashboard.");
+    }
+    _stackServerApp = new StackServerApp({
+      inheritsFrom: stackClientApp,
+    });
+  }
+  return _stackServerApp;
+}
