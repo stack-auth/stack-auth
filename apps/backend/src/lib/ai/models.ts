@@ -1,6 +1,7 @@
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
 export const MODEL_SPEEDS = ["slow", "fast"] as const;
@@ -9,8 +10,6 @@ export type ModelSpeed = typeof MODEL_SPEEDS[number];
 
 type ModelConfig = {
   modelId: string,
-  thinking?: boolean,
-  extendedOutput?: boolean,
 };
 
 const MODEL_SELECTION_MATRIX: Record<
@@ -24,29 +23,27 @@ const MODEL_SELECTION_MATRIX: Record<
     },
     fast: {
       authenticated: { modelId: "openai/gpt-oss-120b:nitro" },
-      unauthenticated: { modelId: "z-ai/glm-4.5-air:free" },
+      unauthenticated: { modelId: "openai/gpt-oss-120b:nitro" },
     },
   },
   smart: {
     slow: {
-      // authenticated: { modelId: "x-ai/grok-4.1-fast" },
-      // unauthenticated: { modelId: "x-ai/grok-4.1-fast" },
-      authenticated: { modelId: "anthropic/claude-haiku-4-5" },
-      unauthenticated: { modelId: "anthropic/claude-haiku-4-5" },
+      authenticated: { modelId: "moonshotai/kimi-k2.6:nitro" },
+      unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
     },
     fast: {
-      authenticated: { modelId: "x-ai/grok-4.1-fast" },
-      unauthenticated: { modelId: "x-ai/grok-4.1-fast" },
+      authenticated: { modelId: "moonshotai/kimi-k2.6:nitro" },
+      unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
     },
   },
   smartest: {
     slow: {
-      authenticated: { modelId: "anthropic/claude-opus-4.6", thinking: true, extendedOutput: true },
-      unauthenticated: { modelId: "x-ai/grok-4.1-fast" },
+      authenticated: { modelId: "openai/gpt-5.5" },
+      unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
     },
     fast: {
-      authenticated: { modelId: "anthropic/claude-opus-4.6" },
-      unauthenticated: { modelId: "x-ai/grok-4.1-fast" },
+      authenticated: { modelId: "openai/gpt-5.5" },
+      unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
     },
   },
 };
@@ -81,12 +78,15 @@ export function selectModel(
   isAuthenticated: boolean,
   directApiKey?: string,
 ) {
+  if (!MODEL_QUALITIES.includes(quality)) throw new StackAssertionError("Invalid quality");
+  if (!MODEL_SPEEDS.includes(speed)) throw new StackAssertionError("Invalid speed");
+
   const config =
     MODEL_SELECTION_MATRIX[quality][speed][isAuthenticated ? "authenticated" : "unauthenticated"];
 
-  const openrouter = directApiKey
+  const openRouter = directApiKey
     ? createDirectOpenRouterProvider(directApiKey)
     : createOpenRouterProvider();
-  const model = openrouter(config.modelId);
+  const model = openRouter(config.modelId);
   return model;
 }
