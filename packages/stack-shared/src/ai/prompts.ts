@@ -548,15 +548,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             Go to your project's dashboard on [app.stack-auth.com](https://app.stack-auth.com) and get the project ID. You can find it in the URL after the \`/projects/\` part. Copy-paste it into your \`.env.local\` file (or wherever your environment variables are stored):
 
-            \`\`\`.env .env.local
-            # Prefix the variable name with your framework's convention for client-exposed
-            # variables. For Next.js use NEXT_PUBLIC_STACK_PROJECT_ID, for Vite use
-            # VITE_STACK_PROJECT_ID, etc. If your framework has no such convention, use
-            # STACK_PROJECT_ID as-is.
+            ${isAiPrompt ? `${deindent`
+              Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Stack Auth on a client.
+            `}\n\n` : ""}\`\`\`.env .env.local
             STACK_PROJECT_ID=<your-project-id>
             \`\`\`
-
-            This is the **only** environment variable the client SDK reads in the cloud-project setup. Do not invent or add any other Stack Auth env vars on the client (in particular, there is **no** separate publishable / client key — the project ID alone is sufficient on the client).
 
             Alternatively, you can also just set the project ID in the \`stack/client.ts\` file:
 
@@ -574,19 +570,12 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             Then, copy-paste them into your \`.env.local\` file (or wherever your environment variables are stored):
 
-            \`\`\`.env .env.local
-            # Server SDKs (StackServerApp, Node, etc.) read the UNPREFIXED names:
+            ${isAiPrompt ? `${deindent`
+              If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Stack Auth on a server.
+            `}\n\n` : ""}\`\`\`.env .env.local
             STACK_PROJECT_ID=<your-project-id>
             STACK_SECRET_SERVER_KEY=<your-secret-server-key>
-
-            # Client-side frameworks must use their own publishable prefix for the
-            # project ID so the bundler exposes it to the browser — for example:
-            #   Next.js: NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
-            #   Vite:    VITE_STACK_PROJECT_ID=<your-project-id>
-            # STACK_SECRET_SERVER_KEY must NEVER be prefixed or exposed to the client.
             \`\`\`
-
-            These two values (project ID + secret server key) are the **complete** set the SDK reads in the cloud-project setup. Do not add any additional Stack Auth env vars (in particular, there is **no** separate publishable / client key — the project ID alone is sufficient on the client). The dashboard "Project Keys" page exposes exactly these two values; if a third slot is present in any \`.env.local\` you write, it is wrong.
 
             They'll automatically be picked up by the \`StackServerApp\` constructor.
           </Accordion>

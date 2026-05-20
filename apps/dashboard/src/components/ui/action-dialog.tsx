@@ -32,6 +32,17 @@ export type ActionDialogProps = {
   confirmText?: string,
   children?: React.ReactNode,
   preventClose?: boolean,
+  /**
+   * When true, pointer / focus outside the dialog does not dismiss it (overlay clicks, third-party
+   * fixed UI such as preview toolbars, etc.). Header close, Escape, and explicit actions still work.
+   * Unlike `preventClose`, this does not hide the dialog’s close button.
+   */
+  keepOpenOnOutsideInteraction?: boolean,
+  /**
+   * Extra classes merged onto the dialog's content surface. Useful for variant chrome
+   * (border, ring, bg, shadow, padding, rounded, etc.).
+   */
+  contentClassName?: string,
 };
 
 export function ActionDialog(props: ActionDialogProps) {
@@ -48,6 +59,8 @@ export function ActionDialog(props: ActionDialogProps) {
   const okButtonExtraProps = okButton && typeof okButton === "object" ? okButton.props : undefined;
   const { disabled: okButtonDisabledProp, ...okButtonProps } = okButtonExtraProps ?? {};
   const okButtonDisabled = (!!props.confirmText && !confirmed) || !!okButtonDisabledProp;
+
+  const blockDismissOnOutside = !!(props.preventClose || props.keepOpenOnOutsideInteraction);
 
   const onOpenChange = (open: boolean) => {
     if (!open) {
@@ -67,8 +80,13 @@ export function ActionDialog(props: ActionDialogProps) {
       </DialogTrigger>}
 
       <DialogContent
-        onInteractOutside={props.preventClose ? (e) => e.preventDefault() : undefined}
-        className={props.preventClose ? "[&>button]:hidden" : ""}
+        onInteractOutside={blockDismissOnOutside ? (e) => e.preventDefault() : undefined}
+        onPointerDownOutside={blockDismissOnOutside ? (e) => e.preventDefault() : undefined}
+        onFocusOutside={blockDismissOnOutside ? (e) => e.preventDefault() : undefined}
+        className={[
+          props.preventClose ? "[&>button]:hidden" : "",
+          props.contentClassName ?? "",
+        ].filter(Boolean).join(" ")}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center">
