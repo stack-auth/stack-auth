@@ -17,7 +17,7 @@ describe("buildWorkflowYaml", () => {
     expect(workflowYaml).toContain(`      - ${JSON.stringify(configPath)}`);
     expect(workflowYaml).toContain(`      - ${JSON.stringify(WORKFLOW_FILE_PATH)}`);
     expect(workflowYaml).toContain(`          STACK_AUTH_CONFIG_PATH: ${JSON.stringify(configPath)}`);
-    expect(workflowYaml).toContain("run: pnpx @stackframe/stack-cli@latest config push --config-file \"$STACK_AUTH_CONFIG_PATH\"");
+    expect(workflowYaml).toContain("run: npx --yes @stackframe/stack-cli@latest config push --config-file \"$STACK_AUTH_CONFIG_PATH\"");
     expect(workflowYaml).not.toContain(`--config-file "${configPath}"`);
   });
 
