@@ -5,6 +5,10 @@ import { useTheme } from "@/lib/theme";
 
 const TRANSITION_DURATION_MS = 600;
 
+function supportsViewTransitions() {
+  return "startViewTransition" in document;
+}
+
 export default function ThemeToggle() {
   const { resolvedTheme, setTheme, mounted } = useTheme();
 
@@ -13,7 +17,7 @@ export default function ThemeToggle() {
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    if (prefersReducedMotion) {
+    if (prefersReducedMotion || !supportsViewTransitions()) {
       setTheme(nextTheme);
       return;
     }
