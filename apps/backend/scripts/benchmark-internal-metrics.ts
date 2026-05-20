@@ -377,11 +377,7 @@ const ANALYTICS_USER_JOIN = `
 `;
 const NON_ANON_FILTER = "({includeAnonymous:UInt8} = 1 OR coalesce(JSONExtract(toJSONString(e.data), 'is_anonymous', 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
 
-// Post-fix state of the analyticsUserJoin: lower `event_at >= since` bound
-// added to the inner subquery's WHERE clause (the option A patch shipped for
-// Sentry STACK-BACKEND-16H). Without this bound the inner GROUP BY hash
-// table held one row per ever-seen user — see route.tsx for the full
-// explanation and links to option C as the permanent fix.
+// Post-fix: lower `event_at >= since` bound added to the inner subquery.
 const ANALYTICS_USER_JOIN_AFTER = `
   LEFT JOIN (
     SELECT
@@ -681,11 +677,9 @@ function splitSqlAfter(idCol: "user_id" | "team_id", withAnonFilter: boolean): s
 }
 
 const ROUTE_QUERIES_AFTER: RouteQuery[] = [
-  // Option A fix: add the lower `event_at >= since` bound so the outer
-  // GROUP BY user_id only sees users active in the 30-day window.
   {
     name: "loadUsersByCountry",
-    desc: "A: 30-day window added (was unbounded scan of all $token-refresh history)",
+    desc: "30-day window added (was unbounded scan)",
     sql: `
       SELECT
         country_code,
@@ -1076,33 +1070,13 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
   },
 ];
 
-// ── Backfill comparison (option A / B / C / D / E) ───────────────────────────
-//
-// Each backfill option (A-E from the analysis doc) leaves the metrics queries
-// in one of three structurally-distinct shapes. We benchmark the three shapes
-// against the same seeded dataset.
-//
-//   A         → bounded LEFT JOIN (event_at >= since on the inner subquery).
-//                Still has the join, but the GROUP BY hash table only contains
-//                users with a token-refresh in the last 30d.
-//   B / C / E → drop the join, classify from e.data.is_anonymous (JSON access).
-//                B = argMax-latest semantics (matches today).
-//                C = ASOF event-at-time semantics.
-//                E = same as B but via partition swap.
-//                All three produce IDENTICAL post-backfill query SQL — the
-//                only differences are in *how the data got there*, not how
-//                the metrics query reads it.
-//   D         → drop the join, classify from a top-level Nullable(UInt8) column.
-//                Same shape as B/C/E but skips the per-row JSON parse.
-//
-// To bench option D we need a real top-level column. We add it under a unique
-// name (BENCH_OPTION_D_COLUMN) before seeding and drop it on cleanup.
+// ── Backfill comparison (BENCH_BACKFILL_COMPARE=1) ──────────────────────────
+// Compares post-backfill query shapes: A (bounded join, no backfill), B/C/E
+// (drop join, classify from data.is_anonymous), D (drop join, classify from
+// a top-level column). B/C/E produce identical query SQL; they differ only in
+// how the data gets stamped.
 
-// Scoped to RUN_ID so concurrent bench runs don't collide on the shared
-// analytics_internal.events schema, and so a SIGKILL'd run that skips
-// cleanup leaks a uniquely-named column instead of clobbering a future run's
-// `bench_is_anon_d`. Cleanup still drops via IF EXISTS, and the bench's row
-// filter (project_id = BENCH_PROJECT_ID) keeps mutation cost trivial.
+// Scoped to RUN_ID so concurrent runs / SIGKILL-leaked columns don't collide.
 const BENCH_OPTION_D_COLUMN = `bench_is_anon_d_${RUN_ID.replace(/-/g, "_")}`;
 
 const analyticsUserJoinBounded = `
@@ -1455,9 +1429,8 @@ async function benchmarkBackfillCompare(now: Date): Promise<void> {
 }
 
 async function runRouteQuery(rq: RouteQuery, p: QueryParams, now: Date, opts: { useMetricsClient?: boolean } = {}): Promise<string> {
-  // `useMetricsClient` runs through getClickhouseAdminClientForMetrics, which
-  // applies the connection-level SETTINGS (caps + grace_hash) — so AFTER
-  // measurements reflect what actually ships in route.tsx, not the raw SQL.
+  // `useMetricsClient` applies the route.tsx connection-level SETTINGS so AFTER
+  // measurements reflect what actually ships, not the raw SQL.
   const client = opts.useMetricsClient ? getClickhouseAdminClientForMetrics() : getClickhouseAdminClient();
   const queryId = `bench-route-${rq.name.replace(/[^a-z0-9]/gi, "-")}-${randomUUID()}`;
   const baseParams: Record<string, unknown> = {
@@ -1479,28 +1452,9 @@ async function runRouteQuery(rq: RouteQuery, p: QueryParams, now: Date, opts: { 
 }
 
 // ── Join algorithm comparison (BENCH_JOIN_ALGO_COMPARE=1) ─────────────────────
-//
-// For each of ClickHouse's 6 join algorithms, run the 3 analyticsOverview
-// queries under two cases:
-//
-//   normal  = bounded analyticsUserJoin (the SQL we just shipped). Small build
-//             side; isolated from cumulative-history scan.
-//   heavy   = UNBOUNDED analyticsUserJoin (pre-fix). Large build side; the
-//             pattern that caused Sentry STACK-BACKEND-16H.
-//
-// Algorithms:
-//   default            - leave the cluster default (typically `direct,parallel_hash,hash`)
-//   direct             - KV lookup on right side; only works if right is a Dictionary
-//                        (it isn't here, so we expect this to fall back or error)
-//   hash               - classic single-threaded hash join
-//   parallel_hash      - parallel build, fastest on small/medium, most memory
-//   grace_hash         - partitioned hash, spills to disk
-//   full_sorting_merge - sorts both sides; can beat hash when input is huge
-//   partial_merge      - sorts only the right side; lowest memory, slowest
-//
-// Some algorithms will error or be silently rejected for shapes they can't
-// handle (e.g. `direct` requires a Dictionary). Errors are caught and shown
-// as `ERR` in the output table.
+// Runs each of ClickHouse's 6 join_algorithm values against the bounded and
+// unbounded analyticsUserJoin shapes. Algorithms that don't apply (e.g.
+// `direct` without a Dictionary right side) error and show as ERR.
 
 const ANALYTICS_OVERVIEW_QUERY_NAMES = [
   "analyticsOverview:dailyEvents",
@@ -1799,11 +1753,8 @@ async function benchmarkRouteQueries(now: Date): Promise<void> {
     return out;
   }
 
-  // Also capture the actual row payload so we can check correctness for OPT
-  // variants (e.g., dropping the LEFT JOIN on analyticsOverview must not change counts).
-  // `useMetricsClient` routes through getClickhouseAdminClientForMetrics so the
-  // connection-level SETTINGS (caps + grace_hash) apply — used for AFTER to
-  // mirror what actually ships.
+  // Also capture row payloads to spot-check OPT variants (e.g. dropping the
+  // LEFT JOIN must not change counts).
   async function runAndCollect(list: RouteQuery[], opts: { useMetricsClient?: boolean } = {}): Promise<{ stats: Map<string, QueryStats>, payloads: Map<string, unknown[]> }> {
     const stats = new Map<string, QueryStats>();
     const payloads = new Map<string, unknown[]>();
@@ -1999,9 +1950,7 @@ type QueryStats = {
 async function readStats(queryId: string): Promise<QueryStats> {
   const client = getClickhouseAdminClient();
   await client.command({ query: "SYSTEM FLUSH LOGS" });
-  // Total budget ~12.7s. With many heavy queries running in sequence the
-  // query_log async flush can take longer than the original 3.1s budget, which
-  // was producing spurious "no query_log row" failures at the 300k-user scale.
+  // ~12.7s budget; the async query_log flush can lag at 300k-user scale.
   const delays = [100, 200, 400, 800, 1600, 3200, 6400];
   for (let i = 0; i <= delays.length; i++) {
     const res = await client.query({
@@ -2336,11 +2285,8 @@ async function seedPerf(now: Date): Promise<void> {
   );
 
   const batchRows = envInt("BENCH_BATCH", 50_000);
-  // BENCH_HISTORICAL_DAYS extends the event seed back beyond the 30-day metrics
-  // window so unbounded-scan queries (loadUsersByCountry, the LEFT JOIN in the
-  // splits) read more data than windowed queries — mirroring the prod skew that
-  // caused Sentry STACK-BACKEND-16H. Default 365 days. Set to 30 to recover the
-  // original behavior.
+  // BENCH_HISTORICAL_DAYS extends the seed beyond the 30-day metrics window so
+  // unbounded-scan queries read more rows than windowed ones (default 365).
   const historicalDays = envInt("BENCH_HISTORICAL_DAYS", 365);
   const windowEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + ONE_DAY_MS);
   const windowStart = new Date(windowEnd.getTime() - historicalDays * 24 * 60 * 60 * 1000);
