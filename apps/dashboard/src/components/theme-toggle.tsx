@@ -13,7 +13,7 @@ export default function ThemeToggle() {
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    if (prefersReducedMotion) {
+    if (prefersReducedMotion || document.startViewTransition == null) {
       setTheme(nextTheme);
       return;
     }
