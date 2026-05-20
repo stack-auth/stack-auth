@@ -1,6 +1,6 @@
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { UserAvatar, useStackApp, useUser } from "@stackframe/tanstack-start";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
@@ -19,6 +19,14 @@ function HomePage() {
           <p className="mt-4 text-zinc-600 dark:text-zinc-300">
             This example uses <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-sm dark:bg-zinc-800">@stackframe/tanstack-start</code> with file-based routes and Stack Auth handler pages.
           </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link to="/ssr" className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 hover:transition-none dark:border-zinc-700 dark:hover:bg-zinc-800">
+              SSR demo
+            </Link>
+            <Link to="/client" className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 hover:transition-none dark:border-zinc-700 dark:hover:bg-zinc-800">
+              Client demo
+            </Link>
+          </div>
           <div className="mt-6 flex flex-wrap gap-3">
             <button className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition-colors hover:transition-none dark:bg-white dark:text-zinc-950" onClick={() => runAsynchronouslyWithAlert(app.redirectToSignIn())}>
               Sign in
@@ -66,6 +74,12 @@ function HomePage() {
         </dl>
 
         <div className="mt-8 flex flex-wrap gap-3">
+          <Link to="/ssr" className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 hover:transition-none dark:border-zinc-700 dark:hover:bg-zinc-800">
+            SSR demo
+          </Link>
+          <Link to="/client" className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 hover:transition-none dark:border-zinc-700 dark:hover:bg-zinc-800">
+            Client demo
+          </Link>
           <button className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 hover:transition-none" onClick={() => runAsynchronouslyWithAlert(app.redirectToSignOut())}>
             Sign out
           </button>

@@ -137,7 +137,8 @@ vi.mock("./link-existing-onboarding", () => ({
 }));
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
-import { normalizeProjectOnboardingState, REQUIRED_APP_IDS } from "./shared";
+import { normalizeProjectOnboardingState, orderedAppIds, REQUIRED_APP_IDS } from "./shared";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 
 afterEach(() => {
   cleanup();
@@ -154,6 +155,16 @@ describe("ProjectOnboardingWizard", () => {
     });
 
     expect(normalizedState.selected_apps).toEqual(REQUIRED_APP_IDS);
+  });
+
+  it("does not offer alpha apps during app selection", () => {
+    const alphaAppIds = Object.entries(ALL_APPS)
+      .filter(([, app]) => app.stage === "alpha")
+      .map(([appId]) => appId);
+
+    for (const alphaAppId of alphaAppIds) {
+      expect(orderedAppIds()).not.toContain(alphaAppId);
+    }
   });
 
   it("completes onboarding automatically after Stripe setup returns successfully", async () => {
