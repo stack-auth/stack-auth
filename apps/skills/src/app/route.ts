@@ -431,11 +431,18 @@ function renderHtml(): string {
 </html>`;
 }
 
+const MARKDOWN_PREFERRING_TYPES = new Set(["*/*", "text/plain", "text/markdown", "text/x-markdown"]);
+
 function wantsHtml(req: Request): boolean {
   // Browsers send `Accept: text/html,...` before `*/*`; curl/fetch/agents send
-  // `*/*` (or omit Accept). Serve HTML only when text/html is explicitly listed.
+  // `*/*` (or omit Accept). Serve HTML only when text/html appears AND is
+  // listed before any markdown-preferring type that would otherwise win.
   const accept = req.headers.get("accept") ?? "";
-  return accept.split(",").some((part) => part.trim().split(";")[0] === "text/html");
+  const types = accept.split(",").map((part) => part.trim().split(";")[0].trim().toLowerCase());
+  const htmlIndex = types.indexOf("text/html");
+  if (htmlIndex === -1) return false;
+  const competitorIndex = types.findIndex((t) => MARKDOWN_PREFERRING_TYPES.has(t));
+  return competitorIndex === -1 || htmlIndex < competitorIndex;
 }
 
 export function GET(req: Request) {
