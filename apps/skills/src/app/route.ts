@@ -210,6 +210,8 @@ For the full, current flag list and any commands added after this skill was gene
 
 const COMMON_HEADERS = {
   "Cache-Control": "public, max-age=3600, s-maxage=3600",
+  // CDN must cache markdown (curl/agents) and HTML (browser navigate) separately.
+  "Vary": "Sec-Fetch-Mode, Sec-Fetch-Dest",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",
