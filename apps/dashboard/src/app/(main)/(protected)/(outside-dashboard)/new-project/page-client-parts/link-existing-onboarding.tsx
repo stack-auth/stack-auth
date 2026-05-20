@@ -6,8 +6,9 @@ import { DesignCard } from "@/components/design-components/card";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { ActionDialog, Spinner, Typography, cn } from "@/components/ui";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { GithubLogoIcon, LinkBreakIcon, TerminalWindowIcon } from "@phosphor-icons/react";
-import { type AdminOwnedProject, type PushedConfigSource, useUser } from "@stackframe/stack";
+import { type AdminOwnedProject, type PushedConfigSource } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -422,7 +423,7 @@ function formatWorkflowState(status: string, conclusion: string | null): string 
 
 export function LinkExistingOnboarding(props: Props) {
   const { project, onContinueAfterLink } = props;
-  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const githubAccounts = user.useConnectedAccounts().filter((account) => account.provider === "github");
   const persistedState = useMemo(() => readPersistedLinkExistingState(project.id), [project.id]);
 

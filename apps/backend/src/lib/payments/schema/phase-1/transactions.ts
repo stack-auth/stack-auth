@@ -9,6 +9,9 @@
  *   subscription-renewal: [money-transfer]
  *   subscription-cancel:  [active-subscription-change]
  *   subscription-end:     [active-subscription-end, product-revocation, ...item-quantity-expire]
+ *                         (emitted only for natural ends; refund-driven ends
+ *                          emit no subscription-end txn — the refund row
+ *                          carries these entries instead)
  *   subscription-start:   [active-subscription-start, product-grant, money-transfer?, ...item-quantity-change]
  *   item-grant-repeat:    [...item-quantity-expire?, ...item-quantity-change]
  *   one-time-purchase:    [product-grant, money-transfer?, ...item-quantity-change]
@@ -26,6 +29,20 @@ import type { SeedEventsStoredTables } from "./stored-tables";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
+
+// ── Entry-index constants ──────────────────────────────────────────────
+// Position of the product-grant entry as exposed by the public transactions
+// API. Refund product-revocation rows persist `adjustedEntryIndex` purely
+// as a back-reference read by SDK consumers — the value is copied through
+// `mapLedgerEntry` verbatim. That mapper drops the hidden
+// `active-subscription-start` entry, so the public-API layout is:
+//   subscription-start: [product_grant, money_transfer?, ...]
+//   one-time-purchase:  [product_grant, money_transfer?, ...]
+// Both product grants land at index 0 publicly. If the public mapping
+// changes (e.g. `active-subscription-start` becomes visible), these need
+// to move in lockstep and any persisted refund rows reconciled.
+export const SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX = 0;
+export const ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX = 0;
 
 
 export function createTransactionsTable(events: EventTables, manualTransactions: SeedEventsStoredTables['manualTransactions']) {
@@ -146,9 +163,34 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
 
 
   // ── subscription-end → transaction ─────────────────────
+  // Emits `active-subscription-end`, `product-revocation`, and any
+  // `item-quantity-expire` entries from the carried-through outstanding
+  // grants.
+  //
+  // Only *natural* ends (webhook cancel, period expiry) produce a
+  // subscription-end transaction. Refund-driven immediate ends set
+  // `productRevokedAtMillis` on the subscription row; `naturalSubscriptionEndEvents`
+  // filters those events out, so they emit no subscription-end txn at all.
+  // The refund row instead carries `active-subscription-end`,
+  // `product-revocation`, and the `item-quantity-expire` entries itself —
+  // keeping subscription refunds symmetric with one-time-purchase refunds,
+  // and avoiding the double-subtract that two `product-revocation` entries
+  // against the same source would cause in the phase-3 owned-products LFold
+  // (masked by the `GREATEST(..., 0)` clamp for single-sub customers, but
+  // corrupting the count for stackable subs — refunding one of N would
+  // drop it to 0 instead of N-1).
+  const naturalSubscriptionEndEvents = declareFilterTable({
+    tableId: "payments-subscription-end-events-natural",
+    fromTable: events.subscriptionEndEvents,
+    filter: predicate(`
+      "rowData"->>'productRevokedAtMillis' IS NULL
+      OR "rowData"->'productRevokedAtMillis' = 'null'::jsonb
+    `),
+  });
+
   const subscriptionEndTxns = declareMapTable({
     tableId: "payments-txn-subscription-end",
-    fromTable: events.subscriptionEndEvents,
+    fromTable: naturalSubscriptionEndEvents,
     mapper: mapper(`
       to_jsonb('sub-end:' || ("rowData"->>'subscriptionId')) AS "txnId",
       "rowData"->'tenancyId' AS "tenancyId",
@@ -372,6 +414,7 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
     subscriptionRenewalTxns,
     subscriptionCancelTxns,
     subscriptionStartTxns,
+    naturalSubscriptionEndEvents,
     subscriptionEndTxns,
     itemGrantRepeatTxns,
     oneTimePurchaseTxns,

@@ -12,6 +12,7 @@ import { isNonInteractiveEnv } from "../lib/interactive.js";
 import { createInitPrompt } from "../lib/init-prompt.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
+import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { isEmulatorImageInstalled } from "./emulator.js";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -196,14 +197,14 @@ async function handleLinkFromConfigFile(opts: InitOptions): Promise<{ configPath
       if (!fs.existsSync(resolved)) {
         return `File not found: ${resolved}`;
       }
+      if (fs.statSync(resolved).isDirectory()) {
+        return `--config-file must point to a config file, but got a directory: ${resolved}`;
+      }
       return true;
     },
   });
 
-  const configPath = path.resolve(filePath);
-  if (!fs.existsSync(configPath)) {
-    throw new CliError(`File not found: ${configPath}`);
-  }
+  const configPath = resolveConfigFilePathOption(filePath, { mustExist: true });
 
   console.log(`\nLinked to config file: ${configPath}`);
   return { configPath };

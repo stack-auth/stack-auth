@@ -1,4 +1,4 @@
-import { stackServerApp } from "@/stack";
+import { stackServerApp } from "@/stack/server";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";

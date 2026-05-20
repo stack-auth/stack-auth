@@ -25,6 +25,7 @@ model Project {
   displayName      String
   description      String  @default("")
   isProductionMode Boolean
+  isDevelopmentEnvironment Boolean @default(false)
   ownerTeamId      String? @db.Uuid
   onboardingStatus String  @default("completed")
   onboardingState  Json?
@@ -1300,6 +1301,14 @@ model Subscription {
   endedAt                DateTime?
 
   refundedAt DateTime?
+
+  // Set when a refund explicitly ends product access via end_action="now".
+  // Distinct from `endedAt` (which fires for natural expiry, webhook cancel,
+  // etc.) so phase-1's subscription-end mapper can tell refund-driven ends
+  // apart and avoid emitting a second product-revocation entry — the refund
+  // row already carries one. See refund/route.tsx and phase-1/transactions.ts
+  // for the consumer side.
+  productRevokedAt DateTime?
 
   creationSource PurchaseCreationSource
   createdAt      DateTime               @default(now())

@@ -136,6 +136,8 @@ it("includes TEST_MODE subscription", async () => {
       {
         "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
+        "customer_id": "<stripped UUID>",
+        "customer_type": "user",
         "effective_at_millis": <stripped field 'effective_at_millis'>,
         "entries": [
           {
@@ -198,6 +200,8 @@ it("includes TEST_MODE one-time purchase", async () => {
       {
         "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
+        "customer_id": "<stripped UUID>",
+        "customer_type": "user",
         "effective_at_millis": <stripped field 'effective_at_millis'>,
         "entries": [
           {
@@ -252,6 +256,8 @@ it("includes item quantity change entries", async () => {
       {
         "adjusted_by": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
+        "customer_id": "<stripped UUID>",
+        "customer_type": "user",
         "effective_at_millis": <stripped field 'effective_at_millis'>,
         "entries": [
           {
@@ -554,6 +560,8 @@ it("returns server-granted subscriptions in transactions", async () => {
         {
           "adjusted_by": [],
           "created_at_millis": <stripped field 'created_at_millis'>,
+          "customer_id": "<stripped UUID>",
+          "customer_type": "user",
           "effective_at_millis": <stripped field 'effective_at_millis'>,
           "entries": [
             {

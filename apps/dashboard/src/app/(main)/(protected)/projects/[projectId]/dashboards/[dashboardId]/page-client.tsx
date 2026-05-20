@@ -16,6 +16,7 @@ import {
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { useUpdateConfig } from "@/lib/config-update";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { cn } from "@/lib/utils";
 import {
   ChatCircleIcon,
@@ -30,7 +31,6 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import type { AppId } from "@/lib/apps-frontend";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { getPublicEnvVar } from "@/lib/env";
-import { useUser } from "@stackframe/stack";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
@@ -47,7 +47,7 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const projectId = useProjectId();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
@@ -118,7 +118,7 @@ function DashboardDetailContent({
   adminApp: ReturnType<typeof useAdminApp>,
   updateConfig: ReturnType<typeof useUpdateConfig>,
   router: ReturnType<typeof useRouter>,
-  currentUser: NonNullable<ReturnType<typeof useUser>>,
+  currentUser: ReturnType<typeof useDashboardUser>,
   backendBaseUrl: string,
   enabledAppIds: AppId[],
 }) {

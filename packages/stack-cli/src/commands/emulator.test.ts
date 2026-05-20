@@ -6,6 +6,7 @@ import {
   platformInstallHint,
   renderProgressLine,
   resolveArch,
+  splitEmulatorCommandArgs,
 } from "./emulator.js";
 
 describe("formatBytes", () => {
@@ -192,6 +193,19 @@ describe("resolveArch", () => {
     } else {
       expect(resolveArch()).toBe(expected);
     }
+  });
+});
+
+describe("splitEmulatorCommandArgs", () => {
+  it("splits the command from its arguments", () => {
+    expect(splitEmulatorCommandArgs(["pnpm", "dev", "--host", "127.0.0.1"])).toEqual({
+      command: "pnpm",
+      args: ["dev", "--host", "127.0.0.1"],
+    });
+  });
+
+  it("requires a command", () => {
+    expect(() => splitEmulatorCommandArgs([])).toThrow(/stack emulator run -- <command>/);
   });
 });
 

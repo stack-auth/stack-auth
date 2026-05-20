@@ -1,6 +1,7 @@
 "use client";
 
-import { StackAdminApp, useUser } from "@stackframe/stack";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
+import { StackAdminApp } from "@stackframe/stack";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { notFound, usePathname } from "next/navigation";
 import React from "react";
@@ -27,7 +28,7 @@ export function useAdminAppIfExists() {
 }
 
 export function useAdminApp(projectId?: string) {
-  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const projects = user.useOwnedProjects();
   const providedApp = useAdminAppIfExists();
 

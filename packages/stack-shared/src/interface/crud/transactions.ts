@@ -101,6 +101,7 @@ export const TRANSACTION_TYPES = [
   "subscription-cancellation",
   "subscription-renewal",
   "manual-item-quantity-change",
+  "refund",
   "chargeback", // todo
   "product-change", // todo
 ] as const;
@@ -112,6 +113,11 @@ export const transactionSchema = yupObject({
   created_at_millis: yupNumber().defined(),
   effective_at_millis: yupNumber().defined(),
   type: yupString().oneOf(TRANSACTION_TYPES).nullable().defined(),
+  // Customer is exposed at the transaction level (not only per-entry) so
+  // consumers can attribute every row — including refund rows whose surviving
+  // entries (`product_revocation`, or none at all) carry no customer fields.
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
   entries: yupArray(transactionEntrySchema).defined(),
   adjusted_by: yupArray(
     yupObject({

@@ -1,5 +1,4 @@
 import { Prisma } from "@/generated/prisma/client";
-import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
@@ -106,6 +105,11 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       ownerTeamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
     },
   });
+  await globalPrismaClient.$executeRaw(Prisma.sql`
+    UPDATE "Project"
+    SET "isDevelopmentEnvironment" = TRUE
+    WHERE "id" = ${projectId}
+  `);
 
   await globalPrismaClient.tenancy.upsert({
     where: {
@@ -124,25 +128,6 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     },
   });
 
-  const created = existingRow === undefined;
-
-  // Seed environment-level defaults BEFORE registering as a LocalEmulatorProject:
-  // once registered, setEnvironmentConfigOverride refuses to write.
-  //   - domains.allowLocalhost: fresh emulator projects allow localhost redirects
-  //     so developers don't hit "Redirect URL not whitelisted" before configuring
-  //     trustedDomains.
-  //   - payments.testMode: emulator payments always go through stripe-mock.
-  if (created) {
-    await overrideEnvironmentConfigOverride({
-      projectId,
-      branchId: DEFAULT_BRANCH_ID,
-      environmentConfigOverrideOverride: {
-        "domains.allowLocalhost": true,
-        "payments.testMode": true,
-      },
-    });
-  }
-
   await globalPrismaClient.$executeRaw(Prisma.sql`
     INSERT INTO "LocalEmulatorProject" ("absoluteFilePath", "projectId", "createdAt", "updatedAt")
     VALUES (${absoluteFilePath}, ${projectId}, NOW(), NOW())
@@ -152,7 +137,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       "updatedAt" = NOW()
   `);
 
-  return { projectId, created };
+  return { projectId, created: existingRow === undefined };
 }
 
 async function getOrCreateCredentials(projectId: string) {

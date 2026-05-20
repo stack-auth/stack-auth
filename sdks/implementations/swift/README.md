@@ -13,7 +13,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/stack-auth/swift-sdk-prerelease", from: <version>)
+    .package(url: "https://github.com/hexclave/swift-sdk-prerelease", from: <version>)
 ]
 ```
 
