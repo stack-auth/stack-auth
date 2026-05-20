@@ -787,7 +787,6 @@ ${Object.entries(prices).map(([id, price]) => {
                 hasError={!!errors.prices}
                 errorMessage={errors.prices}
                 variant="form"
-                isFree={isFreePrices(prices)}
                 onMakeFree={() => {
                   setPrices(createFreePrice());
                 }}

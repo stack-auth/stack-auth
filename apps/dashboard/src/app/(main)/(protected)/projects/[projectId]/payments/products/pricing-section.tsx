@@ -3,7 +3,6 @@
 import { Button, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { GiftIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { useState } from "react";
 import {
   createNewEditingPrice,
@@ -12,7 +11,7 @@ import {
   priceToEditingPrice,
   type EditingPrice,
 } from "./price-edit-dialog";
-import { formatPriceDisplay, generateUniqueId, type Price } from "./utils";
+import { formatPriceDisplay, generateUniqueId, isFreePrices, type Price } from "./utils";
 
 type PricingSectionProps = {
   prices: Record<string, Price>,
@@ -20,8 +19,10 @@ type PricingSectionProps = {
   hasError?: boolean,
   errorMessage?: string,
   variant?: 'form' | 'dialog',
-  // Free product handling
-  isFree?: boolean,
+  // Optional "Make Free" handler. When provided, a button is rendered that
+  // replaces the current prices with a single $0 recurring entry. When the
+  // current `prices` already match isFreePrices(), the Free card is shown
+  // instead of the price list.
   onMakeFree?: () => void,
 };
 
@@ -31,9 +32,9 @@ export function PricingSection({
   hasError,
   errorMessage,
   variant = 'form',
-  isFree = false,
   onMakeFree,
 }: PricingSectionProps) {
+  const isFree = isFreePrices(prices);
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
 
@@ -152,11 +153,8 @@ export function PricingSection({
   // $0 price entry so users can see that "Free" is just a regular price row
   // (and isn't doing anything magical under the hood).
   if (isFree) {
-    // isFreePrices() guarantees exactly one entry; assert the full invariant
-    // so an out-of-sync prop doesn't silently drop the extra rows.
-    const entries = Object.entries(prices);
-    if (entries.length !== 1) throwErr(`isFree was true but expected exactly 1 price entry, got ${entries.length}`);
-    const [freePriceId, freePrice] = entries[0];
+    // isFreePrices() guarantees exactly one entry, so destructuring is safe.
+    const [freePriceId, freePrice] = Object.entries(prices)[0];
     return (
       <div
         className={cn(
