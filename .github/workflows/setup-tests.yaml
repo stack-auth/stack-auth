@@ -35,9 +35,6 @@ jobs:
       - name: Install packages
         run: pnpm install
 
-      - name: Create .env.production.local file for apps/dashboard
-        run: cp apps/dashboard/.env.development apps/dashboard/.env.production.local
-
       - run: pnpm run build:packages
       - run: pnpm run codegen
       - run: pnpm run start-deps
