@@ -3,6 +3,7 @@
 import { Button, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { GiftIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { useState } from "react";
 import {
   createNewEditingPrice,
@@ -147,8 +148,11 @@ export function PricingSection({
   }
 
   // Form variant - compact card style
-  // Free product state - styled like a price card
+  // Free product state - styled like a price card, but surfaces the underlying
+  // $0 price entry so users can see that "Free" is just a regular price row
+  // (and isn't doing anything magical under the hood).
   if (isFree) {
+    const [freePriceId, freePrice] = Object.entries(prices)[0] ?? throwErr("isFree was true but no price entry exists");
     return (
       <div
         className={cn(
@@ -158,7 +162,10 @@ export function PricingSection({
         )}
       >
         <div className="flex-1">
-          <div className="font-medium text-sm">Free</div>
+          <div className="font-medium text-sm">
+            Free <span className="text-foreground/50 font-normal">· {formatPriceDisplay(freePrice)}</span>
+          </div>
+          <div className="text-xs text-foreground/30 font-mono">{freePriceId}</div>
         </div>
         <div className="flex items-center gap-1">
           <Button
