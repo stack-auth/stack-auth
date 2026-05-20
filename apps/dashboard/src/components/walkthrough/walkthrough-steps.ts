@@ -19,6 +19,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   {
     id: 'overview-globe',
     path: '/',
+    sidebarNavLabel: 'Overview',
     title: 'Global User Map',
     description: 'See where your users are around the world.',
     spotlightPadding: 12,
@@ -33,7 +34,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   {
     id: 'users-table',
     path: '/users',
-    cmdkSearch: 'Authentication',
+    cmdkSearch: 'Users',
     title: 'User Management',
     description: 'Manage all your users — search, export, or create new ones.',
   },
@@ -47,21 +48,21 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   {
     id: 'emails-sent',
     path: '/email-sent',
-    cmdkSearch: 'Emails',
+    cmdkSearch: 'Emails sent',
     title: 'Email Logs',
     description: 'Monitor sent emails, delivery status, and domain reputation.',
   },
   {
     id: 'payments-products',
     path: '/payments/products',
-    cmdkSearch: 'Payments',
+    cmdkSearch: 'Products',
     title: 'Products & Pricing',
     description: 'Define products, pricing, and subscriptions.',
   },
   {
-    id: 'session-replays',
+    id: 'analytics-replays',
     path: '/session-replays',
-    sidebarNavLabel: 'Session Replays',
+    sidebarNavLabel: 'Replays',
     title: 'Session Replays',
     description: 'Watch real user sessions to understand how people use your app.',
   },

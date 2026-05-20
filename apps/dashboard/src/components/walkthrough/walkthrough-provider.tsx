@@ -240,9 +240,17 @@ function WalkthroughEngine() {
             let el = link.parentElement;
             while (el && el.tagName !== 'ASIDE') {
               const prevSibling = el.previousElementSibling;
-              if (prevSibling?.tagName === 'BUTTON' && prevSibling.getAttribute('aria-expanded') === 'false') {
-                (prevSibling as HTMLElement).click();
-                break;
+              if (prevSibling) {
+                // The expand button may be the prevSibling itself, or nested
+                // inside it (the sidebar wraps the chevron toggle in a header
+                // div that also contains the section's main <a>).
+                const expandButton = (prevSibling.tagName === 'BUTTON' && prevSibling.getAttribute('aria-expanded') === 'false')
+                  ? prevSibling as HTMLElement
+                  : prevSibling.querySelector('button[aria-expanded="false"]') as HTMLElement | null;
+                if (expandButton) {
+                  expandButton.click();
+                  break;
+                }
               }
               el = el.parentElement;
             }
@@ -283,80 +291,78 @@ function WalkthroughEngine() {
     };
 
     const runWalkthrough = async () => {
-      for (let i = 0; i < WALKTHROUGH_STEPS.length; i++) {
-        if (isCancelled()) return;
-
-        const step = WALKTHROUGH_STEPS[i];
-        setStepIndex(i);
-        setShowSpotlight(false);
-
-        const needsNavigation = currentPathRef.current !== step.path;
-
-        // Phase 1: Navigate if needed
-        if (needsNavigation) {
-          let success = false;
-          if (step.cmdkSearch) {
-            success = await navigateViaCmdK(step.cmdkSearch);
-          } else if (step.sidebarNavLabel) {
-            success = await navigateViaSidebar(step.sidebarNavLabel);
-          }
+      while (!isCancelled()) {
+        for (let i = 0; i < WALKTHROUGH_STEPS.length; i++) {
           if (isCancelled()) return;
-          if (success) {
-            currentPathRef.current = step.path;
-            await sleep(300);
+
+          const step = WALKTHROUGH_STEPS[i];
+          setStepIndex(i);
+          setShowSpotlight(false);
+
+          const needsNavigation = currentPathRef.current !== step.path;
+
+          // Phase 1: Navigate if needed
+          if (needsNavigation) {
+            let success = false;
+            if (step.cmdkSearch) {
+              success = await navigateViaCmdK(step.cmdkSearch);
+            } else if (step.sidebarNavLabel) {
+              success = await navigateViaSidebar(step.sidebarNavLabel);
+            }
             if (isCancelled()) return;
+            if (success) {
+              currentPathRef.current = step.path;
+              await sleep(300);
+              if (isCancelled()) return;
+            }
           }
-        }
 
-        // Phase 2: Wait for target element
-        const targetEl = await waitForElement(`[data-walkthrough="${step.id}"]`);
-        if (isCancelled()) return;
-        if (!targetEl) continue;
-
-        // Phase 3: Animate mouse to target element
-        const targetRect = targetEl.getBoundingClientRect();
-        setCursorPosition({
-          x: targetRect.left + targetRect.width / 2,
-          y: targetRect.top + targetRect.height / 2,
-        });
-        await sleep(600);
-        if (isCancelled()) return;
-
-        // Phase 4: Show spotlight
-        setSpotlightRect({
-          top: targetRect.top,
-          left: targetRect.left,
-          width: targetRect.width,
-          height: targetRect.height,
-        });
-        setShowSpotlight(true);
-
-        // Continuously track element position
-        const trackElement = () => {
+          // Phase 2: Wait for target element
+          const targetEl = await waitForElement(`[data-walkthrough="${step.id}"]`);
           if (isCancelled()) return;
-          const el = document.querySelector(`[data-walkthrough="${step.id}"]`);
-          if (el) {
-            const rect = el.getBoundingClientRect();
-            setSpotlightRect({
-              top: rect.top,
-              left: rect.left,
-              width: rect.width,
-              height: rect.height,
-            });
-          }
+          if (!targetEl) continue;
+
+          // Phase 3: Animate mouse to target element
+          const targetRect = targetEl.getBoundingClientRect();
+          setCursorPosition({
+            x: targetRect.left + targetRect.width / 2,
+            y: targetRect.top + targetRect.height / 2,
+          });
+          await sleep(600);
+          if (isCancelled()) return;
+
+          // Phase 4: Show spotlight
+          setSpotlightRect({
+            top: targetRect.top,
+            left: targetRect.left,
+            width: targetRect.width,
+            height: targetRect.height,
+          });
+          setShowSpotlight(true);
+
+          // Continuously track element position
+          const trackElement = () => {
+            if (isCancelled()) return;
+            const el = document.querySelector(`[data-walkthrough="${step.id}"]`);
+            if (el) {
+              const rect = el.getBoundingClientRect();
+              setSpotlightRect({
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+              });
+            }
+            rafRef.current = requestAnimationFrame(trackElement);
+          };
           rafRef.current = requestAnimationFrame(trackElement);
-        };
-        rafRef.current = requestAnimationFrame(trackElement);
 
-        // Phase 5: Wait at this step
-        await sleep(8000);
-        cancelAnimationFrame(rafRef.current);
-        if (isCancelled()) return;
+          // Phase 5: Wait at this step
+          await sleep(8000);
+          cancelAnimationFrame(rafRef.current);
+          if (isCancelled()) return;
+        }
       }
-
-      // Walkthrough complete
-      setShowSpotlight(false);
-      setIsRunning(false);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
