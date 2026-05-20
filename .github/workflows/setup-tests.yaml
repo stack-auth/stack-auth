@@ -22,15 +22,15 @@ jobs:
       STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup Node.js v20
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 20
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       - name: Install packages
         run: pnpm install
@@ -39,7 +39,7 @@ jobs:
       - run: pnpm run codegen
       - run: pnpm run start-deps
 
-      - uses: JarvusInnovations/background-action@v1.0.7
+      - uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run dev &
           wait-on: |

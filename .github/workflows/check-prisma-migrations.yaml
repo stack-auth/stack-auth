@@ -20,20 +20,20 @@ jobs:
         node-version: [22.x]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       # Even just starting the Docker Compose as a daemon is slow because we have to download and build the images
       # so, we run it in the background
       - name: Start Docker Compose in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: docker compose -f docker/dependencies/docker.compose.yaml up -d &
           # we don't need to wait on anything, just need to start the daemon
