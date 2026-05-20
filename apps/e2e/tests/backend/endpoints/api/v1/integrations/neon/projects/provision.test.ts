@@ -71,6 +71,7 @@ it("should be able to provision a new project if neon client details are correct
         "description": "Created with Neon",
         "display_name": "Test project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
