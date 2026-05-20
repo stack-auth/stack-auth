@@ -230,6 +230,7 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
         </Select>
       }
       footer={false}
+      fillHeight={false}
     />
   );
 }
