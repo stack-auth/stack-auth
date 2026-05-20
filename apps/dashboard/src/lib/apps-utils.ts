@@ -38,9 +38,13 @@ export function isAppEnabled(installedApps: InstalledAppsMap, appId: AppId): boo
 
 /**
  * Get all enabled app IDs using centralized enabled/sub-app logic.
+ *
+ * Unlike `getAllAvailableAppIds`, this intentionally includes alpha-stage apps
+ * that are explicitly enabled. The alpha filter only gates *discovery*
+ * (app store listing, onboarding wizard), not functionality.
  */
 export function getEnabledAppIds(installedApps: InstalledAppsMap): AppId[] {
-  return getAllAvailableAppIds().filter((appId) => isAppEnabled(installedApps, appId));
+  return (Object.keys(ALL_APPS) as AppId[]).filter((appId) => isAppEnabled(installedApps, appId));
 }
 
 /**

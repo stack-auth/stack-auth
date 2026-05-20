@@ -46,9 +46,9 @@ export default function PageClient() {
   const filteredApps = useMemo(() => {
     let apps = Object.keys(ALL_APPS) as AppId[];
 
-    // Filter out alpha apps in production
+    // Filter out alpha apps in production, but keep enabled ones
     if (process.env.NODE_ENV !== "development") {
-      apps = apps.filter(appId => ALL_APPS[appId].stage !== "alpha");
+      apps = apps.filter(appId => ALL_APPS[appId].stage !== "alpha" || installedAppsSet.has(appId));
     }
 
     // Apply category filter
@@ -88,14 +88,14 @@ export default function PageClient() {
   const getCategoryCount = (categoryId: string) => {
     if (categoryId === "installed") return installedApps.length;
     if (categoryId === "all") return Object.keys(ALL_APPS).filter(appId =>
-      process.env.NODE_ENV === "development" || ALL_APPS[appId as AppId].stage !== "alpha"
+      process.env.NODE_ENV === "development" || ALL_APPS[appId as AppId].stage !== "alpha" || installedAppsSet.has(appId as AppId)
     ).length;
 
     const category = CATEGORIES.find(c => c.id === categoryId);
     if (!category) return 0;
 
     return (Object.entries(ALL_APPS) as [AppId, typeof ALL_APPS[AppId]][]).filter(([appId, app]) => {
-      if (process.env.NODE_ENV !== "development" && app.stage === "alpha") return false;
+      if (process.env.NODE_ENV !== "development" && app.stage === "alpha" && !installedAppsSet.has(appId)) return false;
       return app.tags.some((tag: string) => category.tags.includes(tag));
     }).length;
   };
