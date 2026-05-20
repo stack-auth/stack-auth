@@ -48,7 +48,7 @@
  *   BENCH_TEAM_RATIO      (default 0.3)     – fraction of users with a team
  */
 
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getClickhouseAdminClient, getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { randomUUID } from "node:crypto";
 
@@ -377,7 +377,11 @@ const ANALYTICS_USER_JOIN = `
 `;
 const NON_ANON_FILTER = "({includeAnonymous:UInt8} = 1 OR coalesce(JSONExtract(toJSONString(e.data), 'is_anonymous', 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
 
-// Same joins/filters after fix 1 (direct CAST instead of JSONExtract(toJSONString(...)))
+// Post-fix state of the analyticsUserJoin: lower `event_at >= since` bound
+// added to the inner subquery's WHERE clause (the option A patch shipped for
+// Sentry STACK-BACKEND-16H). Without this bound the inner GROUP BY hash
+// table held one row per ever-seen user — see route.tsx for the full
+// explanation and links to option C as the permanent fix.
 const ANALYTICS_USER_JOIN_AFTER = `
   LEFT JOIN (
     SELECT
@@ -388,6 +392,7 @@ const ANALYTICS_USER_JOIN_AFTER = `
       AND project_id = {projectId:String}
       AND branch_id = {branchId:String}
       AND user_id IS NOT NULL
+      AND event_at >= {since:DateTime}
       AND event_at < {untilExclusive:DateTime}
     GROUP BY user_id
   ) AS token_refresh_users
@@ -398,7 +403,7 @@ const NON_ANON_FILTER_AFTER = "({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.
 const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
   {
     name: "loadUsersByCountry",
-    desc: "argMax country per user over all $token-refresh events (no window)",
+    desc: "argMax country per user over all $token-refresh events (NO time window)",
     sql: `
       SELECT
         country_code,
@@ -412,7 +417,7 @@ const ROUTE_QUERIES_BEFORE: RouteQuery[] = [
             user_id,
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
-            CAST(data.is_anonymous, 'UInt8') AS is_anonymous
+            coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
@@ -676,8 +681,42 @@ function splitSqlAfter(idCol: "user_id" | "team_id", withAnonFilter: boolean): s
 }
 
 const ROUTE_QUERIES_AFTER: RouteQuery[] = [
-  // Unchanged by fix 1/3 (already uses CAST).
-  ROUTE_QUERIES_BEFORE[0], // loadUsersByCountry
+  // Option A fix: add the lower `event_at >= since` bound so the outer
+  // GROUP BY user_id only sees users active in the 30-day window.
+  {
+    name: "loadUsersByCountry",
+    desc: "A: 30-day window added (was unbounded scan of all $token-refresh history)",
+    sql: `
+      SELECT
+        country_code,
+        count() AS userCount
+      FROM (
+        SELECT
+          user_id,
+          argMax(cc, event_at) AS country_code
+        FROM (
+          SELECT
+            user_id,
+            event_at,
+            CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
+            coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+        )
+        WHERE cc IS NOT NULL
+          AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
+        GROUP BY user_id
+      )
+      WHERE country_code IS NOT NULL
+      GROUP BY country_code
+      ORDER BY userCount DESC
+    `,
+  },
   {
     name: "loadDailyActiveUsers",
     desc: "DAU per day (fix 1: CAST instead of JSONExtract)",
@@ -1037,8 +1076,389 @@ const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
   },
 ];
 
-async function runRouteQuery(rq: RouteQuery, p: QueryParams, now: Date): Promise<string> {
+// ── Backfill comparison (option A / B / C / D / E) ───────────────────────────
+//
+// Each backfill option (A-E from the analysis doc) leaves the metrics queries
+// in one of three structurally-distinct shapes. We benchmark the three shapes
+// against the same seeded dataset.
+//
+//   A         → bounded LEFT JOIN (event_at >= since on the inner subquery).
+//                Still has the join, but the GROUP BY hash table only contains
+//                users with a token-refresh in the last 30d.
+//   B / C / E → drop the join, classify from e.data.is_anonymous (JSON access).
+//                B = argMax-latest semantics (matches today).
+//                C = ASOF event-at-time semantics.
+//                E = same as B but via partition swap.
+//                All three produce IDENTICAL post-backfill query SQL — the
+//                only differences are in *how the data got there*, not how
+//                the metrics query reads it.
+//   D         → drop the join, classify from a top-level Nullable(UInt8) column.
+//                Same shape as B/C/E but skips the per-row JSON parse.
+//
+// To bench option D we need a real top-level column. We add it under a unique
+// name (BENCH_OPTION_D_COLUMN) before seeding and drop it on cleanup.
+
+// Scoped to RUN_ID so concurrent bench runs don't collide on the shared
+// analytics_internal.events schema, and so a SIGKILL'd run that skips
+// cleanup leaks a uniquely-named column instead of clobbering a future run's
+// `bench_is_anon_d`. Cleanup still drops via IF EXISTS, and the bench's row
+// filter (project_id = BENCH_PROJECT_ID) keeps mutation cost trivial.
+const BENCH_OPTION_D_COLUMN = `bench_is_anon_d_${RUN_ID.replace(/-/g, "_")}`;
+
+const analyticsUserJoinBounded = `
+  LEFT JOIN (
+    SELECT
+      user_id,
+      argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
+    FROM analytics_internal.events
+    WHERE event_type = '$token-refresh'
+      AND project_id = {projectId:String}
+      AND branch_id = {branchId:String}
+      AND user_id IS NOT NULL
+      AND event_at >= {since:DateTime}        -- ★ option A's lower bound
+      AND event_at < {untilExclusive:DateTime}
+    GROUP BY user_id
+  ) AS token_refresh_users
+    ON e.user_id = token_refresh_users.user_id
+`;
+
+const ROUTE_QUERIES_BACKFILL_A: RouteQuery[] = [
+  {
+    name: "analyticsOverview:dailyEvents",
+    desc: "A: bounded LEFT JOIN (event_at >= since on inner)",
+    sql: `
+      SELECT
+        toDate(e.event_at) AS day,
+        countIf(
+          e.event_type = '$page-view' AND e.user_id IS NOT NULL
+            AND ${NON_ANON_FILTER_AFTER}
+        ) AS pv,
+        countIf(
+          e.event_type = '$click' AND e.user_id IS NOT NULL
+            AND ${NON_ANON_FILTER_AFTER}
+        ) AS cl,
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.event_type = '$page-view' AND e.user_id IS NOT NULL
+            AND ${NON_ANON_FILTER_AFTER}
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      ${analyticsUserJoinBounded}
+      WHERE e.event_type IN ('$page-view', '$click')
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+      GROUP BY day
+      ORDER BY day ASC
+    `,
+  },
+  {
+    name: "analyticsOverview:totalVisitors",
+    desc: "A: bounded LEFT JOIN (event_at >= since on inner)",
+    sql: `
+      SELECT
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.user_id IS NOT NULL AND ${NON_ANON_FILTER_AFTER}
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      ${analyticsUserJoinBounded}
+      WHERE e.event_type = '$page-view'
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.user_id IS NOT NULL
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+    `,
+  },
+  {
+    name: "analyticsOverview:topReferrers",
+    desc: "A: bounded LEFT JOIN (event_at >= since on inner)",
+    sql: `
+      SELECT
+        nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.user_id IS NOT NULL AND ${NON_ANON_FILTER_AFTER}
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      ${analyticsUserJoinBounded}
+      WHERE e.event_type = '$page-view'
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+      GROUP BY referrer
+      HAVING visitors > 0
+      ORDER BY visitors DESC
+      LIMIT 100
+    `,
+  },
+];
+
+// Options B/C/E all collapse to the same post-backfill SQL shape: drop the
+// LEFT JOIN entirely and trust e.data.is_anonymous (the field that the
+// ingestion fix will populate). The OPTIMIZED array already contains exactly
+// these queries — reuse them so we have a single source of truth.
+const ROUTE_QUERIES_BACKFILL_BCE: RouteQuery[] = ROUTE_QUERIES_OPTIMIZED.filter((q) =>
+  q.name === "analyticsOverview:dailyEvents"
+  || q.name === "analyticsOverview:totalVisitors"
+  || q.name === "analyticsOverview:topReferrers",
+);
+
+const ROUTE_QUERIES_BACKFILL_D: RouteQuery[] = [
+  {
+    name: "analyticsOverview:dailyEvents",
+    desc: "D: drop join, top-level UInt8 column (no JSON parse)",
+    sql: `
+      SELECT
+        toDate(e.event_at) AS day,
+        countIf(
+          e.event_type = '$page-view' AND e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
+        ) AS pv,
+        countIf(
+          e.event_type = '$click' AND e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
+        ) AS cl,
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.event_type = '$page-view' AND e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      WHERE e.event_type IN ('$page-view', '$click')
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+      GROUP BY day
+      ORDER BY day ASC
+    `,
+  },
+  {
+    name: "analyticsOverview:totalVisitors",
+    desc: "D: drop join, top-level UInt8 column (no JSON parse)",
+    sql: `
+      SELECT
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      WHERE e.event_type = '$page-view'
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.user_id IS NOT NULL
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+    `,
+  },
+  {
+    name: "analyticsOverview:topReferrers",
+    desc: "D: drop join, top-level UInt8 column (no JSON parse)",
+    sql: `
+      SELECT
+        nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(e.${BENCH_OPTION_D_COLUMN}, 0) = 0)
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      WHERE e.event_type = '$page-view'
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+      GROUP BY referrer
+      HAVING visitors > 0
+      ORDER BY visitors DESC
+      LIMIT 100
+    `,
+  },
+];
+
+async function ensureOptionDColumn(): Promise<void> {
   const client = getClickhouseAdminClient();
+  const res = await client.query({
+    query: `
+      SELECT count() AS c FROM system.columns
+      WHERE database = 'analytics_internal'
+        AND table = 'events'
+        AND name = {col:String}
+    `,
+    query_params: { col: BENCH_OPTION_D_COLUMN },
+    format: "JSONEachRow",
+  });
+  const rows = (await res.json()) as { c: string | number }[];
+  if (Number(rows[0]?.c ?? 0) === 0) {
+    await client.command({
+      query: `
+        ALTER TABLE analytics_internal.events
+        ADD COLUMN IF NOT EXISTS ${BENCH_OPTION_D_COLUMN} Nullable(UInt8)
+      `,
+    });
+  }
+}
+
+async function populateOptionDColumn(): Promise<void> {
+  const client = getClickhouseAdminClient();
+  await client.command({
+    query: `
+      ALTER TABLE analytics_internal.events
+      UPDATE ${BENCH_OPTION_D_COLUMN} = CAST(data.is_anonymous, 'Nullable(UInt8)')
+      WHERE project_id = {projectId:String}
+    `,
+    query_params: { projectId: BENCH_PROJECT_ID },
+    clickhouse_settings: { mutations_sync: "2" },
+  });
+}
+
+async function dropOptionDColumn(): Promise<void> {
+  const client = getClickhouseAdminClient();
+  await client.command({
+    query: `ALTER TABLE analytics_internal.events DROP COLUMN IF EXISTS ${BENCH_OPTION_D_COLUMN}`,
+  });
+}
+
+// Pulls only the 3 analyticsOverview queries that touch the join from the
+// current (post-fixes-1+3) shipped SQL, so we have a baseline to compare against.
+const ROUTE_QUERIES_BACKFILL_BASELINE: RouteQuery[] = ROUTE_QUERIES_AFTER.filter((q) =>
+  q.name === "analyticsOverview:dailyEvents"
+  || q.name === "analyticsOverview:totalVisitors"
+  || q.name === "analyticsOverview:topReferrers",
+);
+
+async function benchmarkBackfillCompare(now: Date): Promise<void> {
+  const untilExclusive = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + ONE_DAY_MS);
+  const since = new Date(untilExclusive.getTime() - METRICS_WINDOW_MS);
+  const params: QueryParams = {
+    projectId: BENCH_PROJECT_ID,
+    branchId: PERF_BRANCH_ID,
+    since,
+    untilExclusive,
+    includeAnonymous: false,
+  };
+
+  console.log("\n── Backfill option comparison (post-backfill query memory) ──");
+  console.log("  Each option leaves the metrics queries in one of three shapes:");
+  console.log("    Today / A (bounded join) / B,C,E (drop join, JSON) / D (drop join, top-level column)\n");
+
+  // Set up option D's column.
+  console.log("  Setting up option D top-level column…");
+  await ensureOptionDColumn();
+  await populateOptionDColumn();
+  console.log("  done.\n");
+
+  async function runShape(label: string, list: RouteQuery[]): Promise<Map<string, QueryStats>> {
+    const out = new Map<string, QueryStats>();
+    for (const rq of list) {
+      const qid = await runRouteQuery(rq, params, now);
+      out.set(rq.name, await readStats(qid));
+    }
+    return out;
+  }
+
+  // Warm cache once with a tiny query.
+  await runRouteQuery(ROUTE_QUERIES_BEFORE[1], params, now);
+
+  const baseline = await runShape("today", ROUTE_QUERIES_BACKFILL_BASELINE);
+  const a = await runShape("A", ROUTE_QUERIES_BACKFILL_A);
+  const bce = await runShape("B/C/E", ROUTE_QUERIES_BACKFILL_BCE);
+  const d = await runShape("D", ROUTE_QUERIES_BACKFILL_D);
+
+  const padL = (s: string, n: number) => s.padEnd(n);
+  const padR = (s: string, n: number) => s.padStart(n);
+  const mem = (n: number | undefined) => n == null ? "—" : padR(fmtBytes(n), 12);
+  const dur = (n: number | undefined) => n == null ? "—" : padR(`${n} ms`, 9);
+
+  const queryNames = ["analyticsOverview:dailyEvents", "analyticsOverview:totalVisitors", "analyticsOverview:topReferrers"];
+
+  console.log("  Peak memory per query, per backfill shape:");
+  console.log([
+    padL("query", 36),
+    padR("Today", 12),
+    padR("A: bounded", 12),
+    padR("B/C/E: drop", 12),
+    padR("D: column", 12),
+  ].join("  "));
+  console.log("  " + "─".repeat(96));
+  for (const name of queryNames) {
+    const t = baseline.get(name);
+    const av = a.get(name);
+    const bv = bce.get(name);
+    const dv = d.get(name);
+    console.log([
+      "  " + padL(name, 34),
+      mem(t?.memory_usage),
+      mem(av?.memory_usage),
+      mem(bv?.memory_usage),
+      mem(dv?.memory_usage),
+    ].join("  "));
+  }
+
+  // Totals
+  const sum = (m: Map<string, QueryStats>) =>
+    queryNames.reduce((acc, n) => acc + (m.get(n)?.memory_usage ?? 0), 0);
+  const tSum = sum(baseline);
+  const aSum = sum(a);
+  const bSum = sum(bce);
+  const dSum = sum(d);
+
+  console.log("  " + "─".repeat(96));
+  console.log([
+    "  " + padL("SUM peak memory", 34),
+    padR(fmtBytes(tSum), 12),
+    padR(fmtBytes(aSum), 12),
+    padR(fmtBytes(bSum), 12),
+    padR(fmtBytes(dSum), 12),
+  ].join("  "));
+
+  const ratio = (s: number) => s === 0 ? "—" : `${(tSum / s).toFixed(2)}× less`;
+  console.log([
+    "  " + padL("vs. Today", 34),
+    padR("—", 12),
+    padR(ratio(aSum), 12),
+    padR(ratio(bSum), 12),
+    padR(ratio(dSum), 12),
+  ].join("  "));
+
+  // Duration too
+  console.log("\n  Query duration per shape:");
+  console.log([
+    padL("query", 36),
+    padR("Today", 9),
+    padR("A", 9),
+    padR("B/C/E", 9),
+    padR("D", 9),
+  ].join("  "));
+  console.log("  " + "─".repeat(84));
+  for (const name of queryNames) {
+    console.log([
+      "  " + padL(name, 34),
+      dur(baseline.get(name)?.query_duration_ms),
+      dur(a.get(name)?.query_duration_ms),
+      dur(bce.get(name)?.query_duration_ms),
+      dur(d.get(name)?.query_duration_ms),
+    ].join("  "));
+  }
+
+  console.log("\n  Notes:");
+  console.log("    • B, C, E all produce the same query SQL; their column above is one number.");
+  console.log("    • The semantic differences (argMax-latest vs ASOF vs partition-swap) live");
+  console.log("      in the backfill operation, not in the query that runs afterwards.");
+  console.log("    • Option D mutates a stored column instead of the JSON field; the runtime");
+  console.log("      win comes from skipping per-row JSON access.");
+}
+
+async function runRouteQuery(rq: RouteQuery, p: QueryParams, now: Date, opts: { useMetricsClient?: boolean } = {}): Promise<string> {
+  // `useMetricsClient` runs through getClickhouseAdminClientForMetrics, which
+  // applies the connection-level SETTINGS (caps + grace_hash) — so AFTER
+  // measurements reflect what actually ships in route.tsx, not the raw SQL.
+  const client = opts.useMetricsClient ? getClickhouseAdminClientForMetrics() : getClickhouseAdminClient();
   const queryId = `bench-route-${rq.name.replace(/[^a-z0-9]/gi, "-")}-${randomUUID()}`;
   const baseParams: Record<string, unknown> = {
     projectId: p.projectId,
@@ -1056,6 +1476,302 @@ async function runRouteQuery(rq: RouteQuery, p: QueryParams, now: Date): Promise
     format: "JSONEachRow",
   }).then((r) => r.json()); // drain stream
   return queryId;
+}
+
+// ── Join algorithm comparison (BENCH_JOIN_ALGO_COMPARE=1) ─────────────────────
+//
+// For each of ClickHouse's 6 join algorithms, run the 3 analyticsOverview
+// queries under two cases:
+//
+//   normal  = bounded analyticsUserJoin (the SQL we just shipped). Small build
+//             side; isolated from cumulative-history scan.
+//   heavy   = UNBOUNDED analyticsUserJoin (pre-fix). Large build side; the
+//             pattern that caused Sentry STACK-BACKEND-16H.
+//
+// Algorithms:
+//   default            - leave the cluster default (typically `direct,parallel_hash,hash`)
+//   direct             - KV lookup on right side; only works if right is a Dictionary
+//                        (it isn't here, so we expect this to fall back or error)
+//   hash               - classic single-threaded hash join
+//   parallel_hash      - parallel build, fastest on small/medium, most memory
+//   grace_hash         - partitioned hash, spills to disk
+//   full_sorting_merge - sorts both sides; can beat hash when input is huge
+//   partial_merge      - sorts only the right side; lowest memory, slowest
+//
+// Some algorithms will error or be silently rejected for shapes they can't
+// handle (e.g. `direct` requires a Dictionary). Errors are caught and shown
+// as `ERR` in the output table.
+
+const ANALYTICS_OVERVIEW_QUERY_NAMES = [
+  "analyticsOverview:dailyEvents",
+  "analyticsOverview:totalVisitors",
+  "analyticsOverview:topReferrers",
+] as const;
+
+const JOIN_ALGORITHMS = [
+  "default",
+  "direct",
+  "hash",
+  "parallel_hash",
+  "grace_hash",
+  "full_sorting_merge",
+  "partial_merge",
+] as const;
+type JoinAlgorithm = typeof JOIN_ALGORITHMS[number];
+
+// Build the 3 analyticsOverview queries with the given join SQL, filter SQL,
+// and a per-query SETTINGS clause (used to force `join_algorithm`).
+function buildAnalyticsOverviewVariant(opts: {
+  joinSql: string,
+  nonAnonFilter: string,
+  joinAlgorithm: JoinAlgorithm,
+}): RouteQuery[] {
+  const settings = opts.joinAlgorithm === "default"
+    ? ""
+    : `SETTINGS join_algorithm = '${opts.joinAlgorithm}'`;
+  return [
+    {
+      name: "analyticsOverview:dailyEvents",
+      desc: `analyticsOverview daily events (join_algorithm=${opts.joinAlgorithm})`,
+      sql: `
+        SELECT
+          toDate(e.event_at) AS day,
+          countIf(
+            e.event_type = '$page-view'
+              AND e.user_id IS NOT NULL
+              AND ${opts.nonAnonFilter}
+          ) AS pv,
+          countIf(
+            e.event_type = '$click'
+              AND e.user_id IS NOT NULL
+              AND ${opts.nonAnonFilter}
+          ) AS cl,
+          uniqExactIf(
+            assumeNotNull(e.user_id),
+            e.event_type = '$page-view'
+              AND e.user_id IS NOT NULL
+              AND ${opts.nonAnonFilter}
+          ) AS visitors
+        FROM analytics_internal.events AS e
+        ${opts.joinSql}
+        WHERE e.event_type IN ('$page-view', '$click')
+          AND e.project_id = {projectId:String}
+          AND e.branch_id = {branchId:String}
+          AND e.event_at >= {since:DateTime}
+          AND e.event_at < {untilExclusive:DateTime}
+        GROUP BY day
+        ORDER BY day ASC
+        ${settings}
+      `,
+    },
+    {
+      name: "analyticsOverview:totalVisitors",
+      desc: `analyticsOverview total visitors (join_algorithm=${opts.joinAlgorithm})`,
+      sql: `
+        SELECT
+          uniqExactIf(
+            assumeNotNull(e.user_id),
+            e.user_id IS NOT NULL
+              AND ${opts.nonAnonFilter}
+          ) AS visitors
+        FROM analytics_internal.events AS e
+        ${opts.joinSql}
+        WHERE e.event_type = '$page-view'
+          AND e.project_id = {projectId:String}
+          AND e.branch_id = {branchId:String}
+          AND e.user_id IS NOT NULL
+          AND e.event_at >= {since:DateTime}
+          AND e.event_at < {untilExclusive:DateTime}
+        ${settings}
+      `,
+    },
+    {
+      name: "analyticsOverview:topReferrers",
+      desc: `analyticsOverview top referrers (join_algorithm=${opts.joinAlgorithm})`,
+      sql: `
+        SELECT
+          nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
+          uniqExactIf(
+            assumeNotNull(e.user_id),
+            e.user_id IS NOT NULL
+              AND ${opts.nonAnonFilter}
+          ) AS visitors
+        FROM analytics_internal.events AS e
+        ${opts.joinSql}
+        WHERE e.event_type = '$page-view'
+          AND e.project_id = {projectId:String}
+          AND e.branch_id = {branchId:String}
+          AND e.event_at >= {since:DateTime}
+          AND e.event_at < {untilExclusive:DateTime}
+        GROUP BY referrer
+        HAVING visitors > 0
+        ORDER BY visitors DESC
+        LIMIT 100
+        ${settings}
+      `,
+    },
+  ];
+}
+
+// Run a query and either return its QueryStats, or null if the query errored
+// (e.g. an unsupported `join_algorithm` for the query's shape).
+async function tryRunAndReadStats(rq: RouteQuery, p: QueryParams, now: Date): Promise<QueryStats | null> {
+  try {
+    const qid = await runRouteQuery(rq, p, now);
+    return await readStats(qid);
+  } catch {
+    return null;
+  }
+}
+
+async function benchmarkJoinAlgorithms(now: Date): Promise<void> {
+  const untilExclusive = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + ONE_DAY_MS);
+  const since = new Date(untilExclusive.getTime() - METRICS_WINDOW_MS);
+  const params: QueryParams = {
+    projectId: BENCH_PROJECT_ID,
+    branchId: PERF_BRANCH_ID,
+    since,
+    untilExclusive,
+    includeAnonymous: false,
+  };
+
+  console.log("\n── Join algorithm comparison (6 algorithms × 2 cases) ──");
+  console.log("  Cases:");
+  console.log("    normal = bounded analyticsUserJoin (the SQL we just shipped)");
+  console.log("    heavy  = UNBOUNDED analyticsUserJoin (pre-fix; what caused the Sentry OOM)");
+  console.log("");
+
+  // Warm cache once.
+  await runRouteQuery(
+    buildAnalyticsOverviewVariant({
+      joinSql: ANALYTICS_USER_JOIN_AFTER,
+      nonAnonFilter: NON_ANON_FILTER_AFTER,
+      joinAlgorithm: "default",
+    })[0],
+    params,
+    now,
+  );
+
+  type CaseName = "normal" | "heavy";
+  const cases: Record<CaseName, { joinSql: string, nonAnonFilter: string }> = {
+    normal: { joinSql: ANALYTICS_USER_JOIN_AFTER, nonAnonFilter: NON_ANON_FILTER_AFTER },
+    heavy: { joinSql: ANALYTICS_USER_JOIN, nonAnonFilter: NON_ANON_FILTER },
+  };
+
+  type StatsByCaseByAlgo = Record<CaseName, Record<JoinAlgorithm, Map<string, QueryStats | null>>>;
+  const stats: StatsByCaseByAlgo = {
+    normal: {} as Record<JoinAlgorithm, Map<string, QueryStats | null>>,
+    heavy: {} as Record<JoinAlgorithm, Map<string, QueryStats | null>>,
+  };
+
+  for (const caseName of ["normal", "heavy"] as const) {
+    for (const algo of JOIN_ALGORITHMS) {
+      const queries = buildAnalyticsOverviewVariant({
+        joinSql: cases[caseName].joinSql,
+        nonAnonFilter: cases[caseName].nonAnonFilter,
+        joinAlgorithm: algo,
+      });
+      const out = new Map<string, QueryStats | null>();
+      for (const rq of queries) {
+        out.set(rq.name, await tryRunAndReadStats(rq, params, now));
+      }
+      stats[caseName][algo] = out;
+    }
+  }
+
+  const padL = (s: string, n: number) => s.padEnd(n);
+  const padR = (s: string, n: number) => s.padStart(n);
+  const memCell = (s: QueryStats | null | undefined) =>
+    s == null ? padR("ERR", 11) : padR(fmtBytes(s.memory_usage), 11);
+  const durCell = (s: QueryStats | null | undefined) =>
+    s == null ? padR("ERR", 9) : padR(`${s.query_duration_ms} ms`, 9);
+
+  function printCaseTable(caseName: CaseName): void {
+    console.log(`\n  ── ${caseName.toUpperCase()} case (${caseName === "normal" ? "bounded join" : "UNBOUNDED join"}) ──`);
+    // Header row
+    console.log([
+      padL("query", 32),
+      ...JOIN_ALGORITHMS.map((a) => padR(a, 11)),
+    ].join("  "));
+    console.log("  " + "─".repeat(32 + JOIN_ALGORITHMS.length * 13));
+    // Per-query memory
+    for (const name of ANALYTICS_OVERVIEW_QUERY_NAMES) {
+      console.log([
+        "  " + padL(name, 30),
+        ...JOIN_ALGORITHMS.map((a) => memCell(stats[caseName][a].get(name))),
+      ].join("  "));
+    }
+    // Sum memory row
+    console.log("  " + "─".repeat(32 + JOIN_ALGORITHMS.length * 13));
+    console.log([
+      "  " + padL("SUM peak memory", 30),
+      ...JOIN_ALGORITHMS.map((a) => {
+        const sum = ANALYTICS_OVERVIEW_QUERY_NAMES.reduce((acc, n) => {
+          const s = stats[caseName][a].get(n);
+          return s == null ? acc : acc + s.memory_usage;
+        }, 0);
+        const anyErr = ANALYTICS_OVERVIEW_QUERY_NAMES.some((n) => stats[caseName][a].get(n) == null);
+        return anyErr ? padR("partial", 11) : padR(fmtBytes(sum), 11);
+      }),
+    ].join("  "));
+    // Sum duration row
+    console.log([
+      "  " + padL("SUM duration", 30),
+      ...JOIN_ALGORITHMS.map((a) => {
+        const sum = ANALYTICS_OVERVIEW_QUERY_NAMES.reduce((acc, n) => {
+          const s = stats[caseName][a].get(n);
+          return s == null ? acc : acc + s.query_duration_ms;
+        }, 0);
+        const anyErr = ANALYTICS_OVERVIEW_QUERY_NAMES.some((n) => stats[caseName][a].get(n) == null);
+        return anyErr ? padR("partial", 11) : padR(`${sum} ms`, 11);
+      }),
+    ].join("  "));
+  }
+
+  printCaseTable("normal");
+  printCaseTable("heavy");
+
+  // Find the best algorithm per case by memory and by duration
+  function bestByMemory(caseName: CaseName): { algo: JoinAlgorithm, mem: number } | null {
+    let best: { algo: JoinAlgorithm, mem: number } | null = null;
+    for (const a of JOIN_ALGORITHMS) {
+      const sum = ANALYTICS_OVERVIEW_QUERY_NAMES.reduce((acc, n) => {
+        const s = stats[caseName][a].get(n);
+        return s == null ? acc : acc + s.memory_usage;
+      }, 0);
+      const anyErr = ANALYTICS_OVERVIEW_QUERY_NAMES.some((n) => stats[caseName][a].get(n) == null);
+      if (anyErr) continue;
+      if (best == null || sum < best.mem) best = { algo: a, mem: sum };
+    }
+    return best;
+  }
+  function bestByDuration(caseName: CaseName): { algo: JoinAlgorithm, dur: number } | null {
+    let best: { algo: JoinAlgorithm, dur: number } | null = null;
+    for (const a of JOIN_ALGORITHMS) {
+      const sum = ANALYTICS_OVERVIEW_QUERY_NAMES.reduce((acc, n) => {
+        const s = stats[caseName][a].get(n);
+        return s == null ? acc : acc + s.query_duration_ms;
+      }, 0);
+      const anyErr = ANALYTICS_OVERVIEW_QUERY_NAMES.some((n) => stats[caseName][a].get(n) == null);
+      if (anyErr) continue;
+      if (best == null || sum < best.dur) best = { algo: a, dur: sum };
+    }
+    return best;
+  }
+
+  console.log("\n  Headlines:");
+  for (const c of ["normal", "heavy"] as const) {
+    const bm = bestByMemory(c);
+    const bd = bestByDuration(c);
+    if (bm) console.log(`    ${c.padEnd(7)} | best memory: ${bm.algo.padEnd(20)} (${fmtBytes(bm.mem)})`);
+    if (bd) console.log(`    ${c.padEnd(7)} | best speed:  ${bd.algo.padEnd(20)} (${bd.dur} ms)`);
+  }
+  console.log("\n  Notes:");
+  console.log("    • ERR / partial = the algorithm errored or didn't apply for that query shape");
+  console.log("      (typical for `direct` which requires a Dictionary right-hand side).");
+  console.log("    • The OOM bottleneck is the inner GROUP BY user_id aggregation, not the");
+  console.log("      join's hash table — algorithms that only target the join (everything");
+  console.log("      except sorting-merge variants) cap out at ~modest savings on the heavy case.");
 }
 
 async function benchmarkRouteQueries(now: Date): Promise<void> {
@@ -1085,11 +1801,14 @@ async function benchmarkRouteQueries(now: Date): Promise<void> {
 
   // Also capture the actual row payload so we can check correctness for OPT
   // variants (e.g., dropping the LEFT JOIN on analyticsOverview must not change counts).
-  async function runAndCollect(list: RouteQuery[]): Promise<{ stats: Map<string, QueryStats>, payloads: Map<string, unknown[]> }> {
+  // `useMetricsClient` routes through getClickhouseAdminClientForMetrics so the
+  // connection-level SETTINGS (caps + grace_hash) apply — used for AFTER to
+  // mirror what actually ships.
+  async function runAndCollect(list: RouteQuery[], opts: { useMetricsClient?: boolean } = {}): Promise<{ stats: Map<string, QueryStats>, payloads: Map<string, unknown[]> }> {
     const stats = new Map<string, QueryStats>();
     const payloads = new Map<string, unknown[]>();
     for (const rq of list) {
-      const client = getClickhouseAdminClient();
+      const client = opts.useMetricsClient ? getClickhouseAdminClientForMetrics() : getClickhouseAdminClient();
       const queryId = `bench-route-${rq.name.replace(/[^a-z0-9]/gi, "-")}-${randomUUID()}`;
       const baseParams: Record<string, unknown> = {
         projectId: params.projectId,
@@ -1114,8 +1833,8 @@ async function benchmarkRouteQueries(now: Date): Promise<void> {
   }
 
   const before = await runAndCollect(ROUTE_QUERIES_BEFORE);
-  const after = await runAndCollect(ROUTE_QUERIES_AFTER);
-  const opt = await runAndCollect(ROUTE_QUERIES_OPTIMIZED);
+  const after = await runAndCollect(ROUTE_QUERIES_AFTER, { useMetricsClient: true });
+  const opt = await runAndCollect(ROUTE_QUERIES_OPTIMIZED, { useMetricsClient: true });
   const beforeStats = before.stats;
   const afterStats = after.stats;
 
@@ -1280,7 +1999,10 @@ type QueryStats = {
 async function readStats(queryId: string): Promise<QueryStats> {
   const client = getClickhouseAdminClient();
   await client.command({ query: "SYSTEM FLUSH LOGS" });
-  const delays = [100, 200, 400, 800, 1600];
+  // Total budget ~12.7s. With many heavy queries running in sequence the
+  // query_log async flush can take longer than the original 3.1s budget, which
+  // was producing spurious "no query_log row" failures at the 300k-user scale.
+  const delays = [100, 200, 400, 800, 1600, 3200, 6400];
   for (let i = 0; i <= delays.length; i++) {
     const res = await client.query({
       query: `
@@ -1337,6 +2059,13 @@ async function cleanup(): Promise<void> {
     // Block until the mutation is applied so the script exits clean.
     clickhouse_settings: { mutations_sync: "2" },
   });
+  // Best-effort: drop the option-D bench column if we added it. Safe to run
+  // unconditionally because of the IF EXISTS guard.
+  try {
+    await dropOptionDColumn();
+  } catch (e) {
+    console.error("  (could not drop option-D column:", e, ")");
+  }
 }
 
 // ── Edge-case matrix ─────────────────────────────────────────────────────────
@@ -1607,9 +2336,18 @@ async function seedPerf(now: Date): Promise<void> {
   );
 
   const batchRows = envInt("BENCH_BATCH", 50_000);
+  // BENCH_HISTORICAL_DAYS extends the event seed back beyond the 30-day metrics
+  // window so unbounded-scan queries (loadUsersByCountry, the LEFT JOIN in the
+  // splits) read more data than windowed queries — mirroring the prod skew that
+  // caused Sentry STACK-BACKEND-16H. Default 365 days. Set to 30 to recover the
+  // original behavior.
+  const historicalDays = envInt("BENCH_HISTORICAL_DAYS", 365);
   const windowEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + ONE_DAY_MS);
-  const windowStart = new Date(windowEnd.getTime() - METRICS_WINDOW_MS);
+  const windowStart = new Date(windowEnd.getTime() - historicalDays * 24 * 60 * 60 * 1000);
   const spanMs = windowEnd.getTime() - windowStart.getTime();
+  if (historicalDays !== METRICS_WINDOW_DAYS) {
+    console.log(`  (event_at spans last ${historicalDays} days; only the most recent ${METRICS_WINDOW_DAYS} fall inside the metrics window)`);
+  }
   const teamIds: string[] = Array.from({ length: teamCount }, () => mkUuid());
 
   const t0 = Date.now();
@@ -1815,10 +2553,14 @@ async function main(): Promise<void> {
 
     const doPerf = matrixOk && !envBool("BENCH_SKIP_PERF");
     const doRouteQueries = matrixOk && envBool("BENCH_ROUTE_QUERIES");
-    if (doPerf || doRouteQueries) {
+    const doBackfillCompare = matrixOk && envBool("BENCH_BACKFILL_COMPARE");
+    const doJoinAlgoCompare = matrixOk && (envBool("BENCH_JOIN_ALGO_COMPARE") || envBool("BENCH_GRACE_HASH_COMPARE"));
+    if (doPerf || doRouteQueries || doBackfillCompare || doJoinAlgoCompare) {
       await seedPerf(now);
       if (doPerf) await runPerf(now);
       if (doRouteQueries) await benchmarkRouteQueries(now);
+      if (doBackfillCompare) await benchmarkBackfillCompare(now);
+      if (doJoinAlgoCompare) await benchmarkJoinAlgorithms(now);
     } else if (envBool("BENCH_SKIP_PERF")) {
       console.log("Skipping perf run (BENCH_SKIP_PERF=1)");
     }

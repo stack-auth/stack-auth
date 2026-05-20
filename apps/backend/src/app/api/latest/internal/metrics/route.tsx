@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { ClickHouseError } from "@clickhouse/client";
 import { ActivitySplit } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
@@ -30,6 +30,9 @@ const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
 const METRICS_WINDOW_DAYS = 30;
 const METRICS_WINDOW_MS = METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+// All ClickHouse queries in this file run through `getClickhouseAdminClientForMetrics`,
+// which configures memory caps + GROUP BY spill defaults at the connection level —
+// see lib/clickhouse.tsx for the rationale.
 export const METRICS_REVENUE_INVOICE_STATUSES = ["paid", "succeeded"] as const;
 const METRICS_REVENUE_INVOICE_STATUSES_SQL = Prisma.raw(
   METRICS_REVENUE_INVOICE_STATUSES.map((status) => `'${status}'`).join(", "),
@@ -70,8 +73,17 @@ function normalizeUuidFromEvent(value: string): string | null {
 // ClickHouse `match()` uses re2; pattern matches UUID_V4_JS_RE.source.
 const MAU_UUID_V4_REGEX = UUID_V4_JS_RE.source;
 
-async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
-  const clickhouseClient = getClickhouseAdminClient();
+async function loadUsersByCountry(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<Record<string, number>> {
+  // Bound the scan to the 30-day metrics window. Before this lower bound,
+  // the inner `GROUP BY user_id` materialized one row per ever-seen user for
+  // the tenant — see Sentry STACK-BACKEND-16H, where this query was a top
+  // memory consumer on tenants with many months of $token-refresh history.
+  // Users without a token-refresh in the last 30 days are no longer counted;
+  // token-refresh fires every few minutes for each open session, so this only
+  // omits users with no active sessions in the last 30 days, which is the
+  // intent of a "metrics window" anyway.
+  const { since, untilExclusive } = getMetricsWindowBounds(now);
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   const res = await clickhouseClient.query({
     query: `
       SELECT
@@ -92,6 +104,8 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
             AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
         )
         WHERE cc IS NOT NULL
           AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
@@ -105,6 +119,8 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       includeAnonymous: includeAnonymous ? 1 : 0,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
     },
     format: "JSONEachRow",
   });
@@ -139,7 +155,7 @@ async function loadActiveUsersByCountry(
 ): Promise<Record<string, MetricsRecentUser[]>> {
   const since = new Date(now.getTime() - ACTIVE_USERS_BY_COUNTRY_WINDOW_MS);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   const res = await clickhouseClient.query({
     query: `
       SELECT
@@ -269,7 +285,7 @@ async function loadLiveUsersCount(
   const since = new Date(now.getTime() - ACTIVE_USERS_BY_COUNTRY_WINDOW_MS);
 
   try {
-    const clickhouseClient = getClickhouseAdminClient();
+    const clickhouseClient = getClickhouseAdminClientForMetrics();
     const res = await clickhouseClient.query({
       query: `
         SELECT uniqExact(user_id) AS live_users
@@ -347,7 +363,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   const result = await clickhouseClient.query({
     query: `
       SELECT
@@ -412,11 +428,24 @@ async function loadDailyActiveSplitFromClickhouse(options: {
     ? "AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)"
     : "";
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   // Note: the inner `assumeNotNull(${idCol}) AS entity_id` must not reuse the
   // column name, or ClickHouse re-resolves `WHERE ${idCol} IS NOT NULL`
   // against the alias (assumeNotNull returns '' for NULLs, which passes the
   // not-null test) and phantom rows slip through.
+  //
+  // The LEFT JOIN's `min(event_at)` subquery below scans all $token-refresh
+  // history per request (no `event_at >= ...` lower bound) — same unbounded
+  // pattern as Sentry STACK-BACKEND-16H, and was ranked #5/#6 by peak memory
+  // in the benchmark. It can't be bounded the same way as the other queries
+  // because `first_date` is used to classify entities as new vs reactivated:
+  // bounding the subquery to 30 days would cause entities first seen >30d ago
+  // and active today to be (incorrectly) reported as "new". The proper fix
+  // requires either materializing a per-entity "first-seen-ever" table or
+  // shipping the option C backfill so we can read first_date from the event
+  // stream cheaply. For now the per-user memory cap configured on
+  // getClickhouseAdminClientForMetrics (see lib/clickhouse.tsx) spills the
+  // GROUP BY hash table and caps the query if it runs out of memory.
   const result = await clickhouseClient.query({
     query: `
       SELECT
@@ -552,7 +581,7 @@ async function loadAnonymousVisitorsFromTokenRefresh(
   now: Date,
 ): Promise<{ dailyVisitors: DataPoints, visitors: number }> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   const query = `
     SELECT
@@ -630,7 +659,7 @@ async function loadAnonymousVisitorsFromTokenRefresh(
 async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   try {
     const result = await clickhouseClient.query({
       query: `
@@ -1038,7 +1067,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   // Session replay aggregates come from Postgres and have nothing to do with
   // ClickHouse availability. Run them in parallel with the ClickHouse queries
@@ -1064,6 +1093,37 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   } | null = null;
 
   try {
+    // BAND-AID for Sentry STACK-BACKEND-16H. The inner subquery used to scan
+    // ALL token-refresh history (only an upper bound `event_at < untilExclusive`),
+    // which materialized one row per ever-seen user in the GROUP BY hash table.
+    // On tenants with months of $token-refresh data this was the top memory
+    // consumer at /internal/metrics, and three of the queries below pay this
+    // cost. Adding the lower `event_at >= since` bound shrinks the hash table
+    // to "users with a token-refresh in the last 30 days", which is the same
+    // population the outer page-view/click query is already restricted to.
+    //
+    // Edge case: an anonymous page-view by a user who has not token-refreshed
+    // in the last 30 days will now fall through to `coalesce(..., 0)` and be
+    // silently classified non-anonymous. Token-refresh fires every few minutes
+    // per active session, so this is rare — but it is not impossible (e.g.
+    // embedded SDKs that poll less frequently, sessions that straddle the
+    // 30-day boundary, or anonymous users on cold tenancies). The PR shipping
+    // this fix quantifies the expected drift; option C (below) removes the
+    // edge case entirely.
+    //
+    // PERMANENT FIX (option C — see PR description and
+    // /tmp/internal-metrics-oom-analysis.html for the full write-up):
+    //   1. Stamp `is_anonymous` onto `$page-view`/`$click` events at insert
+    //      time in apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+    //      (the events/batch handler already has `auth.user` in scope).
+    //   2. Backfill historical page-view/click events via partition-by-partition
+    //      INSERT SELECT with an ASOF LEFT JOIN to each event's preceding
+    //      $token-refresh, producing event-at-time semantics.
+    //   3. Delete this LEFT JOIN entirely; the `coalesce` in the filter below
+    //      short-circuits on the first non-null argument so the join's
+    //      `latest_is_anonymous` becomes dead code.
+    // Benchmarked memory profiles for each option are in
+    // apps/backend/scripts/benchmark-internal-metrics.ts (BENCH_BACKFILL_COMPARE=1).
     const analyticsUserJoin = `
       LEFT JOIN (
         SELECT
@@ -1074,6 +1134,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
           AND user_id IS NOT NULL
+          AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
         GROUP BY user_id
       ) AS token_refresh_users
@@ -1476,7 +1537,7 @@ export const GET = createSmartRouteHandler({
     ] = await Promise.all([
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
       loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
-      loadUsersByCountry(req.auth.tenancy, includeAnonymous),
+      loadUsersByCountry(req.auth.tenancy, now, includeAnonymous),
       loadActiveUsersByCountry(req.auth.tenancy, now, includeAnonymous),
       loadLiveUsersCount(req.auth.tenancy, now, includeAnonymous),
       usersCrudHandlers.adminList({
