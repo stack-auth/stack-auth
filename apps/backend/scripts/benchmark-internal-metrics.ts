@@ -1567,13 +1567,15 @@ function buildAnalyticsOverviewVariant(opts: {
   ];
 }
 
-// Run a query and either return its QueryStats, or null if the query errored
-// (e.g. an unsupported `join_algorithm` for the query's shape).
+// Run a query; on failure log the error and return null so the join-algo
+// matrix can show ERR for shapes a given algorithm doesn't support (e.g.
+// `direct` without a Dictionary right side).
 async function tryRunAndReadStats(rq: RouteQuery, p: QueryParams, now: Date): Promise<QueryStats | null> {
   try {
     const qid = await runRouteQuery(rq, p, now);
     return await readStats(qid);
-  } catch {
+  } catch (e) {
+    console.warn(`  [bench] query "${rq.name}" failed: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
 }

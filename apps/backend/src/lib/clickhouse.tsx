@@ -35,13 +35,18 @@ export function getClickhouseExternalClient() {
 }
 
 // Safety net for heavy analytical reads against `analytics_internal.events`:
-// per-user memory cap bounds the whole `Promise.all` fan-out (~12 queries) to
-// one shared budget against the cluster's 10.8 GiB OvercommitTracker, GROUP BY
-// spills to disk before hitting the cap, and grace_hash partitions large join
-// build sides instead of allocating one giant hash table. Values are decimal
-// bytes (how ClickHouse parses digit strings).
+// GROUP BY spills to disk at ~50% of the per-query cap (leaving headroom for
+// the post-spill merge), grace_hash partitions large join build sides instead
+// of allocating one giant hash table, and the per-user cap bounds total
+// concurrent memory against the cluster's 10.8 GiB OvercommitTracker. Values
+// are decimal bytes (how ClickHouse parses digit strings).
+//
+// Note: max_memory_usage_for_user is enforced ClickHouse-side per *connecting
+// user* (the shared `stackframe` admin), so all admin queries — not just this
+// client's — count toward the same 9 GB budget. With the 30-day bounds each
+// metrics query peaks well under 100 MiB, so practical interference is low.
 export const METRICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
-  max_bytes_before_external_group_by: "6000000000",
+  max_bytes_before_external_group_by: "4000000000",
   max_memory_usage: "8000000000",
   max_memory_usage_for_user: "9000000000",
   // SDK type narrows to a single algorithm; the server accepts a fallback list.
