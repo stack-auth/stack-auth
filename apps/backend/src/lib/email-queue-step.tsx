@@ -524,6 +524,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
 }
 
 async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]> {
+  const planStart = performance.now();
   // Find tenancies with queued emails ready to send
   const tenancyIds = await globalPrismaClient.emailOutbox.findMany({
     where: {
@@ -536,24 +537,39 @@ async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]
     distinct: ["tenancyId"],
     select: { tenancyId: true },
   });
+  const findTenanciesEnd = performance.now();
 
   const plan: TenancySendBatch[] = [];
   for (const entry of tenancyIds) {
     try {
+      const statsStart = performance.now();
       const [stats, boostExpiresAt] = await Promise.all([
         getEmailDeliveryStatsForTenancy(entry.tenancyId),
         getEmailCapacityBoostExpiresAt(entry.tenancyId),
       ]);
+      const statsEnd = performance.now();
       const capacity = calculateCapacityRate(stats, boostExpiresAt);
       const quota = stochasticQuota(capacity.ratePerSecond * deltaSeconds);
-      if (quota <= 0) continue;
+      if (quota <= 0) {
+        console.warn(`[prepareSendPlan] tenancy=${entry.tenancyId.substring(0, 8)} quota=0 (rate=${capacity.ratePerSecond.toFixed(4)}/s delta=${deltaSeconds.toFixed(2)}s statsMs=${(statsEnd - statsStart).toFixed(0)})`);
+        continue;
+      }
+      const claimStart = performance.now();
       const rows = await claimEmailsForSending(globalPrismaClient, entry.tenancyId, quota);
+      const claimEnd = performance.now();
       if (rows.length === 0) continue;
+      if (statsEnd - statsStart > 500 || claimEnd - claimStart > 500) {
+        console.warn(`[prepareSendPlan SLOW] tenancy=${entry.tenancyId.substring(0, 8)} stats=${(statsEnd - statsStart).toFixed(0)}ms claim=${(claimEnd - claimStart).toFixed(0)}ms rows=${rows.length} quota=${quota} delta=${deltaSeconds.toFixed(2)}s`);
+      }
       plan.push({ tenancyId: entry.tenancyId, rows, capacityRatePerSecond: capacity.ratePerSecond });
     } catch (error) {
       captureError("email-queue-step-prepare-send-plan-for-tenancy-error", error);
       continue;
     }
+  }
+  const planEnd = performance.now();
+  if (planEnd - planStart > 1000) {
+    console.warn(`[prepareSendPlan TOTAL] ${(planEnd - planStart).toFixed(0)}ms findTenancies=${(findTenanciesEnd - planStart).toFixed(0)}ms tenancies=${tenancyIds.length} planned=${plan.length}`);
   }
   return plan;
 }
@@ -611,11 +627,13 @@ type TenancyProcessingContext = {
 };
 
 async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
+  const batchStart = performance.now();
   const tenancy = await getTenancy(batch.tenancyId) ?? throwErr("Tenancy not found in processTenancyBatch? Was the tenancy deletion not cascaded?");
 
   const prisma = await getPrismaClientForTenancy(tenancy);
   const emailConfig = await getEmailConfig(tenancy);
   const billingTeamId = getBillingTeamId(tenancy.project);
+  const setupEnd = performance.now();
 
   const context: TenancyProcessingContext = {
     tenancy,
@@ -626,6 +644,10 @@ async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
 
   const promises = batch.rows.map((row) => processSingleEmail(context, row));
   await allPromisesAndWaitUntilEach(promises);
+  const batchEnd = performance.now();
+  if (batchEnd - batchStart > 2000) {
+    console.warn(`[processTenancyBatch SLOW] tenancy=${batch.tenancyId.substring(0, 8)} total=${(batchEnd - batchStart).toFixed(0)}ms setup=${(setupEnd - batchStart).toFixed(0)}ms emails=${batch.rows.length} billingTeamId=${billingTeamId?.substring(0, 8) ?? "null"}`);
+  }
 }
 
 function getPrimaryEmail(user: ProjectUserWithContacts | undefined): string | undefined {
@@ -641,9 +663,12 @@ type ResolvedRecipient =
   | { status: "unsubscribe" };
 
 async function processSingleEmail(context: TenancyProcessingContext, row: EmailOutbox): Promise<void> {
+  const emailStart = performance.now();
   try {
     const recipient = deserializeRecipient(row.to as Json);
+    const resolveStart = performance.now();
     const resolution = await resolveRecipientEmails(context, row, recipient);
+    const resolveEnd = performance.now();
 
     if (resolution.status === "skip") {
       await markSkipped(row, resolution.reason, resolution.details);
@@ -693,6 +718,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       }
     }
 
+    const billingStart = performance.now();
     if (context.billingTeamId != null && row.sendRetries === 0 && arePlanLimitsEnforced()) {
       const app = getStackServerApp();
       const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
@@ -734,7 +760,9 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         return;
       }
     }
+    const billingEnd = performance.now();
 
+    const smtpStart = performance.now();
     const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
       ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
       : await lowLevelSendEmailDirectWithoutRetries({
@@ -745,6 +773,11 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         html: row.renderedHtml ?? undefined,
         text: row.renderedText ?? undefined,
       });
+    const smtpEnd = performance.now();
+    const totalEmailMs = smtpEnd - emailStart;
+    if (totalEmailMs > 2000) {
+      console.warn(`[processSingleEmail SLOW] id=${row.id} total=${totalEmailMs.toFixed(0)}ms resolve=${(resolveEnd - resolveStart).toFixed(0)}ms billing=${(billingEnd - billingStart).toFixed(0)}ms smtp=${(smtpEnd - smtpStart).toFixed(0)}ms subject=${row.renderedSubject?.substring(0, 40)} status=${result.status}`);
+    }
 
     if (result.status === "error") {
       const newAttemptCount = row.sendRetries + 1;
