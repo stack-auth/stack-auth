@@ -4,12 +4,13 @@ import { Spinner, Typography, cn } from "@/components/ui";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CaretSortIcon, CheckIcon } from "@radix-ui/react-icons";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 export type ComboboxItem = {
   value: string,
   label: string,
   description?: string,
+  trailingIcon?: ReactNode,
 };
 
 type Props = {
@@ -93,6 +94,11 @@ export function RemoteSearchCombobox(props: Props) {
                         <div className="truncate text-xs text-muted-foreground">{item.description}</div>
                       )}
                     </div>
+                    {item.trailingIcon != null && (
+                      <span className="ml-2 flex shrink-0 items-center text-muted-foreground">
+                        {item.trailingIcon}
+                      </span>
+                    )}
                   </CommandItem>
                 ))}
               </CommandGroup>

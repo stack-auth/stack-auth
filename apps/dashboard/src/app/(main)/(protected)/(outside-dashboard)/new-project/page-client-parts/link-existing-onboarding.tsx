@@ -9,7 +9,7 @@ import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { ActionDialog, Spinner, Typography, cn } from "@/components/ui";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { ArrowsClockwiseIcon, GithubLogoIcon, LinkBreakIcon, TerminalWindowIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, GithubLogoIcon, LinkBreakIcon, LockSimpleIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import { type AdminOwnedProject, type PushedConfigSource } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -503,6 +503,8 @@ export function LinkExistingOnboarding(props: Props) {
   const [branchSearchResults, setBranchSearchResults] = useState<string[]>([]);
   const [loadingBranchSearch, setLoadingBranchSearch] = useState(false);
   const [branchSearchError, setBranchSearchError] = useState<string | null>(null);
+  const [configPathError, setConfigPathError] = useState<string | null>(null);
+  const [isCheckingConfigPath, setIsCheckingConfigPath] = useState(false);
 
   const persistState = useCallback((partial: Partial<PersistedLinkExistingState>) => {
     const existingState = readPersistedLinkExistingState(project.id);
@@ -537,16 +539,19 @@ export function LinkExistingOnboarding(props: Props) {
 
   const setSelectedRepositoryFullNameWithPersistence = useCallback((nextRepositoryFullName: string) => {
     setSelectedRepositoryFullName(nextRepositoryFullName);
+    setConfigPathError(null);
     persistState({ selectedRepositoryFullName: nextRepositoryFullName });
   }, [persistState]);
 
   const setSelectedBranchWithPersistence = useCallback((nextBranch: string) => {
     setSelectedBranch(nextBranch);
+    setConfigPathError(null);
     persistState({ selectedBranch: nextBranch });
   }, [persistState]);
 
   const setConfigPathInputWithPersistence = useCallback((nextConfigPath: string) => {
     setConfigPathInput(nextConfigPath);
+    setConfigPathError(null);
     persistState({ configPathInput: nextConfigPath });
   }, [persistState]);
 
@@ -898,8 +903,23 @@ export function LinkExistingOnboarding(props: Props) {
       setGitTreeTruncated(false);
       const referenceResponse = await githubFetch(githubRepositoryApiPath(owner, repo, urlString`/git/ref/heads/${branch}`));
       const treeSha = parseGitReferenceSha(referenceResponse);
-      const treeResponse = await githubFetch(githubRepositoryApiPath(owner, repo, urlString`/git/trees/${treeSha}?recursive=1`));
-      const { paths: allPaths, truncated } = parseGitTreePaths(treeResponse);
+      let allPaths: string[] = [];
+      let truncated = false;
+      try {
+        const treeResponse = await githubFetch(githubRepositoryApiPath(owner, repo, urlString`/git/trees/${treeSha}?recursive=1`));
+        const parsedTree = parseGitTreePaths(treeResponse);
+        allPaths = parsedTree.paths;
+        truncated = parsedTree.truncated;
+      } catch (error) {
+        // GitHub returns 404 for the empty-tree SHA
+        // (4b825dc642cb6eb9a060e54bf8d69288fbee4904) instead of an empty array,
+        // so a freshly-initialized repo with no files lands here. Treat it as
+        // "no files yet" rather than surfacing a fatal alert.
+        const message = error instanceof Error ? error.message : "";
+        if (!message.includes("Not Found")) {
+          throw error;
+        }
+      }
       setGitTreeTruncated(truncated);
       const suggestions = buildConfigPathSuggestions(allPaths);
       setConfigPathSuggestions(suggestions);
@@ -943,6 +963,34 @@ export function LinkExistingOnboarding(props: Props) {
 
     const sha = getObjectString(response, "sha");
     return sha;
+  }, [githubFetch]);
+
+  const checkConfigPathExists = useCallback(async (
+    owner: string,
+    repo: string,
+    branch: string,
+    path: string,
+  ): Promise<boolean> => {
+    const normalizedPath = path.trim().replace(/^\.?\/+/, "");
+    if (normalizedPath.length === 0 || normalizedPath.split("/").includes("..")) {
+      return false;
+    }
+    const refQuery = new URLSearchParams({ ref: branch }).toString();
+    try {
+      const response = await githubFetch(
+        githubRepositoryApiPath(owner, repo, `/contents/${encodeGitHubPath(normalizedPath)}?${refQuery}`),
+      );
+      if (!isObject(response) || Array.isArray(response)) {
+        return false;
+      }
+      return getObjectString(response, "type") === "file";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Not Found")) {
+        return false;
+      }
+      throw error;
+    }
   }, [githubFetch]);
 
   const createGithubWorkflowCommit = useCallback(async (
@@ -1440,7 +1488,9 @@ export function LinkExistingOnboarding(props: Props) {
     ).map((repository) => ({
       value: repository.fullName,
       label: repository.fullName,
-      description: repository.isPrivate ? "private" : undefined,
+      trailingIcon: repository.isPrivate ? (
+        <LockSimpleIcon weight="fill" className="h-3.5 w-3.5" aria-label="Private repository" />
+      ) : undefined,
     }));
     const branchComboboxItems: ComboboxItem[] = (
       branchSearchQuery.trim().length > 0 ? branchSearchResults : branches
@@ -1638,6 +1688,14 @@ export function LinkExistingOnboarding(props: Props) {
             glassmorphic
           />
         )}
+        {configPathError != null && (
+          <DesignAlert
+            variant="error"
+            title="Config file not found"
+            description={configPathError}
+            glassmorphic
+          />
+        )}
         <DesignCard glassmorphic className="border-0 bg-white/70 dark:bg-background/60">
           <div className="space-y-4">
             <div className="space-y-2">
@@ -1688,10 +1746,28 @@ export function LinkExistingOnboarding(props: Props) {
     primaryAction = (
       <DesignButton
         className="w-full rounded-full"
-        disabled={configPathInput.trim().length === 0}
-        onClick={() => setIsCommitDialogOpen(true)}
+        disabled={configPathInput.trim().length === 0 || isCheckingConfigPath}
+        onClick={() => runAsynchronouslyWithAlert(async () => {
+          if (selectedRepository == null || selectedBranch.length === 0) {
+            return;
+          }
+          const { owner, repo } = parseRepositoryFullName(selectedRepository.fullName);
+          const path = configPathInput.trim();
+          setConfigPathError(null);
+          setIsCheckingConfigPath(true);
+          try {
+            const exists = await checkConfigPathExists(owner, repo, selectedBranch, path);
+            if (!exists) {
+              setConfigPathError(`"${path}" was not found on branch "${selectedBranch}". Double-check the path or push the file to that branch first.`);
+              return;
+            }
+            setIsCommitDialogOpen(true);
+          } finally {
+            setIsCheckingConfigPath(false);
+          }
+        })}
       >
-        Create GitHub Action
+        {isCheckingConfigPath ? "Checking..." : "Create GitHub Action"}
       </DesignButton>
     );
 
