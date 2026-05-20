@@ -364,7 +364,7 @@ function parseGitTreePaths(value: unknown): { paths: string[], truncated: boolea
 // with `refs/heads/`. Strip the prefix so callers see plain branch names.
 function parseGithubMatchingRefs(value: unknown): string[] {
   if (!Array.isArray(value)) {
-    return [];
+    throw new Error("GitHub returned an invalid matching refs response.");
   }
   const HEADS_PREFIX = "refs/heads/";
   const branches: string[] = [];
