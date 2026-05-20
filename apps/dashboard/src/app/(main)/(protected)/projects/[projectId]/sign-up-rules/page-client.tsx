@@ -4,6 +4,10 @@ import { CountryCodeInput } from "@/components/country-code-select";
 import { ConditionBuilder, isConditionTreeValid } from "@/components/rule-builder";
 import {
   ActionDialog,
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
   cn,
   Dialog,
   DialogBody,
@@ -467,6 +471,10 @@ function RuleTriggerHistoryDialog({
     <DesignDialog
       open={open}
       onOpenChange={handleOpenChange}
+      size="2xl"
+      icon={PulseIcon}
+      title="Rule trigger history"
+      description={`${totalLabel} for this rule`}
       trigger={(
         <button
           type="button"
@@ -483,10 +491,6 @@ function RuleTriggerHistoryDialog({
           />
         </button>
       )}
-      size="2xl"
-      icon={PulseIcon}
-      title="Rule trigger history"
-      description={`${totalLabel} for this rule`}
       headerContent={(
         <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -521,53 +525,55 @@ function RuleTriggerHistoryDialog({
         </DesignDialogClose>
       )}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Recent triggers
-        </span>
-        {!isInitialLoading && triggers.length > 0 && (
-          <Typography variant="secondary" className="text-[11px] tabular-nums">
-            showing {triggers.length}{hasMore ? "+" : ""}
-          </Typography>
-        )}
-      </div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Recent triggers
+          </span>
+          {!isInitialLoading && triggers.length > 0 && (
+            <Typography variant="secondary" className="text-[11px] tabular-nums">
+              showing {triggers.length}{hasMore ? "+" : ""}
+            </Typography>
+          )}
+        </div>
 
-      {loadingError ? (
-        <DesignAlert variant="error" description={loadingError} />
-      ) : null}
-
-      <div
-        className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
-        onScroll={handleScroll}
-      >
-        {isInitialLoading ? (
-          <div className="space-y-2 p-3">
-            {["one", "two", "three", "four", "five"].map((skeletonId) => (
-              <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
-            ))}
-          </div>
-        ) : triggers.length === 0 ? (
-          <DesignEmptyState
-            icon={ClockIcon}
-            title="No triggers yet"
-            description={
-              isSparklineLoading
-                ? "Loading recent activity…"
-                : "Once a sign-up matches this rule, you'll see it appear here."
-            }
-          />
-        ) : (
-          <div className="divide-y divide-foreground/[0.06]">
-            {triggers.map((trigger) => (
-              <TriggerRow key={trigger.id} trigger={trigger} />
-            ))}
-          </div>
-        )}
-        {isLoadingMore ? (
-          <div className="p-3">
-            <DesignSkeleton className="h-9 rounded-lg" />
-          </div>
+        {loadingError ? (
+          <DesignAlert variant="error" description={loadingError} />
         ) : null}
+
+        <div
+          className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
+          onScroll={handleScroll}
+        >
+          {isInitialLoading ? (
+            <div className="space-y-2 p-3">
+              {["one", "two", "three", "four", "five"].map((skeletonId) => (
+                <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
+              ))}
+            </div>
+          ) : triggers.length === 0 ? (
+            <DesignEmptyState
+              icon={ClockIcon}
+              title="No triggers yet"
+              description={
+                isSparklineLoading
+                  ? "Loading recent activity…"
+                  : "Once a sign-up matches this rule, you'll see it appear here."
+              }
+            />
+          ) : (
+            <div className="divide-y divide-foreground/[0.06]">
+              {triggers.map((trigger) => (
+                <TriggerRow key={trigger.id} trigger={trigger} />
+              ))}
+            </div>
+          )}
+          {isLoadingMore ? (
+            <div className="p-3">
+              <DesignSkeleton className="h-9 rounded-lg" />
+            </div>
+          ) : null}
+        </div>
       </div>
     </DesignDialog>
   );
@@ -722,7 +728,7 @@ function SaveCancelButtons({ state, size = "sm" }: { state: RuleEditorState, siz
 
 function ConditionsPanel({ state }: { state: RuleEditorState }) {
   return (
-    <div className="p-3 rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.04]">
+    <div className="p-3 rounded-xl bg-white ring-1 ring-foreground/[0.08] dark:bg-background">
       <ConditionBuilder value={state.conditionTree} onChange={state.setConditionTree} />
     </div>
   );
@@ -731,7 +737,7 @@ function ConditionsPanel({ state }: { state: RuleEditorState }) {
 function NumberedStep({ n, title, children }: { n: number, title: string, children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3">
-      <div className="h-6 w-6 rounded-full bg-primary/10 ring-1 ring-primary/20 text-primary text-[11px] font-semibold flex items-center justify-center tabular-nums shrink-0 mt-0.5">
+      <div className="h-6 w-6 rounded-full bg-white ring-1 ring-foreground/[0.12] text-muted-foreground text-[11px] font-semibold flex items-center justify-center tabular-nums shrink-0 mt-0.5 dark:bg-background">
         {n}
       </div>
       <div className="flex-1 min-w-0 space-y-2">
@@ -752,7 +758,7 @@ function RuleEditor(props: {
   const state = useRuleEditorState(props);
 
   return (
-    <div className="rounded-2xl bg-background/70 backdrop-blur-xl ring-2 ring-primary/40 shadow-sm transition-all duration-150 hover:transition-none p-4 space-y-4">
+    <div className="rounded-xl bg-white ring-1 ring-foreground/[0.14] shadow-sm transition-colors duration-150 hover:transition-none p-4 space-y-4 dark:bg-background">
       <NumberedStep n={1} title="Name this rule">
         <div className="flex items-center gap-3">
           <DesignInput
@@ -786,11 +792,12 @@ function RuleEditor(props: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SortableRuleRow — card row with kebab menu (final layout)
+// SortableRuleRow — table-style row with kebab menu
 // ─────────────────────────────────────────────────────────────────────────────
 
 type RuleRowProps = {
   entry: SignUpRuleEntry,
+  index: number,
   analytics?: RuleAnalytics,
   analyticsTimespanHours: number,
   isAnalyticsLoading: boolean,
@@ -816,10 +823,11 @@ function SortableRuleRow(props: RuleRowProps) {
   const conditionSummary = props.entry.rule.condition || '(no condition)';
   const isEnabled = props.entry.rule.enabled !== false;
   const ruleName = props.entry.rule.displayName || 'Unnamed rule';
+  const orderLabel = String(props.index + 1).padStart(2, "0");
 
   if (props.isEditing) {
     return (
-      <div ref={setNodeRef} style={style}>
+      <div ref={setNodeRef} style={style} className="p-3">
         <RuleEditor
           rule={props.entry.rule}
           ruleId={props.entry.id}
@@ -855,31 +863,40 @@ function SortableRuleRow(props: RuleRowProps) {
     <div
       {...dragBindings}
       className={cn(
-        "rounded-2xl bg-background/70 backdrop-blur-xl ring-1 ring-foreground/[0.06] shadow-sm",
-        "flex items-center gap-3 p-4 cursor-grab active:cursor-grabbing",
-        !isDragging && "transition-all duration-150 hover:transition-none",
-        isDragging && "opacity-50 shadow-lg z-10",
+        "grid min-h-16 grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 cursor-grab active:cursor-grabbing",
+        "border-b border-foreground/[0.06] bg-white last:border-b-0 dark:bg-background",
+        "sm:grid-cols-[3rem_3rem_minmax(0,1fr)_7rem_7rem_2.5rem]",
+        !isDragging && "transition-colors duration-150 hover:bg-foreground/[0.025] hover:transition-none",
+        isDragging && "opacity-50 shadow-lg z-10 bg-background",
       )}
     >
-      <DotsSixVerticalIcon className="h-4 w-4 text-muted-foreground/60 shrink-0" />
-      {switchControl}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <DotsSixVerticalIcon className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+        <span className="text-[11px] font-medium tabular-nums">{orderLabel}</span>
+      </div>
+      <div className="hidden sm:flex items-center">
+        {switchControl}
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="sm:hidden">{switchControl}</span>
           <Typography className={cn("font-medium text-sm truncate", !isEnabled && "text-muted-foreground line-through")}>
             {ruleName}
           </Typography>
-          <ActionBadge type={actionType} dim={!isEnabled} />
         </div>
         <Typography variant="secondary" className={cn("text-xs truncate mt-0.5 font-mono", !isEnabled && "line-through")}>
           {conditionSummary}
         </Typography>
       </div>
+      <div className="hidden sm:flex items-center">
+        <ActionBadge type={actionType} dim={!isEnabled} />
+      </div>
       <div
-        className="flex items-center gap-2"
+        className="flex items-center justify-end gap-2"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className="hidden sm:flex items-center mr-1">
+        <div className="hidden sm:flex items-center">
           <RuleTriggerHistoryDialog
             ruleId={props.entry.id}
             ruleDisplayName={ruleName}
@@ -891,6 +908,9 @@ function SortableRuleRow(props: RuleRowProps) {
             timespanHours={props.analyticsTimespanHours}
             isSparklineLoading={props.isAnalyticsLoading}
           />
+        </div>
+        <div className="sm:hidden">
+          <ActionBadge type={actionType} dim={!isEnabled} />
         </div>
         <DesignMenu
           variant="actions"
@@ -930,18 +950,15 @@ function DefaultActionRow({
   onChange: (value: 'allow' | 'reject') => void,
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl ring-1 ring-foreground/[0.06] bg-background/40 px-4 py-3">
-      <div className="flex items-center gap-2">
+    <div className="flex min-h-14 items-center justify-between gap-3 border-t border-foreground/[0.06] bg-gray-50 px-4 py-3 dark:bg-muted/10">
+      <div className="flex items-center gap-2 min-w-0">
         <ShieldCheckIcon className="h-4 w-4 text-muted-foreground" />
         <Typography className="text-sm">
           <span className="text-muted-foreground">If no rules match → </span>
           <span className="font-medium">{value === 'allow' ? 'Allow sign-up' : 'Reject sign-up'}</span>
         </Typography>
       </div>
-      <DesignMenu
-        variant="selector"
-        trigger="button"
-        triggerLabel={value === 'allow' ? 'Allow' : 'Reject'}
+      <DesignSelectorDropdown
         value={value}
         onValueChange={(v) => {
           if (!isDefaultAction(v)) {
@@ -949,9 +966,10 @@ function DefaultActionRow({
           }
           onChange(v);
         }}
+        className="w-32 shrink-0"
         options={[
-          { id: "allow", label: "Allow" },
-          { id: "reject", label: "Reject" },
+          { value: "allow", label: "Allow" },
+          { value: "reject", label: "Reject" },
         ]}
       />
     </div>
@@ -984,11 +1002,9 @@ function EmptyState({ onAddRule, disabled }: { onAddRule: () => void, disabled: 
 
 const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
 
-function TestRulesCard({
-  stackAdminApp,
-}: {
-  stackAdminApp: ReturnType<typeof useAdminApp>,
-}) {
+// Shared hook used by every TestRulesCard variant - encapsulates all the state
+// and the API call so the variants can focus purely on the UI.
+function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
@@ -1052,39 +1068,69 @@ function TestRulesCard({
     setResult(data);
   }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp, turnstileResultOverride]);
 
+  return {
+    email, setEmail,
+    authMethod, setAuthMethod,
+    oauthProvider, setOauthProvider,
+    countryCodeOverride, setCountryCodeOverride,
+    turnstileResultOverride, setTurnstileResultOverride,
+    botRiskScoreOverride, setBotRiskScoreOverride,
+    freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride,
+    result,
+    runTest,
+    isRunning,
+  };
+}
+
+type TestRulesState = ReturnType<typeof useTestRulesState>;
+
+const DECISION_LABEL: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
+  allow: 'Allowed by rule',
+  reject: 'Rejected by rule',
+  'default-allow': 'Allowed by default',
+  'default-reject': 'Rejected by default',
+};
+
+const STATUS_LABEL: Record<SignUpRulesTestEvaluationStatus, string> = {
+  matched: 'Matched',
+  not_matched: 'No match',
+  disabled: 'Disabled',
+  missing_condition: 'No condition',
+  error: 'Error',
+};
+
+const statusBadgeColor = (status: SignUpRulesTestEvaluationStatus): "green" | "red" | "orange" | "blue" | undefined => {
+  if (status === 'matched') return 'green';
+  if (status === 'missing_condition') return 'orange';
+  if (status === 'error') return 'red';
+  return undefined;
+};
+
+function TestRulesCard({ state }: { state: TestRulesState }) {
+  const {
+    email, setEmail,
+    authMethod, setAuthMethod,
+    oauthProvider, setOauthProvider,
+    countryCodeOverride, setCountryCodeOverride,
+    turnstileResultOverride, setTurnstileResultOverride,
+    botRiskScoreOverride, setBotRiskScoreOverride,
+    freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride,
+    result,
+    runTest,
+    isRunning,
+  } = state;
+
   const evaluations = result?.evaluations ?? [];
   const matchedEvaluations = evaluations.filter((evaluation) => evaluation.status === 'matched');
   const decisionRule = result?.outcome.decision_rule_id
     ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.decision_rule_id)
     : undefined;
   const restrictedRule = result?.outcome.restricted_because_of_rule_id
+    && result.outcome.restricted_because_of_rule_id !== result.outcome.decision_rule_id
     ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.restricted_because_of_rule_id)
     : undefined;
-
   const outcomeLabel = result?.outcome.should_allow ? 'Allow' : 'Reject';
   const outcomeBadgeColor = result?.outcome.should_allow ? 'green' : 'red';
-
-  const statusBadgeColor = (status: SignUpRulesTestEvaluationStatus): "green" | "red" | "orange" | "blue" | undefined => {
-    if (status === 'matched') return 'green';
-    if (status === 'missing_condition') return 'orange';
-    if (status === 'error') return 'red';
-    return undefined;
-  };
-
-  const statusLabel: Record<SignUpRulesTestEvaluationStatus, string> = {
-    matched: 'Matched',
-    not_matched: 'No match',
-    disabled: 'Disabled',
-    missing_condition: 'No condition',
-    error: 'Error',
-  };
-
-  const decisionLabel: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
-    allow: 'Allowed by rule',
-    reject: 'Rejected by rule',
-    'default-allow': 'Allowed by default',
-    'default-reject': 'Rejected by default',
-  };
 
   const fieldLabel = (text: string) => (
     <Typography variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
@@ -1271,7 +1317,7 @@ function TestRulesCard({
                   <DesignBadge label={outcomeLabel} color={outcomeBadgeColor} size="sm" />
                 </div>
                 <Typography variant="secondary" className="text-xs">
-                  {decisionLabel[result.outcome.decision]}
+                  {DECISION_LABEL[result.outcome.decision]}
                 </Typography>
                 {decisionRule && (
                   <Typography variant="secondary" className="text-xs">
@@ -1372,10 +1418,10 @@ function TestRulesCard({
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <ActionBadge type={evaluation.action.type} />
                             {statusColor ? (
-                              <DesignBadge label={statusLabel[evaluation.status]} color={statusColor} size="sm" />
+                              <DesignBadge label={STATUS_LABEL[evaluation.status]} color={statusColor} size="sm" />
                             ) : (
                               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                {statusLabel[evaluation.status]}
+                                {STATUS_LABEL[evaluation.status]}
                               </span>
                             )}
                           </div>
@@ -1425,62 +1471,54 @@ function TestRulesDialog({
   trigger,
 }: {
   stackAdminApp: ReturnType<typeof useAdminApp>,
-  trigger: React.ReactNode,
+  trigger: React.ReactElement,
 }) {
+  const state = useTestRulesState(stackAdminApp);
+
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        {trigger}
-      </DialogTrigger>
-      <DialogContent
-        className="max-w-5xl gap-0 p-0 overflow-hidden border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"
-        overlayProps={{ className: "bg-black/50 backdrop-blur-sm" }}
-      >
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.06]">
-          <div className="flex items-start gap-3">
-            <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
-              <FlaskIcon className="h-4 w-4 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0 space-y-1">
-              <DialogTitle className="text-base">Test sign-up rules</DialogTitle>
-              <DialogDescription className="text-xs">
-                Simulate a sign-up request to preview which rules trigger and how the final decision is made.
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <DialogBody className="mx-0 my-0 w-auto px-6 py-4">
-          <TestRulesCard stackAdminApp={stackAdminApp} />
-        </DialogBody>
-
-        <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
-          <DialogClose asChild>
-            <DesignButton variant="secondary" size="sm">Close</DesignButton>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DesignDialog
+      size="5xl"
+      icon={FlaskIcon}
+      title="Test sign-up rules"
+      description="Simulate a sign-up request to preview which rules trigger and how the final decision is made."
+      trigger={trigger}
+      footer={(
+        <DesignDialogClose asChild>
+          <DesignButton variant="secondary" size="sm">Close</DesignButton>
+        </DesignDialogClose>
+      )}
+    >
+      <TestRulesCard state={state} />
+    </DesignDialog>
   );
 }
 
 function TestRulesPanel({ stackAdminApp }: { stackAdminApp: ReturnType<typeof useAdminApp> }) {
-  const triggerButton = (
-    <DesignButton size="sm" variant="secondary">
-      <FlaskIcon className="h-4 w-4 mr-1.5" />
-      Open tester
-    </DesignButton>
-  );
+  const state = useTestRulesState(stackAdminApp);
 
   return (
-    <DesignCard title="Test rules" subtitle="Try sample sign-ups without touching the live flow" icon={FlaskIcon} gradient="default">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Typography variant="secondary" className="text-xs">
-          Run a simulated sign-up against your current ruleset and see the outcome.
-        </Typography>
-        <TestRulesDialog stackAdminApp={stackAdminApp} trigger={triggerButton} />
-      </div>
-    </DesignCard>
+    <Accordion type="single" collapsible className="w-full rounded-lg border border-foreground/[0.08] bg-white dark:bg-background">
+      <AccordionItem value="test-rules" className="border-0">
+        <AccordionTrigger className="px-4 py-3 hover:no-underline">
+          <div className="flex items-center gap-3 text-left">
+            <div className="h-7 w-7 rounded-md bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center">
+              <FlaskIcon className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div>
+              <Typography className="text-xs font-semibold uppercase tracking-wider">Test rules</Typography>
+              <Typography variant="secondary" className="text-xs font-normal">
+                Try sample sign-ups without touching the live flow
+              </Typography>
+            </div>
+          </div>
+        </AccordionTrigger>
+        <AccordionContent className="px-4 pb-4">
+          <div className="border-t border-foreground/[0.06] pt-4">
+            <TestRulesCard state={state} />
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
@@ -1587,9 +1625,7 @@ type PageBodyProps = {
   isCreatingNew: boolean,
   newRuleId: string | null,
   editingRuleId: string | null,
-  hasOrderChanges: boolean,
   defaultAction: 'allow' | 'reject',
-  isSavingOrder: boolean,
   onAddRule: () => void,
   onSaveRule: (ruleId: string, rule: SignUpRule) => Promise<void>,
   onCancelEdit: () => void,
@@ -1598,8 +1634,6 @@ type PageBodyProps = {
   onToggleEnabled: (id: string, enabled: boolean) => void,
   onDefaultActionChange: (value: 'allow' | 'reject') => void,
   onDragEnd: (event: DragEndEvent) => void,
-  onSaveOrder: () => void,
-  onDiscardOrder: () => void,
   stackAdminApp: ReturnType<typeof useAdminApp>,
 };
 
@@ -1609,29 +1643,55 @@ function PageBody(props: PageBodyProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const renderRules = () => (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={props.onDragEnd}>
-      <SortableContext items={props.signUpRules.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col gap-2">
-          {props.signUpRules.map((entry) => (
-            <SortableRuleRow
-              key={entry.id}
-              entry={entry}
-              analytics={props.ruleAnalytics.get(entry.id)}
-              analyticsTimespanHours={props.analyticsTimespanHours}
-              isAnalyticsLoading={props.isAnalyticsLoading}
-              isEditing={props.editingRuleId === entry.id}
-              onEdit={() => props.onEditRule(entry.id)}
-              onDelete={() => props.onRequestDelete(entry)}
-              onToggleEnabled={(enabled) => props.onToggleEnabled(entry.id, enabled)}
-              onSave={props.onSaveRule}
-              onCancelEdit={props.onCancelEdit}
-            />
-          ))}
+  const renderRules = () => {
+    if (props.signUpRules.length === 0) {
+      return (
+        <EmptyState
+          onAddRule={props.onAddRule}
+          disabled={props.editingRuleId !== null}
+        />
+      );
+    }
+
+    return (
+      <div className="overflow-hidden rounded-lg border border-foreground/[0.08] bg-white dark:bg-background">
+        <div className="hidden min-h-9 grid-cols-[3rem_3rem_minmax(0,1fr)_7rem_7rem_2.5rem] items-center gap-3 border-b border-foreground/[0.06] bg-gray-50 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:bg-muted/20 sm:grid">
+          <span>Order</span>
+          <span>On</span>
+          <span>Rule / condition</span>
+          <span>Action</span>
+          <span>Activity</span>
+          <span />
         </div>
-      </SortableContext>
-    </DndContext>
-  );
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={props.onDragEnd}>
+          <SortableContext items={props.signUpRules.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+            <div>
+              {props.signUpRules.map((entry, index) => (
+                <SortableRuleRow
+                  key={entry.id}
+                  entry={entry}
+                  index={index}
+                  analytics={props.ruleAnalytics.get(entry.id)}
+                  analyticsTimespanHours={props.analyticsTimespanHours}
+                  isAnalyticsLoading={props.isAnalyticsLoading}
+                  isEditing={props.editingRuleId === entry.id}
+                  onEdit={() => props.onEditRule(entry.id)}
+                  onDelete={() => props.onRequestDelete(entry)}
+                  onToggleEnabled={(enabled) => props.onToggleEnabled(entry.id, enabled)}
+                  onSave={props.onSaveRule}
+                  onCancelEdit={props.onCancelEdit}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+        <DefaultActionRow
+          value={props.defaultAction}
+          onChange={props.onDefaultActionChange}
+        />
+      </div>
+    );
+  };
 
   return (
     <div className="relative">
@@ -1645,61 +1705,61 @@ function PageBody(props: PageBodyProps) {
           />
         )}
 
-        {props.hasOrderChanges && (
-          <DesignAlert
-            variant="info"
-            title="Rule order has been changed"
-            description={
-              <span className="flex items-center gap-2">
-                <ArrowsDownUpIcon className="h-4 w-4" />
-                Save to commit, or discard to revert.
-              </span>
-            }
-          />
+        {(!props.isCreatingNew || props.signUpRules.length > 0) && (
+          renderRules()
         )}
 
-        {props.hasOrderChanges && (
-          <div className="flex items-center justify-end gap-2 mb-1">
-            <DesignButton
-              variant="ghost"
-              size="sm"
-              onClick={props.onDiscardOrder}
-              disabled={props.isSavingOrder}
-            >
-              <XIcon className="h-4 w-4 mr-1.5" />
-              Discard
-            </DesignButton>
-            <DesignButton
-              size="sm"
-              onClick={props.onSaveOrder}
-              loading={props.isSavingOrder}
-            >
-              <CheckIcon className="h-4 w-4 mr-1.5" />
-              Save order
-            </DesignButton>
+        {props.signUpRules.length === 0 && props.isCreatingNew && (
+          <div className="overflow-hidden rounded-lg border border-foreground/[0.08] bg-white dark:bg-background">
+            <DefaultActionRow
+              value={props.defaultAction}
+              onChange={props.onDefaultActionChange}
+            />
           </div>
         )}
 
-        {props.signUpRules.length > 0 && renderRules()}
-
-        {props.signUpRules.length === 0 && !props.isCreatingNew && (
-          <EmptyState
-            onAddRule={props.onAddRule}
-            disabled={props.editingRuleId !== null || props.hasOrderChanges}
-          />
-        )}
-
-        <DefaultActionRow
-          value={props.defaultAction}
-          onChange={props.onDefaultActionChange}
-        />
-
-        <div className="pt-10">
+        <div className="pt-6">
           <TestRulesPanel stackAdminApp={props.stackAdminApp} />
         </div>
 
         <div className="pt-5" aria-hidden />
       </div>
+    </div>
+  );
+}
+
+function OrderChangeActions({
+  isSavingOrder,
+  onSaveOrder,
+  onDiscardOrder,
+}: {
+  isSavingOrder: boolean,
+  onSaveOrder: () => Promise<void>,
+  onDiscardOrder: () => void,
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-50 px-2 py-1.5 dark:bg-amber-950/20">
+      <span className="hidden items-center gap-1.5 px-1 text-xs text-amber-800 dark:text-amber-200 sm:flex">
+        <ArrowsDownUpIcon className="h-3.5 w-3.5" />
+        Unsaved order
+      </span>
+      <DesignButton
+        variant="ghost"
+        size="sm"
+        onClick={onDiscardOrder}
+        disabled={isSavingOrder}
+      >
+        <XIcon className="h-4 w-4 mr-1.5" />
+        Discard
+      </DesignButton>
+      <DesignButton
+        size="sm"
+        onClick={onSaveOrder}
+        loading={isSavingOrder}
+      >
+        <CheckIcon className="h-4 w-4 mr-1.5" />
+        Save order
+      </DesignButton>
     </div>
   );
 }
@@ -1858,13 +1918,22 @@ export default function PageClient() {
         title="Sign-up Rules"
         description="Create rules to control who can sign up. Rules are evaluated in order from top to bottom."
         actions={
-          <DesignButton
-            onClick={handleAddRule}
-            disabled={isAnyEditing || hasOrderChanges}
-          >
-            <PlusIcon className="h-4 w-4 mr-2" />
-            Add rule
-          </DesignButton>
+          <div className="flex items-center gap-2">
+            {hasOrderChanges && (
+              <OrderChangeActions
+                isSavingOrder={isSavingOrder}
+                onSaveOrder={handleSaveOrderAsync}
+                onDiscardOrder={handleDiscardOrder}
+              />
+            )}
+            <DesignButton
+              onClick={handleAddRule}
+              disabled={isAnyEditing || hasOrderChanges}
+            >
+              <PlusIcon className="h-4 w-4 mr-2" />
+              Add rule
+            </DesignButton>
+          </div>
         }
       >
         <PageBody
@@ -1875,9 +1944,7 @@ export default function PageClient() {
           isCreatingNew={isCreatingNew}
           newRuleId={newRuleId}
           editingRuleId={editingRuleId}
-          hasOrderChanges={hasOrderChanges}
           defaultAction={defaultAction}
-          isSavingOrder={isSavingOrder}
           onAddRule={handleAddRule}
           onSaveRule={handleSaveRule}
           onCancelEdit={handleCancelEdit}
@@ -1890,10 +1957,8 @@ export default function PageClient() {
             setDeleteDialogOpen(true);
           }}
           onToggleEnabled={(id, enabled) => runAsynchronouslyWithAlert(handleToggleEnabled(id, enabled))}
-          onDefaultActionChange={(v) => { runAsynchronouslyWithAlert(handleDefaultActionChange(v)); }}
+          onDefaultActionChange={(v) => runAsynchronouslyWithAlert(handleDefaultActionChange(v))}
           onDragEnd={handleDragEnd}
-          onSaveOrder={() => { runAsynchronouslyWithAlert(handleSaveOrderAsync()); }}
-          onDiscardOrder={handleDiscardOrder}
           stackAdminApp={stackAdminApp}
         />
 

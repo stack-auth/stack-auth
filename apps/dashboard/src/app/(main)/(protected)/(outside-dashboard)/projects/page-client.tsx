@@ -11,7 +11,7 @@ import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack
 import { isPaidPlan } from "@stackframe/stack-shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -102,10 +102,10 @@ function ProjectsListPage() {
   const [recentConfigProjectsError, setRecentConfigProjectsError] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
-  const [projectWeeklyUsers, setProjectWeeklyUsers] = useState<Map<string, number>>(new Map());
-  const [projectWeeklyUsersChart, setProjectWeeklyUsersChart] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
-  const [loadingProjectWeeklyUsers, setLoadingProjectWeeklyUsers] = useState(true);
-  const [projectWeeklyUsersError, setProjectWeeklyUsersError] = useState(false);
+  const [projectTotalUsers, setProjectTotalUsers] = useState<Map<string, number>>(new Map());
+  const [projectDailySignups, setProjectDailySignups] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
+  const [loadingProjectMetrics, setLoadingProjectMetrics] = useState(true);
+  const [projectMetricsError, setProjectMetricsError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -159,15 +159,15 @@ function ProjectsListPage() {
 
   useEffect(() => {
     let cancelled = false;
-    runAsynchronouslyWithAlert(async () => {
+    runAsynchronously(async () => {
       if (!cancelled) {
-        setLoadingProjectWeeklyUsers(true);
-        setProjectWeeklyUsersError(false);
+        setLoadingProjectMetrics(true);
+        setProjectMetricsError(false);
       }
       try {
-        const response = await appInternals.sendRequest("/internal/projects-weekly-users", {}, "client");
+        const response = await appInternals.sendRequest("/internal/projects-metrics", {}, "client");
         if (!response.ok) {
-          throw new Error(`Failed to load project weekly users: ${response.status} ${await response.text()}`);
+          throw new Error(`Failed to load project metrics: ${response.status} ${await response.text()}`);
         }
         const body = await response.json();
         if (
@@ -178,24 +178,24 @@ function ProjectsListPage() {
           typeof body.projects !== "object" ||
           Array.isArray(body.projects)
         ) {
-          throw new Error("Failed to load project weekly users: response body did not include a projects object.");
+          throw new Error("Failed to load project metrics: response body did not include a projects object.");
         }
-        const weeklyUsersMap = new Map<string, number>();
-        const weeklyUsersChartMap = new Map<string, { date: string, activity: number }[]>();
+        const totalUsersMap = new Map<string, number>();
+        const dailySignupsMap = new Map<string, { date: string, activity: number }[]>();
         for (const [projectId, value] of Object.entries(body.projects)) {
           if (value == null || typeof value !== "object") {
             continue;
           }
-          const weeklyUsers = "weekly_users" in value ? value.weekly_users : undefined;
-          if (typeof weeklyUsers === "number") {
-            weeklyUsersMap.set(projectId, weeklyUsers);
+          const totalUsers = "total_users" in value ? value.total_users : undefined;
+          if (typeof totalUsers === "number") {
+            totalUsersMap.set(projectId, totalUsers);
           }
-          const dailyUsers = "daily_users" in value ? value.daily_users : undefined;
-          if (!Array.isArray(dailyUsers)) {
+          const dailySignups = "daily_signups" in value ? value.daily_signups : undefined;
+          if (!Array.isArray(dailySignups)) {
             continue;
           }
           const points: { date: string, activity: number }[] = [];
-          for (const point of dailyUsers) {
+          for (const point of dailySignups) {
             if (point != null && typeof point === "object" && "date" in point && "activity" in point) {
               const date = point.date;
               const activity = point.activity;
@@ -204,20 +204,20 @@ function ProjectsListPage() {
               }
             }
           }
-          weeklyUsersChartMap.set(projectId, points);
+          dailySignupsMap.set(projectId, points);
         }
+
         if (!cancelled) {
-          setProjectWeeklyUsers(weeklyUsersMap);
-          setProjectWeeklyUsersChart(weeklyUsersChartMap);
+          setProjectTotalUsers(totalUsersMap);
+          setProjectDailySignups(dailySignupsMap);
         }
       } catch (error) {
-        if (!cancelled) {
-          setProjectWeeklyUsersError(true);
-        }
-        throw error;
+        if (cancelled) return;
+        setProjectMetricsError(true);
+        captureError("projects-page-load-metrics", error);
       } finally {
         if (!cancelled) {
-          setLoadingProjectWeeklyUsers(false);
+          setLoadingProjectMetrics(false);
         }
       }
     });
@@ -541,10 +541,10 @@ function ProjectsListPage() {
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
-                    weeklyUsers={projectWeeklyUsers.get(project.id)}
-                    weeklyUsersChart={projectWeeklyUsersChart.get(project.id)}
-                    weeklyUsersLoading={loadingProjectWeeklyUsers}
-                    weeklyUsersError={projectWeeklyUsersError}
+                    totalUsers={projectTotalUsers.get(project.id)}
+                    dailySignups={projectDailySignups.get(project.id)}
+                    metricsLoading={loadingProjectMetrics}
+                    metricsError={projectMetricsError}
                   />
                 );
               })}

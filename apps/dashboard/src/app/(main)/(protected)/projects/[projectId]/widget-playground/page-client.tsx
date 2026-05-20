@@ -1,6 +1,7 @@
 "use client";
 
 import { PacificaCard } from '@/components/pacifica/card';
+import { Button, ButtonProps, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@/components/ui';
 import { DndContext, closestCenter, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import useResizeObserver from '@react-hook/resize-observer';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
@@ -13,7 +14,6 @@ import { RefState, mapRefState, useRefState } from '@stackframe/stack-shared/dis
 import { AsyncResult, Result } from '@stackframe/stack-shared/dist/utils/results';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
-import { Button, ButtonProps, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@/components/ui';
 import { ErrorBoundary } from 'next/dist/client/components/error-boundary';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FaBorderNone, FaPen, FaPlus, FaTrash } from 'react-icons/fa';
@@ -1631,7 +1631,7 @@ function Draggable(props: {
                   A runtime error occured while rendering this widget.<br />
                   <br />
                   <button className="text-blue-500 hover:underline" onClick={() => {
-                    props.reset();
+                    props.reset?.();
                   }}>Reload widget</button><br />
                   <br />
                   {errorToNiceString(props.error)}

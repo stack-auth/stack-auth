@@ -456,7 +456,8 @@ function useEmailVerificationToggle() {
       okButton={{
         label: "Apply Change",
         onClick: async () => {
-          await pendingChange?.onConfirm();
+          if (pendingChange == null) return;
+          await pendingChange.onConfirm();
         },
       }}
       cancelButton={{ label: "Cancel" }}
