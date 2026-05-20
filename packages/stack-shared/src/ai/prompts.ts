@@ -548,8 +548,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             Go to your project's dashboard on [app.stack-auth.com](https://app.stack-auth.com) and get the project ID. You can find it in the URL after the \`/projects/\` part. Copy-paste it into your \`.env.local\` file (or wherever your environment variables are stored):
 
-            \`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>  # if available, prefix with your framework's convention for client-exposed variables (e.g. NEXT_PUBLIC_, VITE_, etc.)
+            ${isAiPrompt ? `${deindent`
+              Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Stack Auth on a client.
+            `}\n\n` : ""}\`\`\`.env .env.local
+            STACK_PROJECT_ID=<your-project-id>
             \`\`\`
 
             Alternatively, you can also just set the project ID in the \`stack/client.ts\` file:
@@ -568,8 +570,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             Then, copy-paste them into your \`.env.local\` file (or wherever your environment variables are stored):
 
-            \`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>  # if desired, prefix with your framework's convention for client-exposed variables (e.g. NEXT_PUBLIC_, VITE_, etc.)
+            ${isAiPrompt ? `${deindent`
+              If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Stack Auth on a server.
+            `}\n\n` : ""}\`\`\`.env .env.local
+            STACK_PROJECT_ID=<your-project-id>
             STACK_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 
