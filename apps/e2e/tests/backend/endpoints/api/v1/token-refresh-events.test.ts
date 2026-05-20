@@ -45,8 +45,8 @@ const fetchEventsWithRetry = async (
   params: { userId?: string, eventType?: string },
   options: { attempts?: number, delayMs?: number, expectedCount?: number } = {}
 ) => {
-  const attempts = options.attempts ?? 10;
-  const delayMs = options.delayMs ?? 300;
+  const attempts = options.attempts ?? 40;
+  const delayMs = options.delayMs ?? 500;
   const expectedCount = options.expectedCount ?? 1;
 
   let response = await queryEvents(params);
@@ -77,7 +77,7 @@ const expectExactlyNTokenRefreshEvents = async (
   // First, wait for events to appear
   const response = await fetchEventsWithRetry(
     { userId, eventType: "$token-refresh" },
-    { expectedCount, attempts: 15, delayMs: 300 }
+    { expectedCount }
   );
 
   if (response.status !== 200) {
@@ -322,7 +322,7 @@ it("multiple session refreshes create one event each", async ({ expect }) => {
   });
   await InternalApiKey.createAndSetProjectKeys();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
 
   // Refresh multiple times

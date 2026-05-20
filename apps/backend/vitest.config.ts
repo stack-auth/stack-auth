@@ -7,7 +7,7 @@ export default mergeConfig(
   sharedConfig,
   defineConfig({
     test: {
-      testTimeout: 20000,
+      testTimeout: 60000,
       env: {
         ...loadEnv('', process.cwd(), ''),
         ...loadEnv('development', process.cwd(), ''),

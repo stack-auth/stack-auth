@@ -8,7 +8,7 @@ import { useStackApp, useUser } from "@stackframe/stack";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const app = useStackApp();
@@ -22,11 +22,20 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       }
       : undefined
   );
+  const autoLoginStarted = useRef(false);
 
   useEffect(() => {
+    // Run the auto-login at most once. Without this guard, React StrictMode
+    // (and any other re-invocation before the async sign-in resolves) runs the
+    // effect again while `user` is still null — and in preview mode each run
+    // generates a fresh `preview-*` email, creating a *second* preview user.
+    // The session then settles on one user while a project may have been
+    // created for the other, which surfaces as a 404 on the project page.
+    if (user || autoLoginStarted.current) return;
+    if (isRemoteDevelopmentEnvironment) return;
+    autoLoginStarted.current = true;
+
     const autoLogin = async () => {
-      if (isRemoteDevelopmentEnvironment) return;
-      if (user) return;
       if (isLocalEmulator) {
         await app.signInWithCredential({
           email: LOCAL_EMULATOR_ADMIN_EMAIL,

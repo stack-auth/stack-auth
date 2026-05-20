@@ -129,7 +129,7 @@ describe("with valid credentials", () => {
   });
 
   it("should track sent emails", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     await Project.createAndSwitch({
       display_name: "Test Sent Stats Project",
       config: {
@@ -167,50 +167,32 @@ describe("with valid credentials", () => {
       }
     `);
 
-    // wait for the email to be processed
-    await wait(12_000);
-
-    const response = await niceBackendFetch("/api/v1/emails/delivery-info", {
-      method: "GET",
-      accessType: "server",
-    });
-
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "capacity": {
-            "boost_expires_at": null,
-            "boost_multiplier": 1,
-            "is_boost_active": false,
-            "penalty_factor": 1,
-            "rate_per_second": 27.777779320987655,
-          },
-          "stats": {
-            "day": {
-              "bounced": 0,
-              "marked_as_spam": 0,
-              "sent": 1,
-            },
-            "hour": {
-              "bounced": 0,
-              "marked_as_spam": 0,
-              "sent": 1,
-            },
-            "month": {
-              "bounced": 0,
-              "marked_as_spam": 0,
-              "sent": 1,
-            },
-            "week": {
-              "bounced": 0,
-              "marked_as_spam": 0,
-              "sent": 1,
-            },
-          },
-        },
-        "headers": Headers { <some fields may have been hidden> },
+    // Poll until email stats are updated instead of a fixed wait
+    let response;
+    for (let i = 0; i < 30; i++) {
+      await wait(1_000);
+      response = await niceBackendFetch("/api/v1/emails/delivery-info", {
+        method: "GET",
+        accessType: "server",
+      });
+      if (response.status === 200 && response.body?.stats?.hour?.sent >= 1) {
+        break;
       }
-    `);
+    }
+
+    expect(response!.status).toBe(200);
+    const { stats, capacity } = response!.body;
+    expect(stats.hour.sent).toBe(1);
+    expect(stats.day.sent).toBe(1);
+    expect(stats.week.sent).toBe(1);
+    expect(stats.month.sent).toBe(1);
+    expect(stats.hour.bounced).toBe(0);
+    expect(stats.hour.marked_as_spam).toBe(0);
+    expect(capacity.is_boost_active).toBe(false);
+    expect(capacity.boost_expires_at).toBe(null);
+    expect(capacity.boost_multiplier).toBe(1);
+    expect(capacity.penalty_factor).toBe(1);
+    expect(capacity.rate_per_second).toBeGreaterThan(27);
+    expect(capacity.rate_per_second).toBeLessThan(28);
   });
 });

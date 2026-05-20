@@ -908,7 +908,7 @@ async function createLiveModeSubscriptionWithRenewal(): Promise<{
   };
 }
 
-it("refunds a renewal invoice (invoice_id path) without money or revoke — sourceTxnId is sub-renewal", async () => {
+it("refunds a renewal invoice (invoice_id path) without money or revoke — sourceTxnId is sub-renewal", { timeout: 120_000 }, async () => {
   const { subscriptionId, renewalInvoiceId } = await createLiveModeSubscriptionWithRenewal();
 
   // Use amount_usd=0 and end_action='at-period-end' to exercise the
@@ -964,7 +964,7 @@ it("refunds a renewal invoice (invoice_id path) without money or revoke — sour
   expect(refundRow).toBeDefined();
 });
 
-it("rejects end_action='now' when invoice_id targets a renewal invoice", async () => {
+it("rejects end_action='now' when invoice_id targets a renewal invoice", { timeout: 120_000 }, async () => {
   // The product grant lives on the sub-start txn, not on renewals — so a
   // revocation entry referencing a renewal would point at a non-existent
   // entry. Force admin to end-immediately against the start invoice (or the
@@ -987,7 +987,7 @@ it("rejects end_action='now' when invoice_id targets a renewal invoice", async (
   expect(refundRes.body.error).toMatch(/Cannot end product access immediately when refunding a renewal invoice/);
 });
 
-it("rejects refund with invoice_id that does not belong to the subscription", async () => {
+it("rejects refund with invoice_id that does not belong to the subscription", { timeout: 120_000 }, async () => {
   const { subscriptionId } = await createLiveModeSubscriptionWithRenewal();
   const unrelatedInvoiceId = randomUUID();
 

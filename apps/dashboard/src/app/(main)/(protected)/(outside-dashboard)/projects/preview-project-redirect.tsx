@@ -14,10 +14,17 @@ export default function PreviewProjectRedirect() {
   const router = useRouter();
   const appInternals = useMemo(() => {
     const internals = Reflect.get(app as any, stackAppInternalsSymbol);
-    if (!internals || typeof internals.sendRequest !== "function") {
+    if (
+      !internals ||
+      typeof internals.sendRequest !== "function" ||
+      typeof internals.refreshOwnedProjects !== "function"
+    ) {
       throw new Error("The Stack client app cannot send internal requests.");
     }
-    return internals as { sendRequest: (path: string, options: RequestInit, type: string) => Promise<Response> };
+    return internals as {
+      sendRequest: (path: string, options: RequestInit, type: string) => Promise<Response>,
+      refreshOwnedProjects: () => Promise<void>,
+    };
   }, [app]);
   const creating = useRef(false);
 
@@ -38,6 +45,11 @@ export default function PreviewProjectRedirect() {
       }
 
       const body = await response.json();
+      // Refresh the client-side owned-projects cache before navigating —
+      // otherwise the [projectId] route's `useAdminApp` reads a stale list
+      // that doesn't include the just-created project and calls `notFound()`.
+      // (The normal create-project flow in page-client.tsx does the same.)
+      await appInternals.refreshOwnedProjects();
       router.push(`/projects/${encodeURIComponent(body.project_id)}`);
     });
   }, [user, appInternals, router]);
