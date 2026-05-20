@@ -78,6 +78,13 @@ export function buildConfigPushSource(configFilePath: string, flags: SourceFlagO
 
     const { owner, repo } = parseOwnerRepo(flags.sourceRepo!, "--source-repo");
 
+    if (flags.sourcePath!.length === 0) {
+      throw new CliError("--source-path must be a non-empty path string.");
+    }
+    if (flags.sourceWorkflowPath!.length === 0) {
+      throw new CliError("--source-workflow-path must be a non-empty path string.");
+    }
+
     const sha = process.env.GITHUB_SHA;
     const branch = process.env.GITHUB_REF_NAME;
     if (!sha) {

@@ -133,6 +133,32 @@ describe("buildConfigPushSource", () => {
     ).toThrow(/owner\/repo/);
   });
 
+  it("rejects empty-string --source-path", () => {
+    process.env.GITHUB_SHA = "abc123";
+    process.env.GITHUB_REF_NAME = "main";
+    expect(() =>
+      buildConfigPushSource("stack.config.ts", {
+        source: "github",
+        sourceRepo: "myorg/my-repo",
+        sourcePath: "",
+        sourceWorkflowPath: ".github/workflows/x.yml",
+      })
+    ).toThrow(/--source-path must be a non-empty path string/);
+  });
+
+  it("rejects empty-string --source-workflow-path", () => {
+    process.env.GITHUB_SHA = "abc123";
+    process.env.GITHUB_REF_NAME = "main";
+    expect(() =>
+      buildConfigPushSource("stack.config.ts", {
+        source: "github",
+        sourceRepo: "myorg/my-repo",
+        sourcePath: "stack.config.ts",
+        sourceWorkflowPath: "",
+      })
+    ).toThrow(/--source-workflow-path must be a non-empty path string/);
+  });
+
   it("rejects --source-repo with whitespace or invalid characters", () => {
     process.env.GITHUB_SHA = "abc123";
     process.env.GITHUB_REF_NAME = "main";
