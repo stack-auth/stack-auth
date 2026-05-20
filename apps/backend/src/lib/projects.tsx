@@ -72,6 +72,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         logo_full_dark_mode_url: row.logoFullDarkModeUrl,
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
+        is_development_environment: row.isDevelopmentEnvironment,
         owner_team_id: row.ownerTeamId,
         onboarding_status: row.onboardingStatus,
         onboarding_state: onboardingState ?? undefined,
@@ -150,7 +151,6 @@ export async function createOrUpdateProjectWithLegacyConfig(
       project = await tx.project.create({
         data: createData,
       });
-
       await tx.tenancy.create({
         data: {
           projectId: project.id,
@@ -320,6 +320,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
       branchId: branchId,
       environmentConfigOverrideOverride: configOverrideOverride,
     });
+  }
+  if (options.type === "create" && options.data.is_development_environment !== undefined) {
+    await globalPrismaClient.$executeRaw`
+      UPDATE "Project"
+      SET "isDevelopmentEnvironment" = ${options.data.is_development_environment}
+      WHERE "id" = ${projectId}
+    `;
   }
   const result = await getProject(projectId);
   if (!result) {

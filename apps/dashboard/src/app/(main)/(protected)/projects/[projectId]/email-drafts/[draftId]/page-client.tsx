@@ -10,7 +10,7 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import { ToolCallContent, applyWysiwygEdit, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
-import { useUser } from "@stackframe/stack";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
@@ -45,7 +45,7 @@ function isValidStage(stage: string | null): stage is DraftStage {
 
 export default function PageClient({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const router = useRouter();
   const searchParams = useSearchParams();

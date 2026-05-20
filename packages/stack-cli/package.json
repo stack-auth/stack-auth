@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-cli",
-  "version": "2.8.89",
+  "version": "2.8.90",
   "repository": "https://github.com/hexclave/stack-auth",
   "description": "The CLI for Stack Auth. https://stack-auth.com",
   "main": "dist/index.js",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "clean": "rimraf node_modules && rimraf dist",
-    "build": "tsdown && node scripts/copy-emulator-assets.mjs",
+    "build": "tsdown && node scripts/copy-runtime-assets.mjs",
     "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",

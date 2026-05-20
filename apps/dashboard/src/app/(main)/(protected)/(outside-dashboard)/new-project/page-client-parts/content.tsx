@@ -21,9 +21,10 @@ import {
   Spinner,
   Typography,
 } from "@/components/ui";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { PlusCircleIcon } from "@phosphor-icons/react";
-import { AdminOwnedProject, useStackApp, useUser } from "@stackframe/stack";
+import { AdminOwnedProject, useStackApp } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -56,12 +57,14 @@ export default function PageClient() {
 function PageClientInner() {
   const app = useStackApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
-  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const teams = user.useTeams();
   const projects = user.useOwnedProjects();
   const router = useRouter();
   const searchParams = useSearchParams();
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
 
   const selectedProjectId = searchParams.get("project_id");
   const displayNameFromSearch = searchParams.get("display_name");
@@ -251,13 +254,14 @@ function PageClientInner() {
     });
   };
 
-  if (isLocalEmulator && selectedProjectId == null) {
+  if (isDevelopmentEnvironment && selectedProjectId == null) {
+    const developmentEnvironmentName = isRemoteDevelopmentEnvironment ? "remote development environment" : "local emulator";
     return (
       <div className="w-full flex-grow flex items-center justify-center p-4">
         <div className="max-w-lg w-full rounded-lg border border-border p-6 space-y-4">
-          <Typography type="h2">Project creation is disabled in local emulator mode</Typography>
+          <Typography type="h2">Project creation is disabled in development environment mode</Typography>
           <Typography variant="secondary">
-            Use the <b>Open config file</b> action on the Projects page to open or create projects from a local config file path.
+            Use the Projects page to open the project created for this {developmentEnvironmentName}.
           </Typography>
           <div className="flex justify-end">
             <Button onClick={async () => {

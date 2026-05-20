@@ -22,6 +22,7 @@ export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
 export const REQUIRED_APP_IDS: AppId[] = ["authentication", "emails"];
 export const PRIMARY_APP_IDS: AppId[] = ["authentication", "emails", "payments", "analytics"];
 export const ALL_APP_IDS = Object.keys(ALL_APPS) as AppId[];
+export const ONBOARDING_APP_IDS = ALL_APP_IDS.filter((appId) => ALL_APPS[appId].stage !== "alpha");
 export const OAUTH_SIGN_IN_METHODS: SignInMethod[] = ["google", "github", "microsoft"];
 
 export type ProjectOnboardingState = {
@@ -79,7 +80,7 @@ export function isProjectOnboardingState(value: unknown): value is ProjectOnboar
 
 export function normalizeProjectOnboardingState(
   value: ProjectOnboardingState,
-  options?: { localEmulator: boolean },
+  options?: { developmentEnvironment: boolean },
 ): ProjectOnboardingState {
   const selectedApps = ALL_APP_IDS.filter((appId) => (
     value.selected_apps.some((selectedAppId) => selectedAppId === appId)
@@ -88,12 +89,12 @@ export function normalizeProjectOnboardingState(
   const selectedSignInMethods = SIGN_IN_METHODS
     .map((method) => method.id)
     .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));
-  const localEmulator = options?.localEmulator === true;
-  const normalizedSignInMethods = localEmulator
+  const developmentEnvironment = options?.developmentEnvironment === true;
+  const normalizedSignInMethods = developmentEnvironment
     ? selectedSignInMethods.filter((methodId) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === methodId))
     : selectedSignInMethods;
   return {
-    selected_config_choice: localEmulator ? "create-new" : value.selected_config_choice,
+    selected_config_choice: developmentEnvironment ? "create-new" : value.selected_config_choice,
     selected_apps: selectedApps,
     selected_sign_in_methods: normalizedSignInMethods,
     selected_email_theme_id: value.selected_email_theme_id,
@@ -107,7 +108,7 @@ export function createProjectOnboardingState(options: {
   selectedSignInMethods: Set<SignInMethod>,
   selectedEmailThemeId: string | null,
   selectedPaymentsCountry: OnboardingPaymentsCountry,
-  localEmulator: boolean,
+  developmentEnvironment: boolean,
 }): ProjectOnboardingState {
   return normalizeProjectOnboardingState({
     selected_config_choice: options.selectedConfigChoice,
@@ -117,7 +118,7 @@ export function createProjectOnboardingState(options: {
       .filter((methodId) => options.selectedSignInMethods.has(methodId)),
     selected_email_theme_id: options.selectedEmailThemeId,
     selected_payments_country: options.selectedPaymentsCountry,
-  }, { localEmulator: options.localEmulator });
+  }, { developmentEnvironment: options.developmentEnvironment });
 }
 
 export function isStackAppInternals(value: unknown): value is StackAppInternals {
@@ -149,11 +150,12 @@ export function isProjectOnboardingStatus(value: unknown): value is ProjectOnboa
 }
 
 export function orderedAppIds() {
-  const primarySet = new Set(PRIMARY_APP_IDS);
-  const secondary = ALL_APP_IDS.filter((appId) => !primarySet.has(appId)).sort((a, b) => {
+  const primary = PRIMARY_APP_IDS.filter((appId) => ONBOARDING_APP_IDS.some((onboardingAppId) => onboardingAppId === appId));
+  const primarySet = new Set(primary);
+  const secondary = ONBOARDING_APP_IDS.filter((appId) => !primarySet.has(appId)).sort((a, b) => {
     return stringCompare(ALL_APPS[a].displayName, ALL_APPS[b].displayName);
   });
-  return [...PRIMARY_APP_IDS, ...secondary];
+  return [...primary, ...secondary];
 }
 
 export function normalizeTrustedDomain(input: string): string {

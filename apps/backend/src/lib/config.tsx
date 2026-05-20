@@ -11,7 +11,8 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
-import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "./local-emulator";
+import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason } from "./development-environment";
+import { getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "./local-emulator";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
@@ -20,6 +21,11 @@ type ProjectOptions = { projectId: string };
 type BranchOptions = ProjectOptions & { branchId: string };
 type EnvironmentOptions = BranchOptions;
 type OrganizationOptions = EnvironmentOptions & ({ organizationId: string | null } | { forUserId: string });
+
+const DEVELOPMENT_ENVIRONMENT_CONFIG_OVERRIDE = migrateConfigOverride("environment", {
+  "domains.allowLocalhost": true,
+  "payments.testMode": true,
+});
 
 // ---------------------------------------------------------------------------------------------------------------------
 // getRendered<$$$>Config
@@ -183,21 +189,28 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
 }
 
 export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentConfigOverride>> {
-  // fetch environment config from DB (either our own, or the source of truth one)
   return {
     supportedPrismaClients: ["global"],
     readOnlyQuery: true,
     sql: Prisma.sql`
-      SELECT "EnvironmentConfigOverride".*
-      FROM "EnvironmentConfigOverride"
-      WHERE "EnvironmentConfigOverride"."branchId" = ${options.branchId}
-      AND "EnvironmentConfigOverride"."projectId" = ${options.projectId}
+      SELECT
+        "EnvironmentConfigOverride"."config",
+        "Project"."isDevelopmentEnvironment"
+      FROM "Project"
+      LEFT JOIN "EnvironmentConfigOverride"
+        ON "EnvironmentConfigOverride"."projectId" = "Project"."id"
+        AND "EnvironmentConfigOverride"."branchId" = ${options.branchId}
+      WHERE "Project"."id" = ${options.projectId}
     `,
     postProcess: async (queryResult) => {
       if (queryResult.length > 1) {
         throw new StackAssertionError(`Expected 0 or 1 environment config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
       }
-      return migrateConfigOverride("environment", queryResult[0]?.config ?? {});
+      const storedConfigOverride = migrateConfigOverride("environment", queryResult[0]?.config ?? {});
+      if (queryResult[0]?.isDevelopmentEnvironment === true) {
+        return override(storedConfigOverride, DEVELOPMENT_ENVIRONMENT_CONFIG_OVERRIDE);
+      }
+      return storedConfigOverride;
     },
   };
 }
@@ -379,12 +392,9 @@ export async function setEnvironmentConfigOverride(options: {
   branchId: string,
   environmentConfigOverride: EnvironmentConfigOverride,
 }): Promise<void> {
-  if (
-    isLocalEmulatorEnabled() &&
-    getEnvVariable("STACK_SEED_MODE", "false") !== "true" &&
-    await isLocalEmulatorProject(options.projectId)
-  ) {
-    throw new StackAssertionError(LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, {
+  const blockReason = await getEnvironmentConfigWriteBlockReason(options.projectId);
+  if (blockReason != null) {
+    throw new StackAssertionError(blockReason, {
       projectId: options.projectId,
       branchId: options.branchId,
     });
@@ -1073,34 +1083,24 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   `);
 });
 
-import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes in local emulator mode', async ({ expect }) => {
+import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes for development environment projects', async ({ expect }) => {
   const vi = import.meta.vitest?.vi;
   if (!vi) {
     throw new StackAssertionError("Vitest context is required for in-source tests.");
   }
 
-  const envUtils = await import("@stackframe/stack-shared/dist/utils/env");
-  const localEmulator = await import("./local-emulator");
+  const developmentEnvironment = await import("./development-environment");
 
-  const getEnvVariableSpy = vi.spyOn(envUtils, "getEnvVariable").mockImplementation((name: string, defaultValue?: string) => {
-    if (name === "STACK_SEED_MODE") {
-      return "false";
-    }
-    return defaultValue ?? "test-value";
-  });
-  const isLocalEmulatorEnabledSpy = vi.spyOn(localEmulator, "isLocalEmulatorEnabled").mockReturnValue(true);
-  const isLocalEmulatorProjectSpy = vi.spyOn(localEmulator, "isLocalEmulatorProject").mockResolvedValue(true);
+  const isDevelopmentEnvironmentProjectSpy = vi.spyOn(developmentEnvironment, "isDevelopmentEnvironmentProject").mockResolvedValue(true);
 
   try {
     await expect(setEnvironmentConfigOverride({
       projectId: "project-id",
       branchId: "main",
       environmentConfigOverride: {},
-    })).rejects.toThrow(LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
+    })).rejects.toThrow(DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE);
   } finally {
-    isLocalEmulatorProjectSpy.mockRestore();
-    isLocalEmulatorEnabledSpy.mockRestore();
-    getEnvVariableSpy.mockRestore();
+    isDevelopmentEnvironmentProjectSpy.mockRestore();
   }
 });
 

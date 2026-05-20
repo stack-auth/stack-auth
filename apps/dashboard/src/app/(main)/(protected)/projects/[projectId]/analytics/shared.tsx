@@ -15,7 +15,7 @@ import {
   WarningCircleIcon
 } from "@phosphor-icons/react";
 import { Alert, AlertDescription, Button } from "@/components/ui";
-import { useUser } from "@stackframe/stack";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { PLAN_LIMITS, resolvePlanId } from "@stackframe/stack-shared/dist/plans";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -328,7 +328,7 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
 export function AnalyticsEventLimitBanner() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
-  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const teams = user.useTeams();
 
   const ownerTeam = useMemo(
@@ -350,7 +350,7 @@ export function AnalyticsEventLimitBanner() {
 export function SessionReplayLimitBanner() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
-  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const teams = user.useTeams();
 
   const ownerTeam = useMemo(

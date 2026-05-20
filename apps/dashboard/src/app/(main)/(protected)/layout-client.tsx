@@ -13,11 +13,19 @@ import { useEffect } from "react";
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const app = useStackApp();
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
-  const user = useUser();
+  const user = useUser(
+    isRemoteDevelopmentEnvironment
+      ? {
+        or: "anonymous-if-exists[deprecated]",
+      }
+      : undefined
+  );
 
   useEffect(() => {
     const autoLogin = async () => {
+      if (isRemoteDevelopmentEnvironment) return;
       if (user) return;
       if (isLocalEmulator) {
         await app.signInWithCredential({
@@ -35,9 +43,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       }
     };
     runAsynchronouslyWithAlert(autoLogin());
-  }, [user, app, isLocalEmulator, isPreview]);
+  }, [user, app, isLocalEmulator, isRemoteDevelopmentEnvironment, isPreview]);
 
-  if ((isLocalEmulator || isPreview) && !user) {
+  if ((isLocalEmulator || isRemoteDevelopmentEnvironment || isPreview) && !user) {
     return <Loading />;
   } else {
     return (

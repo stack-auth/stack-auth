@@ -1,6 +1,7 @@
 'use client';
 
 import { Typography } from "@/components/ui";
+import { getPublicEnvVar } from "@/lib/env";
 import { UserButton } from "@stackframe/stack";
 
 import { Link } from "./link";
@@ -8,6 +9,8 @@ import { Logo } from "./logo";
 import ThemeToggle from "./theme-toggle";
 
 export function Navbar({ ...props }) {
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+
   return (
     <header
       className={`sticky top-0 z-30 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.06] backdrop-blur-xl bg-white/45 dark:bg-black/20 px-4 shrink-0 ${props.className || ""}`}
@@ -23,7 +26,7 @@ export function Navbar({ ...props }) {
           </Link>
           <ThemeToggle />
         </div>
-        <UserButton />
+        {!isRemoteDevelopmentEnvironment && <UserButton />}
       </div>
     </header>
   );
