@@ -17,7 +17,9 @@ describe("buildWorkflowYaml", () => {
     expect(workflowYaml).toContain(`      - ${JSON.stringify(configPath)}`);
     expect(workflowYaml).toContain(`      - ${JSON.stringify(WORKFLOW_FILE_PATH)}`);
     expect(workflowYaml).toContain(`          STACK_AUTH_CONFIG_PATH: ${JSON.stringify(configPath)}`);
-    expect(workflowYaml).toContain("run: pnpx @stackframe/stack-cli@latest config push --config-file \"$STACK_AUTH_CONFIG_PATH\"");
+    expect(workflowYaml).toContain(`          STACK_AUTH_SOURCE_REPO: \${{ github.repository }}`);
+    expect(workflowYaml).toContain(`          STACK_AUTH_SOURCE_WORKFLOW_PATH: ${JSON.stringify(WORKFLOW_FILE_PATH)}`);
+    expect(workflowYaml).toContain("run: npx --yes @stackframe/stack-cli@latest config push --config-file \"$STACK_AUTH_CONFIG_PATH\" --source github --source-repo \"$STACK_AUTH_SOURCE_REPO\" --source-path \"$STACK_AUTH_CONFIG_PATH\" --source-workflow-path \"$STACK_AUTH_SOURCE_WORKFLOW_PATH\"");
     expect(workflowYaml).not.toContain(`--config-file "${configPath}"`);
   });
 
@@ -26,5 +28,11 @@ describe("buildWorkflowYaml", () => {
 
     expect(workflowYaml).toContain(`\${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}`);
     expect(workflowYaml).toContain(`\${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}`);
+  });
+
+  it("uses the GitHub Actions runtime repository context for --source-repo", () => {
+    const workflowYaml = buildWorkflowYaml("main", "stack.config.ts");
+    expect(workflowYaml).toContain("STACK_AUTH_SOURCE_REPO: ${{ github.repository }}");
+    expect(workflowYaml).not.toMatch(/STACK_AUTH_SOURCE_REPO:\s+"[^$]/);
   });
 });

@@ -11,7 +11,7 @@ import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } fr
  * Represents where the branch config was pushed from.
  */
 export type PushedConfigSource =
-  | { type: "pushed-from-github", owner: string, repo: string, branch: string, commitHash: string, configFilePath: string }
+  | { type: "pushed-from-github", owner: string, repo: string, branch: string, commitHash: string, configFilePath: string, workflowPath?: string }
   | { type: "pushed-from-unknown" }
   | { type: "unlinked" };
 
