@@ -10,11 +10,11 @@ import {
   SimpleTooltip
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { InfoIcon, XIcon } from "@phosphor-icons/react";
+import { InfoIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
-import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
+import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, getPriceCheckoutError, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
 
 /**
  * Label with optional info tooltip
@@ -116,13 +116,18 @@ export function ProductPriceRow({
     onSave(undefined, updated);
   };
 
+  const checkoutError = getPriceCheckoutError(price);
+
   return (
     <div
       className={cn(
         "relative rounded-2xl px-4 py-4",
         isEditing
           ? "flex flex-col gap-4 border border-border/60 dark:border-foreground/[0.12] bg-background/60 dark:bg-[hsl(240,10%,7%)]"
-          : "items-center justify-center text-center"
+          : "items-center justify-center text-center",
+        checkoutError && (isEditing
+          ? "border-destructive/40 bg-destructive/[0.03]"
+          : "ring-1 ring-destructive/30 bg-destructive/[0.02]")
       )}
     >
       {isEditing ? (
@@ -320,8 +325,13 @@ export function ProductPriceRow({
       ) : (
         // View mode - minimal, centered display
         <div className="flex flex-col items-center gap-0.5">
-          <div className="text-2xl font-semibold tabular-nums tracking-tight">
+          <div className="text-2xl font-semibold tabular-nums tracking-tight flex items-center gap-1.5">
             {isFree ? 'Free' : `$${niceAmount}`}
+            {checkoutError && (
+              <SimpleTooltip tooltip={checkoutError}>
+                <WarningIcon className="h-4 w-4 text-destructive" weight="fill" />
+              </SimpleTooltip>
+            )}
           </div>
           {!isFree && (
             <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'One-time'}</div>

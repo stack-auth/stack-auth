@@ -2,7 +2,7 @@
 
 import { Button, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { GiftIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { GiftIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
   createNewEditingPrice,
@@ -11,7 +11,7 @@ import {
   priceToEditingPrice,
   type EditingPrice,
 } from "./price-edit-dialog";
-import { formatPriceDisplay, generateUniqueId, isFreePrices, type Price } from "./utils";
+import { formatPriceDisplay, generateUniqueId, getPriceCheckoutError, isFreePrices, type Price } from "./utils";
 
 type PricingSectionProps = {
   prices: Record<string, Price>,
@@ -220,37 +220,48 @@ export function PricingSection({
         </div>
       ) : (
         <div className="space-y-2">
-          {Object.entries(prices).map(([priceId, price]) => (
-            <div
-              key={priceId}
-              className={cn(
+          {Object.entries(prices).map(([priceId, price]) => {
+            const checkoutError = getPriceCheckoutError(price);
+            return (
+              <div
+                key={priceId}
+                className={cn(
                 "flex items-center justify-between p-2.5 rounded-lg",
                 "bg-foreground/[0.02] border border-border/30",
-                "hover:bg-foreground/[0.04] transition-colors duration-150 hover:transition-none"
+                "hover:bg-foreground/[0.04] transition-colors duration-150 hover:transition-none",
+                checkoutError && "border-destructive/40 bg-destructive/[0.03]"
               )}
-            >
-              <div className="flex-1">
-                <div className="font-medium text-sm">{formatPriceDisplay(price)}</div>
-                <div className="text-xs text-foreground/30 font-mono">{priceId}</div>
+              >
+                <div className="flex-1">
+                  <div className="font-medium text-sm flex items-center gap-1.5">
+                    {formatPriceDisplay(price)}
+                    {checkoutError && (
+                      <SimpleTooltip tooltip={checkoutError}>
+                        <WarningIcon className="h-4 w-4 text-destructive" weight="fill" />
+                      </SimpleTooltip>
+                    )}
+                  </div>
+                  <div className="text-xs text-foreground/30 font-mono">{priceId}</div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditClick(priceId)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemovePrice(priceId)}
+                  >
+                    <TrashIcon className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleEditClick(priceId)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleRemovePrice(priceId)}
-                >
-                  <TrashIcon className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"

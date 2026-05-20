@@ -26,34 +26,19 @@ import { ClockIcon, HardDriveIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
-import { getStripeOneTimeMinAmount } from "@stackframe/stack-shared/dist/payments/stripe-limits";
-import { DEFAULT_INTERVAL_UNITS, PRICE_INTERVAL_UNITS, type Price } from "./utils";
+import { DEFAULT_INTERVAL_UNITS, getPriceCheckoutError, PRICE_INTERVAL_UNITS, type Price } from "./utils";
 
 /**
- * We block $0 + sub-minimum one-time prices client-side so users don't hit a
- * cryptic Stripe error at checkout time. Recurring $0 subs are still allowed
- * (Stripe accepts them — see createFreePrice in ./utils). The actual minimum
- * lives in stack-shared/payments/stripe-limits so the backend and the UI
- * can't drift apart.
+ * Validates the form's editing state. Catches form-only issues here (empty
+ * input) and delegates the rest to `getPriceCheckoutError`, which is the same
+ * validator used to flag already-saved prices on the products page — so the
+ * dialog and the warning banners can't disagree.
  */
 function validateEditingPriceAmount(editing: EditingPrice): string | null {
-  const amount = Number(editing.amount);
-  if (editing.amount === '' || Number.isNaN(amount)) {
+  if (editing.amount === '' || Number.isNaN(Number(editing.amount))) {
     return "Enter a price";
   }
-  if (amount < 0) {
-    return "Price cannot be negative";
-  }
-  if (editing.intervalSelection === 'one-time') {
-    const minOneTime = getStripeOneTimeMinAmount('USD');
-    if (amount > 0 && amount < minOneTime) {
-      return `One-time prices must be at least $${minOneTime.toFixed(2)} (Stripe minimum)`;
-    }
-    if (amount === 0) {
-      return "One-time prices must be greater than $0 — switch to a recurring interval to offer a free tier";
-    }
-  }
-  return null;
+  return getPriceCheckoutError(editingPriceToPrice(editing));
 }
 
 export type EditingPrice = {

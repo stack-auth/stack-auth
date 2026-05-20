@@ -17,6 +17,7 @@ import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { ListSection } from "./list-section";
 import { ProductDialog } from "./product-dialog";
+import { getPriceCheckoutError } from "./utils";
 
 type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
 type Item = CompleteConfig['payments']['items'][keyof CompleteConfig['payments']['items']];
@@ -654,6 +655,73 @@ function ProductsWithoutPricesAlert({
   );
 }
 
+// Surfaces products with prices that Stripe will reject at checkout time
+// (e.g. $0 one-time, sub-$0.50 one-time). These typically slipped past pre-
+// validation history and only fail when a customer actually tries to buy.
+function ProductsWithInvalidPricesAlert({
+  products,
+  projectId,
+}: {
+  products: CompleteConfig['payments']['products'],
+  projectId: string,
+}) {
+  const productsWithInvalidPrices = useMemo(() => {
+    return typedEntries(products)
+      .flatMap(([id, product]) => {
+        const issues = typedEntries(product.prices)
+          .map(([priceId, price]) => ({ priceId, error: getPriceCheckoutError(price) }))
+          .filter((x): x is { priceId: string, error: string } => x.error !== null);
+        if (issues.length === 0) return [];
+        return [{ id, displayName: product.displayName || id, issues }];
+      })
+      .sort((a, b) => stringCompare(a.id, b.id));
+  }, [products]);
+
+  if (productsWithInvalidPrices.length === 0) return null;
+
+  const previewLimit = 5;
+  const preview = productsWithInvalidPrices.slice(0, previewLimit);
+  const overflow = productsWithInvalidPrices.length - preview.length;
+
+  return (
+    <Alert variant="destructive" className="mb-4">
+      <AlertTitle>
+        {productsWithInvalidPrices.length === 1
+          ? "1 product has a price customers can't check out"
+          : `${productsWithInvalidPrices.length} products have prices customers can't check out`}
+      </AlertTitle>
+      <AlertDescription className="space-y-2">
+        <div>
+          Stripe rejects these prices at checkout (e.g. $0 one-time, or one-time
+          charges below $0.50). Open each product and either change the amount
+          or switch to a recurring interval.
+        </div>
+        <ul className="list-disc pl-5 space-y-0.5">
+          {preview.map(({ id, displayName, issues }) => (
+            <li key={id}>
+              <Link
+                href={`/projects/${projectId}/payments/products/${id}/edit`}
+                className="underline hover:no-underline"
+              >
+                {displayName}
+              </Link>
+              {displayName !== id && <span className="ml-1 font-mono text-xs opacity-70">({id})</span>}
+              <span className="ml-1 opacity-80">
+                — {issues.length === 1 ? `price “${issues[0].priceId}”` : `${issues.length} prices`}
+              </span>
+            </li>
+          ))}
+          {overflow > 0 && (
+            <li className="opacity-80">
+              …and {overflow} more
+            </li>
+          )}
+        </ul>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 export default function PageClient() {
   const projectId = useProjectId();
   const router = useRouter();
@@ -966,6 +1034,7 @@ export default function PageClient() {
   return (
     <>
       <ProductsWithoutPricesAlert products={paymentsConfig.products} projectId={projectId} />
+      <ProductsWithInvalidPricesAlert products={paymentsConfig.products} projectId={projectId} />
       {innerContent}
 
       {/* Product Dialog */}

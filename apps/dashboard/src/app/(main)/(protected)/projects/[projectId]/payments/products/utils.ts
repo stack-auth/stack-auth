@@ -1,4 +1,5 @@
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { getStripeOneTimeMinAmount } from "@stackframe/stack-shared/dist/payments/stripe-limits";
 import { isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 
@@ -168,6 +169,38 @@ export function createFreePrice(): { [priceId: string]: Price } {
  * product pages (list, edit, create) call this so the "Free" indicator and the
  * "Make free" / "Make paid" toggles stay in sync.
  */
+/**
+ * Returns a human-readable error string if this price would be rejected by
+ * Stripe at checkout time, or `null` if it's valid. Used both at price-edit
+ * time and as a warning indicator on the products page for existing prices
+ * that predate the validation (so admins know to fix them before customers
+ * hit the error at checkout).
+ *
+ * Stripe rules mirrored here:
+ * - One-time PaymentIntents must be ≥ per-currency minimum (USD: $0.50). $0
+ *   one-time is also rejected (it's below the minimum).
+ * - Recurring subs have no minimum — $0 subs are valid.
+ *
+ * See packages/stack-shared/src/payments/stripe-limits.ts for the source-of-
+ * truth minimums.
+ */
+export function getPriceCheckoutError(price: Price): string | null {
+  const amount = Number(price.USD);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return `Price amount is not a valid non-negative number (got ${JSON.stringify(price.USD)})`;
+  }
+  if (!price.interval) {
+    const minOneTime = getStripeOneTimeMinAmount('USD');
+    if (amount === 0) {
+      return "$0 one-time prices can't be checked out — switch to a recurring interval to offer it for free.";
+    }
+    if (amount < minOneTime) {
+      return `One-time prices must be at least $${minOneTime.toFixed(2)} (Stripe minimum) — customers can't complete checkout below this amount.`;
+    }
+  }
+  return null;
+}
+
 export function isFreePrices(prices: PricesObject): boolean {
   const entries = Object.values(prices);
   if (entries.length !== 1) return false;
