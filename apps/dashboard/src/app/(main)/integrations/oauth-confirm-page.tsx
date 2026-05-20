@@ -1,4 +1,4 @@
-import { stackServerApp } from "@/stack/server";
+import { getStackServerApp } from "@/stack/server";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { redirect } from "next/navigation";
@@ -18,7 +18,7 @@ export default async function IntegrationConfirmPage(props: {
   const onContinue = async (options: { projectId: string, projectName?: string }) => {
     "use server";
 
-    const user = await stackServerApp.getUser();
+    const user = await getStackServerApp().getUser();
     if (!user) {
       return { error: "unauthorized" };
     }
