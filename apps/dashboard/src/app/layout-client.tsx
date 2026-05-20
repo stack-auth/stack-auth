@@ -100,16 +100,18 @@ function getDevEnvironmentHealthSnapshot() {
   return devEnvironmentHealthSnapshot;
 }
 
+const SERVER_DEV_ENVIRONMENT_HEALTH_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "checking" };
 function getServerDevEnvironmentHealthSnapshot(): DevEnvironmentHealthSnapshot {
-  return { status: "checking" };
+  return SERVER_DEV_ENVIRONMENT_HEALTH_SNAPSHOT;
 }
 
 function subscribeHealthyDevEnvironment(_callback: () => void) {
   return () => {};
 }
 
+const HEALTHY_DEV_ENVIRONMENT_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "healthy" };
 function getHealthyDevEnvironmentSnapshot(): DevEnvironmentHealthSnapshot {
-  return { status: "healthy" };
+  return HEALTHY_DEV_ENVIRONMENT_SNAPSHOT;
 }
 
 function DevEnvironmentStoppedScreen(props: { restartCommand: string }) {
