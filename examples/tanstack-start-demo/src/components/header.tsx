@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
 import { UserButton } from "@stackframe/tanstack-start";
-import { useEffect, useState } from "react";
 
 export function Header() {
   return (
@@ -11,23 +10,20 @@ export function Header() {
             <Link to="/" className="font-semibold tracking-tight">
               Stack TanStack Demo
             </Link>
+            <Link to="/ssr" className="text-sm text-zinc-600 hover:text-zinc-950 hover:transition-none dark:text-zinc-300 dark:hover:text-white">
+              SSR
+            </Link>
+            <Link to="/client" className="text-sm text-zinc-600 hover:text-zinc-950 hover:transition-none dark:text-zinc-300 dark:hover:text-white">
+              Client
+            </Link>
             <Link to="/protected" className="text-sm text-zinc-600 hover:text-zinc-950 hover:transition-none dark:text-zinc-300 dark:hover:text-white">
               Protected
             </Link>
           </nav>
-          <ClientMountedUserButton />
+          <UserButton />
         </div>
       </header>
       <div className="h-14" />
     </>
   );
-}
-
-function ClientMountedUserButton() {
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  return isMounted ? <UserButton /> : <div className="h-9 w-9" />;
 }

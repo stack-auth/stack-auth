@@ -22,6 +22,7 @@ export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
 export const REQUIRED_APP_IDS: AppId[] = ["authentication", "emails"];
 export const PRIMARY_APP_IDS: AppId[] = ["authentication", "emails", "payments", "analytics"];
 export const ALL_APP_IDS = Object.keys(ALL_APPS) as AppId[];
+export const ONBOARDING_APP_IDS = ALL_APP_IDS.filter((appId) => ALL_APPS[appId].stage !== "alpha");
 export const OAUTH_SIGN_IN_METHODS: SignInMethod[] = ["google", "github", "microsoft"];
 
 export type ProjectOnboardingState = {
@@ -149,11 +150,12 @@ export function isProjectOnboardingStatus(value: unknown): value is ProjectOnboa
 }
 
 export function orderedAppIds() {
-  const primarySet = new Set(PRIMARY_APP_IDS);
-  const secondary = ALL_APP_IDS.filter((appId) => !primarySet.has(appId)).sort((a, b) => {
+  const primary = PRIMARY_APP_IDS.filter((appId) => ONBOARDING_APP_IDS.some((onboardingAppId) => onboardingAppId === appId));
+  const primarySet = new Set(primary);
+  const secondary = ONBOARDING_APP_IDS.filter((appId) => !primarySet.has(appId)).sort((a, b) => {
     return stringCompare(ALL_APPS[a].displayName, ALL_APPS[b].displayName);
   });
-  return [...PRIMARY_APP_IDS, ...secondary];
+  return [...primary, ...secondary];
 }
 
 export function normalizeTrustedDomain(input: string): string {
