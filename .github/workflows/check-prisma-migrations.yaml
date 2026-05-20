@@ -42,6 +42,9 @@ jobs:
           wait-for: 3s
           log-output-if: true
 
+      - name: Create .env.production.local file for apps/dashboard
+        run: cp apps/dashboard/.env.development apps/dashboard/.env.production.local
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

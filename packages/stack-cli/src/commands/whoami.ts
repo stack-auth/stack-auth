@@ -8,7 +8,7 @@ export function registerWhoamiCommand(program: Command) {
     .description("Show the currently logged-in Stack Auth CLI user")
     .action(async () => {
       const flags = program.opts();
-      const auth = resolveSessionAuth(flags);
+      const auth = resolveSessionAuth();
       const user = await getInternalUser(auth);
       const teams = await user.listTeams();
 
