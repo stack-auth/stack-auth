@@ -466,7 +466,6 @@ export namespace Auth {
   export namespace Otp {
     export async function sendSignInCode(options: TurnstileTestOptions = {}) {
       const mailbox = backendContext.value.mailbox;
-      const apiCallStart = performance.now();
       const response = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
         method: "POST",
         accessType: "client",
@@ -477,7 +476,6 @@ export namespace Auth {
           bot_challenge_phase: options.turnstilePhase,
         }),
       });
-      const apiCallEnd = performance.now();
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
           "status": 200,
@@ -488,38 +486,16 @@ export namespace Auth {
       const deadlineMs = 60_000;
       const intervalMs = 500;
       const deadline = performance.now() + deadlineMs;
-      let pollCount = 0;
-      let lastOutboxStatus: string | undefined;
       while (true) {
-        pollCount++;
         const messages = await mailbox.fetchMessages();
         const containsSubstring = messages.some(message => message.subject.includes("Sign in to") && message.body?.html.includes(response.body.nonce));
         if (containsSubstring) {
-          const totalMs = performance.now() - apiCallStart;
-          const pollMs = performance.now() - apiCallEnd;
-          if (totalMs > 10_000) {
-            const outboxEmails = await getOutboxEmails();
-            const relevantEmail = outboxEmails.find(e => e.subject?.includes("Sign in to"));
-            console.warn(`[sendSignInCode SLOW] total=${totalMs.toFixed(0)}ms apiCall=${(apiCallEnd - apiCallStart).toFixed(0)}ms poll=${pollMs.toFixed(0)}ms polls=${pollCount} mailbox=${mailbox.emailAddress} outboxStatus=${relevantEmail?.status ?? "not-found"} simpleStatus=${relevantEmail?.simple_status ?? "not-found"}`);
-          }
           break;
         }
-        const elapsed = performance.now() - apiCallStart;
-        if (elapsed > 10_000 && pollCount % 10 === 0) {
-          const outboxEmails = await getOutboxEmails();
-          const relevantEmail = outboxEmails.find(e => e.subject?.includes("Sign in to"));
-          const currentStatus = `${relevantEmail?.status ?? "not-found"}/${relevantEmail?.simple_status ?? "not-found"}`;
-          if (currentStatus !== lastOutboxStatus) {
-            console.warn(`[sendSignInCode WAITING] elapsed=${elapsed.toFixed(0)}ms polls=${pollCount} mailbox=${mailbox.emailAddress} outboxStatus=${currentStatus}`);
-            lastOutboxStatus = currentStatus;
-          }
-        }
         if (performance.now() >= deadline) {
-          const outboxEmails = await getOutboxEmails();
-          throw new StackAssertionError(`Sign-in code message not found within ${deadlineMs}ms (apiCall=${(apiCallEnd - apiCallStart).toFixed(0)}ms, polls=${pollCount})`, {
+          throw new StackAssertionError(`Sign-in code message not found within ${deadlineMs}ms`, {
             response,
             messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),
-            outboxEmails,
           });
         }
         await wait(intervalMs);
