@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/dashboard",
-  "version": "2.8.89",
+  "version": "2.8.90",
   "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "scripts": {
@@ -86,7 +86,7 @@
     "jose": "^6.1.3",
     "libsodium-wrappers": "^0.8.2",
     "lodash": "^4.17.21",
-    "next": "16.1.7",
+    "next": "16.2.6",
     "next-themes": "^0.2.1",
     "posthog-js": "^1.336.1",
     "react": "19.2.3",
