@@ -1093,8 +1093,13 @@ it("creates a $0 recurring subscription without requiring a payment intent", asy
       quantity: 1,
     },
   });
-  expect(response.status).toBe(200);
-  expect(response.body).toEqual({});
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("rejects a $0 one-time price with a clear 400", async ({ expect }) => {
@@ -1224,6 +1229,11 @@ it("switches from an existing paid subscription to a $0 subscription in the same
     accessType: "client",
     body: { full_code: codeFree, price_id: "monthly", quantity: 1 },
   });
-  expect(switchRes.status).toBe(200);
-  expect(switchRes.body).toEqual({});
+  expect(switchRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });

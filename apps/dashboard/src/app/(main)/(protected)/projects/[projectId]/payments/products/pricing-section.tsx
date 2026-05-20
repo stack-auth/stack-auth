@@ -152,7 +152,11 @@ export function PricingSection({
   // $0 price entry so users can see that "Free" is just a regular price row
   // (and isn't doing anything magical under the hood).
   if (isFree) {
-    const [freePriceId, freePrice] = Object.entries(prices)[0] ?? throwErr("isFree was true but no price entry exists");
+    // isFreePrices() guarantees exactly one entry; assert the full invariant
+    // so an out-of-sync prop doesn't silently drop the extra rows.
+    const entries = Object.entries(prices);
+    if (entries.length !== 1) throwErr(`isFree was true but expected exactly 1 price entry, got ${entries.length}`);
+    const [freePriceId, freePrice] = entries[0];
     return (
       <div
         className={cn(
