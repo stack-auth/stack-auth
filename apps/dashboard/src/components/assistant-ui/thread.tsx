@@ -3,7 +3,6 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { Button, useToast } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
-  validateComposerImageByteLength,
   validateComposerImageCount,
 } from "./image-attachment-validation";
 import {
@@ -24,7 +23,6 @@ import {
 import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, ImageIcon, PaperPlaneRightIcon, PencilSimpleIcon, WarningCircle, XIcon } from "@phosphor-icons/react";
 import {
   MAX_IMAGES_PER_MESSAGE,
-  MAX_IMAGE_MB_PER_FILE,
 } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type FC, type ReactNode } from "react";
@@ -375,16 +373,6 @@ const ComposerAttachmentsAddButton: FC = () => {
         const remaining = Math.max(0, MAX_IMAGES_PER_MESSAGE - liveCount);
         const picked = Array.from(files);
         const selected = picked.slice(0, remaining);
-        const valid: File[] = [];
-        const oversized: File[] = [];
-        for (const file of selected) {
-          const sizeValidation = validateComposerImageByteLength(file.size);
-          if (sizeValidation.ok) {
-            valid.push(file);
-          } else {
-            oversized.push(file);
-          }
-        }
 
         const countValidation = validateComposerImageCount(liveCount + picked.length);
         if (!countValidation.ok) {
@@ -394,20 +382,9 @@ const ComposerAttachmentsAddButton: FC = () => {
           });
         }
 
-        if (oversized.length > 0) {
-          const firstOversizedValidation = validateComposerImageByteLength(oversized[0]!.size);
-          toast({
-            variant: "destructive",
-            description:
-              oversized.length === 1
-                ? `"${oversized[0]!.name}": ${firstOversizedValidation.ok ? `Image exceeds ${MAX_IMAGE_MB_PER_FILE}MB limit.` : firstOversizedValidation.reason}`
-                : `${oversized.length} images exceeded the ${MAX_IMAGE_MB_PER_FILE}MB limit and were skipped.`,
-          });
-        }
-
         runAsynchronously(
           (async () => {
-            for (const file of valid) {
+            for (const file of selected) {
               if (composerRuntime.getState().attachments.length >= MAX_IMAGES_PER_MESSAGE) {
                 break;
               }
@@ -437,7 +414,7 @@ const ComposerAttachmentsAddButton: FC = () => {
 
   const tooltipText = atLimit
     ? `Limit reached (${MAX_IMAGES_PER_MESSAGE}/${MAX_IMAGES_PER_MESSAGE})`
-    : `Attach image (${count}/${MAX_IMAGES_PER_MESSAGE}, max ${MAX_IMAGE_MB_PER_FILE}MB)`;
+    : `Attach image (${count}/${MAX_IMAGES_PER_MESSAGE})`;
 
   return (
     <TooltipIconButton
