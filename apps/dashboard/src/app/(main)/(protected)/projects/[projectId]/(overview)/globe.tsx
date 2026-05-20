@@ -1024,6 +1024,31 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     };
   }, [globeReady, mounted, liveAvatars]);
 
+  // When the pointer leaves the globe canvas and the button is released
+  // outside, OrbitControls may miss the pointerup (pointer capture can be
+  // lost intermittently). Listen on window and forward the event to the
+  // canvas so the controls properly end the drag.
+  useEffect(() => {
+    if (!globeReady) return;
+    const domElement = globeRef.current?.renderer().domElement;
+    if (!domElement) return;
+
+    const handleWindowPointerUp = (e: PointerEvent) => {
+      if (e.target !== domElement && !domElement.contains(e.target as Node)) {
+        domElement.dispatchEvent(new PointerEvent('pointerup', {
+          pointerId: e.pointerId,
+          pointerType: e.pointerType,
+          bubbles: true,
+        }));
+      }
+    };
+
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+    };
+  }, [globeReady]);
+
   // set globeReady to true after a bit in case onGlobeReady was not called
   useEffect(() => {
     const timeout = setTimeout(() => {

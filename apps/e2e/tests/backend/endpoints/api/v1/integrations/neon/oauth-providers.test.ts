@@ -127,6 +127,7 @@ it("lists oauth providers", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,

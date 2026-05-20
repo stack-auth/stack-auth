@@ -734,7 +734,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         return;
       }
     }
-
     const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
       ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
       : await lowLevelSendEmailDirectWithoutRetries({
@@ -745,7 +744,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         html: row.renderedHtml ?? undefined,
         text: row.renderedText ?? undefined,
       });
-
     if (result.status === "error") {
       const newAttemptCount = row.sendRetries + 1;
       const isAttemptsExhausted = result.error.canRetry && newAttemptCount >= MAX_SEND_ATTEMPTS;
