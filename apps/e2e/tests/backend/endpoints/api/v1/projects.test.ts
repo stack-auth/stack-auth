@@ -2,7 +2,6 @@ import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
-import { performance } from "perf_hooks";
 
 
 // TODO some of the tests here test /api/v1/projects/current, the others test /api/v1/internal/projects/current. We should split them into different test files
