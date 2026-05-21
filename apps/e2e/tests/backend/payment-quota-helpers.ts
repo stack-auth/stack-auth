@@ -99,19 +99,17 @@ export async function waitForItemQuantityToStabilize(
   options: { minimumElapsedMs?: number } = {},
 ): Promise<number> {
   const pollIntervalMs = 500;
-  const stableForReads = 8;
+  const stableForReads = 16;
   const timeoutMs = 30000;
   const minimumElapsedMs = options.minimumElapsedMs ?? 0;
   const startedAt = performance.now();
 
   let last = await getItemQuantity(ownerTeamId, itemId);
   let stableReads = 1;
-  console.log(`[TIMING] stabilize: initial quantity=${last}, minimumElapsedMs=${minimumElapsedMs}`);
 
   while (true) {
     const elapsed = performance.now() - startedAt;
     if (stableReads >= stableForReads && elapsed >= minimumElapsedMs) {
-      console.log(`[TIMING] stabilize: returning quantity=${last} after ${elapsed.toFixed(0)}ms, stableReads=${stableReads}`);
       return last;
     }
     if (elapsed > timeoutMs) {
@@ -126,7 +124,6 @@ export async function waitForItemQuantityToStabilize(
     if (next === last) {
       stableReads++;
     } else {
-      console.log(`[TIMING] stabilize: quantity changed ${last} -> ${next} at ${elapsed.toFixed(0)}ms (resetting stable counter)`);
       stableReads = 1;
       last = next;
     }
