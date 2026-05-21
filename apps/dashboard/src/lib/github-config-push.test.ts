@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
+import { isObject } from "./github-api";
 import { buildUpdatedConfigFileContent, pushConfigUpdateToGitHub } from "./github-config-push";
+
+function getStringField(value: Record<string, unknown>, key: string): string {
+  const field = value[key];
+  if (typeof field !== "string") {
+    throw new Error(`Expected request body field ${key} to be a string.`);
+  }
+  return field;
+}
+
+function snapshotGithubCall(call: { path: string, init?: RequestInit }) {
+  if (call.init == null) {
+    return { path: call.path };
+  }
+  const body = call.init.body;
+  if (body == null) {
+    return {
+      path: call.path,
+      init: call.init,
+    };
+  }
+  if (typeof body !== "string") {
+    throw new Error("Expected request body to be a JSON string.");
+  }
+  const parsedBody: unknown = JSON.parse(body);
+  if (!isObject(parsedBody)) {
+    throw new Error("Expected request body to parse as an object.");
+  }
+  const content = getStringField(parsedBody, "content");
+  return {
+    path: call.path,
+    method: call.init.method,
+    headers: call.init.headers,
+    body: {
+      ...parsedBody,
+      content: Buffer.from(content, "base64").toString("utf-8"),
+    },
+  };
+}
 
 describe("buildUpdatedConfigFileContent", () => {
   it("merges a flat dot-notation update into the existing config", () => {
@@ -10,9 +49,16 @@ export const config: StackConfig = {
 };
 `;
     const result = buildUpdatedConfigFileContent(current, { "teams.allowClientTeamCreation": true });
-    expect(result).toContain('"teams": {');
-    expect(result).toContain('"allowClientTeamCreation": true');
-    expect(result).toContain('import type { StackConfig } from "@stackframe/stack"');
+    expect(result).toMatchInlineSnapshot(`
+      "import type { StackConfig } from "@stackframe/stack";
+
+      export const config: StackConfig = {
+        "teams": {
+          "allowClientTeamCreation": true
+        }
+      };
+      "
+    `);
   });
 
   it("preserves the existing @stackframe/* import package when re-rendering", () => {
@@ -21,13 +67,31 @@ export const config: StackConfig = {
 export const config: StackConfig = {};
 `;
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
-    expect(result).toContain('import type { StackConfig } from "@stackframe/react"');
+    expect(result).toMatchInlineSnapshot(`
+      "import type { StackConfig } from "@stackframe/react";
+
+      export const config: StackConfig = {
+        "auth": {
+          "allowSignUp": true
+        }
+      };
+      "
+    `);
   });
 
   it("defaults to @stackframe/js when no recognizable import is present", () => {
     const current = `export const config = {};\n`;
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
-    expect(result).toContain('import type { StackConfig } from "@stackframe/js"');
+    expect(result).toMatchInlineSnapshot(`
+      "import type { StackConfig } from "@stackframe/js";
+
+      export const config: StackConfig = {
+        "auth": {
+          "allowSignUp": true
+        }
+      };
+      "
+    `);
   });
 
   it("adds new top-level keys to an empty config", () => {
@@ -38,14 +102,21 @@ export const config: StackConfig = {};
       "payments.items.todos.displayName": "Todos",
       "payments.items.todos.customerType": "user",
     });
-    expect(result).toContain(`"payments": {
-    "items": {
-      "todos": {
-        "displayName": "Todos",
-        "customerType": "user"
-      }
-    }
-  }`);
+    expect(result).toMatchInlineSnapshot(`
+      "import type { StackConfig } from "@stackframe/js";
+
+      export const config: StackConfig = {
+        "payments": {
+          "items": {
+            "todos": {
+              "displayName": "Todos",
+              "customerType": "user"
+            }
+          }
+        }
+      };
+      "
+    `);
   });
 
   it("replaces an existing nested value via dot notation", () => {
@@ -57,19 +128,31 @@ export const config: StackConfig = {
     const result = buildUpdatedConfigFileContent(current, {
       "payments.items.todos.displayName": "New",
     });
-    expect(result).toContain('"displayName": "New"');
-    expect(result).not.toContain('"Old"');
+    expect(result).toMatchInlineSnapshot(`
+      "import type { StackConfig } from "@stackframe/js";
+
+      export const config: StackConfig = {
+        "payments": {
+          "items": {
+            "todos": {
+              "displayName": "New"
+            }
+          }
+        }
+      };
+      "
+    `);
   });
 
   it("refuses to mutate a show-onboarding placeholder file", () => {
     const current = `export const config = "show-onboarding";`;
     expect(() => buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true }))
-      .toThrow(/onboarding placeholder/);
+      .toThrowErrorMatchingInlineSnapshot(`[Error: The config file currently exports the onboarding placeholder. Finish setting up Stack Auth in your repo before pushing dashboard changes.]`);
   });
 
   it("throws when the file does not export a `config` binding", () => {
     expect(() => buildUpdatedConfigFileContent(`export const other = {};`, { "a": 1 }))
-      .toThrow(/must export a plain `config` object/);
+      .toThrowErrorMatchingInlineSnapshot(`[Error: Invalid config in stack.config.ts. The file must export a plain \`config\` object or "show-onboarding".]`);
   });
 });
 
@@ -111,14 +194,36 @@ export const config: StackConfig = { teams: { allowClientTeamCreation: false } }
       commitMessage: "feat: enable team creation",
       githubFetch: fn,
     });
-    expect(calls).toHaveLength(2);
-    expect(calls[0].path).toBe("/repos/myorg/my-repo/contents/stack.config.ts?ref=main");
-    expect(calls[1].init?.method).toBe("PUT");
-    const body = JSON.parse(String(calls[1].init?.body));
-    expect(body.message).toBe("feat: enable team creation");
-    expect(body.sha).toBe("oldsha");
-    expect(body.branch).toBe("main");
-    expect(Buffer.from(body.content, "base64").toString("utf-8")).toContain('"allowClientTeamCreation": true');
+    expect(calls.map(snapshotGithubCall)).toMatchInlineSnapshot(`
+      [
+        {
+          "init": {
+            "cache": "no-store",
+          },
+          "path": "/repos/myorg/my-repo/contents/stack.config.ts?ref=main",
+        },
+        {
+          "body": {
+            "branch": "main",
+            "content": "import type { StackConfig } from "@stackframe/js";
+
+      export const config: StackConfig = {
+        "teams": {
+          "allowClientTeamCreation": true
+        }
+      };
+      ",
+            "message": "feat: enable team creation",
+            "sha": "oldsha",
+          },
+          "headers": {
+            "content-type": "application/json",
+          },
+          "method": "PUT",
+          "path": "/repos/myorg/my-repo/contents/stack.config.ts",
+        },
+      ]
+    `);
   });
 
   it("falls back to a default commit message when none is provided", async () => {
@@ -129,8 +234,36 @@ export const config: StackConfig = { teams: { allowClientTeamCreation: false } }
       commitMessage: "   ",
       githubFetch: fn,
     });
-    const putBody = JSON.parse(String(calls[1].init?.body));
-    expect(putBody.message).toBe("chore(stack-auth): update config from dashboard");
+    expect(calls.map(snapshotGithubCall)).toMatchInlineSnapshot(`
+      [
+        {
+          "init": {
+            "cache": "no-store",
+          },
+          "path": "/repos/myorg/my-repo/contents/stack.config.ts?ref=main",
+        },
+        {
+          "body": {
+            "branch": "main",
+            "content": "import type { StackConfig } from "@stackframe/js";
+
+      export const config: StackConfig = {
+        "auth": {
+          "allowSignUp": true
+        }
+      };
+      ",
+            "message": "chore(stack-auth): update config from dashboard",
+            "sha": "oldsha",
+          },
+          "headers": {
+            "content-type": "application/json",
+          },
+          "method": "PUT",
+          "path": "/repos/myorg/my-repo/contents/stack.config.ts",
+        },
+      ]
+    `);
   });
 
   it("skips the commit when the new rendered file is identical to the old one", async () => {
@@ -149,7 +282,16 @@ export const config: StackConfig = {
       commitMessage: "no-op",
       githubFetch: fn,
     });
-    expect(calls.find((c) => c.init?.method === "PUT")).toBeUndefined();
+    expect(calls.map(snapshotGithubCall)).toMatchInlineSnapshot(`
+      [
+        {
+          "init": {
+            "cache": "no-store",
+          },
+          "path": "/repos/myorg/my-repo/contents/stack.config.ts?ref=main",
+        },
+      ]
+    `);
   });
 
   it("surfaces a clear error when the config file is missing on the branch", async () => {
@@ -163,7 +305,7 @@ export const config: StackConfig = {
         commitMessage: "x",
         githubFetch: fn,
       })
-    ).rejects.toThrow(/Could not find stack\.config\.ts/);
+    ).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Could not find stack.config.ts on myorg/my-repo@main. Check that the config file still exists in the linked branch.]`);
   });
 
   it("propagates non-404 GitHub errors", async () => {
@@ -177,6 +319,6 @@ export const config: StackConfig = {
         commitMessage: "x",
         githubFetch: fn,
       })
-    ).rejects.toThrow(/Bad credentials/);
+    ).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Bad credentials]`);
   });
 });

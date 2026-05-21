@@ -71,7 +71,8 @@ export type PushConfigUpdateOptions = {
  * (added in onboarding) will pick up the commit and re-push the canonical
  * config back to Stack Auth.
  *
- * Returns the commit SHA of the new commit, useful for surfacing in logs / UI.
+ * Commits the updated config file when needed; returns once GitHub accepts the
+ * write.
  */
 export async function pushConfigUpdateToGitHub(options: PushConfigUpdateOptions): Promise<void> {
   const { source, configUpdate, commitMessage, githubFetch } = options;
