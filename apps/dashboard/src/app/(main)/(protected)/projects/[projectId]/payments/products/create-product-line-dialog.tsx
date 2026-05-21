@@ -32,7 +32,7 @@ export function CreateProductLineDialog({ open, onOpenChange, onCreate }: Create
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
   const [errors, setErrors] = useState<{ id?: string, displayName?: string }>({});
 
-  const validateAndCreate = () => {
+  const validateAndCreate = async () => {
     const newErrors: { id?: string, displayName?: string } = {};
 
     // Validate display name
@@ -52,9 +52,10 @@ export function CreateProductLineDialog({ open, onOpenChange, onCreate }: Create
       return;
     }
 
-    runAsynchronouslyWithAlert(onCreate({ id: productLineId.trim(), displayName: displayName.trim() }));
+    // Await onCreate before resetting/closing so the dialog stays open with
+    // the user's input intact if creation fails.
+    await onCreate({ id: productLineId.trim(), displayName: displayName.trim() });
 
-    // Reset form
     setDisplayName("");
     setProductLineId("");
     setHasManuallyEditedId(false);
@@ -85,7 +86,7 @@ export function CreateProductLineDialog({ open, onOpenChange, onCreate }: Create
           <DesignDialogClose asChild>
             <DesignButton variant="secondary" size="sm" type="button">Cancel</DesignButton>
           </DesignDialogClose>
-          <DesignButton size="sm" type="button" onClick={validateAndCreate}>
+          <DesignButton size="sm" type="button" onClick={() => runAsynchronouslyWithAlert(validateAndCreate())}>
             Create Product Line
           </DesignButton>
         </>
