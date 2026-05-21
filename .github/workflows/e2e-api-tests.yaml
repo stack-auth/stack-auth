@@ -175,15 +175,7 @@ jobs:
         run: sleep 10
 
       - name: Run tests
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} ${{ matrix.freestyle-mode == 'prod' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'mail' || '' }}
-
-      - name: Run tests again (attempt 1)
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
-
-      - name: Run tests again (attempt 2)
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run --retry 2 ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} ${{ matrix.freestyle-mode == 'prod' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'mail' || '' }}
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
