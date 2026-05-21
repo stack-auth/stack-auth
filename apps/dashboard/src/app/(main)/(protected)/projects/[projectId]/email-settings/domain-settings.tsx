@@ -323,14 +323,15 @@ function ManagedDomainSetupDialog(props: {
   const [checking, setChecking] = useState(false);
   const [cloudflareApex, setCloudflareApex] = useState<string | null>(null);
 
+  const setupSubdomain = setupState?.subdomain;
   useEffect(() => {
-    if (!props.open || stage !== 2 || !setupState) {
+    if (!props.open || stage !== 2 || !setupSubdomain) {
       setCloudflareApex(null);
       return;
     }
     let cancelled = false;
     runAsynchronously(async () => {
-      const zone = await findZoneApex(setupState.subdomain);
+      const zone = await findZoneApex(setupSubdomain);
       if (cancelled || !zone) return;
       const usesCloudflare = zone.nameServers.some((n) => /(^|\.)cloudflare\.com$/i.test(n));
       if (usesCloudflare) setCloudflareApex(zone.apex);
@@ -338,7 +339,7 @@ function ManagedDomainSetupDialog(props: {
     return () => {
       cancelled = true;
     };
-  }, [props.open, stage, setupState]);
+  }, [props.open, stage, setupSubdomain]);
 
   useEffect(() => {
     if (props.open) {
@@ -1086,6 +1087,7 @@ export function DomainSettings() {
                             <button
                               type="button"
                               title="Remove domain"
+                              aria-label={`Remove domain ${d.senderLocalPart}@${d.subdomain}`}
                               onClick={() => setConfirmDelete(d)}
                               className="shrink-0 p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                             >
@@ -1183,9 +1185,11 @@ export function DomainSettings() {
           label: "Remove",
           onClick: async () => {
             if (!confirmDelete) return;
-            await stackAdminApp.deleteManagedEmailDomain({ resendDomainId: confirmDelete.domainId });
-            toast({ title: "Domain removed", description: `${confirmDelete.senderLocalPart}@${confirmDelete.subdomain} was removed.`, variant: "success" });
-            await refreshDomains();
+            runAsynchronouslyWithAlert(async () => {
+              await stackAdminApp.deleteManagedEmailDomain({ resendDomainId: confirmDelete.domainId });
+              toast({ title: "Domain removed", description: `${confirmDelete.senderLocalPart}@${confirmDelete.subdomain} was removed.`, variant: "success" });
+              await refreshDomains();
+            });
           },
         }}
         cancelButton
