@@ -7,6 +7,7 @@ import { CliError } from "../lib/errors.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 const SHOW_ONBOARDING_STACK_CONFIG_VALUE = "show-onboarding";
 
@@ -84,10 +85,19 @@ export function buildConfigPushSource(configFilePath: string, flags: SourceFlagO
       throw new CliError(`When --source github is specified, the following flags are also required: ${missing.join(", ")}.`);
     }
 
-    const { owner, repo } = parseOwnerRepo(flags.sourceRepo!, "--source-repo");
+    const { owner, repo } = parseOwnerRepo(
+      flags.sourceRepo ?? throwErr("Expected --source-repo to be provided when --source github is specified; this should have been caught by the missing-flags check."),
+      "--source-repo",
+    );
 
-    const sourcePath = normalizeRepoRelativePath(flags.sourcePath!, "--source-path");
-    const sourceWorkflowPath = normalizeRepoRelativePath(flags.sourceWorkflowPath!, "--source-workflow-path");
+    const sourcePath = normalizeRepoRelativePath(
+      flags.sourcePath ?? throwErr("Expected --source-path to be provided when --source github is specified; this should have been caught by the missing-flags check."),
+      "--source-path",
+    );
+    const sourceWorkflowPath = normalizeRepoRelativePath(
+      flags.sourceWorkflowPath ?? throwErr("Expected --source-workflow-path to be provided when --source github is specified; this should have been caught by the missing-flags check."),
+      "--source-workflow-path",
+    );
 
     const sha = process.env.GITHUB_SHA;
     const branch = process.env.GITHUB_REF_NAME;
