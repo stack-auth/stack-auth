@@ -19,7 +19,7 @@ jobs:
       base_branch: ${{ steps.check-diff.outputs.base_branch }}
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
 
@@ -60,7 +60,7 @@ jobs:
     steps:
       # First, checkout the current branch to get its migrations
       - name: Checkout current branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           path: current-branch
 
@@ -72,7 +72,7 @@ jobs:
 
       # Now checkout base branch (main for dev, dev for all others)
       - name: Checkout base branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ needs.check-migrations-changed.outputs.base_branch }}
           path: base-branch
@@ -85,16 +85,16 @@ jobs:
           rm -rf base-branch current-branch
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 22.x
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       # Start Docker Compose in the background
       - name: Start Docker Compose in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: docker compose -f docker/dependencies/docker.compose.yaml up --pull always -d &
           wait-on: /dev/null
@@ -160,7 +160,7 @@ jobs:
         run: pnpm run db:init
   
       - name: Start stack-backend in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:backend --log-order=stream &
           wait-on: |
@@ -170,7 +170,7 @@ jobs:
           log-output-if: true
 
       - name: Start stack-mcp in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:mcp --log-order=stream &
           wait-on: |
@@ -180,7 +180,7 @@ jobs:
           log-output-if: true
 
       - name: Start stack-dashboard in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
@@ -190,7 +190,7 @@ jobs:
           log-output-if: true
 
       - name: Start mock-oauth-server in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
           wait-on: |
@@ -200,7 +200,7 @@ jobs:
           log-output-if: true
 
       - name: Start run-email-queue in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
@@ -210,7 +210,7 @@ jobs:
           log-output-if: true
 
       - name: Start run-cron-jobs in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         if: ${{ hashFiles('apps/backend/scripts/run-cron-jobs.ts') != '' }}
         with:
           run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
@@ -261,7 +261,7 @@ jobs:
     steps:
       # First, checkout the base branch to get its migrations
       - name: Checkout base branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ needs.check-migrations-changed.outputs.base_branch }}
           path: base-branch
@@ -273,7 +273,7 @@ jobs:
 
       # Now checkout current branch (new code)
       - name: Checkout current branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           path: current-branch
 
@@ -292,16 +292,16 @@ jobs:
           rm -rf saved-migrations
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 22.x
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       # Start Docker Compose in the background
       - name: Start Docker Compose in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: docker compose -f docker/dependencies/docker.compose.yaml up --pull always -d &
           wait-on: /dev/null
@@ -367,7 +367,7 @@ jobs:
         run: pnpm run db:init
   
       - name: Start stack-backend in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:backend --log-order=stream &
           wait-on: |
@@ -377,7 +377,7 @@ jobs:
           log-output-if: true
 
       - name: Start stack-mcp in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:mcp --log-order=stream &
           wait-on: |
@@ -387,7 +387,7 @@ jobs:
           log-output-if: true
 
       - name: Start stack-dashboard in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:dashboard --log-order=stream &
           wait-on: |
@@ -397,7 +397,7 @@ jobs:
           log-output-if: true
 
       - name: Start mock-oauth-server in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm run start:mock-oauth-server --log-order=stream &
           wait-on: |
@@ -407,7 +407,7 @@ jobs:
           log-output-if: true
 
       - name: Start run-email-queue in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
           run: pnpm -C apps/backend run run-email-queue --log-order=stream &
           wait-on: |
@@ -417,7 +417,7 @@ jobs:
           log-output-if: true
 
       - name: Start run-cron-jobs in background
-        uses: JarvusInnovations/background-action@v1.0.7
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         if: ${{ hashFiles('apps/backend/scripts/run-cron-jobs.ts') != '' }}
         with:
           run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &

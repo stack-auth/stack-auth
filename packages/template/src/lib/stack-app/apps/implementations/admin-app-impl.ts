@@ -183,6 +183,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       description: data.description,
       createdAt: new Date(data.created_at_millis),
       isProductionMode: data.is_production_mode,
+      isDevelopmentEnvironment: data.is_development_environment,
       ownerTeamId: data.owner_team_id,
       onboardingStatus: data.onboarding_status,
       logoUrl: data.logo_url,

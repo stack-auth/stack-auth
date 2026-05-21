@@ -4,6 +4,28 @@ import type { ButtonHTMLAttributes } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
+// JSDOM does not ship `window.matchMedia`, and modules transitively imported by
+// `./page-client` (theme.tsx via code-block.tsx) call it at module-load time.
+// Stub it before those imports run so the test file can be evaluated.
+vi.hoisted(() => {
+  if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+  }
+});
+
 vi.mock("@/components/ui", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/ui")>();
 

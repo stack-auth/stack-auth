@@ -1,8 +1,8 @@
 "use client";
 import { useRouter } from "@/components/router";
 import { Button, Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { PlusIcon } from "@phosphor-icons/react";
-import { useUser } from "@stackframe/stack";
 import { useMemo } from "react";
 
 export function ProjectAvatar(props: { displayName: string }) {
@@ -17,7 +17,7 @@ export function ProjectAvatar(props: { displayName: string }) {
 
 export function ProjectSwitcher(props: { currentProjectId: string }) {
   const router = useRouter();
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const rawProjects = user.useOwnedProjects();
   const { currentProject, projects } = useMemo(() => {
     const currentProject = rawProjects.find((project) => project.id === props.currentProjectId);

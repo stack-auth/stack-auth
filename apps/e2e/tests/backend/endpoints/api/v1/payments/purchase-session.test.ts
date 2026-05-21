@@ -1044,3 +1044,196 @@ it("should block one-time purchase in same group after prior one-time purchase i
   expect(resB.status).toBe(400);
   expect(String(resB.body)).toContain("one-time purchase in this product line");
 });
+
+it("creates a $0 recurring subscription without requiring a payment intent", async ({ expect }) => {
+  // TODO(default-plans): revisit when default products land - $0 may no
+  // longer flow through purchase-session at all.
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "free-product": {
+          displayName: "Free Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "0",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "free-product",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a $0 one-time price with a clear 400", async ({ expect }) => {
+  // TODO(default-plans): revisit when default products land - $0 may no
+  // longer flow through purchase-session at all.
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "free-otp": {
+          displayName: "Free One Time",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            one: { USD: "0" },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "free-otp",
+    },
+  });
+  expect(urlRes.status).toBe(200);
+  const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const res = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "one",
+      quantity: 1,
+    },
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Free products must have a billing interval",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("switches from an existing paid subscription to a $0 subscription in the same product line", async ({ expect }) => {
+  // TODO(default-plans): revisit when default products land - $0 may no
+  // longer flow through purchase-session at all.
+  //
+  // Note: this test seeds the existing paid sub via test-mode-purchase-session,
+  // so the conflict goes through the DB-only cancel branch in route.tsx (it
+  // falls through to the regular CREATE path that test 1 covers). The Stripe
+  // `subscriptions.update` branch (the OTHER conflict branch) gets the same
+  // patch, but exercising it from e2e would require sending a signed Stripe
+  // webhook to seed an active Stripe-backed sub -- and that path is currently
+  // flaky in this repo (see existing failures in switch-plans.test.ts with
+  // "Invalid stripe-signature header"). Code-review verifies symmetry of the
+  // patch across both conflict branches.
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        paid: {
+          displayName: "Paid",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        free: {
+          displayName: "Free",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "0", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  // Seed an active paid sub via test-mode (DB-only, no Stripe round-trip).
+  const createUrlPaid = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "paid" },
+  });
+  expect(createUrlPaid.status).toBe(200);
+  const codePaid = (createUrlPaid.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+  const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: codePaid, price_id: "monthly", quantity: 1 },
+  });
+  expect(testModeRes.status).toBe(200);
+
+  // Now switch by purchasing the free product in the same line via the real route.
+  const createUrlFree = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "free" },
+  });
+  expect(createUrlFree.status).toBe(200);
+  const codeFree = (createUrlFree.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const switchRes = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: codeFree, price_id: "monthly", quantity: 1 },
+  });
+  expect(switchRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});

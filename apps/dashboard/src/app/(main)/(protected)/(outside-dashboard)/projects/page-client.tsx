@@ -11,12 +11,15 @@ import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack
 import { isPaidPlan } from "@stackframe/stack-shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
+import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { inviteUser, listInvitations, revokeInvitation } from "./actions";
+import Footer from "./footer";
+import PreviewProjectRedirect from "./preview-project-redirect";
 
 type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
@@ -54,13 +57,42 @@ function isProjectOnboardingStatus(value: unknown): value is ProjectOnboardingSt
 }
 
 export default function PageClient() {
+  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+
+  return (
+    <>
+      <DottedBackground />
+      {isPreview ? <PreviewProjectRedirect /> : <ProjectsListPage />}
+      <Footer />
+    </>
+  );
+}
+
+function DottedBackground() {
+  return (
+    <div
+      inert
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'radial-gradient(circle, rgba(127, 127, 127, 0.15) 1px, transparent 1px)',
+        backgroundSize: '10px 10px',
+      }}
+    />
+  );
+}
+
+function ProjectsListPage() {
   const app = useStackApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  const user = useUser({
+    or: isRemoteDevelopmentEnvironment ? "anonymous-if-exists[deprecated]" : "redirect",
+    projectIdMustMatch: "internal",
+  }) ?? throwErr("Projects page expected a user because useUser was called with an explicit required user mode.");
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
-  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
   const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
@@ -70,17 +102,17 @@ export default function PageClient() {
   const [recentConfigProjectsError, setRecentConfigProjectsError] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
-  const [projectWeeklyUsers, setProjectWeeklyUsers] = useState<Map<string, number>>(new Map());
-  const [projectWeeklyUsersChart, setProjectWeeklyUsersChart] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
-  const [loadingProjectWeeklyUsers, setLoadingProjectWeeklyUsers] = useState(true);
-  const [projectWeeklyUsersError, setProjectWeeklyUsersError] = useState(false);
+  const [projectTotalUsers, setProjectTotalUsers] = useState<Map<string, number>>(new Map());
+  const [projectDailySignups, setProjectDailySignups] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
+  const [loadingProjectMetrics, setLoadingProjectMetrics] = useState(true);
+  const [projectMetricsError, setProjectMetricsError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (rawProjects.length === 0 && !isLocalEmulator && !isPreview) {
+    if (rawProjects.length === 0 && !isLocalEmulator && !isRemoteDevelopmentEnvironment) {
       router.push('/new-project');
     }
-  }, [isLocalEmulator, isPreview, router, rawProjects]);
+  }, [isLocalEmulator, isRemoteDevelopmentEnvironment, router, rawProjects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,15 +159,15 @@ export default function PageClient() {
 
   useEffect(() => {
     let cancelled = false;
-    runAsynchronouslyWithAlert(async () => {
+    runAsynchronously(async () => {
       if (!cancelled) {
-        setLoadingProjectWeeklyUsers(true);
-        setProjectWeeklyUsersError(false);
+        setLoadingProjectMetrics(true);
+        setProjectMetricsError(false);
       }
       try {
-        const response = await appInternals.sendRequest("/internal/projects-weekly-users", {}, "client");
+        const response = await appInternals.sendRequest("/internal/projects-metrics", {}, "client");
         if (!response.ok) {
-          throw new Error(`Failed to load project weekly users: ${response.status} ${await response.text()}`);
+          throw new Error(`Failed to load project metrics: ${response.status} ${await response.text()}`);
         }
         const body = await response.json();
         if (
@@ -146,24 +178,24 @@ export default function PageClient() {
           typeof body.projects !== "object" ||
           Array.isArray(body.projects)
         ) {
-          throw new Error("Failed to load project weekly users: response body did not include a projects object.");
+          throw new Error("Failed to load project metrics: response body did not include a projects object.");
         }
-        const weeklyUsersMap = new Map<string, number>();
-        const weeklyUsersChartMap = new Map<string, { date: string, activity: number }[]>();
+        const totalUsersMap = new Map<string, number>();
+        const dailySignupsMap = new Map<string, { date: string, activity: number }[]>();
         for (const [projectId, value] of Object.entries(body.projects)) {
           if (value == null || typeof value !== "object") {
             continue;
           }
-          const weeklyUsers = "weekly_users" in value ? value.weekly_users : undefined;
-          if (typeof weeklyUsers === "number") {
-            weeklyUsersMap.set(projectId, weeklyUsers);
+          const totalUsers = "total_users" in value ? value.total_users : undefined;
+          if (typeof totalUsers === "number") {
+            totalUsersMap.set(projectId, totalUsers);
           }
-          const dailyUsers = "daily_users" in value ? value.daily_users : undefined;
-          if (!Array.isArray(dailyUsers)) {
+          const dailySignups = "daily_signups" in value ? value.daily_signups : undefined;
+          if (!Array.isArray(dailySignups)) {
             continue;
           }
           const points: { date: string, activity: number }[] = [];
-          for (const point of dailyUsers) {
+          for (const point of dailySignups) {
             if (point != null && typeof point === "object" && "date" in point && "activity" in point) {
               const date = point.date;
               const activity = point.activity;
@@ -172,20 +204,20 @@ export default function PageClient() {
               }
             }
           }
-          weeklyUsersChartMap.set(projectId, points);
+          dailySignupsMap.set(projectId, points);
         }
+
         if (!cancelled) {
-          setProjectWeeklyUsers(weeklyUsersMap);
-          setProjectWeeklyUsersChart(weeklyUsersChartMap);
+          setProjectTotalUsers(totalUsersMap);
+          setProjectDailySignups(dailySignupsMap);
         }
       } catch (error) {
-        if (!cancelled) {
-          setProjectWeeklyUsersError(true);
-        }
-        throw error;
+        if (cancelled) return;
+        setProjectMetricsError(true);
+        captureError("projects-page-load-metrics", error);
       } finally {
         if (!cancelled) {
-          setLoadingProjectWeeklyUsers(false);
+          setLoadingProjectMetrics(false);
         }
       }
     });
@@ -397,18 +429,20 @@ export default function PageClient() {
             </SelectContent>
           </Select>
 
-          <Button
-            className="rounded-xl"
-            onClick={async () => {
-              if (isLocalEmulator) {
-                setOpenConfigFileDialog(true);
-                return;
-              }
-              router.push("/new-project");
-              return await wait(2000);
-            }}
-          >{isLocalEmulator ? "Open a project" : "Create Project"}
-          </Button>
+          {!isRemoteDevelopmentEnvironment && (
+            <Button
+              className="rounded-xl"
+              onClick={async () => {
+                if (isLocalEmulator) {
+                  setOpenConfigFileDialog(true);
+                  return;
+                }
+                router.push("/new-project");
+                return await wait(2000);
+              }}
+            >{isLocalEmulator ? "Open a project" : "Create Project"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -508,10 +542,10 @@ export default function PageClient() {
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
-                    weeklyUsers={projectWeeklyUsers.get(project.id)}
-                    weeklyUsersChart={projectWeeklyUsersChart.get(project.id)}
-                    weeklyUsersLoading={loadingProjectWeeklyUsers}
-                    weeklyUsersError={projectWeeklyUsersError}
+                    totalUsers={projectTotalUsers.get(project.id)}
+                    dailySignups={projectDailySignups.get(project.id)}
+                    metricsLoading={loadingProjectMetrics}
+                    metricsError={projectMetricsError}
                   />
                 );
               })}

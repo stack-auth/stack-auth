@@ -1,9 +1,9 @@
 "use client";
 
 import { DashboardRuntimeCodegen } from "@/lib/ai-dashboard/contracts";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { useTheme } from "@/lib/theme";
-import { useUser } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { memo, useEffect, useMemo, useRef } from "react";
@@ -723,7 +723,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onRuntimeErrorRef.current = onRuntimeError;
   const onWidgetSelectedRef = useRef(onWidgetSelected);
   onWidgetSelectedRef.current = onWidgetSelected;
-  const user = useUser({ or: "redirect" });
+  const user = useDashboardUser();
   const { resolvedTheme } = useTheme();
 
   const baseUrl = useMemo(() => {

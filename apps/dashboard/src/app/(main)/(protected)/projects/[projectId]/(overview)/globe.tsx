@@ -1,8 +1,9 @@
 import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
+import { useDashboardUser } from '@/lib/dashboard-user';
 import { useThemeWatcher } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import useResizeObserver from '@react-hook/resize-observer';
-import { UserAvatar, useUser } from '@stackframe/stack';
+import { UserAvatar } from '@stackframe/stack';
 import type { MetricsRecentUser } from '@stackframe/stack-shared/dist/interface/admin-metrics';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
@@ -652,7 +653,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     }
   };
 
-  const user = useUser({ or: "redirect" });
+  const user = useDashboardUser();
   const displayName = user.displayName ?? user.primaryEmail;
 
   const { theme, mounted } = useThemeWatcher();
@@ -1022,6 +1023,31 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [globeReady, mounted, liveAvatars]);
+
+  // When the pointer leaves the globe canvas and the button is released
+  // outside, OrbitControls may miss the pointerup (pointer capture can be
+  // lost intermittently). Listen on window and forward the event to the
+  // canvas so the controls properly end the drag.
+  useEffect(() => {
+    if (!globeReady) return;
+    const domElement = globeRef.current?.renderer().domElement;
+    if (!domElement) return;
+
+    const handleWindowPointerUp = (e: PointerEvent) => {
+      if (e.target !== domElement && !domElement.contains(e.target as Node)) {
+        domElement.dispatchEvent(new PointerEvent('pointerup', {
+          pointerId: e.pointerId,
+          pointerType: e.pointerType,
+          bubbles: true,
+        }));
+      }
+    };
+
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+    };
+  }, [globeReady]);
 
   // set globeReady to true after a bit in case onGlobeReady was not called
   useEffect(() => {

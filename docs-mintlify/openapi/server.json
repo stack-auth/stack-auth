@@ -6565,12 +6565,9 @@
                     "client_secret": {
                       "type": "string",
                       "example": "1234567890abcdef_secret_xyz123",
-                      "description": "The Stripe client secret for completing the payment"
+                      "description": "Stripe client secret used by the browser to confirm payment via Stripe Elements. Omitted when no payment step is required from the customer; in that case the purchase is being settled without a confirmation step and the caller should skip mounting Stripe Elements."
                     }
-                  },
-                  "required": [
-                    "client_secret"
-                  ]
+                  }
                 }
               }
             }

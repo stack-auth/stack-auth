@@ -210,6 +210,8 @@ For the full, current flag list and any commands added after this skill was gene
 
 const COMMON_HEADERS = {
   "Cache-Control": "public, max-age=3600, s-maxage=3600",
+  // CDN must cache markdown (curl/agents) and HTML (browser navigate) separately.
+  "Vary": "Accept",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",
@@ -402,7 +404,7 @@ function renderHtml(): string {
 
   <footer>
     <span>© Stack Auth</span>
-    <a href="https://github.com/stack-auth/stack-auth" rel="noreferrer">GitHub&nbsp;↗</a>
+    <a href="https://github.com/hexclave/stack-auth" rel="noreferrer">GitHub&nbsp;↗</a>
   </footer>
 </main>
 <script>
@@ -429,12 +431,18 @@ function renderHtml(): string {
 </html>`;
 }
 
+const MARKDOWN_PREFERRING_TYPES = new Set(["*/*", "text/plain", "text/markdown", "text/x-markdown"]);
+
 function wantsHtml(req: Request): boolean {
-  // Browsers navigating to a top-level URL send Sec-Fetch-Mode: navigate.
-  // curl, fetch(), and agent fetchers do not, so they keep getting markdown.
-  if (req.headers.get("sec-fetch-mode") === "navigate") return true;
-  if (req.headers.get("sec-fetch-dest") === "document") return true;
-  return false;
+  // Browsers send `Accept: text/html,...` before `*/*`; curl/fetch/agents send
+  // `*/*` (or omit Accept). Serve HTML only when text/html appears AND is
+  // listed before any markdown-preferring type that would otherwise win.
+  const accept = req.headers.get("accept") ?? "";
+  const types = accept.split(",").map((part) => part.trim().split(";")[0].trim().toLowerCase());
+  const htmlIndex = types.indexOf("text/html");
+  if (htmlIndex === -1) return false;
+  const competitorIndex = types.findIndex((t) => MARKDOWN_PREFERRING_TYPES.has(t));
+  return competitorIndex === -1 || htmlIndex < competitorIndex;
 }
 
 export function GET(req: Request) {

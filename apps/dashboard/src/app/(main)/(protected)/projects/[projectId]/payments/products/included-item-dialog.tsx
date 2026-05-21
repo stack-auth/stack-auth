@@ -11,7 +11,7 @@ import { Checkbox, Label, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { PackageIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type ExpiresOption = 'never' | 'when-purchase-expires' | 'when-repeated';
 
@@ -80,6 +80,30 @@ export function IncludedItemDialog({
   });
   const [expires, setExpires] = useState<ExpiresOption>(editingItem?.expires || 'never');
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Sync internal state whenever the dialog opens or the user switches which
+  // item is being edited. We intentionally key off `open` + `editingItemId`
+  // (stable identities) and NOT `editingItem` itself: if the parent re-derives
+  // `editingItem` as a fresh object on each render, including it here would
+  // re-run this effect mid-edit and silently wipe whatever the user has typed.
+  // The latest `editingItem` is still read via the closure when this fires.
+  useEffect(() => {
+    if (!open) return;
+    setSelectedItemId(editingItemId || "");
+    setQuantity(editingItem?.quantity.toString() || "1");
+    const hasRepeatValue = editingItem?.repeat !== undefined && editingItem.repeat !== 'never';
+    setHasRepeat(hasRepeatValue);
+    if (editingItem?.repeat && editingItem.repeat !== 'never') {
+      setRepeatCount(editingItem.repeat[0].toString());
+      setRepeatUnit(editingItem.repeat[1]);
+    } else {
+      setRepeatCount("1");
+      setRepeatUnit("month");
+    }
+    setExpires(editingItem?.expires || 'never');
+    setErrors({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editingItemId]);
 
   const validateAndSave = () => {
     const newErrors: Record<string, string> = {};

@@ -19,7 +19,20 @@ import { CaretUpDownIcon, ClockIcon, CurrencyDollarIcon, HardDriveIcon } from "@
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useMemo, useState } from "react";
-import { DEFAULT_INTERVAL_UNITS, PRICE_INTERVAL_UNITS, type Price } from "./utils";
+import { DEFAULT_INTERVAL_UNITS, getPriceCheckoutError, PRICE_INTERVAL_UNITS, type Price } from "./utils";
+
+/**
+ * Validates the form's editing state. Catches form-only issues here (empty
+ * input) and delegates the rest to `getPriceCheckoutError`, which is the same
+ * validator used to flag already-saved prices on the products page — so the
+ * dialog and the warning banners can't disagree.
+ */
+function validateEditingPriceAmount(editing: EditingPrice): string | null {
+  if (editing.amount === '' || Number.isNaN(Number(editing.amount))) {
+    return "Enter a price";
+  }
+  return getPriceCheckoutError(editingPriceToPrice(editing));
+}
 
 export type EditingPrice = {
   priceId: string,
@@ -78,6 +91,8 @@ export function PriceEditDialog({
     "focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/30",
   );
 
+  const amountError = editingPrice ? validateEditingPriceAmount(editingPrice) : null;
+
   return (
     <DesignDialog
       open={open}
@@ -102,10 +117,10 @@ export function PriceEditDialog({
           <DesignButton
             size="sm"
             type="button"
-            disabled={!editingPrice || isSaving}
+            disabled={!editingPrice || isSaving || amountError !== null}
             loading={isSaving}
             onClick={() => {
-              if (!editingPrice || isSaving) return;
+              if (!editingPrice || isSaving || amountError !== null) return;
               setIsSaving(true);
               runAsynchronouslyWithAlert(async () => {
                 try {
@@ -162,6 +177,9 @@ export function PriceEditDialog({
               allowedUnits={PRICE_INTERVAL_UNITS}
               className="rounded-xl border-black/[0.08] dark:border-white/[0.08] focus-within:ring-1 focus-within:ring-foreground/[0.1]"
             />
+            {amountError && (
+              <p className="text-xs text-destructive">{amountError}</p>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import * as path from "path";
 import * as fs from "fs";
-import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
+import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
@@ -142,11 +142,11 @@ export function registerConfigCommand(program: Command) {
   config
     .command("pull")
     .description("Pull branch config to a local file")
-    .requiredOption("--cloud-project-id <id>", "Cloud project ID to pull config from")
+    .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)")
     .option("--config-file <path>", "Path to write config file (.ts); defaults to ./stack.config.ts in the current directory")
     .option("--overwrite", "Overwrite an existing config file")
     .action(async (opts) => {
-      const auth = resolveAuth(opts.cloudProjectId);
+      const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
         throw new CliError("`stack config pull` requires `stack login`. Remove STACK_SECRET_SERVER_KEY and try again.");
       }
@@ -174,10 +174,10 @@ export function registerConfigCommand(program: Command) {
   config
     .command("push")
     .description("Push a local config file to branch config")
-    .requiredOption("--cloud-project-id <id>", "Cloud project ID to push config to")
+    .option("--cloud-project-id <id>", "Cloud project ID to push config to (defaults to the STACK_PROJECT_ID env var)")
     .requiredOption("--config-file <path>", "Path to config file (.js or .ts)")
     .action(async (opts) => {
-      const auth = resolveAuth(opts.cloudProjectId);
+      const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
 
       const filePath = resolveConfigFilePathOption(opts.configFile, { mustExist: true });
       const ext = path.extname(filePath);

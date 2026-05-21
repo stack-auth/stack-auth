@@ -383,12 +383,17 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
     return mailbox;
   }));
 
+  // Pre-fetch all invitation emails in parallel to avoid sequential waits
+  const allInvitationMessages = await Promise.all(
+    mailboxes.map((mailbox) => mailbox.waitForMessagesWithSubject("join")),
+  );
+
   for (let i = 0; i < mailboxes.length; i++) {
     const mailbox = mailboxes[i];
     backendContext.set({ mailbox: mailbox });
     await Auth.fastSignUp();
 
-    const invitationMessages = await mailbox.waitForMessagesWithSubject("join");
+    const invitationMessages = allInvitationMessages[i];
     const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
       method: "POST",
       accessType: "client",

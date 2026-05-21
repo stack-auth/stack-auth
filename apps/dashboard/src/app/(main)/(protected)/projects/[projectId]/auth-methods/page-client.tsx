@@ -313,7 +313,7 @@ function MethodToggleRow({
         <div className="text-sm font-medium text-foreground truncate">{label}</div>
         {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
       </div>
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
     </Label>
   );
 }
@@ -411,6 +411,7 @@ function useEmailVerificationToggle() {
 
   const handleChange = async (next: boolean) => {
     if (next && !projectConfig.onboarding.requireEmailVerification) {
+      // any cast needed: previewAffectedUsersByOnboardingChange is a dynamically-typed admin API method
       const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
         { requireEmailVerification: true },
         10,
@@ -650,7 +651,10 @@ export default function PageClient() {
     setLocalAllowSignUp(checked === config.auth.allowSignUp ? undefined : checked);
   };
   const onMergeStrategyChange = (value: string) => {
-    const next = value as OAuthAccountMergeStrategy;
+    if (value !== "link_method" && value !== "raise_error" && value !== "allow_duplicates") {
+      throw new StackAssertionError(`Unknown OAuth account merge strategy: ${value}`);
+    }
+    const next: OAuthAccountMergeStrategy = value;
     setLocalMergeStrategy(next === config.auth.oauth.accountMergeStrategy ? undefined : next);
   };
   const onAllowClientDeletionChange = (checked: boolean) => {

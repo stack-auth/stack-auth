@@ -82,6 +82,8 @@ export function ProjectOnboardingWizard(props: {
   const router = useRouter();
   const { project, status, onboardingState, setMode, setStatus, setOnboardingState, clearOnboardingState, onComplete } = props;
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
   const completeConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const setProjectOnboardingStatus = setStatus;
@@ -93,13 +95,13 @@ export function ProjectOnboardingWizard(props: {
       selectedSignInMethods: deriveInitialSignInMethods(project, onboardingStatus),
       selectedEmailThemeId: completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry: "US",
-      localEmulator: isLocalEmulator,
+      developmentEnvironment: isDevelopmentEnvironment,
     });
     if (onboardingState == null) {
       return defaultState;
     }
-    return normalizeProjectOnboardingState(onboardingState, { localEmulator: isLocalEmulator });
-  }, [completeConfig, isLocalEmulator, onboardingState, project]);
+    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment });
+  }, [completeConfig, isDevelopmentEnvironment, onboardingState, project]);
   const initialOnboardingState = deriveCurrentOnboardingState(status);
   const [saving, setSaving] = useState(false);
   const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => new Set(initialOnboardingState.selected_apps));
@@ -168,7 +170,7 @@ export function ProjectOnboardingWizard(props: {
   }, [completeConfig, deriveCurrentOnboardingState, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
-  const isLinkExistingMode = !isLocalEmulator && props.mode === "link-existing";
+  const isLinkExistingMode = !isDevelopmentEnvironment && props.mode === "link-existing";
   const paymentsAppEnabledInConfig = completeConfig.apps.installed.payments?.enabled === true;
   const includePayments = (
     status === "payments_setup"
@@ -277,9 +279,9 @@ export function ProjectOnboardingWizard(props: {
       selectedSignInMethods: signInMethods,
       selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry,
-      localEmulator: isLocalEmulator,
+      developmentEnvironment: isDevelopmentEnvironment,
     });
-  }, [completeConfig.emails.selectedThemeId, isLocalEmulator, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
 
   const persistOnboardingState = useCallback(async () => {
     await setOnboardingState(buildOnboardingState());
@@ -296,7 +298,7 @@ export function ProjectOnboardingWizard(props: {
     for (const appId of ALL_APP_IDS) {
       configUpdate[`apps.installed.${appId}.enabled`] = selectedApps.has(appId);
     }
-    if (isLocalEmulator) {
+    if (isDevelopmentEnvironment) {
       configUpdate["auth.oauth.providers.google"] = signInMethods.has("google") ? {
         type: "google",
         allowSignIn: true,
@@ -314,7 +316,7 @@ export function ProjectOnboardingWizard(props: {
       } : null;
     }
     return configUpdate;
-  }, [completeConfig.emails.selectedThemeId, isLocalEmulator, selectedApps, selectedEmailThemeId, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
 
   const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
     return {
@@ -353,7 +355,7 @@ export function ProjectOnboardingWizard(props: {
           return;
         }
 
-        if (!isLocalEmulator) {
+        if (!isDevelopmentEnvironment) {
           const providersUpdated = await updateConfig({
             adminApp: props.project.app,
             configUpdate: buildEnvironmentOAuthConfigUpdate(),
@@ -374,7 +376,7 @@ export function ProjectOnboardingWizard(props: {
     buildEnvironmentOAuthConfigUpdate,
     finishProjectOnboarding,
     isLinkExistingMode,
-    isLocalEmulator,
+    isDevelopmentEnvironment,
     persistOnboardingState,
     props.project.app,
     clearOnboardingState,
@@ -411,7 +413,7 @@ export function ProjectOnboardingWizard(props: {
     );
   }
 
-  if (props.status === "config_choice" && props.mode === "link-existing" && !isLocalEmulator) {
+  if (props.status === "config_choice" && props.mode === "link-existing" && !isDevelopmentEnvironment) {
     return (
       <LinkExistingOnboarding
         project={props.project}
@@ -437,12 +439,13 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "config_choice") {
-    if (isLocalEmulator) {
+    if (isDevelopmentEnvironment) {
+      const developmentEnvironmentName = isRemoteDevelopmentEnvironment ? "remote development environment" : "local emulator";
       return (
         <OnboardingPage
           stepKey="config-choice"
           title="Welcome to Stack Auth!"
-          subtitle="You are running Stack Auth locally in the emulator."
+          subtitle={`You are running Stack Auth in the ${developmentEnvironmentName}.`}
           steps={timelineSteps}
           currentStep="config_choice"
           onStepClick={handleTimelineStepClick}
@@ -462,7 +465,7 @@ export function ProjectOnboardingWizard(props: {
         >
           <div className="mx-auto max-w-xl rounded-2xl bg-white/70 p-6 text-center ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.06]">
             <Typography className="text-base leading-relaxed">
-              This local project is ready for onboarding.
+              This development-environment project is ready for onboarding.
             </Typography>
             <Typography variant="secondary" className="mt-3 text-sm leading-relaxed">
               Next, we will guide you through the onboarding flow to set up your Stack Auth configuration.
@@ -672,7 +675,7 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "auth_setup") {
-    const availableSignInMethods = isLocalEmulator
+    const availableSignInMethods = isDevelopmentEnvironment
       ? SIGN_IN_METHODS.filter((method) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === method.id))
       : SIGN_IN_METHODS;
 
