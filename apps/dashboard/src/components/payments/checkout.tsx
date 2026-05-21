@@ -25,6 +25,7 @@ type Props = {
   disabled?: boolean,
   onTestModeBypass?: () => Promise<void>,
   chargesEnabled: boolean,
+  isFree: boolean,
 };
 
 export function CheckoutForm({
@@ -35,6 +36,7 @@ export function CheckoutForm({
   disabled,
   onTestModeBypass,
   chargesEnabled,
+  isFree,
 }: Props) {
   const stripe = useStripe();
   const elements = useElements();
@@ -57,6 +59,17 @@ export function CheckoutForm({
       stripeReturnUrl.searchParams.set("return_url", returnUrl);
     }
 
+    if (isFree) {
+      // $0 subs: backend creates the Stripe subscription synchronously and
+      // returns no client_secret (nothing to confirm). Skip Stripe Elements
+      // and route through /purchase/return with `free=1` so the return page
+      // renders a terminal success state instead of waiting on a Stripe
+      // PaymentIntent that will never exist. The return page handles the
+      // `return_url` bounce (or shows the success page when none was given).
+      stripeReturnUrl.searchParams.set("free", "1");
+      window.location.assign(stripeReturnUrl.toString());
+      return;
+    }
     const { error } = await stripe.confirmPayment({
       elements,
       clientSecret,

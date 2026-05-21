@@ -16,6 +16,7 @@ type Props = {
   stripeAccountId?: string,
   purchaseFullCode?: string,
   bypass?: string,
+  free?: string,
 };
 
 type ViewState =
@@ -27,7 +28,7 @@ const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KE
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 const baseUrl = new URL("/api/v1", apiUrl).toString();
 
-export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass }: Props) {
+export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass, free }: Props) {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("return_url");
@@ -50,6 +51,15 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       if (bypass === "1") {
         runAsynchronously(checkAndReturnUser());
         const message = `Bypassed in test mode. No payment processed.${returnUrl ? " You will be redirected shortly." : ""}`;
+        setState({ kind: "success", message });
+        return;
+      }
+      if (free === "1") {
+        // $0 subs activate synchronously on the Stripe side and produce no
+        // PaymentIntent / client_secret, so there's nothing to retrieve —
+        // mirror the bypass branch and show terminal success.
+        runAsynchronously(checkAndReturnUser());
+        const message = `Free subscription activated. No payment required.${returnUrl ? " You will be redirected shortly." : ""}`;
         setState({ kind: "success", message });
         return;
       }
@@ -87,7 +97,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const message = e instanceof Error ? e.message : "Unexpected error retrieving payment.";
       setState({ kind: "error", message });
     }
-  }, [clientSecret, stripeAccountId, bypass, returnUrl, checkAndReturnUser]);
+  }, [clientSecret, stripeAccountId, bypass, free, returnUrl, checkAndReturnUser]);
 
   useEffect(() => {
     runAsynchronously(updateViewState());

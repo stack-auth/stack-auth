@@ -9,6 +9,7 @@ type Props = {
     stripe_account_id?: string,
     purchase_full_code?: string,
     bypass?: string,
+    free?: string,
   }>,
 };
 
@@ -22,6 +23,7 @@ export default async function Page({ searchParams }: Props) {
       stripeAccountId={params.stripe_account_id}
       purchaseFullCode={params.purchase_full_code}
       bypass={params.bypass}
+      free={params.free}
     />
   );
 }
