@@ -99,7 +99,7 @@ export async function waitForItemQuantityToStabilize(
   options: { minimumElapsedMs?: number } = {},
 ): Promise<number> {
   const pollIntervalMs = 500;
-  const stableForReads = 16;
+  const stableForReads = 8;
   const timeoutMs = 30000;
   const minimumElapsedMs = options.minimumElapsedMs ?? 0;
   const startedAt = performance.now();
