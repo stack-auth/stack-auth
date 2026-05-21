@@ -83,7 +83,7 @@ async function assertLocalEmulatorOwnerTeamReadiness() {
 }
 
 async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<{ projectId: string, created: boolean }> {
-  const existingRows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
+  const existingRows = await globalPrismaClient.$replica().$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
     SELECT "projectId"
     FROM "LocalEmulatorProject"
     WHERE "absoluteFilePath" = ${absoluteFilePath}
@@ -198,7 +198,7 @@ async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboardi
   `);
   const onboardingStateColumnExists = onboardingStateColumnExistsRows[0]?.exists === true;
 
-  const rows = await globalPrismaClient.$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
     SELECT "onboardingStatus"
     FROM "Project"
     WHERE "id" = ${projectId}

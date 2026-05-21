@@ -103,7 +103,7 @@ export async function getManagedEmailDomainByTenancyAndSubdomain(options: {
   tenancyId: string,
   subdomain: string,
 }): Promise<ManagedEmailDomain | null> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "tenancyId" = ${options.tenancyId}
