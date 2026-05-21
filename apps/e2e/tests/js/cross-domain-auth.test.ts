@@ -142,6 +142,52 @@ it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
   });
 });
 
+it("strips stale OAuth callback params from hosted callback redirect URIs", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const clientApp = createClientApp("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const currentUrl = new URL(`${localRedirectUrl}/callback-page?foo=bar`);
+    currentUrl.searchParams.set("code", "oauth-code");
+    currentUrl.searchParams.set("state", "oauth-state");
+    currentUrl.searchParams.set("error", "access_denied");
+    currentUrl.searchParams.set("error_description", "Denied");
+    currentUrl.searchParams.set("errorCode", "KnownError");
+    currentUrl.searchParams.set("message", "Known message");
+    currentUrl.searchParams.set("details", "{}");
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentUrl.toString(),
+      },
+    } as any;
+
+    try {
+      expect((clientApp as any)._getOAuthCallbackRedirectUri({ forCallback: true })).toBe(`${localRedirectUrl}/callback-page?foo=bar`);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+});
+
+it("keeps rejected pending auth resolutions from leaking into session consumers", async ({ expect }) => {
+  const clientApp = createClientApp("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+  vi.spyOn(clientApp as any, "_hasPersistentTokenStore").mockReturnValue(true);
+  const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  try {
+    (clientApp as any)._trackPendingAuthResolution(async () => {
+      throw new Error("INTENTIONAL_TEST_AUTH_RESOLUTION_FAILURE");
+    });
+
+    await expect((clientApp as any)._awaitPendingAuthResolutions()).resolves.toBeUndefined();
+  } finally {
+    consoleErrorSpy.mockRestore();
+  }
+});
+
 it("keeps cross-domain handoff working when top-level params are dropped before after-sign-in", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const projectId = "22222222-2222-4222-8222-222222222222";
@@ -424,6 +470,39 @@ it("continues nested cross-domain auth on the source domain", async ({ expect })
       awaitPendingAuthResolutions: false,
     });
     expect(redirectedUrl).toBe(crossDomainRedirect);
+  });
+});
+
+it("rejects nested cross-domain auth when the source redirect URI is untrusted", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const clientApp = createClientApp(projectId);
+    const currentUrl = new URL(`${localRedirectUrl}/nested-provider`);
+    currentUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", "source-session");
+    currentUrl.searchParams.set("redirect_uri", "https://evil.example.test/handler/account-settings");
+    currentUrl.searchParams.set("state", "nested-state");
+    currentUrl.searchParams.set("code_challenge", "nested-code-challenge");
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const createCrossDomainAuthRedirectUrlSpy = vi.spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl");
+    vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(false);
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentUrl.toString(),
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError(/not trusted/);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    expect(createCrossDomainAuthRedirectUrlSpy).not.toHaveBeenCalled();
   });
 });
 

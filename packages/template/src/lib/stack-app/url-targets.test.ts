@@ -102,7 +102,11 @@ describe("handler URL targets", () => {
       urls: {
         oauthCallback: "https://app.example.test/oauth-callback",
       },
-    })).toThrowError(/OAuth callback URLs must be relative/);
+    })).toThrowErrorMatchingInlineSnapshot(`
+      [StackAssertionError: OAuth callback URLs must be relative.
+
+      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+    `);
   });
 
   it("rejects absolute OAuth callback custom targets", () => {
@@ -111,7 +115,23 @@ describe("handler URL targets", () => {
       urls: {
         oauthCallback: { type: "custom", url: "https://app.example.test/oauth-callback", version: 0 },
       },
-    })).toThrowError(/OAuth callback URLs must be relative/);
+    })).toThrowErrorMatchingInlineSnapshot(`
+      [StackAssertionError: OAuth callback URLs must be relative.
+
+      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+    `);
+  });
+
+  it("does not inherit an absolute default target for the OAuth callback", () => {
+    const urls = resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        default: "https://app.example.test/handler",
+      },
+    });
+
+    expect(urls.signIn).toBe("https://app.example.test/handler");
+    expect(urls.oauthCallback).toBe("/handler/oauth-callback");
   });
 
   it("supports custom CLI auth confirmation targets", () => {

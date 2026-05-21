@@ -6,8 +6,9 @@ type TrustedDomainConfig = {
   trustedDomains: readonly (string | null | undefined)[],
 };
 
+const defaultPorts = new Map<string, string>([['https:', '443'], ['http:', '80']]);
+
 function normalizePort(url: URL): string {
-  const defaultPorts = new Map<string, string>([['https:', '443'], ['http:', '80']]);
   const port = url.port || defaultPorts.get(url.protocol) || '';
   return port ? `${url.hostname}:${port}` : url.hostname;
 }
@@ -35,8 +36,20 @@ function parseWildcardUrlPattern(pattern: string): { protocol: string, hostPatte
 }
 
 function hostPatternWithoutPort(hostPattern: string): string {
+  if (!hostPatternHasExplicitPort(hostPattern)) {
+    return hostPattern;
+  }
   const portSeparatorIndex = hostPattern.lastIndexOf(":");
-  return portSeparatorIndex === -1 ? hostPattern : hostPattern.slice(0, portSeparatorIndex);
+  return hostPattern.slice(0, portSeparatorIndex);
+}
+
+function hostPatternHasExplicitPort(hostPattern: string): boolean {
+  const portSeparatorIndex = hostPattern.lastIndexOf(":");
+  if (portSeparatorIndex === -1) {
+    return false;
+  }
+  const port = hostPattern.slice(portSeparatorIndex + 1);
+  return port !== "" && [...port].every(char => char >= "0" && char <= "9");
 }
 
 function matchesTrustedDomain(testUrl: URL, pattern: string): boolean {
@@ -58,7 +71,7 @@ function matchesTrustedDomain(testUrl: URL, pattern: string): boolean {
     return false;
   }
 
-  const hasPortInPattern = parsedPattern.hostPattern.includes(':');
+  const hasPortInPattern = hostPatternHasExplicitPort(parsedPattern.hostPattern);
   return hasPortInPattern
     ? matchHostnamePattern(parsedPattern.hostPattern, normalizePort(testUrl))
     : matchHostnamePattern(parsedPattern.hostPattern, testUrl.hostname) && isDefaultPort(testUrl);
@@ -85,8 +98,9 @@ export function validateRedirectUrl(
   return config.trustedDomains.some(domain => domain != null && matchesTrustedDomain(url, domain));
 }
 
-export function getTrustedParentDomain(currentDomain: string, trustedDomains: readonly string[]): string | null {
+export function getTrustedParentDomain(currentDomain: string, trustedDomains: readonly (string | null | undefined)[]): string | null {
   const hostPatterns = trustedDomains
+    .filter((domain): domain is string => domain != null)
     .map((domain) => {
       const url = createUrlIfValid(domain);
       if (url != null && !domain.includes("*")) {
@@ -107,3 +121,63 @@ export function getTrustedParentDomain(currentDomain: string, trustedDomains: re
 
   return null;
 }
+
+import.meta.vitest?.test("validateRedirectUrl matches exact and wildcard trusted domains", ({ expect }) => {
+  expect(validateRedirectUrl("https://example.com", {
+    allowLocalhost: false,
+    trustedDomains: ["https://example.com"],
+  })).toBe(true);
+  expect(validateRedirectUrl("https://api.example.com", {
+    allowLocalhost: false,
+    trustedDomains: ["https://*.example.com"],
+  })).toBe(true);
+  expect(validateRedirectUrl("https://api.v2.example.com", {
+    allowLocalhost: false,
+    trustedDomains: ["https://*.example.com"],
+  })).toBe(false);
+});
+
+import.meta.vitest?.test("validateRedirectUrl respects default and explicit ports", ({ expect }) => {
+  expect(validateRedirectUrl("https://example.com:443/path", {
+    allowLocalhost: false,
+    trustedDomains: ["https://example.com"],
+  })).toBe(true);
+  expect(validateRedirectUrl("http://api.example.com:3000", {
+    allowLocalhost: false,
+    trustedDomains: ["http://*.example.com:3000"],
+  })).toBe(true);
+  expect(validateRedirectUrl("http://api.example.com", {
+    allowLocalhost: false,
+    trustedDomains: ["http://*.example.com:3000"],
+  })).toBe(false);
+});
+
+import.meta.vitest?.test("validateRedirectUrl respects localhost allowance and invalid patterns", ({ expect }) => {
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    expect(validateRedirectUrl("http://localhost:3000", {
+      allowLocalhost: true,
+      trustedDomains: [],
+    })).toBe(true);
+    expect(validateRedirectUrl("http://localhost:3000", {
+      allowLocalhost: false,
+      trustedDomains: [],
+    })).toBe(false);
+    expect(validateRedirectUrl("https://example.com", {
+      allowLocalhost: false,
+      trustedDomains: ["not a url"],
+    })).toBe(false);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+import.meta.vitest?.test("getTrustedParentDomain ignores empty entries and strips ports", ({ expect }) => {
+  expect(getTrustedParentDomain("app.example.com", [
+    null,
+    undefined,
+    "https://example.com",
+    "https://**.example.com:443",
+  ])).toBe("example.com");
+});

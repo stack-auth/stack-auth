@@ -35,7 +35,7 @@ import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
-import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
+import { createUrlIfValid, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
@@ -723,7 +723,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _trackPendingAuthResolution(callback: () => Promise<unknown>) {
     const promise = (async () => {
       await Promise.resolve();
-      await callback();
+      try {
+        await callback();
+      } catch (error) {
+        // Startup auth transitions gate session finality, but malformed nested-auth URLs should
+        // not make every app-level session consumer fail while the tracker is cleaning up.
+        captureError("pending-auth-resolution-failed", error);
+      }
     })();
     this._pendingAuthResolutionPromises.push(promise);
     runAsynchronously(async () => {
@@ -793,8 +799,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     const currentUrl = new URL(window.location.href);
     if (options?.forCallback === true) {
-      currentUrl.searchParams.delete("code");
-      currentUrl.searchParams.delete("state");
+      for (const param of ["code", "state", "error", "error_description", "errorCode", "message", "details"]) {
+        currentUrl.searchParams.delete(param);
+      }
     }
     return currentUrl.toString();
   }
@@ -855,16 +862,30 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       if ((currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallengeMethod) ?? "S256") !== "S256") {
         throw new StackAssertionError("Nested cross-domain auth only supports S256 PKCE");
       }
+      if (isRelative(redirectUri)) {
+        throw new Error("Nested cross-domain auth redirect URI must be absolute.");
+      }
+      const redirectUriUrl = new URL(redirectUri);
+      if (!await this._isTrusted(redirectUriUrl.toString())) {
+        throw new Error(`Nested cross-domain auth redirect URI ${redirectUri} is not trusted.`);
+      }
+      const afterCallbackRedirectUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl);
+      const afterCallbackRedirectUrl = afterCallbackRedirectUrlString == null
+        ? redirectUriUrl
+        : new URL(afterCallbackRedirectUrlString, redirectUriUrl);
+      if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
+        throw new Error(`Nested cross-domain auth after-callback redirect URL ${afterCallbackRedirectUrlString} is not trusted.`);
+      }
       const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
       if (currentRefreshTokenId !== refreshTokenId) {
         throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
       }
       await this._redirectTo({
         url: await this._createCrossDomainAuthRedirectUrl({
-          redirectUri,
+          redirectUri: redirectUriUrl.toString(),
           state,
           codeChallenge,
-          afterCallbackRedirectUrl: currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl) ?? redirectUri,
+          afterCallbackRedirectUrl: afterCallbackRedirectUrl.toString(),
           awaitPendingAuthResolutions: false,
         }),
         replace: true,
@@ -878,12 +899,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (currentRefreshTokenId === refreshTokenId) return false;
     const callbackUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.callbackUrl);
     if (callbackUrlString == null) throw new StackAssertionError("Nested cross-domain auth URL is missing callback URL");
-    const isTrusted = await this._isTrusted(callbackUrlString);
+    if (isRelative(callbackUrlString)) {
+      throw new Error("Nested cross-domain auth callback URL must be absolute.");
+    }
+    const callbackUrl = new URL(callbackUrlString);
+    const isTrusted = await this._isTrusted(callbackUrl.toString());
     if (!isTrusted) {
       throw new Error(`Nested cross-domain auth callback URL ${callbackUrlString} is not trusted.`);
     }
 
-    const callbackUrl = new URL(callbackUrlString, currentUrl);
     const afterCallbackRedirectUrl = new URL(currentUrl);
     afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.refreshTokenId);
     afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.callbackUrl);
@@ -2621,7 +2645,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (isRelative(url)) {
       return true;
     }
-    const parsedUrl = new URL(url);
+    const parsedUrl = createUrlIfValid(url);
+    if (parsedUrl == null) {
+      return false;
+    }
     if (typeof window !== "undefined" && window.location.origin === parsedUrl.origin) {
       return true;
     }
@@ -3249,7 +3276,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await callback();
     } catch (e) {
       if (KnownErrors.MultiFactorAuthenticationRequired.isInstance(e)) {
-        return Result.ok(await this._experimentalMfa(e, await this._getSession()));
+        return Result.ok(await this._experimentalMfa(
+          e,
+          await this._getSession(undefined, { awaitPendingAuthResolutions: false }),
+        ));
       }
       throw e;
     }

@@ -219,7 +219,12 @@ const assertOAuthCallbackTargetIsRelative = (target: HandlerUrlTarget): void => 
 export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefined, projectId: string }): ResolvedHandlerUrls => {
   const configuredUrls = options.urls;
   const defaultTarget: HandlerUrlTarget = configuredUrls?.default ?? { type: "handler-component" };
-  assertOAuthCallbackTargetIsRelative(configuredUrls?.oauthCallback ?? defaultTarget);
+  const oauthCallbackTarget: HandlerUrlTarget = configuredUrls?.oauthCallback ?? (
+    typeof defaultTarget !== "string" && defaultTarget.type === "hosted"
+      ? defaultTarget
+      : { type: "handler-component" }
+  );
+  assertOAuthCallbackTargetIsRelative(oauthCallbackTarget);
   let handlerComponentBasePath = "/handler";
   if (typeof configuredUrls?.handler === "string") {
     handlerComponentBasePath = configuredUrls.handler;
@@ -301,7 +306,7 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
     }),
     home,
     oauthCallback: resolveUrlTarget({
-      target: configuredUrls?.oauthCallback ?? defaultTarget,
+      target: oauthCallbackTarget,
       fallbackPath: joinHandlerComponentPath(handlerComponentBasePath, "oauth-callback"),
       handlerName: "oauthCallback",
       projectId: options.projectId,
