@@ -1,4 +1,3 @@
-import { SubscriptionStatus } from "@/generated/prisma/client";
 import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
@@ -79,22 +78,11 @@ export const POST = createSmartRouteHandler({
     }
     const fromPriceEntries = typedEntries(fromProduct.prices);
     const fromHasIntervalPrice = fromPriceEntries.some(([, price]) => price.interval);
-    // A price counts as "free" only if EVERY supported currency is either absent or zero.
-    // Checking USD alone would misclassify a price that's only set in another supported
-    // currency (e.g. EUR-only) as free, and would let the customer switch from it without
-    // an existing subscription row — bypassing intended billing.
-    const isPriceFree = (price: typeof fromPriceEntries[number][1]) =>
-      SUPPORTED_CURRENCIES.every(c => {
-        const amount = (price as Record<string, unknown>)[c.code];
-        return amount == null || Number(amount) === 0;
-      });
-    const fromIsFreePlan = fromPriceEntries.length === 0
-      || fromPriceEntries.every(([, p]) => isPriceFree(p));
     // A product with non-interval prices is a one-time purchase and can't be switched.
     // A product with no prices at all (e.g. auto-migrated from the legacy `include-by-default`
     // sentinel, or an intentionally free product) is treated as a free plan the customer may
-    // upgrade away from. Free non-recurring plans are also exempted so $0 plans can be upgraded.
-    if (fromPriceEntries.length > 0 && !fromHasIntervalPrice && !fromIsFreePlan) {
+    // upgrade away from.
+    if (fromPriceEntries.length > 0 && !fromHasIntervalPrice) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
 
@@ -145,6 +133,17 @@ export const POST = createSmartRouteHandler({
     const existingSub = Object.values(subMap).find(
       s => s.productId === body.from_product_id && isActiveSubscription(s)
     ) ?? null;
+    // A price counts as "free" only if EVERY supported currency is either absent or zero.
+    // Checking USD alone would misclassify a price that's only set in another supported
+    // currency (e.g. EUR-only) as free, and would let the customer switch from it without
+    // an existing subscription row — bypassing intended billing.
+    const isPriceFree = (price: typeof fromPriceEntries[number][1]) =>
+      SUPPORTED_CURRENCIES.every(c => {
+        const amount = (price as Record<string, unknown>)[c.code];
+        return amount == null || Number(amount) === 0;
+      });
+    const fromIsFreePlan = fromPriceEntries.length === 0
+      || fromPriceEntries.every(([, p]) => isPriceFree(p));
     if (!existingSub && !fromIsFreePlan) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }

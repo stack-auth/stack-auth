@@ -1,6 +1,6 @@
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 async function setupProducts(products: Record<string, any>, productLines?: Record<string, any>) {
   await Project.createAndSwitch();
@@ -77,7 +77,7 @@ it("rejects writes that use the deprecated include-by-default price sentinel", a
     body: {
       config_override_string: JSON.stringify({
         payments: {
-          productLines: { catalog: { displayName: "Plans", customerType: "user" } },
+          productLines: { catalog: { displayName: "Plans" } },
           products: {
             legacyDefault: {
               displayName: "Legacy Default",

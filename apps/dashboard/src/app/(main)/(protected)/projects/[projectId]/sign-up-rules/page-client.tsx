@@ -495,6 +495,7 @@ function RuleTriggerHistoryDialog({
             timespanHours={timespanHours}
             isLoading={isSparklineLoading}
           />
+        </button>
       )}
       headerContent={(
         <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
@@ -1148,12 +1149,6 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
     <div className={cn("rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-2", className)}>
       {children}
     </div>
-  );
-
-  const fieldLabel = (text: string) => (
-    <Typography variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
-      {text}
-    </Typography>
   );
 
   return (
