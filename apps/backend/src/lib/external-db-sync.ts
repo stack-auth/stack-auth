@@ -411,7 +411,11 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
+    if (insertedCount === 0) {
+      captureError("external-db-sync-deletion-race", new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUserRefreshToken, got 0. This is likely a race condition where the row was already deleted by a concurrent operation.`
+      ));
+    } else if (insertedCount !== 1) {
       throw new StackAssertionError(
         `Expected to insert 1 DeletedRow entry for ProjectUserRefreshToken, got ${insertedCount}.`
       );
@@ -487,7 +491,11 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE OF "VerificationCode"
     `);
 
-    if (insertedCount !== 1) {
+    if (insertedCount === 0) {
+      captureError("external-db-sync-deletion-race", new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for VerificationCode_TEAM_INVITATION, got 0. This is likely a race condition where the row was already deleted by a concurrent operation.`
+      ));
+    } else if (insertedCount !== 1) {
       throw new StackAssertionError(
         `Expected to insert 1 DeletedRow entry for VerificationCode_TEAM_INVITATION, got ${insertedCount}.`
       );
