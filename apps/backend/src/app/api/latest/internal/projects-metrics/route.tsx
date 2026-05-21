@@ -114,9 +114,8 @@ export const GET = createSmartRouteHandler({
     let totalRows: Array<{ projectId: string, totalUsers: bigint | number }>;
     let signupRows: Array<{ projectId: string, day: Date | string, signups: bigint | number }>;
     try {
-      [totalRows, signupRows] = await Promise.all([
-        globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, totalUsers: bigint | number }>>(
-          `
+      const totalRowsPromise = globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, totalUsers: bigint | number }>>(
+        `
             SELECT "mirroredProjectId" AS "projectId", COUNT(*)::bigint AS "totalUsers"
             FROM "ProjectUser"
             WHERE "mirroredProjectId" = ANY($1::text[])
@@ -124,11 +123,11 @@ export const GET = createSmartRouteHandler({
               AND "isAnonymous" = false
             GROUP BY "mirroredProjectId"
           `,
-          projectIds,
-          DEFAULT_BRANCH_ID,
-        ),
-        globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, day: Date | string, signups: bigint | number }>>(
-          `
+        projectIds,
+        DEFAULT_BRANCH_ID,
+      );
+      const signupRowsPromise = globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, day: Date | string, signups: bigint | number }>>(
+        `
             SELECT
               "mirroredProjectId" AS "projectId",
               date_trunc('day', COALESCE("signedUpAt", "createdAt") AT TIME ZONE 'UTC')::date AS "day",
@@ -141,12 +140,12 @@ export const GET = createSmartRouteHandler({
               AND COALESCE("signedUpAt", "createdAt") < $4
             GROUP BY "mirroredProjectId", "day"
           `,
-          projectIds,
-          DEFAULT_BRANCH_ID,
-          since,
-          untilExclusive,
-        ),
-      ]);
+        projectIds,
+        DEFAULT_BRANCH_ID,
+        since,
+        untilExclusive,
+      );
+      [totalRows, signupRows] = await Promise.all([totalRowsPromise, signupRowsPromise]);
     } catch (cause) {
       throw new StackAssertionError("Failed to load project metrics.", {
         cause,
