@@ -12,22 +12,32 @@ it("should verify user's email", async ({ expect }) => {
 });
 
 it("each verification code that was already requested can be used exactly once", async ({ expect }) => {
-  const t0 = performance.now();
   // note: send-verification-code checks that you didn't already verify the email when you send the verification code, but if you request multiple at the same time you should be able to use them all
-  await Auth.Password.signUpWithEmail();
-  const t1 = performance.now();
-  console.log(`[TIMING] signUpWithEmail: ${(t1 - t0).toFixed(0)}ms`);
-  await ContactChannels.sendVerificationCode();
-  const t2 = performance.now();
-  console.log(`[TIMING] sendVerificationCode #1: ${(t2 - t1).toFixed(0)}ms`);
-  await ContactChannels.sendVerificationCode();
-  const t3 = performance.now();
-  console.log(`[TIMING] sendVerificationCode #2: ${(t3 - t2).toFixed(0)}ms`);
+
+  // Skip the per-email wait in signUpWithEmail — we'll batch-wait for all 3
+  // emails at the end. This avoids 3 sequential email waits (each 5–20s under
+  // CI load), which together can exceed the 60s test timeout.
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+
+  // Fire both send-verification-code requests without waiting for delivery
+  const contactChannelId = (await ContactChannels.getTheOnlyContactChannel()).id;
+  const sendRes1 = await niceBackendFetch(`/api/v1/contact-channels/me/${contactChannelId}/send-verification-code`, {
+    method: "POST",
+    accessType: "client",
+    body: { callback_url: "http://localhost:12345/some-callback-url" },
+  });
+  expect(sendRes1).toMatchObject({ status: 200 });
+  const sendRes2 = await niceBackendFetch(`/api/v1/contact-channels/me/${contactChannelId}/send-verification-code`, {
+    method: "POST",
+    accessType: "client",
+    body: { callback_url: "http://localhost:12345/some-callback-url" },
+  });
+  expect(sendRes2).toMatchObject({ status: 200 });
+
+  // Single batch wait for all 3 verification emails (1 from signup + 2 from
+  // send-verification-code) instead of 3 sequential waits.
   const mailbox = backendContext.value.mailbox;
-  // Wait for all 3 verification emails: 1 from signup + 2 from sendVerificationCode calls
   const verifyMessages = await mailbox.waitForMessagesWithSubjectCount("Verify your email", 3);
-  const t4 = performance.now();
-  console.log(`[TIMING] waitForMessagesWithSubjectCount(3): ${(t4 - t3).toFixed(0)}ms, total: ${(t4 - t0).toFixed(0)}ms`);
   const verificationCodes = verifyMessages.map((message) => message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Verification code not found"));
   expect(verificationCodes).toHaveLength(3);
 
