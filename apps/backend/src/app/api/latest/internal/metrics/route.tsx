@@ -539,77 +539,21 @@ async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, cou
   `;
 }
 
-const RECENTLY_ACTIVE_USERS_LIMIT = 5;
-
 async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<UsersCrud["Admin"]["Read"][]> {
-  const { since, untilExclusive } = getMetricsWindowBounds(new Date());
-  const clickhouseClient = getClickhouseAdminClient();
-
-  let orderedUserIds: string[] = [];
-  try {
-    const result = await clickhouseClient.query({
-      query: `
-        SELECT
-          assumeNotNull(user_id) AS user_id,
-          max(event_at) AS last_active
-        FROM analytics_internal.events
-        WHERE event_type = '$token-refresh'
-          AND project_id = {projectId:String}
-          AND branch_id = {branchId:String}
-          AND user_id IS NOT NULL
-          AND event_at >= {since:DateTime}
-          AND event_at < {untilExclusive:DateTime}
-          AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
-        GROUP BY user_id
-        ORDER BY last_active DESC
-        LIMIT {limit:UInt32}
-      `,
-      query_params: {
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        since: formatClickhouseDateTimeParam(since),
-        untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
-        includeAnonymous: includeAnonymous ? 1 : 0,
-        limit: RECENTLY_ACTIVE_USERS_LIMIT,
-      },
-      format: "JSONEachRow",
-    });
-    const rows = await result.json() as { user_id: string, last_active: string }[];
-    orderedUserIds = rows
-      .map((r) => normalizeUuidFromEvent(r.user_id))
-      .filter((id): id is string => id != null);
-  } catch (error) {
-    if (!(error instanceof ClickHouseError)) {
-      throw error;
-    }
-    captureError("internal-metrics-recently-active-users-clickhouse-fallback", new StackAssertionError(
-      "Falling back to empty recently-active users due to ClickHouse query failure.",
-      {
-        cause: error,
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-      },
-    ));
-    return [];
-  }
-
-  if (orderedUserIds.length === 0) return [];
-
   const prisma = await getPrismaClientForTenancy(tenancy);
   const dbUsers = await prisma.$replica().projectUser.findMany({
     where: {
       tenancyId: tenancy.id,
-      projectUserId: { in: orderedUserIds },
       ...(!includeAnonymous ? { isAnonymous: false } : {}),
     },
+    orderBy: {
+      lastActiveAt: 'desc',
+    },
+    take: 5,
     include: userFullInclude,
   });
 
-  const byId = new Map(dbUsers.map((u) => [u.projectUserId, u]));
-  return orderedUserIds
-    .map((id) => byId.get(id))
-    .filter((u): u is NonNullable<typeof u> => u != null)
-    .map((user) => userPrismaToCrud(user, tenancy.config));
+  return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
 // Fallback visitor counts derived purely from `$token-refresh` events so the
