@@ -502,3 +502,6 @@ A: Seed the normal initial environment config before marking the project as `isD
 
 ## Q: What can cause React error #185 immediately on dashboard load?
 A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
+
+## Q: How should client-side OAuth callback and nested cross-domain auth avoid racing session consumers?
+A: Track startup auth transitions as pending client-app promises and make `_getSession`/react-like `_useSession` wait for them when using the default persistent token store. Auth-transition code that needs to inspect the current session should explicitly call `_getSession(..., { awaitPendingAuthResolutions: false })` instead of relying on a global reentrancy flag.

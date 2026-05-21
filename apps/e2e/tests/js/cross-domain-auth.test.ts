@@ -74,7 +74,8 @@ it("adds secure cross-domain handoff parameters when redirecting to hosted sign-
     expect(redirectUrl.searchParams.get("stack_cross_domain_after_callback_redirect_url")).toBe(`${localRedirectUrl}/private-page?foo=bar`);
     const callbackUrl = new URL(redirectUrl.searchParams.get("after_auth_return_to") ?? "");
     expect(callbackUrl.origin).toBe(new URL(localRedirectUrl).origin);
-    expect(callbackUrl.pathname).toBe("/handler/oauth-callback");
+    expect(callbackUrl.pathname).toBe(new URL(`${localRedirectUrl}/private-page`).pathname);
+    expect(callbackUrl.searchParams.get("foo")).toBe("bar");
     expect(callbackUrl.searchParams.get("stack_cross_domain_auth")).toBe("1");
     expect(callbackUrl.searchParams.get("stack_cross_domain_state")).toEqual(expect.any(String));
     expect(callbackUrl.searchParams.get("stack_cross_domain_code_challenge")).toEqual(expect.any(String));
@@ -251,5 +252,237 @@ it("keeps cross-domain handoff working when after_auth_return_to is rewritten to
       afterCallbackRedirectUrl: handoffAfterCallbackRedirect,
     }));
     expect(redirectedUrl).toBe(crossDomainAuthorizeRedirect);
+  });
+});
+
+it("adds nested cross-domain auth params when redirecting signed-in users to hosted account settings", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "66666666-6666-4666-8666-666666666666";
+    const refreshTokenId = "source-refresh-token-id";
+    const currentHref = `${localRedirectUrl}/dashboard?tab=settings`;
+    const clientApp = createClientApp(projectId);
+
+    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    let redirectedUrl = "";
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentHref,
+        assign: (url: string) => {
+          redirectedUrl = url;
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    try {
+      await expect(clientApp.redirectToAccountSettings()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    const redirectUrl = new URL(redirectedUrl);
+    expect(redirectUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
+    expect(redirectUrl.pathname).toBe("/handler/account-settings");
+    expect(redirectUrl.searchParams.get("stack_nested_cross_domain_auth_refresh_token_id")).toBe(refreshTokenId);
+    expect(redirectUrl.searchParams.get("stack_nested_cross_domain_auth_callback_url")).toBe(currentHref);
+  });
+});
+
+it("adds nested cross-domain auth params for other cross-domain handler redirects", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const refreshTokenId = "source-refresh-token-id";
+    const currentHref = `${localRedirectUrl}/private-page`;
+    const clientApp = createClientApp(projectId);
+
+    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    let redirectedUrl = "";
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentHref,
+        assign: (url: string) => {
+          redirectedUrl = url;
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    try {
+      await expect(clientApp.redirectToTeamInvitation()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    const redirectUrl = new URL(redirectedUrl);
+    expect(redirectUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
+    expect(redirectUrl.pathname).toBe("/handler/team-invitation");
+    expect(redirectUrl.searchParams.get("stack_nested_cross_domain_auth_refresh_token_id")).toBe(refreshTokenId);
+    expect(redirectUrl.searchParams.get("stack_nested_cross_domain_auth_callback_url")).toBe(currentHref);
+  });
+});
+
+it("starts nested cross-domain auth from the target domain", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "77777777-7777-4777-8777-777777777777";
+    const clientApp = createClientApp(projectId);
+    const currentHref = `https://${projectId}.example-stack-hosted.test/handler/account-settings?stack_nested_cross_domain_auth_refresh_token_id=source-session&stack_nested_cross_domain_auth_callback_url=${encodeURIComponent(`https://${projectId}.example-stack-hosted.test/handler/oauth-callback`)}`;
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    let redirectedUrl = "";
+
+    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
+      state: "nested-state",
+      codeChallenge: "nested-code-challenge",
+    });
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentHref,
+        replace: (url: string) => {
+          redirectedUrl = url;
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    const redirectUrl = new URL(redirectedUrl);
+    expect(redirectUrl.pathname).toBe("/handler/oauth-callback");
+    expect(redirectUrl.searchParams.get("stack_nested_cross_domain_auth_refresh_token_id")).toBe("source-session");
+    expect(redirectUrl.searchParams.get("redirect_uri")).toBe(currentHref);
+    expect(redirectUrl.searchParams.get("state")).toBe("nested-state");
+    expect(redirectUrl.searchParams.get("code_challenge")).toBe("nested-code-challenge");
+    expect(redirectUrl.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(redirectUrl.searchParams.get("after_callback_redirect_url")).toBe(`https://${projectId}.example-stack-hosted.test/handler/account-settings`);
+  });
+});
+
+it("continues nested cross-domain auth on the source domain", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "88888888-8888-4888-8888-888888888888";
+    const clientApp = createClientApp(projectId);
+    const sourceRefreshTokenId = "source-session";
+    const redirectUri = `https://${projectId}.example-stack-hosted.test/handler/account-settings?stack_nested_cross_domain_auth_refresh_token_id=source-session`;
+    const currentUrl = new URL(`${localRedirectUrl}/nested-provider`);
+    currentUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", sourceRefreshTokenId);
+    currentUrl.searchParams.set("redirect_uri", redirectUri);
+    currentUrl.searchParams.set("state", "nested-state");
+    currentUrl.searchParams.set("code_challenge", "nested-code-challenge");
+    currentUrl.searchParams.set("code_challenge_method", "S256");
+    currentUrl.searchParams.set("after_callback_redirect_url", `https://${projectId}.example-stack-hosted.test/handler/account-settings`);
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    let redirectedUrl = "";
+    const crossDomainRedirect = `https://${projectId}.example-stack-hosted.test/handler/account-settings?code=nested-code&state=nested-state`;
+    const createCrossDomainAuthRedirectUrlSpy = vi
+      .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
+      .mockResolvedValue(crossDomainRedirect);
+    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(sourceRefreshTokenId);
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentUrl.toString(),
+        replace: (url: string) => {
+          redirectedUrl = url;
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    expect(createCrossDomainAuthRedirectUrlSpy).toHaveBeenCalledWith({
+      redirectUri,
+      state: "nested-state",
+      codeChallenge: "nested-code-challenge",
+      afterCallbackRedirectUrl: `https://${projectId}.example-stack-hosted.test/handler/account-settings`,
+      awaitPendingAuthResolutions: false,
+    });
+    expect(redirectedUrl).toBe(crossDomainRedirect);
+  });
+});
+
+it("rejects nested cross-domain auth when the callback URL is untrusted", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "99999999-9999-4999-8999-999999999999";
+    const clientApp = createClientApp(projectId);
+    const currentHref = `https://${projectId}.example-stack-hosted.test/handler/account-settings?stack_nested_cross_domain_auth_refresh_token_id=source-session&stack_nested_cross_domain_auth_callback_url=${encodeURIComponent("https://evil.example.test/oauth-callback")}`;
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+
+    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(false);
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentHref,
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError(/not trusted/);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+});
+
+it("rejects nested cross-domain auth when the source session does not match", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const clientApp = createClientApp(projectId);
+    const currentUrl = new URL(`${localRedirectUrl}/nested-provider`);
+    currentUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", "requested-source-session");
+    currentUrl.searchParams.set("redirect_uri", `https://${projectId}.example-stack-hosted.test/handler/account-settings`);
+    currentUrl.searchParams.set("state", "nested-state");
+    currentUrl.searchParams.set("code_challenge", "nested-code-challenge");
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const createCrossDomainAuthRedirectUrlSpy = vi.spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl");
+    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue("different-source-session");
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentUrl.toString(),
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError(/does not match/);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    expect(createCrossDomainAuthRedirectUrlSpy).not.toHaveBeenCalled();
   });
 });

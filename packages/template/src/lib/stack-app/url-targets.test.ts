@@ -96,6 +96,24 @@ describe("handler URL targets", () => {
     expect(urls.cliAuthConfirm).toBe("https://project-id.example-stack-hosted.test/handler/cli-auth-confirm");
   });
 
+  it("rejects absolute OAuth callback string targets", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        oauthCallback: "https://app.example.test/oauth-callback",
+      },
+    })).toThrowError(/OAuth callback URLs must be relative/);
+  });
+
+  it("rejects absolute OAuth callback custom targets", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        oauthCallback: { type: "custom", url: "https://app.example.test/oauth-callback", version: 0 },
+      },
+    })).toThrowError(/OAuth callback URLs must be relative/);
+  });
+
   it("supports custom CLI auth confirmation targets", () => {
     const cliAuthConfirmPrompt = getPagePrompt("cliAuthConfirm");
     if (cliAuthConfirmPrompt == null) {
