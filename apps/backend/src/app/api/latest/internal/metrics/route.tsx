@@ -321,7 +321,7 @@ async function loadLiveUsersCount(
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   const result = await clickhouseClient.query({
     query: `
@@ -1386,7 +1386,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
 // ── Auth Extra Aggregates ────────────────────────────────────────────────────
 
 async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now: Date) {
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   const [usersRow, teamsRow, dailyActiveUsersSplit, dailyActiveTeamsSplit, mau] = await Promise.all([
     clickhouseClient.query({
