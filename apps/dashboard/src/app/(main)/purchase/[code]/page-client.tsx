@@ -146,10 +146,10 @@ export default function PageClient({ code }: { code: string }) {
   // intentionally omits client_secret for $0 subs (Stripe activates them
   // synchronously, nothing to confirm), so this drives both the
   // missing-secret-is-ok check below and the skip-Stripe-Elements branch in
-  // CheckoutForm.
   const isFreeSelected = useMemo<boolean>(() => {
     if (!selectedPriceId || !data?.product?.prices) return false;
-    return Number(data.product.prices[selectedPriceId].USD) === 0;
+    const usd = data.product.prices[selectedPriceId].USD;
+    return usd === "0" || usd === "0.00";
   }, [data, selectedPriceId]);
 
   const setupSubscription = async () => {
@@ -159,6 +159,11 @@ export default function PageClient({ code }: { code: string }) {
       body: JSON.stringify({ full_code: code, price_id: selectedPriceId, quantity: quantityNumber }),
     });
     const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error?.message ?? "Failed to setup subscription");
+    }
+
     if (!result.client_secret && !isFreeSelected) {
       throw new Error("Failed to setup subscription");
     }

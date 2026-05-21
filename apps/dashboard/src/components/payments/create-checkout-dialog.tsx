@@ -42,6 +42,8 @@ export function CreateCheckoutDialog(props: Props) {
       toast({ title: "Customer type does not match expected type for this product", variant: "destructive" });
     } else if (result.error instanceof KnownErrors.CustomerDoesNotExist) {
       toast({ title: "Customer with given customerId does not exist", variant: "destructive" });
+    } else if (result.error instanceof KnownErrors.ProductAlreadyGranted) {
+      toast({ title: "This customer already owns the selected product", variant: "destructive" });
     } else {
       toast({ title: "An unknown error occurred", variant: "destructive" });
     }
