@@ -489,6 +489,19 @@ export default function PageClient() {
                 <div><strong>Repository:</strong> {configSource.owner}/{configSource.repo}</div>
                 <div><strong>Branch:</strong> {configSource.branch}</div>
                 <div><strong>Config file:</strong> {configSource.configFilePath}</div>
+                {configSource.workflowPath ? (
+                  <div>
+                    <strong>Workflow file:</strong>{" "}
+                    <a
+                      className="underline"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      href={`https://github.com/${encodeURIComponent(configSource.owner)}/${encodeURIComponent(configSource.repo)}/blob/${configSource.branch.split("/").map(encodeURIComponent).join("/")}/${configSource.workflowPath.split("/").map(encodeURIComponent).join("/")}`}
+                    >
+                      {configSource.workflowPath}
+                    </a>
+                  </div>
+                ) : null}
                 <div><strong>Last commit:</strong> <code className="text-xs">{configSource.commitHash.substring(0, 7)}</code></div>
               </div>
             </div>

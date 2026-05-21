@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { ClickHouseError } from "@clickhouse/client";
 import { ActivitySplit } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
@@ -70,8 +70,11 @@ function normalizeUuidFromEvent(value: string): string | null {
 // ClickHouse `match()` uses re2; pattern matches UUID_V4_JS_RE.source.
 const MAU_UUID_V4_REGEX = UUID_V4_JS_RE.source;
 
-async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
-  const clickhouseClient = getClickhouseAdminClient();
+async function loadUsersByCountry(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<Record<string, number>> {
+  // Without the 30-day bound the inner GROUP BY materializes one row per
+  // ever-seen user for the tenant.
+  const { since, untilExclusive } = getMetricsWindowBounds(now);
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   const res = await clickhouseClient.query({
     query: `
       SELECT
@@ -92,6 +95,8 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
             AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
         )
         WHERE cc IS NOT NULL
           AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
@@ -105,6 +110,8 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       includeAnonymous: includeAnonymous ? 1 : 0,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
     },
     format: "JSONEachRow",
   });
@@ -139,7 +146,7 @@ async function loadActiveUsersByCountry(
 ): Promise<Record<string, MetricsRecentUser[]>> {
   const since = new Date(now.getTime() - ACTIVE_USERS_BY_COUNTRY_WINDOW_MS);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   const res = await clickhouseClient.query({
     query: `
       SELECT
@@ -269,7 +276,7 @@ async function loadLiveUsersCount(
   const since = new Date(now.getTime() - ACTIVE_USERS_BY_COUNTRY_WINDOW_MS);
 
   try {
-    const clickhouseClient = getClickhouseAdminClient();
+    const clickhouseClient = getClickhouseAdminClientForMetrics();
     const res = await clickhouseClient.query({
       query: `
         SELECT uniqExact(user_id) AS live_users
@@ -361,7 +368,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   const result = await clickhouseClient.query({
     query: `
       SELECT
@@ -426,11 +433,15 @@ async function loadDailyActiveSplitFromClickhouse(options: {
     ? "AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)"
     : "";
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   // Note: the inner `assumeNotNull(${idCol}) AS entity_id` must not reuse the
   // column name, or ClickHouse re-resolves `WHERE ${idCol} IS NOT NULL`
   // against the alias (assumeNotNull returns '' for NULLs, which passes the
   // not-null test) and phantom rows slip through.
+  //
+  // The LEFT JOIN's `min(event_at)` subquery below is intentionally unbounded:
+  // bounding it would reclassify entities first seen >30d ago and active today
+  // as "new" instead of "reactivated".
   const result = await clickhouseClient.query({
     query: `
       SELECT
@@ -566,7 +577,7 @@ async function loadAnonymousVisitorsFromTokenRefresh(
   now: Date,
 ): Promise<{ dailyVisitors: DataPoints, visitors: number }> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   const query = `
     SELECT
@@ -644,7 +655,7 @@ async function loadAnonymousVisitorsFromTokenRefresh(
 async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
   try {
     const result = await clickhouseClient.query({
       query: `
@@ -1052,7 +1063,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   // Session replay aggregates come from Postgres and have nothing to do with
   // ClickHouse availability. Run them in parallel with the ClickHouse queries
@@ -1078,6 +1089,12 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   } | null = null;
 
   try {
+    // The `event_at >= since` bound on the inner subquery is load-bearing:
+    // without it the GROUP BY hash table holds one row per ever-seen user.
+    // Edge case: anonymous page-views by users with no token-refresh in the
+    // last 30 days now coalesce to non-anonymous. The proper fix is to stamp
+    // `is_anonymous` on page-view/click events at ingest and drop this join
+    // entirely (the coalesce below short-circuits on the first non-null arg).
     const analyticsUserJoin = `
       LEFT JOIN (
         SELECT
@@ -1088,6 +1105,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
           AND project_id = {projectId:String}
           AND branch_id = {branchId:String}
           AND user_id IS NOT NULL
+          AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
         GROUP BY user_id
       ) AS token_refresh_users
@@ -1511,7 +1529,7 @@ export const GET = createSmartRouteHandler({
     ] = await Promise.all([
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
       loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
-      loadUsersByCountry(req.auth.tenancy, includeAnonymous),
+      loadUsersByCountry(req.auth.tenancy, now, includeAnonymous),
       loadActiveUsersByCountry(req.auth.tenancy, now, includeAnonymous),
       loadLiveUsersCount(req.auth.tenancy, now, includeAnonymous),
       usersCrudHandlers.adminList({

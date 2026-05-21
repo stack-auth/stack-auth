@@ -2,6 +2,15 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
+A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
+
+## Q: How should Stack CLI GitHub source paths be stored?
+A: Explicit `stack config push --source github` paths should be normalized as repo-relative paths before storing source metadata. Trim whitespace and strip leading `./`, repeated `./`, and leading `/` segments, matching the dashboard workflow generator's normalization for `STACK_AUTH_CONFIG_PATH` and workflow paths.
+
+## Q: How should Stack CLI code handle flags proven present by nearby validation?
+A: Avoid non-null assertions even when an earlier missing-flags check proves presence. Use `flags.foo ?? throwErr("Expected ...; this should have been caught by ...")` so the type system receives a definite value and future refactors fail loudly with the violated assumption.
+
 ## Q: How do anonymous users work in Stack Auth?
 A: Anonymous users are a special type of user that can be created without any authentication. They have `isAnonymous: true` in the database and use different JWT signing keys with a `role: 'anon'` claim. Anonymous JWTs use a prefixed secret ("anon-" + audience) for signing and verification.
 
