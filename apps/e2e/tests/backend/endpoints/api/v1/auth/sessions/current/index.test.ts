@@ -7,7 +7,7 @@ it("should not crash when signing out a session that was already deleted by a bu
   // Before fix: 500 assertion error in recordExternalDbSyncDeletion.
   // After fix: 401 REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED.
   const signUpRes = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
-  const savedAuth = backendContext.value.userAuth;
+  const savedAuth = backendContext.value.userAuth ?? undefined;
 
   // Admin updates the user's password, which bulk-deletes all refresh tokens
   await niceBackendFetch(`/api/v1/users/${signUpRes.userId}`, {
