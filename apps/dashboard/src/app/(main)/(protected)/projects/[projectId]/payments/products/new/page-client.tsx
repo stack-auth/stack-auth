@@ -76,7 +76,7 @@ const FREE_TRIAL_UNIT_OPTIONS = [
   { value: 'week', label: 'weeks' },
   { value: 'month', label: 'months' },
   { value: 'year', label: 'years' },
-] as const;
+];
 
 const COLOR_CLASSES = {
   blue: {
@@ -356,11 +356,6 @@ export default function PageClient() {
       })),
     { value: 'create-new', label: '+ Create new' },
   ], [paymentsConfig.productLines, customerType]);
-
-  const freeTrialUnitSelectOptions = useMemo(
-    () => FREE_TRIAL_UNIT_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
-    []
-  );
 
   // Computed values
   const existingProducts = typedEntries(paymentsConfig.products)
@@ -1025,7 +1020,7 @@ ${Object.entries(prices).map(([id, price]) => {
                       <DesignSelectorDropdown
                         value={freeTrial[1]}
                         onValueChange={(value) => setFreeTrial([freeTrial[0], value as 'day' | 'week' | 'month' | 'year'])}
-                        options={freeTrialUnitSelectOptions}
+                        options={FREE_TRIAL_UNIT_OPTIONS}
                         size="sm"
                         className="w-28 shrink-0"
                       />

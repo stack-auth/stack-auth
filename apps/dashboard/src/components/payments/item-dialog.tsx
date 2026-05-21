@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { PackageIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type ItemDialogProps = {
   open: boolean,
@@ -27,11 +27,11 @@ type ItemDialogProps = {
   forceCustomerType?: 'user' | 'team' | 'custom',
 };
 
-const CUSTOMER_TYPE_OPTIONS = [
+const CUSTOMER_TYPE_OPTIONS: { value: 'user' | 'team' | 'custom', label: string }[] = [
   { value: 'user', label: 'User' },
   { value: 'team', label: 'Team' },
   { value: 'custom', label: 'Custom' },
-] as const;
+];
 
 export function ItemDialog({
   open,
@@ -45,11 +45,6 @@ export function ItemDialog({
   const [displayName, setDisplayName] = useState(editingItem?.displayName || "");
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(forceCustomerType || editingItem?.customerType || 'user');
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const customerTypeDropdownOptions = useMemo(
-    () => CUSTOMER_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
-    []
-  );
 
   const validateAndSave = async () => {
     const newErrors: Record<string, string> = {};
@@ -194,7 +189,7 @@ export function ItemDialog({
           <DesignSelectorDropdown
             value={customerType}
             onValueChange={(value) => setCustomerType(value as typeof customerType)}
-            options={customerTypeDropdownOptions}
+            options={CUSTOMER_TYPE_OPTIONS}
             disabled={!!forceCustomerType}
             size="md"
           />

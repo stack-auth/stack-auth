@@ -34,6 +34,13 @@ type IncludedItemDialogProps = {
   onCreateNewItem?: () => void,
 };
 
+const REPEAT_UNIT_OPTIONS = [
+  { value: 'day', label: 'day(s)' },
+  { value: 'week', label: 'week(s)' },
+  { value: 'month', label: 'month(s)' },
+  { value: 'year', label: 'year(s)' },
+];
+
 const EXPIRES_OPTIONS = [
   {
     value: 'never' as const,
@@ -171,13 +178,6 @@ export function IncludedItemDialog({
     })),
     ...(onCreateNewItem ? [{ value: CREATE_NEW_ITEM_SENTINEL, label: '+ Create new item' }] : []),
   ], [existingItems, onCreateNewItem]);
-
-  const repeatUnitOptions = useMemo(() => [
-    { value: 'day', label: 'day(s)' },
-    { value: 'week', label: 'week(s)' },
-    { value: 'month', label: 'month(s)' },
-    { value: 'year', label: 'year(s)' },
-  ], []);
 
   const expiresSelectOptions = useMemo(() => EXPIRES_OPTIONS
     .filter(option => !option.requiresRepeat || hasRepeat)
@@ -331,7 +331,7 @@ export function IncludedItemDialog({
                 <DesignSelectorDropdown
                   value={repeatUnit}
                   onValueChange={(value) => setRepeatUnit(value as typeof repeatUnit)}
-                  options={repeatUnitOptions}
+                  options={REPEAT_UNIT_OPTIONS}
                   size="md"
                   className="min-w-0 flex-1"
                 />

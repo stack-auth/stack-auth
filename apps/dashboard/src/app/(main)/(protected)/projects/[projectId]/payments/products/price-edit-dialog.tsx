@@ -7,6 +7,8 @@ import {
   DesignDialogClose,
   DesignInput,
   DesignSelectorDropdown,
+  designFieldTriggerClasses,
+  designPopoverSurfaceClasses,
 } from "@/components/design-components";
 import {
   cn,
@@ -80,16 +82,6 @@ export function PriceEditDialog({
     onEditingPriceChange(null);
     onOpenChange(false);
   };
-
-  const fieldTriggerClasses = cn(
-    "flex h-9 w-full items-center justify-between gap-2 whitespace-nowrap rounded-xl px-3 text-sm",
-    "border border-black/[0.08] dark:border-white/[0.06]",
-    "bg-white/80 dark:bg-background/60 backdrop-blur-xl",
-    "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-    "text-muted-foreground hover:text-foreground",
-    "transition-all duration-150 hover:transition-none hover:ring-black/[0.12] dark:hover:ring-white/[0.1]",
-    "focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/30",
-  );
 
   const amountError = editingPrice ? validateEditingPriceAmount(editingPrice) : null;
 
@@ -201,7 +193,7 @@ export function PriceEditDialog({
                   }}
                 >
                   <PopoverTrigger asChild>
-                    <button type="button" className={fieldTriggerClasses}>
+                    <button type="button" className={designFieldTriggerClasses}>
                       <span className={cn("truncate", editingPrice.freeTrialEnabled && "text-foreground")}>
                         {editingPrice.freeTrialEnabled
                           ? `${editingPrice.freeTrialCount} ${editingPrice.freeTrialCount === 1 ? editingPrice.freeTrialUnit : editingPrice.freeTrialUnit + 's'}`
@@ -213,7 +205,7 @@ export function PriceEditDialog({
                   <PopoverContent
                     align="start"
                     sideOffset={6}
-                    className="w-64 p-3 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-white/95 dark:bg-background/95 backdrop-blur-xl shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.06]"
+                    className={cn("w-64 p-3", designPopoverSurfaceClasses)}
                   >
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">

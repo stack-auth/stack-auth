@@ -21,7 +21,7 @@ export function TestModeToggle() {
     });
   };
 
-  const isOn = paymentsConfig.testMode;
+  const isTestModeOn = paymentsConfig.testMode;
 
   const testModeBadges = [
     "No credit card required",
@@ -34,13 +34,13 @@ export function TestModeToggle() {
       title="Test Mode"
       subtitle="Switch between test and live payment environments."
       icon={FlaskIcon}
-      gradient={isOn ? "blue" : "default"}
+      gradient={isTestModeOn ? "blue" : "default"}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3 min-w-0">
           <div className={cn(
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-colors duration-150 hover:transition-none",
-            isOn
+            isTestModeOn
               ? "bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400 ring-blue-500/20"
               : "bg-foreground/[0.05] text-muted-foreground ring-foreground/[0.08]"
           )}>
@@ -48,20 +48,20 @@ export function TestModeToggle() {
           </div>
           <div className="space-y-1 min-w-0">
             <Typography className="text-sm font-medium text-foreground">
-              {isOn ? "Test mode is active" : "Test mode is disabled"}
+              {isTestModeOn ? "Test mode is active" : "Test mode is disabled"}
             </Typography>
             <Typography variant="secondary" className="text-xs">
-              {isOn
+              {isTestModeOn
                 ? "All checkouts are bypassed and no real payments are processed."
                 : "Checkouts will process real payments through Stripe."
               }
             </Typography>
           </div>
         </div>
-        <Switch checked={isOn} onCheckedChange={handleToggle} />
+        <Switch checked={isTestModeOn} onCheckedChange={handleToggle} />
       </div>
 
-      {isOn && (
+      {isTestModeOn && (
         <div className="mt-4 flex flex-wrap gap-1.5">
           {testModeBadges.map((label) => (
             <DesignBadge key={label} label={label} color="blue" size="sm" />

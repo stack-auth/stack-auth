@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignInput, DesignSelectorDropdown } from "@/components/design-components";
+import { DesignInput, DesignSelectorDropdown, designPopoverSurfaceClasses } from "@/components/design-components";
 import {
   Popover,
   PopoverContent,
@@ -196,7 +196,7 @@ export function RepeatingInput({
         <PopoverContent
           align="end"
           sideOffset={6}
-          className="w-60 p-0 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-white/95 dark:bg-background/95 backdrop-blur-xl shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.06]"
+          className={cn("w-60 p-0 overflow-hidden", designPopoverSurfaceClasses)}
         >
           <div className="flex flex-col p-1">
             <button

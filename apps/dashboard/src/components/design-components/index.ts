@@ -13,6 +13,7 @@ export type {
   DesignDialogVariant,
 } from "../../../../../packages/dashboard-ui-components/src/components/dialog";
 export * from "./analytics-card";
+export * from "./design-tokens";
 export * from "./editable-grid";
 export * from "./list";
 export * from "./menu";
