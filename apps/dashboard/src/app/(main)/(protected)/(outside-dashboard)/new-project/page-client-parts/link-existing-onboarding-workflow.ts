@@ -8,10 +8,12 @@ function encodeYamlScalar(value: string): string {
 }
 
 // GitHub Actions `on.push.paths` filters are repo-relative and do not match a
-// leading `./`. Config-path suggestions and manual input may include one, so
-// strip it to keep the push trigger (and the checked-out file path) canonical.
+// leading `./` or `/`. Config-path suggestions and manual input may include
+// either, possibly repeated (e.g. `.//src/...`), so strip any combination of
+// leading `./` and `/` segments to keep the push trigger and checked-out path
+// canonical.
 export function normalizeConfigPath(configPath: string): string {
-  return configPath.trim().replace(/^(?:\.\/)+/, "");
+  return configPath.trim().replace(/^(?:\.?\/+)+/, "");
 }
 
 export function buildWorkflowYaml(branch: string, configPath: string): string {

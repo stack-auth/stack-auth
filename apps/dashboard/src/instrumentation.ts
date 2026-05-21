@@ -5,7 +5,7 @@ import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import "./polyfills";
 
 async function startRemoteDevelopmentEnvironmentLifecycleIfNeeded(): Promise<void> {
-  if (process.env.NEXT_RUNTIME !== "nodejs" || getEnvVariable("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT", "") !== "true") {
+  if (getNextRuntime() !== "nodejs" || getEnvVariable("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT", "") !== "true") {
     return;
   }
 

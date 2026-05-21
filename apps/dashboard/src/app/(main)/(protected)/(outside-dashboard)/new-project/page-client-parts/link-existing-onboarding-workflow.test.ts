@@ -4,6 +4,7 @@ import {
   buildWorkflowYaml,
   GITHUB_PROJECT_ID_SECRET_NAME,
   GITHUB_SECRET_SERVER_KEY_SECRET_NAME,
+  normalizeConfigPath,
   WORKFLOW_FILE_PATH,
 } from "./link-existing-onboarding-workflow";
 
@@ -34,5 +35,31 @@ describe("buildWorkflowYaml", () => {
     const workflowYaml = buildWorkflowYaml("main", "stack.config.ts");
     expect(workflowYaml).toContain("STACK_AUTH_SOURCE_REPO: ${{ github.repository }}");
     expect(workflowYaml).not.toMatch(/STACK_AUTH_SOURCE_REPO:\s+"[^$]/);
+  });
+});
+
+describe("normalizeConfigPath", () => {
+  it("strips a single leading ./", () => {
+    expect(normalizeConfigPath("./stack.config.ts")).toBe("stack.config.ts");
+  });
+
+  it("strips repeated leading ./", () => {
+    expect(normalizeConfigPath("././stack.config.ts")).toBe("stack.config.ts");
+  });
+
+  it("strips a mix of leading ./ and extra slashes", () => {
+    expect(normalizeConfigPath(".//src/stack.config.ts")).toBe("src/stack.config.ts");
+  });
+
+  it("strips a single leading /", () => {
+    expect(normalizeConfigPath("/src/stack.config.ts")).toBe("src/stack.config.ts");
+  });
+
+  it("leaves a repo-relative path alone", () => {
+    expect(normalizeConfigPath("src/stack.config.ts")).toBe("src/stack.config.ts");
+  });
+
+  it("trims whitespace before normalization", () => {
+    expect(normalizeConfigPath("  ./stack.config.ts  ")).toBe("stack.config.ts");
   });
 });

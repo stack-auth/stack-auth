@@ -159,6 +159,48 @@ describe("buildConfigPushSource", () => {
     ).toThrow(/--source-workflow-path must be a non-empty path string/);
   });
 
+  it("rejects whitespace-only --source-path", () => {
+    process.env.GITHUB_SHA = "abc123";
+    process.env.GITHUB_REF_NAME = "main";
+    expect(() =>
+      buildConfigPushSource("stack.config.ts", {
+        source: "github",
+        sourceRepo: "myorg/my-repo",
+        sourcePath: "   ",
+        sourceWorkflowPath: ".github/workflows/x.yml",
+      })
+    ).toThrow(/--source-path must be a non-empty path string/);
+  });
+
+  it("rejects whitespace-only --source-workflow-path", () => {
+    process.env.GITHUB_SHA = "abc123";
+    process.env.GITHUB_REF_NAME = "main";
+    expect(() =>
+      buildConfigPushSource("stack.config.ts", {
+        source: "github",
+        sourceRepo: "myorg/my-repo",
+        sourcePath: "stack.config.ts",
+        sourceWorkflowPath: "\t\n ",
+      })
+    ).toThrow(/--source-workflow-path must be a non-empty path string/);
+  });
+
+  it("trims surrounding whitespace from --source-path and --source-workflow-path", () => {
+    process.env.GITHUB_SHA = "abc123";
+    process.env.GITHUB_REF_NAME = "main";
+    const result = buildConfigPushSource("stack.config.ts", {
+      source: "github",
+      sourceRepo: "myorg/my-repo",
+      sourcePath: "  configs/stack.config.ts  ",
+      sourceWorkflowPath: " .github/workflows/x.yml ",
+    });
+    expect(result).toMatchObject({
+      type: "pushed-from-github",
+      config_file_path: "configs/stack.config.ts",
+      workflow_path: ".github/workflows/x.yml",
+    });
+  });
+
   it("rejects --source-repo with whitespace or invalid characters", () => {
     process.env.GITHUB_SHA = "abc123";
     process.env.GITHUB_REF_NAME = "main";

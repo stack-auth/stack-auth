@@ -8,7 +8,7 @@ import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@stackf
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import React, { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { createGithubFetch, GITHUB_SCOPE_REQUIREMENTS } from "./github-api";
 import { pushConfigUpdateToGitHub } from "./github-config-push";
@@ -72,18 +72,21 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
   }, []);
 
   const settleDialog = useCallback((result: boolean) => {
-    setDialogState((prev) => {
-      prev.resolve?.(result);
-      return {
-        isOpen: false,
-        adminApp: null,
-        configUpdate: null,
-        resolve: null,
-        source: null,
-        isLoadingSource: false,
-      };
+    // Pull `resolve` out before the state update so we never invoke it from
+    // inside a setState updater — React strict mode double-invokes updaters,
+    // which would call `resolve` twice. Promise resolution is idempotent so
+    // this was harmless in practice, but the pattern is wrong.
+    const resolve = dialogState.resolve;
+    setDialogState({
+      isOpen: false,
+      adminApp: null,
+      configUpdate: null,
+      resolve: null,
+      source: null,
+      isLoadingSource: false,
     });
-  }, []);
+    resolve?.(result);
+  }, [dialogState.resolve]);
 
   const projectId = dialogState.adminApp?.projectId;
 
@@ -193,8 +196,9 @@ type GithubPushHandlers = {
   connect: () => Promise<"prevent-close" | undefined>,
 };
 
-const UNLINK_HINT_PROJECT_SETTINGS_HREF = (projectId: string | undefined) =>
-  `/projects/${projectId}/project-settings`;
+function projectSettingsHref(projectId: string | undefined): string {
+  return `/projects/${projectId}/project-settings`;
+}
 
 /**
  * Outer shell. Renders `ActionDialog` synchronously (no suspending hooks) so
@@ -295,7 +299,7 @@ function GithubPushBodyFallback({ projectId }: { projectId: string | undefined }
       <p className="text-sm text-muted-foreground">
         <em>
           If your configuration is no longer on GitHub, you can unlink it in{" "}
-          <Link href={UNLINK_HINT_PROJECT_SETTINGS_HREF(projectId)} className="underline">
+          <Link href={projectSettingsHref(projectId)} className="underline">
             Project Settings
           </Link>.
         </em>
@@ -338,7 +342,11 @@ function GithubPushBody({
 
   // Sync our local status string up to the dialog shell so it can pick the
   // right button label / description without itself needing to suspend.
-  useEffect(() => {
+  // `useLayoutEffect` (not `useEffect`) so the shell's "checking" placeholder
+  // never reaches the screen for users whose initial state is actually
+  // "no-account" — the sync runs before the browser paints the first frame
+  // after the Suspense fallback resolves.
+  useLayoutEffect(() => {
     onScopeStatusChange(scopeCheck.status);
   }, [scopeCheck.status, onScopeStatusChange]);
 
@@ -471,7 +479,7 @@ function GithubPushBody({
       <p className="text-sm text-muted-foreground">
         <em>
           If your configuration is no longer on GitHub, you can unlink it in{" "}
-          <Link href={UNLINK_HINT_PROJECT_SETTINGS_HREF(projectId)} className="underline">
+          <Link href={projectSettingsHref(projectId)} className="underline">
             Project Settings
           </Link>.
         </em>

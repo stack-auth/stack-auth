@@ -67,9 +67,8 @@ export function createGithubFetch(account: OAuthConnection): GithubFetch {
     });
 
     if (response.status === 204) {
-      if (!response.ok) {
-        throw new Error("GitHub API request failed.");
-      }
+      // 204 is always a success status (any 2xx satisfies `response.ok`),
+      // so no error check is needed here.
       return null;
     }
 

@@ -78,10 +78,15 @@ export function buildConfigPushSource(configFilePath: string, flags: SourceFlagO
 
     const { owner, repo } = parseOwnerRepo(flags.sourceRepo!, "--source-repo");
 
-    if (flags.sourcePath!.length === 0) {
+    // Trim before the empty check so whitespace-only values (e.g. `--source-path " "`)
+    // are rejected the same way as an empty string. The stored value is the trimmed
+    // form to keep the downstream config row free of accidental whitespace.
+    const sourcePath = flags.sourcePath!.trim();
+    if (sourcePath.length === 0) {
       throw new CliError("--source-path must be a non-empty path string.");
     }
-    if (flags.sourceWorkflowPath!.length === 0) {
+    const sourceWorkflowPath = flags.sourceWorkflowPath!.trim();
+    if (sourceWorkflowPath.length === 0) {
       throw new CliError("--source-workflow-path must be a non-empty path string.");
     }
 
@@ -100,8 +105,8 @@ export function buildConfigPushSource(configFilePath: string, flags: SourceFlagO
       repo,
       branch,
       commit_hash: sha,
-      config_file_path: flags.sourcePath!,
-      workflow_path: flags.sourceWorkflowPath!,
+      config_file_path: sourcePath,
+      workflow_path: sourceWorkflowPath,
     };
   }
 
