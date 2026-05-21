@@ -45,7 +45,7 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
@@ -691,7 +691,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._eventTracker.start();
     }
 
-    if (isBrowserLike() && this._isOAuthCallbackUrlHosted()) {
+    if (isBrowserLike() && this._isOAuthCallbackUrlHosted() && this._currentUrlLooksLikeStackOAuthCallback()) {
       this._trackPendingAuthResolution(async () => {
         if (isBrowserLike()) {
           await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
@@ -791,6 +791,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     );
   }
 
+  protected _currentUrlLooksLikeStackOAuthCallback(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const currentUrl = new URL(window.location.href);
+    const state = currentUrl.searchParams.get("state");
+    if (!currentUrl.searchParams.has("code") || state == null) {
+      return false;
+    }
+    return getCookieClient(`stack-oauth-outer-${state}`) != null;
+  }
+
   protected _getOAuthCallbackRedirectUri(): string {
     if (!this._isOAuthCallbackUrlHosted()) {
       return this.urls.oauthCallback;
@@ -818,13 +830,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _addNestedCrossDomainAuthParamsToRedirectUrl(options: {
     url: string,
     currentUrl: URL,
+    awaitPendingAuthResolutions?: boolean,
   }): Promise<string> {
     const targetUrl = new URL(options.url, options.currentUrl);
     if (targetUrl.origin === options.currentUrl.origin) {
       return options.url;
     }
 
-    const refreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn();
+    const refreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({
+      awaitPendingAuthResolutions: options.awaitPendingAuthResolutions,
+    });
     if (refreshTokenId == null) {
       return options.url;
     }
@@ -2841,7 +2856,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._redirectTo({ url, ...options });
   }
 
-  protected async _redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions) {
+  protected async _redirectToHandler(
+    handlerName: keyof HandlerUrls,
+    options?: RedirectToOptions,
+    internalOptions?: { awaitPendingAuthResolutions?: boolean },
+  ) {
     const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
     const rawHandlerUrl = rawUrls[handlerName];
     if (!rawHandlerUrl) {
@@ -2866,13 +2885,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         state: plan.state,
         codeChallenge: plan.codeChallenge,
         afterCallbackRedirectUrl: plan.afterCallbackRedirectUrl,
+        awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
       });
       await this._redirectTo({ url: crossDomainRedirectUrl, ...options });
       return;
     }
 
     const redirectUrl = currentUrl != null && handlerName !== "signOut" && handlerName !== "afterSignOut" && handlerName !== "oauthCallback"
-      ? await this._addNestedCrossDomainAuthParamsToRedirectUrl({ url: plan.url, currentUrl })
+      ? await this._addNestedCrossDomainAuthParamsToRedirectUrl({
+        url: plan.url,
+        currentUrl,
+        awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
+      })
       : plan.url;
     await this._redirectIfTrusted(redirectUrl, options);
   }
@@ -3417,9 +3441,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       await this._signInToAccountWithTokens(result.data);
       if (!(options?.noRedirect)) {
         if (result.data.newUser) {
-          await this.redirectToAfterSignUp({ replace: true });
+          await this._redirectToHandler("afterSignUp", { replace: true }, { awaitPendingAuthResolutions: false });
         } else {
-          await this.redirectToAfterSignIn({ replace: true });
+          await this._redirectToHandler("afterSignIn", { replace: true }, { awaitPendingAuthResolutions: false });
         }
       }
       return Result.ok(undefined);
@@ -3648,10 +3672,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await this._redirectTo({ url: result.data.afterCallbackRedirectUrl, replace: true });
         return true;
       } else if (result.data.newUser) {
-        await this.redirectToAfterSignUp({ replace: true });
+        await this._redirectToHandler("afterSignUp", { replace: true }, { awaitPendingAuthResolutions: false });
         return true;
       } else {
-        await this.redirectToAfterSignIn({ replace: true });
+        await this._redirectToHandler("afterSignIn", { replace: true }, { awaitPendingAuthResolutions: false });
         return true;
       }
     }

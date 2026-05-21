@@ -172,6 +172,30 @@ it("strips stale OAuth callback params from hosted current-page redirect URIs", 
   });
 });
 
+it("only treats hosted OAuth callback URLs as Stack callbacks when the matching state cookie exists", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const clientApp = createClientApp("ffffffff-ffff-4fff-8fff-ffffffffffff");
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: `${localRedirectUrl}/callback-page?code=oauth-code&state=oauth-state`,
+      },
+    } as any;
+
+    try {
+      expect((clientApp as any)._currentUrlLooksLikeStackOAuthCallback()).toBe(false);
+      globalThis.document.cookie = "stack-oauth-outer-oauth-state=verifier";
+      expect((clientApp as any)._currentUrlLooksLikeStackOAuthCallback()).toBe(true);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+});
+
 it("keeps rejected pending auth resolutions from leaking into session consumers", async ({ expect }) => {
   const clientApp = createClientApp("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
   vi.spyOn(clientApp as any, "_hasPersistentTokenStore").mockReturnValue(true);
@@ -186,6 +210,88 @@ it("keeps rejected pending auth resolutions from leaking into session consumers"
   } finally {
     consoleErrorSpy.mockRestore();
   }
+});
+
+it("does not await pending auth resolutions when post-callback redirect mints a cross-domain code", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "12121212-1212-4212-8212-121212121212";
+    const clientApp = createClientApp(projectId);
+    const currentUrl = new URL(`${localRedirectUrl}/callback-page`);
+    const redirectBackUrl = new URL(`${localRedirectUrl}/handler/oauth-callback`);
+    redirectBackUrl.searchParams.set("stack_cross_domain_auth", "1");
+    redirectBackUrl.searchParams.set("stack_cross_domain_state", "state");
+    redirectBackUrl.searchParams.set("stack_cross_domain_code_challenge", "challenge");
+    redirectBackUrl.searchParams.set("stack_cross_domain_after_callback_redirect_url", `${localRedirectUrl}/after`);
+    currentUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const createCrossDomainAuthRedirectUrlSpy = vi
+      .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
+      .mockResolvedValue(`https://${projectId}.example-stack-hosted.test/handler/final`);
+
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: currentUrl.toString(),
+        replace: () => {
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._redirectToHandler(
+        "afterSignIn",
+        { replace: true },
+        { awaitPendingAuthResolutions: false },
+      )).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    expect(createCrossDomainAuthRedirectUrlSpy).toHaveBeenCalledWith(expect.objectContaining({
+      awaitPendingAuthResolutions: false,
+    }));
+  });
+});
+
+it("does not await pending auth resolutions when post-callback redirect adds nested auth params", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "13131313-1313-4313-8313-131313131313";
+    const clientApp = createClientApp(projectId);
+    const getCurrentRefreshTokenIdIfSignedInSpy = vi
+      .spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn")
+      .mockResolvedValue(null);
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.window = {
+      location: {
+        href: `${localRedirectUrl}/callback-page`,
+        replace: () => {
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._redirectToHandler(
+        "afterSignIn",
+        { replace: true },
+        { awaitPendingAuthResolutions: false },
+      )).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    expect(getCurrentRefreshTokenIdIfSignedInSpy).toHaveBeenCalledWith({
+      awaitPendingAuthResolutions: false,
+    });
+  });
 });
 
 it("keeps cross-domain handoff working when top-level params are dropped before after-sign-in", async ({ expect }) => {

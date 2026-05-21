@@ -49,7 +49,7 @@ function hostPatternHasExplicitPort(hostPattern: string): boolean {
     return false;
   }
   const port = hostPattern.slice(portSeparatorIndex + 1);
-  return port !== "" && [...port].every(char => char >= "0" && char <= "9");
+  return port === "*" || (port !== "" && [...port].every(char => char >= "0" && char <= "9"));
 }
 
 function matchesTrustedDomain(testUrl: URL, pattern: string): boolean {
@@ -150,6 +150,10 @@ import.meta.vitest?.test("validateRedirectUrl respects default and explicit port
     allowLocalhost: false,
     trustedDomains: ["http://*.example.com:3000"],
   })).toBe(false);
+  expect(validateRedirectUrl("http://api.example.com:1234", {
+    allowLocalhost: false,
+    trustedDomains: ["http://*.example.com:*"],
+  })).toBe(true);
 });
 
 import.meta.vitest?.test("validateRedirectUrl respects localhost allowance and invalid patterns", ({ expect }) => {
@@ -178,6 +182,6 @@ import.meta.vitest?.test("getTrustedParentDomain ignores empty entries and strip
     null,
     undefined,
     "https://example.com",
-    "https://**.example.com:443",
+    "https://**.example.com:*",
   ])).toBe("example.com");
 });
