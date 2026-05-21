@@ -142,7 +142,7 @@ it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
   });
 });
 
-it("strips stale OAuth callback params from hosted callback redirect URIs", async ({ expect }) => {
+it("strips stale OAuth callback params from hosted current-page redirect URIs", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const clientApp = createClientApp("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
     const previousWindow = globalThis.window;
@@ -164,7 +164,7 @@ it("strips stale OAuth callback params from hosted callback redirect URIs", asyn
     } as any;
 
     try {
-      expect((clientApp as any)._getOAuthCallbackRedirectUri({ forCallback: true })).toBe(`${localRedirectUrl}/callback-page?foo=bar`);
+      expect((clientApp as any)._getOAuthCallbackRedirectUri()).toBe(`${localRedirectUrl}/callback-page?foo=bar`);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;

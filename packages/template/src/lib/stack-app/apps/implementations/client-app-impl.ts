@@ -96,6 +96,8 @@ const nestedCrossDomainAuthQueryParams = {
   afterCallbackRedirectUrl: "after_callback_redirect_url",
 } as const;
 
+const oauthCallbackResponseQueryParams = ["code", "state", "error", "error_description", "errorCode", "message", "details"] as const;
+
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
 
@@ -789,7 +791,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     );
   }
 
-  protected _getOAuthCallbackRedirectUri(options?: { forCallback?: boolean }): string {
+  protected _getOAuthCallbackRedirectUri(): string {
     if (!this._isOAuthCallbackUrlHosted()) {
       return this.urls.oauthCallback;
     }
@@ -798,10 +800,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     const currentUrl = new URL(window.location.href);
-    if (options?.forCallback === true) {
-      for (const param of ["code", "state", "error", "error_description", "errorCode", "message", "details"]) {
-        currentUrl.searchParams.delete(param);
-      }
+    for (const param of oauthCallbackResponseQueryParams) {
+      currentUrl.searchParams.delete(param);
     }
     return currentUrl.toString();
   }
@@ -3619,7 +3619,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (this._currentUrlLooksLikeOAuthCallback()) {
       this._ensurePersistentTokenStore();
     }
-    let oauthCallbackRedirectUri = this._getOAuthCallbackRedirectUri({ forCallback: true });
+    let oauthCallbackRedirectUri = this._getOAuthCallbackRedirectUri();
     const currentUrl = new URL(window.location.href);
     if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1") {
       currentUrl.searchParams.delete("code");
