@@ -156,33 +156,9 @@ export function createFreePrice(): { [priceId: string]: Price } {
 }
 
 /**
- * Returns true if `prices` represents a "free" product: exactly one price entry
- * whose USD amount is `'0'` or `'0.00'` and which has no free-trial or
- * server-only flag set (either would change the semantics meaningfully).
- *
- * An interval IS allowed (and expected, post-update) because a free product is
- * modelled as a $0 recurring subscription — see `createFreePrice()` for the
- * rationale.
- *
- * We accept both `'0'` and `'0.00'` for backward-compatibility with rows written
- * before we standardized on `createFreePrice()` (which emits `'0.00'`). All three
- * product pages (list, edit, create) call this so the "Free" indicator and the
- * "Make free" / "Make paid" toggles stay in sync.
- */
-/**
- * Returns a human-readable error string if this price would be rejected by
- * Stripe at checkout time, or `null` if it's valid. Used both at price-edit
- * time and as a warning indicator on the products page for existing prices
- * that predate the validation (so admins know to fix them before customers
- * hit the error at checkout).
- *
- * Stripe rules mirrored here:
- * - One-time PaymentIntents must be ≥ per-currency minimum (USD: $0.50). $0
- *   one-time is also rejected (it's below the minimum).
- * - Recurring subs have no minimum — $0 subs are valid.
- *
- * See packages/stack-shared/src/payments/stripe-limits.ts for the source-of-
- * truth minimums.
+ * Returns a human-readable error if Stripe would reject this price at checkout,
+ * or `null` if it's valid. Mirrors the per-currency one-time minimum from
+ * stack-shared/payments/stripe-limits; recurring $0 subs are allowed.
  */
 export function getPriceCheckoutError(price: Price): string | null {
   const amount = Number(price.USD);
@@ -201,6 +177,12 @@ export function getPriceCheckoutError(price: Price): string | null {
   return null;
 }
 
+/**
+ * Returns true if `prices` is the canonical "free product" shape: exactly one
+ * entry with USD `'0'`/`'0.00'`, no free-trial, no server-only. Accepts both
+ * `'0'` and `'0.00'` so rows written before `createFreePrice()` still match.
+ * An interval is allowed (a free product is a $0 recurring sub).
+ */
 export function isFreePrices(prices: PricesObject): boolean {
   const entries = Object.values(prices);
   if (entries.length !== 1) return false;
