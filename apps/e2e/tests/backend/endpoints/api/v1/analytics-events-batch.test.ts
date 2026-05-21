@@ -674,8 +674,17 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
 // batch is rejected when remaining quota is less than the batch size, and
 // the quota must remain unchanged (no partial debit).
 it("rejects batch when remaining quota is less than batch size and does not debit", async ({ expect }) => {
+  const t0 = performance.now();
   const { ownerTeamId } = await setupProjectWithPlan("free");
+  const t1 = performance.now();
+  console.log(`[TIMING] setupProjectWithPlan: ${(t1 - t0).toFixed(0)}ms`);
+
   await Auth.Otp.signIn();
+  const t2 = performance.now();
+  console.log(`[TIMING] Auth.Otp.signIn: ${(t2 - t1).toFixed(0)}ms`);
+
+  const quantityBeforeStabilize = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  console.log(`[TIMING] quantity before stabilize: ${quantityBeforeStabilize}`);
 
   // Drain async logEvent debits before forcing the quota down to a known
   // value — otherwise a trailing in-flight debit would push it negative
@@ -687,7 +696,17 @@ it("rejects batch when remaining quota is less than batch size and does not debi
     ITEM_IDS.analyticsEvents,
     { minimumElapsedMs: 5000 },
   );
+  const t3 = performance.now();
+  const quantityAfterStabilize = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  console.log(`[TIMING] waitForItemQuantityToStabilize: ${(t3 - t2).toFixed(0)}ms, quantity after: ${quantityAfterStabilize}`);
+
   await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 2);
+  const t4 = performance.now();
+  console.log(`[TIMING] setItemQuantity(2): ${(t4 - t3).toFixed(0)}ms`);
+
+  // Check if quantity is STILL 2 right before the batch call
+  const quantityCheck = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  console.log(`[TIMING] quantity check right before batch: ${quantityCheck} (expected 2)`);
 
   const res = await uploadEventBatch({
     sessionReplaySegmentId: randomUUID(),
@@ -699,11 +718,14 @@ it("rejects batch when remaining quota is less than batch size and does not debi
       data: {},
     })),
   });
+  const t5 = performance.now();
+  console.log(`[TIMING] uploadEventBatch: ${(t5 - t4).toFixed(0)}ms, status: ${res.status}`);
 
   expect(res.status).toBe(400);
   expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
 
   const quantityAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  console.log(`[TIMING] final quantity: ${quantityAfter} (expected 2), total: ${(performance.now() - t0).toFixed(0)}ms`);
   expect(quantityAfter).toBe(2);
 });
 

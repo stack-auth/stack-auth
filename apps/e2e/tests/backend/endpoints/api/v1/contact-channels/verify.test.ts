@@ -12,13 +12,22 @@ it("should verify user's email", async ({ expect }) => {
 });
 
 it("each verification code that was already requested can be used exactly once", async ({ expect }) => {
+  const t0 = performance.now();
   // note: send-verification-code checks that you didn't already verify the email when you send the verification code, but if you request multiple at the same time you should be able to use them all
   await Auth.Password.signUpWithEmail();
+  const t1 = performance.now();
+  console.log(`[TIMING] signUpWithEmail: ${(t1 - t0).toFixed(0)}ms`);
   await ContactChannels.sendVerificationCode();
+  const t2 = performance.now();
+  console.log(`[TIMING] sendVerificationCode #1: ${(t2 - t1).toFixed(0)}ms`);
   await ContactChannels.sendVerificationCode();
+  const t3 = performance.now();
+  console.log(`[TIMING] sendVerificationCode #2: ${(t3 - t2).toFixed(0)}ms`);
   const mailbox = backendContext.value.mailbox;
   // Wait for all 3 verification emails: 1 from signup + 2 from sendVerificationCode calls
   const verifyMessages = await mailbox.waitForMessagesWithSubjectCount("Verify your email", 3);
+  const t4 = performance.now();
+  console.log(`[TIMING] waitForMessagesWithSubjectCount(3): ${(t4 - t3).toFixed(0)}ms, total: ${(t4 - t0).toFixed(0)}ms`);
   const verificationCodes = verifyMessages.map((message) => message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Verification code not found"));
   expect(verificationCodes).toHaveLength(3);
 

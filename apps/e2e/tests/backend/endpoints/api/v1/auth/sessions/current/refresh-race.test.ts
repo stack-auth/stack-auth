@@ -39,8 +39,10 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
   // between findFirst(refreshToken) and projectUserRefreshToken.update().
   const ATTEMPTS = 10;
   const failures: RaceFailure[] = [];
+  const testStart = performance.now();
 
   for (let i = 0; i < ATTEMPTS; i++) {
+    const iterStart = performance.now();
     backendContext.set({
       mailbox: createMailbox(`refresh-race--${randomUUID()}${generatedEmailSuffix}`),
       userAuth: null,
@@ -49,9 +51,12 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
     // returned by the sign-up response itself. Waiting for the verification
     // email costs 5–10s per iteration on CI and pushes the test past its
     // 120s timeout.
+    const signUpStart = performance.now();
     await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    const signUpMs = performance.now() - signUpStart;
     const rt = backendContext.value.userAuth!.refreshToken!;
 
+    const raceStart = performance.now();
     const refreshP = niceBackendFetch("/api/v1/auth/sessions/current/refresh", {
       method: "POST",
       accessType: "client",
@@ -63,6 +68,9 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
     });
 
     const [refreshResult, signOutResult] = await Promise.allSettled([refreshP, signOutP]);
+    const raceMs = performance.now() - raceStart;
+    const iterMs = performance.now() - iterStart;
+    console.log(`[TIMING] refresh-race iter ${i}: signUp=${signUpMs.toFixed(0)}ms, race=${raceMs.toFixed(0)}ms, total=${iterMs.toFixed(0)}ms, elapsed=${(performance.now() - testStart).toFixed(0)}ms`);
     failures.push(...collectUnexpectedRaceResponseFailures({ refreshResult, signOutResult }));
 
     // Acceptable outcomes:
@@ -74,6 +82,7 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
     }
   }
 
+  console.log(`[TIMING] refresh-race total: ${(performance.now() - testStart).toFixed(0)}ms for ${ATTEMPTS} attempts`);
   expect(failures).toEqual([]);
 });
 
@@ -82,14 +91,17 @@ it("does not 500 when an OAuth refresh-token grant races with a sign-out of the 
   // session refresh endpoint, so keep this regression covered on both callers.
   const ATTEMPTS = 10;
   const failures: RaceFailure[] = [];
+  const testStart = performance.now();
 
   for (let i = 0; i < ATTEMPTS; i++) {
+    const iterStart = performance.now();
     backendContext.set({
       mailbox: createMailbox(`oauth-refresh-race--${randomUUID()}${generatedEmailSuffix}`),
       userAuth: null,
     });
     // See note above on `noWaitForEmail`.
     await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+    console.log(`[TIMING] oauth-refresh-race iter ${i}: signUp=${(performance.now() - iterStart).toFixed(0)}ms, elapsed=${(performance.now() - testStart).toFixed(0)}ms`);
     const rt = backendContext.value.userAuth!.refreshToken!;
     const projectKeys = backendContext.value.projectKeys;
     if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
