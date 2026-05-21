@@ -143,7 +143,7 @@ describe("buildConfigPushSource", () => {
         sourcePath: "",
         sourceWorkflowPath: ".github/workflows/x.yml",
       })
-    ).toThrow(/--source-path must be a non-empty path string/);
+    ).toThrowErrorMatchingInlineSnapshot(`[CliError: --source-path must be a non-empty repo-relative path string.]`);
   });
 
   it("rejects empty-string --source-workflow-path", () => {
@@ -156,7 +156,7 @@ describe("buildConfigPushSource", () => {
         sourcePath: "stack.config.ts",
         sourceWorkflowPath: "",
       })
-    ).toThrow(/--source-workflow-path must be a non-empty path string/);
+    ).toThrowErrorMatchingInlineSnapshot(`[CliError: --source-workflow-path must be a non-empty repo-relative path string.]`);
   });
 
   it("rejects whitespace-only --source-path", () => {
@@ -169,7 +169,7 @@ describe("buildConfigPushSource", () => {
         sourcePath: "   ",
         sourceWorkflowPath: ".github/workflows/x.yml",
       })
-    ).toThrow(/--source-path must be a non-empty path string/);
+    ).toThrowErrorMatchingInlineSnapshot(`[CliError: --source-path must be a non-empty repo-relative path string.]`);
   });
 
   it("rejects whitespace-only --source-workflow-path", () => {
@@ -182,23 +182,50 @@ describe("buildConfigPushSource", () => {
         sourcePath: "stack.config.ts",
         sourceWorkflowPath: "\t\n ",
       })
-    ).toThrow(/--source-workflow-path must be a non-empty path string/);
+    ).toThrowErrorMatchingInlineSnapshot(`[CliError: --source-workflow-path must be a non-empty repo-relative path string.]`);
   });
 
-  it("trims surrounding whitespace from --source-path and --source-workflow-path", () => {
+  it("normalizes surrounding whitespace and leading repo-root markers from --source paths", () => {
     process.env.GITHUB_SHA = "abc123";
     process.env.GITHUB_REF_NAME = "main";
     const result = buildConfigPushSource("stack.config.ts", {
       source: "github",
       sourceRepo: "myorg/my-repo",
-      sourcePath: "  configs/stack.config.ts  ",
-      sourceWorkflowPath: " .github/workflows/x.yml ",
+      sourcePath: "  ././configs/stack.config.ts  ",
+      sourceWorkflowPath: " /.github/workflows/x.yml ",
     });
-    expect(result).toMatchObject({
-      type: "pushed-from-github",
-      config_file_path: "configs/stack.config.ts",
-      workflow_path: ".github/workflows/x.yml",
-    });
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "branch": "main",
+        "commit_hash": "abc123",
+        "config_file_path": "configs/stack.config.ts",
+        "owner": "myorg",
+        "repo": "my-repo",
+        "type": "pushed-from-github",
+        "workflow_path": ".github/workflows/x.yml",
+      }
+    `);
+  });
+
+  it("rejects source paths that normalize to empty repo-relative paths", () => {
+    process.env.GITHUB_SHA = "abc123";
+    process.env.GITHUB_REF_NAME = "main";
+    expect(() =>
+      buildConfigPushSource("stack.config.ts", {
+        source: "github",
+        sourceRepo: "myorg/my-repo",
+        sourcePath: "././",
+        sourceWorkflowPath: ".github/workflows/x.yml",
+      })
+    ).toThrowErrorMatchingInlineSnapshot(`[CliError: --source-path must be a non-empty repo-relative path string.]`);
+    expect(() =>
+      buildConfigPushSource("stack.config.ts", {
+        source: "github",
+        sourceRepo: "myorg/my-repo",
+        sourcePath: "stack.config.ts",
+        sourceWorkflowPath: "/",
+      })
+    ).toThrowErrorMatchingInlineSnapshot(`[CliError: --source-workflow-path must be a non-empty repo-relative path string.]`);
   });
 
   it("rejects --source-repo with whitespace or invalid characters", () => {

@@ -59,6 +59,14 @@ function parseGitHubRepositoryEnv(): { owner: string, repo: string } | null {
   }
 }
 
+function normalizeRepoRelativePath(value: string, flagName: string): string {
+  const normalized = value.trim().replace(/^(?:\.?\/+)+/, "");
+  if (normalized.length === 0) {
+    throw new CliError(`${flagName} must be a non-empty repo-relative path string.`);
+  }
+  return normalized;
+}
+
 export function buildConfigPushSource(configFilePath: string, flags: SourceFlagOptions): BranchConfigSourceApi {
   const dependentFlags: Array<[string, string | undefined]> = [
     ["--source-repo", flags.sourceRepo],
@@ -78,17 +86,8 @@ export function buildConfigPushSource(configFilePath: string, flags: SourceFlagO
 
     const { owner, repo } = parseOwnerRepo(flags.sourceRepo!, "--source-repo");
 
-    // Trim before the empty check so whitespace-only values (e.g. `--source-path " "`)
-    // are rejected the same way as an empty string. The stored value is the trimmed
-    // form to keep the downstream config row free of accidental whitespace.
-    const sourcePath = flags.sourcePath!.trim();
-    if (sourcePath.length === 0) {
-      throw new CliError("--source-path must be a non-empty path string.");
-    }
-    const sourceWorkflowPath = flags.sourceWorkflowPath!.trim();
-    if (sourceWorkflowPath.length === 0) {
-      throw new CliError("--source-workflow-path must be a non-empty path string.");
-    }
+    const sourcePath = normalizeRepoRelativePath(flags.sourcePath!, "--source-path");
+    const sourceWorkflowPath = normalizeRepoRelativePath(flags.sourceWorkflowPath!, "--source-workflow-path");
 
     const sha = process.env.GITHUB_SHA;
     const branch = process.env.GITHUB_REF_NAME;
