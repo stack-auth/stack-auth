@@ -2,6 +2,15 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
+A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
+
+## Q: How should Stack CLI GitHub source paths be stored?
+A: Explicit `stack config push --source github` paths should be normalized as repo-relative paths before storing source metadata. Trim whitespace and strip leading `./`, repeated `./`, and leading `/` segments, matching the dashboard workflow generator's normalization for `STACK_AUTH_CONFIG_PATH` and workflow paths.
+
+## Q: How should Stack CLI code handle flags proven present by nearby validation?
+A: Avoid non-null assertions even when an earlier missing-flags check proves presence. Use `flags.foo ?? throwErr("Expected ...; this should have been caught by ...")` so the type system receives a definite value and future refactors fail loudly with the violated assumption.
+
 ## Q: How do anonymous users work in Stack Auth?
 A: Anonymous users are a special type of user that can be created without any authentication. They have `isAnonymous: true` in the database and use different JWT signing keys with a `role: 'anon'` claim. Anonymous JWTs use a prefixed secret ("anon-" + audience) for signing and verification.
 
@@ -502,3 +511,6 @@ A: Seed the normal initial environment config before marking the project as `isD
 
 ## Q: What can cause React error #185 immediately on dashboard load?
 A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
+
+## Q: How should the npm publish workflow create the post-publish dev version bump?
+A: The workflow needs `contents: write` and a full checkout so it can fetch `origin/dev`, check out `dev`, create a non-interactive patch changeset, run `pnpm changeset version`, copy the generated `packages/template/package.json` version line back into `packages/template/package-template.json`, and commit/push `chore: update package versions` only when files are staged.

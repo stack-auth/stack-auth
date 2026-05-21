@@ -13,6 +13,7 @@ import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { ListSection } from "./list-section";
@@ -636,7 +637,7 @@ function ProductsWithoutPricesAlert({
           {preview.map(({ id, displayName }) => (
             <li key={id}>
               <Link
-                href={`/projects/${projectId}/payments/products/${id}/edit`}
+                href={urlString`/projects/${projectId}/payments/products/${id}/edit`}
                 className="underline hover:no-underline"
               >
                 {displayName}

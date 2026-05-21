@@ -329,7 +329,10 @@ export async function seed() {
       },
     });
     if (!existingGrowthSub) {
-      const firstPriceId = Object.keys(growthProduct.prices)[0] ?? null;
+      const firstPriceId = Object.keys(growthProduct.prices)[0];
+      if (!firstPriceId) {
+        throw new Error("Internal seed invariant violated: the Growth product must have at least one price configured before seeding the internal team subscription.");
+      }
       const now = new Date();
       // Clone to ensure the stored JSON snapshot is independent of the config object
       // (mirrors the pattern used in seed-dummy-data.ts).

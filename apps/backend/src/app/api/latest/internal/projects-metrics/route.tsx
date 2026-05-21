@@ -1,4 +1,4 @@
-import { globalPrismaClient } from "@/prisma-client";
+import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -9,6 +9,11 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 
 const SIGNUPS_WINDOW_DAYS = 30;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+function formatClickhouseDateTimeParam(date: Date): string {
+  // ClickHouse DateTime params are passed as "YYYY-MM-DDTHH:MM:SS" (no timezone); treat them as UTC.
+  return date.toISOString().slice(0, 19);
+}
 
 type ProjectMetrics = {
   total_users: number,
@@ -111,41 +116,57 @@ export const GET = createSmartRouteHandler({
       return buildResponse();
     }
 
-    let totalRows: Array<{ projectId: string, totalUsers: bigint | number }>;
-    let signupRows: Array<{ projectId: string, day: Date | string, signups: bigint | number }>;
+    let totalRows: Array<{ projectId: string, totalUsers: string | number }>;
+    let signupRows: Array<{ projectId: string, day: string, signups: string | number }>;
     try {
-      const totalRowsPromise = globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, totalUsers: bigint | number }>>(
-        `
-            SELECT "mirroredProjectId" AS "projectId", COUNT(*)::bigint AS "totalUsers"
-            FROM "ProjectUser"
-            WHERE "mirroredProjectId" = ANY($1::text[])
-              AND "mirroredBranchId" = $2
-              AND "isAnonymous" = false
-            GROUP BY "mirroredProjectId"
-          `,
-        projectIds,
-        DEFAULT_BRANCH_ID,
-      );
-      const signupRowsPromise = globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, day: Date | string, signups: bigint | number }>>(
-        `
+      const clickhouseClient = getClickhouseAdminClientForMetrics();
+      const [totalResult, signupResult] = await Promise.all([
+        clickhouseClient.query({
+          query: `
             SELECT
-              "mirroredProjectId" AS "projectId",
-              date_trunc('day', COALESCE("signedUpAt", "createdAt") AT TIME ZONE 'UTC')::date AS "day",
-              COUNT(*)::bigint AS "signups"
-            FROM "ProjectUser"
-            WHERE "mirroredProjectId" = ANY($1::text[])
-              AND "mirroredBranchId" = $2
-              AND "isAnonymous" = false
-              AND COALESCE("signedUpAt", "createdAt") >= $3
-              AND COALESCE("signedUpAt", "createdAt") < $4
-            GROUP BY "mirroredProjectId", "day"
+              project_id AS projectId,
+              count() AS totalUsers
+            FROM analytics_internal.users FINAL
+            WHERE project_id IN {projectIds:Array(String)}
+              AND branch_id = {branchId:String}
+              AND sync_is_deleted = 0
+              AND is_anonymous = 0
+            GROUP BY project_id
           `,
-        projectIds,
-        DEFAULT_BRANCH_ID,
-        since,
-        untilExclusive,
-      );
-      [totalRows, signupRows] = await Promise.all([totalRowsPromise, signupRowsPromise]);
+          query_params: {
+            projectIds,
+            branchId: DEFAULT_BRANCH_ID,
+          },
+          format: "JSONEachRow",
+        }),
+        clickhouseClient.query({
+          query: `
+            SELECT
+              project_id AS projectId,
+              toString(toDate(signed_up_at, 'UTC')) AS day,
+              count() AS signups
+            FROM analytics_internal.users FINAL
+            WHERE project_id IN {projectIds:Array(String)}
+              AND branch_id = {branchId:String}
+              AND sync_is_deleted = 0
+              AND is_anonymous = 0
+              AND signed_up_at >= {since:DateTime}
+              AND signed_up_at < {untilExclusive:DateTime}
+            GROUP BY project_id, day
+          `,
+          query_params: {
+            projectIds,
+            branchId: DEFAULT_BRANCH_ID,
+            since: formatClickhouseDateTimeParam(since),
+            untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          },
+          format: "JSONEachRow",
+        }),
+      ]);
+      [totalRows, signupRows] = await Promise.all([
+        totalResult.json<{ projectId: string, totalUsers: string | number }>(),
+        signupResult.json<{ projectId: string, day: string, signups: string | number }>(),
+      ]);
     } catch (cause) {
       throw new StackAssertionError("Failed to load project metrics.", {
         cause,
@@ -161,7 +182,7 @@ export const GET = createSmartRouteHandler({
       totalRows.map((r) => ({ projectId: r.projectId, totalUsers: Number(r.totalUsers) })),
       signupRows.map((r) => ({
         projectId: r.projectId,
-        day: r.day instanceof Date ? r.day.toISOString() : String(r.day),
+        day: r.day,
         signups: Number(r.signups),
       })),
     );

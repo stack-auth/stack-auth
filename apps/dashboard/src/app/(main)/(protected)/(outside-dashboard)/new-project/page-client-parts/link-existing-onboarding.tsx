@@ -90,6 +90,7 @@ type PersistedLinkExistingState = {
   selectedRepositoryFullName: string,
   selectedBranch: string,
   configPathInput: string,
+  packageRunner: PackageRunner,
 };
 
 function createRepositoryReference(fullName: string, defaultBranch: string): GithubRepository {
@@ -135,12 +136,15 @@ function readPersistedLinkExistingState(projectId: string): PersistedLinkExistin
       return null;
     }
     const selectedGithubAccountIdField = parsed.selectedGithubAccountId;
+    const packageRunnerField = getObjectString(parsed, "packageRunner");
+    const packageRunner: PackageRunner = PACKAGE_RUNNERS.find((entry) => entry === packageRunnerField) ?? "npx";
     return {
       step: parsePersistedLinkExistingStep(parsed.step),
       selectedGithubAccountId: typeof selectedGithubAccountIdField === "string" ? selectedGithubAccountIdField : null,
       selectedRepositoryFullName: getObjectString(parsed, "selectedRepositoryFullName") ?? "",
       selectedBranch: getObjectString(parsed, "selectedBranch") ?? "",
       configPathInput: getObjectString(parsed, "configPathInput") ?? "stack.config.ts",
+      packageRunner,
     };
   } catch {
     return null;
@@ -494,7 +498,7 @@ export function LinkExistingOnboarding(props: Props) {
   const repositoriesLoadedAccountRef = useRef<string | null>(null);
   const loadRepositoriesRunIdRef = useRef(0);
   const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "stack.config.ts");
-  const [packageRunner, setPackageRunner] = useState<PackageRunner>("npx");
+  const [packageRunner, setPackageRunner] = useState<PackageRunner>(persistedState?.packageRunner ?? "npx");
   const [repoSearchQuery, setRepoSearchQuery] = useState("");
   const [repoSearchResults, setRepoSearchResults] = useState<GithubRepository[]>([]);
   const [loadingRepoSearch, setLoadingRepoSearch] = useState(false);
@@ -514,9 +518,10 @@ export function LinkExistingOnboarding(props: Props) {
       selectedRepositoryFullName: partial.selectedRepositoryFullName ?? existingState?.selectedRepositoryFullName ?? selectedRepositoryFullName,
       selectedBranch: partial.selectedBranch ?? existingState?.selectedBranch ?? selectedBranch,
       configPathInput: partial.configPathInput ?? existingState?.configPathInput ?? configPathInput,
+      packageRunner: partial.packageRunner ?? existingState?.packageRunner ?? packageRunner,
       ...partial,
     });
-  }, [configPathInput, project.id, selectedBranch, selectedGithubAccountId, selectedRepositoryFullName, step]);
+  }, [configPathInput, packageRunner, project.id, selectedBranch, selectedGithubAccountId, selectedRepositoryFullName, step]);
 
   const setStepWithPersistence = useCallback((nextStep: LinkExistingStep) => {
     if (nextStep !== "github-logs") {
@@ -971,14 +976,22 @@ export function LinkExistingOnboarding(props: Props) {
     branch: string,
     path: string,
   ): Promise<boolean> => {
-    const normalizedPath = path.trim().replace(/^\.?\/+/, "");
+    // Same shape as normalizeConfigPath in link-existing-onboarding-workflow.ts:
+    // strip any combination of leading `./` and `/` segments so inputs like
+    // `.//src/...` or `/src/...` collapse to a repo-relative path.
+    const normalizedPath = path.trim().replace(/^(?:\.?\/+)+/, "");
     if (normalizedPath.length === 0 || normalizedPath.split("/").includes("..")) {
       return false;
     }
     const refQuery = new URLSearchParams({ ref: branch }).toString();
     try {
+      // `cache: "no-store"` because GitHub's Contents API responds with
+      // `Cache-Control: private, max-age=60` for authenticated reads. Without
+      // this, a user who just pushed the config file and immediately clicks
+      // "Create GitHub Action" can see a cached 404 from before the push.
       const response = await githubFetch(
         githubRepositoryApiPath(owner, repo, `/contents/${encodeGitHubPath(normalizedPath)}?${refQuery}`),
+        { cache: "no-store" },
       );
       if (!isObject(response) || Array.isArray(response)) {
         return false;
@@ -1418,6 +1431,7 @@ export function LinkExistingOnboarding(props: Props) {
                   const runner = PACKAGE_RUNNERS.find((entry) => entry === id);
                   if (runner != null) {
                     setPackageRunner(runner);
+                    persistState({ packageRunner: runner });
                   }
                 }}
                 size="sm"

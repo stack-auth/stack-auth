@@ -1,7 +1,36 @@
 import * as parser from "@babel/parser";
 import * as t from "@babel/types";
+import { isValidConfig, normalize } from "./config/format";
 
 export const showOnboardingStackConfigValue = "show-onboarding";
+
+const DEFAULT_CONFIG_IMPORT_PACKAGE = "@stackframe/js";
+
+/**
+ * Renders a config object into the source text of a `stack.config.ts` file.
+ *
+ * Browser-safe: kept here (next to `parseStackConfigFileContent`) instead of in
+ * `config-rendering.ts` so dashboard client code can render config files
+ * without pulling in `fs` / `path`.
+ */
+export function renderConfigFileContent(config: unknown, importPackage?: string): string {
+  if (!isValidConfig(config)) {
+    throw new Error("Invalid config: expected a plain object.");
+  }
+
+  const droppedKeys: string[] = [];
+  const normalizedConfig = normalize(config, {
+    onDotIntoNonObject: "ignore",
+    onDotIntoNull: "empty-object",
+    droppedKeys,
+  });
+  if (droppedKeys.length > 0) {
+    throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
+  }
+  const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
+  const importLine = `import type { StackConfig } from "${pkg}";`;
+  return `${importLine}\n\nexport const config: StackConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
+}
 
 type ParsedStackConfig = Record<string, unknown> | typeof showOnboardingStackConfigValue;
 

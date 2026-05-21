@@ -302,23 +302,19 @@ function MethodToggleRow({
   const iconSize = density === "card" ? 20 : 18;
 
   return (
-    <div
-      role="group"
+    <Label
+      htmlFor={id}
       className={`flex items-center gap-3 cursor-pointer ${innerRing} ${padding}`}
-      onClick={(e) => {
-        if (e.target instanceof HTMLElement && e.target.closest('[role="switch"]')) return;
-        onCheckedChange(!checked);
-      }}
     >
       <div className="p-2 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04] shrink-0">
         <Icon size={iconSize} className="text-foreground/70 dark:text-muted-foreground" aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
-        <Label htmlFor={id} className="text-sm font-medium text-foreground truncate cursor-pointer">{label}</Label>
+        <div className="text-sm font-medium text-foreground truncate">{label}</div>
         {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
       </div>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
-    </div>
+    </Label>
   );
 }
 
@@ -456,8 +452,7 @@ function useEmailVerificationToggle() {
       okButton={{
         label: "Apply Change",
         onClick: async () => {
-          if (pendingChange == null) return;
-          await pendingChange.onConfirm();
+          await pendingChange?.onConfirm();
         },
       }}
       cancelButton={{ label: "Cancel" }}

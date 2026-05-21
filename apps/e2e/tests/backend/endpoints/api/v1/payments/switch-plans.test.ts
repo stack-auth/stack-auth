@@ -1,6 +1,6 @@
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 async function setupProducts(products: Record<string, any>, productLines?: Record<string, any>) {
   await Project.createAndSwitch();

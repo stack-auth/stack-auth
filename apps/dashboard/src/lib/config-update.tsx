@@ -2,11 +2,18 @@
 
 import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
-import type { PushedConfigSource, StackAdminApp } from "@stackframe/stack";
+import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import React, { createContext, useCallback, useContext, useState } from "react";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import { createGithubFetch, GITHUB_SCOPE_REQUIREMENTS } from "./github-api";
+import { pushConfigUpdateToGitHub } from "./github-config-push";
+
+type GithubPushedSource = Extract<PushedConfigSource, { type: "pushed-from-github" }>;
 
 type ConfigUpdateDialogState = {
   isOpen: boolean,
@@ -15,10 +22,6 @@ type ConfigUpdateDialogState = {
   resolve: ((result: boolean) => void) | null,
   source: PushedConfigSource | null,
   isLoadingSource: boolean,
-  // For GitHub dialog
-  commitMessage: string,
-  // Temporary: 50/50 chance of showing "Connect with GitHub" vs "Push changes"
-  showConnectWithGitHub: boolean,
 };
 
 const ConfigUpdateDialogContext = createContext<{
@@ -37,8 +40,6 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     resolve: null,
     source: null,
     isLoadingSource: false,
-    commitMessage: "",
-    showConnectWithGitHub: false,
   });
 
   const showPushableDialog = useCallback(async (adminApp: StackAdminApp<false>, configUpdate: EnvironmentConfigOverrideOverride): Promise<boolean> => {
@@ -56,9 +57,6 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
           resolve,
           source,
           isLoadingSource: false,
-          commitMessage: "",
-          // Temporary: 50/50 chance for GitHub dialog
-          showConnectWithGitHub: Math.random() < 0.5,
         });
       });
     }
@@ -73,10 +71,12 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     return false;
   }, []);
 
-  const handleClose = useCallback((result: boolean) => {
-    if (dialogState.resolve) {
-      dialogState.resolve(result);
-    }
+  const settleDialog = useCallback((result: boolean) => {
+    // Pull `resolve` out before the state update so we never invoke it from
+    // inside a setState updater — React strict mode double-invokes updaters,
+    // which would call `resolve` twice. Promise resolution is idempotent so
+    // this was harmless in practice, but the pattern is wrong.
+    const resolve = dialogState.resolve;
     setDialogState({
       isOpen: false,
       adminApp: null,
@@ -84,10 +84,8 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
       resolve: null,
       source: null,
       isLoadingSource: false,
-      commitMessage: "",
-      showConnectWithGitHub: false,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- we only care about the resolve function, not the entire dialogState
+    resolve?.(result);
   }, [dialogState.resolve]);
 
   const projectId = dialogState.adminApp?.projectId;
@@ -101,57 +99,13 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     switch (dialogState.source.type) {
       case "pushed-from-github": {
         return (
-          <ActionDialog
+          <GithubPushDialog
             open={dialogState.isOpen}
-            onClose={() => handleClose(false)}
-            title="Push Configuration to GitHub"
-            description="This project's configuration is managed via GitHub."
-            okButton={dialogState.showConnectWithGitHub ? {
-              label: "Connect with GitHub",
-              onClick: async () => {
-                // TODO: Implement GitHub OAuth connection
-                alert("TODO: GitHub connection not yet implemented");
-              },
-            } : {
-              label: "Push to GitHub",
-              onClick: async () => {
-                // TODO: Implement actual GitHub push
-                alert("TODO: GitHub push not yet implemented");
-              },
-            }}
-            cancelButton={{
-              label: "Cancel",
-              onClick: async () => {
-                handleClose(false);
-              },
-            }}
-          >
-            <div className="space-y-4">
-              {!dialogState.showConnectWithGitHub && (
-                <div className="space-y-2">
-                  <label htmlFor="commit-message" className="text-sm font-medium">
-                    Commit message
-                  </label>
-                  <input
-                    id="commit-message"
-                    type="text"
-                    className="w-full px-3 py-2 border rounded-md text-sm bg-background"
-                    placeholder="Update Stack Auth configuration"
-                    value={dialogState.commitMessage}
-                    onChange={(e) => setDialogState(s => ({ ...s, commitMessage: e.target.value }))}
-                  />
-                </div>
-              )}
-              <p className="text-sm text-muted-foreground">
-                <em>
-                  If your configuration is no longer on GitHub, you can unlink it in{" "}
-                  <Link href={`/projects/${projectId}/project-settings`} className="underline">
-                    Project Settings
-                  </Link>.
-                </em>
-              </p>
-            </div>
-          </ActionDialog>
+            source={dialogState.source}
+            configUpdate={dialogState.configUpdate}
+            projectId={projectId}
+            onSettle={settleDialog}
+          />
         );
       }
 
@@ -159,7 +113,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
         return (
           <ActionDialog
             open={dialogState.isOpen}
-            onClose={() => handleClose(false)}
+            onClose={() => settleDialog(false)}
             title="Configuration Managed by CLI"
             description="This project's configuration was pushed via the Stack Auth CLI."
             okButton={{
@@ -172,7 +126,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
             cancelButton={{
               label: "Cancel",
               onClick: async () => {
-                handleClose(false);
+                settleDialog(false);
               },
             }}
           >
@@ -210,6 +164,328 @@ function useConfigUpdateDialog() {
     throw new Error("useConfigUpdateDialog must be used within a ConfigUpdateDialogProvider");
   }
   return context;
+}
+
+type GithubPushDialogProps = {
+  open: boolean,
+  source: GithubPushedSource,
+  configUpdate: EnvironmentConfigOverrideOverride | null,
+  projectId: string | undefined,
+  onSettle: (result: boolean) => void,
+};
+
+/**
+ * Renders the "Push to GitHub" dialog. Detects whether the dashboard user has
+ * a GitHub account connected; if not, walks them through linking one first.
+ * Once a connection is available, commits a config-file edit to the linked
+ * repo/branch via the Contents API.
+ *
+ * On success, `onSettle(true)` is called so the surrounding
+ * `ConfigUpdateDialogProvider` then mirrors the change into Stack Auth's
+ * cloud config for immediate UI feedback. Eventually the GitHub Actions
+ * workflow will re-push the canonical config from the freshly-committed file.
+ */
+type ScopeCheck =
+  | { status: "no-account" }
+  | { status: "checking" }
+  | { status: "ok", account: OAuthConnection }
+  | { status: "missing-scopes" };
+
+type GithubPushHandlers = {
+  push: () => Promise<"prevent-close" | undefined>,
+  connect: () => Promise<"prevent-close" | undefined>,
+};
+
+function projectSettingsHref(projectId: string | undefined): string {
+  return `/projects/${projectId}/project-settings`;
+}
+
+/**
+ * Outer shell. Renders `ActionDialog` synchronously (no suspending hooks) so
+ * opening the dialog doesn't bubble a Suspense promise up to the dashboard
+ * root and blank the page. The suspending pieces (current user, connected
+ * accounts, OAuth token probe) live in `GithubPushBody`, wrapped in a local
+ * `Suspense` boundary whose fallback mirrors the dialog body except that the
+ * "Push to GitHub" button stays disabled while we resolve.
+ */
+function GithubPushDialog({ open, source, configUpdate, projectId, onSettle }: GithubPushDialogProps) {
+  // Status starts as "checking" so the initial render shows a disabled
+  // "Push to GitHub" button — matching what we want during Suspense fallback.
+  const [scopeStatus, setScopeStatus] = useState<ScopeCheck["status"]>("checking");
+  const handlersRef = useRef<GithubPushHandlers | null>(null);
+
+  const dispatch = useCallback(
+    (key: keyof GithubPushHandlers) => async (): Promise<"prevent-close" | undefined> => {
+      // While the Suspense fallback is showing, handlers aren't registered
+      // yet. In that window the button is disabled anyway, but we guard
+      // defensively and prevent close if somehow clicked.
+      return (await handlersRef.current?.[key]()) ?? "prevent-close";
+    },
+    [],
+  );
+
+  const okButton = (() => {
+    switch (scopeStatus) {
+      case "no-account": {
+        return { label: "Connect with GitHub", onClick: dispatch("connect") };
+      }
+      case "checking": {
+        return {
+          label: "Push to GitHub",
+          onClick: async (): Promise<"prevent-close" | undefined> => "prevent-close",
+          props: { disabled: true },
+        };
+      }
+      case "ok": {
+        return { label: "Push to GitHub", onClick: dispatch("push") };
+      }
+      case "missing-scopes": {
+        return { label: "Reconnect with GitHub", onClick: dispatch("connect") };
+      }
+    }
+  })();
+
+  const description = (() => {
+    switch (scopeStatus) {
+      case "no-account": {
+        return "Connect a GitHub account to push configuration changes to this repository.";
+      }
+      case "checking": {
+        return "Checking GitHub permissions...";
+      }
+      case "ok": {
+        return `This will commit your change to ${source.owner}/${source.repo}@${source.branch}.`;
+      }
+      case "missing-scopes": {
+        return "Your linked GitHub account is missing the \"repo\" and \"workflow\" permissions required to push configuration changes. Reconnect to grant them.";
+      }
+    }
+  })();
+
+  return (
+    <ActionDialog
+      open={open}
+      onClose={() => onSettle(false)}
+      title="Push Configuration to GitHub"
+      description={description}
+      okButton={okButton}
+      cancelButton={{
+        label: "Cancel",
+        onClick: async () => {
+          onSettle(false);
+        },
+      }}
+    >
+      <Suspense fallback={<GithubPushBodyFallback projectId={projectId} />}>
+        <GithubPushBody
+          source={source}
+          configUpdate={configUpdate}
+          projectId={projectId}
+          onSettle={onSettle}
+          onScopeStatusChange={setScopeStatus}
+          handlersRef={handlersRef}
+        />
+      </Suspense>
+    </ActionDialog>
+  );
+}
+
+function GithubPushBodyFallback({ projectId }: { projectId: string | undefined }) {
+  // Static body shown during the initial Suspense — no commit input yet
+  // (we don't know whether push is even available), just the unlink hint
+  // so the dialog "looks normal except the button is disabled".
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        <em>
+          If your configuration is no longer on GitHub, you can unlink it in{" "}
+          <Link href={projectSettingsHref(projectId)} className="underline">
+            Project Settings
+          </Link>.
+        </em>
+      </p>
+    </div>
+  );
+}
+
+type GithubPushBodyProps = {
+  source: GithubPushedSource,
+  configUpdate: EnvironmentConfigOverrideOverride | null,
+  projectId: string | undefined,
+  onSettle: (result: boolean) => void,
+  onScopeStatusChange: (status: ScopeCheck["status"]) => void,
+  handlersRef: React.MutableRefObject<GithubPushHandlers | null>,
+};
+
+function GithubPushBody({
+  source,
+  configUpdate,
+  projectId,
+  onSettle,
+  onScopeStatusChange,
+  handlersRef,
+}: GithubPushBodyProps) {
+  const user = useDashboardInternalUser();
+  const githubAccounts = user.useConnectedAccounts().filter((account) => account.provider === "github");
+
+  // Stable dep for the scope-check effect — re-run only when the set of
+  // connections actually changes, not on every parent render.
+  const githubAccountsKey = githubAccounts.map((a) => a.providerAccountId).join("|");
+
+  const [scopeCheck, setScopeCheck] = useState<ScopeCheck>(
+    githubAccounts.length === 0 ? { status: "no-account" } : { status: "checking" },
+  );
+  const [commitMessage, setCommitMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const placeholderCommitMessage = "Update Stack Auth configuration";
+
+  // Sync our local status string up to the dialog shell so it can pick the
+  // right button label / description without itself needing to suspend.
+  // `useLayoutEffect` (not `useEffect`) so the shell's "checking" placeholder
+  // never reaches the screen for users whose initial state is actually
+  // "no-account" — the sync runs before the browser paints the first frame
+  // after the Suspense fallback resolves.
+  useLayoutEffect(() => {
+    onScopeStatusChange(scopeCheck.status);
+  }, [scopeCheck.status, onScopeStatusChange]);
+
+  // Probe each connected GitHub account for a token that already covers
+  // `repo` + `workflow`. The dashboard user may have multiple GitHub
+  // connections; only one needs to carry the elevated scopes. We pre-flight
+  // here (rather than on Push click) so the user doesn't waste a typed commit
+  // message on a redirect, since `linkConnectedAccount` is a full page nav.
+  useEffect(() => {
+    if (githubAccounts.length === 0) {
+      setScopeCheck({ status: "no-account" });
+      return;
+    }
+    // Mutable holder rather than a `let` so TS sees the reassignment in the
+    // cleanup callback as a real write; otherwise its flow analysis narrows
+    // the closure read to its initial value and the `cancelled` checks below
+    // are flagged as constant-condition errors.
+    const cancelToken = { cancelled: false };
+    setScopeCheck({ status: "checking" });
+    runAsynchronously(async () => {
+      for (const account of githubAccounts) {
+        let tokenResult;
+        try {
+          tokenResult = await account.getAccessToken({ scopes: GITHUB_SCOPE_REQUIREMENTS });
+        } catch {
+          // Transport/cache failures — fall through and try the next account.
+          continue;
+        }
+        if (cancelToken.cancelled) return;
+        if (tokenResult.status === "ok") {
+          setScopeCheck({ status: "ok", account });
+          return;
+        }
+      }
+      if (!cancelToken.cancelled) setScopeCheck({ status: "missing-scopes" });
+    });
+    return () => {
+      cancelToken.cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- githubAccountsKey is the stable identity for githubAccounts
+  }, [githubAccountsKey]);
+
+  const githubFetch = useMemo(
+    () => (scopeCheck.status === "ok" ? createGithubFetch(scopeCheck.account) : null),
+    [scopeCheck],
+  );
+
+  const handlePush = useCallback(async (): Promise<"prevent-close" | undefined> => {
+    if (configUpdate == null) {
+      setErrorMessage("No configuration changes to push.");
+      return "prevent-close";
+    }
+    if (githubFetch == null) {
+      setErrorMessage("Connect a GitHub account with the required scopes before pushing changes.");
+      return "prevent-close";
+    }
+    setErrorMessage(null);
+    try {
+      await pushConfigUpdateToGitHub({
+        source,
+        configUpdate,
+        commitMessage: commitMessage.trim().length > 0 ? commitMessage : placeholderCommitMessage,
+        githubFetch,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error pushing to GitHub.";
+      captureError("config-update-github-push", {
+        projectId,
+        owner: source.owner,
+        repo: source.repo,
+        branch: source.branch,
+        configFilePath: source.configFilePath,
+        cause: error,
+      });
+      setErrorMessage(message);
+      return "prevent-close";
+    }
+    onSettle(true);
+    return undefined;
+  }, [commitMessage, configUpdate, githubFetch, onSettle, projectId, source]);
+
+  const handleConnect = useCallback(async (): Promise<"prevent-close" | undefined> => {
+    // Full-page redirect to the OAuth provider. When scopes are missing on
+    // an existing connection, `getOrLinkConnectedAccount` still redirects
+    // because none of the present tokens satisfies the scope set. Returning
+    // `prevent-close` is defensive — in practice the redirect happens first.
+    try {
+      await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error connecting to GitHub.";
+      setErrorMessage(message);
+      return "prevent-close";
+    }
+    return "prevent-close";
+  }, [user]);
+
+  // Expose the latest handlers to the dialog shell. A ref (rather than
+  // calling up via state) avoids re-rendering the shell on every handler
+  // identity change, which would also reset the okButton onClick reference.
+  useEffect(() => {
+    handlersRef.current = { push: handlePush, connect: handleConnect };
+  }, [handlersRef, handlePush, handleConnect]);
+
+  return (
+    <div className="space-y-4">
+      {scopeCheck.status === "ok" && (
+        <div className="space-y-2">
+          <label htmlFor="commit-message" className="text-sm font-medium">
+            Commit message
+          </label>
+          <input
+            id="commit-message"
+            type="text"
+            className="w-full px-3 py-2 border rounded-md text-sm bg-background"
+            placeholder={placeholderCommitMessage}
+            value={commitMessage}
+            onChange={(e) => setCommitMessage(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Committing to <code className="text-xs">{source.configFilePath}</code> on{" "}
+            <code className="text-xs">{source.branch}</code>.
+          </p>
+        </div>
+      )}
+      {errorMessage != null && (
+        <p className="text-sm text-destructive">
+          {errorMessage}
+        </p>
+      )}
+      <p className="text-sm text-muted-foreground">
+        <em>
+          If your configuration is no longer on GitHub, you can unlink it in{" "}
+          <Link href={projectSettingsHref(projectId)} className="underline">
+            Project Settings
+          </Link>.
+        </em>
+      </p>
+    </div>
+  );
 }
 
 async function updateRemoteDevelopmentEnvironmentConfigFile(

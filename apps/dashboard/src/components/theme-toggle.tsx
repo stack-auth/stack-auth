@@ -22,6 +22,11 @@ export default function ThemeToggle() {
       return;
     }
 
+    if (typeof document.startViewTransition !== "function") {
+      setTheme(nextTheme);
+      return;
+    }
+
     document.documentElement.classList.add("vt-disable-transitions");
 
     const transition = document.startViewTransition(() => {

@@ -106,7 +106,10 @@ export function DesignDialog({
   const resolvedOverlayClass = cn(dialogOverlayClasses.get(variant), overlayClassName);
   const shouldRenderTopHeaderRow = Icon != null || title != null || description != null;
   const shouldRenderHeader = customHeader != null || shouldRenderTopHeaderRow || headerContent != null;
-  const shouldRenderBody = React.Children.count(children) > 0;
+  // Use toArray + filter(Boolean) instead of Children.count so that
+  // expressions like `{condition && <Foo/>}` resolving to `false` don't
+  // produce an empty DialogBody (which would still render padding/borders).
+  const shouldRenderBody = React.Children.toArray(children).filter(Boolean).length > 0;
   const hasStandardTitle = title != null;
   const needsAccessibleTitleFallback = !hasStandardTitle && customHeader == null;
 

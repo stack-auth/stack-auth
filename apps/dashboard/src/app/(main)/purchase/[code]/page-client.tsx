@@ -12,7 +12,6 @@ import Image from 'next/image';
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
-
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
   stripe_account_id: string,
@@ -143,6 +142,16 @@ export default function PageClient({ code }: { code: string }) {
     });
   }, [validateCode]);
 
+  // True iff the price the user is about to purchase is $0. The backend
+  // intentionally omits client_secret for $0 subs (Stripe activates them
+  // synchronously, nothing to confirm), so this drives both the
+  // missing-secret-is-ok check below and the skip-Stripe-Elements branch in
+  const isFreeSelected = useMemo<boolean>(() => {
+    if (!selectedPriceId || !data?.product?.prices) return false;
+    const usd = data.product.prices[selectedPriceId].USD;
+    return usd === "0" || usd === "0.00";
+  }, [data, selectedPriceId]);
+
   const setupSubscription = async () => {
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: 'POST',
@@ -150,7 +159,12 @@ export default function PageClient({ code }: { code: string }) {
       body: JSON.stringify({ full_code: code, price_id: selectedPriceId, quantity: quantityNumber }),
     });
     const result = await response.json();
-    if (!result.client_secret) {
+
+    if (!response.ok) {
+      throw new Error(result?.error?.message ?? "Failed to setup subscription");
+    }
+
+    if (!result.client_secret && !isFreeSelected) {
       throw new Error("Failed to setup subscription");
     }
     return result.client_secret;
@@ -392,6 +406,7 @@ export default function PageClient({ code }: { code: string }) {
                 disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
                 chargesEnabled={data.charges_enabled}
                 onTestModeBypass={data.test_mode ? handleBypass : undefined}
+                isFree={isFreeSelected}
               />
             </StripeElementsProvider>
           </div>

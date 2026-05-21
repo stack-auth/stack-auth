@@ -45,6 +45,7 @@ function pushedConfigSourceToApi(source: PushedConfigSource): BranchConfigSource
       branch: source.branch,
       commit_hash: source.commitHash,
       config_file_path: source.configFilePath,
+      workflow_path: source.workflowPath,
     };
   }
   return source;
@@ -62,6 +63,7 @@ function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSou
       branch: source.branch,
       commitHash: source.commit_hash,
       configFilePath: source.config_file_path,
+      workflowPath: source.workflow_path,
     };
   }
   return source;

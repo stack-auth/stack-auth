@@ -143,7 +143,10 @@ const DropdownMenuItem = forwardRefIfNeeded<
   return <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "stack-scope relative flex cursor-default select-none items-center rounded-lg py-2 text-sm outline-none transition-all duration-150 hover:transition-none focus:bg-foreground/[0.05] focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "stack-scope relative flex cursor-default select-none items-center rounded-lg py-2 text-sm outline-none transition-all duration-150 hover:transition-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "hover:bg-foreground/[0.05] hover:text-accent-foreground",
+      "focus:bg-foreground/[0.05] focus:text-accent-foreground",
+      "data-[highlighted]:bg-foreground/[0.05] data-[highlighted]:text-accent-foreground",
       paddingClasses,
       className
     )}
