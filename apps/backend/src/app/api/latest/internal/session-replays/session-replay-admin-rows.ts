@@ -24,7 +24,7 @@ export async function querySessionReplayAdminRows(options: {
   suffixSql: Prisma.Sql,
 }): Promise<SessionReplayAdminListRow[]> {
   const { prisma, schema, tenancyId, suffixSql } = options;
-  return await prisma.$queryRaw<SessionReplayAdminListRow[]>`
+  return await prisma.$replica().$queryRaw<SessionReplayAdminListRow[]>`
     SELECT
       sr."id",
       sr."projectUserId",

@@ -187,7 +187,7 @@ async function getOrCreateCredentials(projectId: string) {
 }
 
 async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboarding: boolean): Promise<ProjectOnboardingStatus> {
-  const onboardingStateColumnExistsRows = await globalPrismaClient.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+  const onboardingStateColumnExistsRows = await globalPrismaClient.$replica().$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
     SELECT EXISTS (
       SELECT 1
       FROM information_schema.columns
@@ -385,7 +385,7 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
     }
 
-    const rows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
+    const rows = await globalPrismaClient.$replica().$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
       SELECT "projectId", "absoluteFilePath", "updatedAt"
       FROM "LocalEmulatorProject"
       ORDER BY "updatedAt" DESC

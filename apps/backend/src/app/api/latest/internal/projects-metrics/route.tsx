@@ -115,7 +115,7 @@ export const GET = createSmartRouteHandler({
     let signupRows: Array<{ projectId: string, day: Date | string, signups: bigint | number }>;
     try {
       [totalRows, signupRows] = await Promise.all([
-        globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, totalUsers: bigint | number }>>(
+        globalPrismaClient.$replica().$queryRawUnsafe<Array<{ projectId: string, totalUsers: bigint | number }>>(
           `
             SELECT "mirroredProjectId" AS "projectId", COUNT(*)::bigint AS "totalUsers"
             FROM "ProjectUser"
@@ -127,7 +127,7 @@ export const GET = createSmartRouteHandler({
           projectIds,
           DEFAULT_BRANCH_ID,
         ),
-        globalPrismaClient.$queryRawUnsafe<Array<{ projectId: string, day: Date | string, signups: bigint | number }>>(
+        globalPrismaClient.$replica().$queryRawUnsafe<Array<{ projectId: string, day: Date | string, signups: bigint | number }>>(
           `
             SELECT
               "mirroredProjectId" AS "projectId",
