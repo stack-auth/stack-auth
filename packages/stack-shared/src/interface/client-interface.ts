@@ -1420,8 +1420,12 @@ export class HexclaveClientInterface {
     await this.options.prepareRequest?.();
 
     const url = new URL(await this.getOAuthUrl(options));
-    // Hexclave rebrand: emit hexclave_response_mode; the backend dual-accepts both query param names.
+    // Hexclave rebrand: dual-emit both query param names. The current backend accepts either, but
+    // a new SDK calling an OLDER backend (during deploy ordering, or a self-hoster on a stale
+    // image) only recognizes `stack_response_mode` — without it the route silently falls back to
+    // redirect mode and the SDK gets HTML where it expected JSON. Emit both to keep that working.
     url.searchParams.set("hexclave_response_mode", "json");
+    url.searchParams.set("stack_response_mode", "json");
 
     let rawRes;
     try {

@@ -13,7 +13,9 @@ const signIn = async (clientApp: any) => {
   });
 };
 
+// Hexclave rebrand: accept either the legacy `stackauth_` prefix or the new `hexclave_` one.
 const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
+const HEXCLAVE_AUTHORIZATION_VALUE_PREFIX = "hexclave_";
 
 function parseAuthorizationHeaderValue(value: string): { accessToken: string | null, refreshToken: string | null } {
   const bearerMatch = value.match(/^Bearer\s+(.+)$/i);
@@ -22,11 +24,14 @@ function parseAuthorizationHeaderValue(value: string): { accessToken: string | n
   }
 
   const credential = bearerMatch[1];
-  if (!credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX)) {
-    throw new Error(`Invalid stackauth authorization credential: ${credential}`);
+  const matchedPrefix = credential.startsWith(HEXCLAVE_AUTHORIZATION_VALUE_PREFIX) ? HEXCLAVE_AUTHORIZATION_VALUE_PREFIX
+    : credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX) ? STACK_AUTHORIZATION_VALUE_PREFIX
+    : null;
+  if (matchedPrefix == null) {
+    throw new Error(`Invalid authorization credential (expected stackauth_/hexclave_ prefix): ${credential}`);
   }
 
-  const encodedAuthJson = credential.slice(STACK_AUTHORIZATION_VALUE_PREFIX.length);
+  const encodedAuthJson = credential.slice(matchedPrefix.length);
   if (encodedAuthJson.length === 0) {
     throw new Error("Missing encoded auth payload.");
   }

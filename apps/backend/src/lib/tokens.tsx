@@ -64,13 +64,15 @@ const getIssuer = (projectId: string, userType: UserType) => {
 // backend served from one host must keep validating tokens issued under the other, so the
 // validator accepts the issuer under both hosts. Signing always uses getIssuer() (the
 // configured host), so new tokens follow the deployment. See RENAME-TO-HEXCLAVE.md (Tier 0, JWT).
-const issuerHostAliases: Record<string, string> = {
-  "api.stack-auth.com": "api.hexclave.com",
-  "api.hexclave.com": "api.stack-auth.com",
-};
+// Use a Map (not a plain object) for the dynamic host lookup — avoids any chance of a
+// prototype-key collision when the input host comes from an attacker-controlled JWT.
+const issuerHostAliases = new Map<string, string>([
+  ["api.stack-auth.com", "api.hexclave.com"],
+  ["api.hexclave.com", "api.stack-auth.com"],
+]);
 const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   const issuer = getIssuer(projectId, userType);
-  const aliasHost = issuerHostAliases[new URL(issuer).host];
+  const aliasHost = issuerHostAliases.get(new URL(issuer).host);
   if (!aliasHost) return [issuer];
   const aliasedUrl = new URL(issuer);
   aliasedUrl.host = aliasHost;
