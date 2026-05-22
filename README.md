@@ -1,11 +1,19 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-- [Hexclave](#hexclave)
-  - [Get started](#get-started)
-  - [What's included](#whats-included)
-  - [SDKs](#sdks)
-  - [Contributing](#contributing)
+- [Get started](#get-started)
+- [What's included](#whats-included)
+  - [<img src=".github/assets/logos/authentication.png" width="40" align="top"/> &nbsp; Authentication](#img-srcgithubassetslogosauthenticationpng-width40-aligntop-nbsp-authentication)
+  - [<img src=".github/assets/logos/teams.png" width="40" align="top"/> &nbsp; Teams](#img-srcgithubassetslogosteamspng-width40-aligntop-nbsp-teams)
+  - [<img src=".github/assets/logos/rbac.png" width="40" align="top"/> &nbsp; RBAC](#img-srcgithubassetslogosrbacpng-width40-aligntop-nbsp-rbac)
+  - [<img src=".github/assets/logos/api-keys.png" width="40" align="top"/> &nbsp; API Keys](#img-srcgithubassetslogosapi-keyspng-width40-aligntop-nbsp-api-keys)
+  - [<img src=".github/assets/logos/payments.png" width="40" align="top"/> &nbsp; Payments](#img-srcgithubassetslogospaymentspng-width40-aligntop-nbsp-payments)
+  - [<img src=".github/assets/logos/emails.png" width="40" align="top"/> &nbsp; Emails](#img-srcgithubassetslogosemailspng-width40-aligntop-nbsp-emails)
+  - [<img src=".github/assets/logos/analytics.png" width="40" align="top"/> &nbsp; Analytics](#img-srcgithubassetslogosanalyticspng-width40-aligntop-nbsp-analytics)
+  - [<img src=".github/assets/logos/webhooks.png" width="40" align="top"/> &nbsp; Webhooks](#img-srcgithubassetslogoswebhookspng-width40-aligntop-nbsp-webhooks)
+  - [<img src=".github/assets/logos/data-vault.png" width="40" align="top"/> &nbsp; Data Vault](#img-srcgithubassetslogosdata-vaultpng-width40-aligntop-nbsp-data-vault)
+  - [<img src=".github/assets/logos/launch-checklist.png" width="40" align="top"/> &nbsp; Launch Checklist](#img-srcgithubassetslogoslaunch-checklistpng-width40-aligntop-nbsp-launch-checklist)
+- [Contributing](#contributing)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
