@@ -255,8 +255,55 @@ AI clients (Claude, Cursor, etc.) have `ask_stack_auth` baked into their MCP con
 | `stack-docs-selected-platform` (sessionStorage) | `hexclave-docs-selected-platform` |
 | `stack-docs-selected-frameworks` (sessionStorage) | `hexclave-docs-selected-frameworks` |
 | `stack_mfa_attempt_code` (sessionStorage, underscore-delimited) | `hexclave_mfa_attempt_code` |
+| `_STACK_AUTH.lastUsed` (localStorage, dot-delimited — `packages/template/src/components/oauth-button.tsx`) | `_HEXCLAVE.lastUsed` |
+| `stack:session-replay:v1:{projectId}` (localStorage, colon-delimited versioned prefix — `packages/template/src/lib/stack-app/apps/implementations/session-replay.ts`) | `hexclave:session-replay:v1:{projectId}` |
+| `__stack-dev-tool-state` (localStorage — `packages/template/src/dev-tool/dev-tool-core.ts`) | `__hexclave-dev-tool-state` |
+| `stack-devtool-trigger-position` (localStorage — `packages/template/src/dev-tool/dev-tool-core.ts`) | `hexclave-devtool-trigger-position` |
 
-Note the third key uses underscores instead of hyphens — preserve the existing convention for the new name to keep the access pattern identical.
+Delimiter conventions are inconsistent across these keys (hyphen, underscore, dot, colon) — preserve each key's existing convention for its new name so the access pattern stays identical.
+
+**Per-key risk.** The docs `sessionStorage` keys and `stack_mfa_attempt_code` follow the dual-write / prefer-new pattern. The dev-tool keys (`__stack-dev-tool-state`, `stack-devtool-trigger-position`) and the OAuth `_STACK_AUTH.lastUsed` last-provider hint are UI-only local preferences — a one-time reset on rename is harmless, so a straight rename is acceptable. `stack:session-replay:v1:*` holds an in-progress recording session ID; dual-read the old key so a recording session active across the SDK upgrade is not orphaned.
+
+### Query parameters (dual-accept)
+
+`stack_*` / `stack-*` URL query parameters travel between SDK and backend, or across domains during auth handoffs — the same wire-compatibility risk class as headers. Earlier plan versions had no query-parameter category. **Alias, never replace:** the reader accepts both names; new code emits the new name.
+
+| Old (accepted indefinitely) | New (preferred) | Flow |
+|---|---|---|
+| `stack_response_mode` | `hexclave_response_mode` | SDK → backend (OAuth authorize) |
+| `stack_cross_domain_auth` | `hexclave_cross_domain_auth` | cross-domain handoff (SDK ↔ SDK across domains) |
+| `stack_cross_domain_state` | `hexclave_cross_domain_state` | cross-domain handoff |
+| `stack_cross_domain_code_challenge` | `hexclave_cross_domain_code_challenge` | cross-domain handoff |
+| `stack_cross_domain_after_callback_redirect_url` | `hexclave_cross_domain_after_callback_redirect_url` | cross-domain handoff |
+| `stack-init-id` | `hexclave-init-id` | init CLI → dashboard wizard-congrats page |
+
+**`stack_response_mode`** — emitted by `packages/stack-shared/src/interface/client-interface.ts:1419`, read by the yup query schema at `apps/backend/src/app/api/latest/auth/oauth/authorize/[provider_id]/route.tsx:42`. The backend schema must accept both keys (prefer new). This needs genuine dual-accept, not a rename: if the param is dropped silently the backend falls back to `responseMode: "redirect"` and the SDK can no longer intercept bot challenges before navigating.
+
+**`stack_cross_domain_*`** — the four param names are defined together in `packages/template/src/lib/stack-app/apps/implementations/redirect-page-urls.ts:6-9`; the `stack_cross_domain_auth === "1"` marker is read at `packages/template/src/components-page/stack-handler-client.tsx:267`. Writer and reader are both in the SDK, so a handoff between two different SDK majors (one per domain) must still resolve: dual-emit both param sets into the redirect URL, and accept either on read.
+
+**`stack-init-id`** — emitted by `packages/init-stack/src/index.ts:452`, read by `apps/dashboard/src/app/(main)/wizard-congrats/posthog.tsx:12`. Dashboard reads either key; new `init` CLI emits the new one. Low-stakes (PostHog distinct-id correlation only) but follows the same pattern. Note the hyphen delimiter — the cross-domain and response-mode params use underscores; preserve each.
+
+A repo-wide grep for `stack_` / `stack-` query keys should confirm this list before PR 1.
+
+### Custom DOM events
+
+The docs site syncs platform/framework selection across components via `window`-dispatched `CustomEvent`s with `stack-`-prefixed names. They pair with the `stack-docs-selected-*` sessionStorage keys above.
+
+| Old | New |
+|---|---|
+| `stack-platform-change` | `hexclave-platform-change` |
+| `stack-framework-change` | `hexclave-framework-change` |
+
+**Files:** `docs/src/components/layouts/platform-indicator.tsx` and `docs/src/components/mdx/platform-codeblock.tsx` (both dispatch and listen). These events are dispatched and consumed entirely within a single docs-site page load — no cross-version or persistence concern. Straight rename; update dispatch and listener sites in lockstep.
+
+### Dev tool (`packages/template/src/dev-tool/dev-tool-core.ts`)
+
+The in-app dev tool ships inside the SDK (`packages/template`, propagated to every generated SDK) and is its own brand surface, missed by earlier plan versions. It spans tiers:
+
+- **localStorage keys** — `__stack-dev-tool-state`, `stack-devtool-trigger-position` (in the Storage keys table above).
+- **Header-emit site** — the AI tab builds a `fetch` to the AI endpoint with hand-written `X-Stack-Access-Type`, `X-Stack-Project-Id`, `X-Stack-Publishable-Client-Key` headers, bypassing the normal client interface. The request-header table covers the backend *accept* side; SDK header *emit* sites like this one must be switched to `x-hexclave-*` and enumerated during PR 1.
+- **DOM identifiers** — element id `__stack-dev-tool-root`, global key `__stack-dev-tool-instance`, attribute `data-stack-devtool-trigger`. Internal, no compat needed — straight rename.
+- **Brand strings / domains** — many "Stack Auth" UI strings and `docs.stack-auth.com` / `app.stack-auth.com` / `test.stack-auth.com` references; covered by the Tier 4 sweep + domain inventory, but the file must be on the sweep list.
 
 ---
 
