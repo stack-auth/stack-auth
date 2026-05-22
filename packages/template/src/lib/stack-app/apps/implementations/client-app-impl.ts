@@ -769,6 +769,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return null;
   }
+  // Hexclave rebrand: back-compat singular helpers. The plural variants above are the canonical
+  // path (they return both bases for dual-write); these return only the legacy stack-* name so
+  // integration tests and any older callers that look up a single name keep resolving.
+  private _getCustomRefreshCookieName(domain: string): string {
+    const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
+    return `${this._refreshTokenCookieName}--custom-${encoded}`;
+  }
+  private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
+    return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
+  }
   private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
     return JSON.stringify({
       refresh_token: refreshToken,
@@ -934,9 +944,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return;
       }
       const cookies = this._getAllBrowserCookies();
-      // Hexclave rebrand: dual-write the custom cross-subdomain cookie under both names.
+      // Hexclave rebrand: dual-write the custom cross-subdomain cookie under both names. Only
+      // skip if BOTH names already exist — if either is missing (e.g. one was manually cleared),
+      // re-write the pair so the legacy-name read path stays valid.
       const customCookieNames = this._getCustomRefreshCookieNames(domain.data);
-      if (customCookieNames.some((name) => cookies[name])) {
+      if (customCookieNames.every((name) => cookies[name])) {
         return;
       }
       const { refreshToken, updatedAt } = this._extractRefreshTokenFromCookieMap(cookies);
@@ -984,9 +996,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
       await setCookie(domain.data, value);
       const isSecure = await isSecureCookieContext();
-      // Hexclave rebrand: delete the (now-superseded) default cookie under both names.
+      // Hexclave rebrand: delete the (now-superseded) default cookie under both names. Match the
+      // browser/server split used by setCookie above — otherwise the browser-side onChange path
+      // ends up calling the Next.js server-cookie helper and the default cookie is never cleared.
       for (const defaultName of this._getRefreshTokenDefaultCookieNamesForSecure(isSecure)) {
-        await setOrDeleteCookie(defaultName, null, cookieOptions);
+        if (context === "browser") {
+          setOrDeleteCookieClient(defaultName, null, cookieOptions);
+        } else {
+          await setOrDeleteCookie(defaultName, null, cookieOptions);
+        }
       }
     });
   }
