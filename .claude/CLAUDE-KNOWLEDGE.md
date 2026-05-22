@@ -521,5 +521,14 @@ A: Only auto-start hosted OAuth callback handling when the current URL has `code
 ## Q: Should built-with hosted handler domains be manually configured as trusted domains?
 A: No. Treat the hosted handler origin for the project, such as `https://<project-id>.built-with-stack-auth.com` or the origin derived from `NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE`, as an implicit trusted redirect domain on both client and backend validation paths. The hosted template must put `{projectId}` in the hostname so every project has its own origin; path-based templates like `https://host/{projectId}/{hostedPath}` are not safe for implicit origin trust.
 
+## Q: How should post-auth redirects mint cross-domain auth codes right after sign-in?
+A: When a sign-in/sign-up/OAuth callback immediately redirects through the cross-domain authorize endpoint, pass the freshly returned `{ accessToken, refreshToken }` as an override token store into the redirect path. Do not rely on browser cookies having already flushed; otherwise the request can pair a new access token with an old refresh token and fail the backend refresh-token/session consistency check.
+
+## Q: How should mixed-token cross-domain auth regressions be tested?
+A: Add a source-level template test that creates a client app with a stale persistent token store, calls `_createCrossDomainAuthRedirectUrl` with `overrideTokenStoreInit`, and patches only `sendClientRequest` on the real client interface so session creation remains intact. The assertion should inspect the session passed to the interface and require the fresh refresh token, proving the cross-domain authorize request does not use stale persisted tokens.
+
+## Q: When should cross-domain auth call `captureError`?
+A: Do not call `captureError` for normal cross-domain auth failures such as stale/deleted cookies, untrusted redirect URLs, invalid or mismatched refresh tokens, missing handoff params, or interrupted auth flows. Reserve `captureError` for states that definitely imply a Stack developer mistake; ordinary auth failures should just return or throw their normal user-facing errors.
+
 ## Q: How should the npm publish workflow create the post-publish dev version bump?
 A: The workflow needs a full checkout using the fine-grained `NPM_PUBLISH_VERSION_UPDATE_PR_PAT` secret. It then fetches `origin/dev`, checks out `dev`, creates a non-interactive patch changeset, runs `pnpm changeset version`, copies the generated `packages/template/package.json` version line back into `packages/template/package-template.json`, and commit/pushes `chore: update package versions`. Because direct pushes to `dev` are blocked by repository rules requiring PRs and the `all-good` status check, the PAT's owning user or bot account must be added to the ruleset bypass list with "Always allow" rather than "For pull requests only".

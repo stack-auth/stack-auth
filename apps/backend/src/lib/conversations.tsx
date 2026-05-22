@@ -247,7 +247,7 @@ async function getConversationRow(options: {
   conversationId: string,
   viewerProjectUserId?: string,
 }) {
-  const rows = await globalPrismaClient.$queryRaw<DbConversationRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<DbConversationRow[]>(Prisma.sql`
     SELECT
       c.id AS "conversationId",
       c."projectUserId" AS "userId",
@@ -297,7 +297,7 @@ async function getConversationState(options: {
   conversationId: string,
   viewerProjectUserId?: string,
 }) {
-  const rows = await globalPrismaClient.$queryRaw<ConversationStateRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ConversationStateRow[]>(Prisma.sql`
     SELECT
       c.id AS "conversationId",
       c."projectUserId" AS "userId",
@@ -417,7 +417,7 @@ export async function listConversationSummaries(options: {
   const limit = options.limit ?? 200;
   const offset = options.offset ?? 0;
 
-  const rows = await globalPrismaClient.$queryRaw<ConversationSummaryRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ConversationSummaryRow[]>(Prisma.sql`
     SELECT
       c.id AS "conversationId",
       c."projectUserId" AS "userId",
@@ -502,7 +502,7 @@ export async function getConversationDetail(options: {
     throw new StatusError(404, "Conversation not found.");
   }
 
-  const messageRows = await globalPrismaClient.$queryRaw<ConversationMessageRow[]>(Prisma.sql`
+  const messageRows = await globalPrismaClient.$replica().$queryRaw<ConversationMessageRow[]>(Prisma.sql`
     SELECT
       cm.id,
       cm."messageType",
@@ -528,7 +528,7 @@ export async function getConversationDetail(options: {
   const messages = messageRows.map((row) => messageFromRow(row, conversation));
   const latestMessage = messages.at(-1) ?? throwErr("Conversations must contain at least one message");
 
-  const entryPointRows = await globalPrismaClient.$queryRaw<ConversationEntryPointRow[]>(Prisma.sql`
+  const entryPointRows = await globalPrismaClient.$replica().$queryRaw<ConversationEntryPointRow[]>(Prisma.sql`
     SELECT
       cep.id,
       cep."channelType",

@@ -818,8 +818,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return currentUrl.toString();
   }
 
-  protected async _getCurrentRefreshTokenIdIfSignedIn(options?: { awaitPendingAuthResolutions?: boolean }): Promise<string | null> {
-    const session = await this._getSession(undefined, options);
+  protected async _getCurrentRefreshTokenIdIfSignedIn(options?: {
+    awaitPendingAuthResolutions?: boolean,
+    overrideTokenStoreInit?: TokenStoreInit,
+  }): Promise<string | null> {
+    const session = await this._getSession(options?.overrideTokenStoreInit, options);
     const tokens = await session.getOrFetchLikelyValidTokens(0, null);
     if (tokens?.refreshToken == null) {
       return null;
@@ -831,6 +834,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     url: string,
     currentUrl: URL,
     awaitPendingAuthResolutions?: boolean,
+    overrideTokenStoreInit?: TokenStoreInit,
   }): Promise<string> {
     const targetUrl = new URL(options.url, options.currentUrl);
     if (targetUrl.origin === options.currentUrl.origin) {
@@ -839,6 +843,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     const refreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({
       awaitPendingAuthResolutions: options.awaitPendingAuthResolutions,
+      overrideTokenStoreInit: options.overrideTokenStoreInit,
     });
     if (refreshTokenId == null) {
       return options.url;
@@ -913,7 +918,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
     if (currentRefreshTokenId === refreshTokenId) return false;
     const callbackUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.callbackUrl);
-    if (callbackUrlString == null) throw new StackAssertionError("Nested cross-domain auth URL is missing callback URL");
+    if (callbackUrlString == null) {
+      throw new StackAssertionError("Nested cross-domain auth URL is missing callback URL");
+    }
     if (isRelative(callbackUrlString)) {
       throw new Error("Nested cross-domain auth callback URL must be absolute.");
     }
@@ -1464,6 +1471,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // populated when useUser() re-renders, avoiding a stale-cache render cycle.
     const newSession = this._getSessionFromTokenStore(tokenStore);
     this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
+  }
+
+  protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {
+    if (tokens.accessToken == null) {
+      return undefined;
+    }
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    };
   }
 
   protected _hasPersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): this is StackClientApp<true, ProjectId> {
@@ -2760,8 +2777,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     codeChallenge: string,
     afterCallbackRedirectUrl: string,
     awaitPendingAuthResolutions?: boolean,
+    overrideTokenStoreInit?: TokenStoreInit,
   }): Promise<string> {
-    const session = await this._getSession(undefined, { awaitPendingAuthResolutions: options.awaitPendingAuthResolutions });
+    const session = await this._getSession(options.overrideTokenStoreInit, { awaitPendingAuthResolutions: options.awaitPendingAuthResolutions });
     const response = await this._interface.sendClientRequest(
       "/auth/oauth/cross-domain/authorize",
       {
@@ -2780,7 +2798,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       session,
     );
     if (!response.ok) {
-      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${await response.text()}`);
+      const responseBody = await response.text();
+      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${responseBody}`);
     }
     const result = await response.json();
     if (!("redirect_url" in result) || typeof result.redirect_url !== "string") {
@@ -2862,7 +2881,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _redirectToHandler(
     handlerName: keyof HandlerUrls,
     options?: RedirectToOptions,
-    internalOptions?: { awaitPendingAuthResolutions?: boolean },
+    internalOptions?: {
+      awaitPendingAuthResolutions?: boolean,
+      overrideTokenStoreInit?: TokenStoreInit,
+    },
   ) {
     const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
     const rawHandlerUrl = rawUrls[handlerName];
@@ -2889,6 +2911,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         codeChallenge: plan.codeChallenge,
         afterCallbackRedirectUrl: plan.afterCallbackRedirectUrl,
         awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
+        overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       });
       await this._redirectTo({ url: crossDomainRedirectUrl, ...options });
       return;
@@ -2899,6 +2922,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         url: plan.url,
         currentUrl,
         awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
+        overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       })
       : plan.url;
     await this._redirectIfTrusted(redirectUrl, options);
@@ -3334,7 +3358,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
-        await this.redirectToAfterSignIn({ replace: true });
+        await this._redirectToHandler("afterSignIn", { replace: true }, {
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
       }
       return Result.ok(undefined);
     } else {
@@ -3396,7 +3422,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
-        await this.redirectToAfterSignUp({ replace: true });
+        await this._redirectToHandler("afterSignUp", { replace: true }, {
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
       }
       return Result.ok(undefined);
     } else {
@@ -3444,9 +3472,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       await this._signInToAccountWithTokens(result.data);
       if (!(options?.noRedirect)) {
         if (result.data.newUser) {
-          await this._redirectToHandler("afterSignUp", { replace: true }, { awaitPendingAuthResolutions: false });
+          await this._redirectToHandler("afterSignUp", { replace: true }, {
+            awaitPendingAuthResolutions: false,
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         } else {
-          await this._redirectToHandler("afterSignIn", { replace: true }, { awaitPendingAuthResolutions: false });
+          await this._redirectToHandler("afterSignIn", { replace: true }, {
+            awaitPendingAuthResolutions: false,
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         }
       }
       return Result.ok(undefined);
@@ -3584,9 +3618,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       await this._signInToAccountWithTokens(result.data);
       if (!(options?.noRedirect)) {
         if (result.data.newUser) {
-          await this.redirectToAfterSignUp({ replace: true });
+          await this._redirectToHandler("afterSignUp", { replace: true }, {
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         } else {
-          await this.redirectToAfterSignIn({ replace: true });
+          await this._redirectToHandler("afterSignIn", { replace: true }, {
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         }
       }
       return Result.ok(undefined);
@@ -3627,7 +3665,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
-      await this.redirectToAfterSignIn({ replace: true });
+      await this._redirectToHandler("afterSignIn", { replace: true }, {
+        overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+      });
       return Result.ok(undefined);
     } else {
       return Result.error(result.error);
@@ -3675,10 +3715,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await this._redirectTo({ url: result.data.afterCallbackRedirectUrl, replace: true });
         return true;
       } else if (result.data.newUser) {
-        await this._redirectToHandler("afterSignUp", { replace: true }, { awaitPendingAuthResolutions: false });
+        await this._redirectToHandler("afterSignUp", { replace: true }, {
+          awaitPendingAuthResolutions: false,
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
         return true;
       } else {
-        await this._redirectToHandler("afterSignIn", { replace: true }, { awaitPendingAuthResolutions: false });
+        await this._redirectToHandler("afterSignIn", { replace: true }, {
+          awaitPendingAuthResolutions: false,
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
         return true;
       }
     }
@@ -3930,6 +3976,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       getRedirectMethod: () => this._redirectMethod ?? throwErr("Redirect method should have been initialized in the Stack client app constructor"),
       redirectToUrl: async (url: string | URL, options?: { replace?: boolean }) => {
         await this._redirectTo({ url, ...options });
+      },
+      redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
+        await this._redirectToHandler(handlerName, options);
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());

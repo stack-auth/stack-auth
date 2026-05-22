@@ -119,3 +119,4 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
+- **Read replicas for raw Prisma queries**: When writing raw SQL queries (`$queryRaw`, `$queryRawUnsafe`), always use `$replica()` for read-only queries (e.g. `globalPrismaClient.$replica().$queryRaw\`SELECT ...\``). This routes reads to the database replica and reduces load on the primary. Do NOT use `$replica()` for queries inside transactions or queries containing writes (INSERT/UPDATE/DELETE, even in CTEs).
