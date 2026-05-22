@@ -380,9 +380,9 @@ function LivePreviewBody({
 }
 
 const MERGE_STRATEGY_SHORT: Record<OAuthAccountMergeStrategy, string> = {
-  link_method: "Link providers",
-  allow_duplicates: "Allow duplicates",
-  raise_error: "Block multiple",
+  link_method: "Link accounts",
+  allow_duplicates: "Create new account",
+  raise_error: "Block sign-up",
 };
 
 // ─── Designed Email Verification toggle (logic copied from EmailVerificationSetting) ──
@@ -746,8 +746,8 @@ export default function PageClient() {
                   <UserCircleIcon size={18} className="text-foreground/70 dark:text-muted-foreground" aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">Multi-provider sign-up mode</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user tries to sign in with a different OAuth provider using the same email address</div>
+                  <div className="text-sm font-medium text-foreground truncate">Same-email social login policy</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user uses a new social login provider to log into an existing account</div>
                 </div>
                 <DesignSelectorDropdown
                   value={mergeStrategy}
