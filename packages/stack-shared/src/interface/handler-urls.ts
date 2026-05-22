@@ -36,10 +36,8 @@ export type HandlerUrlTarget = HandlerUrls[keyof HandlerUrls];
 /**
  * The default handler URL target, applied to any key not explicitly set.
  *
- * - `{ type: "handler-component" }` — render the page inside the local `StackHandler` component (default).
+ * - `{ type: "handler-component" }` — render the page inside the local `StackHandler` component (current default, may change in the next breaking version).
  * - `{ type: "hosted" }` — redirect to Stack's hosted auth pages.
- *
- * Plain strings are NOT accepted; use the object form above.
  */
 export type DefaultHandlerUrlTarget = { type: "hosted" | "handler-component" };
 
@@ -47,7 +45,7 @@ export type DefaultHandlerUrlTarget = { type: "hosted" | "handler-component" };
  * Configuration for where each auth page/redirect lives.
  *
  * **`default`** — fallback target for every key not set individually:
- *   - `{ type: "handler-component" }` — use the local `StackHandler` (default).
+ *   - `{ type: "handler-component" }` — use the local `StackHandler` (current default, may change in the next breaking version).
  *   - `{ type: "hosted" }` — use Stack's hosted auth pages.
  *
  * **Page keys** (`signIn`, `signUp`, `signOut`, `emailVerification`, `passwordReset`,

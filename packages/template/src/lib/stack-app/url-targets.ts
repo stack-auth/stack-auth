@@ -185,9 +185,6 @@ const assertOAuthCallbackTargetIsRelative = (target: HandlerUrlTarget): void => 
 
 export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefined, projectId: string }): ResolvedHandlerUrls => {
   const configuredUrls = options.urls;
-  if (typeof configuredUrls?.default === "string") {
-    throw new StackAssertionError(`The 'default' URL option must be an object (eg. { type: "hosted" } or { type: "handler-component" }), but received a string: "${configuredUrls.default}". If you meant to use hosted URLs, use { type: "hosted" } instead.`);
-  }
   const defaultTarget = configuredUrls?.default ?? { type: "handler-component" } as const;
   const oauthCallbackTarget: HandlerUrlTarget = configuredUrls?.oauthCallback ?? (
     defaultTarget.type === "hosted"
