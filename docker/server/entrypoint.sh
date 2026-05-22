@@ -46,8 +46,15 @@ if [ -n "${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-}" ]; then
 fi
 
 export NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=${NEXT_PUBLIC_STACK_DASHBOARD_URL}
-export NEXT_PUBLIC_STACK_PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}
-PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX}
+# Hexclave rebrand: the port-prefix var was renamed outright to
+# NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX. The dashboard bundle's post-build sentinel
+# is STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX, and the sentinel
+# substitution loop below derives the env var name from the sentinel — so this
+# MUST export NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX or the sentinel never resolves.
+# Accept the legacy NEXT_PUBLIC_STACK_PORT_PREFIX as input for back-compat with
+# existing self-host configs.
+export NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}}
+PORT_PREFIX=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX}
 export NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL="http://localhost:${PORT_PREFIX}01"
 export NEXT_PUBLIC_BROWSER_STACK_API_URL=${NEXT_PUBLIC_STACK_API_URL}
 export NEXT_PUBLIC_SERVER_STACK_API_URL="http://localhost:${PORT_PREFIX}02"

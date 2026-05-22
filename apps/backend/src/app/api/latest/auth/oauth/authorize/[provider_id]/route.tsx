@@ -185,15 +185,15 @@ export const GET = createSmartRouteHandler({
     }
 
     // For browser-redirect mode, set a CSRF cookie that the callback route checks.
-    (await cookies()).set(
-      "stack-oauth-inner-" + innerState,
-      "true",
-      {
-        httpOnly: true,
-        secure: getNodeEnvironment() !== "development",
-        maxAge: 60 * outerOAuthFlowExpirationInMinutes,
-      }
-    );
+    // Hexclave rebrand: dual-write under both names; the callback route reads either.
+    const innerOAuthCookieOptions = {
+      httpOnly: true,
+      secure: getNodeEnvironment() !== "development",
+      maxAge: 60 * outerOAuthFlowExpirationInMinutes,
+    };
+    const innerOAuthCookieStore = await cookies();
+    innerOAuthCookieStore.set("hexclave-oauth-inner-" + innerState, "true", innerOAuthCookieOptions);
+    innerOAuthCookieStore.set("stack-oauth-inner-" + innerState, "true", innerOAuthCookieOptions);
 
     redirect(oauthUrl);
   },

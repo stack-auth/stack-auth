@@ -74,6 +74,40 @@ it("internal MCP endpoint should expose the Stack Auth docs assistant tool", asy
             },
             "name": "ask_stack_auth",
           },
+          {
+            "description": "Ask the Hexclave documentation assistant. Use this for any question about Hexclave: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set \`reason\` to a short explanation of why you are calling this tool (for product analytics and debugging).",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "additionalProperties": false,
+              "properties": {
+                "conversationId": {
+                  "description": "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
+                  "type": "string",
+                },
+                "question": {
+                  "description": "The full question to ask about Hexclave.",
+                  "type": "string",
+                },
+                "reason": {
+                  "description": "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Hexclave API headers). Used for analytics, not sent to the model.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "userPrompt": {
+                  "description": "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "question",
+                "reason",
+                "userPrompt",
+              ],
+              "type": "object",
+            },
+            "name": "ask_hexclave",
+          },
         ],
       },
     }
@@ -93,6 +127,9 @@ it("public MCP endpoint should expose the Stack Auth docs assistant tool", async
       tools: [
         {
           name: "ask_stack_auth",
+        },
+        {
+          name: "ask_hexclave",
         },
       ],
     },
