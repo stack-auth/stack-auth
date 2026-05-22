@@ -9,10 +9,21 @@ function createMockDocument(): Document {
       return [...cookieJar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
     },
     set cookie(str: string) {
-      const [nameValue] = str.split(';');
+      const parts = str.split(';');
+      const [nameValue] = parts;
       const eqIndex = nameValue.indexOf('=');
       if (eqIndex >= 0) {
-        cookieJar.set(nameValue.slice(0, eqIndex).trim(), nameValue.slice(eqIndex + 1).trim());
+        const name = nameValue.slice(0, eqIndex).trim();
+        const isExpired = parts.some(p => {
+          const trimmed = p.trim().toLowerCase();
+          if (!trimmed.startsWith('expires=')) return false;
+          return new Date(trimmed.slice('expires='.length)) <= new Date();
+        });
+        if (isExpired) {
+          cookieJar.delete(name);
+        } else {
+          cookieJar.set(name, nameValue.slice(eqIndex + 1).trim());
+        }
       }
     },
     createElement: () => ({}),
@@ -65,7 +76,7 @@ it("adds secure cross-domain handoff parameters when redirecting to hosted sign-
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: `${localRedirectUrl}/private-page?foo=bar`,
@@ -107,7 +118,7 @@ it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentHref,
@@ -138,7 +149,7 @@ it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentHref,
@@ -173,7 +184,7 @@ it("strips stale OAuth callback params from hosted current-page redirect URIs", 
     currentUrl.searchParams.set("message", "Known message");
     currentUrl.searchParams.set("details", "{}");
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentUrl.toString(),
@@ -284,7 +295,7 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: `${localRedirectUrl}/callback-page`,
@@ -339,7 +350,7 @@ it("keeps cross-domain handoff working when top-level params are dropped before 
       .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
       .mockResolvedValue(crossDomainAuthorizeRedirect);
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: hostedAfterSignInCallbackUrl.toString(),
@@ -395,7 +406,7 @@ it("keeps cross-domain handoff working when after_auth_return_to is rewritten to
       .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
       .mockResolvedValue(crossDomainAuthorizeRedirect);
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: hostedAfterSignInCallbackUrl.toString(),
@@ -436,7 +447,7 @@ it("adds nested cross-domain auth params when redirecting signed-in users to hos
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentHref,
@@ -474,7 +485,7 @@ it("adds nested cross-domain auth params for other cross-domain handler redirect
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentHref,
@@ -515,7 +526,7 @@ it("starts nested cross-domain auth from the target domain", async ({ expect }) 
       codeChallenge: "nested-code-challenge",
     });
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentHref,
@@ -567,7 +578,7 @@ it("continues nested cross-domain auth on the source domain", async ({ expect })
       .mockResolvedValue(crossDomainRedirect);
     vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(sourceRefreshTokenId);
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentUrl.toString(),
@@ -611,7 +622,7 @@ it("rejects nested cross-domain auth when the source redirect URI is untrusted",
     const createCrossDomainAuthRedirectUrlSpy = vi.spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl");
     vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(false);
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentUrl.toString(),
@@ -640,7 +651,7 @@ it("rejects nested cross-domain auth when the callback URL is untrusted", async 
     vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(false);
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentHref,
@@ -671,7 +682,7 @@ it("rejects nested cross-domain auth when the source session does not match", as
     const createCrossDomainAuthRedirectUrlSpy = vi.spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl");
     vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue("different-source-session");
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentUrl.toString(),
