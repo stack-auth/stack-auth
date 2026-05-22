@@ -1,4 +1,3 @@
-import { SubscriptionStatus } from "@/generated/prisma/client";
 import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";

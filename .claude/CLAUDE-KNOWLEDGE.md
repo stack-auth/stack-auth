@@ -511,3 +511,6 @@ A: Seed the normal initial environment config before marking the project as `isD
 
 ## Q: What can cause React error #185 immediately on dashboard load?
 A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
+
+## Q: How should the npm publish workflow create the post-publish dev version bump?
+A: The workflow needs a full checkout using the fine-grained `NPM_PUBLISH_VERSION_UPDATE_PR_PAT` secret. It then fetches `origin/dev`, checks out `dev`, creates a non-interactive patch changeset, runs `pnpm changeset version`, copies the generated `packages/template/package.json` version line back into `packages/template/package-template.json`, and commit/pushes `chore: update package versions`. Because direct pushes to `dev` are blocked by repository rules requiring PRs and the `all-good` status check, the PAT's owning user or bot account must be added to the ruleset bypass list with "Always allow" rather than "For pull requests only".

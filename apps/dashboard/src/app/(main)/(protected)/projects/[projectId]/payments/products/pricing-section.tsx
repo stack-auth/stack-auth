@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, SimpleTooltip, Typography } from "@/components/ui";
+import { DesignButton } from "@/components/design-components";
+import { SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { GiftIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -75,15 +76,16 @@ export function PricingSection({
             <Typography type="p" className="text-sm mt-1">
               Click the + button to add your first price
             </Typography>
-            <Button
+            <DesignButton
               variant="outline"
               size="sm"
+              type="button"
               className="mt-3"
               onClick={handleAddClick}
             >
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
-            </Button>
+            </DesignButton>
           </div>
         ) : (
           <div>
@@ -100,33 +102,38 @@ export function PricingSection({
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <Button
+                  <DesignButton
                     variant="ghost"
                     size="sm"
+                    type="button"
                     onClick={() => handleEditClick(id)}
                   >
                     Edit
-                  </Button>
-                  <Button
+                  </DesignButton>
+                  <DesignButton
                     variant="ghost"
                     size="sm"
+                    type="button"
+                    aria-label={`Remove price ${id}`}
+                    className="text-destructive hover:text-destructive"
                     onClick={() => handleRemovePrice(id)}
                   >
-                    <TrashIcon className="h-4 w-4 text-destructive" />
-                  </Button>
+                    <TrashIcon className="h-4 w-4" />
+                  </DesignButton>
                 </div>
               </div>
             ))}
             <div className="px-3 py-2 border-t border-border/30">
-              <Button
+              <DesignButton
                 variant="ghost"
                 size="sm"
+                type="button"
                 onClick={handleAddClick}
                 className="w-full justify-start"
               >
                 <PlusIcon className="h-4 w-4 mr-2" />
                 Add Price
-              </Button>
+              </DesignButton>
             </div>
           </div>
         )}
@@ -170,13 +177,16 @@ export function PricingSection({
           <div className="text-xs text-foreground/30 font-mono">{freePriceId}</div>
         </div>
         <div className="flex items-center gap-1">
-          <Button
+          <DesignButton
             variant="ghost"
             size="sm"
+            type="button"
+            aria-label="Make paid (remove free price)"
+            className="text-destructive hover:text-destructive"
             onClick={() => onPricesChange({})}
           >
-            <TrashIcon className="h-4 w-4 text-destructive" />
-          </Button>
+            <TrashIcon className="h-4 w-4" />
+          </DesignButton>
         </div>
       </div>
     );
@@ -193,22 +203,26 @@ export function PricingSection({
             No prices configured yet
           </p>
           <div className="flex items-center justify-center gap-3">
-            <Button
+            <DesignButton
               variant="outline"
+              size="sm"
+              type="button"
               onClick={handleAddClick}
             >
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
-            </Button>
+            </DesignButton>
             {onMakeFree && (
               <SimpleTooltip tooltip="Mark this product as free. Customers won't be charged, and no prices can be added.">
-                <Button
+                <DesignButton
                   variant="outline"
+                  size="sm"
+                  type="button"
                   onClick={onMakeFree}
                 >
                   <GiftIcon className="h-4 w-4 mr-2" />
                   Make Free
-                </Button>
+                </DesignButton>
               </SimpleTooltip>
             )}
           </div>
@@ -244,42 +258,50 @@ export function PricingSection({
                   <div className="text-xs text-foreground/30 font-mono">{priceId}</div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button
+                  <DesignButton
                     variant="ghost"
                     size="sm"
+                    type="button"
                     onClick={() => handleEditClick(priceId)}
                   >
                     Edit
-                  </Button>
-                  <Button
+                  </DesignButton>
+                  <DesignButton
                     variant="ghost"
                     size="sm"
+                    type="button"
+                    aria-label={`Remove price ${priceId}`}
+                    className="text-destructive hover:text-destructive"
                     onClick={() => handleRemovePrice(priceId)}
                   >
-                    <TrashIcon className="h-4 w-4 text-destructive" />
-                  </Button>
+                    <TrashIcon className="h-4 w-4" />
+                  </DesignButton>
                 </div>
               </div>
             );
           })}
           <div className="flex items-center gap-2">
-            <Button
+            <DesignButton
               variant="outline"
+              size="sm"
+              type="button"
               onClick={handleAddClick}
               className="flex-1"
             >
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
-            </Button>
+            </DesignButton>
             {onMakeFree && (
               <SimpleTooltip tooltip="Replace all configured prices with a single free tier. Customers won't be charged.">
-                <Button
+                <DesignButton
                   variant="outline"
+                  size="sm"
+                  type="button"
                   onClick={onMakeFree}
                 >
                   <GiftIcon className="h-4 w-4 mr-2" />
                   Make Free
-                </Button>
+                </DesignButton>
               </SimpleTooltip>
             )}
           </div>
