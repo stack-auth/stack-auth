@@ -11,6 +11,21 @@ export type {
   StackServerAppConstructor,
   StackServerAppConstructorOptions
 } from "./apps";
+// Hexclave aliases — same symbols under the new brand name (see RENAME-TO-HEXCLAVE.md, Tier 1)
+export {
+  StackAdminApp as HexclaveAdminApp,
+  StackClientApp as HexclaveClientApp,
+  StackServerApp as HexclaveServerApp
+} from "./apps";
+export type {
+  StackAdminAppConstructor as HexclaveAdminAppConstructor,
+  StackAdminAppConstructorOptions as HexclaveAdminAppConstructorOptions,
+  StackClientAppConstructor as HexclaveClientAppConstructor,
+  StackClientAppConstructorOptions as HexclaveClientAppConstructorOptions,
+  StackClientAppJson as HexclaveClientAppJson,
+  StackServerAppConstructor as HexclaveServerAppConstructor,
+  StackServerAppConstructorOptions as HexclaveServerAppConstructorOptions
+} from "./apps";
 
 export type {
   EmailOutboxListOptions,
