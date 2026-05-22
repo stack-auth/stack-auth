@@ -44,8 +44,8 @@ export const POST = createSmartRouteHandler({
     // client through means the handshake is established exactly once.
     const clickhouseClient = getClickhouseAdminClient();
     const clickhouseWarmup = clickhouseClient
-      .command({ query: "SELECT 1" })
-      .then(() => undefined, () => undefined);
+      .command({ query: "SELECT 1" });
+    ignoreUnhandledRejection(clickhouseWarmup);
 
     const userId = auth.user.id;
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
