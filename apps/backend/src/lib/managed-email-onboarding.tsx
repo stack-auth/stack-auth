@@ -239,10 +239,11 @@ async function deleteDnsimpleZoneByName(zoneName: string): Promise<{ status: "de
   }
   if (!response.ok) {
     const responseBody = await response.text();
-    throw new StatusError(
-      502,
-      `DNSimple returned ${response.status} when deleting managed email zone ${zoneName}: ${responseBody.slice(0, 500)}`,
-    );
+    throw new StackAssertionError(`DNSimple returned non-OK status when deleting managed email zone`, {
+      zoneName,
+      status: response.status,
+      responseBody,
+    });
   }
   return { status: "deleted" };
 }
@@ -711,10 +712,11 @@ export async function deleteManagedEmailProvider(options: {
     });
     if (!resendResponse.ok && resendResponse.status !== 404) {
       const responseBody = await resendResponse.text();
-      throw new StatusError(
-        502,
-        `Upstream email provider returned ${resendResponse.status} when deleting managed domain ${domain.resendDomainId}: ${responseBody.slice(0, 500)}`,
-      );
+      throw new StackAssertionError(`Upstream email provider returned non-OK status when deleting managed domain`, {
+        resendDomainId: domain.resendDomainId,
+        status: resendResponse.status,
+        responseBody,
+      });
     }
 
     // createOrReuseDnsimpleZone lets multiple ManagedEmailDomain rows share a zone (when
