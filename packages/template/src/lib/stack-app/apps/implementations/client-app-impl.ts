@@ -3931,6 +3931,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       redirectToUrl: async (url: string | URL, options?: { replace?: boolean }) => {
         await this._redirectTo({ url, ...options });
       },
+      redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
+        await this._redirectToHandler(handlerName, options);
+      },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());
       },

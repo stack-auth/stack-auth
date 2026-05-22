@@ -122,16 +122,28 @@ describe("handler URL targets", () => {
     `);
   });
 
-  it("does not inherit an absolute default target for the OAuth callback", () => {
+  it("rejects a string value for the default URL option", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing runtime validation for JS users
+        default: "https://app.example.test/handler" as any,
+      },
+    })).toThrowError(/must be an object/);
+  });
+
+  it("does not inherit a hosted default target for the OAuth callback", () => {
+    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
+
     const urls = resolveHandlerUrls({
       projectId: "project-id",
       urls: {
-        default: "https://app.example.test/handler",
+        default: { type: "hosted" },
       },
     });
 
-    expect(urls.signIn).toBe("https://app.example.test/handler");
-    expect(urls.oauthCallback).toBe("/handler/oauth-callback");
+    expect(urls.signIn).toBe("https://project-id.example-stack-hosted.test/handler/sign-in");
+    expect(urls.oauthCallback).toBe("https://project-id.example-stack-hosted.test/handler/oauth-callback");
   });
 
   it("supports custom CLI auth confirmation targets", () => {
