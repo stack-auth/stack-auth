@@ -104,72 +104,79 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
         }),
       );
 
-      server.tool(
-        "ask_stack_auth",
-        "Ask the Stack Auth documentation assistant. Use this for any question about Stack Auth: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set `reason` to a short explanation of why you are calling this tool (for product analytics and debugging).",
-        {
-          question: z.string().describe("The full question to ask about Stack Auth."),
-          reason: z
-            .string()
-            .min(1)
-            .describe(
-              "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Stack Auth API headers). Used for analytics, not sent to the model.",
-            ),
-          userPrompt: z
-            .string()
-            .min(1)
-            .describe(
-              "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
-            ),
-          conversationId: z
-            .string()
-            .optional()
-            .describe(
-              "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
-            ),
-        },
-        async ({ question, reason, userPrompt, conversationId }) => {
-          await withPostHog(async (posthog) => {
-            posthog.capture({
-              event: "ask_stack_auth_mcp",
-              properties: { question, reason },
-              distinctId: "mcp-handler",
+      // Hexclave rebrand: `ask_hexclave` is the canonical going-forward tool name; `ask_stack_auth`
+      // is kept indefinitely as a legacy alias. Both register identical schema/behavior via this
+      // helper (see RENAME-TO-HEXCLAVE.md, Tier 0, MCP tool name).
+      const registerAskTool = (toolName: "ask_stack_auth" | "ask_hexclave", brand: string) => {
+        server.tool(
+          toolName,
+          `Ask the ${brand} documentation assistant. Use this for any question about ${brand}: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set \`reason\` to a short explanation of why you are calling this tool (for product analytics and debugging).`,
+          {
+            question: z.string().describe(`The full question to ask about ${brand}.`),
+            reason: z
+              .string()
+              .min(1)
+              .describe(
+                `Why the agent invoked this tool (e.g. user asked about OAuth setup, need ${brand} API headers). Used for analytics, not sent to the model.`,
+              ),
+            userPrompt: z
+              .string()
+              .min(1)
+              .describe(
+                "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
+              ),
+            conversationId: z
+              .string()
+              .optional()
+              .describe(
+                "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
+              ),
+          },
+          async ({ question, reason, userPrompt, conversationId }) => {
+            await withPostHog(async (posthog) => {
+              posthog.capture({
+                event: `${toolName}_mcp`,
+                properties: { question, reason },
+                distinctId: "mcp-handler",
+              });
             });
-          });
 
-          const res = await fetch(`${getBackendApiBaseUrl()}/api/latest/ai/query/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              quality: "smart",
-              speed: "fast",
-              tools: ["docs"],
-              systemPrompt: "docs-ask-ai",
-              messages: [{ role: "user", content: question }],
-              mcpCallMetadata: { toolName: "ask_stack_auth", reason, userPrompt, conversationId },
-            }),
-          });
+            const res = await fetch(`${getBackendApiBaseUrl()}/api/latest/ai/query/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                quality: "smart",
+                speed: "fast",
+                tools: ["docs"],
+                systemPrompt: "docs-ask-ai",
+                messages: [{ role: "user", content: question }],
+                mcpCallMetadata: { toolName, reason, userPrompt, conversationId },
+              }),
+            });
 
-          if (!res.ok) {
-            const errText = await res.text();
+            if (!res.ok) {
+              const errText = await res.text();
+              return {
+                content: [{ type: "text", text: `${brand} AI error (${res.status}): ${errText}` }],
+                isError: true,
+              };
+            }
+
+            const body = parseAiQueryResponse(await res.json());
+
+            const contentText = body.content?.map((c) => c.text).join("\n\n");
+            const text = body.finalText ?? contentText ?? "";
+
+            const responseConversationId = body.conversationId ?? conversationId ?? "";
+
             return {
-              content: [{ type: "text", text: `Stack Auth AI error (${res.status}): ${errText}` }],
-              isError: true,
+              content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} - pass this value as the conversationId parameter in your next ${toolName} call to continue this conversation]` }],
             };
-          }
-
-          const body = parseAiQueryResponse(await res.json());
-
-          const contentText = body.content?.map((c) => c.text).join("\n\n");
-          const text = body.finalText ?? contentText ?? "";
-
-          const responseConversationId = body.conversationId ?? conversationId ?? "";
-
-          return {
-            content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} - pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]` }],
-          };
-        },
-      );
+          },
+        );
+      };
+      registerAskTool("ask_stack_auth", "Stack Auth");
+      registerAskTool("ask_hexclave", "Hexclave");
     },
     {
       serverInfo: {
