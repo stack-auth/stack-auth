@@ -1,5 +1,5 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
+import { KnownErrors, HexclaveClientInterface } from "@stackframe/stack-shared";
 import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
@@ -22,7 +22,7 @@ import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 import { DependenciesMap } from "@stackframe/stack-shared/dist/utils/maps";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
@@ -47,7 +47,7 @@ import { getNewOAuthProviderOrScopeUrl, callOAuthCallback } from "../../../auth"
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol, stackAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -61,7 +61,7 @@ import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } 
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
-import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
+import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, legacyCrossDomainAuthQueryParams, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
@@ -87,6 +87,8 @@ const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
+// Hexclave rebrand: new Bearer token prefix; the parser accepts both, the emitter emits this one.
+const HEXCLAVE_AUTHORIZATION_VALUE_PREFIX = "hexclave_";
 
 function getAuthorizationHeaderValueFromAuthJson(authJson: { accessToken: string | null, refreshToken: string | null }): string | null {
   if (authJson.accessToken == null && authJson.refreshToken == null) {
@@ -94,7 +96,8 @@ function getAuthorizationHeaderValueFromAuthJson(authJson: { accessToken: string
   }
 
   const encodedAuthJson = encodeBase64(new TextEncoder().encode(JSON.stringify(authJson)));
-  return `Bearer ${STACK_AUTHORIZATION_VALUE_PREFIX}${encodedAuthJson}`;
+  // Hexclave rebrand: emit the new prefix (the parser still accepts the old one).
+  return `Bearer ${HEXCLAVE_AUTHORIZATION_VALUE_PREFIX}${encodedAuthJson}`;
 }
 
 function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: string): { accessToken: string | null, refreshToken: string | null } | null {
@@ -104,11 +107,17 @@ function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: strin
   }
 
   const credential = match[1].trim();
-  if (!credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX)) {
+  // Hexclave rebrand: accept either the new or the legacy prefix; slice whichever matched.
+  const matchedPrefix = credential.startsWith(HEXCLAVE_AUTHORIZATION_VALUE_PREFIX)
+    ? HEXCLAVE_AUTHORIZATION_VALUE_PREFIX
+    : credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX)
+      ? STACK_AUTHORIZATION_VALUE_PREFIX
+      : null;
+  if (matchedPrefix == null) {
     return null;
   }
 
-  const encodedAuthJson = credential.slice(STACK_AUTHORIZATION_VALUE_PREFIX.length);
+  const encodedAuthJson = credential.slice(matchedPrefix.length);
   if (encodedAuthJson.length === 0) {
     throw new Error("Invalid Authorization header format. Expected `Bearer stackauth_<base64(getAuthJson())>`.");
   }
@@ -158,7 +167,7 @@ function getHeaderValueFromRequestLikeHeaders(headers: RequestLike["headers"], n
 function getTanStackStartRequestHeader(name: string): string | null {
   const { getRequestHeader } = tanstackStartServerContext;
   if (getRequestHeader == null) {
-    throw new StackAssertionError("TanStack Start request headers are only available during server rendering");
+    throw new HexclaveAssertionError("TanStack Start request headers are only available during server rendering");
   }
   return getRequestHeader(name) ?? null;
 }
@@ -187,9 +196,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   static readonly LazyStackAdminAppImpl: { value: typeof import("./admin-app-impl")._StackAdminAppImplIncomplete | undefined } = { value: undefined };
 
   protected readonly _options: StackClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>;
-  protected readonly _extraOptions: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface } | undefined;
+  protected readonly _extraOptions: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveClientInterface } | undefined;
   protected _uniqueIdentifier: string | undefined = undefined;
-  protected _interface: StackClientInterface;
+  protected _interface: HexclaveClientInterface;
   protected readonly _tokenStoreInit: TokenStoreInit<HasTokenStore>;
   protected readonly _redirectMethod: RedirectMethod | undefined;
   protected readonly _urlOptions: HandlerUrlOptions;
@@ -542,7 +551,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async getAccessToken() {
         const result = await options.getOrWaitOAuthToken();
         if (!result) {
-          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
+          throw new HexclaveAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
         }
         return result;
       },
@@ -550,7 +559,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       useAccessToken() {
         const result = options.useOAuthToken();
         if (!result) {
-          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
+          throw new HexclaveAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
         }
         return result;
       }
@@ -592,11 +601,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface }) {
+  constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveClientInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
     if (!_StackClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
-      throw new StackAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
+      throw new HexclaveAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
     }
 
     this._options = resolvedOptions;
@@ -613,7 +622,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._interface = extraOptions.interface;
     } else {
       const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
-      this._interface = new StackClientInterface({
+      this._interface = new HexclaveClientInterface({
         getBaseUrl: () => apiUrls()[0],
         getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(apiUrls()[0]),
         getApiUrls: apiUrls,
@@ -686,10 +695,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _initUniqueIdentifier() {
     if (!this._uniqueIdentifier) {
-      throw new StackAssertionError("Unique identifier not initialized");
+      throw new HexclaveAssertionError("Unique identifier not initialized");
     }
     if (allClientApps.has(this._uniqueIdentifier)) {
-      throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
+      throw new HexclaveAssertionError("A Stack client app with the same unique identifier already exists");
     }
     allClientApps.set(this._uniqueIdentifier, [this._extraOptions?.checkString ?? undefined, this]);
   }
@@ -713,7 +722,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _useCheckFeatureSupport(name: string, options: any): never {
     runAsynchronously(this._checkFeatureSupport(name, options));
-    throw new StackAssertionError(`${name} is not currently supported. Please reach out to Stack support for more information.`);
+    throw new HexclaveAssertionError(`${name} is not currently supported. Please reach out to Stack support for more information.`);
   }
 
   protected _memoryTokenStore = createEmptyTokenStore();
@@ -727,21 +736,38 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected get _refreshTokenCookieName() {
     return `stack-refresh-${this.projectId}`;
   }
-  private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
-    return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
+  // Hexclave rebrand: the new base name for refresh-token cookies. Cookies are dual-written under both
+  // `stack-refresh-<projectId>` (via `_refreshTokenCookieName`) and `hexclave-refresh-<projectId>`.
+  protected get _hexclaveRefreshTokenCookieName() {
+    return `hexclave-refresh-${this.projectId}`;
   }
-  private _getCustomRefreshCookieName(domain: string): string {
+  // Hexclave rebrand: returns the default refresh cookie name for both bases (hexclave first = preferred).
+  private _getRefreshTokenDefaultCookieNamesForSecure(secure: boolean): string[] {
+    return [
+      `${secure ? "__Host-" : ""}${this._hexclaveRefreshTokenCookieName}--default`,
+      `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`,
+    ];
+  }
+  // Hexclave rebrand: custom cross-subdomain cookie names for both bases (hexclave first = preferred).
+  private _getCustomRefreshCookieNames(domain: string): string[] {
     const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
-    return `${this._refreshTokenCookieName}--custom-${encoded}`;
+    return [
+      `${this._hexclaveRefreshTokenCookieName}--custom-${encoded}`,
+      `${this._refreshTokenCookieName}--custom-${encoded}`,
+    ];
   }
   private _getDomainFromCustomRefreshCookieName(name: string): string | null {
-    const prefix = `${this._refreshTokenCookieName}--custom-`;
-    if (!name.startsWith(prefix)) return null;
-    try {
-      return new TextDecoder().decode(decodeBase32(name.slice(prefix.length)));
-    } catch {
-      return null;
+    // Hexclave rebrand: decode custom cookies under either base name.
+    for (const base of [this._hexclaveRefreshTokenCookieName, this._refreshTokenCookieName]) {
+      const prefix = `${base}--custom-`;
+      if (!name.startsWith(prefix)) continue;
+      try {
+        return new TextDecoder().decode(decodeBase32(name.slice(prefix.length)));
+      } catch {
+        return null;
+      }
     }
+    return null;
   }
   private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
     return JSON.stringify({
@@ -806,7 +832,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   protected _getTokensFromCookies(cookies: cookie.Cookies): TokenObject {
     const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
-    const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
+    // Hexclave rebrand: dual-read the access token cookie, preferring the new name.
+    const accessTokenCookie = cookies[this._hexclaveAccessTokenCookieName] ?? cookies[this._accessTokenCookieName] ?? null;
     let accessToken: string | null = null;
     if (accessTokenCookie && accessTokenCookie.startsWith('[\"')) {
       const parsed = parseJson(accessTokenCookie);
@@ -838,16 +865,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // the access token on page reload.
     return `stack-access`;
   }
+  // Hexclave rebrand: the new access token cookie name. The access cookie is dual-written under both names.
+  protected get _hexclaveAccessTokenCookieName() {
+    return `hexclave-access`;
+  }
   private _getAllBrowserCookies(): cookie.Cookies {
     if (!isBrowserLike()) {
-      throw new StackAssertionError("Cannot get browser cookies on the server!");
+      throw new HexclaveAssertionError("Cannot get browser cookies on the server!");
     }
     return cookie.parseCookie(document.cookie || "");
   }
   private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
+    // Hexclave rebrand: recognize structured refresh cookies under both the hexclave and stack bases
+    // (plus the `__Host-` variants). The flat legacy names (`stack-refresh-<projectId>` and the pre-projectId
+    // `stack-refresh`) keep being read for backwards compatibility.
     return {
       legacyNames: [this._legacyRefreshTokenCookieName, "stack-refresh"],
       structuredPrefixes: [
+        `${this._hexclaveRefreshTokenCookieName}--`,
+        `__Host-${this._hexclaveRefreshTokenCookieName}--`,
         `${this._refreshTokenCookieName}--`,
         `__Host-${this._refreshTokenCookieName}--`,
       ],
@@ -872,10 +908,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     existingCookies: cookie.Cookies,
     refreshToken: string | null,
     accessToken: string | null,
-    defaultCookieName: string,
+    // Hexclave rebrand: the default cookie is dual-written, so multiple names are kept (not deleted).
+    defaultCookieNames: string[],
   ) {
     const cookieNames = this._collectRefreshTokenCookieNames(existingCookies);
-    cookieNames.delete(defaultCookieName);
+    for (const defaultCookieName of defaultCookieNames) {
+      cookieNames.delete(defaultCookieName);
+    }
     const updatedAt = refreshToken ? Date.now() : null;
     const refreshCookieValue = refreshToken && updatedAt !== null ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
     const accessTokenPayload = this._formatAccessCookieValue(refreshToken, accessToken);
@@ -895,14 +934,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return;
       }
       const cookies = this._getAllBrowserCookies();
-      const customCookieName = this._getCustomRefreshCookieName(domain.data);
-      if (cookies[customCookieName]) {
+      // Hexclave rebrand: dual-write the custom cross-subdomain cookie under both names.
+      const customCookieNames = this._getCustomRefreshCookieNames(domain.data);
+      if (customCookieNames.some((name) => cookies[name])) {
         return;
       }
       const { refreshToken, updatedAt } = this._extractRefreshTokenFromCookieMap(cookies);
       if (refreshToken && updatedAt) {
         const value = this._formatRefreshCookieValue(refreshToken, updatedAt);
-        setOrDeleteCookieClient(customCookieName, value, { maxAge: 60 * 60 * 24 * 365, domain: domain.data });
+        for (const customCookieName of customCookieNames) {
+          setOrDeleteCookieClient(customCookieName, value, { maxAge: 60 * 60 * 24 * 365, domain: domain.data });
+        }
       }
     });
   }
@@ -923,13 +965,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
 
       const cookieOptions = { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true };
+      // Hexclave rebrand: dual-write the custom cross-subdomain cookie under both names.
       const setCookie = async (targetDomain: string, value: string | null) => {
-        const name = this._getCustomRefreshCookieName(targetDomain);
+        const names = this._getCustomRefreshCookieNames(targetDomain);
         const options = { ...cookieOptions, domain: targetDomain };
-        if (context === "browser") {
-          setOrDeleteCookieClient(name, value, options);
-        } else {
-          await setOrDeleteCookie(name, value, options);
+        for (const name of names) {
+          if (context === "browser") {
+            setOrDeleteCookieClient(name, value, options);
+          } else {
+            await setOrDeleteCookie(name, value, options);
+          }
         }
       };
 
@@ -939,7 +984,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
       await setCookie(domain.data, value);
       const isSecure = await isSecureCookieContext();
-      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null, cookieOptions);
+      // Hexclave rebrand: delete the (now-superseded) default cookie under both names.
+      for (const defaultName of this._getRefreshTokenDefaultCookieNamesForSecure(isSecure)) {
+        await setOrDeleteCookie(defaultName, null, cookieOptions);
+      }
     });
   }
   private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
@@ -986,14 +1034,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         try {
           const refreshToken = value.refreshToken;
           const secure = window.location.protocol === "https:";
-          const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+          // Hexclave rebrand: dual-write the default refresh cookie + access cookie under both names.
+          const defaultNames = this._getRefreshTokenDefaultCookieNamesForSecure(secure);
           const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
             this._getAllBrowserCookies(),
             refreshToken,
             value.accessToken ?? null,
-            defaultName,
+            defaultNames,
           );
-          setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
+          for (const defaultName of defaultNames) {
+            setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
+          }
+          setOrDeleteCookieClient(this._hexclaveAccessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
           setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
           cookieNamesToDelete.forEach((name) => {
             const domain = this._getDomainFromCustomRefreshCookieName(name);
@@ -1047,15 +1099,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               // so hack it is
               const refreshToken = value.refreshToken;
               const secure = await isSecureCookieContext();
-              const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
+              // Hexclave rebrand: dual-write the default refresh cookie + access cookie under both names.
+              const defaultNames = this._getRefreshTokenDefaultCookieNamesForSecure(secure);
               const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
                 cookieHelper.getAll(),
                 refreshToken,
                 value.accessToken ?? null,
-                defaultName,
+                defaultNames,
               );
               await Promise.all([
-                setOrDeleteCookie(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
+                ...defaultNames.map((defaultName) =>
+                  setOrDeleteCookie(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
+                ),
+                setOrDeleteCookie(this._hexclaveAccessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
                 setOrDeleteCookie(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
               ]);
               if (cookieNamesToDelete.length > 0) {
@@ -1206,7 +1262,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _signInToAccountWithTokens(tokens: { accessToken: string | null, refreshToken: string }) {
     if (!("accessToken" in tokens) || !("refreshToken" in tokens)) {
-      throw new StackAssertionError("Invalid tokens object; can't sign in with this", { tokens });
+      throw new HexclaveAssertionError("Invalid tokens object; can't sign in with this", { tokens });
     }
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
@@ -1945,7 +2001,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async sendVerificationEmail(options?: { callbackUrl?: string }) {
         if (!crud.primary_email) {
-          throw new StackAssertionError("User does not have a primary email");
+          throw new HexclaveAssertionError("User does not have a primary email");
         }
         return await app._interface.sendVerificationEmail(
           crud.primary_email,
@@ -2052,7 +2108,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
         const hostname = (await app._getCurrentUrl())?.hostname;
         if (!hostname) {
-          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+          throw new HexclaveAssertionError("hostname must be provided if the Stack App does not have a redirect method");
         }
 
         const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
@@ -2065,7 +2121,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
         // HACK: Override the rpID to be the actual domain
         if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
         }
 
         options_json.rp.id = hostname;
@@ -2517,11 +2573,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       session,
     );
     if (!response.ok) {
-      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${await response.text()}`);
+      throw new HexclaveAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${await response.text()}`);
     }
     const result = await response.json();
     if (!("redirect_url" in result) || typeof result.redirect_url !== "string") {
-      throw new StackAssertionError("Cross-domain authorization endpoint returned an invalid payload", { result });
+      throw new HexclaveAssertionError("Cross-domain authorization endpoint returned an invalid payload", { result });
     }
     return result.redirect_url;
   }
@@ -2805,7 +2861,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             }
           }
           suspend();
-          throw new StackAssertionError("suspend should never return");
+          throw new HexclaveAssertionError("suspend should never return");
         }
         case 'throw': {
           throw new Error("User is not signed in but useUser was called with { or: 'throw' }");
@@ -2820,7 +2876,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             }
           });
           suspend();
-          throw new StackAssertionError("suspend should never return");
+          throw new HexclaveAssertionError("suspend should never return");
         }
         case undefined:
         case "anonymous-if-exists[deprecated]":
@@ -3010,13 +3066,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _experimentalMfa(error: KnownErrors['MultiFactorAuthenticationRequired'], session: InternalSession): Promise<never> {
     // Store the attempt code in session storage so the OTP page can access it
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('stack_mfa_attempt_code', (error.details as any)?.attempt_code ?? throwErr("attempt code missing"));
+      // Hexclave rebrand: write the MFA attempt code under the new storage key (readers prefer it, fall back to the old key).
+      window.sessionStorage.setItem('hexclave_mfa_attempt_code', (error.details as any)?.attempt_code ?? throwErr("attempt code missing"));
     }
 
     // Redirect to the MFA page
     await this.redirectToMfa();
 
-    throw new StackAssertionError("we should have redirected in redirectToMfa()");
+    throw new HexclaveAssertionError("we should have redirected in redirectToMfa()");
   }
 
   /**
@@ -3072,7 +3129,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     verificationCallbackUrl?: string,
   }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
-      throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
+      throw new HexclaveAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
@@ -3094,7 +3151,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
         emailVerificationRedirectUrl !== undefined) {
         if (!options.verificationCallbackUrl) {
-          captureError("signup-verification-url-not-whitelisted", new StackAssertionError("The auto-constructed verification callback URL is not whitelisted; proceeding without email verification", { emailVerificationRedirectUrl }));
+          captureError("signup-verification-url-not-whitelisted", new HexclaveAssertionError("The auto-constructed verification callback URL is not whitelisted; proceeding without email verification", { emailVerificationRedirectUrl }));
 
           result = await this._interface.signUpWithCredential(
             options.email,
@@ -3137,7 +3194,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (result.status === "ok") {
           await this._signInToAccountWithTokens(result.data);
         } else {
-          throw new StackAssertionError("signUpAnonymously() should never return an error");
+          throw new HexclaveAssertionError("signUpAnonymously() should never return an error");
         }
         this._anonymousSignUpInProgress = null;
         return result.data;
@@ -3331,7 +3388,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
         // HACK: Override the rpID to be the actual domain
         if (options_json.rpId !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
+          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
         }
         options_json.rpId = window.location.hostname;
 
@@ -3364,7 +3421,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let oauthCallbackRedirectUri = this.urls.oauthCallback;
     const currentUrl = new URL(window.location.href);
-    if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1") {
+    // Hexclave rebrand: accept the cross-domain marker under either the new or legacy param name.
+    if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1"
+      || currentUrl.searchParams.get(legacyCrossDomainAuthQueryParams.marker) === "1") {
       currentUrl.searchParams.delete("code");
       currentUrl.searchParams.delete("state");
       oauthCallbackRedirectUri = currentUrl.toString();
@@ -3578,7 +3637,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (existing) {
           const [existingCheckString, clientApp] = existing;
           if (existingCheckString !== undefined && existingCheckString !== providedCheckString) {
-            throw new StackAssertionError("The provided app JSON does not match the configuration of the existing client app with the same unique identifier", { providedObj: json, existingString: existingCheckString });
+            throw new HexclaveAssertionError("The provided app JSON does not match the configuration of the existing client app with the same unique identifier", { providedObj: json, existingString: existingCheckString });
           }
           return clientApp as any;
         }
@@ -3595,11 +3654,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  // Hexclave rebrand: expose the same internals under the parallel symbol.
+  static get [hexclaveAppInternalsSymbol]() {
+    return this[stackAppInternalsSymbol];
+  }
+
   get [stackAppInternalsSymbol]() {
     return {
       toClientJson: (): StackClientAppJson<HasTokenStore, ProjectId> => {
         if (typeof this._redirectMethod !== "string") {
-          throw new StackAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
+          throw new HexclaveAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
         }
 
         const publishableClientKey = "publishableClientKey" in this._interface.options
@@ -3654,4 +3718,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
     };
   };
+
+  // Hexclave rebrand: expose the same internals under the parallel symbol.
+  get [hexclaveAppInternalsSymbol]() {
+    return this[stackAppInternalsSymbol];
+  }
 }

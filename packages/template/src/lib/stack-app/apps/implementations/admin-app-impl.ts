@@ -1,4 +1,4 @@
-import { KnownErrors, StackAdminInterface } from "@stackframe/stack-shared";
+import { KnownErrors, HexclaveAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
@@ -10,13 +10,13 @@ import type { AdminGetSessionReplayChunkEventsResponse } from "@stackframe/stack
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import type { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
-import { EmailConfig, stackAppInternalsSymbol } from "../../common";
+import { EmailConfig, hexclaveAppInternalsSymbol, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
@@ -70,7 +70,7 @@ function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSou
 }
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
-  declare protected _interface: StackAdminInterface;
+  declare protected _interface: HexclaveAdminInterface;
 
   private readonly _adminProjectCache = createCache(async () => {
     return await this._interface.getProject();
@@ -132,7 +132,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listTransactions({ cursor, limit, type, customerType, customerId });
   });
 
-  constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
+  constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveAdminInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
     const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
@@ -141,7 +141,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       ...extraOptions,
       interface: extraOptions?.interface ?? (() => {
         const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
-        return new StackAdminInterface({
+        return new HexclaveAdminInterface({
           getBaseUrl: () => apiUrls()[0],
           getApiUrls: apiUrls,
           projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
@@ -165,7 +165,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   _adminOwnedProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminOwnedProject {
     if (this._tokenStoreInit !== null) {
-      throw new StackAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");
+      throw new HexclaveAssertionError("Owned apps must always have tokenStore === null — did you not create this project with app._createOwnedApp()?");
     }
     return {
       ...this._adminProjectFromCrud(data, onRefresh),
@@ -175,7 +175,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   _adminProjectFromCrud(data: ProjectsCrud['Admin']['Read'], onRefresh: () => Promise<void>): AdminProject {
     if (data.id !== this.projectId) {
-      throw new StackAssertionError(`The project ID of the provided project JSON (${data.id}) does not match the project ID of the app (${this.projectId})!`);
+      throw new HexclaveAssertionError(`The project ID of the provided project JSON (${data.id}) does not match the project ID of the app (${this.projectId})!`);
     }
 
     const app = this;
@@ -589,6 +589,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       // END_PLATFORM
     };
+  }
+
+  // Hexclave rebrand: expose the same internals under the parallel symbol.
+  get [hexclaveAppInternalsSymbol]() {
+    return this[stackAppInternalsSymbol];
   }
 
   async sendTestEmail(options: {
@@ -1080,7 +1085,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           };
         }
         default: {
-          throw new StackAssertionError(`Unknown email outbox status: ${crud.status}`, { status: crud.status });
+          throw new HexclaveAssertionError(`Unknown email outbox status: ${crud.status}`, { status: crud.status });
         }
       }
     })();

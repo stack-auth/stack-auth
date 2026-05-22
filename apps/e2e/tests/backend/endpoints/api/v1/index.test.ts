@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
@@ -171,7 +171,7 @@ describe("with project keys that don't match the project ID", async () => {
   const init = async () => {
     const getProjectKeys = () => {
       if (backendContext.value.projectKeys === "no-project") {
-        throw new StackAssertionError("No project keys were set.");
+        throw new HexclaveAssertionError("No project keys were set.");
       } else {
         return backendContext.value.projectKeys;
       }

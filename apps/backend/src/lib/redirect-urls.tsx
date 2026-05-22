@@ -1,4 +1,4 @@
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "@stackframe/stack-shared/dist/utils/urls";
 import { Tenancy } from "./tenancies";
 
@@ -38,7 +38,7 @@ function matchesDomain(testUrl: URL, pattern: string): boolean {
     // Parse wildcard pattern manually
     const match = pattern.match(/^([^:]+:\/\/)([^/]*)(.*)$/);
     if (!match) {
-      captureError("invalid-redirect-domain", new StackAssertionError("Invalid domain pattern", { pattern }));
+      captureError("invalid-redirect-domain", new HexclaveAssertionError("Invalid domain pattern", { pattern }));
       return false;
     }
 

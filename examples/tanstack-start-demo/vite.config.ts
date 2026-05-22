@@ -64,7 +64,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     server: {
-      port: Number(`${process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || "81"}43`),
+      port: Number(`${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81"}43`),
       fs: {
         allow: [stackAuthRootPath],
       },

@@ -4,7 +4,7 @@ import { isBase64 } from "./utils/bytes";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./utils/currency-constants";
 import type { DayInterval, Interval } from "./utils/dates";
 import { getProcessEnv } from "./utils/env";
-import { StackAssertionError } from "./utils/errors";
+import { HexclaveAssertionError } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
@@ -67,7 +67,7 @@ yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
 });
 
 yup.addMethod(yup.Schema, "hasNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
+  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new HexclaveAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
   const schemaInfo = this.meta()?.stackSchemaInfo as any;
   if (schemaInfo?.type === "record") {
     return schemaInfo.keySchema.isValidSync(path);
@@ -87,9 +87,9 @@ yup.addMethod(yup.Schema, "hasNested", function (path: any) {
 });
 
 yup.addMethod(yup.Schema, "getNested", function (path: any) {
-  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
+  if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new HexclaveAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
 
-  if (!this.hasNested(path as never)) throw new StackAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, { path, schema: this });
+  if (!this.hasNested(path as never)) throw new HexclaveAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, { path, schema: this });
 
   const schemaInfo = this.meta()?.stackSchemaInfo;
   if (schemaInfo?.type === "record") {
@@ -145,7 +145,7 @@ export async function yupValidate<S extends yup.ISchema<any>>(
       while (pathRemaining.length > 0) {
         if (pathRemaining.startsWith("[")) {
           const index = pathRemaining.indexOf("]");
-          if (index < 0) throw new StackAssertionError("Invalid path");
+          if (index < 0) throw new HexclaveAssertionError("Invalid path");
           fieldPath.push(JSON.parse(pathRemaining.slice(1, index)));
           pathRemaining = pathRemaining.slice(index + 1);
         } else {
@@ -160,7 +160,7 @@ export async function yupValidate<S extends yup.ISchema<any>>(
       let it = newObj;
       for (const field of fieldPath.slice(0, -1)) {
         if (!Object.prototype.hasOwnProperty.call(it, field)) {
-          throw new StackAssertionError(`Segment ${field} of path ${error.path} not found in object`);
+          throw new HexclaveAssertionError(`Segment ${field} of path ${error.path} not found in object`);
         }
         it = (it as any)[field];
       }
@@ -326,7 +326,7 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
 }
 
 export function ensureObjectSchema<T extends yup.AnyObject>(schema: yup.Schema<T>): yup.ObjectSchema<T> & typeof schema {
-  if (!(schema instanceof yup.ObjectSchema)) throw new StackAssertionError(`assertObjectSchema: schema is not an ObjectSchema: ${schema.describe().type}`);
+  if (!(schema instanceof yup.ObjectSchema)) throw new HexclaveAssertionError(`assertObjectSchema: schema is not an ObjectSchema: ${schema.describe().type}`);
   return schema as any;
 }
 
@@ -734,8 +734,8 @@ export const userIdOrMeSchema = yupString().uuid().transform(v => {
   if (v === "me") return userIdMeSentinelUuid;
   else return v;
 }).test((v, context) => {
-  if (!("stackAllowUserIdMe" in (context.options.context ?? {}))) throw new StackAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re using yupValidate from schema-fields.ts to validate, instead of schema.validate(...).');
-  if (!context.options.context?.stackAllowUserIdMe) throw new StackAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re passing in the currentUserId option in yupValidate.');
+  if (!("stackAllowUserIdMe" in (context.options.context ?? {}))) throw new HexclaveAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re using yupValidate from schema-fields.ts to validate, instead of schema.validate(...).');
+  if (!context.options.context?.stackAllowUserIdMe) throw new HexclaveAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re passing in the currentUserId option in yupValidate.');
   if (v === userIdMeSentinelUuid) throw new ReplaceFieldWithOwnUserId(context.path);
   return true;
 }).meta({ openapiField: { description: 'The ID of the user, or the special value `me` for the currently authenticated user', exampleValue: '3241a285-8329-4d69-8f3d-316e08cf140c' } });

@@ -5,7 +5,7 @@ import { teamCreatedWebhookEvent, teamDeletedWebhookEvent, teamUpdatedWebhookEve
 import { userCreatedWebhookEvent, userDeletedWebhookEvent, userUpdatedWebhookEvent } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { WebhookEvent } from "@stackframe/stack-shared/dist/interface/webhooks";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Svix } from "svix";
 import * as yup from "yup";
@@ -63,7 +63,7 @@ function createWebhookSender<T extends yup.Schema>(event: WebhookEvent<T>) {
           // Rate limit. Let's retry later
           return Result.error(e);
         }
-        throw new StackAssertionError("Error sending Svix webhook!", { event: event.type, data: options.data, cause: e });
+        throw new HexclaveAssertionError("Error sending Svix webhook!", { event: event.type, data: options.data, cause: e });
       }
     }, 5);
   };

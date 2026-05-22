@@ -751,7 +751,7 @@ it("lets user update logo_url to a valid image", async ({ expect }) => {
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
-        "logo_url": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
+        "logo_url": "http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },

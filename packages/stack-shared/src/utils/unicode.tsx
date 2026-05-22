@@ -1,8 +1,8 @@
 import { isValidCountryCode, normalizeCountryCode } from "./country-codes";
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 
 export function getFlagEmoji(twoLetterCountryCode: string) {
-  if (!isValidCountryCode(twoLetterCountryCode)) throw new StackAssertionError("Country code must be two alphabetical letters");
+  if (!isValidCountryCode(twoLetterCountryCode)) throw new HexclaveAssertionError("Country code must be two alphabetical letters");
   const codePoints = normalizeCountryCode(twoLetterCountryCode)
     .split('')
     .map(char => 127397 + char.charCodeAt(0));

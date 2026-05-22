@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Button } from "@stackframe/stack-ui";
 import { useState } from "react";
 import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../../components/api-key-dialogs";
@@ -17,7 +17,7 @@ export function TeamApiKeysSection(props: { team: Team }) {
   const project = stackApp.useProject();
 
   if (!team) {
-    throw new StackAssertionError("Team not found");
+    throw new HexclaveAssertionError("Team not found");
   }
 
   const teamApiKeysEnabled = project.config.allowTeamApiKeys;

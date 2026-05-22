@@ -1,6 +1,6 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ImageProcessingError, parseBase64Image } from "./lib/images";
 
 const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
@@ -47,12 +47,12 @@ export async function uploadBytes(options: {
   private?: boolean,
 }) {
   if (!s3Client) {
-    throw new StackAssertionError("S3 is not configured");
+    throw new HexclaveAssertionError("S3 is not configured");
   }
 
   const bucket = options.private ? S3_PRIVATE_BUCKET : S3_BUCKET;
   if (!bucket) {
-    throw new StackAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
+    throw new HexclaveAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
   }
 
   const command = new PutObjectCommand({
@@ -88,23 +88,23 @@ async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
       } else if (Buffer.isBuffer(chunk)) {
         chunks.push(chunk);
       } else {
-        throw new StackAssertionError("Unexpected S3 body chunk type");
+        throw new HexclaveAssertionError("Unexpected S3 body chunk type");
       }
     }
     return new Uint8Array(Buffer.concat(chunks));
   }
 
-  throw new StackAssertionError("Unexpected S3 body type");
+  throw new HexclaveAssertionError("Unexpected S3 body type");
 }
 
 export async function downloadBytes(options: { key: string, private?: boolean }): Promise<Uint8Array> {
   if (!s3Client) {
-    throw new StackAssertionError("S3 is not configured");
+    throw new HexclaveAssertionError("S3 is not configured");
   }
 
   const bucket = options.private ? S3_PRIVATE_BUCKET : S3_BUCKET;
   if (!bucket) {
-    throw new StackAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
+    throw new HexclaveAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
   }
 
   const command = new GetObjectCommand({
@@ -114,7 +114,7 @@ export async function downloadBytes(options: { key: string, private?: boolean })
 
   const res = await s3Client.send(command);
   if (!res.Body) {
-    throw new StackAssertionError("S3 getObject returned empty body");
+    throw new HexclaveAssertionError("S3 getObject returned empty body");
   }
 
   return await readBodyToBytes(res.Body);
@@ -130,7 +130,7 @@ async function uploadBase64Image({
   folderName: string,
 }) {
   if (!s3Client) {
-    throw new StackAssertionError("S3 is not configured");
+    throw new HexclaveAssertionError("S3 is not configured");
   }
 
   let buffer: Buffer;

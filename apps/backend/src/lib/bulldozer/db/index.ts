@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
@@ -206,7 +206,7 @@ function chooseSafeDollarQuoteTag(
       return tag;
     }
   }
-  throw new StackAssertionError("Could not find a safe deterministic dollar-quote tag", { tagPrefix });
+  throw new HexclaveAssertionError("Could not find a safe deterministic dollar-quote tag", { tagPrefix });
 }
 
 /**

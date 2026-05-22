@@ -34,7 +34,8 @@ export function OAuthButton({
 
   const [lastUsed, setLastUsed] = useState<string | null>(null);
   useEffect(() => {
-    setLastUsed(localStorage.getItem('_STACK_AUTH.lastUsed'));
+    // Hexclave rebrand: UI hint key — straight rename (dot delimiter preserved).
+    setLastUsed(localStorage.getItem('_HEXCLAVE.lastUsed'));
   }, []);
 
   let style : {
@@ -187,7 +188,8 @@ export function OAuthButton({
       >
         <Button
           onClick={async () => {
-            localStorage.setItem('_STACK_AUTH.lastUsed', provider);
+            // Hexclave rebrand: UI hint key — straight rename (dot delimiter preserved).
+            localStorage.setItem('_HEXCLAVE.lastUsed', provider);
             await (onAuthenticate ? onAuthenticate() : stackApp.signInWithOAuth(provider));
           }}
           className={`stack-oauth-button-${styleId} stack-scope relative w-full`}

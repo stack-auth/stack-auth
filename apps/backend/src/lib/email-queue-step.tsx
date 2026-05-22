@@ -12,7 +12,7 @@ import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
 import { withTraceSpan } from "@/utils/telemetry";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, errorToNiceString, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -59,7 +59,8 @@ const appendSendAttemptError =(
 };
 
 // Track if email queue has run at least once since server start (used to suppress first-run delta warnings in dev)
-const emailQueueFirstRunKey = Symbol.for("__stack_email_queue_first_run_completed");
+// Hexclave rebrand: file-private symbol key, renamed outright (no cross-version compat needed).
+const emailQueueFirstRunKey = Symbol.for("__hexclave_email_queue_first_run_completed");
 
 async function verifyEmailDeliverability(
   email: string,
@@ -131,7 +132,7 @@ async function retryEmailsStuckInRendering(): Promise<void> {
     },
   });
   if (res.length > 0) {
-    captureError("email-queue-step-stuck-in-rendering", new StackAssertionError(`${res.length} emails stuck in rendering! This should never happen. Resetting them to be re-rendered.`, {
+    captureError("email-queue-step-stuck-in-rendering", new HexclaveAssertionError(`${res.length} emails stuck in rendering! This should never happen. Resetting them to be re-rendered.`, {
       emails: res.map(e => e.id),
     }));
   }
@@ -191,7 +192,7 @@ async function failEmailsStuckInSending(additionalWhere?: Prisma.EmailOutboxWher
   if (failed.length > 0) {
     captureError(
       "email-queue-step-stuck-in-sending",
-      new StackAssertionError(
+      new HexclaveAssertionError(
         `${failed.length} emails were stuck in sending and were marked as failed (terminal server errors; delivery status unknown, not retried to avoid duplicate sends). Manual investigation is recommended.`,
         { emails: failed.map(({ id, tenancyId, startedSendingAt }) => ({ id, tenancyId, startedSendingAt })) },
       ),
@@ -271,7 +272,7 @@ async function updateLastExecutionTime(): Promise<number> {
       // In development, the first run after server start often has a large delta because the server wasn't running
       console.log(`[email-queue] Skipping delta warning on first run (delta: ${delta.toFixed(2)}s) — this is normal after server restart`);
     } else {
-      captureError("email-queue-step-delta-too-large", new StackAssertionError(`Email queue step delta is too large: ${delta}. Either the previous step took too long, or something is wrong.`));
+      captureError("email-queue-step-delta-too-large", new HexclaveAssertionError(`Email queue step delta is too large: ${delta}. Either the previous step took too long, or something is wrong.`));
     }
   }
   (globalThis as any)[emailQueueFirstRunKey] = true;
@@ -785,7 +786,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         const failureReason = isAttemptsExhausted ? "attempts_exhausted" : "permanent_error";
 
         if (isAttemptsExhausted) {
-          captureError("email-queue-step-retries-exhausted", new StackAssertionError(`Email failed after ${newAttemptCount} attempts`, {
+          captureError("email-queue-step-retries-exhausted", new HexclaveAssertionError(`Email failed after ${newAttemptCount} attempts`, {
             cause: result.error.rawError,
             emailId: row.id,
             tenancyId: row.tenancyId,
@@ -925,7 +926,7 @@ async function shouldSendEmail(
 ): Promise<boolean> {
   const category = getNotificationCategoryById(categoryId);
   if (!category) {
-    throw new StackAssertionError("Invalid notification category id, we should have validated this before calling shouldSendEmail", { categoryId, userId });
+    throw new HexclaveAssertionError("Invalid notification category id, we should have validated this before calling shouldSendEmail", { categoryId, userId });
   }
   if (!category.can_disable) {
     return true;
@@ -975,21 +976,21 @@ export function serializeRecipient(recipient: EmailOutboxRecipient): Json {
       };
     }
     default: {
-      throw new StackAssertionError("Unknown EmailOutbox recipient type", { recipient });
+      throw new HexclaveAssertionError("Unknown EmailOutbox recipient type", { recipient });
     }
   }
 }
 
 export function deserializeRecipient(raw: Json): EmailOutboxRecipient {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new StackAssertionError("Malformed EmailOutbox recipient payload", { raw });
+    throw new HexclaveAssertionError("Malformed EmailOutbox recipient payload", { raw });
   }
   const base = raw as Record<string, Json>;
   const type = base.type;
   if (type === "user-primary-email") {
     const userId = base.userId;
     if (typeof userId !== "string") {
-      throw new StackAssertionError("Expected userId to be present for user-primary-email recipient", { raw });
+      throw new HexclaveAssertionError("Expected userId to be present for user-primary-email recipient", { raw });
     }
     return { type, userId };
   }
@@ -997,16 +998,16 @@ export function deserializeRecipient(raw: Json): EmailOutboxRecipient {
     const userId = base.userId;
     const emails = base.emails;
     if (typeof userId !== "string" || !Array.isArray(emails) || !emails.every((item) => typeof item === "string")) {
-      throw new StackAssertionError("Invalid user-custom-emails recipient payload", { raw });
+      throw new HexclaveAssertionError("Invalid user-custom-emails recipient payload", { raw });
     }
     return { type, userId, emails: emails as string[] };
   }
   if (type === "custom-emails") {
     const emails = base.emails;
     if (!Array.isArray(emails) || !emails.every((item) => typeof item === "string")) {
-      throw new StackAssertionError("Invalid custom-emails recipient payload", { raw });
+      throw new HexclaveAssertionError("Invalid custom-emails recipient payload", { raw });
     }
     return { type, emails: emails as string[] };
   }
-  throw new StackAssertionError("Unknown EmailOutbox recipient type", { raw });
+  throw new HexclaveAssertionError("Unknown EmailOutbox recipient type", { raw });
 }

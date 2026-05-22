@@ -7,4 +7,4 @@ function escapeBashString(str) {
 }
 
 const shortenedCommand = `node ${process.argv.slice(1).map(a => escapeBashString(a)).join(' ')}`;
-process.title = `[stack-auth:${process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || 81}xx] ${process.title || shortenedCommand.length > 200 ? shortenedCommand.slice(0, 200) + '...' : shortenedCommand}`;
+process.title = `[stack-auth:${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || 81}xx] ${process.title || shortenedCommand.length > 200 ? shortenedCommand.slice(0, 200) + '...' : shortenedCommand}`;

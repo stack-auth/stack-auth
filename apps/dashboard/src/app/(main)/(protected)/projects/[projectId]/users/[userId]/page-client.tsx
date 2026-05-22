@@ -50,7 +50,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
@@ -276,7 +276,7 @@ function RestrictionDialog({
       toast({ title: "User restricted", variant: "success" });
       onOpenChange(false);
     } catch (error) {
-      captureError(`user-restriction-save-and-restrict-error`, new StackAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
+      captureError(`user-restriction-save-and-restrict-error`, new HexclaveAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
       setSubmitError(error instanceof Error && error.message ? error.message : "Failed to save the restriction. Please try again.");
     } finally {
       setIsSaving(false);
@@ -295,7 +295,7 @@ function RestrictionDialog({
       toast({ title: "Restriction removed", variant: "success" });
       onOpenChange(false);
     } catch (error) {
-      captureError(`user-restriction-remove-error`, new StackAssertionError(`Failed to remove restriction for user ${user.id}`, { cause: error }));
+      captureError(`user-restriction-remove-error`, new HexclaveAssertionError(`Failed to remove restriction for user ${user.id}`, { cause: error }));
       setSubmitError(error instanceof Error && error.message ? error.message : "Failed to remove the restriction. Please try again.");
     } finally {
       setIsSaving(false);
@@ -1375,7 +1375,7 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
 
       const providerConfig = availableProviders.find((p: any) => p.id === values.providerId);
       if (!providerConfig) {
-        throw new StackAssertionError(`Provider config not found for ${values.providerId}`);
+        throw new HexclaveAssertionError(`Provider config not found for ${values.providerId}`);
       }
 
       result = await stackAdminApp.createOAuthProvider({
@@ -1963,7 +1963,7 @@ function UserPage({ user }: { user: ServerUser }) {
               selectedCategory={activeTab}
               onSelect={(id) => {
                 if (!isUserPageTab(id)) {
-                  throw new StackAssertionError(`Unknown user page tab selected: ${id}`);
+                  throw new HexclaveAssertionError(`Unknown user page tab selected: ${id}`);
                 }
                 setSelectedTab(id);
               }}

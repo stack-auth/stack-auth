@@ -7,7 +7,7 @@ import { DesignInput } from "@/components/design-components/input";
 import { Logo } from "@/components/logo";
 import { Spinner } from "@/components/ui";
 import { ArrowsLeftRightIcon } from "@phosphor-icons/react";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 
 export type ProjectTransferConfirmUiState = "loading" | "success" | { type: "error", message: string };
@@ -38,15 +38,15 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
 
   if (state === "success" || isErrorState) {
     if (onCancel == null) {
-      throw new StackAssertionError("ProjectTransferConfirmView requires `onCancel` in the success and error states");
+      throw new HexclaveAssertionError("ProjectTransferConfirmView requires `onCancel` in the success and error states");
     }
   }
   if (state === "success") {
     if (onPrimary == null) {
-      throw new StackAssertionError("ProjectTransferConfirmView requires `onPrimary` in the success state");
+      throw new HexclaveAssertionError("ProjectTransferConfirmView requires `onPrimary` in the success state");
     }
     if (signedIn && (signedInAsLabel == null || onSwitchAccount == null)) {
-      throw new StackAssertionError("ProjectTransferConfirmView requires `signedInAsLabel` and `onSwitchAccount` when `signedIn` is true in the success state");
+      throw new HexclaveAssertionError("ProjectTransferConfirmView requires `signedInAsLabel` and `onSwitchAccount` when `signedIn` is true in the success state");
     }
   }
 

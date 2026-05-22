@@ -17,7 +17,7 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { moneyAmountToStripeUnits } from "@stackframe/stack-shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import type Stripe from "stripe";
 import { InferType } from "yup";
 
@@ -51,7 +51,7 @@ export function buildStripeRefundParams(args: {
  */
 function stripeUnitsToMoneyAmount(stripeUnits: number): string {
   if (!Number.isFinite(stripeUnits) || Math.trunc(stripeUnits) !== stripeUnits) {
-    throw new StackAssertionError("Stripe units must be an integer", { stripeUnits });
+    throw new HexclaveAssertionError("Stripe units must be an integer", { stripeUnits });
   }
   const absolute = Math.abs(stripeUnits);
   const decimals = USD_CURRENCY.decimals;
@@ -77,7 +77,7 @@ function getTotalUsdStripeUnits(options: {
     throw new KnownErrors.SchemaError("Refunds are only supported for USD-priced purchases.");
   }
   if (!Number.isFinite(options.quantity) || Math.trunc(options.quantity) !== options.quantity) {
-    throw new StackAssertionError("Purchase quantity is not an integer", { quantity: options.quantity });
+    throw new HexclaveAssertionError("Purchase quantity is not an integer", { quantity: options.quantity });
   }
   return moneyAmountToStripeUnits(usdPrice as MoneyAmount, USD_CURRENCY) * options.quantity;
 }
@@ -365,15 +365,15 @@ async function resolveInvoicePaymentIntentId(stripe: Stripe, stripeInvoiceId: st
   const invoice = await stripe.invoices.retrieve(stripeInvoiceId, { expand: ["payments"] });
   const payments = invoice.payments?.data;
   if (!payments || payments.length === 0) {
-    throw new StackAssertionError("Invoice has no payments", { stripeInvoiceId });
+    throw new HexclaveAssertionError("Invoice has no payments", { stripeInvoiceId });
   }
   const paidPayment = payments.find((payment) => payment.status === "paid");
   if (!paidPayment) {
-    throw new StackAssertionError("Invoice has no paid payment", { stripeInvoiceId });
+    throw new HexclaveAssertionError("Invoice has no paid payment", { stripeInvoiceId });
   }
   const paymentIntentId = paidPayment.payment.payment_intent;
   if (!paymentIntentId || typeof paymentIntentId !== "string") {
-    throw new StackAssertionError("Payment has no payment intent", { stripeInvoiceId });
+    throw new HexclaveAssertionError("Payment has no payment intent", { stripeInvoiceId });
   }
   return paymentIntentId;
 }
@@ -646,7 +646,7 @@ async function handleSubscriptionRefund(options: {
       throw new KnownErrors.SubscriptionInvoiceNotFound(subscription.id);
     }
     if (startInvoices.length > 1) {
-      throw new StackAssertionError("Multiple subscription creation invoices found for subscription", { subscriptionId: subscription.id });
+      throw new HexclaveAssertionError("Multiple subscription creation invoices found for subscription", { subscriptionId: subscription.id });
     }
     const startInvoice = startInvoices[0];
     invoice = { id: startInvoice.id, stripeInvoiceId: startInvoice.stripeInvoiceId, amountTotal: startInvoice.amountTotal };
@@ -971,7 +971,7 @@ async function handleOneTimePurchaseRefund(options: {
   // ── Stripe side ───────────────────────────────────────────────────────
   if (options.amountStripeUnits > 0 && !isTestMode) {
     if (!purchase.stripePaymentIntentId) {
-      throw new StackAssertionError("Live-mode one-time purchase missing stripePaymentIntentId", { purchaseId: purchase.id });
+      throw new HexclaveAssertionError("Live-mode one-time purchase missing stripePaymentIntentId", { purchaseId: purchase.id });
     }
     const stripe = await getStripeForAccount({ tenancy });
     await stripe.refunds.create(

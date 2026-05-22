@@ -1,5 +1,5 @@
 import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
-import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
+import { KnownErrors, HexclaveServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
@@ -14,7 +14,7 @@ import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
@@ -40,7 +40,7 @@ import { clientVersion, createCache, createCacheBySession, getDefaultExtraReques
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
-  declare protected _interface: StackServerInterface;
+  declare protected _interface: HexclaveServerInterface;
 
   // TODO override the client user cache to use the server user cache, so we save some requests
   private readonly _currentServerUserCache = createCacheBySession(async (session) => {
@@ -62,7 +62,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     teamId?: string,
   ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, onlyAnonymous, teamId]) => {
     if (onlyAnonymous && !includeAnonymous) {
-      throw new StackAssertionError("onlyAnonymous=true requires includeAnonymous=true");
+      throw new HexclaveAssertionError("onlyAnonymous=true requires includeAnonymous=true");
     }
     if (onlyAnonymous) {
       return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous: true, onlyAnonymous: true, teamId });
@@ -440,7 +440,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
+  constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveServerInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
     const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
@@ -449,7 +449,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       ...extraOptions,
       interface: extraOptions?.interface ?? (() => {
         const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
-        return new StackServerInterface({
+        return new HexclaveServerInterface({
           getBaseUrl: () => apiUrls()[0],
           getApiUrls: apiUrls,
           projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
@@ -694,14 +694,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       // END_PLATFORM
       async linkConnectedAccount(): Promise<void> {
-        throw new StackAssertionError("linkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+        throw new HexclaveAssertionError("linkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
       },
       async getOrLinkConnectedAccount(): Promise<OAuthConnection> {
-        throw new StackAssertionError("getOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+        throw new HexclaveAssertionError("getOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
       },
       // IF_PLATFORM react-like
       useOrLinkConnectedAccount(): OAuthConnection {
-        throw new StackAssertionError("useOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+        throw new HexclaveAssertionError("useOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
       },
       // END_PLATFORM
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
@@ -916,7 +916,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         // TODO remove duplicated code between this and the function in client-app-impl.ts
         const hostname = options?.hostname || (await app._getCurrentUrl())?.hostname;
         if (!hostname) {
-          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+          throw new HexclaveAssertionError("hostname must be provided if the Stack App does not have a redirect method");
         }
 
         // Use server interface to initiate passkey registration for this specific user
@@ -930,7 +930,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
         // HACK: Override the rpID to be the actual domain
         if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
         }
 
         options_json.rp.id = hostname;
@@ -1352,7 +1352,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           case 'redirect': {
             runAsynchronously(this.redirectToSignIn({ replace: true }));
             suspend();
-            throw new StackAssertionError("suspend should never return");
+            throw new HexclaveAssertionError("suspend should never return");
           }
           case 'throw': {
             throw new Error("User is not signed in but useUser was called with { or: 'throw' }");
@@ -1367,7 +1367,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
               }
             });
             suspend();
-            throw new StackAssertionError("suspend should never return");
+            throw new HexclaveAssertionError("suspend should never return");
           }
           case undefined:
           case "anonymous-if-exists[deprecated]":

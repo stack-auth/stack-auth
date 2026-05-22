@@ -1,6 +1,6 @@
 import { isApiKey, parseProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-keys";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import { SnapshotSerializer } from "vitest";
 import { getPortPrefix } from "./helpers/ports";
@@ -117,12 +117,14 @@ const stripUrlQueryParams = [
 
 const keyedCookieNamePrefixes = [
   "stack-oauth-inner-",
+  // Hexclave rebrand: dual-written OAuth inner-state cookie
+  "hexclave-oauth-inner-",
 ] as const;
 
 const stringRegexReplacements = [
   [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
-  [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_STACK_PORT_PREFIX>"],
-  [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_STACK_PORT_PREFIX%3E"],
+  [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>"],
+  [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX%3E"],
   [/(Timeout exceeded: elapsed )[0-9.]+( ms)/gi, "$1<stripped time>$2"],
 ] as const;
 
@@ -210,7 +212,7 @@ const snapshotSerializer: SnapshotSerializer = {
         // Strip headers
         if (options?.parent?.value instanceof Headers) {
           if (typeof value !== "string") {
-            throw new StackAssertionError("Headers should only contain string values");
+            throw new HexclaveAssertionError("Headers should only contain string values");
           }
           const headerName = options.keyInParent?.toString().toLowerCase();
           if (typedIncludes(stripHeaders, headerName)) {

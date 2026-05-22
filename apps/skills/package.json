@@ -7,9 +7,9 @@
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
     "typecheck": "tsc --noEmit",
-    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}45",
+    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}45",
     "build": "next build",
-    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}45",
+    "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}45",
     "lint": "eslint ."
   },
   "dependencies": {

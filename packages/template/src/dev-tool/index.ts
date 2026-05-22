@@ -6,7 +6,8 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
-const OVERRIDE_KEY = '__stack-dev-tool-override';
+// Hexclave rebrand: UI-only local pref — straight rename (one-time reset is harmless)
+const OVERRIDE_KEY = '__hexclave-dev-tool-override';
 
 function hasAppendChild(value: unknown): value is { appendChild(node: Node): void } {
   return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'appendChild') === 'function';

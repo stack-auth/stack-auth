@@ -1,5 +1,5 @@
 import { getCustomPagePrompts, type CustomPagePrompt } from "@stackframe/stack-shared/dist/interface/handler-urls";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
@@ -13,8 +13,8 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
 
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
-  const prefix = envVars.NEXT_PUBLIC_STACK_PORT_PREFIX;
-  return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
+  const prefix = envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX;
+  return prefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) as T : input;
 };
 
 const joinHandlerComponentPath = (basePath: string, pagePath: string): string => {
@@ -97,7 +97,7 @@ export const getHostedHandlerDomainSuffix = (): string => {
     ?? defaultHostedHandlerDomainSuffix;
   const domainSuffix = replaceStackPortPrefix(configuredValue);
   if (!domainSuffix.startsWith(".")) {
-    throw new StackAssertionError("The hosted handler domain suffix must start with a dot.", {
+    throw new HexclaveAssertionError("The hosted handler domain suffix must start with a dot.", {
       domainSuffix,
       hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX to a value like '.built-with-stack-auth.com'.",
     });
@@ -109,7 +109,7 @@ const getHostedHandlerUrlTemplate = (): string => {
   const configuredTemplate = replaceStackPortPrefix(envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE);
   if (configuredTemplate != null) {
     if (!configuredTemplate.includes(hostedHandlerProjectIdPlaceholder) || !configuredTemplate.includes(hostedHandlerPathPlaceholder)) {
-      throw new StackAssertionError("The hosted handler URL template must contain {projectId} and {hostedPath}.", {
+      throw new HexclaveAssertionError("The hosted handler URL template must contain {projectId} and {hostedPath}.", {
         hostedHandlerUrlTemplate: configuredTemplate,
         hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE to a value like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}'.",
       });

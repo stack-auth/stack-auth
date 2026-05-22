@@ -1,5 +1,5 @@
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import apiVersions from './generated/api-versions.json';
 import routes from './generated/routes.json';
@@ -69,7 +69,7 @@ export async function proxy(request: NextRequest) {
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
   if (delay) {
     if (getNodeEnvironment().includes('production')) {
-      throw new StackAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development');
+      throw new HexclaveAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development');
     }
     if (!request.headers.get('x-stack-disable-artificial-development-delay')) {
       await wait(delay);
@@ -151,7 +151,7 @@ export async function proxy(request: NextRequest) {
     const version = apiVersions[i];
     const nextVersion = apiVersions[i + 1];
     if (!nextVersion.migrationFolder) {
-      throw new StackAssertionError(`No migration folder found for version ${nextVersion.name}. This is a bug because every version except the first should have a migration folder.`);
+      throw new HexclaveAssertionError(`No migration folder found for version ${nextVersion.name}. This is a bug because every version except the first should have a migration folder.`);
     }
     if ((pathname + "/").startsWith(version.servedRoute + "/")) {
       const nextPathname = pathname.replace(version.servedRoute, nextVersion.servedRoute);

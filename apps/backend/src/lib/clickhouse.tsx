@@ -1,6 +1,6 @@
 import { createClient, type ClickHouseClient, type ClickHouseSettings } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 function getAdminAuth() {
   return {
@@ -97,14 +97,14 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
       return stats.data[0];
     }
     if (stats.data.length > 1) {
-      throw new StackAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data });
+      throw new HexclaveAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data });
     }
     if (attempt < retryDelaysMs.length) {
       await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
     }
   }
 
-  throw new StackAssertionError("Unexpected number of query log results: 0", { data: [] });
+  throw new HexclaveAssertionError("Unexpected number of query log results: 0", { data: [] });
 };
 
 export const getQueryTimingStatsForProject = async (
@@ -143,7 +143,7 @@ export const getQueryTimingStatsForProject = async (
       return stats.data[0];
     }
     if (stats.data.length > 1) {
-      throw new StackAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data });
+      throw new HexclaveAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data });
     }
     if (attempt < retryDelaysMs.length) {
       await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));

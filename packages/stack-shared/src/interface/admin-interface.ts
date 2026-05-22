@@ -25,7 +25,7 @@ import type {
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
-import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+import { ServerAuthApplicationOptions, HexclaveServerInterface } from "./server-interface";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
@@ -58,7 +58,7 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
 };
 
 
-export class StackAdminInterface extends StackServerInterface {
+export class HexclaveAdminInterface extends HexclaveServerInterface {
   constructor(public readonly options: AdminAuthApplicationOptions) {
     super(options);
   }
@@ -69,7 +69,8 @@ export class StackAdminInterface extends StackServerInterface {
       {
         ...options,
         headers: {
-          "x-stack-super-secret-admin-key": "superSecretAdminKey" in this.options ? this.options.superSecretAdminKey : "",
+          // Hexclave rebrand: emit x-hexclave-* request header; the backend proxy dual-accepts both names.
+          "x-hexclave-super-secret-admin-key": "superSecretAdminKey" in this.options ? this.options.superSecretAdminKey : "",
           ...options.headers,
         },
       },

@@ -1,15 +1,15 @@
 import { encodeBase32, encodeBase64 } from "./bytes";
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 import { globalVar } from "./globals";
 import { Result } from "./results";
 import { toArrayBufferBacked } from "./typed-arrays";
 
 export function generateRandomValues(array: Uint8Array): typeof array {
   if (!globalVar.crypto) {
-    throw new StackAssertionError("Crypto API is not available in this environment. Are you using an old browser?");
+    throw new HexclaveAssertionError("Crypto API is not available in this environment. Are you using an old browser?");
   }
   if (!globalVar.crypto.getRandomValues) {
-    throw new StackAssertionError("crypto.getRandomValues is not available in this environment. Are you using an old browser?");
+    throw new HexclaveAssertionError("crypto.getRandomValues is not available in this environment. Are you using an old browser?");
   }
   return globalVar.crypto.getRandomValues(array);
 }
@@ -64,7 +64,7 @@ export async function encrypt({ purpose, secret, value }: { purpose: string, sec
 
 export async function decrypt({ purpose, secret, cipher }: { purpose: string, secret: string | Uint8Array, cipher: Uint8Array }) {
   const version = cipher.slice(0, 2);
-  if (version[0] !== 0x01 || version[1] !== 0x00) throw new StackAssertionError("Invalid ciphertext version in decrypt(...); expected 0x0100", { purpose });
+  if (version[0] !== 0x01 || version[1] !== 0x00) throw new HexclaveAssertionError("Invalid ciphertext version in decrypt(...); expected 0x0100", { purpose });
   const salt = cipher.slice(2, 18);
   const iv = cipher.slice(18, 30);
   const cipherBytes = cipher.slice(30);

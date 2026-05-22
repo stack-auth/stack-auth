@@ -5,7 +5,7 @@ import { useRouter } from "@/components/router";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@/components/ui";
 import { buildTransferSignUpUrl, getStackAppInternals } from "@/lib/transfer-utils";
 import { useStackApp, useUser } from "@stackframe/stack";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -144,7 +144,7 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
                 });
                 const confirmResJson = await confirmRes.json();
                 if (typeof confirmResJson?.project_id !== "string") {
-                  throw new StackAssertionError("Neon project transfer confirm response is missing `project_id`", { confirmResJson });
+                  throw new HexclaveAssertionError("Neon project transfer confirm response is missing `project_id`", { confirmResJson });
                 }
                 router.push(`/projects/${confirmResJson.project_id}`);
                 await wait(3000);

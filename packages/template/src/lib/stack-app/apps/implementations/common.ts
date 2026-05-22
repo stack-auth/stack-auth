@@ -1,7 +1,7 @@
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createGlobal, getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
@@ -17,13 +17,13 @@ import { resolveHandlerUrls } from "../../url-targets";
 
 export const clientVersion = "STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL";
 if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
-  throw new StackAssertionError("Client version was not replaced. Something went wrong during build!");
+  throw new HexclaveAssertionError("Client version was not replaced. Something went wrong during build!");
 }
 
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
-  const prefix = envVars.NEXT_PUBLIC_STACK_PORT_PREFIX;
-  return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
+  const prefix = envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX;
+  return prefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) as T : input;
 };
 
 

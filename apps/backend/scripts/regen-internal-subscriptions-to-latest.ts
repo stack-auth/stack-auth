@@ -22,7 +22,7 @@ import { getStripeForAccount } from "@/lib/stripe";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import type Stripe from "stripe";
 
@@ -136,7 +136,7 @@ export async function runRegenInternalSubscriptionsToLatest(options: {
   log("Starting...");
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
   if (internalTenancy == null) {
-    throw new StackAssertionError("Internal billing tenancy not found", {
+    throw new HexclaveAssertionError("Internal billing tenancy not found", {
       billingProjectId: "internal",
       branchId: DEFAULT_BRANCH_ID,
     });
@@ -242,7 +242,7 @@ export async function regenSingleSubscription(args: {
 
   const isStripeBacked = needsStripeMetadataRebase(sub);
   if (isStripeBacked && stripe == null) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       "regenSingleSubscription called for Stripe-backed sub without a stripe client",
       { subId: sub.id, stripeSubscriptionId: sub.stripeSubscriptionId, creationSource: sub.creationSource },
     );

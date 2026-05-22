@@ -1,4 +1,4 @@
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 import { identity } from "./functions";
 import { stringCompare } from "./strings";
 import { typeAssertIs } from "./types";
@@ -94,7 +94,7 @@ export function isCloneable<T>(obj: T): obj is Exclude<T, symbol | Function> {
 }
 
 export function shallowClone<T extends object>(obj: T): T {
-  if (!isCloneable(obj)) throw new StackAssertionError("shallowClone does not support symbols or functions", { obj });
+  if (!isCloneable(obj)) throw new HexclaveAssertionError("shallowClone does not support symbols or functions", { obj });
 
   if (Array.isArray(obj)) return obj.map(identity) as T;
   return { ...obj };
@@ -106,8 +106,8 @@ import.meta.vitest?.test("shallowClone", ({ expect }) => {
 });
 
 export function deepPlainClone<T>(obj: T): T {
-  if (typeof obj === 'function') throw new StackAssertionError("deepPlainClone does not support functions");
-  if (typeof obj === 'symbol') throw new StackAssertionError("deepPlainClone does not support symbols");
+  if (typeof obj === 'function') throw new HexclaveAssertionError("deepPlainClone does not support functions");
+  if (typeof obj === 'symbol') throw new HexclaveAssertionError("deepPlainClone does not support symbols");
   if (typeof obj !== 'object' || !obj) return obj;
   if (Array.isArray(obj)) return obj.map(deepPlainClone) as any;
   return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, deepPlainClone(v)])) as any;
@@ -165,7 +165,7 @@ type DeepMergeInner<T, U> = {
           : U[K];
 };
 export function deepMerge<T extends {}, U extends {}>(baseObj: T, mergeObj: U): DeepMerge<T, U> {
-  if ([baseObj, mergeObj, ...Object.values(baseObj), ...Object.values(mergeObj)].some(o => !isCloneable(o))) throw new StackAssertionError("deepMerge does not support functions or symbols", { baseObj, mergeObj });
+  if ([baseObj, mergeObj, ...Object.values(baseObj), ...Object.values(mergeObj)].some(o => !isCloneable(o))) throw new HexclaveAssertionError("deepMerge does not support functions or symbols", { baseObj, mergeObj });
 
   const res: any = shallowClone(baseObj);
   for (const [key, mergeValue] of Object.entries(mergeObj)) {
@@ -419,7 +419,7 @@ import.meta.vitest?.test("pick", ({ expect }) => {
 });
 
 export function omit<T extends {}, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
-  if (!Array.isArray(keys)) throw new StackAssertionError("omit: keys must be an array", { obj, keys });
+  if (!Array.isArray(keys)) throw new HexclaveAssertionError("omit: keys must be an array", { obj, keys });
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k as K))) as any;
 }
 import.meta.vitest?.test("omit", ({ expect }) => {
@@ -531,24 +531,24 @@ import.meta.vitest?.test("deepSortKeys", ({ expect }) => {
 });
 
 export function set<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K, value: T[K & keyof T]) {
-  if (!isObjectLike(obj)) throw new StackAssertionError(`set: obj is not an object (found: ${(obj as any) === null ? "null" : typeof obj})`, { obj, key, value });
+  if (!isObjectLike(obj)) throw new HexclaveAssertionError(`set: obj is not an object (found: ${(obj as any) === null ? "null" : typeof obj})`, { obj, key, value });
   Object.defineProperty(obj, key, { value, writable: true, configurable: true, enumerable: true });
 }
 
 export function get<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K): T[K & keyof T] {
-  if ((obj as any) == null) throw new StackAssertionError("get: obj is null or undefined", { obj, key });
+  if ((obj as any) == null) throw new HexclaveAssertionError("get: obj is null or undefined", { obj, key });
   const descriptor = Object.getOwnPropertyDescriptor(obj, key);
-  if (!descriptor) throw new StackAssertionError(`get: key ${String(key)} does not exist`, { obj, key });
+  if (!descriptor) throw new HexclaveAssertionError(`get: key ${String(key)} does not exist`, { obj, key });
   return descriptor.value;
 }
 
 export function getOrUndefined<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K): T[K & keyof T] | undefined {
-  if ((obj as any) == null) throw new StackAssertionError("getOrUndefined: obj is null or undefined", { obj, key });
+  if ((obj as any) == null) throw new HexclaveAssertionError("getOrUndefined: obj is null or undefined", { obj, key });
   return has(obj, key) ? get(obj, key) : undefined;
 }
 
 export function has<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K): obj is T & { [k in K & keyof T]: unknown } {
-  if ((obj as any) == null) throw new StackAssertionError("has: obj is null or undefined", { obj, key });
+  if ((obj as any) == null) throw new HexclaveAssertionError("has: obj is null or undefined", { obj, key });
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
@@ -569,7 +569,7 @@ export function deleteKey<T extends object, K extends keyof T>(obj: T, key: K) {
   if (has(obj, key)) {
     Reflect.deleteProperty(obj, key);
   } else {
-    throw new StackAssertionError(`deleteKey: key ${String(key)} does not exist`, { obj, key });
+    throw new HexclaveAssertionError(`deleteKey: key ${String(key)} does not exist`, { obj, key });
   }
 }
 

@@ -5,7 +5,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -17,14 +17,14 @@ const MAX_BATCHES_PER_MAPPING_ENV = "STACK_EXTERNAL_DB_SYNC_MAX_BATCHES_PER_MAPP
 
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new StackAssertionError(`${label} must be a non-empty string.`);
+    throw new HexclaveAssertionError(`${label} must be a non-empty string.`);
   }
 }
 
 function assertUuid(value: unknown, label: string): asserts value is string {
   assertNonEmptyString(value, label);
   if (!UUID_REGEX.test(value)) {
-    throw new StackAssertionError(`${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
+    throw new HexclaveAssertionError(`${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
   }
 }
 
@@ -151,7 +151,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for ProjectUser, got ${insertedCount}.`
       );
     }
@@ -194,7 +194,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for ContactChannel, got ${insertedCount}.`
       );
     }
@@ -228,7 +228,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for Team, got ${insertedCount}.`
       );
     }
@@ -264,7 +264,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for TeamMember, got ${insertedCount}.`
       );
     }
@@ -303,7 +303,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for TeamMemberDirectPermission, got ${insertedCount}.`
       );
     }
@@ -341,7 +341,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for ProjectUserDirectPermission, got ${insertedCount}.`
       );
     }
@@ -378,7 +378,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for UserNotificationPreference, got ${insertedCount}.`
       );
     }
@@ -412,7 +412,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for ProjectUserRefreshToken, got ${insertedCount}.`
       );
     }
@@ -446,7 +446,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for ProjectUserOAuthAccount, got ${insertedCount}.`
       );
     }
@@ -488,7 +488,7 @@ export async function recordExternalDbSyncDeletion(
     `);
 
     if (insertedCount !== 1) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Expected to insert 1 DeletedRow entry for VerificationCode_TEAM_INVITATION, got ${insertedCount}.`
       );
     }
@@ -947,7 +947,7 @@ function getMaxBatchesPerMapping(): number | null {
   if (!rawValue) return null;
   const parsed = Number.parseInt(rawValue, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `${MAX_BATCHES_PER_MAPPING_ENV} must be a positive integer. Received: ${JSON.stringify(rawValue)}`
     );
   }
@@ -981,7 +981,7 @@ async function ensureExternalSchema(
       return;
     }
 
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `Schema creation error while creating table ${JSON.stringify(tableName)}, but table does not exist.`
     );
   }
@@ -999,7 +999,7 @@ async function pushRowsToExternalDb(
   assertNonEmptyString(mappingId, "mappingId");
   assertUuid(expectedTenancyId, "expectedTenancyId");
   if (!Array.isArray(newRows)) {
-    throw new StackAssertionError(`newRows must be an array for table ${JSON.stringify(tableName)}.`);
+    throw new HexclaveAssertionError(`newRows must be an array for table ${JSON.stringify(tableName)}.`);
   }
   if (newRows.length === 0) return;
   // Just for our own sanity, make sure that we have the right number of positional parameters
@@ -1010,7 +1010,7 @@ async function pushRowsToExternalDb(
   const orderedKeys = Object.keys(omit(sampleRow, ["tenancyId"]));
   // +1 for mapping_name parameter which is appended
   if (orderedKeys.length + 1 !== expectedParamCount) {
-    throw new StackAssertionError(`
+    throw new HexclaveAssertionError(`
       Column count mismatch for table ${JSON.stringify(tableName)}
        → upsertQuery expects ${expectedParamCount} parameters (last one should be mapping_name).
        → internalDbFetchQuery returned ${orderedKeys.length} columns (excluding tenancyId) + 1 for mapping_name = ${orderedKeys.length + 1}.
@@ -1023,7 +1023,7 @@ async function pushRowsToExternalDb(
 
     // Validate that all rows belong to the expected tenant
     if (tenancyId !== expectedTenancyId) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Row has unexpected tenancyId. Expected ${expectedTenancyId}, got ${tenancyId}. ` +
         `This indicates a bug in the internalDbFetchQuery.`
       );
@@ -1036,7 +1036,7 @@ async function pushRowsToExternalDb(
       rowKeys.every((k, i) => k === orderedKeys[i]);
 
     if (!validShape) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `  Row shape mismatch for table "${tableName}".\n` +
           `Expected column order: [${orderedKeys.join(", ")}]\n` +
           `Received column order: [${rowKeys.join(", ")}]\n` +
@@ -1065,7 +1065,7 @@ function normalizeClickhouseBoolean(value: unknown, label: string): number {
   if (value === 0 || value === 1) {
     return value;
   }
-  throw new StackAssertionError(`${label} must be a boolean or 0/1. Received: ${JSON.stringify(value)}`);
+  throw new HexclaveAssertionError(`${label} must be a boolean or 0/1. Received: ${JSON.stringify(value)}`);
 }
 
 function normalizeClickhouseNullableBoolean(value: unknown, label: string): number | null {
@@ -1081,7 +1081,7 @@ function parseSequenceId(value: unknown, mappingId: string): number | null {
   }
   const seqNum = Number(value);
   if (!Number.isFinite(seqNum)) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `Invalid sequence_id for mapping ${mappingId}: ${JSON.stringify(value)}`
     );
   }
@@ -1173,7 +1173,7 @@ async function pushRowsToClickhouse(
   assertNonEmptyString(mappingId, "mappingId");
   assertUuid(expectedTenancyId, "expectedTenancyId");
   if (!Array.isArray(newRows)) {
-    throw new StackAssertionError(`newRows must be an array for table ${JSON.stringify(tableName)}.`);
+    throw new HexclaveAssertionError(`newRows must be an array for table ${JSON.stringify(tableName)}.`);
   }
   if (newRows.length === 0) return;
 
@@ -1187,12 +1187,12 @@ async function pushRowsToClickhouse(
   const normalizedRows = newRows.map((row) => {
     const tenancyIdValue = row.tenancyId;
     if (typeof tenancyIdValue !== "string") {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Row has invalid tenancyId. Expected ${expectedTenancyId}, got ${JSON.stringify(tenancyIdValue)}.`
       );
     }
     if (tenancyIdValue !== expectedTenancyId) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Row has unexpected tenancyId. Expected ${expectedTenancyId}, got ${tenancyIdValue}. ` +
         `This indicates a bug in the internalDbFetchQuery.`
       );
@@ -1206,7 +1206,7 @@ async function pushRowsToClickhouse(
       rowKeys.every((key, index) => key === orderedKeys[index]);
 
     if (!validShape) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `  Row shape mismatch for table "${tableName}".\n` +
           `Expected column order: [${orderedKeys.join(", ")}]\n` +
           `Received column order: [${rowKeys.join(", ")}]\n` +
@@ -1217,7 +1217,7 @@ async function pushRowsToClickhouse(
 
     const sequenceId = parseSequenceId(rest.sync_sequence_id, mappingId);
     if (sequenceId === null) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `sync_sequence_id must be defined for ClickHouse sync. Mapping: ${mappingId}`
       );
     }
@@ -1283,7 +1283,7 @@ async function getClickhouseLastSyncedSequenceId(
   }
   const parsed = Number(result[0]?.last_synced_sequence_id);
   if (!Number.isFinite(parsed)) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `Invalid last_synced_sequence_id for mapping ${mappingId}: ${JSON.stringify(result[0]?.last_synced_sequence_id)}`
     );
   }
@@ -1299,7 +1299,7 @@ async function updateClickhouseSyncMetadata(
   assertUuid(tenancyId, "tenancyId");
   assertNonEmptyString(mappingId, "mappingId");
   if (!Number.isFinite(lastSequenceId)) {
-    throw new StackAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
+    throw new HexclaveAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
   }
   await client.insert({
     table: "analytics_internal._stack_sync_metadata",
@@ -1333,7 +1333,7 @@ async function syncPostgresMapping(
   assertNonEmptyString(fetchQuery, "internalDbFetchQuery");
   assertNonEmptyString(updateQuery, "externalDbUpdateQueries");
   if (!fetchQuery.includes("$1") || !fetchQuery.includes("$2")) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `internalDbFetchQuery must reference $1 (tenancyId) and $2 (lastSequenceId). Mapping: ${mappingId}`
     );
   }
@@ -1350,7 +1350,7 @@ async function syncPostgresMapping(
     lastSequenceId = Number(metadataResult.rows[0].last_synced_sequence_id);
   }
   if (!Number.isFinite(lastSequenceId)) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `Invalid last_synced_sequence_id for mapping ${mappingId}: ${JSON.stringify(metadataResult.rows[0]?.last_synced_sequence_id)}`
     );
   }
@@ -1363,7 +1363,7 @@ async function syncPostgresMapping(
   while (true) {
     assertUuid(tenancyId, "tenancyId");
     if (!Number.isFinite(lastSequenceId)) {
-      throw new StackAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
+      throw new HexclaveAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
     }
     const rows = await internalPrisma.$replica().$queryRawUnsafe<any[]>(fetchQuery, tenancyId, lastSequenceId);
 
@@ -1418,15 +1418,15 @@ async function syncClickhouseMapping(
   assertUuid(tenancyId, "tenancyId");
   const fetchQuery = mapping.internalDbFetchQueries.clickhouse;
   if (!fetchQuery) {
-    throw new StackAssertionError(`Missing ClickHouse fetch query for mapping ${mappingId}.`);
+    throw new HexclaveAssertionError(`Missing ClickHouse fetch query for mapping ${mappingId}.`);
   }
   const tableSchema = mapping.targetTableSchemas.clickhouse;
   if (!tableSchema) {
-    throw new StackAssertionError(`Missing ClickHouse table schema for mapping ${mappingId}.`);
+    throw new HexclaveAssertionError(`Missing ClickHouse table schema for mapping ${mappingId}.`);
   }
   assertNonEmptyString(fetchQuery, "internalDbFetchQuery");
   if (!fetchQuery.includes("$1") || !fetchQuery.includes("$2")) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `internalDbFetchQuery must reference $1 (tenancyId) and $2 (lastSequenceId). Mapping: ${mappingId}`
     );
   }
@@ -1442,7 +1442,7 @@ async function syncClickhouseMapping(
   while (true) {
     assertUuid(tenancyId, "tenancyId");
     if (!Number.isFinite(lastSequenceId)) {
-      throw new StackAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
+      throw new HexclaveAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
     }
     const rows = await internalPrisma.$replica().$queryRawUnsafe<Record<string, unknown>[]>(fetchQuery, tenancyId, lastSequenceId);
 
@@ -1497,7 +1497,7 @@ async function syncDatabase(
   const dbType = dbConfig.type;
   if (dbType === "postgres") {
     if (!dbConfig.connectionString) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         `Invalid configuration for external DB ${dbId}: 'connectionString' is missing.`
       );
     }
@@ -1541,7 +1541,7 @@ async function syncDatabase(
     return needsResync;
   }
 
-  throw new StackAssertionError(
+  throw new HexclaveAssertionError(
     `Unsupported database type '${String(dbType)}' for external DB ${dbId}.`
   );
 }

@@ -6,7 +6,7 @@ import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/c
 import type { TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed, type DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent, stringCompare, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
@@ -603,7 +603,7 @@ export async function createPaymentsVerifier(options: {
           customerType: customer.customerType,
         });
         if (dbQuantity !== response.quantity) {
-          throw new StackAssertionError(deindent`
+          throw new HexclaveAssertionError(deindent`
             Item quantity mismatch for ${customer.customerType} ${customer.customerId} item ${itemId}.
             Expected ${expectedQuantity} but got ${response.quantity}.
           `, { expectedQuantity, actualQuantity: response.quantity, dbQuantity });
@@ -631,7 +631,7 @@ export async function createPaymentsVerifier(options: {
     const normalizedActual = normalizeOwnedProducts(actualProducts);
 
     if (!deepPlainEquals(normalizedExpected, normalizedActual)) {
-      throw new StackAssertionError(deindent`
+      throw new HexclaveAssertionError(deindent`
         Owned products mismatch for ${customer.customerType} ${customer.customerId}.
         Expected:
           ${JSON.stringify(normalizedExpected, null, 2)}

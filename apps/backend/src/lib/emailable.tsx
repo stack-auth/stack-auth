@@ -1,5 +1,5 @@
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import createEmailableClient from "emailable";
@@ -28,12 +28,12 @@ function isReservedTestDomain(emailDomain: string): boolean {
 
 function validateVerifyResponse(value: unknown) {
   if (value == null || typeof value !== "object" || Array.isArray(value)) {
-    throw new StackAssertionError("Emailable returned a non-object response body", { value });
+    throw new HexclaveAssertionError("Emailable returned a non-object response body", { value });
   }
   const response = Object.assign(Object.create(null), value) as Record<string, unknown>;
   const { state, disposable, score } = response;
   if (typeof state !== "string" || !VERIFY_STATES.some(s => s === state)) {
-    throw new StackAssertionError("Emailable verify response has invalid or missing state", { response });
+    throw new HexclaveAssertionError("Emailable verify response has invalid or missing state", { response });
   }
   const parsedScore = typeof score === "number" && score >= 0 && score <= 100 ? score : null;
   return { ...response, state, disposable: disposable === true, score: parsedScore };
@@ -47,17 +47,17 @@ async function verifyWithRetries(verifyFn: () => Promise<unknown>, maxAttempts: 
         await wait((Math.random() + 0.5) * delayBaseMs * (2 ** i));
         continue;
       }
-      throw new StackAssertionError("Emailable returned an unexpected response body", { response: res });
+      throw new HexclaveAssertionError("Emailable returned an unexpected response body", { response: res });
     }
     return res;
   }
-  throw new StackAssertionError("Timed out while verifying email address with Emailable");
+  throw new HexclaveAssertionError("Timed out while verifying email address with Emailable");
 }
 
 function buildTestUndeliverableResponse(email: string) {
   const match = email.match(/^([^@]+)@([^@]+)$/);
   if (!match) {
-    throw new StackAssertionError("Expected a valid email before creating the Emailable test-mode response", { email });
+    throw new HexclaveAssertionError("Expected a valid email before creating the Emailable test-mode response", { email });
   }
   return {
     accept_all: false, did_you_mean: null, disposable: false, domain: match[2],
@@ -93,7 +93,7 @@ export async function checkEmailWithEmailable(
       if (["development", "test"].includes(getNodeEnvironment())) {
         return { status: "deliverable", emailableScore: null };
       }
-      throw new StackAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
+      throw new HexclaveAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
     }
 
     const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
@@ -116,7 +116,7 @@ export async function checkEmailWithEmailable(
       return { status: "deliverable", emailableScore: response.score };
     });
   } catch (error) {
-    captureError("emailable-api-error", new StackAssertionError("Error while checking email address with Emailable", { cause: error, email, options }));
+    captureError("emailable-api-error", new HexclaveAssertionError("Error while checking email address with Emailable", { cause: error, email, options }));
     // If there's an error, let's pretend the email is deliverable, albeit with the score unavailable
     return { status: "deliverable", emailableScore: null };
   }

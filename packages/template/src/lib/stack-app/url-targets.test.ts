@@ -133,8 +133,8 @@ describe("handler URL targets", () => {
   });
 
   it("uses the full hosted handler URL template when configured", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{projectId}/{hostedPath}");
-    vi.stubEnv("NEXT_PUBLIC_STACK_PORT_PREFIX", "93");
+    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{projectId}/{hostedPath}");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "93");
 
     const urls = resolveHandlerUrls({
       projectId: "project-id",

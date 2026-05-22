@@ -1,7 +1,7 @@
 import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
 const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
@@ -146,7 +146,7 @@ export async function rewriteTemplateSourceWithAI(templateTsxSource: string): Pr
     lastError = renderResult.error;
   }
 
-  captureError("email-template-rewrite-failed-after-retries", new StackAssertionError(
+  captureError("email-template-rewrite-failed-after-retries", new HexclaveAssertionError(
     "Template rewrite failed after all retries",
     {
       isMockMode: isMockMode(),

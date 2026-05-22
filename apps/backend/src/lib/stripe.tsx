@@ -7,7 +7,7 @@ import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
 import type * as yup from "yup";
 import { isLocalEmulatorEnabled } from "./local-emulator";
@@ -16,7 +16,7 @@ import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 export const useStripeMock = isLocalEmulatorEnabled()
   || (stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment()));
-const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 const stripeMockPort = Number(getEnvVariable("STACK_STRIPE_MOCK_PORT", "") || `${stackPortPrefix}23`);
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
@@ -54,7 +54,7 @@ export function sanitizeStripePeriodDates(
   }
 
   // Dates are invalid (likely from Stripe mock where end <= start), use sensible defaults
-  captureError("sanitize-stripe-period-dates", new StackAssertionError(
+  captureError("sanitize-stripe-period-dates", new HexclaveAssertionError(
     "Invalid Stripe period dates detected (end <= start), using fallback dates",
     { startTimestamp, endTimestamp, startDate, endDate, useStripeMock, ...context }
   ));
@@ -74,7 +74,7 @@ export function sanitizeStripePeriodDates(
  * 2. product - older approach, JSON string in metadata
  * 3. offer - oldest approach, JSON string in metadata (legacy naming)
  *
- * @throws StackAssertionError if none of the above are found
+ * @throws HexclaveAssertionError if none of the above are found
  */
 export async function resolveProductFromStripeMetadata(options: {
   prisma: Parameters<typeof getProductVersion>[0]['prisma'],
@@ -97,7 +97,7 @@ export async function resolveProductFromStripeMetadata(options: {
     try {
       return JSON.parse(productString) as StripeMetadataProduct;
     } catch (error) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         "Failed to parse product JSON from Stripe metadata. The 'product' or 'offer' field contains invalid JSON.",
         {
           ...options.context,
@@ -110,7 +110,7 @@ export async function resolveProductFromStripeMetadata(options: {
     }
   }
 
-  throw new StackAssertionError(
+  throw new HexclaveAssertionError(
     "Stripe metadata is missing product information. Expected one of: 'productVersionId' (current), 'product' (legacy), or 'offer' (oldest). This may indicate the purchase was created before product tracking was implemented, or the metadata was corrupted.",
     {
       ...options.context,
@@ -189,20 +189,20 @@ import.meta.vitest?.describe("resolveProductFromStripeMetadata", (test) => {
 });
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
-    throw new StackAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
+    throw new HexclaveAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
   }
   if (overrides && !useStripeMock) {
-    throw new StackAssertionError("Stripe overrides are not supported in production");
+    throw new HexclaveAssertionError("Stripe overrides are not supported in production");
   }
   return createStripeProxy(new Stripe(stripeSecretKey, stripeConfig), overrides);
 };
 
 export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountId?: string }, overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
-    throw new StackAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
+    throw new HexclaveAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
   }
   if (overrides && !useStripeMock) {
-    throw new StackAssertionError("Stripe overrides are not supported in production");
+    throw new HexclaveAssertionError("Stripe overrides are not supported in production");
   }
   if (!options.tenancy && !options.accountId) {
     throwErr(400, "Either tenancy or stripeAccountId must be provided");
@@ -227,11 +227,11 @@ export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountI
 const getTenancyFromStripeAccountIdOrThrow = async (stripe: Stripe, stripeAccountId: string) => {
   const account = await stripe.accounts.retrieve(stripeAccountId);
   if (!account.metadata?.tenancyId || typeof account.metadata.tenancyId !== "string") {
-    throw new StackAssertionError("Stripe account metadata missing tenancyId", { accountId: stripeAccountId });
+    throw new HexclaveAssertionError("Stripe account metadata missing tenancyId", { accountId: stripeAccountId });
   }
   const tenancy = await getTenancy(account.metadata.tenancyId);
   if (!tenancy) {
-    throw new StackAssertionError("Tenancy not found", { accountId: stripeAccountId });
+    throw new HexclaveAssertionError("Tenancy not found", { accountId: stripeAccountId });
   }
   return tenancy;
 };
@@ -272,10 +272,10 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   const customerId = stripeCustomer.metadata.customerId;
   const customerType = stripeCustomer.metadata.customerType;
   if (!customerId || !customerType) {
-    throw new StackAssertionError("Stripe customer metadata missing customerId or customerType");
+    throw new HexclaveAssertionError("Stripe customer metadata missing customerId or customerType");
   }
   if (!typedIncludes(Object.values(CustomerType), customerType)) {
-    throw new StackAssertionError("Stripe customer metadata has invalid customerType");
+    throw new HexclaveAssertionError("Stripe customer metadata has invalid customerType");
   }
   const prisma = await getPrismaClientForTenancy(tenancy);
   const subscriptions = await stripe.subscriptions.list({
@@ -359,7 +359,7 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
     return;
   }
   if (invoiceSubscriptionIds.length > 1) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       "Multiple subscription line items found in single invoice",
       { stripeAccountId, invoiceId: invoice.id }
     );

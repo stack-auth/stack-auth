@@ -7,7 +7,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 
@@ -86,7 +86,7 @@ export async function createCrossDomainAuthorizeRedirect(options: {
 
   const redirectUrl = oauthResponse.headers?.location;
   if (typeof redirectUrl !== "string") {
-    throw new StackAssertionError("Cross-domain authorization response is missing redirect location", {
+    throw new HexclaveAssertionError("Cross-domain authorization response is missing redirect location", {
       oauthResponse,
     });
   }

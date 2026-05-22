@@ -3,7 +3,7 @@ import { CLICKHOUSE_COLUMN_NORMALIZERS } from "@/lib/external-db-sync";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import type { RecurseFunction } from "./recurse";
@@ -153,7 +153,7 @@ export async function verifyClickhouseSync(options: {
       if (!fetchQuery) return;
 
       if (!(mappingName in SORT_KEYS)) {
-        throw new StackAssertionError(`No sort keys defined for mapping ${mappingName}`);
+        throw new HexclaveAssertionError(`No sort keys defined for mapping ${mappingName}`);
       }
       const sortKeys = SORT_KEYS[mappingName as keyof typeof SORT_KEYS];
 
@@ -210,7 +210,7 @@ export async function verifyClickhouseSync(options: {
 
       // Compare row counts
       if (pgRows.length !== chRows.length) {
-        throw new StackAssertionError(deindent`
+        throw new HexclaveAssertionError(deindent`
           ClickHouse sync row count mismatch for ${mappingName}.
           Postgres: ${pgRows.length} rows, ClickHouse: ${chRows.length} rows.
         `);
@@ -231,7 +231,7 @@ export async function verifyClickhouseSync(options: {
         if (!deepEqual(normalizedPg, normalizedCh)) {
           const diffs = findDifferences(normalizedPg, normalizedCh);
           const keyValues = fullSortKeys.map(k => `${k}=${pgRows[i][k]}`).join(", ");
-          throw new StackAssertionError(deindent`
+          throw new HexclaveAssertionError(deindent`
             ClickHouse sync data mismatch for ${mappingName} at row ${keyValues}.
             Differences: ${diffs.join("; ")}
           `);

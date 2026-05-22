@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getJwtInfo } from "@stackframe/stack-shared/dist/utils/jwt";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
@@ -39,7 +39,7 @@ export class GithubProvider extends OAuthBaseProvider {
       },
     });
     if (!rawUserInfoRes.ok) {
-      throw new StackAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
+      throw new HexclaveAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
         rawUserInfoRes,
         rawUserInfoResText: await rawUserInfoRes.text(),
         hasAccessToken: !!tokenSet.accessToken,
@@ -62,14 +62,14 @@ export class GithubProvider extends OAuthBaseProvider {
       if (emailsRes.status === 403) {
         throw new StatusError(StatusError.BadRequest, `GitHub returned a 403 error when fetching user emails. \nDeveloper information: This is likely due to not having the correct permission "Email addresses" in your GitHub app. Please check your GitHub app settings and try again.`);
       }
-      throw new StackAssertionError("Error fetching user emails from GitHub: Status code " + emailsRes.status, {
+      throw new HexclaveAssertionError("Error fetching user emails from GitHub: Status code " + emailsRes.status, {
         emailsRes,
         rawUserInfo,
       });
     }
     const emails = await emailsRes.json();
     if (!Array.isArray(emails)) {
-      throw new StackAssertionError("Error fetching user emails from GitHub: Invalid response", {
+      throw new HexclaveAssertionError("Error fetching user emails from GitHub: Invalid response", {
         emails,
         emailsRes,
         rawUserInfo,

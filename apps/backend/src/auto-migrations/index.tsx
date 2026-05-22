@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
@@ -138,7 +138,7 @@ export async function applyMigrations(options: {
           const isConditionallyRepeatMigration = statement.includes('CONDITIONALLY_REPEAT_MIGRATION_SENTINEL');
 
           if (isConditionallyRepeatMigration && !isSingleStatement) {
-            throw new StackAssertionError("CONDITIONALLY_REPEAT_MIGRATION_SENTINEL requires SINGLE_STATEMENT_SENTINEL", { statement });
+            throw new HexclaveAssertionError("CONDITIONALLY_REPEAT_MIGRATION_SENTINEL requires SINGLE_STATEMENT_SENTINEL", { statement });
           }
 
           log(`  |> Running statement${isSingleStatement ? "" : "s"}${runOutside ? " outside of transaction" : ""}: ${statement.replace(/(\n|\s)/gm, " ").slice(0, 20)}...`);
@@ -148,14 +148,14 @@ export async function applyMigrations(options: {
             const res = await txOrPrismaClient.$queryRaw`${Prisma.raw(statement)}`;
             if (isConditionallyRepeatMigration) {
               if (!Array.isArray(res)) {
-                throw new StackAssertionError("Expected an array as a return value of repeat condition", { res });
+                throw new HexclaveAssertionError("Expected an array as a return value of repeat condition", { res });
               }
               if (res.length > 0) {
                 if (!("should_repeat_migration" in res[0])) {
-                  throw new StackAssertionError("Expected should_repeat_migration column in return value of repeat condition", { res });
+                  throw new HexclaveAssertionError("Expected should_repeat_migration column in return value of repeat condition", { res });
                 }
                 if (typeof res[0].should_repeat_migration !== 'boolean') {
-                  throw new StackAssertionError("Expected should_repeat_migration column in return value of repeat condition to be a boolean (found: " + typeof res[0].should_repeat_migration + ")", { res });
+                  throw new HexclaveAssertionError("Expected should_repeat_migration column in return value of repeat condition to be a boolean (found: " + typeof res[0].should_repeat_migration + ")", { res });
                 }
                 if (res[0].should_repeat_migration) {
                   log(`  |> Migration ${migration.migrationName} requested to be repeated. This is normal and *not* indicative of a problem.`);

@@ -6,7 +6,7 @@ import { createVerificationCodeHandler } from "@/route-handlers/verification-cod
 import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const integrationProjectTransferCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -44,7 +44,7 @@ export const integrationProjectTransferCodeHandler = createVerificationCodeHandl
   },
 
   async handler(tenancy, method, data, body, user) {
-    if (tenancy.project.id !== "internal") throw new StackAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
+    if (tenancy.project.id !== "internal") throw new HexclaveAssertionError("This endpoint is only available for internal projects, why is it being called for a non-internal project?");
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
 
     const provisionedProject = await globalPrismaClient.provisionedProject.deleteMany({

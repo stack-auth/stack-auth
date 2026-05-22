@@ -108,8 +108,8 @@
         if (!port || port.length < 2) return "81";
         return port.slice(0, -2);
       };
-      const stackPortPrefix = window.NEXT_PUBLIC_STACK_PORT_PREFIX || derivePrefixFromLocation();
-      window.NEXT_PUBLIC_STACK_PORT_PREFIX = stackPortPrefix;
+      const stackPortPrefix = window.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || derivePrefixFromLocation();
+      window.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX = stackPortPrefix;
       const withPrefix = (suffix) => `${stackPortPrefix}${suffix}`;
 
       // Depending on the port prefix, set the color to light grey (port 91), light purple (port 92), papyrus yellow (port 93), or default otherwise

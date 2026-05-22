@@ -7,7 +7,7 @@ import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } f
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
@@ -100,7 +100,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
   return await traceSpan("decoding access token", async (span) => {
 
     if (allowAnonymous && !allowRestricted) {
-      throw new StackAssertionError("If allowAnonymous is true, allowRestricted must also be true");
+      throw new HexclaveAssertionError("If allowAnonymous is true, allowRestricted must also be true");
     }
 
     let payload: jose.JWTPayload;
@@ -150,33 +150,33 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
 
     // Anonymous users must be restricted
     if (isAnonymous && !isRestricted) {
-      throw new StackAssertionError("Unparsable access token. User is anonymous but not restricted.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is anonymous but not restricted.", { accessToken, payload });
     }
 
     // Enforce consistency between isRestricted and restrictedReason
     if (isRestricted && !restrictedReason) {
-      throw new StackAssertionError("Unparsable access token. User is restricted but restrictedReason is missing.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is restricted but restrictedReason is missing.", { accessToken, payload });
     }
     if (!isRestricted && restrictedReason) {
-      throw new StackAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
     }
 
     // Validate audience matches the user type
     if (aud.endsWith(":anon") && !isAnonymous) {
-      throw new StackAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
     } else if (!aud.endsWith(":anon") && isAnonymous) {
-      throw new StackAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
     }
     if (aud.endsWith(":restricted") && !isRestricted) {
-      throw new StackAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
     } else if (!aud.endsWith(":restricted") && isRestricted && !isAnonymous) {
-      throw new StackAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
     }
 
     const branchId = payload.branch_id ?? payload.branchId;
     if (branchId !== "main") {
       // TODO instead, we should check here that the aud is `projectId#branch` instead
-      throw new StackAssertionError("Branch ID !== main not currently supported.");
+      throw new HexclaveAssertionError("Branch ID !== main not currently supported.");
     }
 
     const result = await accessTokenSchema.validate({
@@ -361,7 +361,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       restrictedReason: user.restricted_reason,
     });
   } catch (error) {
-    captureError("generated-access-token-payload-does-not-fit-the-access-token-schema", new StackAssertionError("Generated access token payload does not fit the accessTokenSchema. This is a bug — the token data is inconsistent.", { cause: error, payload }));
+    captureError("generated-access-token-payload-does-not-fit-the-access-token-schema", new HexclaveAssertionError("Generated access token payload does not fit the accessTokenSchema. This is a bug — the token data is inconsistent.", { cause: error, payload }));
   }
 
   const userType = getUserType(user.is_anonymous, user.is_restricted);

@@ -1,12 +1,12 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 async function main() {
   console.log("Starting email queue processor...");
   const cronSecret = getEnvVariable('CRON_SECRET');
 
-  const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_STACK_PORT_PREFIX', '81')}02`;
+  const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX', '81')}02`;
 
   // Wait a few seconds to make sure the server is fully started
   await wait(5_000);
@@ -21,7 +21,7 @@ async function main() {
         method: "GET",
         headers: { 'Authorization': `Bearer ${cronSecret}` },
       });
-      if (!res.ok) throw new StackAssertionError(`Failed to call email queue step: ${res.status} ${res.statusText}\n${await res.text()}`, { res });
+      if (!res.ok) throw new HexclaveAssertionError(`Failed to call email queue step: ${res.status} ${res.statusText}\n${await res.text()}`, { res });
       console.log("Email queue step completed.");
 
       const endTime = performance.now();

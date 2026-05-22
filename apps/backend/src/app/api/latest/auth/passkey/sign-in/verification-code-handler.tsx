@@ -7,7 +7,7 @@ import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { decodeClientDataJSON } from "@simplewebauthn/server/helpers";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { signInResponseSchema, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { AuthenticationResponseJSON } from "@stackframe/stack-shared/dist/utils/passkey";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -35,7 +35,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     body: signInResponseSchema.defined(),
   }),
   async send() {
-    throw new StackAssertionError("send() called on a Passkey sign in verification code handler");
+    throw new HexclaveAssertionError("send() called on a Passkey sign in verification code handler");
   },
   async handler(tenancy, _, { challenge }, { authentication_response }) {
 

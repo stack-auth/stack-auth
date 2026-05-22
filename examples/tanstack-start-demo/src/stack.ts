@@ -1,11 +1,11 @@
 import { StackClientApp } from "@stackframe/tanstack-start";
 
 function getPortPrefix(): string {
-  return import.meta.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+  return import.meta.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
 }
 
 function replaceStackPortPrefix(value: string): string {
-  return value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, getPortPrefix());
+  return value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, getPortPrefix());
 }
 
 function getStackApiUrl(): string {

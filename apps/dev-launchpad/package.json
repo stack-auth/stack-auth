@@ -4,7 +4,7 @@
   "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "scripts": {
-    "dev": "node scripts/write-env-config.js && serve -p ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}00 -s public",
+    "dev": "node scripts/write-env-config.js && serve -p ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}00 -s public",
     "clean": "rimraf node_modules"
   },
   "dependencies": {

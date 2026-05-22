@@ -12,7 +12,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent, extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -110,14 +110,18 @@ const handler = createSmartRouteHandler({
     try {
       outerInfo = await oauthCookieSchema.validate(outerInfoDB.info);
     } catch (error) {
-      throw new StackAssertionError("Invalid outer info");
+      throw new HexclaveAssertionError("Invalid outer info");
     }
 
     // JSON-mode requests use PKCE for CSRF protection and don't set a cookie.
     // Only check the CSRF cookie for browser-redirect mode requests.
     if (outerInfo.responseMode !== 'json') {
-      const cookieInfo = (await cookies()).get("stack-oauth-inner-" + innerState);
-      (await cookies()).delete("stack-oauth-inner-" + innerState);
+      // Hexclave rebrand: read whichever inner-OAuth cookie name is present (prefer the new name), and delete both.
+      const cookieStore = await cookies();
+      const cookieInfo = cookieStore.get("hexclave-oauth-inner-" + innerState)
+        ?? cookieStore.get("stack-oauth-inner-" + innerState);
+      cookieStore.delete("hexclave-oauth-inner-" + innerState);
+      cookieStore.delete("stack-oauth-inner-" + innerState);
 
       if (cookieInfo?.value !== 'true') {
         throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
@@ -137,7 +141,7 @@ const handler = createSmartRouteHandler({
 
     const tenancy = await getTenancy(tenancyId);
     if (!tenancy) {
-      throw new StackAssertionError("Tenancy in outerInfo not found; has it been deleted?", { tenancyId });
+      throw new HexclaveAssertionError("Tenancy in outerInfo not found; has it been deleted?", { tenancyId });
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
@@ -183,7 +187,7 @@ const handler = createSmartRouteHandler({
 
       if (type === "link") {
         if (!projectUserId) {
-          throw new StackAssertionError("projectUserId not found in cookie when authorizing signed in user");
+          throw new HexclaveAssertionError("projectUserId not found in cookie when authorizing signed in user");
         }
 
         const user = await prisma.projectUser.findUnique({
@@ -198,7 +202,7 @@ const handler = createSmartRouteHandler({
           }
         });
         if (!user) {
-          throw new StackAssertionError("User not found");
+          throw new HexclaveAssertionError("User not found");
         }
       }
 
@@ -263,7 +267,7 @@ const handler = createSmartRouteHandler({
                   // This flow is when a signed-in user wants to connect an OAuth account
                   if (type === "link") {
                     if (!projectUserId) {
-                      throw new StackAssertionError("projectUserId not found in cookie when authorizing signed in user");
+                      throw new HexclaveAssertionError("projectUserId not found in cookie when authorizing signed in user");
                     }
 
                     if (oldAccount) {
@@ -403,7 +407,7 @@ const handler = createSmartRouteHandler({
           // which scopes are being requested, and by whom?
           // I think this is a bug in the client? But just to be safe, let's log an error to make sure that it is not our fault
           // TODO: remove the captureError once you see in production that our own clients never trigger this
-          captureError("outer-oauth-callback-invalid-scope", new StackAssertionError(deindent`
+          captureError("outer-oauth-callback-invalid-scope", new HexclaveAssertionError(deindent`
             A client requested an invalid scope. Is this a bug in the client, or our fault?
 
               Scopes requested: ${oauthRequest.query?.scope}

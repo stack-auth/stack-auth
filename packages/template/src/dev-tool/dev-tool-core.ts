@@ -48,8 +48,9 @@ type DevToolState = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = '__stack-dev-tool-state';
-const TRIGGER_POS_KEY = 'stack-devtool-trigger-position';
+// Hexclave rebrand: UI-only local prefs — straight rename (one-time reset is harmless)
+const STORAGE_KEY = '__hexclave-dev-tool-state';
+const TRIGGER_POS_KEY = 'hexclave-devtool-trigger-position';
 const ROOT_ID = '__stack-dev-tool-root';
 const GLOBAL_INSTANCE_KEY = '__stack-dev-tool-instance';
 const MAX_LOG_ENTRIES = 500;

@@ -1,4 +1,4 @@
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 import { TurnstileAction } from "./turnstile";
 
 export type TurnstileWidgetId = string;
@@ -50,7 +50,7 @@ let turnstileScriptPromise: Promise<void> | null = null;
 
 export function loadTurnstileScript(): Promise<void> {
   if (typeof window === "undefined") {
-    return Promise.reject(new StackAssertionError("Turnstile can only be loaded in the browser"));
+    return Promise.reject(new HexclaveAssertionError("Turnstile can only be loaded in the browser"));
   }
 
   if (getTurnstileApi()) {

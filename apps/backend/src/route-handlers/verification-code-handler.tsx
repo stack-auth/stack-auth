@@ -8,7 +8,7 @@ import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/proje
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { DeepPartial } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 import { SmartRequest } from "./smart-request";
@@ -256,7 +256,7 @@ export function createVerificationCodeHandler<
     async sendCode(createOptions, sendOptions) {
       const codeObj = await this.createCode(createOptions);
       if (!options.send) {
-        throw new StackAssertionError("Cannot use sendCode on this verification code handler because it doesn't have a send function");
+        throw new HexclaveAssertionError("Cannot use sendCode on this verification code handler because it doesn't have a send function");
       }
       return await options.send(codeObj, parseProjectBranchCombo(createOptions), sendOptions);
     },

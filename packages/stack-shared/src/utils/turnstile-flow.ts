@@ -1,4 +1,4 @@
-import { StackAssertionError, captureError } from "./errors";
+import { HexclaveAssertionError, captureError } from "./errors";
 import { loadTurnstileScript, getTurnstileApi } from "./turnstile-browser";
 import type { TurnstileAction } from "./turnstile";
 
@@ -24,7 +24,7 @@ const INVISIBLE_TIMEOUT_MS = 30_000;
 export async function executeTurnstileInvisible(siteKey: string, action: TurnstileAction): Promise<string> {
   await loadTurnstileScript();
   const api = getTurnstileApi();
-  if (!api) throw new StackAssertionError("Turnstile API not available after loadTurnstileScript() resolved");
+  if (!api) throw new HexclaveAssertionError("Turnstile API not available after loadTurnstileScript() resolved");
 
   const container = document.createElement("div");
   Object.assign(container.style, { position: "fixed", left: "-9999px", top: "-9999px" });
@@ -61,7 +61,7 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
       try {
         api.remove(widgetId);
       } catch (e) {
-        captureError("turnstile-widget-remove", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile widget removal", { cause: e }));
+        captureError("turnstile-widget-remove", e instanceof Error ? e : new HexclaveAssertionError("Non-Error thrown during Turnstile widget removal", { cause: e }));
       }
     }
     container.remove();
@@ -163,7 +163,7 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
       const api = getTurnstileApi();
       if (!api) {
         cleanup();
-        reject(new StackAssertionError("Turnstile API not available after loadTurnstileScript() resolved"));
+        reject(new HexclaveAssertionError("Turnstile API not available after loadTurnstileScript() resolved"));
         return;
       }
 
@@ -236,7 +236,7 @@ export async function withBotChallengeFlow<T>(options: WithBotChallengeFlowOptio
       // Both challenges failed (for example Cloudflare is unreachable) — tell the
       // server explicitly so it can distinguish challenge infra outages from a
       // user submitting an invalid visible challenge.
-      captureError("turnstile-flow-all-challenges-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile challenge", { cause: e }));
+      captureError("turnstile-flow-all-challenges-failed", e instanceof Error ? e : new HexclaveAssertionError("Non-Error thrown during Turnstile challenge", { cause: e }));
       return await options.execute({ unavailable: true });
     }
   }
@@ -256,7 +256,7 @@ export async function withBotChallengeFlow<T>(options: WithBotChallengeFlowOptio
     visibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
   } catch (e) {
     if (e instanceof BotChallengeUserCancelledError) throw e;
-    captureError("turnstile-flow-visible-challenge-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during visible Turnstile challenge", { cause: e }));
+    captureError("turnstile-flow-visible-challenge-failed", e instanceof Error ? e : new HexclaveAssertionError("Non-Error thrown during visible Turnstile challenge", { cause: e }));
     throw new BotChallengeExecutionFailedError("Visible bot challenge could not be completed", {
       cause: e,
     });

@@ -1,5 +1,5 @@
 import { ITEM_IDS, PLAN_LIMITS, PlanId } from "@stackframe/stack-shared/dist/plans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../helpers";
@@ -30,7 +30,7 @@ async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: 
         body: { product_id: planId },
       });
       if (grantResponse.status !== 200) {
-        throw new StackAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
+        throw new HexclaveAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
       }
     });
     await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, PLAN_LIMITS[planId].analyticsTimeoutSeconds);
@@ -105,7 +105,7 @@ it("can fetch query timing by query_id", async ({ expect }) => {
   expect(response.status).toBe(200);
   expect(queryId).toEqual(expect.any(String));
   if (typeof queryId !== "string") {
-    throw new StackAssertionError("Expected analytics query response to include query_id");
+    throw new HexclaveAssertionError("Expected analytics query response to include query_id");
   }
 
   const timingResponse = await fetchQueryTimingWithRetry(queryId);
@@ -130,7 +130,7 @@ it("does not allow fetching timing for another project's query", async ({ expect
   expect(projectAQuery.status).toBe(200);
   expect(projectAQueryId).toEqual(expect.any(String));
   if (typeof projectAQueryId !== "string") {
-    throw new StackAssertionError("Expected analytics query response to include query_id");
+    throw new HexclaveAssertionError("Expected analytics query response to include query_id");
   }
 
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });

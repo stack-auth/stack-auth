@@ -2,13 +2,13 @@
 // They are not re-exported here to avoid requiring React for non-UI consumers
 
 export {
-  StackAdminInterface
+  HexclaveAdminInterface
 } from "./interface/admin-interface";
 export {
-  StackClientInterface
+  HexclaveClientInterface
 } from "./interface/client-interface";
 export {
-  StackServerInterface
+  HexclaveServerInterface
 } from "./interface/server-interface";
 export {
   KnownError,

@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 
 const sqlTemplateLiteral = <T>(type: T) => (strings: TemplateStringsArray, ...values: { sql: string }[]) => ({ type, sql: templateIdentity(strings, ...values.map(v => v.sql)) });
@@ -34,7 +34,7 @@ export type TableId = string | { "tableType": "internal", "internalId": string, 
 
 export function quoteSqlIdentifier(input: string): SqlExpression<string> {
   if (input.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/) == null) {
-    throw new StackAssertionError("Invalid SQL identifier", { input });
+    throw new HexclaveAssertionError("Invalid SQL identifier", { input });
   }
   return { type: "expression", sql: `"${input}"` };
 }

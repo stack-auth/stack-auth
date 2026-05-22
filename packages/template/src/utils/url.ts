@@ -1,10 +1,10 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 
 export function constructRedirectUrl(redirectUrl: URL | string | undefined, callbackUrlName: string) {
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (typeof window === 'undefined' || !window.location) {
-    throw new StackAssertionError(`${callbackUrlName} option is required in a non-browser environment.`, { redirectUrl });
+    throw new HexclaveAssertionError(`${callbackUrlName} option is required in a non-browser environment.`, { redirectUrl });
   }
 
   const retainedQueryParams = ["after_auth_return_to"];

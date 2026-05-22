@@ -441,8 +441,11 @@ function isGithubRateLimitError(error: unknown): boolean {
 function buildConfigPathSuggestions(paths: string[]): string[] {
   // Keep suggestions repo-relative (no `./` prefix) so they match both the
   // workflow's push `paths` filter and the default config path input.
+  // Hexclave rebrand: accept the new `hexclave.config.*` filenames alongside
+  // the legacy `stack.config.*` ones so existing repos still surface.
+  const configFileNames = ["hexclave.config.ts", "hexclave.config.js", "stack.config.ts", "stack.config.js"];
   return paths
-    .filter((path) => path.endsWith("/stack.config.ts") || path.endsWith("/stack.config.js") || path === "stack.config.ts" || path === "stack.config.js")
+    .filter((path) => configFileNames.some((name) => path === name || path.endsWith(`/${name}`)))
     .sort((a, b) => stringCompare(a, b));
 }
 

@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { PrismaClientTransaction } from "@/prisma-client";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type CacheGetOrSetOptions<T> = {
   namespace: string,
@@ -19,10 +19,10 @@ function computeExpiry(ttlMs: number): Date {
 
 export async function getOrSetCacheValue<T>(options: CacheGetOrSetOptions<T>): Promise<T> {
   if (!options.namespace) {
-    throw new StackAssertionError("Cache namespace must be a non-empty string.");
+    throw new HexclaveAssertionError("Cache namespace must be a non-empty string.");
   }
   if (!options.cacheKey) {
-    throw new StackAssertionError("Cache key must be a non-empty string.");
+    throw new HexclaveAssertionError("Cache key must be a non-empty string.");
   }
 
   const existing = await options.prisma.cacheEntry.findUnique({

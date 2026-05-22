@@ -46,7 +46,9 @@ export type {
 } from "./internal-api-keys";
 
 export {
-  stackAppInternalsSymbol
+  stackAppInternalsSymbol,
+  // Hexclave rebrand: parallel internals symbol
+  hexclaveAppInternalsSymbol
 } from "./common";
 export {
   getPagePrompt,

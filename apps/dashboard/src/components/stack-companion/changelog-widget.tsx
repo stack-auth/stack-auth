@@ -44,7 +44,10 @@ function markLatestVersionSeen(entries: ApiChangelogEntry[]) {
   // Find the first released version (skip unreleased to avoid breaking version comparison)
   const latestReleasedEntry = entries.find(entry => !entry.isUnreleased);
   if (latestReleasedEntry) {
-    document.cookie = `stack-last-seen-changelog-version=${encodeURIComponent(latestReleasedEntry.version)}; path=/; max-age=31536000`;
+    // Hexclave rebrand: dual-write the changelog cookie under both names.
+    const encodedVersion = encodeURIComponent(latestReleasedEntry.version);
+    document.cookie = `hexclave-last-seen-changelog-version=${encodedVersion}; path=/; max-age=31536000`;
+    document.cookie = `stack-last-seen-changelog-version=${encodedVersion}; path=/; max-age=31536000`;
   }
 }
 

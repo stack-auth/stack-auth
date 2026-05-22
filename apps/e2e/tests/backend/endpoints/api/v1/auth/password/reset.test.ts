@@ -1,4 +1,4 @@
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { expect } from "vitest";
 import { it, localRedirectUrl, localRedirectUrlRegex } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
@@ -25,7 +25,7 @@ async function getResetCode() {
   expect(resetCodeMessage.subject).toBe("Reset your password at Stack Dashboard");
   const resetCodeUrls = resetCodeMessage.body?.text.match(localRedirectUrlRegex) ?? throwErr("Reset code regex not matched");
   if (resetCodeUrls.length !== 1) {
-    throw new StackAssertionError(`Expected exactly one reset code link, received ${resetCodeUrls.length}`, { resetCodeMessage });
+    throw new HexclaveAssertionError(`Expected exactly one reset code link, received ${resetCodeUrls.length}`, { resetCodeMessage });
   }
   const resetCodeUrl = new URL(resetCodeUrls[0]);
   return resetCodeUrl.searchParams.get("code") ?? throwErr(`Expected reset code link to contain code query param, received ${resetCodeUrl}`);

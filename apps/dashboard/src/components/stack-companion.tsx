@@ -189,10 +189,12 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
       setChangelogData(entries);
 
       // Check for new versions
-      const lastSeenRaw = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('stack-last-seen-changelog-version='))
-        ?.split('=')[1] || '';
+      // Hexclave rebrand: dual-read the changelog cookie, preferring the new name.
+      const cookieRows = document.cookie.split('; ');
+      const lastSeenRaw = (
+        cookieRows.find(row => row.startsWith('hexclave-last-seen-changelog-version='))
+        ?? cookieRows.find(row => row.startsWith('stack-last-seen-changelog-version='))
+      )?.split('=')[1] || '';
 
       const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
       setLastSeenVersion(lastSeen);
@@ -220,7 +222,10 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
       if (changelogData && changelogData.length > 0) {
         const latestReleasedEntry = changelogData.find(entry => !entry.isUnreleased);
         if (latestReleasedEntry) {
-          document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestReleasedEntry.version)}; path=/; max-age=31536000`; // 1 year
+          // Hexclave rebrand: dual-write the changelog cookie under both names. 1 year max-age.
+          const sanitizedVersion = sanitizeCookieValue(latestReleasedEntry.version);
+          document.cookie = `hexclave-last-seen-changelog-version=${sanitizedVersion}; path=/; max-age=31536000`;
+          document.cookie = `stack-last-seen-changelog-version=${sanitizedVersion}; path=/; max-age=31536000`;
           setLastSeenVersion(latestReleasedEntry.version);
         }
       }
@@ -228,10 +233,12 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
       setHasNewVersions(false);
     } else if (activeItem === null) {
       // When closed, re-check if there are new versions
-      const lastSeenRaw = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('stack-last-seen-changelog-version='))
-        ?.split('=')[1] || '';
+      // Hexclave rebrand: dual-read the changelog cookie, preferring the new name.
+      const cookieRows = document.cookie.split('; ');
+      const lastSeenRaw = (
+        cookieRows.find(row => row.startsWith('hexclave-last-seen-changelog-version='))
+        ?? cookieRows.find(row => row.startsWith('stack-last-seen-changelog-version='))
+      )?.split('=')[1] || '';
 
       const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
 

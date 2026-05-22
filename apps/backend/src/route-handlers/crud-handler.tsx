@@ -6,7 +6,7 @@ import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/proje
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -251,17 +251,17 @@ export function createCrudHandlers<
               }) => {
                 if (tenancy) {
                   if (project || branchId) {
-                    throw new StackAssertionError("Must specify either project and branchId or tenancy, not both");
+                    throw new HexclaveAssertionError("Must specify either project and branchId or tenancy, not both");
                   }
                   project = tenancy.project;
                   branchId = tenancy.branchId;
                 } else if (project) {
                   if (!branchId) {
-                    throw new StackAssertionError("Must specify branchId when specifying project");
+                    throw new HexclaveAssertionError("Must specify branchId when specifying project");
                   }
                   tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
                 } else {
-                  throw new StackAssertionError("Must specify either project and branchId or tenancy");
+                  throw new HexclaveAssertionError("Must specify either project and branchId or tenancy");
                 }
 
                 try {
@@ -280,7 +280,7 @@ export function createCrudHandlers<
                     });
                   });
                 } catch (error) {
-                  if (allowedErrorTypes?.some((a) => error instanceof a) || error instanceof StackAssertionError) {
+                  if (allowedErrorTypes?.some((a) => error instanceof a) || error instanceof HexclaveAssertionError) {
                     throw error;
                   }
                   throw new CrudHandlerInvocationError(error);
@@ -308,7 +308,7 @@ async function validate<T>(obj: unknown, schema: yup.ISchema<T>, currentUser: Us
     });
   } catch (error) {
     if (error instanceof yup.ValidationError) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         deindent`
           ${validationDescription} failed in CRUD handler.
           
