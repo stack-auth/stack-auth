@@ -1,14 +1,3 @@
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-
-- [Hexclave](#hexclave)
-  - [Get started](#get-started)
-  - [What's included](#whats-included)
-  - [SDKs](#sdks)
-  - [Contributing](#contributing)
-
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
 <div align="center">
 
 <img src=".github/assets/hexclave-header.svg" alt="Hexclave" width="320"/>
@@ -45,81 +34,61 @@ Each one is built on the same user model, and new apps land regularly.
 
 ### <img src=".github/assets/logos/authentication.png" width="40" align="top"/> &nbsp; Authentication
 
-Passwords, OAuth, magic links, and passkeys, with pre-built UI and sign-up fraud protection.
-
-<img src="apps/dashboard/public/storeDesc-auth-1.png" alt="Authentication"/>
+Authentication that just works with passkeys, OAuth, and CLI auth. Drop in one component and ship the whole flow; auth methods toggle from the dashboard with no code changes needed.
 
 ---
 
 ### <img src=".github/assets/logos/teams.png" width="40" align="top"/> &nbsp; Teams
 
-Multi-tenant organizations, members, and invitations.
-
-<img src="apps/dashboard/public/storeDesc-teams-1.png" alt="Teams"/>
+Build for teams, not just users, with workspaces, email invites, and roles that actually gate the work. The workspace switcher remembers selection, invites auto sign up new users, and permissions hold up under audit.
 
 ---
 
 ### <img src=".github/assets/logos/rbac.png" width="40" align="top"/> &nbsp; RBAC
 
-Role-based access control with project and team permissions.
-
-<img src="apps/dashboard/public/storeDesc-rbac-1.png" alt="RBAC"/>
+Permissions, sorted: roles that nest and one permission check that works the same on server or client. Define them in the dashboard, check them anywhere in your code.
 
 ---
 
 ### <img src=".github/assets/logos/api-keys.png" width="40" align="top"/> &nbsp; API Keys
 
-Issue and manage publishable and secret API keys.
-
-<img src="apps/dashboard/public/storeDesc-api-keys-1.png" alt="API Keys"/>
+API keys without the footguns: leaked keys get auto-revoked, work for users and teams, and show the full secret only once. We never keep the plaintext after creation.
 
 ---
 
 ### <img src=".github/assets/logos/payments.png" width="40" align="top"/> &nbsp; Payments
 
-Product lines, checkout, subscriptions, and payouts.
-
-<img src="apps/dashboard/public/storeDesc-payments-1.png" alt="Payments"/>
+Payments without the plumbing for subscriptions, one-time charges, and usage metering with credits. Bill a person or a whole team with one model, no separate codepath.
 
 ---
 
 ### <img src=".github/assets/logos/emails.png" width="40" align="top"/> &nbsp; Emails
 
-Transactional email with templates, themes, and delivery logs.
-
-<img src="apps/dashboard/public/storeDesc-emails-1.png" alt="Emails"/>
+Email that delivers and tells you so, handling transactional and marketing sends from one API. Edit templates with an AI editor, theme once, and track every open and click.
 
 ---
 
 ### <img src=".github/assets/logos/analytics.png" width="40" align="top"/> &nbsp; Analytics
 
-Explore your product's events, usage data, and session replays.
-
-<img src=".github/assets/screenshots/analytics.png" alt="Analytics"/>
+Know your users with no data stack required, with live active user counts and session replays out of the box. Ask in plain English to build dashboards or write SQL to save queries, all with one flag enabled.
 
 ---
 
 ### <img src=".github/assets/logos/webhooks.png" width="40" align="top"/> &nbsp; Webhooks
 
-Real-time event notifications for your own services.
-
-<img src="apps/dashboard/public/storeDesc-webhooks-1.png" alt="Webhooks"/>
+React to every user event in real time with signed, tamper-proof webhooks. Retries and backoff are handled for you; verify in five lines and manage endpoints from the dashboard.
 
 ---
 
 ### <img src=".github/assets/logos/data-vault.png" width="40" align="top"/> &nbsp; Data Vault
 
-Encrypted storage for your users' sensitive data.
-
-<img src="apps/dashboard/public/storeDesc-data-vault-1.png" alt="Data Vault"/>
+A safe for the secrets your users hand you, locked with your secret so we never see the plaintext. Store and retrieve tokens in two lines each, server-only by design.
 
 ---
 
 ### <img src=".github/assets/logos/launch-checklist.png" width="40" align="top"/> &nbsp; Launch Checklist
 
-Pre-launch verification and readiness checks.
-
-<img src=".github/assets/screenshots/launch-checklist.png" alt="Launch Checklist"/>
+Run through the must-do checks before flipping to production: domain setup, callbacks locked, secrets rotated. The progress tracker keeps your team aligned so nothing critical slips through on launch day.
 
 ## Contributing
 
