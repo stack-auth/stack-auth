@@ -72,7 +72,7 @@ These follow the same pattern as request headers: old form continues to work ind
 | Config filename | `stack.config.ts` | `hexclave.config.ts` |
 | Mobile OAuth URL scheme | `stack-auth-mobile-oauth-url://` | `hexclave-mobile-oauth-url://` |
 
-**Bearer prefix details.** Backend's Authorization parser checks both `stackauth_` and `hexclave_` prefixes (one extra string-prefix check). New SDKs construct tokens with the `hexclave_` prefix; old SDKs keep working unchanged. Anyone debugging a request sees the brand-consistent prefix on new traffic.
+**Bearer prefix details.** *Discovery correction:* the `Bearer stackauth_<base64>` token is **not** a backend wire identifier — the Stack backend never parses it. It is an SDK-internal serialization of `{ accessToken, refreshToken }` for the `tokenStore: { headers }` init path; the SDK decodes it itself and then sends `x-stack-access-token` / `x-stack-refresh-token` to the backend. Dual-support lives entirely in `packages/template` (`client-app-impl.ts`): accept either prefix on parse, emit `hexclave_`. No backend change. See the [PR 1 implementation guide](#pr-1-implementation-guide-resolved-from-codebase-discovery).
 
 **Response header details.** Backend emits both `x-stack-*` AND `x-hexclave-*` versions of `actual-status`, `known-error`, `request-id` on every response (~60 extra bytes total — negligible). New SDKs read `x-hexclave-*` first, fall back to `x-stack-*`. Old SDKs continue to read `x-stack-*` only.
 
@@ -119,9 +119,9 @@ Server reads both `x-stack-*` and `x-hexclave-*` via a single helper. New SDKs e
 | `x-stack-random-nonce` | `x-hexclave-random-nonce` |
 | `x-stack-bulldozer-studio-token` | `x-hexclave-bulldozer-studio-token` |
 
-**Implementation pattern:** `readDualHeader(req, "x-hexclave-foo", "x-stack-foo")` at the parse layer. Zero per-route changes.
+**Implementation pattern:** normalize `x-hexclave-*` → `x-stack-*` at the existing (currently-empty) request-header hook in `apps/backend/src/proxy.tsx:114`, before routing and yup validation — so `smart-request.tsx` and every route schema keep working unchanged. No `readDualHeader` helper, no per-route edits. Details and the exact reader sites are in the [PR 1 implementation guide](#pr-1-implementation-guide-resolved-from-codebase-discovery).
 
-**CORS sync requirement.** `apps/backend/src/proxy.tsx` maintains explicit allowlists for request headers (lines 16-54) and response headers (lines 50-54) used by CORS preflight. Every old + new header pair must appear in both allowlists or preflight will fail. Easy to miss.
+**CORS sync requirement.** `apps/backend/src/proxy.tsx` maintains explicit allowlists — `corsAllowedRequestHeaders` (lines 16-48) and `corsAllowedResponseHeaders` (lines 50-54). `apps/dashboard/src/proxy.tsx` has a near-duplicate pair (lines 13-34). Every old + new header name must appear in all of them or CORS preflight fails. Easy to miss.
 
 ### HTTP response/protocol headers (dual-emit)
 
@@ -131,7 +131,7 @@ These flow backend → client. Covered in the symmetric dual-support table above
 
 ### Authorization Bearer formats
 
-Covered in the symmetric dual-support table above. Backend accepts both `Bearer stackauth_*` and `Bearer hexclave_*`. New SDKs emit `Bearer hexclave_*`.
+**SDK-internal — not a backend identifier.** The `Bearer stackauth_*` token is parsed and emitted entirely within the SDK (`packages/template`); the Stack backend never sees it. The SDK's token parser accepts both `stackauth_` and `hexclave_` prefixes; new SDK code emits `hexclave_`. Exact functions and line numbers in the [PR 1 implementation guide](#pr-1-implementation-guide-resolved-from-codebase-discovery).
 
 ### Cookies (dual-write, dual-read across the board)
 
@@ -270,20 +270,20 @@ Delimiter conventions are inconsistent across these keys (hyphen, underscore, do
 
 | Old (accepted indefinitely) | New (preferred) | Flow |
 |---|---|---|
-| `stack_response_mode` | `hexclave_response_mode` | SDK → backend (OAuth authorize) |
-| `stack_cross_domain_auth` | `hexclave_cross_domain_auth` | cross-domain handoff (SDK ↔ SDK across domains) |
-| `stack_cross_domain_state` | `hexclave_cross_domain_state` | cross-domain handoff |
-| `stack_cross_domain_code_challenge` | `hexclave_cross_domain_code_challenge` | cross-domain handoff |
-| `stack_cross_domain_after_callback_redirect_url` | `hexclave_cross_domain_after_callback_redirect_url` | cross-domain handoff |
+| `stack_response_mode` | `hexclave_response_mode` | SDK → backend (OAuth authorize) — **the only query param the backend reads** |
+| `stack_cross_domain_auth` (marker, value `"1"`) | `hexclave_cross_domain_auth` | cross-domain handoff (SDK ↔ SDK), SDK-internal |
+| `stack_cross_domain_state` | `hexclave_cross_domain_state` | cross-domain handoff, SDK-internal |
+| `stack_cross_domain_code_challenge` | `hexclave_cross_domain_code_challenge` | cross-domain handoff, SDK-internal |
+| `stack_cross_domain_after_callback_redirect_url` | `hexclave_cross_domain_after_callback_redirect_url` | cross-domain handoff, SDK-internal |
+| `stack_nested_cross_domain_auth_refresh_token_id` | `hexclave_nested_cross_domain_auth_refresh_token_id` | nested cross-domain handoff, SDK-internal |
+| `stack_nested_cross_domain_auth_callback_url` | `hexclave_nested_cross_domain_auth_callback_url` | nested cross-domain handoff, SDK-internal |
 | `stack-init-id` | `hexclave-init-id` | init CLI → dashboard wizard-congrats page |
 
-**`stack_response_mode`** — emitted by `packages/stack-shared/src/interface/client-interface.ts:1419`, read by the yup query schema at `apps/backend/src/app/api/latest/auth/oauth/authorize/[provider_id]/route.tsx:42`. The backend schema must accept both keys (prefer new). This needs genuine dual-accept, not a rename: if the param is dropped silently the backend falls back to `responseMode: "redirect"` and the SDK can no longer intercept bot challenges before navigating.
+**`stack_response_mode`** — emitted by `packages/stack-shared/src/interface/client-interface.ts:1419`, read by the yup query schema at `apps/backend/src/app/api/latest/auth/oauth/authorize/[provider_id]/route.tsx:42` (used at :160,:166). The backend schema must accept both keys (prefer new). This needs genuine dual-accept, not a rename: if the param is dropped silently the backend falls back to `responseMode: "redirect"` and the SDK can no longer intercept bot challenges before navigating. **This is the only `stack_*` query param the backend itself parses** — all the others below are SDK↔SDK only.
 
-**`stack_cross_domain_*`** — the four param names are defined together in `packages/template/src/lib/stack-app/apps/implementations/redirect-page-urls.ts:6-9`; the `stack_cross_domain_auth === "1"` marker is read at `packages/template/src/components-page/stack-handler-client.tsx:267`. Writer and reader are both in the SDK, so a handoff between two different SDK majors (one per domain) must still resolve: dual-emit both param sets into the redirect URL, and accept either on read.
+**`stack_cross_domain_*`** — the four param names are the `crossDomainAuthQueryParams` const at `packages/template/src/lib/stack-app/apps/implementations/redirect-page-urls.ts:5-10`; the `stack_cross_domain_auth === "1"` marker is read at `packages/template/src/components-page/stack-handler-client.tsx:267`. The two `stack_nested_cross_domain_auth_*` params are the `nestedCrossDomainAuthQueryParams` object at `client-app-impl.ts:89-97` (written :847,:849; read :860,:863). Writer and reader are both in the SDK, so a handoff between two SDK majors (one per domain) must still resolve: dual-emit both param sets into the redirect URL, and accept either on read. (The non-prefixed OAuth params in `nestedCrossDomainAuthQueryParams` — `redirect_uri`, `state`, `code_challenge`, etc. — are standard OAuth and are **not** rebranded.)
 
 **`stack-init-id`** — emitted by `packages/init-stack/src/index.ts:452`, read by `apps/dashboard/src/app/(main)/wizard-congrats/posthog.tsx:12`. Dashboard reads either key; new `init` CLI emits the new one. Low-stakes (PostHog distinct-id correlation only) but follows the same pattern. Note the hyphen delimiter — the cross-domain and response-mode params use underscores; preserve each.
-
-A repo-wide grep for `stack_` / `stack-` query keys should confirm this list before PR 1.
 
 ### Custom DOM events
 
@@ -355,15 +355,16 @@ These are **not exported from any customer SDK entrypoint** (`@stackframe/stack`
 
 Page components (`SignIn`, `SignUp`, `AuthPage`, `AccountSettings`, `UserButton`, `TeamSwitcher`, `OAuthButton`, `PasswordReset`, `EmailVerification`, `ForgotPassword`, `MessageCard`, `CliAuthConfirmation`) don't carry the brand — leave alone.
 
-**Internal `Symbol.for(...)` keying** — dual-symbol pattern. Three distinct `Symbol.for()` strings with "stack" in them across the codebase. All get the dual-attach treatment for consistency.
+**Internal `Symbol.for(...)` keying.** Discovery found **four** distinct `Symbol.for()` strings containing "stack" (earlier plan versions listed three). Only the first is customer-visible — part of `StackClientApp`'s type surface, accessed by dashboard + example code — and needs dual-attach; the other three are file-private with no cross-version concern and are renamed outright.
 
-| Old (kept for cross-version coexistence) | New (canonical) | Location |
+| Old | New | Scope / treatment |
 |---|---|---|
-| `Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals")` | `Symbol.for("Hexclave--app-internals")` | `packages/template/src/lib/stack-app/common.ts:213` |
-| `Symbol.for("__stack-globals")` | `Symbol.for("__hexclave-globals")` | `packages/stack-shared/src/utils/globals.tsx` |
-| `Symbol.for("__stack_email_queue_first_run_completed")` | `Symbol.for("__hexclave_email_queue_first_run_completed")` | `apps/backend/src/lib/email-queue-step.tsx` |
+| `Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals")` | `Symbol.for("Hexclave--app-internals")` | Customer-visible. **3 definition sites:** `packages/template/src/lib/stack-app/common.ts:213`, `apps/dashboard/src/lib/stack-app-internals.ts:8`, `apps/dashboard/.../external-db-sync/page-client.tsx:24`. **Dual-attach.** |
+| `Symbol.for("__stack-globals")` | `Symbol.for("__hexclave-globals")` | SDK-internal, file-private to `packages/stack-shared/src/utils/globals.tsx`. Straight rename. |
+| `Symbol.for("stack-smartRouteHandler")` | `Symbol.for("hexclave-smartRouteHandler")` | Backend-only, file-private to `apps/backend/src/route-handlers/smart-route-handler.tsx`. Straight rename. |
+| `Symbol.for("__stack_email_queue_first_run_completed")` | `Symbol.for("__hexclave_email_queue_first_run_completed")` | Backend-only, file-private to `apps/backend/src/lib/email-queue-step.tsx`. Straight rename. |
 
-On attach: write internals under BOTH symbols. On lookup: try new first, fall back to old. Mixed-version setups (a customer with two SDK majors loaded in one page) keep working.
+For the customer-visible symbol: on attach, write internals under BOTH symbols; on lookup, try new then old — so a page with two SDK majors keeps working. The other three are read and written within a single file, so a plain rename of the string is sufficient.
 
 ### Swift SDK — separate package, not typealiases
 
@@ -801,19 +802,76 @@ These are listed once for completeness so reviewers don't worry about them. The 
 
 ---
 
-## Implementation realities (architecture observations from pre-PR-1 review)
+## PR 1 implementation guide (resolved from codebase discovery)
 
-These aren't decisions — they're things the implementer should know before starting. Each comes from grepping the actual codebase.
+A discovery pass against the codebase resolved the open items from earlier plan versions. Each work-area below gives the chosen approach, the concrete files/lines, and the gotchas — enough to implement PR 1 without further investigation.
 
-1. **No `readDualHeader` helper exists — AND it's insufficient on its own.** [smart-request.tsx](apps/backend/src/route-handlers/smart-request.tsx) reads auth-level headers via individual `req.headers.get()` calls (~10 sites). But route handlers ALSO destructure header names directly from yup-validated schemas — e.g. [refresh/route.tsx:19,29](apps/backend/src/app/api/latest/auth/sessions/current/refresh/route.tsx:19) declares `"x-stack-refresh-token"` in the schema and destructures it from `headers` in the handler, and [password/update/route.tsx:27,34](apps/backend/src/app/api/latest/auth/password/update/route.tsx:27) does the same. **A helper at the auth-parse layer alone won't cover these.** PR 1 must either (a) add a header-name normalization step *before* yup schema validation that populates both old + new keys into `headers`, or (b) update every route schema that names a `x-stack-*` header to accept both names. (a) is mechanically smaller. CORS allowlist in `apps/backend/src/proxy.tsx` also needs both old + new names.
+### Request headers — normalize at the proxy
 
-2. **JWT issuer validation is URL-built, not domain-matched.** [apps/backend/src/lib/tokens.tsx:58-104](apps/backend/src/lib/tokens.tsx:58) constructs allowed issuer URLs from `NEXT_PUBLIC_STACK_API_URL` and passes them as an exact-match array to `verifyJWT()`. There's no domain-substring check. Implementation must build **two arrays** (one per domain) and concatenate, OR refactor `getIssuer()` to return both variants.
+There is an **existing, currently-empty hook** at `apps/backend/src/proxy.tsx:114` (`const newRequestHeaders = new Headers(request.headers); // here we could update the request headers (currently we don't)`). Insert the normalization here: for each `x-hexclave-*` request header, copy its value onto the matching `x-stack-*` name. It runs before routing, `createSmartRequest`, and yup validation, so **every downstream reader keeps working unchanged** — `parseAuth`'s ~12 `req.headers.get("x-stack-*")` calls (`smart-request.tsx:162-172,348`), the route handlers that destructure header names from yup schemas (`auth/password/update/route.tsx:27,34`; `auth/sessions/current/refresh/route.tsx:19,29`; `auth/oauth/cross-domain/authorize/route.tsx:110-160`), `smart-response.tsx:144`, `smart-route-handler.tsx:92`, `proxy.tsx:64,81`. No `readDualHeader` helper, no per-route schema edits. Apply the same normalization in `apps/dashboard/src/proxy.tsx` (it has its own header handling).
 
-3. **Cookie helper isn't fully centralized.** `stack-is-https` is written in at least 4 places that bypass the central helper (cookie.ts:280, 355; TanStack integration:198; backend OAuth setters). Dual-write requires refactoring those to use shared constants, not just editing one helper.
+### Response headers
 
-4. **Bearer prefix parser location TBD.** The agent review couldn't pinpoint where `Bearer stackauth_*` is actually parsed — likely JWT validation in `packages/stack-shared/src/utils/jwt.tsx` or in middleware, not in `smart-request.tsx`. Locating is a PR 1 prerequisite.
+`apps/backend/src/route-handlers/smart-response.tsx` sets `x-stack-request-id` (:136, always) and `x-stack-actual-status` (:146); `x-stack-known-error` comes from `KnownError.getHeaders()` (`packages/stack-shared/src/known-errors.tsx:49-53`) and is copied on at `smart-response.tsx:150-152`. Dual-emit = set the `x-hexclave-*` copy at each site. The SDK reads `x-stack-actual-status` (`client-interface.ts:794-795`) and `x-stack-known-error` (`:807-810`); `x-stack-request-id` is emit-only, never read. Dual-read = check `x-hexclave-*` first.
 
-5. **NPM dual-publish needs the copy-to-temp pattern, not in-place rewrite.** The plan's original "rewrite package.json names, then `pnpm publish -r` again" approach won't work — pnpm uses a shared lockfile, so after rewrite it can't resolve `@hexclave/X` workspace refs. **Concrete fix:** the rewrite script copies `dist/` artifacts and each package.json into a temp directory, rewrites the temp copies (names + deps), and publishes from temp. Workspace lockfile stays untouched.
+### Bearer token prefix — SDK-internal, not a backend identifier
+
+The `Bearer stackauth_<base64>` token is **never parsed by the Stack backend**. It is an SDK-internal serialization of `{ accessToken, refreshToken }` for the `tokenStore: { headers }` init path; the SDK decodes it and then sends `x-stack-access-token` / `x-stack-refresh-token`. All in `packages/template/.../lib/stack-app/apps/implementations/client-app-impl.ts`: constant `STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_"` (:102), emit `getAuthorizationHeaderValueFromAuthJson()` (:104-111), parse `getAuthJsonFromAuthorizationHeaderValue()` (:113-154; prefix check :120; hardcoded error strings :126,134,138,144,147). Add `HEXCLAVE_AUTHORIZATION_VALUE_PREFIX = "hexclave_"`, accept either on parse, emit `hexclave_`. No backend change.
+
+### JWT issuer / audience
+
+`apps/backend/src/lib/tokens.tsx:58-104` builds allowed issuer URLs from the configured API URL and passes an exact-match array to `verifyJWT()` — no domain-substring check. Build two arrays (one per domain) and concatenate, or have `getIssuer()` return both variants. Also: `packages/template/src/integrations/convex.ts`, `apps/backend/src/app/api/latest/integrations/idp.ts:167`.
+
+### Cookies — central helper + enumerated bypass sites
+
+Auth cookies (`stack-access`, `stack-refresh-*`, `stack-oauth-outer-*`) flow through `packages/template/src/lib/cookie.ts`; their names have a single point of truth in `client-app-impl.ts` getters — `_accessTokenCookieName` (:1083), `_refreshTokenCookieName` / `_legacyRefreshTokenCookieName` (:969-975), `_getRefreshTokenCookieNamePatterns()` (:1091-1098). Dual-write / dual-read by extending those. **Bypass sites to patch individually:**
+- `stack-oauth-inner-*` — backend raw `cookies()`: set at `auth/oauth/authorize/[provider_id]/route.tsx:180-188`, read + delete at `auth/oauth/callback/[provider_id]/route.tsx:119-120`.
+- `stack-access` / `stack-refresh-*` delete — `apps/dashboard/.../api/remote-development-environment/auth/route.ts:10-21` (update `isInternalProjectRefreshCookieName()` at :10-13 to match new names too).
+- `stack-is-https` — three write sites, all inside `cookie.ts` (:198-203, :280, :355).
+- `stack-last-seen-changelog-version` — raw `document.cookie`: `stack-companion.tsx:223`, `changelog-widget.tsx:47` (reads :192,:231).
+- Impersonation snippet strings — `users/[userId]/page-client.tsx:161`, `user-table.tsx:399` (code shown to users to paste in a console).
+- Snapshot serializer — add `"hexclave-oauth-inner-"` to `keyedCookieNamePrefixes` at `apps/e2e/tests/snapshot-serializer.ts:119`.
+
+### Storage keys
+
+Single-constant keys — change the constant: `CLI_AUTH_CONFIRMED_KEY` (`cli-auth-confirm.tsx:31`), `LOCAL_STORAGE_PREFIX` (`session-replay.ts:90`), `STORAGE_KEY` / `TRIGGER_POS_KEY` (`dev-tool-core.ts:51-52`), `OVERRIDE_KEY` (`dev-tool/index.ts:9`). Hardcoded strings to wrap then change: `stack_mfa_attempt_code` (`client-app-impl.ts:3288`, `mfa.tsx:37,70`, `page-component-versions.ts:1510,1519`), `_STACK_AUTH.lastUsed` (`oauth-button.tsx:37,190`), docs keys (`platform-codeblock.tsx`, `platform-indicator.tsx`). Dual-read where the value must survive an SDK upgrade (`session-replay`); straight rename for the UI-only dev-tool / docs keys.
+
+### Env vars — hybrid: one central transform + two client files + a per-site tail
+
+`getEnvVariable` in `packages/stack-shared/src/utils/env.tsx` already has an `ENV_VAR_RENAME` table — the dual-read primitive exists.
+- **Server-side (~150 call sites, zero call-site edits):** add a `STACK_*`→`HEXCLAVE_*` (and `NEXT_PUBLIC_STACK_*`→`NEXT_PUBLIC_HEXCLAVE_*`, infix variants, `STACK_AUTH_*`) prefix transform inside `getEnvVariable` / `getEnvBoolean` / `getProcessEnv`: try the `HEXCLAVE_*` name, then `STACK_*`. This automatically covers the dynamically-built OAuth credential names (`STACK_${provider}_CLIENT_ID` at `apps/backend/src/oauth/index.tsx:40-41`).
+- **Dashboard client (~70 sites):** `apps/dashboard/src/lib/env.tsx` `getPublicEnvVar` keys into a static `_inlineEnvVars` map of literal `process.env.NEXT_PUBLIC_*` (build-time inlined — cannot be made dynamic). Add a parallel `NEXT_PUBLIC_HEXCLAVE_*` literal as the preferred operand in each entry; add matching `HEXCLAVE` sentinels to `_postBuildEnvVars` and the Docker post-build substitution.
+- **Customer SDK:** `packages/template/src/lib/env.ts` — each getter is a literal `process.env.X`; add the `HEXCLAVE` literal as the preferred operand inside each. Run `generate-sdks` after.
+- **Per-site tail (unavoidable):** Vite examples (`VITE_STACK_*` via `import.meta.env`), raw `process.env` in `next.config.mjs` / `prisma/seed.ts` / `stack-cli` / `mock-oauth-server`, the `STACK_*` glob in `turbo.json`, and `.env*` / `.env.example`.
+- Resolve (don't mechanically prefix-swap) the three alias clusters — API URL, and the browser/server infix-vs-suffix forms; `apps/dashboard/src/lib/env.tsx` already carries TODOs for them. `NEXT_PUBLIC_STACK_PORT_PREFIX` (~25 sites) is the rename-outright exception.
+
+### SDK export aliases — concrete targets
+
+Add to `packages/template/src/index.ts`: `StackConfig`, `defineStackConfig`, `StackHandler`, `StackProvider`, `StackTheme`, `useStackApp`. Add to `packages/template/src/lib/stack-app/index.ts`: `StackClientApp` / `StackServerApp` / `StackAdminApp` (values) and the types `Stack{Client,Server,Admin}AppConstructor`, `Stack{Client,Server,Admin}AppConstructorOptions`, `StackClientAppJson`. `StackHandler` / `StackProvider` are `export { default as ... }` re-exports — alias as `export { StackHandler as HexclaveHandler }` (not another default). Type exports use `export type { X as HexclaveX }`. Run `generate-sdks` after.
+
+### Internal renames
+
+`StackClientInterface` / `StackServerInterface` / `StackAdminInterface` — defined in `packages/stack-shared/src/interface/{client,server,admin}-interface.ts`, exported only from `@stackframe/stack-shared`'s index (no customer SDK). ~34 references across ~14 files. `StackAssertionError` — `packages/stack-shared/src/utils/errors.tsx:69`, not exported from any public index, ~344 references. Both rename outright; mechanical, grep-driven.
+
+### Config discovery — ~15 sites
+
+CLI: `stack-cli/src/commands/config-file.ts:202-205`, `init.ts:195,390`, `dev.ts:495`. Dashboard local-dev: `lib/remote-development-environment/config-file.ts:18,55`, `link-existing-onboarding.tsx:146,445,500`, `projects/page-client.tsx` (~8 UI strings), `development-environment/health/route.ts:47`, `layout-client.tsx:78`. Backend emulator: `internal/local-emulator/project/route.tsx:43,305`. Each: prefer `hexclave.config.ts`, fall back to `stack.config.ts`. CLI credentials path: `stack-cli/src/lib/config.ts:5` (`~/.config/stack-auth/credentials.json`, override `STACK_CLI_CONFIG_PATH`) — dual-read old path, write new.
+
+### MCP
+
+`apps/mcp/src/mcp-handler.ts` — `server.tool("ask_stack_auth", …)` at :107-172. Add `server.tool("ask_hexclave", …)` delegating to the same handler; pass `toolName: "ask_hexclave"` (:149), adjust the hint text (:169) and `instructions` (:179). `apps/e2e/tests/backend/.../mcp.test.ts` inline snapshots (:37-99) grow and must be updated.
+
+### Test sweep (PR 1 — wire identifiers only)
+
+Header-name assertions: `js/auth-like.test.ts:404,419,470,541`, `render-email.test.ts:180,217`, `internal/projects.test.ts:51`, `neon/.../provision.test.ts:224`, `backend-helpers.ts:197-201`. Cookie-name: `backend-helpers.ts:803`, `oauth/{authorize,callback,merge-strategy}.test.ts`, `sign-up-rules.test.ts:36`, `js/cookies.test.ts:200`, `cross-domain-auth.test.ts:190`. Snapshot serializer: `snapshot-serializer.ts:119`. Many `x-stack-known-error` values live in inline snapshots and regenerate automatically. (Error-message-string and docs-URL assertions are PR 2.)
+
+### Still unverified
+
+- The backend **read** site for the legacy `x-stack-auth` JSON header was not located in `smart-request.tsx`'s auth parser. The SDK emit side is `client-app-impl.ts` (`getAuthHeaders()` / `useAuthHeaders()`). Confirm whether and where the backend consumes it before relying on the "kept indefinitely" claim.
+
+### Retained from earlier review
+
+- **NPM dual-publish needs the copy-to-temp pattern**, not an in-place rewrite — pnpm's shared lockfile means an in-place rename can't resolve `@hexclave/X` workspace refs. The rewrite script copies `dist/` artifacts and each `package.json` into a temp directory, rewrites the temp copies (names + deps + version), and publishes from temp:
 
    ```yaml
    - name: Rewrite to @hexclave/* in temp dir
@@ -822,15 +880,7 @@ These aren't decisions — they're things the implementer should know before sta
      run: pnpm publish --no-git-checks --access public --recursive /tmp/hexclave-pkgs
    ```
 
-6. **Config discovery is not one function.** `init` (`packages/stack-cli/src/commands/init.ts`) hardcodes `stack.config.ts` output; `dev` requires explicit `--config-file`; dashboard local-dev linking discovers separately. Adding "prefer `hexclave.config.ts`, fall back to `stack.config.ts`" requires updating each discovery site.
-
-7. **Symbol attach-and-lookup sites unknown.** `stackAppInternalsSymbol` is defined in [common.ts:213](packages/template/src/lib/stack-app/common.ts:213). Every site that does `app[stackAppInternalsSymbol] = …` and every `app[stackAppInternalsSymbol]` read needs dual treatment. Estimated 5-20 sites; enumerate during PR 1.
-
-8. **Snapshot serializer hardcodes `"stack-oauth-inner-"`** at [apps/e2e/tests/snapshot-serializer.ts:119](apps/e2e/tests/snapshot-serializer.ts:119). Update to also recognize `"hexclave-oauth-inner-"` or snapshots will go noisy during dual-write.
-
-9. **Test assertion sweep.** Roughly 7+ e2e tests assert on exact `"Stack Auth: …"` error message prefixes and specific header names (`expect(...).toEqual({"x-stack-auth": ...})`, etc.). Update in lockstep with the implementation — header-name assertions in PR 1, error-message-prefix assertions in PR 2.
-
-10. **CLI Sentry DSN compile-time bake.** `packages/stack-cli/tsdown.config.ts` embeds `__STACK_CLI_SENTRY_DSN__`. Existing DSN stays (per locked decision); just be aware that old released CLI versions will keep emitting under their old DSN indefinitely — that's intentional.
+- **CLI Sentry DSN compile-time bake.** `packages/stack-cli/tsdown.config.ts` embeds `__STACK_CLI_SENTRY_DSN__`. Existing DSN stays (per locked decision); old released CLI versions keep emitting under their old DSN indefinitely — intentional.
 
 ---
 
@@ -845,9 +895,8 @@ Compatibility-sensitive enough to be part of the implementation plan, not implic
 - [ ] CORS preflight allowlist in `proxy.tsx` includes both old + new names for request AND response headers
 - [ ] New SDK emits `x-hexclave-*` by default
 - [ ] Old SDK (unchanged) authenticates successfully
-- [ ] Backend accepts `Authorization: Bearer stackauth_*`
-- [ ] Backend accepts `Authorization: Bearer hexclave_*`
-- [ ] New SDK constructs tokens with `Bearer hexclave_*` prefix
+- [ ] SDK token parser accepts `Bearer stackauth_*` AND `Bearer hexclave_*` (SDK-internal — the backend is not involved)
+- [ ] New SDK constructs `tokenStore: { headers }` tokens with the `hexclave_` prefix
 - [ ] `x-stack-auth: {...}` legacy header continues to be parsed (no Hexclave equivalent emitted)
 - [ ] Backend emits BOTH `x-stack-*` and `x-hexclave-*` response headers (`actual-status`, `known-error`, `request-id`)
 - [ ] New SDK reads `x-hexclave-*` response headers, falls back to `x-stack-*`
@@ -949,7 +998,7 @@ The Tier sections above describe **what** changes; this section assigns **when**
 
 ### PR 1: "Hexclave compatibility layer (invisible)" — now
 
-Purely additive, ships entirely inside the existing `@stackframe/*` packages and existing deploys. Nothing is deleted; nothing breaks; no Hexclave branding becomes visible to any user. Safe to merge quickly. **Prerequisite (not code in the PR): the exhaustive operator env var inventory** — now required since Category C is dual-read (see Category C).
+Purely additive, ships entirely inside the existing `@stackframe/*` packages and existing deploys. Nothing is deleted; nothing breaks; no Hexclave branding becomes visible to any user. Safe to merge quickly. The discovery pass resolved every prerequisite — see the [PR 1 implementation guide](#pr-1-implementation-guide-resolved-from-codebase-discovery) for the concrete files, line numbers, and chosen approach per work-area.
 
 Scope:
 - **Wire dual-accept / dual-emit:** request headers, response headers, `Bearer` prefix, query parameters, JWT issuer/audience validator — backend accepts old + new; new SDK code emits the new form (Tier 0).
@@ -1003,7 +1052,7 @@ Safely removable in PR 3:
 
 ## Open questions still worth answering before implementation
 
-- **Operator env var inventory:** must be produced before PR 1 implementation begins. Category C is now dual-read and **in-scope for PR 1** (no longer deferrable) — the inventory is required so every operator var gets a dual-read site, a docs update, and an `.env.example` entry.
+- **Operator env var inventory:** the central `getEnvVariable` prefix-transform (see PR 1 implementation guide) makes server-side dual-read automatic with no per-var code changes — so an exhaustive inventory is *not* a code prerequisite for PR 1. It is still needed for the per-site tail (raw `process.env`, `import.meta.env`, `turbo.json`, `.env*`) and for the PR 2 docs / `.env.example` rewrite; produce it before PR 2. Discovery found ~140 distinct `STACK`-named vars across categories A–E.
 - **SDK request header emission:** new SDKs emit `x-hexclave-*` for every request header (current plan), or skip the most stable ones (e.g. `branch-id`) to reduce churn? Current plan: emit all.
 - **DNS infrastructure:** ops team confirmation on indefinite redirect maintenance capacity for 16 subdomains, plus registration + SPF/DKIM/DMARC for the separate `sent-with-hexclave.com` transactional sending domain.
 - **Future canonicality flip (post PR 3):** is there any reason to ever make `Hexclave*` the canonical class name in JS or Swift, with `Stack*` as the alias? Current plan: no — coexistence indefinitely, neither is "more canonical".
