@@ -28,6 +28,7 @@ const hideHeaders = [
   "content-encoding",
   "etag",
   "x-stack-request-id",
+  "x-hexclave-request-id",
   "x-middleware-rewrite",
 ] as const;
 
