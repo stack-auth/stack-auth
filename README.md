@@ -5,14 +5,13 @@
 **The user infrastructure platform.**
 
 Hexclave handles everything around your users: authentication, teams,
-payments, emails, analytics, and many more features, so you don't have to
-build it yourself. Start in minutes on the hosted cloud. Your data is always
-yours to export and self-host.
+payments, emails, analytics, and much more. Start in minutes on the hosted
+cloud. Your data is always yours to export and self-host.
 
 [Website](https://hexclave.com) · [Docs](https://docs.hexclave.com) · [Dashboard](https://app.hexclave.com) · [Discord](https://discord.hexclave.com)
 
 ![License](https://img.shields.io/badge/license-MIT%20%2F%20AGPLv3-blue)
-![SDKs](https://img.shields.io/badge/SDKs-Next.js%20%C2%B7%20React%20%C2%B7%20JS%20%C2%B7%20Python-black)
+![SDKs](https://img.shields.io/badge/SDKs-Next.js%20%C2%B7%20React%20%C2%B7%20JS-black)
 ![Deploy](https://img.shields.io/badge/deploy-Cloud%20or%20self--hosted-success)
 
 </div>
