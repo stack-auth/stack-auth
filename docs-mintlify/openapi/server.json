@@ -3253,8 +3253,19 @@
               "enum": [
                 "json",
                 "redirect"
-              ],
-              "default": "redirect"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "hexclave_response_mode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "redirect"
+              ]
             },
             "required": false
           },
