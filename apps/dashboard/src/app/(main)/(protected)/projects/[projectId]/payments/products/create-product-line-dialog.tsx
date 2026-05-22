@@ -1,8 +1,15 @@
 "use client";
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, SimpleTooltip, Typography } from "@/components/ui";
+import {
+  DesignButton,
+  DesignDialog,
+  DesignDialogClose,
+  DesignInput,
+} from "@/components/design-components";
+import { Label, SimpleTooltip, Typography } from "@/components/ui";
+import { FolderOpenIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 
 // Helper to convert display name to ID format
@@ -25,7 +32,7 @@ export function CreateProductLineDialog({ open, onOpenChange, onCreate }: Create
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
   const [errors, setErrors] = useState<{ id?: string, displayName?: string }>({});
 
-  const validateAndCreate = () => {
+  const validateAndCreate = async () => {
     const newErrors: { id?: string, displayName?: string } = {};
 
     // Validate display name
@@ -45,9 +52,10 @@ export function CreateProductLineDialog({ open, onOpenChange, onCreate }: Create
       return;
     }
 
-    runAsynchronously(onCreate({ id: productLineId.trim(), displayName: displayName.trim() }));
+    // Await onCreate before resetting/closing so the dialog stays open with
+    // the user's input intact if creation fails.
+    await onCreate({ id: productLineId.trim(), displayName: displayName.trim() });
 
-    // Reset form
     setDisplayName("");
     setProductLineId("");
     setHasManuallyEditedId(false);
@@ -64,80 +72,82 @@ export function CreateProductLineDialog({ open, onOpenChange, onCreate }: Create
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Create Product Line</DialogTitle>
-          <DialogDescription>
-            Product lines allow you to organize related products. Customers can only have one active product from each product line at a time (except for add-ons).
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="display-name">
-              <SimpleTooltip tooltip="This is how the product line will be displayed to users">
-                Display Name
-              </SimpleTooltip>
-            </Label>
-            <Input
-              id="display-name"
-              value={displayName}
-              onChange={(e) => {
-                const value = e.target.value;
-                setDisplayName(value);
-                setErrors(prev => ({ ...prev, displayName: undefined }));
-                // Auto-generate ID from display name if not manually edited
-                if (!hasManuallyEditedId) {
-                  setProductLineId(toIdFormat(value));
-                  setErrors(prev => ({ ...prev, id: undefined }));
-                }
-              }}
-              placeholder="e.g., Pricing Tiers"
-              className={errors.displayName ? "border-destructive" : ""}
-            />
-            {errors.displayName && (
-              <Typography type="label" className="text-destructive">
-                {errors.displayName}
-              </Typography>
-            )}
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="product-line-id">
-              <SimpleTooltip tooltip="This is the unique identifier for your product line, used in code">
-                Product Line ID
-              </SimpleTooltip>
-            </Label>
-            <Input
-              id="product-line-id"
-              value={productLineId}
-              onChange={(e) => {
-                const value = sanitizeUserSpecifiedId(e.target.value);
-                setProductLineId(value);
-                setHasManuallyEditedId(true);
+    <DesignDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) handleClose();
+      }}
+      size="md"
+      icon={FolderOpenIcon}
+      title="Create Product Line"
+      description="Product lines allow you to organize related products. Customers can only have one active product from each product line at a time (except for add-ons)."
+      footer={(
+        <>
+          <DesignDialogClose asChild>
+            <DesignButton variant="secondary" size="sm" type="button">Cancel</DesignButton>
+          </DesignDialogClose>
+          <DesignButton size="sm" type="button" onClick={() => runAsynchronouslyWithAlert(validateAndCreate())}>
+            Create Product Line
+          </DesignButton>
+        </>
+      )}
+    >
+      <div className="grid gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor="display-name">
+            <SimpleTooltip tooltip="This is how the product line will be displayed to users">
+              Display Name
+            </SimpleTooltip>
+          </Label>
+          <DesignInput
+            id="display-name"
+            value={displayName}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDisplayName(value);
+              setErrors(prev => ({ ...prev, displayName: undefined }));
+              if (!hasManuallyEditedId) {
+                setProductLineId(toIdFormat(value));
                 setErrors(prev => ({ ...prev, id: undefined }));
-              }}
-              placeholder="e.g., pricing-tiers"
-              className={`font-mono text-sm ${errors.id ? "border-destructive" : ""}`}
-            />
-            {errors.id && (
-              <Typography type="label" className="text-destructive">
-                {errors.id}
-              </Typography>
-            )}
-          </div>
+              }
+            }}
+            placeholder="e.g., Pricing Tiers"
+            size="md"
+            className={errors.displayName ? "border-destructive focus-visible:ring-destructive/30" : ""}
+          />
+          {errors.displayName && (
+            <Typography type="label" className="text-destructive text-xs">
+              {errors.displayName}
+            </Typography>
+          )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button onClick={validateAndCreate}>
-            Create Product Line
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="grid gap-2">
+          <Label htmlFor="product-line-id">
+            <SimpleTooltip tooltip="This is the unique identifier for your product line, used in code">
+              Product Line ID
+            </SimpleTooltip>
+          </Label>
+          <DesignInput
+            id="product-line-id"
+            value={productLineId}
+            onChange={(e) => {
+              const value = sanitizeUserSpecifiedId(e.target.value);
+              setProductLineId(value);
+              setHasManuallyEditedId(true);
+              setErrors(prev => ({ ...prev, id: undefined }));
+            }}
+            placeholder="e.g., pricing-tiers"
+            size="md"
+            className={`font-mono text-sm ${errors.id ? "border-destructive focus-visible:ring-destructive/30" : ""}`}
+          />
+          {errors.id && (
+            <Typography type="label" className="text-destructive text-xs">
+              {errors.id}
+            </Typography>
+          )}
+        </div>
+      </div>
+    </DesignDialog>
   );
 }

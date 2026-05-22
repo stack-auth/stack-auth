@@ -333,16 +333,16 @@ function extendWithReplicationWait<T extends PrismaClient>(primary: T, replicaCl
         }
         span.setAttribute('stack.db-replication.target', target);
 
-        // Wait for replication with a 1 second timeout to prevent hanging
-        const caughtUp = await waitForReplication(replicaClients, target, 1000);
+        // Wait for replication with a 2s timeout to prevent hanging
+        const caughtUp = await waitForReplication(replicaClients, target, 2000);
         if (!caughtUp) {
           span.setAttribute('stack.db-replication.timeout', true);
-          captureError("prisma-client-replication-timeout", new StackAssertionError("Replication wait timed out after 1 second. The replica may be behind, or something weird is going on!"));
+          captureError("prisma-client-replication-timeout", new StackAssertionError("Replication wait timed out after 2s. The replica may be behind, or something weird is going on!"));
         }
       } catch (e) {
         span.setAttribute('stack.db-replication.error', `${e}`);
-        captureError("prisma-client-replication-error", new StackAssertionError("Error getting replication target and waiting. We'll just wait 50ms instead, but please fix this as the replication may not be working.", { cause: e }));
-        await wait(50);
+        captureError("prisma-client-replication-error", new StackAssertionError("Error getting replication target and waiting. We'll just wait 1000ms instead, but please fix this as the replication may not be working.", { cause: e }));
+        await wait(1_000);
       }
     });
   };

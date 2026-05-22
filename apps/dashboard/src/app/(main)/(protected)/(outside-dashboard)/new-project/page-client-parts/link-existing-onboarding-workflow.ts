@@ -8,10 +8,12 @@ function encodeYamlScalar(value: string): string {
 }
 
 // GitHub Actions `on.push.paths` filters are repo-relative and do not match a
-// leading `./`. Config-path suggestions and manual input may include one, so
-// strip it to keep the push trigger (and the checked-out file path) canonical.
+// leading `./` or `/`. Config-path suggestions and manual input may include
+// either, possibly repeated (e.g. `.//src/...`), so strip any combination of
+// leading `./` and `/` segments to keep the push trigger and checked-out path
+// canonical.
 export function normalizeConfigPath(configPath: string): string {
-  return configPath.trim().replace(/^(?:\.\/)+/, "");
+  return configPath.trim().replace(/^(?:\.?\/+)+/, "");
 }
 
 export function buildWorkflowYaml(branch: string, configPath: string): string {
@@ -23,6 +25,10 @@ export function buildWorkflowYaml(branch: string, configPath: string): string {
   const encodedConfigPath = encodeYamlScalar(normalizedConfigPath);
   const encodedWorkflowPath = encodeYamlScalar(WORKFLOW_FILE_PATH);
 
+  // `actions/checkout` lands the repo at the runner cwd, so `$STACK_AUTH_CONFIG_PATH`
+  // (repo-relative) is also the local path on disk — that's why the same env var is
+  // safe to use for both `--config-file` and `--source-path`. If a future workflow
+  // checks out with `with: path: <subdir>`, these would diverge.
   return `name: Stack Auth Config Sync
 
 on:
@@ -51,6 +57,8 @@ jobs:
           STACK_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
           STACK_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
           STACK_AUTH_CONFIG_PATH: ${encodedConfigPath}
-        run: npx --yes @stackframe/stack-cli@latest config push --config-file "$STACK_AUTH_CONFIG_PATH"
+          STACK_AUTH_SOURCE_REPO: \${{ github.repository }}
+          STACK_AUTH_SOURCE_WORKFLOW_PATH: ${encodedWorkflowPath}
+        run: npx --yes @stackframe/stack-cli@latest config push --config-file "$STACK_AUTH_CONFIG_PATH" --source github --source-repo "$STACK_AUTH_SOURCE_REPO" --source-path "$STACK_AUTH_CONFIG_PATH" --source-workflow-path "$STACK_AUTH_SOURCE_WORKFLOW_PATH"
 `;
 }

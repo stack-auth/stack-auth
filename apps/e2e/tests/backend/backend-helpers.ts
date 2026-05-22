@@ -1364,7 +1364,7 @@ export namespace Project {
   }
 
   export type BranchConfigSource =
-    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string }
+    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string, workflow_path?: string }
     | { type: "pushed-from-unknown" }
     | { type: "unlinked" };
 

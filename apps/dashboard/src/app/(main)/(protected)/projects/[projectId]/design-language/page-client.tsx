@@ -16,7 +16,7 @@ import {
   DesignDialogClose,
   DesignInput,
   DesignPillToggle,
-} from "@stackframe/dashboard-ui-components";
+} from "@/components/design-components";
 import {
   DesignEditableGrid,
   type DesignEditableGridItem,

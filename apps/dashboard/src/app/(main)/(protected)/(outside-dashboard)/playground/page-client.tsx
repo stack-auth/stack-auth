@@ -52,7 +52,7 @@ import {
   type DesignDialogVariant,
   DesignInput,
   DesignPillToggle,
-} from "@stackframe/dashboard-ui-components";
+} from "@/components/design-components";
 import { useMemo, useRef, useState } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -463,6 +463,9 @@ export default function PageClient() {
   const [dialogShowFooter, setDialogShowFooter] = useState(true);
   const [dialogShowIcon, setDialogShowIcon] = useState(true);
   const [dialogHideTopClose, setDialogHideTopClose] = useState(false);
+  const [dialogUseCustomHeader, setDialogUseCustomHeader] = useState(false);
+  const [dialogNoBodyPadding, setDialogNoBodyPadding] = useState(false);
+  const [dialogAccentClassNames, setDialogAccentClassNames] = useState(false);
 
   // Editable Grid
   const [gridCols, setGridCols] = useState<1 | 2>(2);
@@ -1016,6 +1019,15 @@ export default function PageClient() {
         )
       ) : undefined;
 
+      const customHeader = dialogUseCustomHeader ? (
+        <div className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-indigo-500/15 via-fuchsia-500/10 to-transparent border-b border-foreground/[0.06]">
+          <div className="h-8 w-8 rounded-full bg-foreground/10 grid place-items-center text-xs font-semibold">JD</div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate">Custom header block</div>
+            <div className="text-xs text-muted-foreground truncate">Renders instead of the default title/description region.</div>
+          </div>
+        </div>
+      ) : undefined;
       return (
         <DesignDialog
           size={dialogSize}
@@ -1024,8 +1036,15 @@ export default function PageClient() {
           title={dialogTitle || "Dialog"}
           description={dialogDescription || undefined}
           headerContent={headerContent}
+          customHeader={customHeader}
           footer={footer}
           hideTopCloseButton={dialogHideTopClose}
+          noBodyPadding={dialogNoBodyPadding}
+          className={dialogAccentClassNames ? "ring-2 ring-indigo-500/40" : undefined}
+          overlayClassName={dialogAccentClassNames ? "bg-indigo-950/40" : undefined}
+          headerClassName={dialogAccentClassNames ? "bg-indigo-500/5" : undefined}
+          bodyClassName={dialogAccentClassNames ? "bg-foreground/[0.02]" : undefined}
+          footerClassName={dialogAccentClassNames ? "bg-foreground/[0.02]" : undefined}
           trigger={<DesignButton size="sm">{dialogTriggerLabel}</DesignButton>}
         >
           {body}
@@ -1822,6 +1841,15 @@ export default function PageClient() {
           <PropField label="Top-right Close">
             <BoolToggle value={!dialogHideTopClose} onChange={(v) => setDialogHideTopClose(!v)} on="Show" off="Hide" />
           </PropField>
+          <PropField label="Custom Header">
+            <BoolToggle value={dialogUseCustomHeader} onChange={setDialogUseCustomHeader} on="On" off="Off" />
+          </PropField>
+          <PropField label="No Body Padding">
+            <BoolToggle value={dialogNoBodyPadding} onChange={setDialogNoBodyPadding} on="On" off="Off" />
+          </PropField>
+          <PropField label="Accent classNames">
+            <BoolToggle value={dialogAccentClassNames} onChange={setDialogAccentClassNames} on="On" off="Off" />
+          </PropField>
         </div>
       );
     }
@@ -2309,9 +2337,16 @@ export default function PageClient() {
         : dialogShape === "wide"
           ? `\n  <DesignAlert variant=\"info\" description=\"Wide-form body content\" />\n  {/* tester form */}`
           : `\n  <p className=\"text-sm\">Body content lives here.</p>`;
+      const customHeaderProp = dialogUseCustomHeader
+        ? `\n  customHeader={\n    <div className=\"flex items-center gap-3 px-6 py-4 ...\">\n      {/* custom header content; replaces title/description region */}\n    </div>\n  }`
+        : "";
+      const noBodyPaddingProp = dialogNoBodyPadding ? `\n  noBodyPadding` : "";
+      const classNameProps = dialogAccentClassNames
+        ? `\n  className=\"ring-2 ring-indigo-500/40\"\n  overlayClassName=\"bg-indigo-950/40\"\n  headerClassName=\"bg-indigo-500/5\"\n  bodyClassName=\"bg-foreground/[0.02]\"\n  footerClassName=\"bg-foreground/[0.02]\"`
+        : "";
       return `<DesignDialog
   size="${dialogSize}"${variantProp}${iconProp}
-  title="${escapeAttr(dialogTitle || "Dialog")}"${descProp}${headerContentProp}${footerProp}${hideCloseProp}
+  title="${escapeAttr(dialogTitle || "Dialog")}"${descProp}${headerContentProp}${customHeaderProp}${footerProp}${hideCloseProp}${noBodyPaddingProp}${classNameProps}
   trigger={<DesignButton size="sm">${escapeAttr(dialogTriggerLabel)}</DesignButton>}
 >${bodySnippet}
 </DesignDialog>`;

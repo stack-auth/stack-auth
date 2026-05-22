@@ -1,4 +1,4 @@
-import { validateComposerImageByteLength } from "@/components/assistant-ui/image-attachment-validation";
+import { compressImageFile } from "@/components/assistant-ui/compress-image";
 import {
   type AttachmentAdapter,
   type CompleteAttachment,
@@ -6,21 +6,18 @@ import {
 } from "@assistant-ui/react";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
-/** Chat composer attachments: UUID ids, shared max file size (see `image-limits`). */
+/** Chat composer attachments: UUID ids, auto-compressed to fit shared max file size (see `image-limits`). */
 export class ImageAttachmentAdapter implements AttachmentAdapter {
   public readonly accept = "image/*";
 
   public async add(state: { file: File }): Promise<PendingAttachment> {
-    const sizeValidation = validateComposerImageByteLength(state.file.size);
-    if (!sizeValidation.ok) {
-      throw new Error(`"${state.file.name}": ${sizeValidation.reason}`);
-    }
+    const compressed = await compressImageFile(state.file);
     return {
       id: generateUuid(),
       type: "image",
       name: state.file.name,
-      contentType: state.file.type,
-      file: state.file,
+      contentType: compressed.type,
+      file: compressed,
       status: { type: "requires-action", reason: "composer-send" },
     };
   }

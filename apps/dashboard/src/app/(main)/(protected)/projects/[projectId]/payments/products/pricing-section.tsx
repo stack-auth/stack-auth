@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Typography } from "@/components/ui";
+import { DesignButton } from "@/components/design-components";
+import { SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { GiftIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { GiftIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
   createNewEditingPrice,
@@ -11,7 +12,7 @@ import {
   priceToEditingPrice,
   type EditingPrice,
 } from "./price-edit-dialog";
-import { formatPriceDisplay, generateUniqueId, type Price } from "./utils";
+import { formatPriceDisplay, generateUniqueId, getPriceCheckoutError, isFreePrices, type Price } from "./utils";
 
 type PricingSectionProps = {
   prices: Record<string, Price>,
@@ -19,8 +20,10 @@ type PricingSectionProps = {
   hasError?: boolean,
   errorMessage?: string,
   variant?: 'form' | 'dialog',
-  // Free product handling
-  isFree?: boolean,
+  // Optional "Make Free" handler. When provided, a button is rendered that
+  // replaces the current prices with a single $0 recurring entry. When the
+  // current `prices` already match isFreePrices(), the Free card is shown
+  // instead of the price list.
   onMakeFree?: () => void,
 };
 
@@ -30,9 +33,9 @@ export function PricingSection({
   hasError,
   errorMessage,
   variant = 'form',
-  isFree = false,
   onMakeFree,
 }: PricingSectionProps) {
+  const isFree = isFreePrices(prices);
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
 
@@ -73,15 +76,16 @@ export function PricingSection({
             <Typography type="p" className="text-sm mt-1">
               Click the + button to add your first price
             </Typography>
-            <Button
+            <DesignButton
               variant="outline"
               size="sm"
+              type="button"
               className="mt-3"
               onClick={handleAddClick}
             >
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
-            </Button>
+            </DesignButton>
           </div>
         ) : (
           <div>
@@ -98,33 +102,38 @@ export function PricingSection({
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <Button
+                  <DesignButton
                     variant="ghost"
                     size="sm"
+                    type="button"
                     onClick={() => handleEditClick(id)}
                   >
                     Edit
-                  </Button>
-                  <Button
+                  </DesignButton>
+                  <DesignButton
                     variant="ghost"
                     size="sm"
+                    type="button"
+                    aria-label={`Remove price ${id}`}
+                    className="text-destructive hover:text-destructive"
                     onClick={() => handleRemovePrice(id)}
                   >
-                    <TrashIcon className="h-4 w-4 text-destructive" />
-                  </Button>
+                    <TrashIcon className="h-4 w-4" />
+                  </DesignButton>
                 </div>
               </div>
             ))}
             <div className="px-3 py-2 border-t border-border/30">
-              <Button
+              <DesignButton
                 variant="ghost"
                 size="sm"
+                type="button"
                 onClick={handleAddClick}
                 className="w-full justify-start"
               >
                 <PlusIcon className="h-4 w-4 mr-2" />
                 Add Price
-              </Button>
+              </DesignButton>
             </div>
           </div>
         )}
@@ -147,8 +156,12 @@ export function PricingSection({
   }
 
   // Form variant - compact card style
-  // Free product state - styled like a price card
+  // Free product state - styled like a price card, but surfaces the underlying
+  // $0 price entry so users can see that "Free" is just a regular price row
+  // (and isn't doing anything magical under the hood).
   if (isFree) {
+    // isFreePrices() guarantees exactly one entry, so destructuring is safe.
+    const [freePriceId, freePrice] = Object.entries(prices)[0];
     return (
       <div
         className={cn(
@@ -158,16 +171,22 @@ export function PricingSection({
         )}
       >
         <div className="flex-1">
-          <div className="font-medium text-sm">Free</div>
+          <div className="font-medium text-sm">
+            Free <span className="text-foreground/50 font-normal">· {formatPriceDisplay(freePrice)}</span>
+          </div>
+          <div className="text-xs text-foreground/30 font-mono">{freePriceId}</div>
         </div>
         <div className="flex items-center gap-1">
-          <Button
+          <DesignButton
             variant="ghost"
             size="sm"
+            type="button"
+            aria-label="Make paid (remove free price)"
+            className="text-destructive hover:text-destructive"
             onClick={() => onPricesChange({})}
           >
-            <TrashIcon className="h-4 w-4 text-destructive" />
-          </Button>
+            <TrashIcon className="h-4 w-4" />
+          </DesignButton>
         </div>
       </div>
     );
@@ -184,21 +203,27 @@ export function PricingSection({
             No prices configured yet
           </p>
           <div className="flex items-center justify-center gap-3">
-            <Button
+            <DesignButton
               variant="outline"
+              size="sm"
+              type="button"
               onClick={handleAddClick}
             >
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
-            </Button>
+            </DesignButton>
             {onMakeFree && (
-              <Button
-                variant="outline"
-                onClick={onMakeFree}
-              >
-                <GiftIcon className="h-4 w-4 mr-2" />
-                Make Free
-              </Button>
+              <SimpleTooltip tooltip="Mark this product as free. Customers won't be charged, and no prices can be added.">
+                <DesignButton
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={onMakeFree}
+                >
+                  <GiftIcon className="h-4 w-4 mr-2" />
+                  Make Free
+                </DesignButton>
+              </SimpleTooltip>
             )}
           </div>
           {hasError && errorMessage && (
@@ -209,54 +234,75 @@ export function PricingSection({
         </div>
       ) : (
         <div className="space-y-2">
-          {Object.entries(prices).map(([priceId, price]) => (
-            <div
-              key={priceId}
-              className={cn(
+          {Object.entries(prices).map(([priceId, price]) => {
+            const checkoutError = getPriceCheckoutError(price);
+            return (
+              <div
+                key={priceId}
+                className={cn(
                 "flex items-center justify-between p-2.5 rounded-lg",
                 "bg-foreground/[0.02] border border-border/30",
-                "hover:bg-foreground/[0.04] transition-colors duration-150 hover:transition-none"
+                "hover:bg-foreground/[0.04] transition-colors duration-150 hover:transition-none",
+                checkoutError && "border-destructive/40 bg-destructive/[0.03]"
               )}
-            >
-              <div className="flex-1">
-                <div className="font-medium text-sm">{formatPriceDisplay(price)}</div>
-                <div className="text-xs text-foreground/30 font-mono">{priceId}</div>
+              >
+                <div className="flex-1">
+                  <div className="font-medium text-sm flex items-center gap-1.5">
+                    {formatPriceDisplay(price)}
+                    {checkoutError && (
+                      <SimpleTooltip tooltip={checkoutError}>
+                        <WarningIcon className="h-4 w-4 text-destructive" weight="fill" />
+                      </SimpleTooltip>
+                    )}
+                  </div>
+                  <div className="text-xs text-foreground/30 font-mono">{priceId}</div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <DesignButton
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    onClick={() => handleEditClick(priceId)}
+                  >
+                    Edit
+                  </DesignButton>
+                  <DesignButton
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    aria-label={`Remove price ${priceId}`}
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => handleRemovePrice(priceId)}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </DesignButton>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleEditClick(priceId)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleRemovePrice(priceId)}
-                >
-                  <TrashIcon className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           <div className="flex items-center gap-2">
-            <Button
+            <DesignButton
               variant="outline"
+              size="sm"
+              type="button"
               onClick={handleAddClick}
               className="flex-1"
             >
               <PlusIcon className="h-4 w-4 mr-2" />
               Add Price
-            </Button>
+            </DesignButton>
             {onMakeFree && (
-              <Button
-                variant="outline"
-                onClick={onMakeFree}
-              >
-                <GiftIcon className="h-4 w-4 mr-2" />
-                Make Free
-              </Button>
+              <SimpleTooltip tooltip="Replace all configured prices with a single free tier. Customers won't be charged.">
+                <DesignButton
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={onMakeFree}
+                >
+                  <GiftIcon className="h-4 w-4 mr-2" />
+                  Make Free
+                </DesignButton>
+              </SimpleTooltip>
             )}
           </div>
         </div>

@@ -921,6 +921,7 @@ export const branchConfigSourceSchema = yupUnion(
     branch: yupString().defined(),
     commit_hash: yupString().defined(),
     config_file_path: yupString().defined(),
+    workflow_path: yupString().optional(),
   }),
   yupObject({
     type: yupString().oneOf(["pushed-from-unknown"]).defined(),

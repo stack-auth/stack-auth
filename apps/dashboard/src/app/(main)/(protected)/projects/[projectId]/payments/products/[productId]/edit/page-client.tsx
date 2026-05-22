@@ -379,9 +379,15 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
                 hasError={!!errors.prices}
                 errorMessage={errors.prices}
                 variant="form"
-                isFree={isFreePrices(prices)}
                 onMakeFree={() => {
                   setPrices(createFreePrice());
+                  if (errors.prices) {
+                    setErrors(prev => {
+                      const newErrors = { ...prev };
+                      delete newErrors.prices;
+                      return newErrors;
+                    });
+                  }
                 }}
               />
             </section>
