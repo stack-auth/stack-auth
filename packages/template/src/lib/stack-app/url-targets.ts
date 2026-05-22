@@ -202,9 +202,29 @@ const resolveUrlTarget = (options: {
   }
 };
 
+const assertOAuthCallbackTargetIsRelative = (target: HandlerUrlTarget): void => {
+  const url = typeof target === "string"
+    ? target
+    : target.type === "custom"
+      ? target.url
+      : null;
+  if (url != null && !isRelativeUrlString(url)) {
+    throw new StackAssertionError("OAuth callback URLs must be relative.", {
+      oauthCallbackUrl: url,
+      hint: "Use a relative URL like '/handler/oauth-callback', or use { type: 'hosted' } to let Stack use the current page for hosted callbacks.",
+    });
+  }
+};
+
 export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefined, projectId: string }): ResolvedHandlerUrls => {
   const configuredUrls = options.urls;
   const defaultTarget: HandlerUrlTarget = configuredUrls?.default ?? { type: "handler-component" };
+  const oauthCallbackTarget: HandlerUrlTarget = configuredUrls?.oauthCallback ?? (
+    typeof defaultTarget !== "string" && defaultTarget.type === "hosted"
+      ? defaultTarget
+      : { type: "handler-component" }
+  );
+  assertOAuthCallbackTargetIsRelative(oauthCallbackTarget);
   let handlerComponentBasePath = "/handler";
   if (typeof configuredUrls?.handler === "string") {
     handlerComponentBasePath = configuredUrls.handler;
@@ -286,7 +306,7 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
     }),
     home,
     oauthCallback: resolveUrlTarget({
-      target: configuredUrls?.oauthCallback ?? defaultTarget,
+      target: oauthCallbackTarget,
       fallbackPath: joinHandlerComponentPath(handlerComponentBasePath, "oauth-callback"),
       handlerName: "oauthCallback",
       projectId: options.projectId,

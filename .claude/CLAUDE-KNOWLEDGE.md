@@ -512,5 +512,11 @@ A: Seed the normal initial environment config before marking the project as `isD
 ## Q: What can cause React error #185 immediately on dashboard load?
 A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
 
+## Q: How should client-side OAuth callback and nested cross-domain auth avoid racing session consumers?
+A: Track startup auth transitions as pending client-app promises and make `_getSession`/react-like `_useSession` wait for them when using the default persistent token store. Auth-transition code that needs to inspect the current session should explicitly call `_getSession(..., { awaitPendingAuthResolutions: false })` instead of relying on a global reentrancy flag.
+
+## Q: When should hosted OAuth callback handling auto-start on a client app page?
+A: Only auto-start hosted OAuth callback handling when the current URL has `code` and `state` and the matching `stack-oauth-outer-${state}` verifier cookie exists. Generic `code/state` or `errorCode/message` query parameters are not Stack-owned enough to run callback processing automatically on every hosted app page.
+
 ## Q: How should the npm publish workflow create the post-publish dev version bump?
 A: The workflow needs a full checkout using the fine-grained `NPM_PUBLISH_VERSION_UPDATE_PR_PAT` secret. It then fetches `origin/dev`, checks out `dev`, creates a non-interactive patch changeset, runs `pnpm changeset version`, copies the generated `packages/template/package.json` version line back into `packages/template/package-template.json`, and commit/pushes `chore: update package versions`. Because direct pushes to `dev` are blocked by repository rules requiring PRs and the `all-good` status check, the PAT's owning user or bot account must be added to the ruleset bypass list with "Always allow" rather than "For pull requests only".
