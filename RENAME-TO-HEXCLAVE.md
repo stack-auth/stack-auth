@@ -1,8 +1,8 @@
-# Stack Auth → Hexclave Rename Plan (v6)
+# Stack Auth → Hexclave Rename Plan (v7)
 
 Rebrand rollout with backwards compatibility. Organized by wire-compatibility risk: what breaks existing users vs. what's purely cosmetic.
 
-**Rollout strategy:** one large additive PR that introduces Hexclave naming everywhere without breaking anything, then a much-later cleanup PR that removes only the safely-removable fallbacks (cookies, customer SDK env vars, MCP legacy tool, non-essential DNS).
+**Rollout strategy:** three PRs. **PR 1** is invisible — wire-level dual-accept/dual-write, SDK export aliases, and internal renames, all shipped inside the existing `@stackframe/*` packages and existing deploys; nothing breaks and no Hexclave branding is yet visible to any user. **PR 2** makes the brand public — new `@hexclave/*` and Swift packages, `@deprecated` markers on old names, and every user-facing string, domain, title, and doc. **PR 3** (12+ months later) removes only the safely-removable fallbacks once telemetry confirms they're unused. See [Rollout](#rollout--3-prs).
 
 ## Locked-in decisions
 
@@ -18,17 +18,19 @@ Rebrand rollout with backwards compatibility. Organized by wire-compatibility ri
   - `stack.config.ts` ↔ `hexclave.config.ts` (discovery prefers new, falls back to old)
   - `stack-auth-mobile-oauth-url://` ↔ `hexclave-mobile-oauth-url://` (backend accepts both schemes; new Swift SDK registers the new one)
   - `Symbol.for("StackAuth--app-internals")` ↔ `Symbol.for("Hexclave--app-internals")` (attach under both, look up both)
-  - JS `Stack*` exports stay canonical; `Hexclave*` added as aliases — both kept indefinitely
+  - JS public `Stack*` exports stay canonical; `Hexclave*` added as aliases — both kept indefinitely. `Stack*` names get `@deprecated` JSDoc in PR 2. **Internal-only** symbols (the three SDK interfaces, `StackAssertionError`) are renamed outright with no alias — see Tier 1
 - **Swift SDK: separate package**, not typealiases. `StackAuth` Swift package frozen at existing git URL — old users keep `import StackAuth`. New `Hexclave` Swift package (new git URL) is the canonical going-forward SDK with real `Hexclave*` symbols. Breaking changes allowed between versions; old package remains installable but unmaintained.
 - New docs teach **Hexclave-only** names; old names appear only in explicitly-marked compatibility notes
-- Self-host operator env vars (Category C) are **out of scope** — stay as `STACK_*`, no aliasing
+- All env vars are **dual-read** (`HEXCLAVE_*` accepted alongside `STACK_*`, new name preferred) across every category — including self-host/operator (Category C) and build/dev/test (Category E) vars. Sole exception: `NEXT_PUBLIC_STACK_PORT_PREFIX`, renamed outright (dev-only, no dual-accept)
 - `@hexclave/*` packages dual-published via rewrite step in `.github/workflows/npm-publish.yaml` (see Tier 2)
 - **Sentry / PostHog / observability DSNs** — out of scope. Existing DSNs continue unchanged. No project renames in either tool.
 - **`skill.stack-auth.com`** — DNS redirects to `skill.hexclave.com`; both URLs serve identical content indefinitely. Customers with cached MCP configs pointing at old domain keep working.
-- **`StackAssertionError`** — class gets `HexclaveAssertionError` alias (per Tier 1 pattern); error message string updates from "This is likely an error in Stack." → "This is likely an error in Hexclave." in PR 1.
-- **CHANGELOG title** — becomes "Hexclave Changelog" in PR 1. History continuity preserved through commit log, not title.
-- **Test assertion updates** — every test that asserts on header names, cookie names, error message prefixes, etc. updates in lockstep with implementation in PR 1.
-- **Deprecation warning text** — exact wording is an implementation-time decision; SDK init logs `console.warn` once per process.
+- **`StackAssertionError`** — internal-only (not exported from any customer SDK entrypoint), so it is renamed to `HexclaveAssertionError` with **no alias** (see Tier 1). Its error message string updates from "This is likely an error in Stack." → "This is likely an error in Hexclave." as part of the Tier 4 brand-string sweep (PR 2).
+- **CHANGELOG title** — becomes "Hexclave Changelog" in PR 2 (Tier 4 brand string). History continuity preserved through commit log, not title.
+- **Test assertion updates** — every test that asserts on header names, cookie names, error message prefixes, etc. updates in lockstep with the implementation, in whichever PR changes that identifier (wire identifiers in PR 1, brand strings in PR 2).
+- **`@hexclave/*` package versions** start at `1.0.0` and bump in lockstep with `@stackframe/*` releases — one `@hexclave` publish per `@stackframe` publish; absolute version numbers stay offset (`@stackframe/*` is currently `2.8.92`).
+- **Old-package deprecation (PR 2)** — `@stackframe/*` packages are marked deprecated on npm via `npm deprecate`; the SDK additionally logs a `console.warn` once per process recommending the `@hexclave/*` equivalent. All `Stack*`-named public exports get `@deprecated` JSDoc. Exact warning wording is an implementation-time decision.
+- **CHIPS partitioned-cookie test** — the feature is no longer used and will be removed in a separate change; this rebrand ignores it entirely (no rename, no dual-write).
 - **Docker registry path / image naming** — not part of this rebrand; existing image tags continue.
 - Telemetry is deferred; not blocking PR 1
 
@@ -39,7 +41,7 @@ Rebrand rollout with backwards compatibility. Organized by wire-compatibility ri
 | HTTP headers (`x-stack-*`) | 21 |
 | Cookies | ~12 |
 | Customer-facing env vars | ~20+ |
-| NPM packages | 11 |
+| `@hexclave/*` mirror packages | 9 |
 | Public SDK classes/components/hooks (JS) | ~12 |
 | Swift module + symbols | 1 module, ~10 symbols |
 | Domain references | 625+ |
@@ -160,9 +162,7 @@ Every cookie containing "stack" gets a `hexclave-*` equivalent dual-written. Rea
 | `stack-last-seen-changelog-version` | `hexclave-last-seen-changelog-version` |
 | `stack-cli-auth-confirmed` | `hexclave-cli-auth-confirmed` |
 
-**CHIPS test cookies — keep as `stack-*` indefinitely** (internal, never user-visible, no functional reason to rename):
-
-- `__Host-stack-temporary-chips-test-*`
+**CHIPS test cookies — out of scope.** The `__Host-stack-temporary-chips-test-*` probe cookies belong to the partitioned-cookie support test (`_internalShouldSetPartitionedClient` in `packages/template/src/lib/cookie.ts`). These are ephemeral — set and deleted within the same synchronous call, never persisted. The feature is no longer used and is slated for removal in a separate change, so this rebrand does not touch it: no rename, no dual-write.
 
 Additional surfaces that set/read cookies and need updating in PR 1:
 
@@ -307,15 +307,17 @@ The in-app dev tool ships inside the SDK (`packages/template`, propagated to eve
 
 ---
 
-## Tier 1 — Public SDK API (alias via re-exports)
+## Tier 1 — Public SDK API (aliases for user-facing symbols, outright rename for internal ones)
 
 ### JS / React / Next.js / TanStack SDKs
 
 Codegen makes this clean. `scripts/generate-sdks.ts` copies `packages/template` → `packages/{js,stack,react,tanstack-start}`. Add re-exports once in template; all generated packages get both names.
 
-Dual-export every public Stack* symbol:
+**Classification rule:** a symbol gets a `Hexclave*` alias only if it is **user-facing** — reachable from a customer SDK entrypoint (`@stackframe/stack` / `@stackframe/js` / `@stackframe/react`). Symbols that are internal-only — not in any customer SDK entrypoint — are renamed outright with no alias (next subsection).
 
-| Old (kept) | New (alias added) |
+Dual-export every user-facing `Stack*` symbol:
+
+| Old (kept, `@deprecated` in PR 2) | New (alias added) |
 |---|---|
 | `StackClientApp` | `HexclaveClientApp` |
 | `StackServerApp` | `HexclaveServerApp` |
@@ -324,19 +326,30 @@ Dual-export every public Stack* symbol:
 | `StackHandler` | `HexclaveHandler` |
 | `StackTheme` | `HexclaveTheme` |
 | `useStackApp()` | `useHexclaveApp()` |
-| `StackClientInterface` | `HexclaveClientInterface` |
-| `StackServerInterface` | `HexclaveServerInterface` |
-| `StackAdminInterface` | `HexclaveAdminInterface` |
-| `StackAssertionError` | `HexclaveAssertionError` (plus: error message text updates from "This is likely an error in Stack." → "This is likely an error in Hexclave." in `packages/stack-shared/src/utils/errors.tsx`) |
 | `StackConfig` | `HexclaveConfig` |
 | `defineStackConfig()` | `defineHexclaveConfig()` |
 | `Stack*ConstructorOptions` | `Hexclave*ConstructorOptions` |
 | `Stack{Client,Server,Admin}AppConstructor` | `Hexclave{Client,Server,Admin}AppConstructor` |
 | `StackClientAppJson` | `HexclaveClientAppJson` |
 
-**Pattern:** `export { StackClientApp as HexclaveClientApp }`. Same class, both names. Users can mix freely.
+The type cluster (`Stack*ConstructorOptions`, `Stack{Client,Server,Admin}AppConstructor`, `StackClientAppJson`) is obscure but *is* exported from the customer SDK index ([`packages/template/src/lib/stack-app/index.ts`](packages/template/src/lib/stack-app/index.ts)). Aliasing is free (`export type { X as Y }`) and a wrong rename would be breaking, so these keep aliases.
 
-**Canonicality:** `Stack*` is the internal/canonical class name; `Hexclave*` is the alias. This means PR 2 cannot "remove Stack* aliases" — they're the originals. Both names stay indefinitely. If a future effort wants to flip canonicality so `Hexclave*` is the real class and `Stack*` is the alias, that's a separate, optional follow-up — not part of this rebrand.
+**Pattern:** `export { StackClientApp as HexclaveClientApp }`. Same class, both names. Users can mix freely. Adding the aliases is non-breaking and ships in **PR 1**; the `@deprecated` JSDoc on the `Stack*` names is IDE-visible (strikethrough) and ships in **PR 2**.
+
+### Internal-only symbols — renamed outright, no alias
+
+These are **not exported from any customer SDK entrypoint** (`@stackframe/stack` / `js` / `react`). The three interfaces are exported only from the low-level `@stackframe/stack-shared` package's index — an implementation-detail package, not a customer-facing API; `StackAssertionError` is not exported from any public index at all. Per the "internal-only → rename, no alias" rule they are renamed in place — every reference updates in lockstep, no `Stack*` name survives. Non-user-facing, so this lands in **PR 1**.
+
+| Old (removed, no alias) | New |
+|---|---|
+| `StackClientInterface` | `HexclaveClientInterface` |
+| `StackServerInterface` | `HexclaveServerInterface` |
+| `StackAdminInterface` | `HexclaveAdminInterface` |
+| `StackAssertionError` | `HexclaveAssertionError` (the class rename is PR 1; its user-visible message text "This is likely an error in Stack." → "Hexclave" is a Tier 4 brand string, PR 2) |
+
+> If a pre-implementation grep finds any of these re-exported from a customer SDK entrypoint after all, that symbol moves back to the alias table — the rule is "internal *and* not directly reachable by users."
+
+**Canonicality.** For the user-facing classes, `Stack*` remains the underlying class name and `Hexclave*` is the alias; both stay indefinitely (**PR 3 does not remove the `Stack*` names** — they're the originals). `Stack*` is marked `@deprecated` to steer new code toward `Hexclave*`, but "deprecated" here means "discouraged," not "scheduled for removal." A future effort could flip canonicality so `Hexclave*` is the real class — separate, optional, out of scope here.
 
 `stack.config.ts` filename stays (locked decision). `showOnboardingStackConfigValue` stays internal — no alias needed.
 
@@ -383,7 +396,7 @@ Notes:
 - `sdks/spec/src/`
 - `sdks/spec/README.md`
 
-Per AGENTS.md, SDK implementation changes must update `sdks/spec` — bake this into the PR 1 checklist.
+Per AGENTS.md, SDK implementation changes must update `sdks/spec` — bake this into the PR 2 checklist (the new Swift package is part of PR 2).
 
 ---
 
@@ -418,7 +431,8 @@ Concrete change to the existing workflow:
 `scripts/rewrite-packages-to-hexclave.ts` does, for each publishable package per the mapping table below:
 - Read `package.json`
 - Rewrite `name`: `@stackframe/foo` → `@hexclave/foo`
-- Rewrite all `dependencies` / `peerDependencies` entries from `@stackframe/X` → `@hexclave/X` with the version of the just-published artifact
+- Set `version`: `@hexclave/*` packages carry their **own** version line, starting at `1.0.0` and bumped once per `@stackframe/*` release (lockstep cadence — absolute numbers stay offset from `@stackframe/*`, currently `2.8.92`). The script reads the target `@hexclave` version from a single source (a `HEXCLAVE_VERSION` file or workflow input); all mirror packages share one version.
+- Rewrite all `dependencies` / `peerDependencies` entries `@stackframe/X` → `@hexclave/X`, pinned to the **`@hexclave` version being published** (not the `@stackframe` version) — since all mirror packages share one version this is a single substitution
 - Update `bin` entries where relevant (e.g. `@hexclave/cli` registers `hexclave` binary alongside the existing `stack`)
 - Leave built `dist/` artifacts untouched (no rebuild needed)
 
@@ -429,7 +443,7 @@ Notes:
 - Source maps, type declarations, `exports`, `typesVersions` resolve under both names because they're the same built artifacts
 - The rewrite step only runs in CI; local development keeps using `@stackframe/*` names
 
-### 10 mirrored packages
+### 9 mirrored packages
 
 | Old (kept) | New (mirrored) |
 |---|---|
@@ -439,37 +453,49 @@ Notes:
 | `@stackframe/stack-shared` | `@hexclave/shared` |
 | `@stackframe/stack-ui` | `@hexclave/ui` |
 | `@stackframe/stack-sc` | `@hexclave/sc` |
-| `@stackframe/init-stack` | `@hexclave/init` |
 | `@stackframe/stack-cli` | `@hexclave/cli` |
 | `@stackframe/tanstack-start` | `@hexclave/tanstack-start` |
 | `@stackframe/dashboard-ui-components` | `@hexclave/dashboard-ui-components` |
 
 **`@stackframe/dashboard-ui-components` is publishable.** Earlier plan versions marked it "internal only" — that was wrong. It's loaded at runtime via esm.sh by the dashboard's create-dashboard sandbox host ([apps/dashboard/.../dashboard-sandbox-host.tsx](apps/dashboard/src/components/commands/create-dashboard/dashboard-sandbox-host.tsx)) plus served locally as an IIFE bundle (`dashboard-ui-components.iife.js`). Mirror it like the other public packages. The IIFE bundle filename also gets dual-served — both `dashboard-ui-components.iife.js` and a future Hexclave-branded path (TBD) until generated dashboards stored with the old filename can be updated.
 
-**Not mirrored — internal:** `@stackframe/template` (codegen source).
+**Not mirrored:**
+- `@stackframe/template` — codegen source, internal.
+- `@stackframe/init-stack` — the standalone init wizard. Stays published under its existing name (existing `npx @stackframe/init-stack` users keep working), but gets **no `@hexclave` mirror**: new-user onboarding moves to the CLI's `init` subcommand (`npx @hexclave/cli@latest init`). See CLI section.
 
 **Not publishable, stay `@stackframe/*`:** `@stackframe/monorepo`, backend, dashboard, docs, mcp, hosted-components, skills, mock-oauth-server, e2e, internal-tool, dev-launchpad.
+
+### Deprecating the `@stackframe/*` packages (PR 2)
+
+`@stackframe/*` packages stay published and fully functional indefinitely — but once the `@hexclave/*` mirrors exist, new installs should be steered to them. Two layers, both in PR 2:
+
+- **npm-level:** run `npm deprecate "@stackframe/<pkg>@*" "Renamed to @hexclave/<pkg> — see <docs URL>"` for each mirrored package. npm surfaces this on every `npm install`.
+- **Runtime:** the SDK logs a `console.warn` once per process on init when it was loaded from a `@stackframe/*` package, recommending the `@hexclave/*` equivalent. (How the SDK knows which name it shipped under is an implementation detail — e.g. a build-time constant stamped by the rewrite script.)
+
+Separately, every `Stack*`-named public export gets `@deprecated` JSDoc (see Tier 1). Because `@stackframe/*` and `@hexclave/*` are generated from the same `packages/template` source, the `@deprecated` tag lands in **both** packages — that is intended: `Stack*` is the old brand regardless of which package ships it, and `Hexclave*` is the name to prefer everywhere. The npm-level `npm deprecate` is the only piece scoped to `@stackframe/*` specifically.
 
 ### CLI / init wizard
 
 | Old (kept) | New |
 |---|---|
-| `npx @stackframe/init-stack` | `npx @hexclave/init` |
+| `npx @stackframe/init-stack` | `npx @hexclave/cli@latest init` — onboarding moves to the CLI's `init` subcommand |
 | `stack` binary | `hexclave` binary alias |
 | `~/.config/stack-auth/credentials.json` | `~/.config/hexclave/credentials.json` |
 | `stack.config.ts` (fallback) | `hexclave.config.ts` (preferred default) |
 
 CLI reads both config paths; writes new path. Old path silently migrates on next run. For project config: `init` generates `hexclave.config.ts` in new projects; discovery prefers `hexclave.config.ts` and falls back to `stack.config.ts` for existing projects (see Tier 0 details).
 
+The canonical onboarding command everywhere — docs, dashboard setup snippets, generated prompts — becomes `npx @hexclave/cli@latest init`. `npx @stackframe/stack-cli@latest init` is the byte-identical command under the old package name and keeps working. The standalone `@stackframe/init-stack` package is no longer the taught entrypoint and is not mirrored as `@hexclave/*`.
+
 ---
 
 ## Env var taxonomy
 
-Replaces the flat env var table from v1. Different categories warrant different treatment.
+Replaces the flat env var table from v1. **Every category is dual-read** — `HEXCLAVE_*` accepted alongside `STACK_*`, new name preferred and documented. Categories differ only in audience and which docs change. Sole exception: the dev-only port-prefix var, renamed outright (see Category B).
 
 ### Table shape
 
-For each *concept* (e.g. "Project ID"), the repo may already have multiple env var aliases (Vite vs. Next, BROWSER prefix vs. suffix, etc.). The plan picks **one canonical Hexclave name per concept**; all currently-recognized old names continue to be read as compat aliases. A grep-based pass over Category A and B old-name aliases should be done before implementation to confirm the list below matches what's actually in the repo.
+For each *concept* (e.g. "Project ID"), the repo may already have multiple env var aliases (Vite vs. Next, BROWSER prefix vs. suffix, etc.). The plan picks **one canonical Hexclave name per concept**; all currently-recognized old names continue to be read as compat aliases. A grep-based pass over Category A, B, and C old-name aliases should be done before implementation to confirm the list below matches what's actually in the repo.
 
 ### A. Customer SDK env vars (dual-read, prefer Hexclave)
 
@@ -515,15 +541,15 @@ Used by dashboard/backend/local-dev tooling. Some concepts have multiple histori
 
 > The exact list of "Old accepted" aliases above is best-effort and **must be validated** against a repo-wide grep before implementation. The reviewer flagged that prior versions of this plan listed aspirational names (`NEXT_PUBLIC_STACK_BROWSER_API_URL`) that don't actually exist in the repo.
 
-**Exception — keep indefinitely:** `NEXT_PUBLIC_STACK_PORT_PREFIX`. Baked into every dev's local Docker/`.env`; renaming has zero user-facing value and breaks local setups.
+**Exception — renamed outright, no dual-accept:** `NEXT_PUBLIC_STACK_PORT_PREFIX` → `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`. A dev-only var baked into local Docker/`.env` setups; unlike every other env var it is *not* dual-read — it's a straight rename. Each developer updates their local `.env` once (internal-only churn, no customer impact).
 
-### C. Self-host / operator env vars — out of scope
+### C. Self-host / operator env vars (dual-read, prefer Hexclave)
 
-These remain as `STACK_*` indefinitely. Not part of the rebrand.
+Used by operators running their own instance. Previously scoped out; **now dual-read** like every other category — the runtime accepts `HEXCLAVE_*` alongside the existing `STACK_*` name, prefers `HEXCLAVE_*`, and docs / `.env.example` teach the new name.
 
-- `STACK_DATABASE_CONNECTION_STRING`, `STACK_SERVER_SECRET`, `STACK_EMAIL_*`, `STACK_S3_*`, `STACK_SVIX_*`, `STACK_QSTASH_*`, `STACK_STRIPE_*`, `STACK_FREESTYLE_*`, `STACK_OPENROUTER_API_KEY`, `STACK_MCP_LOG_TOKEN`, `STACK_CLICKHOUSE_*`, `STACK_RUN_MIGRATIONS`, `STACK_RUN_SEED_SCRIPT`, `STACK_SEED_INTERNAL_PROJECT_*`, local emulator + QEMU vars
+- `STACK_DATABASE_CONNECTION_STRING`, `STACK_SERVER_SECRET`, `STACK_EMAIL_*`, `STACK_S3_*`, `STACK_SVIX_*`, `STACK_QSTASH_*`, `STACK_STRIPE_*`, `STACK_FREESTYLE_*`, `STACK_OPENROUTER_API_KEY`, `STACK_MCP_LOG_TOKEN`, `STACK_CLICKHOUSE_*`, `STACK_RUN_MIGRATIONS`, `STACK_RUN_SEED_SCRIPT`, `STACK_SEED_INTERNAL_PROJECT_*`, local emulator + QEMU vars — each gets a `HEXCLAVE_*` equivalent.
 
-Self-hosters keep their existing `.env` files unchanged. No deprecation warnings, no docs migration, no `.env.example` rewrite. Operators are not affected by the rebrand at the env-var layer.
+Existing operator `.env` files keep working unchanged (old names still read). This makes the exhaustive operator-var inventory (see Open questions) **in-scope, required work** — not a deferred prerequisite — since every operator var now needs a dual-read site, a docs update, and an `.env.example` entry.
 
 ### D. GitHub onboarding workflow
 
@@ -550,9 +576,9 @@ These are the **same env vars** customers set in their own apps (Category A) —
 
 New generated workflows emit `HEXCLAVE_*`. Existing customer workflows with `STACK_AUTH_*` secrets / `STACK_*` process env vars keep working. Generated-workflow tests cover both shapes.
 
-### E. Build / dev / test env vars (keep as `STACK_*`)
+### E. Build / dev / test env vars (dual-read, prefer Hexclave)
 
-Classified as internal. Not part of the brand rebrand.
+Internal tooling vars. **Dual-read** like every other category.
 
 - `STACK_SKIP_TEMPLATE_GENERATION`
 - `STACK_DISABLE_REACT_ASYNC_DEBUG_INFO`
@@ -560,11 +586,13 @@ Classified as internal. Not part of the brand rebrand.
 - `STACK_RUN_SETUP_WIZARD_TESTS`
 - `STACK_TEST_SDK_FALLBACK`
 
-Add to `turbo.json` `globalEnv`: `HEXCLAVE_*` alongside existing `STACK_*`.
+Each gets a `HEXCLAVE_*` equivalent, dual-read at its use site. Add the `HEXCLAVE_*` form of every env var (Categories A–E) to `turbo.json` `globalEnv` alongside the existing `STACK_*` form.
 
 ---
 
-## Tier 3 — Persistent data (idempotent migrations in PR 1)
+## Tier 3 — Persistent data (idempotent migrations)
+
+The display-name and email-config migrations change user-visible data → **PR 2**. The IdP-audience validator change is compatibility-only → **PR 1**.
 
 ### Internal project display name
 
@@ -650,13 +678,13 @@ Complete old→new table. All old domains keep resolving/redirecting indefinitel
 
 ### Emails
 
-| Old | New |
-|---|---|
-| `noreply@stackframe.co` | `noreply@hexclave.com` |
-| `security@stack-auth.com` | `security@hexclave.com` |
-| `team@stack-auth.com` | `team@hexclave.com` |
+| Old | New | Notes |
+|---|---|---|
+| `noreply@stackframe.co` | `noreply@sent-with-hexclave.com` | Transactional/bulk sender on a **separate domain** — see below |
+| `security@stack-auth.com` | `security@hexclave.com` | Inbound mailbox |
+| `team@stack-auth.com` | `team@hexclave.com` | Inbound mailbox |
 
-Set up new mailboxes; forward old → new during transition.
+**Transactional sender uses a dedicated domain.** The bulk/transactional sender (`noreply@`) moves to a separate registrable domain — `sent-with-hexclave.com` or similar (exact name TBD) — *not* `noreply@hexclave.com`. This is a deliberate split: it isolates bulk-email deliverability problems from the primary `hexclave.com` domain's reputation. That domain must be registered and configured with SPF/DKIM/DMARC. It is **not** in the domain inventory above — it has no `stack-auth.com` predecessor (the old sender was on `stackframe.co`). The inbound human mailboxes (`security@`, `team@`) carry no reputation risk and move to `hexclave.com` as normal. Set up new mailboxes; forward old → new during transition.
 
 ### Page titles and metadata
 
@@ -720,18 +748,18 @@ Not just subjects — body strings too. Hardcoded in source, not in DB templates
 - "Test Email from Stack Auth" — `apps/backend/src/app/api/latest/internal/send-test-email/route.tsx`
 - "Thank you for using Stack Auth!" — `apps/backend/src/app/api/latest/internal/failed-emails-digest/route.ts`
 - "Stack Auth User" default passkey display name
-- Any other hardcoded subject/body containing "Stack Auth" — grep before PR 1
+- Any other hardcoded subject/body containing "Stack Auth" — grep before PR 2
 
 ### CHANGELOG title flip
 
-`CHANGELOG.md` title becomes "Hexclave Changelog" in PR 1. Existing entries' commit-by-commit context preserves continuity; no need to dual-name the title.
+`CHANGELOG.md` title becomes "Hexclave Changelog" in PR 2. Existing entries' commit-by-commit context preserves continuity; no need to dual-name the title.
 
 ### Contributor / agent guidance
 
 - `AGENTS.md` currently says: *"Any environment variables you create should be prefixed with `STACK_`"*. Flip to prefer `HEXCLAVE_*` for Category A/B; document that Category C/E vars stay `STACK_*`.
 - Update any other contributor guidance referencing brand strings.
 
-### Other Tier 4 sweeps (same PR)
+### Other Tier 4 sweeps (PR 2)
 
 - README.md, CONTRIBUTING.md, CHANGELOG.md (title flip per above), AGENTS.md (env var guidance per above)
 - 49 docs files referencing `Stack*` class names in code examples (Hexclave-only after the rewrite; one compat note per page where relevant)
@@ -740,7 +768,7 @@ Not just subjects — body strings too. Hardcoded in source, not in DB templates
 - `.github/SECURITY.md`, PR template, workflow file refs
 - `skills/stack-auth/SKILL.md` (consider directory rename to `skills/hexclave/`; old directory can stay as a pointer if needed)
 - Dashboard setup-page snippets (`apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/setup-page.tsx`) — copy-pasteable code blocks shown to customers
-- Init wizard prompts (`packages/init-stack/`) — user-facing CLI messaging
+- Init wizard prompts — user-facing CLI messaging in `packages/stack-cli/` (the `init` command, the new taught entrypoint) and the still-published `packages/init-stack/`
 
 ---
 
@@ -751,12 +779,13 @@ Items that contain "stack" in their literal name and intentionally stay that way
 | What | Why |
 |---|---|
 | `x-stack-auth` legacy JSON-encoded header | No current writer; pure read-only compat path |
-| `__Host-stack-temporary-chips-test-*` cookies | Internal, never user-visible, no functional reason to rename |
-| `NEXT_PUBLIC_STACK_PORT_PREFIX` | Baked into every dev's local Docker setup |
 | `POSTGRES_DB: stackframe` | Would orphan every dev's local volume |
-| Self-host `STACK_*` env vars (Category C) | Out of scope; self-hosters unaffected |
-| Build/dev/test env vars (`STACK_SKIP_TEMPLATE_GENERATION`, `STACK_TEST_SDK_FALLBACK`, etc.) | Internal-only, not user-facing |
 | Swift legacy `StackAuth` package | Frozen but installable; new SDK lives in separate `Hexclave` package |
+
+Two items that earlier plan versions listed here have moved:
+- **`NEXT_PUBLIC_STACK_PORT_PREFIX`** is now **renamed outright** to `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX` (no dual-accept) — see Env var taxonomy.
+- **Self-host (Category C) and build/dev/test (Category E) `STACK_*` env vars** are now **dual-read** — `HEXCLAVE_*` accepted alongside `STACK_*` — see Env var taxonomy.
+- **`__Host-stack-temporary-chips-test-*` cookies** belong to an unused feature being removed in a separate change; this rebrand ignores them entirely (see Tier 0 cookies).
 
 ### Not in scope — never had "stack" branding to begin with
 
@@ -799,15 +828,15 @@ These aren't decisions — they're things the implementer should know before sta
 
 8. **Snapshot serializer hardcodes `"stack-oauth-inner-"`** at [apps/e2e/tests/snapshot-serializer.ts:119](apps/e2e/tests/snapshot-serializer.ts:119). Update to also recognize `"hexclave-oauth-inner-"` or snapshots will go noisy during dual-write.
 
-9. **Test assertion sweep.** Roughly 7+ e2e tests assert on exact `"Stack Auth: …"` error message prefixes and specific header names (`expect(...).toEqual({"x-stack-auth": ...})`, etc.). Update in lockstep with implementation in PR 1.
+9. **Test assertion sweep.** Roughly 7+ e2e tests assert on exact `"Stack Auth: …"` error message prefixes and specific header names (`expect(...).toEqual({"x-stack-auth": ...})`, etc.). Update in lockstep with the implementation — header-name assertions in PR 1, error-message-prefix assertions in PR 2.
 
 10. **CLI Sentry DSN compile-time bake.** `packages/stack-cli/tsdown.config.ts` embeds `__STACK_CLI_SENTRY_DSN__`. Existing DSN stays (per locked decision); just be aware that old released CLI versions will keep emitting under their old DSN indefinitely — that's intentional.
 
 ---
 
-## PR 1 verification matrix
+## Verification matrix
 
-Compatibility-sensitive enough to be part of the implementation plan, not implicit.
+Compatibility-sensitive enough to be part of the implementation plan, not implicit. Each item is verified in whichever PR introduces it — PR 1 for wire/compat behavior, PR 2 for the visible rebrand.
 
 ### Auth wire
 - [ ] Backend accepts every `x-stack-*` request header (incl. `x-stack-api-key`, `x-stack-request-type`, `x-stack-override-error-status`)
@@ -833,7 +862,7 @@ Compatibility-sensitive enough to be part of the implementation plan, not implic
 - [ ] OAuth flow dual-writes `stack-oauth-{inner,outer}-*` and `hexclave-oauth-{inner,outer}-*`
 - [ ] OAuth callback reads either cookie name and completes flow
 - [ ] Low-risk cookies (`stack-is-https`, changelog, cli-auth-confirmed) dual-written under both names
-- [ ] CHIPS test cookies still under `__Host-stack-temporary-chips-test-*` (not renamed)
+- [ ] CHIPS test cookies untouched (unused feature, out of scope for this rebrand)
 - [ ] Mobile OAuth callback (`stack-auth-mobile-oauth-url://`) unchanged
 
 ### Env vars
@@ -841,11 +870,11 @@ Compatibility-sensitive enough to be part of the implementation plan, not implic
 - [ ] New env only → SDK initializes, no warning
 - [ ] Both envs with different values → new wins, deprecation warning emitted
 - [ ] Multi-alias Category B vars: all historical aliases readable, new canonical preferred
-- [ ] `NEXT_PUBLIC_STACK_PORT_PREFIX` still works under that exact name (not renamed)
+- [ ] `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX` works; `NEXT_PUBLIC_STACK_PORT_PREFIX` renamed everywhere (straight rename, no dual-accept)
 - [ ] Generated GitHub workflow with `STACK_AUTH_*` vars continues to authenticate
 - [ ] Newly generated workflow emits `HEXCLAVE_*` and authenticates
-- [ ] Self-host vars (Category C) untouched — `.env` files for operators unchanged
-- [ ] Build/dev/test vars (Category E) still under `STACK_*` — no rename attempted
+- [ ] Self-host vars (Category C) dual-read — both `STACK_*` and `HEXCLAVE_*` work; existing operator `.env` files unchanged
+- [ ] Build/dev/test vars (Category E) dual-read — both `STACK_*` and `HEXCLAVE_*` work
 
 ### JWT
 - [ ] Old normal issuer (`api.stack-auth.com/.../projects/{id}`) validates
@@ -910,50 +939,63 @@ Compatibility-sensitive enough to be part of the implementation plan, not implic
 
 ---
 
-## Rollout — 2 PRs
+## Rollout — 3 PRs
 
-### PR 1: "Rebrand to Hexclave (additive)" — now
+The three PRs separate *invisible* changes from *visible* ones. PR 1 can merge fast with low review risk because nothing in it is observable to any user — it breaks nothing and reveals no Hexclave branding. PR 2 is the actual public rebrand. PR 3 is far-future cleanup.
 
-One large additive PR. Nothing deleted. Existing users continue working untouched. Verification matrix above must pass. **Prerequisite (not in the PR itself): exhaustive operator env var inventory** — see Category C.
+The Tier sections above describe **what** changes; this section assigns **when**. Several surfaces split across PR 1 and PR 2 — the wire/code half lands in PR 1, the visible half in PR 2 (e.g. MCP: register `ask_hexclave` in PR 1, change the setup-page text in PR 2). "No user-facing changes" in PR 1 means **no breaking changes and no rebranded UI/text/docs** — not byte-identical behavior (new SDK code does start emitting `x-hexclave-*` etc., which is visible on the wire but harmless).
 
-Major work items:
-- Header / cookie / env var dual-accept (Tier 0)
-- Template re-exports propagating to generated SDKs (Tier 1 JS)
-- Swift: stand up new `Hexclave` SPM package with real `Hexclave*` symbols + `api.hexclave.com` base URL; freeze existing `StackAuth` package
-- `sdks/spec` update
-- Publish-time mirror artifacts for `@hexclave/*` packages (Tier 2)
-- CLI dual config paths + binary alias
-- JWT validator accepts both domains for all 3 issuer types
-- MCP dual tool registration
-- Idempotent seed/data migration with tests
-- Mechanical sweep: domains (full inventory), repo slug, page titles, OpenAPI titles, generated content (after generator updates), examples, README family, assets
-- DNS: stand up all `*.hexclave.com` subdomains; redirect from `*.stack-auth.com`
-- `turbo.json` `globalEnv` adds `HEXCLAVE_*`
+**Deploy ordering within PR 1:** the backend dual-accept must be deployed everywhere — including self-hosted instances — *before* SDKs that emit the new identifiers reach users, or a new SDK against an un-updated backend would fail. Sequence the backend changes ahead of the SDK emit switch.
 
-### PR 2: "Remove non-essential Stack Auth fallbacks" — 12+ months later
+### PR 1: "Hexclave compatibility layer (invisible)" — now
 
-Only after operational evidence shows the targeted fallbacks are unused (telemetry decision deferred from PR 1).
+Purely additive, ships entirely inside the existing `@stackframe/*` packages and existing deploys. Nothing is deleted; nothing breaks; no Hexclave branding becomes visible to any user. Safe to merge quickly. **Prerequisite (not code in the PR): the exhaustive operator env var inventory** — now required since Category C is dual-read (see Category C).
 
-Pure deletion, but **narrowly scoped**. Wire identifiers (request headers, response headers, JWT issuers, Bearer prefix, OAuth state cookies, mobile URL scheme, SDK class aliases) stay indefinitely and are NOT touched by PR 2. The legacy `StackAuth` Swift package stays installable but unmaintained — also untouched. Same goes for everything in "Do not rename".
+Scope:
+- **Wire dual-accept / dual-emit:** request headers, response headers, `Bearer` prefix, query parameters, JWT issuer/audience validator — backend accepts old + new; new SDK code emits the new form (Tier 0).
+- **Cookies & storage:** dual-write / dual-read all auth, OAuth-state, and low-risk cookies and storage keys (Tier 0).
+- **Env vars:** dual-read every category (A–E); rename `NEXT_PUBLIC_STACK_PORT_PREFIX` outright; `turbo.json` `globalEnv` gains the `HEXCLAVE_*` forms.
+- **SDK export aliases:** add `Hexclave*` aliases in `packages/template`, propagated by codegen to every JS SDK (Tier 1). No `@deprecated` markers yet.
+- **Internal renames:** the three SDK interfaces and `StackAssertionError` renamed outright (no alias); dev-tool DOM identifiers; `Symbol.for(...)` dual-attach (Tier 1).
+- **MCP:** register the `ask_hexclave` tool (additive); `ask_stack_auth` keeps working.
+- **Config discovery:** CLI / dashboard accept `hexclave.config.ts` and the `~/.config/hexclave/` credentials path alongside the old ones.
+- **Tests:** assertions on wire identifiers updated in lockstep; snapshot serializer handles both prefixes.
 
-Safely removable in PR 2:
+### PR 2: "Rebrand to Hexclave (visible)" — after PR 1
 
-- Stop dual-writing main auth cookies under their old `stack-*` names (old cookies have long expired naturally; reads of old names can also be dropped)
-- Stop reading `STACK_*` customer SDK env vars (or hard-error with a migration message) — only after operator dashboards confirm low usage
-- Remove `ask_stack_auth` MCP tool — only after AI client adoption of `ask_hexclave` is high
-- Tear down non-essential `*.stack-auth.com` subdomains (keep `api.stack-auth.com` indefinitely — Apple sign-in setup depends on it)
-- `@stackframe/*` published packages: leave on npm with a "moved to `@hexclave/*`" README; do not unpublish (npm unpublishing breaks the ecosystem)
+Where the brand goes public. Everything user-visible.
 
-**Explicitly NOT removed in PR 2:**
+Scope:
+- **New packages:** publish the `@hexclave/*` npm mirrors (starting at `1.0.0`); stand up the new `Hexclave` Swift package with real `Hexclave*` symbols and `api.hexclave.com` base URL; freeze the existing `StackAuth` Swift package; update `sdks/spec`.
+- **Deprecation:** `npm deprecate` the `@stackframe/*` packages; `@deprecated` JSDoc on every `Stack*` public export; SDK runtime `console.warn` recommending `@hexclave/*`.
+- **Brand strings (Tier 4):** domains (full inventory), GitHub repo slug, page titles, OpenAPI titles, known-error message templates, email subjects/bodies, `StackAssertionError` message text, CHANGELOG title, contributor guidance, README family, visual assets.
+- **Generated content:** update generators (AI prompts, setup prompts, MCP setup page, skills), then regenerate outputs.
+- **Docs:** rewrite to teach Hexclave-only names; old names only in compat notes; onboarding command becomes `npx @hexclave/cli@latest init`.
+- **Data migration:** idempotent seed migration `Stack Dashboard` → `Hexclave Dashboard` and the email config name (user-visible).
+- **CLI:** `hexclave` binary alias; `hexclave init` generates `hexclave.config.ts`; dashboard setup snippets teach the new commands.
+- **DNS:** stand up all `*.hexclave.com` subdomains and the `sent-with-hexclave.com` sending domain; redirect from `*.stack-auth.com`.
+- **Tests:** assertions on brand strings / error message prefixes updated in lockstep.
 
+### PR 3: "Remove non-essential Stack Auth fallbacks" — 12+ months later
+
+(Formerly "PR 2" in earlier plan versions.) Pure deletion, **narrowly scoped**, only after operational evidence / telemetry shows the targeted fallbacks are unused.
+
+Safely removable in PR 3:
+- Stop dual-writing main auth cookies under their old `stack-*` names (old cookies have long expired naturally; reads of old names can also be dropped).
+- Stop reading `STACK_*` customer SDK env vars (or hard-error with a migration message) — only after operator dashboards confirm low usage.
+- Remove the `ask_stack_auth` MCP tool — only after AI-client adoption of `ask_hexclave` is high.
+- Tear down non-essential `*.stack-auth.com` subdomains (keep `api.stack-auth.com` indefinitely — Apple sign-in setup depends on it).
+- `@stackframe/*` published packages: leave on npm with a "moved to `@hexclave/*`" README; do not unpublish (npm unpublishing breaks the ecosystem).
+
+**Explicitly NOT removed in PR 3:**
 - `x-stack-*` request headers (kept dual-accepted indefinitely)
 - `x-stack-*` response headers (kept dual-emitted indefinitely)
 - `Bearer stackauth_*` prefix (kept dual-accepted indefinitely)
 - `x-stack-auth` legacy header (still parsed)
 - JWT validator's acceptance of all three `stack-auth.com` issuer variants and the IdP audience
-- JS `Stack*` exports — they're the canonical class names, not aliases
+- JS `Stack*` exports — they're the canonical class names, not aliases (deprecated, not removed)
 - Legacy `StackAuth` Swift package (frozen but installable from existing SPM URL)
-- OAuth state cookies (`stack-oauth-*`), CHIPS test cookies, `stack-auth-mobile-oauth-url://`
+- OAuth state cookies (`stack-oauth-*`), `stack-auth-mobile-oauth-url://`
 - `stack.config.ts` filename (still readable as fallback)
 - Everything in the "Do not rename" table
 
@@ -961,9 +1003,9 @@ Safely removable in PR 2:
 
 ## Open questions still worth answering before implementation
 
-- **Operator env var inventory:** must be produced before PR 1 implementation begins. Once produced, decide whether category C scope fits in PR 1 or needs to be deferred to a follow-up. Current plan: include in PR 1 if scope is manageable.
+- **Operator env var inventory:** must be produced before PR 1 implementation begins. Category C is now dual-read and **in-scope for PR 1** (no longer deferrable) — the inventory is required so every operator var gets a dual-read site, a docs update, and an `.env.example` entry.
 - **SDK request header emission:** new SDKs emit `x-hexclave-*` for every request header (current plan), or skip the most stable ones (e.g. `branch-id`) to reduce churn? Current plan: emit all.
-- **DNS infrastructure:** ops team confirmation on indefinite redirect maintenance capacity for 16 subdomains.
-- **Future canonicality flip (post PR 2):** is there any reason to ever make `Hexclave*` the canonical class name in JS or Swift, with `Stack*` as the alias? Current plan: no — coexistence indefinitely, neither is "more canonical".
+- **DNS infrastructure:** ops team confirmation on indefinite redirect maintenance capacity for 16 subdomains, plus registration + SPF/DKIM/DMARC for the separate `sent-with-hexclave.com` transactional sending domain.
+- **Future canonicality flip (post PR 3):** is there any reason to ever make `Hexclave*` the canonical class name in JS or Swift, with `Stack*` as the alias? Current plan: no — coexistence indefinitely, neither is "more canonical".
 - `hexclave.config.ts` is the new canonical config filename; `stack.config.ts` read-fallback stays in discovery indefinitely. We'd only drop the fallback after telemetry shows essentially no projects rely on it.
 - DNS infrastructure ownership for redirects — operations team needs to confirm capacity for indefinite redirect maintenance.
