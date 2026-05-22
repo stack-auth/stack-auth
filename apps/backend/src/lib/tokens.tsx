@@ -60,6 +60,22 @@ const getIssuer = (projectId: string, userType: UserType) => {
   const url = new URL(`/api/v1/projects${suffix}/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   return url.toString();
 };
+// Hexclave rebrand: api.stack-auth.com ↔ api.hexclave.com. During the domain transition a
+// backend served from one host must keep validating tokens issued under the other, so the
+// validator accepts the issuer under both hosts. Signing always uses getIssuer() (the
+// configured host), so new tokens follow the deployment. See RENAME-TO-HEXCLAVE.md (Tier 0, JWT).
+const issuerHostAliases: Record<string, string> = {
+  "api.stack-auth.com": "api.hexclave.com",
+  "api.hexclave.com": "api.stack-auth.com",
+};
+const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
+  const issuer = getIssuer(projectId, userType);
+  const aliasHost = issuerHostAliases[new URL(issuer).host];
+  if (!aliasHost) return [issuer];
+  const aliasedUrl = new URL(issuer);
+  aliasedUrl.host = aliasHost;
+  return [issuer, aliasedUrl.toString()];
+};
 const getAudience = (projectId: string, userType: UserType) => {
   // TODO: make the audience a URL, and encode the user type in a better way
   return userType === 'anonymous' ? `${projectId}:anon` : userType === 'restricted' ? `${projectId}:restricted` : projectId;
@@ -98,9 +114,9 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       // Determine allowed issuers based on what types of tokens we accept
       const projectId = aud.split(":")[0];
       const allowedIssuers = [
-        getIssuer(projectId, 'normal'),
-        ...(allowRestricted ? [getIssuer(projectId, 'restricted')] : []),
-        ...(allowAnonymous ? [getIssuer(projectId, 'anonymous')] : []),
+        ...getAllowedIssuers(projectId, 'normal'),
+        ...(allowRestricted ? getAllowedIssuers(projectId, 'restricted') : []),
+        ...(allowAnonymous ? getAllowedIssuers(projectId, 'anonymous') : []),
       ];
 
       payload = await verifyJWT({
