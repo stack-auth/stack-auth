@@ -124,6 +124,7 @@ export const projectsCrudClientReadSchema = yupObject({
     passkey_enabled: schemaFields.projectPasskeyEnabledSchema.defined(),
     client_team_creation_enabled: schemaFields.projectClientTeamCreationEnabledSchema.defined(),
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
+    allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),

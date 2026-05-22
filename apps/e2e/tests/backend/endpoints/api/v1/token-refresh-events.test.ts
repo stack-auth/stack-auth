@@ -43,14 +43,15 @@ const queryEvents = async (params: {
  */
 const fetchEventsWithRetry = async (
   params: { userId?: string, eventType?: string },
-  options: { attempts?: number, delayMs?: number, expectedCount?: number } = {}
+  options: { attempts?: number, delayMs?: number, expectedCount?: number, timeoutMs?: number } = {}
 ) => {
-  const attempts = options.attempts ?? 40;
+  const timeoutMs = options.timeoutMs ?? 30_000;
   const delayMs = options.delayMs ?? 500;
   const expectedCount = options.expectedCount ?? 1;
+  const startedAt = performance.now();
 
   let response = await queryEvents(params);
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  while (performance.now() - startedAt < timeoutMs) {
     if (response.status !== 200) {
       break;
     }
@@ -85,7 +86,7 @@ const expectExactlyNTokenRefreshEvents = async (
   }
 
   // Wait a bit more to catch any delayed duplicate events
-  await wait(500);
+  await wait(1000);
 
   // Query again to get the final count
   const finalResponse = await queryEvents({ userId, eventType: "$token-refresh" });
