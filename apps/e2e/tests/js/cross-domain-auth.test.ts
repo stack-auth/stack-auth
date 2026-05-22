@@ -2,6 +2,23 @@ import { StackClientApp } from "@stackframe/js";
 import { afterEach, vi } from "vitest";
 import { it, localRedirectUrl } from "../helpers";
 
+function createMockDocument(): Document {
+  const cookieJar = new Map<string, string>();
+  return {
+    get cookie() {
+      return [...cookieJar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+    },
+    set cookie(str: string) {
+      const [nameValue] = str.split(';');
+      const eqIndex = nameValue.indexOf('=');
+      if (eqIndex >= 0) {
+        cookieJar.set(nameValue.slice(0, eqIndex).trim(), nameValue.slice(eqIndex + 1).trim());
+      }
+    },
+    createElement: () => ({}),
+  } as any;
+}
+
 const withHostedDomainSuffix = async (callback: () => Promise<void>) => {
   const oldHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
   const oldHostedHandlerUrlTemplate = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
@@ -178,7 +195,7 @@ it("only treats hosted OAuth callback URLs as Stack callbacks when the matching 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: `${localRedirectUrl}/callback-page?code=oauth-code&state=oauth-state`,
@@ -221,7 +238,7 @@ it("does not await pending auth resolutions when post-callback redirect mints a 
     redirectBackUrl.searchParams.set("stack_cross_domain_auth", "1");
     redirectBackUrl.searchParams.set("stack_cross_domain_state", "state");
     redirectBackUrl.searchParams.set("stack_cross_domain_code_challenge", "challenge");
-    redirectBackUrl.searchParams.set("stack_cross_domain_after_callback_redirect_url", `${localRedirectUrl}/after`);
+    redirectBackUrl.searchParams.set("stack_cross_domain_after_callback_redirect_url", `https://${projectId}.example-stack-hosted.test/after`);
     currentUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
 
     const previousWindow = globalThis.window;
@@ -230,7 +247,7 @@ it("does not await pending auth resolutions when post-callback redirect mints a 
       .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
       .mockResolvedValue(`https://${projectId}.example-stack-hosted.test/handler/final`);
 
-    globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+    globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
         href: currentUrl.toString(),

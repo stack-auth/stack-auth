@@ -39,6 +39,7 @@ it("gets current project (internal)", async ({ expect }) => {
       "status": 200,
       "body": {
         "config": {
+          "allow_localhost": true,
           "allow_team_api_keys": false,
           "allow_user_api_keys": false,
           "client_team_creation_enabled": true,
