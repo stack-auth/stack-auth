@@ -2,6 +2,8 @@
 
 <img src=".github/assets/hexclave-header.svg" alt="Hexclave" width="320"/>
 
+<br/><br/>
+
 **The user infrastructure platform.**
 
 Hexclave handles everything around your users: authentication, teams,
