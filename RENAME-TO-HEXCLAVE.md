@@ -7,8 +7,8 @@ Rebrand rollout with backwards compatibility. Organized by wire-compatibility ri
 ## Locked-in decisions
 
 - GitHub canonical repo: **`hexclave/hexclave`** (was `hexclave/stack-auth`)
-- Read-only legacy identifiers — kept indefinitely (no Hexclave writer needed because nothing emits them in new code):
-  - `x-stack-auth` (legacy JSON-encoded auth header)
+- SDK-internal legacy identifiers — kept readable indefinitely, no Hexclave variant added:
+  - `x-stack-auth` (legacy JSON-encoded auth header) — produced by the deprecated `getAuthHeaders()` / `useAuthHeaders()` SDK methods, read by the SDK's `tokenStore: { headers }` parser. Never travels to the Stack backend. Frozen because its producers are `@deprecated` in favor of `getAuthorizationHeader()` (the Bearer path).
 - **Symmetric dual-support** (old kept indefinitely, new is preferred / emitted by new code):
   - All `x-stack-*` request headers ↔ `x-hexclave-*` equivalents (dual-accept)
   - All `x-stack-*` response headers ↔ `x-hexclave-*` equivalents (dual-emit)
@@ -53,13 +53,13 @@ Rebrand rollout with backwards compatibility. Organized by wire-compatibility ri
 
 These travel between SDK and backend, or get baked into third-party systems. **Alias, never replace.**
 
-### Read-only legacy identifiers (no Hexclave writer needed)
+### SDK-internal legacy identifiers (no Hexclave variant)
 
-These have no Hexclave equivalent because nothing in new code emits them. Backend keeps parsing them indefinitely as a compatibility path.
+*Discovery correction:* `x-stack-auth` is **not** a backend wire identifier — `apps/backend` and `packages/stack-shared` contain zero references to it. Like the `Bearer stackauth_` prefix, it lives entirely in the SDK (`packages/template`).
 
-| Identifier | What | Why no Hexclave equivalent |
+| Identifier | What | Treatment |
 |---|---|---|
-| `x-stack-auth: { accessToken, refreshToken }` | Legacy JSON-encoded auth header | Newer SDKs use split `x-stack-access-token` + `x-stack-refresh-token` (which DO get `x-hexclave-*` aliases). This older header has no current writer to add a new format to. |
+| `x-stack-auth: { accessToken, refreshToken }` | Legacy JSON-encoded auth header | **Produced** by the SDK's `getAuthHeaders()` / `useAuthHeaders()` methods (`client-app-impl.ts:1640,3471` — both `@deprecated` in favor of `getAuthorizationHeader()`). **Consumed** by the SDK's `tokenStore: { headers }` parser at `client-app-impl.ts:1098-1113`. The flow is client SDK → the developer's own server → a server-side Stack SDK; the Stack backend is never in the path. Frozen: the producing methods are deprecated, so no `x-hexclave-auth` variant is added — the parser keeps reading `x-stack-auth` indefinitely. New code uses `getAuthorizationHeader()` (the `hexclave_` Bearer path). |
 
 ### Symmetric dual-support (old kept, new is canonical)
 
@@ -779,7 +779,7 @@ Items that contain "stack" in their literal name and intentionally stay that way
 
 | What | Why |
 |---|---|
-| `x-stack-auth` legacy JSON-encoded header | No current writer; pure read-only compat path |
+| `x-stack-auth` legacy JSON-encoded header | SDK-internal — produced by deprecated `getAuthHeaders()`, read by the SDK `tokenStore` parser; never a backend identifier, no Hexclave variant |
 | `POSTGRES_DB: stackframe` | Would orphan every dev's local volume |
 | Swift legacy `StackAuth` package | Frozen but installable; new SDK lives in separate `Hexclave` package |
 
@@ -865,9 +865,9 @@ CLI: `stack-cli/src/commands/config-file.ts:202-205`, `init.ts:195,390`, `dev.ts
 
 Header-name assertions: `js/auth-like.test.ts:404,419,470,541`, `render-email.test.ts:180,217`, `internal/projects.test.ts:51`, `neon/.../provision.test.ts:224`, `backend-helpers.ts:197-201`. Cookie-name: `backend-helpers.ts:803`, `oauth/{authorize,callback,merge-strategy}.test.ts`, `sign-up-rules.test.ts:36`, `js/cookies.test.ts:200`, `cross-domain-auth.test.ts:190`. Snapshot serializer: `snapshot-serializer.ts:119`. Many `x-stack-known-error` values live in inline snapshots and regenerate automatically. (Error-message-string and docs-URL assertions are PR 2.)
 
-### Still unverified
+### `x-stack-auth` legacy header — resolved
 
-- The backend **read** site for the legacy `x-stack-auth` JSON header was not located in `smart-request.tsx`'s auth parser. The SDK emit side is `client-app-impl.ts` (`getAuthHeaders()` / `useAuthHeaders()`). Confirm whether and where the backend consumes it before relying on the "kept indefinitely" claim.
+A repo-wide grep confirms `x-stack-auth` has **zero references in `apps/backend` or `packages/stack-shared`** — the backend never parses it. It is entirely SDK-internal: produced by the `@deprecated` `getAuthHeaders()` / `useAuthHeaders()` methods (`client-app-impl.ts:1640,3471`) and consumed by the `tokenStore: { headers }` parser (`client-app-impl.ts:1098-1113`) — the same parser path that handles the `Bearer stackauth_` prefix. No backend change, and no `x-hexclave-auth` variant: the producing methods are deprecated in favor of `getAuthorizationHeader()`, so the header is frozen and the parser keeps reading `x-stack-auth` indefinitely.
 
 ### Retained from earlier review
 
@@ -897,7 +897,7 @@ Compatibility-sensitive enough to be part of the implementation plan, not implic
 - [ ] Old SDK (unchanged) authenticates successfully
 - [ ] SDK token parser accepts `Bearer stackauth_*` AND `Bearer hexclave_*` (SDK-internal — the backend is not involved)
 - [ ] New SDK constructs `tokenStore: { headers }` tokens with the `hexclave_` prefix
-- [ ] `x-stack-auth: {...}` legacy header continues to be parsed (no Hexclave equivalent emitted)
+- [ ] `x-stack-auth` legacy header still accepted by the SDK's `tokenStore: { headers }` parser (SDK-internal; no `x-hexclave-auth` variant; producers are deprecated)
 - [ ] Backend emits BOTH `x-stack-*` and `x-hexclave-*` response headers (`actual-status`, `known-error`, `request-id`)
 - [ ] New SDK reads `x-hexclave-*` response headers, falls back to `x-stack-*`
 - [ ] Old SDK still reads `x-stack-*` response headers correctly
@@ -1040,7 +1040,7 @@ Safely removable in PR 3:
 - `x-stack-*` request headers (kept dual-accepted indefinitely)
 - `x-stack-*` response headers (kept dual-emitted indefinitely)
 - `Bearer stackauth_*` prefix (kept dual-accepted indefinitely)
-- `x-stack-auth` legacy header (still parsed)
+- `x-stack-auth` legacy header (SDK-internal; still parsed by the SDK `tokenStore` parser)
 - JWT validator's acceptance of all three `stack-auth.com` issuer variants and the IdP audience
 - JS `Stack*` exports — they're the canonical class names, not aliases (deprecated, not removed)
 - Legacy `StackAuth` Swift package (frozen but installable from existing SPM URL)
