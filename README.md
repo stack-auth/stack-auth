@@ -1,6 +1,6 @@
 <div align="center">
 
-# Hexclave
+<img src=".github/assets/hexclave-header.svg" alt="Hexclave" width="320"/>
 
 **The user infrastructure platform.**
 
@@ -29,35 +29,86 @@ Read try.hexclave.com and help me setup hexclave in this project
 
 ## What's included
 
-Hexclave ships as a catalog of apps you switch on as your product needs them:
+Hexclave ships as a catalog of apps you switch on as your product needs them.
+Each one is built on the same user model, and new apps land regularly.
 
-| App | What it does |
-| --- | --- |
-| **Authentication** | Passwords, OAuth, magic links, and passkeys, with pre-built UI and sign-up fraud protection |
-| **Teams** | Multi-tenant organizations, members, and invitations |
-| **RBAC** | Role-based access control with project and team permissions |
-| **API Keys** | Issue and manage publishable and secret API keys |
-| **Payments** | Product lines, checkout, subscriptions, and payouts |
-| **Emails** | Transactional email with templates, themes, and delivery logs |
-| **Analytics** | Explore your product's events, usage data, and session replays |
-| **Webhooks** | Real-time event notifications for your own services |
-| **Data Vault** | Encrypted storage for your users' sensitive data |
-| **Launch Checklist** | Pre-launch verification and readiness checks |
+### <img src=".github/assets/logos/authentication.png" width="40" align="top"/> &nbsp; Authentication
 
-Every app is built on the same user model, and new ones land regularly.
+Passwords, OAuth, magic links, and passkeys, with pre-built UI and sign-up fraud protection.
 
-## SDKs
+<img src="apps/dashboard/public/storeDesc-auth-1.png" alt="Authentication"/>
 
-Install the SDK that matches your stack:
+---
 
-| Package | For |
-| --- | --- |
-| `@hexclave/next` | Next.js (App Router) |
-| `@hexclave/react` | React, including Vite |
-| `@hexclave/js` | Framework-agnostic JavaScript and Node |
-| REST API | Python, Go, and any other language |
+### <img src=".github/assets/logos/teams.png" width="40" align="top"/> &nbsp; Teams
 
-Full guides and SDK reference live at [docs.hexclave.com](https://docs.hexclave.com).
+Multi-tenant organizations, members, and invitations.
+
+<img src="apps/dashboard/public/storeDesc-teams-1.png" alt="Teams"/>
+
+---
+
+### <img src=".github/assets/logos/rbac.png" width="40" align="top"/> &nbsp; RBAC
+
+Role-based access control with project and team permissions.
+
+<img src="apps/dashboard/public/storeDesc-rbac-1.png" alt="RBAC"/>
+
+---
+
+### <img src=".github/assets/logos/api-keys.png" width="40" align="top"/> &nbsp; API Keys
+
+Issue and manage publishable and secret API keys.
+
+<img src="apps/dashboard/public/storeDesc-api-keys-1.png" alt="API Keys"/>
+
+---
+
+### <img src=".github/assets/logos/payments.png" width="40" align="top"/> &nbsp; Payments
+
+Product lines, checkout, subscriptions, and payouts.
+
+<img src="apps/dashboard/public/storeDesc-payments-1.png" alt="Payments"/>
+
+---
+
+### <img src=".github/assets/logos/emails.png" width="40" align="top"/> &nbsp; Emails
+
+Transactional email with templates, themes, and delivery logs.
+
+<img src="apps/dashboard/public/storeDesc-emails-1.png" alt="Emails"/>
+
+---
+
+### <img src=".github/assets/logos/analytics.png" width="40" align="top"/> &nbsp; Analytics
+
+Explore your product's events, usage data, and session replays.
+
+<img src=".github/assets/screenshots/analytics.png" alt="Analytics"/>
+
+---
+
+### <img src=".github/assets/logos/webhooks.png" width="40" align="top"/> &nbsp; Webhooks
+
+Real-time event notifications for your own services.
+
+<img src="apps/dashboard/public/storeDesc-webhooks-1.png" alt="Webhooks"/>
+
+---
+
+### <img src=".github/assets/logos/data-vault.png" width="40" align="top"/> &nbsp; Data Vault
+
+Encrypted storage for your users' sensitive data.
+
+<img src="apps/dashboard/public/storeDesc-data-vault-1.png" alt="Data Vault"/>
+
+---
+
+### <img src=".github/assets/logos/launch-checklist.png" width="40" align="top"/> &nbsp; Launch Checklist
+
+Pre-launch verification and readiness checks.
+
+<img src=".github/assets/screenshots/launch-checklist.png" alt="Launch Checklist"/>
 
 ## Contributing
 
