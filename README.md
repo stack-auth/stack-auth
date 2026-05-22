@@ -2,7 +2,7 @@
 
 <img src=".github/assets/hexclave-header.svg" alt="Hexclave" width="320"/>
 
-<br/><br/>
+<br/>
 
 **The user infrastructure platform.**
 
