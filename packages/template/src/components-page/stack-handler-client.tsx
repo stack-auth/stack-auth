@@ -2,12 +2,12 @@
 
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined, filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 /* IF_PLATFORM react
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 // END_PLATFORM */
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
@@ -26,9 +26,7 @@ import { PasswordReset } from "./password-reset";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
 
-/* IF_PLATFORM react
 import { MessageCard } from "../components/message-cards/message-card";
-// END_PLATFORM react */
 
 type Components = {
   SignIn: typeof SignIn,
@@ -302,9 +300,19 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     app: stackApp,
   });
 
-  if (result && 'redirectToPage' in result) {
-    runAsynchronously(stackApp[stackAppInternalsSymbol].redirectToHandler(result.redirectToPage, { replace: true }));
-    return null;
+  const redirectToPage = (result != null && typeof result === 'object' && 'redirectToPage' in result) ? result.redirectToPage : undefined;
+
+  useEffect(() => {
+    if (redirectToPage == null) return;
+    runAsynchronouslyWithAlert(
+      stackApp[stackAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true })
+    );
+  }, [redirectToPage, stackApp]);
+
+  if (redirectToPage != null) {
+    return (
+      <MessageCard title="Redirecting..." fullPage={props.fullPage} />
+    );
   }
 
   if (result && 'redirect' in result) {
