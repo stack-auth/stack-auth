@@ -3345,8 +3345,10 @@
               "enum": [
                 "json",
                 "redirect"
-              ]
+              ],
+              "description": "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided."
             },
+            "description": "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided.",
             "required": false
           },
           {
@@ -3357,8 +3359,10 @@
               "enum": [
                 "json",
                 "redirect"
-              ]
+              ],
+              "description": "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided."
             },
+            "description": "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided.",
             "required": false
           },
           {

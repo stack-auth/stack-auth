@@ -29,6 +29,12 @@ const hideHeaders = [
   "etag",
   "x-stack-request-id",
   "x-hexclave-request-id",
+  // Hexclave rebrand: backend dual-emits these alongside the x-stack-* variants
+  // with identical values. Hide the duplicates so snapshots stay focused on the
+  // existing x-stack-* entries — avoids bloating every response snapshot in the
+  // suite, and PR 3 (removing the dual-emit) won't need to re-regen them.
+  "x-hexclave-known-error",
+  "x-hexclave-actual-status",
   "x-middleware-rewrite",
 ] as const;
 

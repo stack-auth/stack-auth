@@ -42,9 +42,11 @@ export const GET = createSmartRouteHandler({
       // Hexclave rebrand: the SDK now emits `hexclave_response_mode`; the legacy
       // `stack_response_mode` name is still accepted. Neither carries a yup default
       // so the handler can tell "neither set" apart from an explicit value and only
-      // then fall back to "redirect".
-      stack_response_mode: yupString().oneOf(["json", "redirect"]).optional(),
-      hexclave_response_mode: yupString().oneOf(["json", "redirect"]).optional(),
+      // then fall back to "redirect" (resolved manually at the use site). The
+      // `.meta({ openapiField: { description } })` documents the runtime default
+      // for the generated OpenAPI docs.
+      stack_response_mode: yupString().oneOf(["json", "redirect"]).optional().meta({ openapiField: { description: "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided." } }),
+      hexclave_response_mode: yupString().oneOf(["json", "redirect"]).optional().meta({ openapiField: { description: "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided." } }),
       ...botChallengeFlowRequestSchemaFields,
 
       // oauth parameters
