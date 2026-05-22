@@ -4,6 +4,7 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
 sidebarTitle: "Overview"
 ---
 
+import { generatedSetupPromptText } from "./snippets/home-prompt-island.jsx";
 
 export const SectionLink = ({ href, children }) => (
   <a href={href} className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
@@ -15,18 +16,65 @@ export const ChipLink = ({ href, children }) => (
 
 export const copyGeneratedSetupPrompt = async (event) => {
   const button = event.currentTarget;
+  window.focus();
+  button.focus();
+  const promptCard = button.closest("[data-home-setup-prompt='true']");
+  const errorMessage = promptCard == null ? null : promptCard.querySelector("[data-copy-prompt-error='true']");
   try {
-    await navigator.clipboard.writeText(generatedSetupPromptText);
+    let clipboardError = null;
+    let didCopy = false;
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(generatedSetupPromptText);
+        didCopy = true;
+      } catch (error) {
+        clipboardError = error;
+      }
+    }
+    if (!didCopy) {
+      const textArea = document.createElement("textarea");
+      textArea.value = generatedSetupPromptText;
+      textArea.readOnly = true;
+      textArea.style.position = "fixed";
+      textArea.style.top = "0";
+      textArea.style.left = "0";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      didCopy = document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+    if (!didCopy) {
+      const clipboardErrorMessage = clipboardError instanceof Error ? clipboardError.message : "";
+      throw new Error(clipboardErrorMessage || "Browser clipboard permissions blocked copying.");
+    }
+    if (errorMessage != null) {
+      errorMessage.textContent = "";
+      errorMessage.hidden = true;
+    }
     button.textContent = "Copied";
-  } catch {
+    button.title = "";
+  } catch (error) {
+    const errorText = error instanceof Error ? error.message : "Clipboard copy failed.";
     button.textContent = "Copy failed";
+    button.title = errorText;
+    if (errorMessage != null) {
+      errorMessage.textContent = errorText;
+      errorMessage.hidden = false;
+    }
   }
   window.setTimeout(() => {
     button.textContent = "Copy prompt";
-  }, 1300);
+    button.title = "";
+    if (errorMessage != null) {
+      errorMessage.textContent = "";
+      errorMessage.hidden = true;
+    }
+  }, 2500);
 };
 
-<div className="not-prose my-6 rounded-3xl border border-[#d7dff6] bg-gradient-to-br from-[#f6f8ff] via-[#f2f5ff] to-[#edf7ff] p-5 text-zinc-900 shadow-[0_20px_60px_-40px_rgba(50,70,150,0.35)] sm:p-7 dark:border-[#2c3751] dark:bg-gradient-to-br dark:from-[#0c1423] dark:via-[#111b2f] dark:to-[#0b212e] dark:text-zinc-100 dark:shadow-[0_20px_60px_-40px_rgba(0,0,0,0.8)]">
+<div data-home-setup-prompt="true" className="not-prose my-6 rounded-3xl border border-[#d7dff6] bg-gradient-to-br from-[#f6f8ff] via-[#f2f5ff] to-[#edf7ff] p-5 text-zinc-900 shadow-[0_20px_60px_-40px_rgba(50,70,150,0.35)] sm:p-7 dark:border-[#2c3751] dark:bg-gradient-to-br dark:from-[#0c1423] dark:via-[#111b2f] dark:to-[#0b212e] dark:text-zinc-100 dark:shadow-[0_20px_60px_-40px_rgba(0,0,0,0.8)]">
   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#4f5f95] dark:text-[#8ea4d2]">
     Agent-first setup
   </p>
@@ -39,7 +87,7 @@ export const copyGeneratedSetupPrompt = async (event) => {
   </p>
 
   <div className="relative mt-6">
-    <GeneratedSetupPromptText className="h-28 w-full resize-none overflow-hidden rounded-2xl border border-[#cdd7f4] bg-white/75 px-4 py-3 pr-32 font-mono text-xs leading-6 text-zinc-700 outline-none backdrop-blur-sm sm:text-sm dark:border-[#33476d] dark:bg-black/20 dark:text-zinc-200" />
+    <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-2xl border border-[#cdd7f4] bg-white/75 px-4 py-3 pr-32 font-mono text-xs leading-6 text-zinc-700 backdrop-blur-sm sm:text-sm dark:border-[#33476d] dark:bg-black/20 dark:text-zinc-200"><code>{generatedSetupPromptText}</code></pre>
     <button
       type="button"
       onClick={copyGeneratedSetupPrompt}
@@ -49,19 +97,20 @@ export const copyGeneratedSetupPrompt = async (event) => {
     </button>
     <div className="pointer-events-none absolute inset-x-2 bottom-2 h-8 rounded-b-xl bg-gradient-to-t from-[#f4f7ff] to-transparent dark:from-[#0f1a2e]" />
   </div>
+  <p data-copy-prompt-error="true" hidden className="mt-2 text-xs font-medium text-red-700 dark:text-red-300" />
 
   <div className="mt-5 flex flex-col gap-3 sm:flex-row">
     <a
-      href="https://app.stack-auth.com"
+      href="/guides/getting-started/setup"
       className="inline-flex items-center justify-center rounded-xl bg-[#1e2f57] px-5 py-3 text-sm font-semibold !text-[#eef4ff] no-underline transition-colors duration-150 hover:transition-none hover:bg-[#253a6b] dark:bg-[#1e2f57] dark:hover:bg-[#253a6b] dark:!text-[#eef4ff]"
     >
-      Go to dashboard
+      View setup docs
     </a>
     <a
-      href="/guides/getting-started/setup"
+      href="https://app.stack-auth.com"
       className="inline-flex items-center justify-center rounded-xl border border-[#9fb5e4] bg-white/60 px-5 py-3 text-sm font-semibold text-[#1f3764] no-underline transition-colors duration-150 hover:transition-none hover:bg-white/85 dark:border-[#3d5a91] dark:bg-transparent dark:text-[#d7e7ff] dark:hover:bg-white/10"
     >
-      Open full prompt
+      Go to dashboard
     </a>
   </div>
 </div>

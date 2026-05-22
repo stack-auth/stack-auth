@@ -103,7 +103,7 @@ export async function getManagedEmailDomainByTenancyAndSubdomain(options: {
   tenancyId: string,
   subdomain: string,
 }): Promise<ManagedEmailDomain | null> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "tenancyId" = ${options.tenancyId}
@@ -117,7 +117,7 @@ export async function getManagedEmailDomainByTenancyAndSubdomain(options: {
 }
 
 export async function getManagedEmailDomainByResendDomainId(resendDomainId: string): Promise<ManagedEmailDomain | null> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "resendDomainId" = ${resendDomainId}
@@ -216,7 +216,7 @@ export async function markManagedEmailDomainApplied(id: string): Promise<Managed
 }
 
 export async function listManagedEmailDomainsForTenancy(tenancyId: string): Promise<ManagedEmailDomain[]> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "tenancyId" = ${tenancyId}

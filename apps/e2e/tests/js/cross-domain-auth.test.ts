@@ -244,7 +244,10 @@ it("does not await pending auth resolutions when post-callback redirect mints a 
       await expect((clientApp as any)._redirectToHandler(
         "afterSignIn",
         { replace: true },
-        { awaitPendingAuthResolutions: false },
+        {
+          awaitPendingAuthResolutions: false,
+          overrideTokenStoreInit: { accessToken: "fresh-access-token", refreshToken: "fresh-refresh-token" },
+        },
       )).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
     } finally {
       globalThis.window = previousWindow;
@@ -253,6 +256,7 @@ it("does not await pending auth resolutions when post-callback redirect mints a 
 
     expect(createCrossDomainAuthRedirectUrlSpy).toHaveBeenCalledWith(expect.objectContaining({
       awaitPendingAuthResolutions: false,
+      overrideTokenStoreInit: { accessToken: "fresh-access-token", refreshToken: "fresh-refresh-token" },
     }));
   });
 });

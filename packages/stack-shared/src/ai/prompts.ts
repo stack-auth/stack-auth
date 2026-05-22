@@ -456,6 +456,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           export const stackClientApp = new StackClientApp({
             tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
+            urls: {
+              default: {
+                type: "hosted",
+              }
+            },
           });
           \`\`\`
         ` : ""}
@@ -469,6 +474,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             export const stackServerApp = new StackServerApp({
               tokenStore: null,
+              urls: {
+                default: {
+                  type: "hosted",
+                }
+              },
             });
             \`\`\`
           ` : ""}
