@@ -726,6 +726,7 @@ export default function PageClient() {
               <MethodToggleRow
                 icon={SignInIcon}
                 label="Allow new user sign-ups"
+                hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
                 checked={allowSignUp}
                 onCheckedChange={onAllowSignUpChange}
                 density="compact"
@@ -733,6 +734,7 @@ export default function PageClient() {
               <MethodToggleRow
                 icon={EnvelopeSimpleIcon}
                 label="Require email verification"
+                hint="Users must verify their primary email before they can use your application. Unverified users will be restricted."
                 checked={emailVerification.checked}
                 onCheckedChange={emailVerification.onCheckedChange}
                 density="compact"
@@ -745,6 +747,7 @@ export default function PageClient() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-foreground truncate">Multi-provider sign-up mode</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user tries to sign in with a different OAuth provider using the same email address</div>
                 </div>
                 <DesignSelectorDropdown
                   value={mergeStrategy}
