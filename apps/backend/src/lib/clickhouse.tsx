@@ -2,6 +2,11 @@ import { createClient, type ClickHouseClient, type ClickHouseSettings } from "@c
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
+// Re-exported so other modules can hold a typed ClickHouse client (e.g. to
+// thread a single warmed client through helpers) without taking a direct
+// dependency on the @clickhouse/client package.
+export type { ClickHouseClient } from "@clickhouse/client";
+
 function getAdminAuth() {
   return {
     username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe"),

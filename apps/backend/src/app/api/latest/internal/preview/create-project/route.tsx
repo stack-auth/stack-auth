@@ -36,12 +36,14 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.Forbidden, "This endpoint is only available in preview mode");
     }
 
-    // Pre-warm the ClickHouse Cloud connection. The analytics inserts later in
-    // seedDummyProject otherwise pay a one-time ~0.7s cold cost (idle-service
-    // wake-up + TLS) on the first insert. Firing a trivial query now — unawaited
-    // — overlaps that wake-up with the Postgres-heavy seeding below, so
-    // ClickHouse is already warm by the time the inserts run.
-    const clickhouseWarmup = getClickhouseAdminClient()
+    // Pre-warm the ClickHouse Cloud connection, then hand the same client to
+    // seedDummyProject so every analytics insert reuses it. The first insert
+    // otherwise pays a one-time ~0.7s cold cost (idle-service wake-up + TLS).
+    // Firing a trivial query now — unawaited — overlaps that wake-up and the
+    // TLS handshake with the Postgres-heavy seeding below; threading the warmed
+    // client through means the handshake is established exactly once.
+    const clickhouseClient = getClickhouseAdminClient();
+    const clickhouseWarmup = clickhouseClient
       .command({ query: "SELECT 1" })
       .then(() => undefined, () => undefined);
 
@@ -68,6 +70,7 @@ export const POST = createSmartRouteHandler({
       oauthProviderIds: ['github', 'google', 'microsoft', 'spotify'],
       excludeAlphaApps: true,
       skipGithubConfigSource: true,
+      clickhouseClient,
     });
 
     // Settle the warm-up promise (long since resolved by now) so it does not

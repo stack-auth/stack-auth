@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { BooleanTrue, ContactChannelType, CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
-import { getClickhouseAdminClient } from '@/lib/clickhouse';
+import { getClickhouseAdminClient, type ClickHouseClient } from '@/lib/clickhouse';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { isPreviewModeEnabled } from '@/lib/preview-mode';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
@@ -137,6 +137,7 @@ type SessionActivityEventSeedOptions = {
   projectId: string,
   userEmailToId: Map<string, string>,
   freshProject: boolean,
+  clickhouseClient: ClickHouseClient,
 };
 
 type BulkActivityRegion = {
@@ -156,6 +157,11 @@ type SeedDummyProjectOptions = {
   oauthProviderIds: string[],
   excludeAlphaApps?: boolean,
   skipGithubConfigSource?: boolean,
+  // An optional pre-warmed ClickHouse client reused for every analytics insert.
+  // When omitted, one is created internally. The preview create-project route
+  // passes the client it warmed up so the connection / TLS handshake is paid
+  // exactly once rather than once per seeder.
+  clickhouseClient?: ClickHouseClient,
 };
 
 // ============= Seed Data =============
@@ -1525,14 +1531,16 @@ function buildTokenRefreshClickhouseRow(options: {
   projectId: string,
   userId: string,
   refreshTokenId: string,
-  eventAt: Date | string,
+  eventAt: Date,
   ipAddress: string,
   location: (typeof sessionActivityLocations)[number],
 }): Record<string, unknown> {
   const { projectId, userId, refreshTokenId, eventAt, ipAddress, location } = options;
   return {
     event_type: '$token-refresh',
-    event_at: eventAt,
+    // Always emit the ClickHouse `YYYY-MM-DD HH:MM:SS.mmm` string form so every
+    // caller (the historical and live seeders) writes `event_at` identically.
+    event_at: formatClickhouseTimestamp(eventAt),
     data: {
       refresh_token_id: refreshTokenId,
       is_anonymous: false,
@@ -1579,7 +1587,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
 
   const clickhouseUrl = getEnvVariable('STACK_CLICKHOUSE_URL', '');
   const shouldSeedClickhouse = clickhouseUrl !== '';
-  const clickhouseClient = shouldSeedClickhouse ? getClickhouseAdminClient() : null;
+  const clickhouseClient = shouldSeedClickhouse ? options.clickhouseClient : null;
 
   for (const userId of userIds) {
     // Per-user seeded PRNG so event count, timestamps, and locations are
@@ -1712,6 +1720,7 @@ async function seedBulkSignupsAndActivity(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
   freshProject: boolean,
+  clickhouseClient: ClickHouseClient,
   count?: number,
   days?: number,
 }) {
@@ -1720,7 +1729,7 @@ async function seedBulkSignupsAndActivity(options: {
   const now = new Date();
   const rand = deterministicPrng(0xC0FFEE);
   const { tenancy, prisma, freshProject } = options;
-  const clickhouse = getClickhouseAdminClient();
+  const clickhouse = options.clickhouseClient;
 
   console.log(`[seed-activity] Target: ${count} users across ${days} days in project "${tenancy.project.id}" branch "${tenancy.branchId}"`);
 
@@ -2052,6 +2061,23 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
   // script re-running against an existing project needs the idempotent path.
   const freshProject = !existingProject;
 
+  // A single ClickHouse client reused by every analytics seeder below, so the
+  // connection / TLS handshake is established once instead of once per seeder.
+  // The preview create-project route passes in a client it already warmed up.
+  const clickhouseClient = options.clickhouseClient ?? getClickhouseAdminClient();
+
+  // The ClickHouse `analytics_internal.events` table is append-only — unlike
+  // the Postgres seeders there is no delete-before-insert. When reseeding an
+  // existing project, clear this project's previously-seeded events once, up
+  // front (before the concurrent event seeders start), so the reseed refreshes
+  // the analytics rather than duplicating them. A fresh project has none.
+  if (!freshProject) {
+    await clickhouseClient.command({
+      query: 'DELETE FROM analytics_internal.events WHERE project_id = {projectId:String}',
+      query_params: { projectId },
+    });
+  }
+
   const dummyTenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID);
   const dummyPrisma = await getPrismaClientForTenancy(dummyTenancy);
 
@@ -2078,6 +2104,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     tenancy: dummyTenancy,
     prisma: dummyPrisma,
     freshProject,
+    clickhouseClient,
   });
 
   await Promise.all([
@@ -2176,6 +2203,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       projectId,
       userEmailToId,
       freshProject,
+      clickhouseClient,
     }),
     seedDummySessionReplays({
       prisma: dummyPrisma,
@@ -2204,11 +2232,13 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       prisma: dummyPrisma,
       tenancyId: dummyTenancy.id,
       projectId,
+      clickhouseClient,
     }),
     seedDummyLiveTokenRefreshEvents({
       prisma: dummyPrisma,
       tenancyId: dummyTenancy.id,
       projectId,
+      clickhouseClient,
     }),
   ]);
 
@@ -2251,8 +2281,9 @@ async function seedDummyLiveTokenRefreshEvents(options: {
   prisma: TenancyPrismaClient,
   tenancyId: string,
   projectId: string,
+  clickhouseClient: ClickHouseClient,
 }): Promise<void> {
-  const { prisma, tenancyId, projectId } = options;
+  const { prisma, tenancyId, projectId, clickhouseClient } = options;
 
   if (getEnvVariable('STACK_CLICKHOUSE_URL', '') === '') {
     return;
@@ -2290,14 +2321,13 @@ async function seedDummyLiveTokenRefreshEvents(options: {
     refreshTokenId: randomUUID(),
     // Emit at ~now with only a tiny stagger so every event stays well inside
     // the ~2-minute live window even after seed + dashboard-load latency.
-    eventAt: formatClickhouseTimestamp(new Date(now - index * 1000)),
+    eventAt: new Date(now - index * 1000),
     ipAddress: `203.0.113.${10 + index}`,
     location: liveLocations[index % liveLocations.length]!,
   }));
 
   // Synchronous insert (no async_insert) so the events are immediately
   // queryable when the dashboard loads the overview right after creation.
-  const clickhouseClient = getClickhouseAdminClient();
   await clickhouseClient.insert({
     table: 'analytics_internal.events',
     values: clickhouseRows,
@@ -2316,8 +2346,9 @@ async function seedDummyAnalyticsMirrorTables(options: {
   prisma: TenancyPrismaClient,
   tenancyId: string,
   projectId: string,
+  clickhouseClient: ClickHouseClient,
 }): Promise<void> {
-  const { prisma, tenancyId, projectId } = options;
+  const { prisma, tenancyId, projectId, clickhouseClient } = options;
 
   if (getEnvVariable('STACK_CLICKHOUSE_URL', '') === '') {
     return;
@@ -2401,7 +2432,6 @@ async function seedDummyAnalyticsMirrorTables(options: {
 
   // Synchronous insert (no async_insert) so the rows are immediately queryable
   // when the dashboard loads the overview right after project creation.
-  const clickhouseClient = getClickhouseAdminClient();
   const insertTable = async (table: string, values: Array<Record<string, unknown>>) => {
     if (values.length === 0) {
       return;
