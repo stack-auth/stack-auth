@@ -23,7 +23,6 @@ export function validateRedirectUrl(
     allowLocalhost: tenancy.config.domains.allowLocalhost,
     trustedDomains: [
       ...Object.values(tenancy.config.domains.trustedDomains).map(domain => domain.baseUrl),
-      `http://${hostedDomain}`,
       `https://${hostedDomain}`,
     ],
   });

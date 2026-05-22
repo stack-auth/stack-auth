@@ -491,8 +491,8 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/`, tenancy)).toBe(true);
       expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/handler/oauth-callback`, tenancy)).toBe(true);
 
-      // HTTP on the built-with domain should also be trusted
-      expect(validateRedirectUrl(`http://${projectId}.built-with-stack-auth.com/callback`, tenancy)).toBe(true);
+      // HTTP on the built-with domain should NOT be trusted
+      expect(validateRedirectUrl(`http://${projectId}.built-with-stack-auth.com/callback`, tenancy)).toBe(false);
 
       // Different project IDs should NOT be trusted
       expect(validateRedirectUrl('https://other-project.built-with-stack-auth.com/callback', tenancy)).toBe(false);
@@ -513,8 +513,9 @@ describe('validateRedirectUrl', () => {
         },
       }, projectId);
 
-      expect(validateRedirectUrl(`http://${projectId}.localhost:8109/callback`, tenancy)).toBe(true);
+      // Only HTTPS should be trusted, even for localhost-based dev suffix
       expect(validateRedirectUrl(`https://${projectId}.localhost:8109/callback`, tenancy)).toBe(true);
+      expect(validateRedirectUrl(`http://${projectId}.localhost:8109/callback`, tenancy)).toBe(false);
 
       // Wrong port should NOT be trusted
       expect(validateRedirectUrl(`http://${projectId}.localhost:9999/callback`, tenancy)).toBe(false);
