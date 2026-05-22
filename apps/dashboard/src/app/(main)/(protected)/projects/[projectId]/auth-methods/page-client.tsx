@@ -747,7 +747,7 @@ export default function PageClient() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-foreground truncate">Same-email social login policy</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user uses a new social login provider to log into an existing account</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user uses a new social login provider with an email that's already connected to an account</div>
                 </div>
                 <DesignSelectorDropdown
                   value={mergeStrategy}
