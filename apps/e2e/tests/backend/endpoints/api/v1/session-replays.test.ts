@@ -528,6 +528,16 @@ it("admin list session replays paginates without skipping items", async ({ expec
   expect(uploadB.status).toBe(200);
   const recordingB = uploadB.body?.session_replay_id;
 
+  // Wait for ClickHouse to ingest both replays before paginating
+  await listReplaysWithRetry(
+    {},
+    (res) => {
+      const items = res.body?.items ?? [];
+      const ids = items.map((i: any) => i.id);
+      return res.status === 200 && ids.includes(recordingA) && ids.includes(recordingB);
+    },
+  );
+
   const first = await niceBackendFetch("/api/v1/internal/session-replays?limit=1", {
     method: "GET",
     accessType: "admin",
@@ -752,10 +762,16 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
   expect(upload2.status).toBe(200);
   const recording2 = upload2.body?.session_replay_id;
 
-  const first = await niceBackendFetch(`/api/v1/internal/session-replays/${recording1}/chunks?limit=1`, {
-    method: "GET",
-    accessType: "admin",
-  });
+  // Wait for ClickHouse to ingest both sessions' chunks before paginating
+  let first: any;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    first = await niceBackendFetch(`/api/v1/internal/session-replays/${recording1}/chunks?limit=1`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    if (first.status === 200 && (first.body?.items?.length ?? 0) >= 1 && first.body?.pagination?.next_cursor) break;
+    await wait(500);
+  }
   expect(first.status).toBe(200);
   expect(first.body?.items?.length).toBe(1);
 
@@ -1021,14 +1037,20 @@ it("admin list session replays filters by user_ids", async ({ expect }) => {
   expect(resBoth.status).toBe(200);
   expect(resBoth.body?.items?.length).toBe(2);
 
-  // Filter by user A only
-  const resA = await listReplays({ user_ids: userA.userId });
+  // Filter by user A only (ClickHouse already confirmed ingested above)
+  const resA = await listReplaysWithRetry(
+    { user_ids: userA.userId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resA.status).toBe(200);
   expect(resA.body?.items?.length).toBe(1);
   expect(resA.body?.items?.[0]?.project_user?.id).toBe(userA.userId);
 
   // Filter by user B only
-  const resB = await listReplays({ user_ids: userB.userId });
+  const resB = await listReplaysWithRetry(
+    { user_ids: userB.userId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resB.status).toBe(200);
   expect(resB.body?.items?.length).toBe(1);
   expect(resB.body?.items?.[0]?.project_user?.id).toBe(userB.userId);
@@ -1068,8 +1090,11 @@ it("admin list session replays filters by team_ids", async ({ expect }) => {
   });
   expect(uploadB.status).toBe(200);
 
-  // Filter by team → only user A's replay
-  const resTeam = await listReplays({ team_ids: teamId });
+  // Filter by team → only user A's replay (wait for ClickHouse to ingest)
+  const resTeam = await listReplaysWithRetry(
+    { team_ids: teamId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resTeam.status).toBe(200);
   expect(resTeam.body?.items?.length).toBe(1);
   expect(resTeam.body?.items?.[0]?.project_user?.id).toBe(userA.userId);
@@ -1117,22 +1142,31 @@ it("admin list session replays filters by duration range", async ({ expect }) =>
   expect(uploadLong.status).toBe(200);
   const longId = uploadLong.body?.session_replay_id;
 
+  // Wait for ClickHouse to ingest both replays before asserting filters
+  const resBoth = await listReplaysWithRetry(
+    { duration_ms_min: "0", duration_ms_max: "50000" },
+    (res) => res.status === 200 && res.body?.items?.length === 2,
+  );
+  expect(resBoth.status).toBe(200);
+  expect(resBoth.body?.items?.length).toBe(2);
+
   // duration_ms_min=10000 → only long replay
-  const resMin = await listReplays({ duration_ms_min: "10000" });
+  const resMin = await listReplaysWithRetry(
+    { duration_ms_min: "10000" },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resMin.status).toBe(200);
   expect(resMin.body?.items?.length).toBe(1);
   expect(resMin.body?.items?.[0]?.id).toBe(longId);
 
   // duration_ms_max=10000 → only short replay
-  const resMax = await listReplays({ duration_ms_max: "10000" });
+  const resMax = await listReplaysWithRetry(
+    { duration_ms_max: "10000" },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resMax.status).toBe(200);
   expect(resMax.body?.items?.length).toBe(1);
   expect(resMax.body?.items?.[0]?.id).toBe(shortId);
-
-  // duration range that includes both: 0–50000
-  const resBoth = await listReplays({ duration_ms_min: "0", duration_ms_max: "50000" });
-  expect(resBoth.status).toBe(200);
-  expect(resBoth.body?.items?.length).toBe(2);
 
   // duration range that includes neither: 10000–20000
   const resNeither = await listReplays({ duration_ms_min: "10000", duration_ms_max: "20000" });
@@ -1172,26 +1206,32 @@ it("admin list session replays filters by last_event_at time range", async ({ ex
   expect(uploadLate.status).toBe(200);
   const lateId = uploadLate.body?.session_replay_id;
 
-  // Filter from midpoint → only late replay
+  // Wait for ClickHouse to ingest both replays before asserting filters
   const midpoint = earlyTime + 50_000;
-  const resFrom = await listReplays({ last_event_at_from_millis: String(midpoint) });
+  const resBoth = await listReplaysWithRetry(
+    { last_event_at_from_millis: String(earlyTime), last_event_at_to_millis: String(lateTime + 200) },
+    (res) => res.status === 200 && res.body?.items?.length === 2,
+  );
+  expect(resBoth.status).toBe(200);
+  expect(resBoth.body?.items?.length).toBe(2);
+
+  // Filter from midpoint → only late replay
+  const resFrom = await listReplaysWithRetry(
+    { last_event_at_from_millis: String(midpoint) },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resFrom.status).toBe(200);
   expect(resFrom.body?.items?.length).toBe(1);
   expect(resFrom.body?.items?.[0]?.id).toBe(lateId);
 
   // Filter to midpoint → only early replay
-  const resTo = await listReplays({ last_event_at_to_millis: String(midpoint) });
+  const resTo = await listReplaysWithRetry(
+    { last_event_at_to_millis: String(midpoint) },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resTo.status).toBe(200);
   expect(resTo.body?.items?.length).toBe(1);
   expect(resTo.body?.items?.[0]?.id).toBe(earlyId);
-
-  // Filter range that includes both
-  const resBoth = await listReplays({
-    last_event_at_from_millis: String(earlyTime),
-    last_event_at_to_millis: String(lateTime + 200),
-  });
-  expect(resBoth.status).toBe(200);
-  expect(resBoth.body?.items?.length).toBe(2);
 });
 
 it("admin list session replays filters by click_count_min", async ({ expect }) => {
@@ -1333,6 +1373,16 @@ it("admin list session replays paginates correctly when last_event_at timestamps
   expect(uploadB.status).toBe(200);
   const replayIdB = uploadB.body?.session_replay_id;
 
+  // Wait for ClickHouse to ingest both replays before paginating
+  await listReplaysWithRetry(
+    {},
+    (res) => {
+      const items = res.body?.items ?? [];
+      const ids = items.map((i: any) => i.id);
+      return res.status === 200 && ids.includes(replayIdA) && ids.includes(replayIdB);
+    },
+  );
+
   const first = await listReplays({ limit: "1" });
   expect(first.status).toBe(200);
   expect(first.body?.items?.length).toBe(1);
@@ -1379,7 +1429,11 @@ it("admin list session replays combines filters with AND semantics", async ({ ex
   });
   expect(uploadB.status).toBe(200);
 
-  const matchingIntersection = await listReplays({ user_ids: userA.userId, team_ids: teamId });
+  // Wait for ClickHouse to ingest both replays before asserting combined filters
+  const matchingIntersection = await listReplaysWithRetry(
+    { user_ids: userA.userId, team_ids: teamId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(matchingIntersection.status).toBe(200);
   expect(matchingIntersection.body?.items?.length).toBe(1);
   expect(matchingIntersection.body?.items?.[0]?.project_user?.id).toBe(userA.userId);

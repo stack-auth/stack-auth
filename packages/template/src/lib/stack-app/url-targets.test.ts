@@ -96,6 +96,44 @@ describe("handler URL targets", () => {
     expect(urls.cliAuthConfirm).toBe("https://project-id.example-stack-hosted.test/handler/cli-auth-confirm");
   });
 
+  it("rejects absolute OAuth callback string targets", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        oauthCallback: "https://app.example.test/oauth-callback",
+      },
+    })).toThrowErrorMatchingInlineSnapshot(`
+      [StackAssertionError: OAuth callback URLs must be relative.
+
+      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+    `);
+  });
+
+  it("rejects absolute OAuth callback custom targets", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        oauthCallback: { type: "custom", url: "https://app.example.test/oauth-callback", version: 0 },
+      },
+    })).toThrowErrorMatchingInlineSnapshot(`
+      [StackAssertionError: OAuth callback URLs must be relative.
+
+      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+    `);
+  });
+
+  it("does not inherit an absolute default target for the OAuth callback", () => {
+    const urls = resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        default: "https://app.example.test/handler",
+      },
+    });
+
+    expect(urls.signIn).toBe("https://app.example.test/handler");
+    expect(urls.oauthCallback).toBe("/handler/oauth-callback");
+  });
+
   it("supports custom CLI auth confirmation targets", () => {
     const cliAuthConfirmPrompt = getPagePrompt("cliAuthConfirm");
     if (cliAuthConfirmPrompt == null) {
@@ -133,7 +171,7 @@ describe("handler URL targets", () => {
   });
 
   it("uses the full hosted handler URL template when configured", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{projectId}/{hostedPath}");
+    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}");
     vi.stubEnv("NEXT_PUBLIC_STACK_PORT_PREFIX", "93");
 
     const urls = resolveHandlerUrls({
@@ -143,8 +181,8 @@ describe("handler URL targets", () => {
       },
     });
 
-    expect(urls.signIn).toBe("http://localhost:9309/project-id/handler/sign-in");
-    expect(urls.accountSettings).toBe("http://localhost:9309/project-id/handler/account-settings");
+    expect(urls.signIn).toBe("http://project-id.localhost:9309/handler/sign-in");
+    expect(urls.accountSettings).toBe("http://project-id.localhost:9309/handler/account-settings");
   });
 
   it("validates the hosted handler URL template placeholders", () => {
@@ -156,6 +194,21 @@ describe("handler URL targets", () => {
         default: { type: "hosted" },
       },
     })).toThrowError(/\{projectId\} and \{hostedPath\}/);
+  });
+
+  it("rejects hosted handler URL templates that put the project ID in the path", () => {
+    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:9309/{projectId}/{hostedPath}");
+
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        default: { type: "hosted" },
+      },
+    })).toThrowErrorMatchingInlineSnapshot(`
+      [StackAssertionError: The hosted handler URL template must put {projectId} in the hostname.
+
+      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+    `);
   });
 });
 

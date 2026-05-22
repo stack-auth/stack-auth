@@ -3,7 +3,7 @@ import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { Prisma } from "@/generated/prisma/client";
 import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
-import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getOAuthRedirectUrisForTenancy, isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -60,13 +60,9 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     let redirectUris: string[] = [];
     try {
-      redirectUris = Object.entries(tenancy.config.domains.trustedDomains)
-        // note that this may include wildcard domains, which is fine because we correctly account for them in
-        // model.validateRedirectUri(...)
-        .filter(([_, domain]) => {
-          return domain.baseUrl;
-        })
-        .map(([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString());
+      // This may include wildcard domains and the implicit hosted handler domain;
+      // model.validateRedirectUri(...) performs the authoritative trust check.
+      redirectUris = getOAuthRedirectUrisForTenancy(tenancy);
     } catch (e) {
       captureError("get-oauth-redirect-urls", {
         error: e,

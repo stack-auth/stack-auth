@@ -380,9 +380,9 @@ function LivePreviewBody({
 }
 
 const MERGE_STRATEGY_SHORT: Record<OAuthAccountMergeStrategy, string> = {
-  link_method: "Link providers",
-  allow_duplicates: "Allow duplicates",
-  raise_error: "Block multiple",
+  link_method: "Link accounts",
+  allow_duplicates: "Create new account",
+  raise_error: "Block sign-up",
 };
 
 // ─── Designed Email Verification toggle (logic copied from EmailVerificationSetting) ──
@@ -726,6 +726,7 @@ export default function PageClient() {
               <MethodToggleRow
                 icon={SignInIcon}
                 label="Allow new user sign-ups"
+                hint="Existing users can still sign in when sign-up is disabled. You can always create new accounts manually via the dashboard."
                 checked={allowSignUp}
                 onCheckedChange={onAllowSignUpChange}
                 density="compact"
@@ -733,6 +734,7 @@ export default function PageClient() {
               <MethodToggleRow
                 icon={EnvelopeSimpleIcon}
                 label="Require email verification"
+                hint="Users must verify their primary email before they can use your application. Unverified users will be restricted."
                 checked={emailVerification.checked}
                 onCheckedChange={emailVerification.onCheckedChange}
                 density="compact"
@@ -744,7 +746,8 @@ export default function PageClient() {
                   <UserCircleIcon size={18} className="text-foreground/70 dark:text-muted-foreground" aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">Multi-provider sign-up mode</div>
+                  <div className="text-sm font-medium text-foreground truncate">Same-email social login policy</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user uses a new social login provider with an email that&apos;s already connected to an account</div>
                 </div>
                 <DesignSelectorDropdown
                   value={mergeStrategy}

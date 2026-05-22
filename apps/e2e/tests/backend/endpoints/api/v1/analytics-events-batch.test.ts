@@ -680,12 +680,16 @@ it("rejects batch when remaining quota is less than batch size and does not debi
   // Drain async logEvent debits before forcing the quota down to a known
   // value — otherwise a trailing in-flight debit would push it negative
   // after we set it to 2 and break the post-condition.
-  // `minimumElapsedMs` guards against returning before the async events
-  // have started firing.
+  //
+  // `Auth.Otp.signIn()` triggers async events via `runAsynchronouslyAndWaitUntil`
+  // (e.g. $token-refresh, $sign-up-rule-trigger) that debit analytics quota.
+  // Under CI load with 8 parallel workers, these async callbacks can be delayed
+  // 5+ seconds after the HTTP response. `minimumElapsedMs: 10_000` ensures we
+  // don't declare stability before the async pipeline has had time to fire.
   await waitForItemQuantityToStabilize(
     ownerTeamId,
     ITEM_IDS.analyticsEvents,
-    { minimumElapsedMs: 5000 },
+    { minimumElapsedMs: 10_000 },
   );
   await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 2);
 
