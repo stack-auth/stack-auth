@@ -1,3 +1,4 @@
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { seedDummyProject } from "@/lib/seed-dummy-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -35,6 +36,15 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.Forbidden, "This endpoint is only available in preview mode");
     }
 
+    // Pre-warm the ClickHouse Cloud connection. The analytics inserts later in
+    // seedDummyProject otherwise pay a one-time ~0.7s cold cost (idle-service
+    // wake-up + TLS) on the first insert. Firing a trivial query now — unawaited
+    // — overlaps that wake-up with the Postgres-heavy seeding below, so
+    // ClickHouse is already warm by the time the inserts run.
+    const clickhouseWarmup = getClickhouseAdminClient()
+      .command({ query: "SELECT 1" })
+      .then(() => undefined, () => undefined);
+
     const userId = auth.user.id;
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
@@ -59,6 +69,10 @@ export const POST = createSmartRouteHandler({
       excludeAlphaApps: true,
       skipGithubConfigSource: true,
     });
+
+    // Settle the warm-up promise (long since resolved by now) so it does not
+    // float past the handler return.
+    await clickhouseWarmup;
 
     return {
       statusCode: 200,
