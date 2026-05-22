@@ -12,6 +12,7 @@ import {
 } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "@stackframe/stack-shared/dist/utils/urls";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
+import { getHostedHandlerDomainSuffix } from "./redirect-urls";
 import { Tenancy } from "./tenancies";
 
 
@@ -50,6 +51,13 @@ function isAllowedTurnstileHostname(hostname: string, tenancy: Tenancy): boolean
   if (tenancy.config.domains.allowLocalhost && isLocalhost(`http://${hostname}`)) {
     return true;
   }
+
+  // The project's hosted handler domain (e.g. <project-id>.built-with-stack-auth.com) is always trusted
+  const hostedHandlerUrl = createUrlIfValid(`https://${tenancy.project.id}${getHostedHandlerDomainSuffix()}`);
+  if (hostedHandlerUrl != null && hostedHandlerUrl.hostname === hostname) {
+    return true;
+  }
+
   return Object.values(tenancy.config.domains.trustedDomains).some(({ baseUrl }) => {
     if (baseUrl == null) return false;
     const pattern = createUrlIfValid(baseUrl)?.hostname

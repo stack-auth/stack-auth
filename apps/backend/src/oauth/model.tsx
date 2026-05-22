@@ -3,7 +3,7 @@ import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { Prisma } from "@/generated/prisma/client";
 import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
-import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getHostedHandlerDomainSuffix, isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -75,6 +75,10 @@ export class OAuthModel implements AuthorizationCodeModel {
       });
       throw e;
     }
+
+    // The project's hosted handler domain is always trusted
+    const hostedDomain = `${tenancy.project.id}${getHostedHandlerDomainSuffix()}`;
+    redirectUris.push(new URL("/handler", `https://${hostedDomain}`).toString());
 
     if (redirectUris.length === 0 && tenancy.config.domains.allowLocalhost) {
       redirectUris.push("http://localhost");

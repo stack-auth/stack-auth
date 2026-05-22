@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
 
 describe('validateRedirectUrl', () => {
-  const createMockTenancy = (config: Partial<Tenancy['config']>): Tenancy => {
+  const createMockTenancy = (config: Partial<Tenancy['config']>, projectId: string = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'): Tenancy => {
     return {
+      project: { id: projectId },
       config: {
         domains: {
           allowLocalhost: false,
@@ -471,6 +472,73 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl('https://api.v2.production.com/callback', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://api.v2.production.com/', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://other.com/handler', tenancy)).toBe(false);
+    });
+  });
+
+  describe('hosted handler domain (built-with domain)', () => {
+    it('should trust the project hosted handler domain with default suffix', () => {
+      vi.stubEnv('NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX', '.built-with-stack-auth.com');
+      const projectId = '12345678-1234-1234-1234-123456789012';
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {},
+        },
+      }, projectId);
+
+      // HTTPS on the built-with domain should be trusted
+      expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/callback`, tenancy)).toBe(true);
+      expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/`, tenancy)).toBe(true);
+      expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/handler/oauth-callback`, tenancy)).toBe(true);
+
+      // HTTP on the built-with domain should also be trusted
+      expect(validateRedirectUrl(`http://${projectId}.built-with-stack-auth.com/callback`, tenancy)).toBe(true);
+
+      // Different project IDs should NOT be trusted
+      expect(validateRedirectUrl('https://other-project.built-with-stack-auth.com/callback', tenancy)).toBe(false);
+
+      // Unrelated domains should NOT be trusted
+      expect(validateRedirectUrl('https://example.com/callback', tenancy)).toBe(false);
+
+      vi.unstubAllEnvs();
+    });
+
+    it('should trust the hosted handler domain with a custom suffix (e.g. local dev)', () => {
+      vi.stubEnv('NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX', '.localhost:8109');
+      const projectId = '12345678-1234-1234-1234-123456789012';
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {},
+        },
+      }, projectId);
+
+      expect(validateRedirectUrl(`http://${projectId}.localhost:8109/callback`, tenancy)).toBe(true);
+      expect(validateRedirectUrl(`https://${projectId}.localhost:8109/callback`, tenancy)).toBe(true);
+
+      // Wrong port should NOT be trusted
+      expect(validateRedirectUrl(`http://${projectId}.localhost:9999/callback`, tenancy)).toBe(false);
+
+      vi.unstubAllEnvs();
+    });
+
+    it('should trust the hosted handler domain even when other trusted domains exist', () => {
+      vi.stubEnv('NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX', '.built-with-stack-auth.com');
+      const projectId = '12345678-1234-1234-1234-123456789012';
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {
+            '1': { baseUrl: 'https://myapp.com', handlerPath: '/handler' },
+          },
+        },
+      }, projectId);
+
+      // Both the configured trusted domain and the hosted handler domain should work
+      expect(validateRedirectUrl('https://myapp.com/callback', tenancy)).toBe(true);
+      expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/callback`, tenancy)).toBe(true);
+
+      vi.unstubAllEnvs();
     });
   });
 
