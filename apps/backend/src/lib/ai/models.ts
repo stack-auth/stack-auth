@@ -28,11 +28,11 @@ const MODEL_SELECTION_MATRIX: Record<
   },
   smart: {
     slow: {
-      authenticated: { modelId: "moonshotai/kimi-k2.6:nitro" },
+      authenticated: { modelId: "x-ai/grok-build-0.1" },
       unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
     },
     fast: {
-      authenticated: { modelId: "moonshotai/kimi-k2.6:nitro" },
+      authenticated: { modelId: "x-ai/grok-build-0.1" },
       unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
     },
   },

@@ -337,11 +337,49 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
   <body>
     <div id="root"></div>
     
-    <!-- Babel (for JSX transpilation) -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
+    <!-- Babel (for JSX transpilation). crossorigin=anonymous is required so that
+         errors thrown from inside Babel (e.g. JSX SyntaxErrors from AI-generated
+         code) are not sanitized to "Script error." with no message — unpkg sends
+         the matching Access-Control-Allow-Origin header. -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
+
+    <!-- Install a global error listener BEFORE any AI code runs so that Babel parse
+         errors, uncaught runtime throws, and async rejections all reach the parent.
+         Without this, a JSX SyntaxError in the AI-generated code would surface only
+         as a console error and the user would see a blank iframe. -->
+    <script>
+      (function () {
+        function postError(message, stack) {
+          try {
+            window.parent.postMessage({
+              type: 'dashboard-error-boundary',
+              message: message || 'Unknown dashboard error',
+              stack: stack || undefined,
+            }, '*');
+          } catch (_) { /* parent may be gone */ }
+        }
+        window.__postDashboardError = postError;
+        window.addEventListener('error', function (event) {
+          var err = event && event.error;
+          postError((err && err.message) || (event && event.message) || 'Unknown runtime error', err && err.stack);
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event && event.reason;
+          postError((reason && (reason.message || String(reason))) || 'Unhandled promise rejection', reason && reason.stack);
+        });
+      })();
+    </script>
+
     ${getDependencyScripts(esmVersion, esmFallbackVersion, dashboardUrl)}
-    
+
+    <!-- AI-generated dashboard source. Stored as text/plain so Babel's auto
+         <script type="text/babel"> handler does NOT run it — that handler
+         swallows parse errors. The plumbing script below compiles this with a
+         try/catch and forwards any SyntaxError to the parent composer. -->
+    <script type="text/plain" id="ai-dashboard-source">
+${sourceCode}
+    </script>
+
     <script type="text/babel">
       // Navigation API for AI-generated code
       window.dashboardNavigate = function(path) {
@@ -520,11 +558,35 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           throw new Error("Recharts failed to load in sandbox.");
         }
         
-        // Execute AI-generated code with DashboardUI and Recharts in scope
-        const Dashboard = (() => {
-          ${sourceCode}
-          return Dashboard;
-        })();
+        // Execute AI-generated code with DashboardUI and Recharts in scope.
+        // We compile here (rather than via <script type="text/babel">) so that
+        // a JSX SyntaxError in the AI output surfaces as a normal throw — the
+        // window 'error' listener picks it up and forwards it to the parent
+        // composer instead of leaving the iframe blank.
+        const aiSourceEl = document.getElementById('ai-dashboard-source');
+        const aiSource = aiSourceEl ? aiSourceEl.textContent : '';
+        let compiledSource;
+        try {
+          compiledSource = window.Babel.transform(aiSource, { presets: ['react'] }).code;
+        } catch (err) {
+          const message = err && err.message ? 'Dashboard code failed to compile: ' + err.message : 'Dashboard code failed to compile';
+          const stack = err && err.stack ? err.stack : undefined;
+          window.__postDashboardError && window.__postDashboardError(message, stack);
+          const root = ReactDOM.createRoot(rootElement);
+          root.render(
+            <div className="p-6 text-red-500">
+              <h2 className="text-xl font-bold mb-2">Dashboard failed to compile</h2>
+              <pre className="text-sm bg-red-950/20 p-4 rounded overflow-auto whitespace-pre-wrap">
+                {message}
+              </pre>
+            </div>
+          );
+          return;
+        }
+        // eslint-disable-next-line no-new-func
+        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'stackServerApp', compiledSource + '\nreturn Dashboard;')(
+          React, ReactDOM, DashboardUI, Recharts, window.stackServerApp,
+        );
         
         if (typeof Dashboard !== 'function') {
           throw new Error('Dashboard component not found in generated code');
