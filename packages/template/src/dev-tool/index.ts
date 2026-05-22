@@ -110,7 +110,8 @@ export function mountDevTool(app: StackClientApp<true>): () => void {
 
 // Expose console commands: StackDevTool.enable() / .disable() / .reset()
 if (typeof window !== 'undefined') {
-  (window as any).StackDevTool = {
+  // Hexclave rebrand: expose under both the legacy and new global names.
+  (window as any).HexclaveDevTool = (window as any).StackDevTool = {
     enable() {
       try {
         localStorage.setItem(OVERRIDE_KEY, 'true');
