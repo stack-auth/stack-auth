@@ -118,6 +118,12 @@ async function getPrivateJwkFromDerivedSecret(derivedSecret: string, kid: string
 // Derivation is purely a function of those three inputs, so the cache is safe across calls
 // as long as the env vars are re-read on every call (which they are, below). Cached entries
 // stay valid even if env vars later change because the key includes the secret values.
+//
+// Bounded LRU: audience is typically a per-project identifier, so the keyspace grows with
+// the number of projects (and again on each secret rotation). Cap the cache and evict the
+// oldest entry on insert. Map iteration order is insertion order, so the first key returned
+// by keys() is the oldest. On a hit, we re-insert to bump recency.
+const PRIVATE_JWKS_CACHE_MAX = 1000;
 const privateJwksCache = new Map<string, Promise<PrivateJwk[]>>();
 
 /**
@@ -131,7 +137,12 @@ export async function getPrivateJwks(options: {
   const oldSecret = getOldStackServerSecret();
   const cacheKey = JSON.stringify([primarySecret, oldSecret, options.audience]);
   const cached = privateJwksCache.get(cacheKey);
-  if (cached) return await cached;
+  if (cached) {
+    // Bump recency: re-insert so this key becomes most-recently-used.
+    privateJwksCache.delete(cacheKey);
+    privateJwksCache.set(cacheKey, cached);
+    return await cached;
+  }
 
   const derivePairForSecret = async (secret: string): Promise<PrivateJwk[]> => {
     const getHashOfJwkInfo = (type: string) => jose.base64url.encode(
@@ -165,6 +176,12 @@ export async function getPrivateJwks(options: {
   // Evict on rejection so a transient error doesn't poison the cache.
   computePromise.catch(() => privateJwksCache.delete(cacheKey));
   privateJwksCache.set(cacheKey, computePromise);
+  // Evict oldest entries while over capacity (Map iterates in insertion order).
+  while (privateJwksCache.size > PRIVATE_JWKS_CACHE_MAX) {
+    const oldestKey = privateJwksCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    privateJwksCache.delete(oldestKey);
+  }
   return await computePromise;
 }
 

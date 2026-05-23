@@ -29,7 +29,7 @@ const INTERNAL_JWKS_PATH = "/api/v1/projects/internal/.well-known/jwks.json";
 it("JWKS publishes 2 entries in steady state or 4 during rotation, all ES256 P-256, no duplicates, no private scalars", async ({ expect }) => {
   const response = await niceBackendFetch(INTERNAL_JWKS_PATH);
   expect(response.status).toBe(200);
-  expect(response.headers.get("content-type")).includes("application/json");
+  expect(response.headers.get("content-type")).toContain("application/json");
   expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
   for (const key of response.body.keys) {
     expect(key).toEqual({
