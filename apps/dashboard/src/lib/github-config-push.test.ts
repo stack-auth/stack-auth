@@ -61,7 +61,7 @@ export const config: StackConfig = {
     `);
   });
 
-  it("preserves the existing @stackframe/* import package when re-rendering", () => {
+  it("preserves the existing @hexclave/* import package when re-rendering", () => {
     const current = `import type { StackConfig } from "@hexclave/react";
 
 export const config: StackConfig = {};
@@ -69,6 +69,27 @@ export const config: StackConfig = {};
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
       "import type { StackConfig } from "@hexclave/react";
+
+      export const config: StackConfig = {
+        "auth": {
+          "allowSignUp": true
+        }
+      };
+      "
+    `);
+  });
+
+  it("preserves a legacy @stackframe/* import package when re-rendering", () => {
+    // Projects pinned to the last @stackframe/* release (before the Hexclave
+    // rebrand) still have config files importing from the legacy scope. The
+    // dashboard must not silently rewrite their imports — keep what's there.
+    const current = `import type { StackConfig } from "@stackframe/react";
+
+export const config: StackConfig = {};
+`;
+    const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
+    expect(result).toMatchInlineSnapshot(`
+      "import type { StackConfig } from "@stackframe/react";
 
       export const config: StackConfig = {
         "auth": {

@@ -2,7 +2,9 @@ packages:
   - packages/*
   - apps/*
   - examples/*
-  - docs
+  # `docs/` is the legacy fumadocs site, no longer maintained — replaced by
+  # `docs-mintlify/`. Kept on disk for migration reference; excluded from the
+  # workspace so it doesn't gate install / typecheck / lint.
   - docs-mintlify
   - sdks/*
   - sdks/implementations/*

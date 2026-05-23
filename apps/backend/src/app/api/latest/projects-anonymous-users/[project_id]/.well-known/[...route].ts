@@ -1,7 +1,7 @@
 // this exists as an alias for OIDC discovery, because the `iss` field in the JWT does not support query params
 // redirect to projects/.well-known/[...route]?include_anonymous=true
 
-import { yupNever, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupNever, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { redirect } from "next/navigation";
 import { createSmartRouteHandler } from "../../../../../../route-handlers/smart-route-handler";
 
