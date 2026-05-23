@@ -26,7 +26,7 @@ function parseAuthorizationHeaderValue(value: string): { accessToken: string | n
   const credential = bearerMatch[1];
   const matchedPrefix = credential.startsWith(HEXCLAVE_AUTHORIZATION_VALUE_PREFIX) ? HEXCLAVE_AUTHORIZATION_VALUE_PREFIX
     : credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX) ? STACK_AUTHORIZATION_VALUE_PREFIX
-    : null;
+      : null;
   if (matchedPrefix == null) {
     throw new Error(`Invalid authorization credential (expected stackauth_/hexclave_ prefix): ${credential}`);
   }
