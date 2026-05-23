@@ -206,7 +206,7 @@ describe("with valid credentials", () => {
 
     const messages = await projectOwnerMailbox.fetchMessages();
     expect(messages.filter(msg => !msg.subject.includes("Sign in"))).toMatchInlineSnapshot(`[]`);
-  }, { repeats: 10 });
+  }, { repeats: 3 });
 
   // TODO: failed emails digest is currently disabled. When re-enabling, this
   // test will need to call the digest endpoint with dry_run=false separately

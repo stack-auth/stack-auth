@@ -1,5 +1,4 @@
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { readReplicas } from '@prisma/extension-read-replicas';
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -12,11 +11,9 @@ import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronousl
 import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
-import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
-import { runMigrationNeeded } from "./auto-migrations";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
 import { ensurePolyfilled } from "./polyfills";
@@ -29,43 +26,8 @@ export type PrismaClientTransaction =
   | Omit<PrismaClient, "$on">  // $on is not available on extended Prisma clients, so we don't require it here. see: https://www.prisma.io/docs/orm/reference/prisma-client-reference#on
   | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-const prismaClientsStore = (globalVar.__stack_prisma_clients as undefined) || {
-  neon: new Map<string, PrismaClient>(),
-  postgres: new Map<string, {
-    client: PrismaClient,
-    schema: string | null,
-  }>(),
-};
-if (getNodeEnvironment().includes('development')) {
-  globalVar.__stack_prisma_clients = prismaClientsStore;  // store globally so fast refresh doesn't recreate too many Prisma clients
-}
-
-function getNeonPrismaClient(connectionString: string) {
-  let neonPrismaClient = prismaClientsStore.neon.get(connectionString);
-  if (!neonPrismaClient) {
-    const schema = getSchemaFromConnectionString(connectionString);
-    const adapter = new PrismaNeon({ connectionString }, { schema });
-    neonPrismaClient = new PrismaClient({ adapter });
-    prismaClientsStore.neon.set(connectionString, neonPrismaClient);
-  }
-  return neonPrismaClient;
-}
-
 function getSchemaFromConnectionString(connectionString: string) {
   return (new URL(connectionString)).searchParams.get('schema') ?? "public";
-}
-
-async function resolveNeonConnectionString(entry: string): Promise<string> {
-  if (!isUuid(entry)) {
-    return entry;
-  }
-  const { getStackServerApp } = await import("@/stack");
-  const store = await getStackServerApp().getDataVaultStore('neon-connection-strings');
-  const secret = "no client side encryption";
-  const value = await store.getValue(entry, { secret });
-  if (!value) throw new Error('No Neon connection string found for UUID');
-  return value;
 }
 
 export async function getPrismaClientForTenancy(tenancy: Tenancy) {
@@ -109,9 +71,6 @@ if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registere
         await drainInFlightPromises(8000);
         for (const [, entry] of postgresPrismaClientsStore) {
           await entry.client.$disconnect();
-        }
-        for (const [, client] of prismaClientsStore.neon) {
-          await client.$disconnect();
         }
       } finally {
         clearTimeout(keepAlive);
@@ -417,49 +376,12 @@ export const { client: globalPrismaClient, schema: globalPrismaSchema }: {
     schema: throwingProxy<string>("STACK_DATABASE_CONNECTION_STRING environment variable is not set. Please set it to a valid PostgreSQL connection string, or use a mock Prisma client for testing."),
   };
 
-export async function getPrismaClientForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
-  switch (sourceOfTruth.type) {
-    case 'neon': {
-      if (!(branchId in sourceOfTruth.connectionStrings)) {
-        throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
-      }
-      const entry = sourceOfTruth.connectionStrings[branchId];
-      const connectionString = await resolveNeonConnectionString(entry);
-      const neonPrismaClient = getNeonPrismaClient(connectionString);
-      await runMigrationNeeded({ prismaClient: neonPrismaClient, schema: getSchemaFromConnectionString(connectionString), logging: true });
-      return extendWithFakeReadReplica(neonPrismaClient);
-    }
-    case 'postgres': {
-      const postgresPrismaClient = getPostgresPrismaClient(sourceOfTruth.connectionString);
-      await runMigrationNeeded({ prismaClient: postgresPrismaClient.client, schema: getSchemaFromConnectionString(sourceOfTruth.connectionString), logging: true });
-      return extendWithFakeReadReplica(postgresPrismaClient.client);
-    }
-    case 'hosted': {
-      return globalPrismaClient;
-    }
-  }
+export async function getPrismaClientForSourceOfTruth(_sourceOfTruth: CompleteConfig["sourceOfTruth"], _branchId: string) {
+  return globalPrismaClient;
 }
 
-export async function getPrismaSchemaForSourceOfTruth(sourceOfTruth: CompleteConfig["sourceOfTruth"], branchId: string) {
-  switch (sourceOfTruth.type) {
-    case 'postgres': {
-      return getSchemaFromConnectionString(sourceOfTruth.connectionString);
-    }
-    case 'neon': {
-      if (!(branchId in sourceOfTruth.connectionStrings)) {
-        throw new Error(`No connection string provided for Neon source of truth for branch ${branchId}`);
-      }
-      const entry = sourceOfTruth.connectionStrings[branchId];
-      if (isUuid(entry)) {
-        const connectionString = await resolveNeonConnectionString(entry);
-        return getSchemaFromConnectionString(connectionString);
-      }
-      return getSchemaFromConnectionString(entry);
-    }
-    case 'hosted': {
-      return globalPrismaSchema;
-    }
-  }
+export async function getPrismaSchemaForSourceOfTruth(_sourceOfTruth: CompleteConfig["sourceOfTruth"], _branchId: string) {
+  return globalPrismaSchema;
 }
 
 
@@ -480,7 +402,7 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
 /**
  * @deprecated Prisma transactions are slow and lock the database. Use rawQuery with CTEs instead. Ask Konsti if you're confused or think you need transactions.
  */
-export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
+export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable", timeout?: number } = {}): Promise<T> {
   // serializable transactions are currently off by default, later we may turn them on
   const enableSerializable = options.level === "serializable";
 
@@ -524,6 +446,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
               return res;
             }, {
               isolationLevel: enableSerializable ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              ...(options.timeout != null ? { timeout: options.timeout } : {}),
             }));
           } catch (e) {
             // we don't want to retry too aggressively here, because the error may have been thrown after the transaction was already committed

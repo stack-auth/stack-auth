@@ -144,7 +144,7 @@ function CheckoutButton(props: {
   return (
     <Button
       disabled={loading}
-      onClick={async () => {
+      onClick={() => runAsynchronouslyWithAlert(async () => {
         setLoading(true);
         try {
           const checkoutUrl = await createCheckoutUrl({
@@ -156,7 +156,7 @@ function CheckoutButton(props: {
         } finally {
           setLoading(false);
         }
-      }}
+      })}
     >
       {loading ? "Opening..." : props.label}
     </Button>

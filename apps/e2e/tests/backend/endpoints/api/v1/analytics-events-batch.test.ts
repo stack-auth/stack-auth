@@ -634,7 +634,7 @@ it("rejects batch when analytics event quota is exhausted", async ({ expect }) =
   expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
 });
 
-it("accepts batch and debits event quota correctly", async ({ expect }) => {
+it("accepts batch and debits event quota correctly", { timeout: 120_000 }, async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
@@ -673,19 +673,23 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
 // We don't support metered pricing or partial batches for now, so the entire
 // batch is rejected when remaining quota is less than the batch size, and
 // the quota must remain unchanged (no partial debit).
-it("rejects batch when remaining quota is less than batch size and does not debit", async ({ expect }) => {
+it("rejects batch when remaining quota is less than batch size and does not debit", { timeout: 120_000 }, async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
   // Drain async logEvent debits before forcing the quota down to a known
   // value — otherwise a trailing in-flight debit would push it negative
   // after we set it to 2 and break the post-condition.
-  // `minimumElapsedMs` guards against returning before the async events
-  // have started firing.
+  //
+  // `Auth.Otp.signIn()` triggers async events via `runAsynchronouslyAndWaitUntil`
+  // (e.g. $token-refresh, $sign-up-rule-trigger) that debit analytics quota.
+  // Under CI load with 8 parallel workers, these async callbacks can be delayed
+  // 5+ seconds after the HTTP response. `minimumElapsedMs: 10_000` ensures we
+  // don't declare stability before the async pipeline has had time to fire.
   await waitForItemQuantityToStabilize(
     ownerTeamId,
     ITEM_IDS.analyticsEvents,
-    { minimumElapsedMs: 5000 },
+    { minimumElapsedMs: 10_000 },
   );
   await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 2);
 

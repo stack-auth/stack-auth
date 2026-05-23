@@ -19,19 +19,22 @@ import {
   CheckCircle,
   Cloud,
   CopySimple,
+  DownloadSimple,
   Envelope,
   GlobeSimple,
   HardDrives,
   type Icon as PhosphorIcon,
+  Info,
   PaperPlaneTilt,
   Plus,
   ShieldCheck,
   Spinner,
+  Trash,
   WarningDiamond,
 } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Dialog, DialogContent, DialogTitle, Label, Typography, useToast } from "@/components/ui";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { ActionDialog, Dialog, DialogContent, DialogTitle, Label, Popover, PopoverContent, PopoverTrigger, Typography, useToast } from "@/components/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import Image from "next/image";
@@ -103,6 +106,18 @@ function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], pro
     username: config.username ?? "",
     password: config.password ?? "",
   };
+}
+
+function CloudflareIcon({ className }: { className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="https://www.cloudflare.com/favicon.ico"
+      alt=""
+      aria-hidden
+      className={className}
+    />
+  );
 }
 
 function ResendIcon({ className }: { className?: string }) {
@@ -216,6 +231,58 @@ const senderLocalPartSchema = yup
   .defined("Sender local part is required")
   .test("non-empty", "Sender local part is required", (value) => value.trim().length > 0);
 
+async function lookupAuthoritativeNameServers(name: string): Promise<string[] | null> {
+  // Best-effort DoH lookup powering an optional UX hint. Swallow network/parse errors
+  // silently — ad-blockers, corp firewalls, and offline use are all expected here and
+  // shouldn't alert the user or pollute error reporting.
+  try {
+    const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=NS`, {
+      headers: { Accept: "application/dns-json" },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { Answer?: { data?: string }[] };
+    const ns = (json.Answer ?? [])
+      .map((a) => a.data)
+      .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+      .map((d) => d.trim().replace(/\.$/, ""));
+    return ns.length > 0 ? ns : null;
+  } catch {
+    return null;
+  }
+}
+
+// Walk up labels (e.g. mail.shop.example.co.uk → shop.example.co.uk → example.co.uk → co.uk)
+// and return the first ancestor whose authoritative NS records actually resolve. That ancestor
+// is the DNS zone apex — robust to multi-label public suffixes (`.co.uk`, `.com.au`, …).
+async function findZoneApex(subdomain: string): Promise<{ apex: string, nameServers: string[] } | null> {
+  const labels = subdomain.split(".").filter(Boolean);
+  for (let i = 1; i < labels.length; i++) {
+    const candidate = labels.slice(i).join(".");
+    const ns = await lookupAuthoritativeNameServers(candidate);
+    if (ns) return { apex: candidate, nameServers: ns };
+  }
+  return null;
+}
+
+function downloadCloudflareZoneFile(subdomain: string, apex: string, nameServerRecords: string[]) {
+  const fqdnSubdomain = `${subdomain}.`;
+  const lines = [
+    `$ORIGIN ${apex}.`,
+    `$TTL 3600`,
+    ...nameServerRecords.map((r) => `${fqdnSubdomain}\t3600\tIN\tNS\t${r.replace(/\.$/, "")}.`),
+    "",
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${subdomain}-cloudflare.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -254,6 +321,25 @@ function ManagedDomainSetupDialog(props: {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [cloudflareApex, setCloudflareApex] = useState<string | null>(null);
+
+  const setupSubdomain = setupState?.subdomain;
+  useEffect(() => {
+    if (!props.open || stage !== 2 || !setupSubdomain) {
+      setCloudflareApex(null);
+      return;
+    }
+    let cancelled = false;
+    runAsynchronously(async () => {
+      const zone = await findZoneApex(setupSubdomain);
+      if (cancelled || !zone) return;
+      const usesCloudflare = zone.nameServers.some((n) => /(^|\.)cloudflare\.com$/i.test(n));
+      if (usesCloudflare) setCloudflareApex(zone.apex);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.open, stage, setupSubdomain]);
 
   useEffect(() => {
     if (props.open) {
@@ -354,7 +440,7 @@ function ManagedDomainSetupDialog(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-w-[680px] p-0 gap-0" noCloseButton>
+      <DialogContent className="max-w-[680px] p-0 gap-0 overflow-hidden" noCloseButton>
         <DialogTitle className="sr-only">Add managed domain</DialogTitle>
 
         <div className="px-6 pt-5 pb-4 border-b border-border/40">
@@ -426,19 +512,21 @@ function ManagedDomainSetupDialog(props: {
                   Use a dedicated subdomain (e.g. <span className="font-mono">emails.example.com</span>), not your apex domain.
                 </Typography>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender local part</Label>
-                <div className="flex items-center gap-2">
-                  <DesignInput
-                    value={senderLocalPart}
-                    onChange={(e) => {
-                      setSenderLocalPart(e.target.value);
-                      setStage1Error(null);
-                    }}
-                    type="text"
-                    size="md"
-                  />
-                  <Typography variant="secondary" className="text-sm font-mono whitespace-nowrap">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-32 shrink-0">
+                    <DesignInput
+                      value={senderLocalPart}
+                      onChange={(e) => {
+                        setSenderLocalPart(e.target.value);
+                        setStage1Error(null);
+                      }}
+                      type="text"
+                      size="md"
+                    />
+                  </div>
+                  <Typography variant="secondary" className="text-sm font-mono truncate min-w-0">
                     @{subdomain || "your-subdomain"}
                   </Typography>
                 </div>
@@ -449,8 +537,8 @@ function ManagedDomainSetupDialog(props: {
 
           {stage === 2 && setupState && (
             <>
-              <div>
-                <div className="text-sm font-semibold text-foreground">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground break-all">
                   Add these records to <span className="font-mono">{setupState.subdomain}</span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
@@ -458,8 +546,65 @@ function ManagedDomainSetupDialog(props: {
                 </div>
               </div>
 
+              {cloudflareApex && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CloudflareIcon className="h-5 w-5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground">
+                        Cloudflare detected on <span className="font-mono">{cloudflareApex}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <DesignButton
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => { window.open(`https://dash.cloudflare.com/?to=/:account/${encodeURIComponent(cloudflareApex)}/dns/records`, "_blank", "noopener,noreferrer"); }}
+                    >
+                      <CloudflareIcon className="h-3.5 w-3.5" /> Open
+                    </DesignButton>
+                    <DesignButton
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => downloadCloudflareZoneFile(setupState.subdomain, cloudflareApex, setupState.nameServerRecords)}
+                    >
+                      <DownloadSimple className="h-3.5 w-3.5" /> Download zone file
+                    </DesignButton>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="How to import on Cloudflare"
+                          className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                        >
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="left" align="start" className="w-[420px] p-3 space-y-2">
+                        <div className="text-sm font-medium text-foreground">Import on Cloudflare</div>
+                        <ol className="text-xs text-muted-foreground space-y-1 list-decimal pl-4">
+                          <li>Open your zone&apos;s DNS page on Cloudflare.</li>
+                          <li>Click <span className="font-medium text-foreground">Import and Export</span> in the top-right.</li>
+                          <li>Under <span className="font-medium text-foreground">Import DNS records</span>, click <span className="font-medium text-foreground">Select a file</span> and pick the file you just downloaded.</li>
+                        </ol>
+                        <Image
+                          src="/assets/cloudflare-import-dns.png"
+                          alt="Cloudflare Import and Export dialog screenshot"
+                          width={1048}
+                          height={828}
+                          className="w-full h-auto rounded-md border border-border/50"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-lg border border-border/60 overflow-hidden">
-                <div className="grid grid-cols-[72px_160px_1fr] px-3 py-2 bg-foreground/[0.04] border-b border-border/50">
+                <div className="grid grid-cols-[72px_1fr_1fr] px-3 py-2 bg-foreground/[0.04] border-b border-border/50">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Type</div>
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Name</div>
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Content</div>
@@ -468,14 +613,17 @@ function ManagedDomainSetupDialog(props: {
                   <div
                     key={`${r}-${i}`}
                     className={cn(
-                      "grid grid-cols-[72px_160px_1fr] items-center px-3 py-2",
+                      "grid grid-cols-[72px_1fr_1fr] items-center px-3 py-2 gap-2",
                       i < setupState.nameServerRecords.length - 1 && "border-b border-border/40",
                     )}
                   >
                     <span className="font-mono text-[11px] font-semibold text-foreground/80">NS</span>
-                    <span className="font-mono text-xs text-foreground truncate">{setupState.subdomain}</span>
                     <div className="flex items-center justify-between gap-2 min-w-0">
-                      <span className="font-mono text-xs text-foreground truncate">{r}</span>
+                      <span className="font-mono text-xs text-foreground truncate min-w-0">{setupState.subdomain}</span>
+                      <CopyButton text={setupState.subdomain} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="font-mono text-xs text-foreground truncate min-w-0">{r}</span>
                       <CopyButton text={r} />
                     </div>
                   </div>
@@ -582,6 +730,7 @@ export function DomainSettings() {
   const [domains, setDomains] = useState<ManagedDomain[]>([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [dialog, setDialog] = useState<{ initialState: SetupState | null } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ManagedDomain | null>(null);
 
   const refreshDomains = useCallback(async () => {
     setLoadingDomains(true);
@@ -887,11 +1036,11 @@ export function DomainSettings() {
                     const displayStatus: ManagedDomainStatus = isInUse ? "applied" : isReadyButUnused ? "verified" : d.status;
                     const displayLabel = isInUse ? "Active" : MANAGED_DOMAIN_STATUS_LABELS[displayStatus];
                     return (
-                      <div key={d.domainId} className="flex items-center justify-between px-4 py-3 gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
+                      <div key={d.domainId} className="flex items-center justify-between px-4 py-3 gap-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           <GlobeSimple className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-sm font-mono text-foreground truncate">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-mono text-foreground truncate" title={`${d.senderLocalPart}@${d.subdomain}`}>
                               {d.senderLocalPart}@{d.subdomain}
                             </div>
                             <div className="text-[11px] text-muted-foreground mt-0.5">
@@ -901,7 +1050,7 @@ export function DomainSettings() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className={cn(
-                            "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                            "text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap",
                             MANAGED_DOMAIN_STATUS_COLORS[displayStatus],
                           )}>
                             {displayLabel}
@@ -933,6 +1082,17 @@ export function DomainSettings() {
                             >
                               View DNS
                             </DesignButton>
+                          )}
+                          {!isInUse && (
+                            <button
+                              type="button"
+                              title="Remove domain"
+                              aria-label={`Remove domain ${d.senderLocalPart}@${d.subdomain}`}
+                              onClick={() => setConfirmDelete(d)}
+                              className="shrink-0 p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <Trash className="h-3.5 w-3.5" />
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1015,6 +1175,29 @@ export function DomainSettings() {
         initialState={dialog?.initialState ?? null}
         onCompleted={() => { runAsynchronouslyWithAlert(refreshDomains); }}
       />
+
+      <ActionDialog
+        open={confirmDelete !== null}
+        onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}
+        title="Remove managed domain"
+        danger
+        okButton={{
+          label: "Remove",
+          onClick: async () => {
+            if (!confirmDelete) return;
+            runAsynchronouslyWithAlert(async () => {
+              await stackAdminApp.deleteManagedEmailDomain({ resendDomainId: confirmDelete.domainId });
+              toast({ title: "Domain removed", description: `${confirmDelete.senderLocalPart}@${confirmDelete.subdomain} was removed.`, variant: "success" });
+              await refreshDomains();
+            });
+          },
+        }}
+        cancelButton
+      >
+        <Typography>
+          Remove <span className="font-mono">{confirmDelete?.senderLocalPart}@{confirmDelete?.subdomain}</span>? This permanently removes the domain from our records and the underlying email provider. You can re-add it later, but you&apos;ll need to re-verify DNS.
+        </Typography>
+      </ActionDialog>
     </>
   );
 }

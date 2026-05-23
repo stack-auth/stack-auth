@@ -10,6 +10,7 @@ import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/pro
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
+import { checkSmtpEgressPolicy } from '@/private';
 
 export function isSecureEmailPort(port: number | string) {
   // "secure" in most SMTP clients means implicit TLS from byte 1 (SMTPS)
@@ -52,11 +53,12 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
   message?: string,
 }>> {
   let finished = false;
+  const strippedEmailConfig = options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']);
   runAsynchronously(async () => {
     await wait(15_000);
     if (!finished) {
       captureError("email-send-timeout", new HexclaveAssertionError("Email send took longer than 15s; maybe the email service is too slow?", {
-        config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
+        config: strippedEmailConfig,
         to: options.to,
         subject: options.subject,
         html: options.html,
@@ -75,10 +77,27 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 
     return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
       try {
+        const smtpEgressPolicyResult = await checkSmtpEgressPolicy({
+          host: options.emailConfig.host,
+          port: options.emailConfig.port,
+        });
+        if (smtpEgressPolicyResult.status === "error") {
+          console.warn("SMTP config rejected by the egress policy.", {
+            violation: smtpEgressPolicyResult.violation,
+            config: strippedEmailConfig,
+          });
+          captureError("smtp-egress-policy-report-only", new HexclaveAssertionError("SMTP config would be rejected by the egress policy", {
+            violation: smtpEgressPolicyResult.violation,
+            config: strippedEmailConfig,
+          }));
+        }
+
         const transporter = nodemailer.createTransport({
           host: options.emailConfig.host,
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
+          disableFileAccess: true,
+          disableUrlAccess: true,
           connectionTimeout: 15000,
           greetingTimeout: 10000,
           socketTimeout: 20000,
@@ -209,7 +228,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
         }
 
         // ============ unknown error ============
-        captureError("unknown-email-send-error", new HexclaveAssertionError("Unknown error while sending email. We should add a better error description for the user.", { cause: error }));
+        captureError("unknown-email-send-error", new HexclaveAssertionError("Unknown error while sending email. We should add a better error description for the user.", { strippedEmailConfig, cause: error }));
         return Result.error({
           rawError: error,
           errorType: 'UNKNOWN',

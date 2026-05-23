@@ -42,7 +42,7 @@ export const POST = createSmartRouteHandler({
     let anonRefreshToken: string | null = null;
 
     if (anon_refresh_token != null) {
-      const refreshTokenRows = await globalPrismaClient.$queryRaw<RefreshTokenRow[]>(Prisma.sql`
+      const refreshTokenRows = await globalPrismaClient.$replica().$queryRaw<RefreshTokenRow[]>(Prisma.sql`
         SELECT "tenancyId", "projectUserId", "expiresAt"
         FROM "ProjectUserRefreshToken"
         WHERE "refreshToken" = ${anon_refresh_token}

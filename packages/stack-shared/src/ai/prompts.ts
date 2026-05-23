@@ -1,20 +1,5 @@
 import { deindent } from "../utils/strings";
 
-export const mcpSetupPrompt = deindent`
-  ## MCP Setup
-
-  <Note>
-    This prompt is not yet implemented.
-  </Note>
-
-  <Steps titleSize="h3">
-    <Step title="Install dependencies">
-      Install the MCP package:
-    </Step>
-    <Step title="Done!" />
-  </Steps>
-`;
-
 export const convexSetupPrompt = deindent`
   ## Convex Setup
 
@@ -357,8 +342,6 @@ export const aiSetupPrompt = deindent`
 
   ${getSdkSetupPrompt("ai-prompt")}
 
-  ${mcpSetupPrompt}
-
   ${convexSetupPrompt}
 
   ${supabaseSetupPrompt}
@@ -456,6 +439,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           export const stackClientApp = new StackClientApp({
             tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
+            urls: {
+              default: {
+                type: "hosted",
+              }
+            },
           });
           \`\`\`
         ` : ""}
@@ -469,6 +457,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             export const stackServerApp = new StackServerApp({
               tokenStore: null,
+              urls: {
+                default: {
+                  type: "hosted",
+                }
+              },
             });
             \`\`\`
           ` : ""}

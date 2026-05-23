@@ -431,6 +431,7 @@ function ProjectsListPage() {
 
           {!isRemoteDevelopmentEnvironment && (
             <Button
+              className="rounded-xl"
               onClick={async () => {
                 if (isLocalEmulator) {
                   setOpenConfigFileDialog(true);

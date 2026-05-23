@@ -127,6 +127,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
       getRedirectMethod(): RedirectMethod,
       redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
+      redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
     },
   }

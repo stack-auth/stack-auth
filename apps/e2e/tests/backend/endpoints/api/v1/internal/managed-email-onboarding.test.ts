@@ -125,4 +125,175 @@ describe("managed email onboarding internal endpoints", () => {
     });
     expect(config.emails.server.password).toEqual(expect.stringMatching(/^managed_mock_key_/));
   });
+
+  it("rejects client access for delete endpoint", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const response = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        resend_domain_id: "managed_mock_domain",
+      },
+    });
+
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "INSUFFICIENT_ACCESS_TYPE",
+          "details": {
+            "actual_access_type": "client",
+            "allowed_access_types": ["admin"],
+          },
+          "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
+  it("deletes a managed domain that is not in use", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const setupResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/setup", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        subdomain: "mail.example.com",
+        sender_local_part: "noreply",
+      },
+    });
+    expect(setupResponse.status).toBe(200);
+
+    const deleteResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        resend_domain_id: setupResponse.body.domain_id,
+      },
+    });
+    expect(deleteResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "status": "deleted" },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    const listResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/list", {
+      method: "GET",
+      accessType: "admin",
+    });
+    expect(listResponse.body.items).toHaveLength(0);
+  });
+
+  it("rejects deleting a managed domain that is in use", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const setupResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/setup", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        subdomain: "mail.example.com",
+        sender_local_part: "noreply",
+      },
+    });
+    await wait(1500);
+
+    const applyResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/apply", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        domain_id: setupResponse.body.domain_id,
+      },
+    });
+    expect(applyResponse.status).toBe(200);
+
+    const deleteResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        resend_domain_id: setupResponse.body.domain_id,
+      },
+    });
+    expect(deleteResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 409,
+        "body": "Cannot delete a managed domain that is currently in use for sending email",
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("allows deleting a managed domain after switching away from managed email", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const setupResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/setup", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        subdomain: "mail.example.com",
+        sender_local_part: "noreply",
+      },
+    });
+    await wait(1500);
+
+    const applyResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/apply", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        domain_id: setupResponse.body.domain_id,
+      },
+    });
+    expect(applyResponse.status).toBe(200);
+
+    await Project.updateConfig({
+      emails: {
+        server: {
+          isShared: false,
+          provider: "resend",
+          host: "smtp.resend.com",
+          port: 465,
+          username: "resend",
+          password: "re_test_key",
+          senderEmail: "noreply@mail.example.com",
+          senderName: "Example",
+          managedSubdomain: undefined,
+          managedSenderLocalPart: undefined,
+        },
+      },
+    });
+
+    const deleteResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        resend_domain_id: setupResponse.body.domain_id,
+      },
+    });
+    expect(deleteResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "status": "deleted" },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("returns 404 when deleting an unknown managed domain", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const deleteResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        resend_domain_id: "does-not-exist",
+      },
+    });
+    expect(deleteResponse.status).toBe(404);
+  });
 });

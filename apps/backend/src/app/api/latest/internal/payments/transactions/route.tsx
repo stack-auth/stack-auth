@@ -651,7 +651,7 @@ async function getTransactions(options: {
     LIMIT ${options.limit + 1}
   `;
 
-  const rawRows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(sql)}`;
+  const rawRows = await options.prisma.$replica().$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(sql)}`;
   const parsedRows = rawRows.map((row) => {
     const parsed = readLedgerTransactionRow(row.rowData);
     return {
@@ -711,7 +711,7 @@ async function getTransactions(options: {
       FROM (${baseSql}) AS "__rows"
       WHERE ${refundWhereClauses.join("\n        AND ")}
     `;
-    refundRows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(refundSql)}`;
+    refundRows = await options.prisma.$replica().$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(refundSql)}`;
   }
   const resolvedAdjustedByLookup = buildAdjustedByLookupFromRefundRows(refundRows.map((row) => row.rowData));
 

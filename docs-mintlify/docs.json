@@ -46,7 +46,6 @@
         "tab": "Documentation",
         "pages": [
           "index",
-          "guides/faq",
           {
             "group": "Getting Started",
             "pages": [
@@ -75,6 +74,7 @@
                 "pages": [
                   "guides/apps/authentication/overview",
                   "guides/apps/authentication/user-onboarding",
+                  "guides/apps/authentication/restricted-users",
                   "guides/apps/authentication/connected-accounts",
                   "guides/apps/authentication/jwts",
                   "guides/apps/authentication/sign-up-rules",
@@ -228,7 +228,7 @@
     }
   },
   "settings": {
-    "customScripts": ["/apps-sidebar-filter.js"]
+    "customScripts": ["/apps-sidebar-filter.js", "/code-language-labels.js"]
   },
   "redirects": []
 }

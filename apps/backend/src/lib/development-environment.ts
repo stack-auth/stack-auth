@@ -8,7 +8,7 @@ export const DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE =
 export type ConfigOverrideWriteLevel = "project" | "branch" | "environment";
 
 export async function isDevelopmentEnvironmentProject(projectId: string): Promise<boolean> {
-  const rows = await globalPrismaClient.$queryRaw<Array<{ isDevelopmentEnvironment: boolean }>>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<Array<{ isDevelopmentEnvironment: boolean }>>(Prisma.sql`
     SELECT "isDevelopmentEnvironment"
     FROM "Project"
     WHERE "id" = ${projectId}

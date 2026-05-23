@@ -285,6 +285,7 @@ function SequencerDataGrid({ status, loading }: { status: ExternalDbSyncStatus |
       onChange={setGridState}
       toolbar={false}
       footer={false}
+      fillHeight={false}
     />
   );
 }
@@ -322,6 +323,7 @@ function DeletedRowsDataGrid({ rows, loading }: { rows: DeletedRowEntry[], loadi
       onChange={setGridState}
       toolbar={false}
       footer={false}
+      fillHeight={false}
       emptyState={loading ? undefined : "No deleted rows recorded yet."}
     />
   );
@@ -372,6 +374,7 @@ function PollerDataGrid({ status, loading }: { status: ExternalDbSyncStatus | nu
       onChange={setGridState}
       toolbar={false}
       footer={false}
+      fillHeight={false}
     />
   );
 }
@@ -405,6 +408,7 @@ function SyncEngineDataGrid({ rows, loading }: { rows: MappingStats[], loading: 
       onChange={setGridState}
       toolbar={false}
       footer={false}
+      fillHeight={false}
       emptyState={loading ? undefined : "No mappings configured."}
     />
   );

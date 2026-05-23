@@ -1,11 +1,13 @@
 /* eslint-disable no-restricted-syntax */
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { BooleanTrue, ContactChannelType, CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
-import { getClickhouseAdminClient } from '@/lib/clickhouse';
+import { getClickhouseAdminClient, type ClickHouseClient } from '@/lib/clickhouse';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
+import { isPreviewModeEnabled } from '@/lib/preview-mode';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from '@/prisma-client';
+import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
@@ -87,12 +89,14 @@ type UserSeed = {
 type SeedDummyTeamsOptions = {
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
+  freshProject: boolean,
 };
 
 type SeedDummyUsersOptions = {
   prisma: TenancyPrismaClient,
   tenancy: Tenancy,
   teamNameToId: Map<string, string>,
+  freshProject: boolean,
 };
 
 type PaymentsProducts = {
@@ -132,6 +136,8 @@ type SessionActivityEventSeedOptions = {
   tenancyId: string,
   projectId: string,
   userEmailToId: Map<string, string>,
+  freshProject: boolean,
+  clickhouseClient: ClickHouseClient,
 };
 
 type BulkActivityRegion = {
@@ -151,6 +157,11 @@ type SeedDummyProjectOptions = {
   oauthProviderIds: string[],
   excludeAlphaApps?: boolean,
   skipGithubConfigSource?: boolean,
+  // An optional pre-warmed ClickHouse client reused for every analytics insert.
+  // When omitted, one is created internally. The preview create-project route
+  // passes the client it warmed up so the connection / TLS handshake is paid
+  // exactly once rather than once per seeder.
+  clickhouseClient?: ClickHouseClient,
 };
 
 // ============= Seed Data =============
@@ -375,30 +386,50 @@ const DUMMY_SEED_IDS = {
 // ============= Seed Functions =============
 
 async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<string, string>> {
-  const { prisma, tenancy } = options;
+  const { prisma, tenancy, freshProject } = options;
 
   const teamNameToId = new Map<string, string>();
-  for (const team of teamSeeds) {
-    const existingTeam = await prisma.team.findFirst({
+
+  // Idempotency: look up which seed teams already exist. Skipped entirely for a
+  // fresh project (nothing can pre-exist); otherwise done in one findMany
+  // rather than a findFirst per team.
+  const existingTeamIdByName = new Map<string, string>();
+  if (!freshProject) {
+    const existingTeams = await prisma.team.findMany({
       where: {
         tenancyId: tenancy.id,
-        displayName: team.displayName,
+        displayName: { in: teamSeeds.map((team) => team.displayName) },
       },
+      select: { teamId: true, displayName: true },
     });
-    if (existingTeam) {
-      teamNameToId.set(team.displayName, existingTeam.teamId);
-      continue;
+    for (const existingTeam of existingTeams) {
+      existingTeamIdByName.set(existingTeam.displayName, existingTeam.teamId);
     }
-
-    const createdTeam = await teamsCrudHandlers.adminCreate({
-      tenancy,
-      data: {
-        display_name: team.displayName,
-        profile_image_url: team.profileImageUrl ?? null,
-      },
-    });
-    teamNameToId.set(team.displayName, createdTeam.id);
   }
+
+  const teamsToCreate: TeamSeed[] = [];
+  for (const team of teamSeeds) {
+    const existingId = existingTeamIdByName.get(team.displayName);
+    if (existingId != null) {
+      teamNameToId.set(team.displayName, existingId);
+    } else {
+      teamsToCreate.push(team);
+    }
+  }
+
+  // Teams are independent of each other, so create them concurrently instead of
+  // in a serial loop. `adminCreate` is kept (rather than a raw bulk insert) so
+  // the team-create side effects — default permissions, plan grant — still run.
+  const createdTeams = await Promise.all(teamsToCreate.map((team) => teamsCrudHandlers.adminCreate({
+    tenancy,
+    data: {
+      display_name: team.displayName,
+      profile_image_url: team.profileImageUrl ?? null,
+    },
+  })));
+  teamsToCreate.forEach((team, index) => {
+    teamNameToId.set(team.displayName, createdTeams[index]!.id);
+  });
 
   return teamNameToId;
 }
@@ -442,7 +473,7 @@ function pickBulkOauthProviders(params: {
 }
 
 async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<string, string>> {
-  const { prisma, tenancy, teamNameToId } = options;
+  const { prisma, tenancy, teamNameToId, freshProject } = options;
 
   const userEmailToId = new Map<string, string>();
 
@@ -552,7 +583,8 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
 
   // Idempotency: in one query, find every email that already has a user, and
   // skip re-creating it (seedDummyProject may run against an existing project).
-  const existingChannels = await prisma.contactChannel.findMany({
+  // Skipped entirely for a fresh project, where nothing can pre-exist.
+  const existingChannels = freshProject ? [] : await prisma.contactChannel.findMany({
     where: {
       tenancyId: tenancy.id,
       type: 'EMAIL',
@@ -649,7 +681,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       if (directPermissionRows.length > 0) {
         await tx.projectUserDirectPermission.createMany({ data: directPermissionRows });
       }
-    });
+    }, { timeout: 90_000 });
   }
 
   // Team memberships for the named seed users — bulk-inserted the same way.
@@ -665,7 +697,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
     }
   }
   const namedUserIds = [...new Set(desiredMemberships.map((m) => m.userId))];
-  const existingMemberships = namedUserIds.length === 0 ? [] : await prisma.teamMember.findMany({
+  const existingMemberships = (freshProject || namedUserIds.length === 0) ? [] : await prisma.teamMember.findMany({
     where: { tenancyId: tenancy.id, projectUserId: { in: namedUserIds } },
     select: { projectUserId: true, teamId: true },
   });
@@ -693,7 +725,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       if (teamMemberPermissionRows.length > 0) {
         await tx.teamMemberDirectPermission.createMany({ data: teamMemberPermissionRows });
       }
-    });
+    }, { timeout: 90_000 });
   }
 
   return userEmailToId;
@@ -1453,6 +1485,13 @@ function bulkRandomTimestampOnDay(now: Date, daysAgo: number, rand: () => number
   ts.setUTCDate(ts.getUTCDate() - daysAgo);
   const hour = 8 + Math.floor(rand() * 14);
   ts.setUTCHours(hour, Math.floor(rand() * 60), Math.floor(rand() * 60), Math.floor(rand() * 1000));
+  // A random hour-of-day on "today" can land after `now`. Shift such events
+  // back a day so seeded activity is never in the future — a future-dated
+  // `$token-refresh` event would otherwise satisfy the (upper-bound-free)
+  // "live users" window forever and inflate the overview globe's live count.
+  if (ts.getTime() > now.getTime()) {
+    ts.setUTCDate(ts.getUTCDate() - 1);
+  }
   return ts;
 }
 
@@ -1483,8 +1522,51 @@ function formatClickhouseTimestamp(date: Date): string {
   return date.toISOString().replace('T', ' ').slice(0, 23);
 }
 
+/**
+ * Builds a `$token-refresh` row for the ClickHouse `analytics_internal.events`
+ * table. Shared by the historical session-activity seeder and the live-user
+ * seeder so the row shape stays defined in exactly one place.
+ */
+function buildTokenRefreshClickhouseRow(options: {
+  projectId: string,
+  userId: string,
+  refreshTokenId: string,
+  eventAt: Date,
+  ipAddress: string,
+  location: (typeof sessionActivityLocations)[number],
+}): Record<string, unknown> {
+  const { projectId, userId, refreshTokenId, eventAt, ipAddress, location } = options;
+  return {
+    event_type: '$token-refresh',
+    // Always emit the ClickHouse `YYYY-MM-DD HH:MM:SS.mmm` string form so every
+    // caller (the historical and live seeders) writes `event_at` identically.
+    event_at: formatClickhouseTimestamp(eventAt),
+    data: {
+      refresh_token_id: refreshTokenId,
+      is_anonymous: false,
+      ip_info: {
+        ip: ipAddress,
+        is_trusted: true,
+        country_code: location.countryCode,
+        region_code: location.regionCode,
+        city_name: location.cityName,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        tz_identifier: location.tzIdentifier,
+      },
+    },
+    project_id: projectId,
+    branch_id: DEFAULT_BRANCH_ID,
+    user_id: userId,
+    team_id: null,
+    refresh_token_id: refreshTokenId,
+    session_replay_id: null,
+    session_replay_segment_id: null,
+  };
+}
+
 async function seedDummySessionActivityEvents(options: SessionActivityEventSeedOptions) {
-  const { tenancyId, projectId, userEmailToId } = options;
+  const { tenancyId, projectId, userEmailToId, freshProject } = options;
 
   // Anchor on midnight today so the seeded window is stable across re-runs
   // within the same day. Across days the window legitimately shifts forward.
@@ -1505,7 +1587,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
 
   const clickhouseUrl = getEnvVariable('STACK_CLICKHOUSE_URL', '');
   const shouldSeedClickhouse = clickhouseUrl !== '';
-  const clickhouseClient = shouldSeedClickhouse ? getClickhouseAdminClient() : null;
+  const clickhouseClient = shouldSeedClickhouse ? options.clickhouseClient : null;
 
   for (const userId of userIds) {
     // Per-user seeded PRNG so event count, timestamps, and locations are
@@ -1557,49 +1639,36 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
       });
 
       if (clickhouseClient) {
-        clickhouseRows.push({
-          event_type: '$token-refresh',
-          event_at: randomTime,
-          data: {
-            refresh_token_id: refreshTokenId,
-            is_anonymous: false,
-            ip_info: {
-              ip: ipAddress,
-              is_trusted: true,
-              country_code: location.countryCode,
-              region_code: location.regionCode,
-              city_name: location.cityName,
-              latitude: location.latitude,
-              longitude: location.longitude,
-              tz_identifier: location.tzIdentifier,
-            },
-          },
-          project_id: projectId,
-          branch_id: DEFAULT_BRANCH_ID,
-          user_id: userId,
-          team_id: null,
-          refresh_token_id: refreshTokenId,
-          session_replay_id: null,
-          session_replay_segment_id: null,
-        });
+        clickhouseRows.push(buildTokenRefreshClickhouseRow({
+          projectId,
+          userId,
+          refreshTokenId,
+          eventAt: randomTime,
+          ipAddress,
+          location,
+        }));
       }
     }
   }
 
   await globalPrismaClient.$transaction(async (tx) => {
-    const eventIds = events.map((event) => event.id ?? throwErr('Seeded event row is missing id'));
-    const ipInfoIds = eventIpInfos.map((info) => info.id ?? throwErr('Seeded event IP info row is missing id'));
+    // On a fresh project the deterministic IDs can't already exist, so skip the
+    // delete-before-insert that keeps re-seeds idempotent.
+    if (!freshProject) {
+      const eventIds = events.map((event) => event.id ?? throwErr('Seeded event row is missing id'));
+      const ipInfoIds = eventIpInfos.map((info) => info.id ?? throwErr('Seeded event IP info row is missing id'));
 
-    await tx.event.deleteMany({
-      where: {
-        id: { in: eventIds },
-      },
-    });
-    await tx.eventIpInfo.deleteMany({
-      where: {
-        id: { in: ipInfoIds },
-      },
-    });
+      await tx.event.deleteMany({
+        where: {
+          id: { in: eventIds },
+        },
+      });
+      await tx.eventIpInfo.deleteMany({
+        where: {
+          id: { in: ipInfoIds },
+        },
+      });
+    }
 
     await tx.eventIpInfo.createMany({
       data: eventIpInfos,
@@ -1650,6 +1719,8 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
 async function seedBulkSignupsAndActivity(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
+  freshProject: boolean,
+  clickhouseClient: ClickHouseClient,
   count?: number,
   days?: number,
 }) {
@@ -1657,8 +1728,8 @@ async function seedBulkSignupsAndActivity(options: {
   const days = options.days ?? 60;
   const now = new Date();
   const rand = deterministicPrng(0xC0FFEE);
-  const { tenancy, prisma } = options;
-  const clickhouse = getClickhouseAdminClient();
+  const { tenancy, prisma, freshProject } = options;
+  const clickhouse = options.clickhouseClient;
 
   console.log(`[seed-activity] Target: ${count} users across ${days} days in project "${tenancy.project.id}" branch "${tenancy.branchId}"`);
 
@@ -1698,7 +1769,9 @@ async function seedBulkSignupsAndActivity(options: {
     });
   }
 
-  const existingContactChannels = await prisma.contactChannel.findMany({
+  // Idempotency: find seed users that already exist so they're updated rather
+  // than re-created. Skipped for a fresh project, where nothing can pre-exist.
+  const existingContactChannels = freshProject ? [] : await prisma.contactChannel.findMany({
     where: {
       tenancyId: tenancy.id,
       type: 'EMAIL',
@@ -1865,7 +1938,9 @@ async function seedBulkSignupsAndActivity(options: {
       const pageViewCount = 1 + Math.floor(rand() * 4);
       for (let p = 0; p < pageViewCount; p++) {
         const pvOffset = Math.floor(rand() * 3600) * 1000;
-        const pvTime = new Date(visitTime.getTime() + pvOffset);
+        // Clamp to `now`: visitTime is already clamped, but adding the offset
+        // can push a same-day event past `now` into the future.
+        const pvTime = new Date(Math.min(visitTime.getTime() + pvOffset, now.getTime()));
         clickhouseRows.push({
           event_type: '$page-view',
           event_at: formatClickhouseTimestamp(pvTime),
@@ -1883,7 +1958,8 @@ async function seedBulkSignupsAndActivity(options: {
 
       if (rand() < 0.4) {
         const clickOffset = Math.floor(rand() * 1800) * 1000;
-        const clickTime = new Date(visitTime.getTime() + clickOffset);
+        // Clamp to `now` so the offset can't push the event into the future.
+        const clickTime = new Date(Math.min(visitTime.getTime() + clickOffset, now.getTime()));
         clickhouseRows.push({
           event_type: '$click',
           event_at: formatClickhouseTimestamp(clickTime),
@@ -1979,18 +2055,43 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     });
   }
 
+  // A brand-new project can't have any pre-existing seed rows, so every seeder
+  // can skip its idempotency machinery (existence probes, delete-before-insert).
+  // The preview create-project route always hits this path; only the seed
+  // script re-running against an existing project needs the idempotent path.
+  const freshProject = !existingProject;
+
+  // A single ClickHouse client reused by every analytics seeder below, so the
+  // connection / TLS handshake is established once instead of once per seeder.
+  // The preview create-project route passes in a client it already warmed up.
+  const clickhouseClient = options.clickhouseClient ?? getClickhouseAdminClient();
+
+  // The ClickHouse `analytics_internal.events` table is append-only — unlike
+  // the Postgres seeders there is no delete-before-insert. When reseeding an
+  // existing project, clear this project's previously-seeded events once, up
+  // front (before the concurrent event seeders start), so the reseed refreshes
+  // the analytics rather than duplicating them. A fresh project has none.
+  if (!freshProject) {
+    await clickhouseClient.command({
+      query: 'DELETE FROM analytics_internal.events WHERE project_id = {projectId:String}',
+      query_params: { projectId },
+    });
+  }
+
   const dummyTenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID);
   const dummyPrisma = await getPrismaClientForTenancy(dummyTenancy);
 
   const teamNameToId = await seedDummyTeams({
     prisma: dummyPrisma,
     tenancy: dummyTenancy,
+    freshProject,
   });
 
   const userEmailToId = await seedDummyUsers({
     prisma: dummyPrisma,
     tenancy: dummyTenancy,
     teamNameToId,
+    freshProject,
   });
   const { paymentsProducts, paymentsBranchOverride } = buildDummyPaymentsSetup();
 
@@ -2002,6 +2103,8 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
   const bulkSignupsPromise = seedBulkSignupsAndActivity({
     tenancy: dummyTenancy,
     prisma: dummyPrisma,
+    freshProject,
+    clickhouseClient,
   });
 
   await Promise.all([
@@ -2087,15 +2190,9 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
         stripeAccountId: "sample-stripe-account-id"
       },
     }),
-  ]);
-
-  await Promise.all([
-    seedDummyTransactions({
-      prisma: dummyPrisma,
-      tenancyId: dummyTenancy.id,
-      teamNameToId,
-      paymentsProducts,
-    }),
+    // Data seeding runs alongside the config-override writes above — they touch
+    // different tables and don't depend on each other. Payments seeding is
+    // intentionally excluded here; it's deferred to the very end (see below).
     seedDummyEmails({
       prisma: dummyPrisma,
       tenancyId: dummyTenancy.id,
@@ -2105,29 +2202,265 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       tenancyId: dummyTenancy.id,
       projectId,
       userEmailToId,
+      freshProject,
+      clickhouseClient,
     }),
     seedDummySessionReplays({
       prisma: dummyPrisma,
       tenancyId: dummyTenancy.id,
       userEmailToId,
+      freshProject,
     }),
   ]);
 
   // Wait for the concurrently-started bulk signup/activity seeding to finish.
   await bulkSignupsPromise;
 
+  // Populate the ClickHouse tables the overview reads. Both run together: they
+  // write distinct tables and don't depend on each other.
+  //  - seedDummyAnalyticsMirrorTables mirrors the freshly-seeded
+  //    users/teams/contact channels into `analytics_internal.*` so the internal
+  //    metrics endpoint reports non-zero user/team totals. In production those
+  //    tables are filled by the external-db-sync pipeline, but preview/demo
+  //    deployments don't run it — so the seed populates them directly, just
+  //    like it already writes `analytics_internal.events`.
+  //  - seedDummyLiveTokenRefreshEvents plants "live" activity. It stays in the
+  //    last step so the events are as fresh as possible when the dashboard
+  //    loads the overview right after creation.
+  await Promise.all([
+    seedDummyAnalyticsMirrorTables({
+      prisma: dummyPrisma,
+      tenancyId: dummyTenancy.id,
+      projectId,
+      clickhouseClient,
+    }),
+    seedDummyLiveTokenRefreshEvents({
+      prisma: dummyPrisma,
+      tenancyId: dummyTenancy.id,
+      projectId,
+      clickhouseClient,
+    }),
+  ]);
+
+  // Payments data (subscriptions, invoices, …) backs only the billing pages,
+  // not the overview the dashboard shows first. In preview mode, seed it as a
+  // fire-and-forget background task so a slow payments seed doesn't delay the
+  // route response — `runAsynchronouslyAndWaitUntil` keeps the serverless
+  // function alive until it finishes. Outside preview mode (e.g. the seed
+  // script) it must complete before returning.
+  const seedPayments = () => seedDummyTransactions({
+    prisma: dummyPrisma,
+    tenancyId: dummyTenancy.id,
+    teamNameToId,
+    paymentsProducts,
+  });
+  if (isPreviewModeEnabled()) {
+    runAsynchronouslyAndWaitUntil(seedPayments);
+  } else {
+    await seedPayments();
+  }
+
   return projectId;
+}
+
+// How many users to surface as currently "live" on the overview globe.
+const LIVE_USERS_SEED_COUNT = 8;
+
+/**
+ * Inserts a handful of `$token-refresh` events timestamped at ~now so the
+ * overview globe's live-user avatars and the "Live" badge are populated.
+ *
+ * The metrics endpoint classifies a user as "live" when they have a
+ * `$token-refresh` event in the last ~2 minutes, measured at query time.
+ * Preview/demo deployments have no real traffic, so the seed plants this
+ * activity itself. It is emitted as the final seed step (and re-emitted on
+ * every re-seed) so the events are as fresh as possible — note the live count
+ * naturally decays once the events age past the ~2-minute window.
+ */
+async function seedDummyLiveTokenRefreshEvents(options: {
+  prisma: TenancyPrismaClient,
+  tenancyId: string,
+  projectId: string,
+  clickhouseClient: ClickHouseClient,
+}): Promise<void> {
+  const { prisma, tenancyId, projectId, clickhouseClient } = options;
+
+  if (getEnvVariable('STACK_CLICKHOUSE_URL', '') === '') {
+    return;
+  }
+
+  const users = await prisma.projectUser.findMany({
+    where: { tenancyId, isAnonymous: false },
+    orderBy: { projectUserId: 'asc' },
+    take: LIVE_USERS_SEED_COUNT,
+  });
+  if (users.length === 0) {
+    return;
+  }
+
+  // One location per distinct country (the locations list repeats some
+  // countries) so the live-user avatars spread across the globe rather than
+  // stacking on the same spot.
+  const liveLocations: typeof sessionActivityLocations = [];
+  const seenCountries = new Set<string>();
+  for (const location of sessionActivityLocations) {
+    if (seenCountries.has(location.countryCode)) {
+      continue;
+    }
+    seenCountries.add(location.countryCode);
+    liveLocations.push(location);
+    if (liveLocations.length === LIVE_USERS_SEED_COUNT) {
+      break;
+    }
+  }
+  const now = Date.now();
+
+  const clickhouseRows = users.map((user, index) => buildTokenRefreshClickhouseRow({
+    projectId,
+    userId: user.projectUserId,
+    refreshTokenId: randomUUID(),
+    // Emit at ~now with only a tiny stagger so every event stays well inside
+    // the ~2-minute live window even after seed + dashboard-load latency.
+    eventAt: new Date(now - index * 1000),
+    ipAddress: `203.0.113.${10 + index}`,
+    location: liveLocations[index % liveLocations.length]!,
+  }));
+
+  // Synchronous insert (no async_insert) so the events are immediately
+  // queryable when the dashboard loads the overview right after creation.
+  await clickhouseClient.insert({
+    table: 'analytics_internal.events',
+    values: clickhouseRows,
+    format: 'JSONEachRow',
+    clickhouse_settings: { date_time_input_format: 'best_effort' },
+  });
+}
+
+/**
+ * Mirrors the seeded users / teams / contact channels into the ClickHouse
+ * `analytics_internal.*` tables so the internal metrics endpoint can report
+ * non-zero user/team totals without depending on the external-db-sync
+ * pipeline (which preview/demo deployments don't run).
+ */
+async function seedDummyAnalyticsMirrorTables(options: {
+  prisma: TenancyPrismaClient,
+  tenancyId: string,
+  projectId: string,
+  clickhouseClient: ClickHouseClient,
+}): Promise<void> {
+  const { prisma, tenancyId, projectId, clickhouseClient } = options;
+
+  if (getEnvVariable('STACK_CLICKHOUSE_URL', '') === '') {
+    return;
+  }
+
+  const [users, contactChannels, teams] = await Promise.all([
+    prisma.projectUser.findMany({ where: { tenancyId } }),
+    prisma.contactChannel.findMany({ where: { tenancyId } }),
+    prisma.team.findMany({ where: { tenancyId } }),
+  ]);
+
+  // Primary contact channel per user — drives primary_email and the verified /
+  // unverified user split on the overview page. Seeded channels are all EMAIL.
+  const primaryEmailByUser = new Map<string, { value: string, isVerified: boolean }>();
+  for (const cc of contactChannels) {
+    if (cc.isPrimary === BooleanTrue.TRUE) {
+      primaryEmailByUser.set(cc.projectUserId, { value: cc.value, isVerified: cc.isVerified });
+    }
+  }
+
+  // `analytics_internal.*` are ReplacingMergeTree(sync_sequence_id) tables.
+  // Rows synced by the real external-db-sync pipeline are versioned from the
+  // `global_seq_id` Postgres sequence, which starts at 1 — so version 0
+  // guarantees that if that pipeline ever runs for this project, any real
+  // update/delete supersedes the directly-seeded placeholder row under FINAL.
+  // (Re-seeds insert equal versions; ReplacingMergeTree keeps the most
+  // recently inserted row, i.e. the newer seed.)
+  const SEED_SYNC_SEQUENCE_ID = 0;
+
+  const userRows = users.map((u) => {
+    const primaryEmail = primaryEmailByUser.get(u.projectUserId);
+    return {
+      project_id: projectId,
+      branch_id: DEFAULT_BRANCH_ID,
+      id: u.projectUserId,
+      display_name: u.displayName,
+      profile_image_url: u.profileImageUrl,
+      primary_email: primaryEmail?.value ?? null,
+      primary_email_verified: primaryEmail?.isVerified ? 1 : 0,
+      signed_up_at: formatClickhouseTimestamp(u.signedUpAt),
+      client_metadata: JSON.stringify(u.clientMetadata ?? {}),
+      client_read_only_metadata: JSON.stringify(u.clientReadOnlyMetadata ?? {}),
+      server_metadata: JSON.stringify(u.serverMetadata ?? {}),
+      is_anonymous: u.isAnonymous ? 1 : 0,
+      restricted_by_admin: u.restrictedByAdmin ? 1 : 0,
+      restricted_by_admin_reason: u.restrictedByAdminReason,
+      restricted_by_admin_private_details: u.restrictedByAdminPrivateDetails,
+      sync_sequence_id: SEED_SYNC_SEQUENCE_ID,
+      sync_is_deleted: 0,
+    };
+  });
+
+  const teamRows = teams.map((t) => ({
+    project_id: projectId,
+    branch_id: DEFAULT_BRANCH_ID,
+    id: t.teamId,
+    display_name: t.displayName,
+    profile_image_url: t.profileImageUrl,
+    created_at: formatClickhouseTimestamp(t.createdAt),
+    client_metadata: JSON.stringify(t.clientMetadata ?? {}),
+    client_read_only_metadata: JSON.stringify(t.clientReadOnlyMetadata ?? {}),
+    server_metadata: JSON.stringify(t.serverMetadata ?? {}),
+    sync_sequence_id: SEED_SYNC_SEQUENCE_ID,
+    sync_is_deleted: 0,
+  }));
+
+  const contactChannelRows = contactChannels.map((cc) => ({
+    project_id: projectId,
+    branch_id: DEFAULT_BRANCH_ID,
+    id: cc.id,
+    user_id: cc.projectUserId,
+    type: cc.type,
+    value: cc.value,
+    is_primary: cc.isPrimary === BooleanTrue.TRUE ? 1 : 0,
+    is_verified: cc.isVerified ? 1 : 0,
+    used_for_auth: cc.usedForAuth === BooleanTrue.TRUE ? 1 : 0,
+    created_at: formatClickhouseTimestamp(cc.createdAt),
+    sync_sequence_id: SEED_SYNC_SEQUENCE_ID,
+    sync_is_deleted: 0,
+  }));
+
+  // Synchronous insert (no async_insert) so the rows are immediately queryable
+  // when the dashboard loads the overview right after project creation.
+  const insertTable = async (table: string, values: Array<Record<string, unknown>>) => {
+    if (values.length === 0) {
+      return;
+    }
+    await clickhouseClient.insert({
+      table,
+      values,
+      format: 'JSONEachRow',
+      clickhouse_settings: { date_time_input_format: 'best_effort' },
+    });
+  };
+  await Promise.all([
+    insertTable('analytics_internal.users', userRows),
+    insertTable('analytics_internal.teams', teamRows),
+    insertTable('analytics_internal.contact_channels', contactChannelRows),
+  ]);
 }
 
 async function seedDummySessionReplays({
   prisma,
   tenancyId,
   userEmailToId,
+  freshProject,
   targetSessionReplayCount = 250,
 }: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
   userEmailToId: Map<string, string>,
+  freshProject: boolean,
   targetSessionReplayCount?: number,
 }) {
   const userIds = Array.from(userEmailToId.values());
@@ -2165,14 +2498,17 @@ async function seedDummySessionReplays({
   }
 
   // Delete existing deterministic IDs first, then bulk-insert (Prisma createMany
-  // doesn't support upsert, so we delete+recreate to refresh timestamps).
-  const seedIds = seeds.map((s) => s.id!);
-  await prisma.sessionReplay.deleteMany({
-    where: {
-      tenancyId,
-      id: { in: seedIds },
-    },
-  });
+  // doesn't support upsert, so we delete+recreate to refresh timestamps). On a
+  // fresh project nothing pre-exists, so the delete is skipped.
+  if (!freshProject) {
+    const seedIds = seeds.map((s) => s.id!);
+    await prisma.sessionReplay.deleteMany({
+      where: {
+        tenancyId,
+        id: { in: seedIds },
+      },
+    });
+  }
   await prisma.sessionReplay.createMany({
     data: seeds,
   });

@@ -514,3 +514,39 @@ A: Seed the normal initial environment config before marking the project as `isD
 
 ## Q: What can cause React error #185 immediately on dashboard load?
 A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
+
+## Q: How should client-side OAuth callback and nested cross-domain auth avoid racing session consumers?
+A: Track startup auth transitions as pending client-app promises and make `_getSession`/react-like `_useSession` wait for them when using the default persistent token store. Auth-transition code that needs to inspect the current session should explicitly call `_getSession(..., { awaitPendingAuthResolutions: false })` instead of relying on a global reentrancy flag.
+
+## Q: When should hosted OAuth callback handling auto-start on a client app page?
+A: Only auto-start hosted OAuth callback handling when the current URL has `code` and `state` and the matching `stack-oauth-outer-${state}` verifier cookie exists. Generic `code/state` or `errorCode/message` query parameters are not Stack-owned enough to run callback processing automatically on every hosted app page.
+
+## Q: Should built-with hosted handler domains be manually configured as trusted domains?
+A: No. Treat the hosted handler origin for the project, such as `https://<project-id>.built-with-stack-auth.com` or the origin derived from `NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE`, as an implicit trusted redirect domain on both client and backend validation paths. The hosted template must put `{projectId}` in the hostname so every project has its own origin; path-based templates like `https://host/{projectId}/{hostedPath}` are not safe for implicit origin trust.
+
+## Q: How should post-auth redirects mint cross-domain auth codes right after sign-in?
+A: When a sign-in/sign-up/OAuth callback immediately redirects through the cross-domain authorize endpoint, pass the freshly returned `{ accessToken, refreshToken }` as an override token store into the redirect path. Do not rely on browser cookies having already flushed; otherwise the request can pair a new access token with an old refresh token and fail the backend refresh-token/session consistency check.
+
+## Q: How should mixed-token cross-domain auth regressions be tested?
+A: Add a source-level template test that creates a client app with a stale persistent token store, calls `_createCrossDomainAuthRedirectUrl` with `overrideTokenStoreInit`, and patches only `sendClientRequest` on the real client interface so session creation remains intact. The assertion should inspect the session passed to the interface and require the fresh refresh token, proving the cross-domain authorize request does not use stale persisted tokens.
+
+## Q: When should cross-domain auth call `captureError`?
+A: Do not call `captureError` for normal cross-domain auth failures such as stale/deleted cookies, untrusted redirect URLs, invalid or mismatched refresh tokens, missing handoff params, or interrupted auth flows. Reserve `captureError` for states that definitely imply a Stack developer mistake; ordinary auth failures should just return or throw their normal user-facing errors.
+
+## Q: How should the npm publish workflow create the post-publish dev version bump?
+A: The workflow needs a full checkout using the fine-grained `NPM_PUBLISH_VERSION_UPDATE_PR_PAT` secret. It then fetches `origin/dev`, checks out `dev`, creates a non-interactive patch changeset, runs `pnpm changeset version`, copies the generated `packages/template/package.json` version line back into `packages/template/package-template.json`, and commit/pushes `chore: update package versions`. Because direct pushes to `dev` are blocked by repository rules requiring PRs and the `all-good` status check, the PAT's owning user or bot account must be added to the ruleset bypass list with "Always allow" rather than "For pull requests only".
+
+## Q: How should the Mintlify docs homepage reuse the generated setup prompt?
+A: Import `generatedSetupPromptText` from `docs-mintlify/snippets/home-prompt-island.jsx` in `docs-mintlify/index.mdx`, render it directly in a `<pre><code>{generatedSetupPromptText}</code></pre>` block, and keep the home copy button wired to that imported value. Clipboard failures can happen when the browser document is not focused, so the button should surface the actual error text instead of only saying "Copy failed".
+
+## Q: Where should Mintlify docs for restricted users live?
+A: Put restricted-user docs at `docs-mintlify/guides/apps/authentication/restricted-users.mdx` and register the page in the Authentication group in `docs-mintlify/docs.json`. The page should cover `includeRestricted: true`, `user.isRestricted`, `user.restrictedReason`, anonymous users being restricted by definition, and JWKS `include_restricted=true` for services that intentionally accept restricted-user tokens.
+
+## Q: How should e2e tests switch to a newly created project?
+A: `Project.createAndSwitch` should leave `backendContext.projectKeys` set to real project API keys, not only `{ projectId, adminAccessToken }`. Internal admin access tokens are regular short-lived access tokens; keeping one in the default project context makes later server/admin requests fail with `ADMIN_ACCESS_TOKEN_EXPIRED` or validate the token against the wrong project.
+
+## Q: How should backend SMTP SSRF checks be rolled out?
+A: Keep the real outbound SMTP policy in `apps/backend/src/private/implementation/smtp-egress-policy.ts`, export it through `apps/backend/src/private/index.ts`, and provide a simple `implementation-fallback` function for self-hosters. It should allow only SMTP ports 25, 465, 587, 2465, 2587, and 2525, reject internal IP literals or DNS resolutions, and initially run report-only from `emails-low-level.tsx` via `captureError("smtp-egress-policy-report-only", ...)` before enforcing hard failures.
+
+## Q: What project-level `sourceOfTruth` config is supported?
+A: Project config overrides only support the hosted `sourceOfTruth` shape. Legacy external source-of-truth overrides such as Postgres or Neon are removed by `migrateConfigOverride("project", ...)`, while raw schema validation should reject them.
