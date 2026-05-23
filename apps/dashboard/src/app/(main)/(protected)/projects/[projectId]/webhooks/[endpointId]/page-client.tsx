@@ -165,6 +165,7 @@ function MessageTable(props: { endpointId: string }) {
         state={gridState}
         onChange={setGridState}
         footer={false}
+        fillHeight={false}
       />
 
       <div className="flex justify-end gap-4">
