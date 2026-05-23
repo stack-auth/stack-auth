@@ -5,7 +5,8 @@
  */
 
 import { isPrivateOrReservedIp } from '@stackframe/stack-shared/dist/utils/ips';
-import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
@@ -69,9 +70,21 @@ export async function resolveAndValidateSmtpHost(host: string): Promise<{
   // split-horizon attacks where internal DNS returns a different IP
   const resolver = new dns.Resolver();
   resolver.setServers(["1.1.1.1", "8.8.8.8"]);
+
+  // Only swallow NODATA/NXDOMAIN (expected when a host has no A or AAAA
+  // records). Transient errors (TIMEOUT, SERVFAIL, etc.) propagate so the
+  // caller can retry instead of mis-classifying them as PRIVATE_NETWORK.
+  const noRecordsCodes = new Set(["ENODATA", "ENOTFOUND", "ENONAME"]);
+  const catchNoRecords = (err: unknown): string[] => {
+    if (err instanceof Error && "code" in err && typeof err.code === "string" && noRecordsCodes.has(err.code)) {
+      return [];
+    }
+    throw err;
+  };
+
   const [ipv4Addrs, ipv6Addrs] = await Promise.all([
-    resolver.resolve4(host).catch(() => [] as string[]),
-    resolver.resolve6(host).catch(() => [] as string[]),
+    resolver.resolve4(host).catch(catchNoRecords),
+    resolver.resolve6(host).catch(catchNoRecords),
   ]);
   const allAddrs = [...ipv4Addrs, ...ipv6Addrs];
 
@@ -96,7 +109,7 @@ export async function resolveAndValidateSmtpHost(host: string): Promise<{
 
   // Return the first resolved IP so nodemailer uses it directly (skipping its
   // own DNS resolution), eliminating the TOCTOU window. Set servername for TLS SNI.
-  return { resolvedHost: allAddrs[0]!, servername: host };
+  return { resolvedHost: allAddrs[0] ?? throwErr("allAddrs should be non-empty after length check"), servername: host };
 }
 
 export type LowLevelSendEmailOptions = {
@@ -142,17 +155,26 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
       // resolved IP directly (eliminates split-horizon DNS / TOCTOU gaps)
       let smtpHost = options.emailConfig.host;
       let smtpServername: string | undefined;
-      if (options.emailConfig.type !== 'shared') {
+      if (options.emailConfig.type !== 'shared' && !['development', 'test'].includes(getNodeEnvironment())) {
         try {
           const validated = await resolveAndValidateSmtpHost(options.emailConfig.host);
           smtpHost = validated.resolvedHost;
           smtpServername = validated.servername;
         } catch (error) {
+          if (error instanceof StackAssertionError) {
+            return Result.error({
+              rawError: error,
+              errorType: 'PRIVATE_NETWORK',
+              canRetry: false,
+              message: `The email server host resolves to a private or reserved network address. Please use a publicly reachable SMTP server.`,
+            } as const);
+          }
+          // Transient DNS errors (TIMEOUT, SERVFAIL, etc.) are retryable
           return Result.error({
             rawError: error,
-            errorType: 'PRIVATE_NETWORK',
-            canRetry: false,
-            message: `The email server host resolves to a private or reserved network address. Please use a publicly reachable SMTP server.`,
+            errorType: 'DNS_ERROR',
+            canRetry: true,
+            message: `DNS resolution failed for SMTP host. This may be a transient issue.`,
           } as const);
         }
       }
@@ -160,7 +182,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
       try {
         const transporter = nodemailer.createTransport({
           host: smtpHost,
-          ...(smtpServername ? { name: smtpServername, tls: { servername: smtpServername } } : {}),
+          ...(smtpServername ? { tls: { servername: smtpServername } } : {}),
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
           connectionTimeout: 15000,
