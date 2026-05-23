@@ -173,3 +173,9 @@ Hexclave is open source, and contributions are welcome. Read
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) to get started, and say hello in
 [Discord](https://discord.hexclave.com) before picking up anything large.
 Found a security issue? Email security@hexclave.com.
+
+## ❤ Contributors
+
+<a href="https://github.com/hexclave/stack-auth/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=stack-auth/stack&columns=9" width="100%" />
+</a>
