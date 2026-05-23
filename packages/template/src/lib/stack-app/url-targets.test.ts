@@ -105,7 +105,7 @@ describe("handler URL targets", () => {
     })).toThrowErrorMatchingInlineSnapshot(`
       [HexclaveAssertionError: OAuth callback URLs must be relative.
 
-      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
     `);
   });
 
@@ -118,7 +118,7 @@ describe("handler URL targets", () => {
     })).toThrowErrorMatchingInlineSnapshot(`
       [HexclaveAssertionError: OAuth callback URLs must be relative.
 
-      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
     `);
   });
 
@@ -209,7 +209,7 @@ describe("handler URL targets", () => {
     })).toThrowErrorMatchingInlineSnapshot(`
       [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
 
-      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
     `);
   });
 });

@@ -246,10 +246,10 @@ it("does not await pending auth resolutions when post-callback redirect mints a 
     const clientApp = createClientApp(projectId);
     const currentUrl = new URL(`${localRedirectUrl}/callback-page`);
     const redirectBackUrl = new URL(`${localRedirectUrl}/handler/oauth-callback`);
-    redirectBackUrl.searchParams.set("stack_cross_domain_auth", "1");
-    redirectBackUrl.searchParams.set("stack_cross_domain_state", "state");
-    redirectBackUrl.searchParams.set("stack_cross_domain_code_challenge", "challenge");
-    redirectBackUrl.searchParams.set("stack_cross_domain_after_callback_redirect_url", `https://${projectId}.example-stack-hosted.test/after`);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_auth", "1");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_state", "state");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_code_challenge", "challenge");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", `https://${projectId}.example-stack-hosted.test/after`);
     currentUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
 
     const previousWindow = globalThis.window;
