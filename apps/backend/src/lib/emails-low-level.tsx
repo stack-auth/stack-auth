@@ -82,9 +82,23 @@ export async function resolveAndValidateSmtpHost(host: string): Promise<{
     throw err;
   };
 
+  const DNS_TIMEOUT_MS = 7_000;
+  const resolveWithTimeout = (fn: () => Promise<string[]>): Promise<string[]> => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        resolver.cancel();
+        reject(Object.assign(new Error(`DNS lookup timed out after ${DNS_TIMEOUT_MS}ms`), { code: "ECANCELLED" }));
+      }, DNS_TIMEOUT_MS);
+      fn().then(
+        (result) => { clearTimeout(timer); resolve(result); },
+        (err) => { clearTimeout(timer); reject(err); },
+      );
+    });
+  };
+
   const [ipv4Addrs, ipv6Addrs] = await Promise.all([
-    resolver.resolve4(host).catch(catchNoRecords),
-    resolver.resolve6(host).catch(catchNoRecords),
+    resolveWithTimeout(() => resolver.resolve4(host)).catch(catchNoRecords),
+    resolveWithTimeout(() => resolver.resolve6(host)).catch(catchNoRecords),
   ]);
   const allAddrs = [...ipv4Addrs, ...ipv6Addrs];
 
@@ -166,16 +180,22 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
               rawError: error,
               errorType: 'PRIVATE_NETWORK',
               canRetry: false,
-              message: `The email server host resolves to a private or reserved network address. Please use a publicly reachable SMTP server.`,
+              message: error.message,
             } as const);
           }
-          // Transient DNS errors (TIMEOUT, SERVFAIL, etc.) are retryable
-          return Result.error({
-            rawError: error,
-            errorType: 'DNS_ERROR',
-            canRetry: true,
-            message: `DNS resolution failed for SMTP host. This may be a transient issue.`,
-          } as const);
+          // Only treat known DNS error codes as retryable transient failures
+          const dnsTransientCodes = new Set(["ETIMEOUT", "ESERVFAIL", "ECONNREFUSED", "EAI_AGAIN", "ECANCELLED"]);
+          const errorCode = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
+          if (errorCode != null && dnsTransientCodes.has(errorCode)) {
+            return Result.error({
+              rawError: error,
+              errorType: 'DNS_ERROR',
+              canRetry: true,
+              message: `DNS resolution failed for SMTP host. This may be a transient issue.`,
+            } as const);
+          }
+          // Unexpected error — fail loudly
+          throw error;
         }
       }
 
