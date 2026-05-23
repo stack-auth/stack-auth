@@ -51,42 +51,50 @@ export async function observeAndLog(args: {
   if (isStreaming && response.body) {
     const [clientStream, observerStream] = response.body.tee();
     runAsynchronouslyAndWaitUntil((async () => {
-      let usage: UsageFields = {};
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120_000);
       try {
-        usage = (await scanSseForUsage(observerStream, controller.signal)) ?? {};
+        let usage: UsageFields = {};
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120_000);
+        try {
+          usage = (await scanSseForUsage(observerStream, controller.signal)) ?? {};
+        } catch (err) {
+          captureError("ai-proxy-scan-sse", err);
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        scheduleProxyLog(buildProxyLogRow({
+          correlationId,
+          parsed: sanitizedBody.parsed,
+          apiKey: callerApiKey,
+          durationMs: BigInt(Math.round(performance.now() - startedAt)),
+          responseStatus: response.status,
+          usage,
+        }));
       } catch (err) {
-        captureError("ai-proxy-scan-sse", err);
-      } finally {
-        clearTimeout(timeoutId);
+        captureError("ai-proxy-observer", err);
       }
-      scheduleProxyLog(buildProxyLogRow({
-        correlationId,
-        parsed: sanitizedBody.parsed,
-        apiKey: callerApiKey,
-        durationMs: BigInt(Math.round(performance.now() - startedAt)),
-        responseStatus: response.status,
-        usage,
-      }));
     })());
     return new Response(clientStream, { status: response.status, headers: responseHeaders });
   }
 
   const bodyBytes = await response.arrayBuffer();
-  let parsedBody: unknown;
   try {
-    parsedBody = JSON.parse(new TextDecoder().decode(bodyBytes));
-  } catch {
-    parsedBody = undefined;
+    let parsedBody: unknown;
+    try {
+      parsedBody = JSON.parse(new TextDecoder().decode(bodyBytes));
+    } catch {
+      parsedBody = undefined;
+    }
+    scheduleProxyLog(buildProxyLogRow({
+      correlationId,
+      parsed: sanitizedBody.parsed,
+      apiKey: callerApiKey,
+      durationMs: BigInt(Math.round(performance.now() - startedAt)),
+      responseStatus: response.status,
+      usage: extractOpenRouterUsage(parsedBody),
+    }));
+  } catch (err) {
+    captureError("ai-proxy-log-build", err);
   }
-  scheduleProxyLog(buildProxyLogRow({
-    correlationId,
-    parsed: sanitizedBody.parsed,
-    apiKey: callerApiKey,
-    durationMs: BigInt(Math.round(performance.now() - startedAt)),
-    responseStatus: response.status,
-    usage: extractOpenRouterUsage(parsedBody),
-  }));
   return new Response(bodyBytes, { status: response.status, headers: responseHeaders });
 }

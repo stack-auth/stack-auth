@@ -81,22 +81,13 @@ export async function getTools(
 
 /**
  * Validates that all requested tool names are valid.
- * Throws an error if any tool name is invalid.
+ * Returns false if any tool name is not in `TOOL_NAMES`.
  */
 export function validateToolNames(toolNames: unknown): toolNames is ToolName[] {
   if (!Array.isArray(toolNames)) {
     return false;
   }
-
-  const validToolNames: ToolName[] = [
-    "docs",
-    "sql-query",
-    "create-email-theme",
-    "create-email-template",
-    "create-email-draft",
-    "update-dashboard",
-    "patch-dashboard"
-  ];
-
-  return toolNames.every((name) => validToolNames.includes(name as ToolName));
+  return toolNames.every((name): name is ToolName =>
+    typeof name === "string" && (TOOL_NAMES as readonly string[]).includes(name)
+  );
 }

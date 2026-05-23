@@ -67,29 +67,27 @@ function spacetimeDbError(label: string, status: number, preview: string): Error
   return new StackAssertionError(detail);
 }
 
-async function callWithEnrollmentRetry(reducer: string, args: unknown[]): Promise<boolean> {
+async function withEnrollmentRetry<T>(op: (token: string) => Promise<T>): Promise<T | null> {
   const token = await getServiceToken();
-  if (!token) return false;
+  if (!token) return null;
   try {
-    await rawCallReducer(token, reducer, args);
-    return true;
+    return await op(token);
   } catch (err) {
     if (!(err instanceof StatusError) || err.statusCode !== 401) throw err;
     enrollmentPromise = null;
     const fresh = await getServiceToken();
     if (!fresh) throw err;
-    await rawCallReducer(fresh, reducer, args);
-    return true;
+    return await op(fresh);
   }
 }
 
 export async function callReducer(reducer: string, args: unknown[]): Promise<void> {
-  await callWithEnrollmentRetry(reducer, args);
+  await withEnrollmentRetry((token) => rawCallReducer(token, reducer, args));
 }
 
 export async function callReducerStrict(reducer: string, args: unknown[]): Promise<void> {
-  const ran = await callWithEnrollmentRetry(reducer, args);
-  if (!ran) {
+  const ran = await withEnrollmentRetry((token) => rawCallReducer(token, reducer, args));
+  if (ran === null) {
     throw new StackAssertionError(
       `SpacetimeDB is not configured. Reducer ${reducer} cannot run. ` +
       `Check STACK_SPACETIMEDB_URL and STACK_SPACETIMEDB_SERVICE_TOKEN.`
@@ -106,11 +104,12 @@ export function opt<T>(value: T | null | undefined): { some: T } | { none: [] } 
   return value == null ? { none: [] } : { some: value };
 }
 
-export async function callSql<T = Record<string, unknown>>(sql: string): Promise<T[]> {
-  const token = await getServiceToken();
-  if (!token) return [];
+async function rawCallSql(token: string, sql: string): Promise<Array<{
+  schema: { elements: Array<{ name: { some?: string } | null }> },
+  rows: unknown[][],
+}>> {
   const base = httpBase();
-  if (!base) return [];
+  if (!base) throw new StackAssertionError("SpacetimeDB not configured");
   const dbName = getEnvVariable("STACK_SPACETIMEDB_DB_NAME");
   const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/sql`, {
     method: "POST",
@@ -122,11 +121,15 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
     const preview = (await res.text()).slice(0, 200);
     throw spacetimeDbError("SQL query failed", res.status, preview);
   }
-  const parsed = await res.json() as Array<{
+  return await res.json() as Array<{
     schema: { elements: Array<{ name: { some?: string } | null }> },
     rows: unknown[][],
   }>;
-  if (parsed.length === 0) return [];
+}
+
+export async function callSql<T = Record<string, unknown>>(sql: string): Promise<T[]> {
+  const parsed = await withEnrollmentRetry((token) => rawCallSql(token, sql));
+  if (parsed == null || parsed.length === 0) return [];
   const first = parsed[0];
   const cols = first.schema.elements.map(e => e.name?.some ?? "");
   return first.rows.map(row => {

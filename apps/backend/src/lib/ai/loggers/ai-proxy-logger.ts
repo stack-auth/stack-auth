@@ -16,7 +16,13 @@ export function buildProxyLogRow(fields: ProxyLogFields): AiQueryLogEntry {
   const { parsed, apiKey, durationMs, responseStatus, usage, correlationId } = fields;
   const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
   const toolNames = tools
-    .map(t => (t && typeof t === "object" && "name" in t) ? (t as { name: unknown }).name : null)
+    .map((t) => {
+      if (t == null || typeof t !== "object") return null;
+      const obj = t as { name?: unknown, function?: { name?: unknown } };
+      if (typeof obj.function?.name === "string") return obj.function.name;
+      if (typeof obj.name === "string") return obj.name;
+      return null;
+    })
     .filter((n): n is string => typeof n === "string");
   const rawMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
   const messages = typeof parsed.system === "string" && parsed.system.length > 0
