@@ -90,8 +90,14 @@ export async function resolveAndValidateSmtpHost(host: string): Promise<{
         reject(Object.assign(new Error(`DNS lookup timed out after ${DNS_TIMEOUT_MS}ms`), { code: "ECANCELLED" }));
       }, DNS_TIMEOUT_MS);
       fn().then(
-        (result) => { clearTimeout(timer); resolve(result); },
-        (err) => { clearTimeout(timer); reject(err); },
+        (result) => {
+          clearTimeout(timer);
+          resolve(result);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
       );
     });
   };
