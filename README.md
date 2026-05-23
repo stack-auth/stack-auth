@@ -28,7 +28,7 @@ cloud. Your data is always yours to export and self-host.
 
 Setting up Hexclave is one prompt. Paste this into your coding agent of choice:
 
-```
+```text
 Read try.hexclave.com and help me setup hexclave in this project
 ```
 
@@ -40,7 +40,7 @@ Each one is built on the same user model, and new apps land regularly.
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/authentication.png" width="40" align="top"/> &nbsp; Authentication
+### <img src=".github/assets/logos/authentication.png" alt="" width="40" align="top"/> &nbsp; Authentication
 
 Authentication that just works with passkeys, OAuth, and CLI auth. Drop in one component and ship the whole flow; auth methods toggle from the dashboard with no code changes needed.
 
@@ -53,7 +53,7 @@ Authentication that just works with passkeys, OAuth, and CLI auth. Drop in one c
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/teams.png" width="40" align="top"/> &nbsp; Teams
+### <img src=".github/assets/logos/teams.png" alt="" width="40" align="top"/> &nbsp; Teams
 
 Build for teams, not just users, with workspaces, email invites, and roles that actually gate the work. The workspace switcher remembers selection, invites auto sign up new users, and permissions hold up under audit.
 
@@ -66,7 +66,7 @@ Build for teams, not just users, with workspaces, email invites, and roles that 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/rbac.png" width="40" align="top"/> &nbsp; RBAC
+### <img src=".github/assets/logos/rbac.png" alt="" width="40" align="top"/> &nbsp; RBAC
 
 Permissions, sorted: roles that nest and one permission check that works the same on server or client. Define them in the dashboard, check them anywhere in your code.
 
@@ -79,7 +79,7 @@ Permissions, sorted: roles that nest and one permission check that works the sam
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/api-keys.png" width="40" align="top"/> &nbsp; API Keys
+### <img src=".github/assets/logos/api-keys.png" alt="" width="40" align="top"/> &nbsp; API Keys
 
 API keys without the footguns: leaked keys get auto-revoked, work for users and teams, and show the full secret only once. We never keep the plaintext after creation.
 
@@ -92,7 +92,7 @@ API keys without the footguns: leaked keys get auto-revoked, work for users and 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/payments.png" width="40" align="top"/> &nbsp; Payments
+### <img src=".github/assets/logos/payments.png" alt="" width="40" align="top"/> &nbsp; Payments
 
 Payments without the plumbing for subscriptions, one-time charges, and usage metering with credits. Bill a person or a whole team with one model, no separate codepath.
 
@@ -105,7 +105,7 @@ Payments without the plumbing for subscriptions, one-time charges, and usage met
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/emails.png" width="40" align="top"/> &nbsp; Emails
+### <img src=".github/assets/logos/emails.png" alt="" width="40" align="top"/> &nbsp; Emails
 
 Email that delivers and tells you so, handling transactional and marketing sends from one API. Edit templates with an AI editor, theme once, and track every open and click.
 
@@ -118,7 +118,7 @@ Email that delivers and tells you so, handling transactional and marketing sends
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/analytics.png" width="40" align="top"/> &nbsp; Analytics
+### <img src=".github/assets/logos/analytics.png" alt="" width="40" align="top"/> &nbsp; Analytics
 
 Know your users with no data stack required, with live active user counts and session replays out of the box. Ask in plain English to build dashboards or write SQL to save queries, all with one flag enabled.
 
@@ -131,7 +131,7 @@ Know your users with no data stack required, with live active user counts and se
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/webhooks.png" width="40" align="top"/> &nbsp; Webhooks
+### <img src=".github/assets/logos/webhooks.png" alt="" width="40" align="top"/> &nbsp; Webhooks
 
 React to every user event in real time with signed, tamper-proof webhooks. Retries and backoff are handled for you; verify in five lines and manage endpoints from the dashboard.
 
@@ -144,7 +144,7 @@ React to every user event in real time with signed, tamper-proof webhooks. Retri
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/data-vault.png" width="40" align="top"/> &nbsp; Data Vault
+### <img src=".github/assets/logos/data-vault.png" alt="" width="40" align="top"/> &nbsp; Data Vault
 
 A safe for the secrets your users hand you, locked with your secret so we never see the plaintext. Store and retrieve tokens in two lines each, server-only by design.
 
@@ -157,7 +157,7 @@ A safe for the secrets your users hand you, locked with your secret so we never 
 <table><tr>
 <td width="50%" valign="middle">
 
-### <img src=".github/assets/logos/launch-checklist.png" width="40" align="top"/> &nbsp; Launch Checklist
+### <img src=".github/assets/logos/launch-checklist.png" alt="" width="40" align="top"/> &nbsp; Launch Checklist
 
 Run through the must-do checks before flipping to production: domain setup, callbacks locked, secrets rotated. The progress tracker keeps your team aligned so nothing critical slips through on launch day.
 
@@ -177,5 +177,5 @@ Found a security issue? Email security@hexclave.com.
 ## ❤ Contributors
 
 <a href="https://github.com/hexclave/stack-auth/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=stack-auth/stack&columns=9" width="100%" />
+  <img src="https://contrib.rocks/image?repo=hexclave/stack-auth&columns=9" alt="Contributors" width="100%" />
 </a>
