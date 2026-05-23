@@ -159,11 +159,16 @@ if [ -f "$SENTINEL_MARKER" ]; then
   echo "Sentinels already replaced on a previous start; skipping scan."
 else
   # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
+  # Require at least one character after `STACK_ENV_VAR_SENTINEL_` — a bare
+  # `STACK_ENV_VAR_SENTINEL_` (trailing underscore but no suffix) makes env_var
+  # empty below, which would crash `${!env_var}` with "invalid variable name"
+  # under `set -e`. The dashboard bundle's sentinel-construction code embeds
+  # the prefix as a literal string, so this case occurs in practice.
   echo "Finding unhandled sentinels..."
   unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
     xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
-    grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
-    sort -u | grep -v "^STACK_ENV_VAR_SENTINEL$")
+    grep -oE "STACK_ENV_VAR_SENTINEL_[A-Z_]*[A-Z]+[A-Z_]*" | \
+    sort -u)
 
   # Choose an uncommon delimiter – here, we use the ASCII Unit Separator (0x1F)
   delimiter=$(printf '\037')
@@ -172,6 +177,13 @@ else
   for sentinel in $unhandled_sentinels; do
     # The sentinel is like "STACK_ENV_VAR_SENTINEL_MY_VAR", so extract the env var name.
     env_var=${sentinel#STACK_ENV_VAR_SENTINEL_}
+
+    # Defense in depth: skip if env_var name is empty. The regex above already
+    # excludes bare-prefix matches, but `${!env_var}` with an empty name aborts
+    # the whole script under `set -e`, so guard it explicitly.
+    if [ -z "$env_var" ]; then
+      continue
+    fi
 
     # Get the corresponding environment variable value.
     value="${!env_var}"
