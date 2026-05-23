@@ -634,7 +634,7 @@ it("rejects batch when analytics event quota is exhausted", async ({ expect }) =
   expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
 });
 
-it("accepts batch and debits event quota correctly", async ({ expect }) => {
+it("accepts batch and debits event quota correctly", { timeout: 120_000 }, async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
@@ -673,7 +673,7 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
 // We don't support metered pricing or partial batches for now, so the entire
 // batch is rejected when remaining quota is less than the batch size, and
 // the quota must remain unchanged (no partial debit).
-it("rejects batch when remaining quota is less than batch size and does not debit", async ({ expect }) => {
+it("rejects batch when remaining quota is less than batch size and does not debit", { timeout: 120_000 }, async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 

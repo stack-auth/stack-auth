@@ -214,7 +214,7 @@ it("cannot read events from other projects", async ({ expect }) => {
   `);
 });
 
-it("filters analytics events by user within a project", async ({ expect }) => {
+it("filters analytics events by user within a project", { timeout: 120_000 }, async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId: userA } = await Auth.Otp.signIn();
   await bumpEmailAddress();

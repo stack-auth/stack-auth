@@ -480,7 +480,7 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
 /**
  * @deprecated Prisma transactions are slow and lock the database. Use rawQuery with CTEs instead. Ask Konsti if you're confused or think you need transactions.
  */
-export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable" } = {}): Promise<T> {
+export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable", timeout?: number } = {}): Promise<T> {
   // serializable transactions are currently off by default, later we may turn them on
   const enableSerializable = options.level === "serializable";
 
@@ -524,6 +524,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
               return res;
             }, {
               isolationLevel: enableSerializable ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              ...(options.timeout != null ? { timeout: options.timeout } : {}),
             }));
           } catch (e) {
             // we don't want to retry too aggressively here, because the error may have been thrown after the transaction was already committed
