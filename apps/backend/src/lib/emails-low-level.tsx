@@ -4,11 +4,14 @@
  * providers. You probably shouldn't use this and should instead use the functions in emails.tsx.
  */
 
+import { isPrivateOrReservedIp } from '@stackframe/stack-shared/dist/utils/ips';
 import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
+import dns from 'node:dns/promises';
+import { isIP } from 'node:net';
 import nodemailer from 'nodemailer';
 
 export function isSecureEmailPort(port: number | string) {
@@ -34,6 +37,47 @@ export type LowLevelEmailConfig = {
   senderName: string,
   secure: boolean,
   type: 'shared' | 'standard',
+}
+
+/**
+ * Resolves the given SMTP host to IP addresses and throws if any of them are
+ * in a private / reserved network range (SSRF protection).
+ */
+export async function ensureSmtpHostNotPrivateNetwork(host: string): Promise<void> {
+  // If the host is a raw IP literal, check it directly
+  if (isIP(host) !== 0) {
+    if (isPrivateOrReservedIp(host)) {
+      throw new StackAssertionError(
+        `SMTP host '${host}' is a private or reserved IP address. Refusing to connect.`,
+        { host },
+      );
+    }
+    return;
+  }
+
+  // Resolve hostname via public DNS and reject if any resolved IP is private
+  const resolver = new dns.Resolver();
+  resolver.setServers(["1.1.1.1", "8.8.8.8"]);
+  const [ipv4Addrs, ipv6Addrs] = await Promise.all([
+    resolver.resolve4(host).catch(() => [] as string[]),
+    resolver.resolve6(host).catch(() => [] as string[]),
+  ]);
+  const allAddrs = [...ipv4Addrs, ...ipv6Addrs];
+
+  if (allAddrs.length === 0) {
+    // DNS returned no records — the host doesn't exist.
+    // Let nodemailer's own DNS timeout / EDNS handling deal with this.
+    return;
+  }
+
+  for (const addr of allAddrs) {
+    if (isPrivateOrReservedIp(addr)) {
+      throw new StackAssertionError(
+        `SMTP host '${host}' resolves to private/reserved address ${addr}. Refusing to connect.`,
+        { host, resolvedAddress: addr },
+      );
+    }
+  }
 }
 
 export type LowLevelSendEmailOptions = {
@@ -75,6 +119,20 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
     }
 
     return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
+      // SSRF protection: block SMTP connections to private/reserved networks
+      if (options.emailConfig.type !== 'shared') {
+        try {
+          await ensureSmtpHostNotPrivateNetwork(options.emailConfig.host);
+        } catch (error) {
+          return Result.error({
+            rawError: error,
+            errorType: 'PRIVATE_NETWORK',
+            canRetry: false,
+            message: `The email server host resolves to a private or reserved network address. Please use a publicly reachable SMTP server.`,
+          } as const);
+        }
+      }
+
       try {
         const transporter = nodemailer.createTransport({
           host: options.emailConfig.host,
