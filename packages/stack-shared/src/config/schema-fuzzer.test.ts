@@ -12,11 +12,7 @@ type FuzzerConfig<T> = ReadonlyArray<T extends object ? ([T] extends [any[]] ? {
 
 const projectSchemaFuzzerConfig = [{
   sourceOfTruth: [{
-    type: ["hosted", "neon", "postgres"],
-    connectionString: ["", "postgres://user:password@host:port/database", "THIS IS A STRING LOLOL"],
-    connectionStrings: [{
-      "123-some-branch-id": ["", "THIS IS A CONNECTION STRING OR SO"],
-    }],
+    type: ["hosted"],
   }],
   project: [{
     requirePublishableClientKey: [true, false],

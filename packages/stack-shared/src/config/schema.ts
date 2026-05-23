@@ -46,17 +46,6 @@ export const projectConfigSchema = yupObject({
     yupObject({
       type: yupString().oneOf(['hosted']).defined(),
     }),
-    yupObject({
-      type: yupString().oneOf(['neon']).defined(),
-      connectionStrings: yupRecord(
-        userSpecifiedIdSchema("connectionStringId").defined(),
-        yupString().defined(),
-      ).defined(),
-    }),
-    yupObject({
-      type: yupString().oneOf(['postgres']).defined(),
-      connectionString: yupString().defined()
-    }),
   ),
   project: yupObject({
     requirePublishableClientKey: yupBoolean(),
@@ -561,9 +550,32 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-05-23: external source-of-truth config was never used and is no longer supported.
+  // Drop the override so legacy Neon/Postgres configs continue to render as the hosted default.
+  if (type === "project") {
+    res = removeProperty(res, p => p[0] === "sourceOfTruth");
+  }
+  // END
+
   // return the result
   return res;
 };
+
+import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
+  expect(migrateConfigOverride("project", {
+    sourceOfTruth: {
+      type: "neon",
+      connectionStrings: {
+        main: "postgres://user:password@neon.example.com/database",
+      },
+    },
+  })).toEqual({});
+
+  expect(migrateConfigOverride("project", {
+    "sourceOfTruth.type": "postgres",
+    "sourceOfTruth.connectionString": "postgres://user:password@host:5432/database",
+  })).toEqual({});
+});
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
   return mapProperty(obj, pathCond, () => undefined);
@@ -670,8 +682,6 @@ import.meta.vitest?.test("renameProperty", ({ expect }) => {
 const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
-    connectionStrings: undefined,
-    connectionString: undefined,
   },
   project: {
     requirePublishableClientKey: false,
@@ -1027,23 +1037,12 @@ export function applyOrganizationDefaults(config: OrganizationRenderedConfigBefo
 
 export async function sanitizeProjectConfig<T extends ProjectRenderedConfigBeforeSanitization>(config: T) {
   assertNormalized(config);
-  const oldSourceOfTruth = config.sourceOfTruth;
-  const sourceOfTruth =
-    oldSourceOfTruth.type === 'neon' && typeof oldSourceOfTruth.connectionStrings === 'object' ? {
-      type: 'neon',
-      connectionStrings: { ...filterUndefined(oldSourceOfTruth.connectionStrings) as Record<string, string> }
-    } as const
-      : oldSourceOfTruth.type === 'postgres' && typeof oldSourceOfTruth.connectionString === 'string' ? {
-        type: 'postgres',
-        connectionString: oldSourceOfTruth.connectionString,
-      } as const
-        : {
-          type: 'hosted',
-        } as const;
 
   return {
     ...config,
-    sourceOfTruth,
+    sourceOfTruth: {
+      type: 'hosted',
+    } as const,
   };
 }
 

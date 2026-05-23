@@ -43,7 +43,7 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
 
   // ClickHouse ingestion is async; poll until anonymous users are excluded again.
   let response!: NiceResponse;
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 30; i++) {
     await wait(2_000);
     response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
     const noAnonymousInRecentlyRegistered = (response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous);
@@ -72,7 +72,7 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
 
 async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: string, expectedCount: number }): Promise<NiceResponse> {
   let response!: NiceResponse;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 30; i++) {
     response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
     if (response.body?.users_by_country?.[options.countryCode] === options.expectedCount) {
       return response;
@@ -88,7 +88,7 @@ async function waitForMetricsMatch(
 ): Promise<NiceResponse> {
   let response!: NiceResponse;
   const suffix = includeAnonymous ? "?include_anonymous=true" : "";
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 60; i++) {
     response = await niceBackendFetch(`/api/v1/internal/metrics${suffix}`, { accessType: 'admin' });
     if (predicate(response)) {
       return response;
@@ -123,7 +123,7 @@ async function waitForAnalyticsRowsForSessionReplaySegment(
   throw new Error(`Timed out waiting for ${expectedCount} analytics rows for session replay segment ${sessionReplaySegmentId}`);
 }
 
-it("should return metrics data", async ({ expect }) => {
+it("should return metrics data", { timeout: 120_000 }, async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,

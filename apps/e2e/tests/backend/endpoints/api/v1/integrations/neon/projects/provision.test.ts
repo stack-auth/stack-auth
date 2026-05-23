@@ -1,6 +1,5 @@
-import { decryptValue, hashKey } from "@stackframe/stack-shared/dist/helpers/vault/client-side";
 import { it } from "../../../../../../../helpers";
-import { Auth, InternalApiKey, InternalProjectKeys, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
+import { Auth, InternalApiKey, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
 import { provisionProject } from "./provision-helpers";
 
 it("should be able to provision a new project if neon client details are correct", async ({ expect }) => {
@@ -224,13 +223,7 @@ it("should validate connection_strings item shape", async ({ expect }) => {
   expect(response.headers.get("x-stack-known-error")).toBe("SCHEMA_ERROR");
 });
 
-it("can provision with a Neon connection string when provided via env (optional)", async ({ expect }) => {
-  // this test only runs with a neon connection string set
-  const neonConnectionString = process.env.STACK_TEST_NEON_CONNECTION_STRING;
-  if (!neonConnectionString) {
-    return;
-  }
-
+it("ignores connection_strings while provisioning with hosted source-of-truth", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
     method: "POST",
     body: {
@@ -238,7 +231,7 @@ it("can provision with a Neon connection string when provided via env (optional)
       connection_strings: [
         {
           branch_id: "main",
-          connection_string: neonConnectionString,
+          connection_string: "postgres://user:password@neon.example.com/database",
         },
       ],
     },
@@ -263,42 +256,18 @@ it("can provision with a Neon connection string when provided via env (optional)
   const sourceOfTruth = JSON.parse(configResponse.body.config_string).sourceOfTruth;
   expect(sourceOfTruth).toMatchInlineSnapshot(`
     {
-      "connectionStrings": { "main": "<stripped UUID>" },
-      "type": "neon",
+      "type": "hosted",
     }
   `);
-  backendContext.set({
-    projectKeys: InternalProjectKeys,
-  });
-
-  const getConnectionResponse = await niceBackendFetch(`/api/latest/data-vault/stores/neon-connection-strings/get`, {
-    method: "POST",
-    accessType: "server",
-    body: {
-      hashed_key: await hashKey("no client side encryption", sourceOfTruth.connectionStrings.main),
-    },
-  });
-  expect(getConnectionResponse.status).toBe(200);
-  const connectionString = await decryptValue(
-    "no client side encryption",
-    sourceOfTruth.connectionStrings.main,
-    getConnectionResponse.body.encrypted_value
-  );
-  expect(connectionString).toBe(neonConnectionString);
 });
 
-it("can update the connection_strings for an existing provisioned project", async ({ expect }) => {
-  // this test only runs with a neon connection string set
-  const neonConnectionString = process.env.STACK_TEST_NEON_CONNECTION_STRING;
-  if (!neonConnectionString) {
-    return;
-  }
+it("accepts connection_strings updates without changing hosted source-of-truth", async ({ expect }) => {
   const provisionResponse = await provisionProject();
   const response = await niceBackendFetch(`/api/v1/integrations/neon/projects/connection?project_id=${provisionResponse.body.project_id}`, {
     method: "POST",
     body: {
       connection_strings: [
-        { branch_id: "branch1", connection_string: neonConnectionString },
+        { branch_id: "branch1", connection_string: "postgres://user:password@neon.example.com/database" },
       ],
     },
     headers: {
@@ -327,8 +296,7 @@ it("can update the connection_strings for an existing provisioned project", asyn
   const sourceOfTruth = JSON.parse(configResponse.body.config_string).sourceOfTruth;
   expect(sourceOfTruth).toMatchInlineSnapshot(`
     {
-      "connectionStrings": { "branch1": "<stripped UUID>" },
-      "type": "neon",
+      "type": "hosted",
     }
   `);
 });

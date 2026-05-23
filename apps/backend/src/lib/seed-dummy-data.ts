@@ -681,7 +681,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       if (directPermissionRows.length > 0) {
         await tx.projectUserDirectPermission.createMany({ data: directPermissionRows });
       }
-    });
+    }, { timeout: 90_000 });
   }
 
   // Team memberships for the named seed users — bulk-inserted the same way.
@@ -725,7 +725,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       if (teamMemberPermissionRows.length > 0) {
         await tx.teamMemberDirectPermission.createMany({ data: teamMemberPermissionRows });
       }
-    });
+    }, { timeout: 90_000 });
   }
 
   return userEmailToId;
