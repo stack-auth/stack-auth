@@ -179,15 +179,12 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
     </script>`;
 }
 
-function escapeScriptContent(code: string): string {
-  return code
-    .replace(/<\/script/gi, "<\\/script")
-    .replace(/<!--/g, "<\\!--")
-    .replace(/-->/g, "--\\>");
+function encodeSourceForJsonScript(code: string): string {
+  return JSON.stringify(code).replace(/</g, "\\u003c");
 }
 
 function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
-  const sourceCode = escapeScriptContent(artifact.runtimeCodegen.uiRuntimeSourceCode);
+  const encodedSource = encodeSourceForJsonScript(artifact.runtimeCodegen.uiRuntimeSourceCode);
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = extractEsmVersion(artifact.runtimeCodegen.uiRuntimeSourceCode) ?? packageJson.version;
   const esmFallbackVersion = getEsmFallbackVersion(esmVersion);
@@ -372,13 +369,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
 
     ${getDependencyScripts(esmVersion, esmFallbackVersion, dashboardUrl)}
 
-    <!-- AI-generated dashboard source. Stored as text/plain so Babel's auto
-         <script type="text/babel"> handler does NOT run it — that handler
-         swallows parse errors. The plumbing script below compiles this with a
-         try/catch and forwards any SyntaxError to the parent composer. -->
-    <script type="text/plain" id="ai-dashboard-source">
-${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
-    </script>
+    <script type="application/json" id="ai-dashboard-source">${encodedSource}</script>
 
     <script type="text/babel">
       // Navigation API for AI-generated code
@@ -415,7 +406,7 @@ ${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
         baseUrl: ${JSON.stringify(baseUrl)},
         projectId: ${JSON.stringify(artifact.projectId)},
       };
-      
+
       async function waitForDeps() {
         if (!window.__depsReady) {
           await new Promise(resolve => {
@@ -438,12 +429,12 @@ ${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
             window.removeEventListener('message', handler);
             reject(new Error('Token request timeout'));
           }, 5000);
-          
+
           const handler = (event) => {
             if (event.data?.type === 'stack-access-token-response' && event.data?.requestId === requestId) {
               clearTimeout(timeout);
               window.removeEventListener('message', handler);
-              
+
               if (event.data.accessToken) {
                 resolve(event.data.accessToken);
               } else {
@@ -451,22 +442,22 @@ ${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
               }
             }
           };
-          
+
           window.addEventListener('message', handler);
-          window.parent.postMessage({ 
+          window.parent.postMessage({
             type: 'stack-access-token-request',
-            requestId 
+            requestId
           }, '*');
         });
       }
-      
+
       async function initializeStackApp() {
         await waitForDeps();
-        
+
         if (!window.StackAdminApp) {
           throw new Error("Stack SDK failed to load. The SDK should expose window.StackAdminApp.");
         }
-        
+
         const stackServerApp = new window.StackAdminApp({
           projectId: STACK_CONFIG.projectId,
           baseUrl: STACK_CONFIG.baseUrl,
@@ -474,12 +465,12 @@ ${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
             return await requestAccessToken();
           },
         });
-        
+
         window.stackServerApp = stackServerApp;
-        
+
         return stackServerApp;
       }
-      
+
       // Uncaught runtime errors and unhandled rejections are forwarded by the
       // early global listener installed before Babel loads (see top of <head>).
 
@@ -502,7 +493,7 @@ ${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
             componentStack: errorInfo?.componentStack,
           }, '*');
         }
-        
+
         render() {
           if (this.state.hasError) {
             return (
@@ -522,35 +513,40 @@ ${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
           return this.props.children;
         }
       }
-      
+
       // Boot the dashboard
       const rootElement = document.getElementById('root');
       if (!rootElement) {
         throw new Error('Root element not found');
       }
-      
+
       // Initialize deps and boot the dashboard
       initializeStackApp().then(() => {
         const DashboardUI = window.DashboardUI;
         const Recharts = window.Recharts;
-        
+
         if (!DashboardUI) {
           throw new Error("Dashboard UI components failed to load in sandbox.");
         }
         if (!Recharts) {
           throw new Error("Recharts failed to load in sandbox.");
         }
-        
+
         // Execute AI-generated code with DashboardUI and Recharts in scope.
         // We compile here (rather than via <script type="text/babel">) so that
         // a JSX SyntaxError in the AI output surfaces as a normal throw — the
         // window 'error' listener picks it up and forwards it to the parent
         // composer instead of leaving the iframe blank.
         const aiSourceEl = document.getElementById('ai-dashboard-source');
-        const aiSource = aiSourceEl ? aiSourceEl.textContent : '';
+        let aiSource = '';
+        try {
+          aiSource = aiSourceEl && aiSourceEl.textContent ? JSON.parse(aiSourceEl.textContent) : '';
+        } catch (_) {
+          aiSource = '';
+        }
         let compiledSource;
         try {
-          compiledSource = window.Babel.transform(aiSource, { presets: ['react'] }).code;
+          compiledSource = window.Babel.transform(aiSource, { presets: ['react'], sourceType: 'script' }).code;
         } catch (err) {
           const message = err && err.message ? 'Dashboard code failed to compile: ' + err.message : 'Dashboard code failed to compile';
           const stack = err && err.stack ? err.stack : undefined;
@@ -567,7 +563,7 @@ ${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
           return;
         }
         // eslint-disable-next-line no-new-func
-        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'stackServerApp', compiledSource + '\nreturn Dashboard;')(
+        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'stackServerApp', compiledSource + '\\nreturn Dashboard;')(
           React, ReactDOM, DashboardUI, Recharts, window.stackServerApp,
         );
         
