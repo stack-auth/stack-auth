@@ -34,6 +34,12 @@ export function handleStreamMode(ctx: ModeContext & {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120_000);
   const completedSteps: StepResult<ToolSet>[] = [];
+  // The AI SDK doesn't guarantee mutual exclusion across onFinish / onError /
+  // onAbort. An aborted stream commonly fires onError(AbortError) AND onAbort
+  // for the same lifecycle, which would double-log this request to
+  // SpacetimeDB and trip the UNIQUE(correlation_id) constraint on the second
+  // insert. Guard with a single boolean — the first terminal callback wins.
+  let logged = false;
   const result = streamText({
     model,
     messages: cachedMessages,
@@ -44,6 +50,8 @@ export function handleStreamMode(ctx: ModeContext & {
     onStepFinish: (step) => { completedSteps.push(step); },
     onFinish: ({ text, steps, usage, providerMetadata, response }) => {
       clearTimeout(timeoutId);
+      if (logged) return;
+      logged = true;
       logAiQuerySuccess({
         common,
         startedAt,
@@ -66,10 +74,14 @@ export function handleStreamMode(ctx: ModeContext & {
     },
     onError: ({ error }) => {
       clearTimeout(timeoutId);
+      if (logged) return;
+      logged = true;
       logAiQueryFailure({ common, startedAt, err: error, partialSteps: completedSteps });
     },
     onAbort: () => {
       clearTimeout(timeoutId);
+      if (logged) return;
+      logged = true;
       logAiQueryFailure({
         common,
         startedAt,
