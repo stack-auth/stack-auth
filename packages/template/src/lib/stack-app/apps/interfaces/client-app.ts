@@ -21,6 +21,13 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   inheritsFrom?: StackClientApp<any, any>,
 
   /**
+   * Whether to show the Stack Auth dev tool indicator in browser-like development environments.
+   *
+   * Defaults to true.
+   */
+  devTool?: boolean,
+
+  /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
    * constructed. This improves the performance of your app, but will create network requests that are unnecessary if
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
@@ -73,9 +80,9 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>>,
     resetPassword(options: { code: string, password: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyPasswordResetCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
-    verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
-    acceptTeamInvitation(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
-    getTeamInvitationDetails(code: string): Promise<Result<{ teamDisplayName: string }, KnownErrors["VerificationCodeError"]>>,
+    verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>>,
+    acceptTeamInvitation(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>>,
+    getTeamInvitationDetails(code: string): Promise<Result<{ teamDisplayName: string }, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>>,
     verifyEmail(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>,
     signInWithMfa(otp: string, code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>,
@@ -118,6 +125,9 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       sendAnalyticsEventBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
       addRequestListener(listener: RequestListener): () => void,
       sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
+      getRedirectMethod(): RedirectMethod,
+      redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
+      redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
     },
   }

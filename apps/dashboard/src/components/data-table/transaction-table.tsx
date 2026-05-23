@@ -1,25 +1,22 @@
+// TODO(ui-fixes-minor): URL-synced cursor (page state) was dropped when this
+// table moved from the hand-rolled cursor cache to DataGrid infinite scroll.
+// Reload resets scroll position and re-fetches from scratch. Restore if
+// product cares about deep-linking to specific rows.
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Button, DateCell, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CaretLeftIcon, CaretRightIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
+import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@stackframe/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
+import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
+import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
 import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
 import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/currency-constants';
-import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
-import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import type { ColumnDef } from '@tanstack/react-table';
-import { getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from '../link';
-import { useCursorPaginationCache } from "./common/cursor-pagination";
-import { PaginationControls } from "./common/pagination";
-import { TableContent, type ColumnLayout, type ColumnMeta } from "./common/table";
-import { TableSkeleton } from "./common/table-skeleton";
-import { createSimpleFingerprint, usePaginatedData } from "./common/use-paginated-data";
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
 
@@ -39,17 +36,11 @@ type TransactionSummary = {
   refunded: boolean,
 };
 
-type EntryWithCustomer = Extract<TransactionEntry, { customer_type: string, customer_id: string }>;
 type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money_transfer' }>;
 type ProductGrantEntry = Extract<TransactionEntry, { type: 'product_grant' }>;
 type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item_quantity_change' }>;
 type RefundTarget = { type: 'subscription' | 'one-time-purchase', id: string };
-type RefundEntrySelection = { entryIndex: number, quantity: number };
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === 'USD');
-
-function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustomer {
-  return 'customer_type' in entry && 'customer_id' in entry;
-}
 
 function isMoneyTransferEntry(entry: TransactionEntry): entry is MoneyTransferEntry {
   return entry.type === 'money_transfer';
@@ -107,6 +98,9 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
     }
     case 'chargeback': {
       return { label: 'Chargeback', Icon: ArrowCounterClockwiseIcon };
+    }
+    case 'refund': {
+      return { label: 'Refund', Icon: ReceiptXIcon };
     }
     case 'manual-item-quantity-change': {
       return { label: 'Manual Item Quantity Change', Icon: GearIcon };
@@ -170,31 +164,20 @@ function pickChargedAmountDisplay(entry: MoneyTransferEntry | undefined): string
   return 'Non USD amount';
 }
 
-function getRefundableProductEntries(transaction: Transaction): Array<{ entryIndex: number, entry: ProductGrantEntry }> {
-  return transaction.entries.flatMap((entry, entryIndex) => (
-    isProductGrantEntry(entry) ? [{ entryIndex, entry }] : []
-  ));
-}
-
 function getProductDisplayName(entry: ProductGrantEntry): string {
   const product = entry.product as { display_name?: string } | null | undefined;
   return product?.display_name ?? entry.product_id ?? 'Product';
 }
 
-function getUsdUnitPrice(entry: ProductGrantEntry): MoneyAmount | null {
-  if (!entry.price_id) {
-    return null;
+export function describeDetail(transaction: Transaction, sourceType: SourceType): string {
+  // Refund rows carry no product_grant — and a no-money refund (every
+  // test-mode refund, plus end-only live refunds) has only a
+  // product_revocation entry or no entries at all. Describe the lifecycle
+  // effect so the row isn't a bare "-".
+  if (transaction.type === 'refund') {
+    const revokedProduct = transaction.entries.some((entry) => entry.type === 'product_revocation');
+    return revokedProduct ? 'Product access revoked' : 'Refund';
   }
-  const product = entry.product as { prices?: Record<string, { USD?: string } | undefined> | "include-by-default" } | null | undefined;
-  if (!product || !product.prices || product.prices === "include-by-default") {
-    return null;
-  }
-  const price = product.prices[entry.price_id];
-  const usd = price?.USD;
-  return typeof usd === 'string' ? (usd as MoneyAmount) : null;
-}
-
-function describeDetail(transaction: Transaction, sourceType: SourceType): string {
   const productGrant = transaction.entries.find(isProductGrantEntry);
   if (productGrant) {
     const name = getProductDisplayName(productGrant);
@@ -213,9 +196,8 @@ function describeDetail(transaction: Transaction, sourceType: SourceType): strin
   return '-';
 }
 
-function getTransactionSummary(transaction: Transaction): TransactionSummary {
+export function getTransactionSummary(transaction: Transaction): TransactionSummary {
   const sourceType = deriveSourceType(transaction);
-  const customerEntry = transaction.entries.find(isEntryWithCustomer);
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
   const refundTarget = getRefundTarget(transaction);
   const refunded = transaction.adjusted_by.length > 0;
@@ -223,8 +205,11 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
   return {
     sourceType,
     displayType: formatTransactionTypeLabel(transaction.type),
-    customerType: customerEntry?.customer_type ?? null,
-    customerId: customerEntry?.customer_id ?? null,
+    // Customer comes from the transaction-level fields — entry-derived
+    // customer was null on refund rows whose only entry is a
+    // product_revocation (no customer fields), or which have no entries.
+    customerType: transaction.customer_type,
+    customerId: transaction.customer_id,
     detail: describeDetail(transaction, sourceType),
     amountDisplay: transaction.test_mode ? 'Test mode' : pickChargedAmountDisplay(moneyTransferEntry),
     refundTarget,
@@ -232,101 +217,80 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
   };
 }
 
-function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
+// Sentinel string for the Select component when the admin chooses to leave
+// the source purchase active (no lifecycle change). The API expects either
+// `"now" | "at-period-end"` or the field omitted entirely; we map "none"
+// → omitted at request time.
+type EndActionChoice = "now" | "at-period-end" | "none";
+
+function RefundActionCell({ transaction, refundTarget, onRefunded }: { transaction: Transaction, refundTarget: RefundTarget | null, onRefunded: () => void }) {
   const app = useAdminApp();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [refundSelections, setRefundSelections] = useState<RefundEntrySelection[]>([]);
-  const [refundAmountUsd, setRefundAmountUsd] = useState<string>('');
+  const [amountUsd, setAmountUsd] = useState<string>('0');
+  const [endAction, setEndAction] = useState<EndActionChoice>("now");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const target = transaction.type === 'purchase' ? refundTarget : null;
-  const alreadyRefunded = transaction.adjusted_by.length > 0;
-  const productEntries = useMemo(() => getRefundableProductEntries(transaction), [transaction]);
-  const canRefund = !!target && !transaction.test_mode && !alreadyRefunded && productEntries.length > 0;
+  // Don't gate on `adjusted_by.length` here: the backend supports multiple
+  // partial refunds (and a separate revoke) until both caps are hit, and
+  // computes the actual remaining state from the bulldozer ledger. The button
+  // stays available; the backend rejects if there's nothing left to do.
+  //
+  // Known UI gap: refund actions are only enabled on `purchase` rows, and the
+  // submit call never passes `invoice_id`. The backend supports refunding a
+  // specific renewal invoice (POST body `invoice_id`), but the dashboard
+  // currently can't reach that path — admins refunding a renewal must use
+  // the API directly. Follow-up: enable the action on `subscription-renewal`
+  // rows and thread `invoice_id` through.
+  const canRefund = !!target;
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
   const chargedAmountUsd = moneyTransferEntry ? (moneyTransferEntry.charged_amount.USD ?? null) : null;
+  const isSubscription = target?.type === 'subscription';
 
-  useEffect(() => {
-    if (isDialogOpen) {
-      setRefundSelections(productEntries.map(({ entryIndex, entry }) => ({
-        entryIndex,
-        quantity: entry.quantity,
-      })));
-      setRefundAmountUsd(chargedAmountUsd ?? '');
+  const validation = useMemo(() => {
+    if (!target || !USD_CURRENCY) {
+      return { canSubmit: false, error: null as string | null };
     }
-  }, [chargedAmountUsd, isDialogOpen, productEntries]);
-
-  const refundCandidates = useMemo(() => {
-    return productEntries.map(({ entryIndex, entry }) => ({
-      entryIndex,
-      entry,
-      productName: getProductDisplayName(entry),
-      maxQuantity: entry.quantity,
-      unitPriceUsd: getUsdUnitPrice(entry),
-    }));
-  }, [productEntries]);
-
-  const selectionByIndex = useMemo(() => {
-    return new Map(refundSelections.map((selection) => [selection.entryIndex, selection.quantity]));
-  }, [refundSelections]);
-
-  const canComputeRefundEntries = refundCandidates.length > 0 && refundCandidates.every((candidate) => candidate.unitPriceUsd);
-  const selectedEntries = refundCandidates.map((candidate) => {
-    const selectedQuantity = selectionByIndex.get(candidate.entryIndex) ?? candidate.maxQuantity;
-    return { ...candidate, selectedQuantity };
-  });
-  const totalSelectedQuantity = selectedEntries.reduce((sum, entry) => sum + entry.selectedQuantity, 0);
-
-  const refundValidation = useMemo(() => {
-    if (!chargedAmountUsd || !USD_CURRENCY) {
-      return { canSubmit: false, error: "Refund amounts are only supported for USD charges.", refundEntries: undefined };
+    if (!moneyAmountSchema(USD_CURRENCY).defined().isValidSync(amountUsd)) {
+      return { canSubmit: false, error: "Refund amount must be a valid USD amount." };
     }
-    if (!refundAmountUsd) {
-      return { canSubmit: false, error: "Enter a refund amount.", refundEntries: undefined };
-    }
-    const isValid = moneyAmountSchema(USD_CURRENCY).defined().isValidSync(refundAmountUsd);
-    if (!isValid) {
-      return { canSubmit: false, error: "Refund amount must be a valid USD amount.", refundEntries: undefined };
-    }
-    const refundUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
-    const maxChargedUnits = moneyAmountToStripeUnits(chargedAmountUsd as MoneyAmount, USD_CURRENCY);
+    const refundUnits = moneyAmountToStripeUnits(amountUsd as MoneyAmount, USD_CURRENCY);
     if (refundUnits < 0) {
-      return { canSubmit: false, error: "Refund amount cannot be negative.", refundEntries: undefined };
+      return { canSubmit: false, error: "Refund amount cannot be negative." };
     }
-    if (refundUnits > maxChargedUnits) {
-      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined };
+    if (refundUnits > 0 && !chargedAmountUsd) {
+      return { canSubmit: false, error: "This transaction has no money to refund (test mode or non-USD)." };
     }
-    if (!canComputeRefundEntries) {
-      return { canSubmit: false, error: "Refund entries are only supported for USD-priced products.", refundEntries: undefined };
-    }
-    if (totalSelectedQuantity < 0) {
-      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined };
-    }
-    const maxUnits = maxChargedUnits;
-    const selectedUnits = selectedEntries.reduce((sum, entry) => {
-      if (!entry.unitPriceUsd) {
-        return sum;
+    if (chargedAmountUsd) {
+      const maxUnits = moneyAmountToStripeUnits(chargedAmountUsd as MoneyAmount, USD_CURRENCY);
+      if (refundUnits > maxUnits) {
+        return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.` };
       }
-      const entryUnits = moneyAmountToStripeUnits(entry.unitPriceUsd, USD_CURRENCY) * entry.selectedQuantity;
-      return sum + entryUnits;
-    }, 0);
-    if (selectedUnits < 0) {
-      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined };
     }
-    if (selectedUnits > maxUnits) {
-      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined };
+    if (refundUnits === 0 && endAction === "none") {
+      return {
+        canSubmit: false,
+        error: "Refund must do something: enter an amount or change Subscription / Product.",
+      };
     }
-    const entries = selectedEntries
-      .filter((entry) => entry.selectedQuantity > 0)
-      .map((entry) => ({ entryIndex: entry.entryIndex, quantity: entry.selectedQuantity }));
-    const fallbackEntry = selectedEntries[0] ?? throwErr("Refund entry missing for refund entries");
-    const normalizedEntries = entries.length > 0
-      ? entries
-      : [{ entryIndex: fallbackEntry.entryIndex, quantity: 0 }];
-    const refundEntries = normalizedEntries.map((entry, index) => ({
-      ...entry,
-      amountUsd: (index === 0 ? refundAmountUsd : "0") as MoneyAmount,
-    }));
-    return { canSubmit: true, error: null, refundEntries };
-  }, [chargedAmountUsd, canComputeRefundEntries, refundAmountUsd, selectedEntries, totalSelectedQuantity]);
+    return { canSubmit: true, error: null };
+  }, [target, amountUsd, chargedAmountUsd, endAction]);
+
+  // Seed dialog state from the current transaction. Called from the menu
+  // click before opening, because ActionDialog's onOpenChange doesn't fire on
+  // the open transition for a controlled dialog — so without this an admin
+  // opening from the menu would see the initial useState defaults
+  // (`amountUsd: '0'`) and submitting unchanged on a paid purchase would
+  // revoke/end at $0 instead of refunding the charged amount.
+  const seedFromTransaction = () => {
+    // After a prior partial refund the remaining refundable balance is
+    // smaller than the original charge; we don't have it on the transaction
+    // payload, so default to 0 and let the admin enter an amount explicitly
+    // rather than preloading a value that will hit the backend cap.
+    const alreadyAdjusted = transaction.adjusted_by.length > 0;
+    setAmountUsd(alreadyAdjusted ? '0' : (chargedAmountUsd ?? '0'));
+    setEndAction("now");
+    setSubmitError(null);
+  };
 
   return (
     <>
@@ -339,80 +303,73 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
           cancelButton
           okButton={{
             label: "Refund",
+            // Awaiting directly (rather than wrapping in
+            // `runAsynchronouslyWithAlert`) lets ActionDialog drive the
+            // button's loading + disabled state during the request and
+            // keep the dialog open until the network call resolves —
+            // important for a destructive, non-idempotent action where a
+            // double-click would otherwise fire two refunds.
             onClick: async () => {
-              if (chargedAmountUsd && !refundValidation.canSubmit) {
+              if (!validation.canSubmit) {
                 return "prevent-close";
               }
-              await app.refundTransaction({
-                ...target,
-                refundEntries: refundValidation.refundEntries ?? throwErr("Refund entries missing for refund"),
-              });
+              setSubmitError(null);
+              const apiEndAction = endAction === "none" ? undefined : endAction;
+              try {
+                await app.refundTransaction({
+                  ...target,
+                  amountUsd: amountUsd as MoneyAmount,
+                  ...(apiEndAction !== undefined ? { endAction: apiEndAction } : {}),
+                });
+              } catch (e: unknown) {
+                setSubmitError(e instanceof Error ? e.message : "Refund failed. Please try again.");
+                return "prevent-close";
+              }
+              // Refetch the grid so the new refund row shows up immediately —
+              // `refundTransaction` invalidates the transactions cache, but
+              // this table reads via a `DataGridDataSource` generator that
+              // doesn't subscribe to that cache, so it must be told to reload.
+              onRefunded();
             },
-            props: chargedAmountUsd ? { disabled: !refundValidation.canSubmit } : undefined,
+            props: { disabled: !validation.canSubmit },
           }}
-          confirmText="Refunds cannot be undone"
         >
           <div className="space-y-4">
-            <p>{`Refund this ${target.type === 'subscription' ? 'subscription' : 'one-time purchase'} transaction?`}</p>
-            {chargedAmountUsd ? (
-              <div className="space-y-2">
-                <div className="space-y-2">
-                  <Label htmlFor={`refund-amount-${transaction.id}`}>Refund amount (USD)</Label>
-                  <Input
-                    id={`refund-amount-${transaction.id}`}
-                    inputMode="decimal"
-                    placeholder={chargedAmountUsd}
-                    value={refundAmountUsd}
-                    onChange={(event) => setRefundAmountUsd(event.target.value)}
-                  />
-                </div>
-                {canComputeRefundEntries ? (
-                  <div className="space-y-3">
-                    <Label>Products to refund</Label>
-                    {selectedEntries.map((entry) => (
-                      <div key={entry.entryIndex} className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{entry.productName}</div>
-                          <div className="text-xs text-muted-foreground">Purchased: {entry.maxQuantity}</div>
-                        </div>
-                        <Input
-                          inputMode="numeric"
-                          type="number"
-                          min={0}
-                          max={entry.maxQuantity}
-                          value={entry.selectedQuantity}
-                          onChange={(event) => {
-                            const raw = Number.parseInt(event.target.value, 10);
-                            const clamped = Number.isNaN(raw) ? 0 : Math.min(Math.max(raw, 0), entry.maxQuantity);
-                            setRefundSelections((prev) => prev.map((selection) => (
-                              selection.entryIndex === entry.entryIndex ? { ...selection, quantity: clamped } : selection
-                            )));
-                          }}
-                          className="w-24"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <Alert>
-                    <AlertDescription>
-                      Partial refunds are only available for USD-priced products. This will issue a full refund.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                {refundValidation.error ? (
-                  <Alert variant="destructive">
-                    <AlertDescription>{refundValidation.error}</AlertDescription>
-                  </Alert>
-                ) : null}
-              </div>
-            ) : (
-              <Alert>
-                <AlertDescription>
-                  Partial refunds are only available for USD charges. This will issue a full refund.
-                </AlertDescription>
+            <div className="space-y-2">
+              <Label htmlFor={`refund-amount-${transaction.id}`}>Amount (USD)</Label>
+              <Input
+                id={`refund-amount-${transaction.id}`}
+                inputMode="decimal"
+                placeholder={chargedAmountUsd ?? '0'}
+                value={amountUsd}
+                onChange={(event) => setAmountUsd(event.target.value)}
+                disabled={!chargedAmountUsd}
+              />
+              {!chargedAmountUsd ? (
+                <p className="text-xs text-muted-foreground">No money to refund (test mode or non-USD).</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`end-action-${transaction.id}`}>{isSubscription ? 'Subscription' : 'Product'}</Label>
+              <Select
+                value={endAction}
+                onValueChange={(value) => setEndAction(value as EndActionChoice)}
+              >
+                <SelectTrigger id={`end-action-${transaction.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="now">End now</SelectItem>
+                  {isSubscription ? <SelectItem value="at-period-end">End at period end</SelectItem> : null}
+                  <SelectItem value="none">No change</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {validation.error || submitError ? (
+              <Alert variant="destructive">
+                <AlertDescription>{validation.error ?? submitError}</AlertDescription>
               </Alert>
-            )}
+            ) : null}
           </div>
         </ActionDialog>
       ) : null}
@@ -426,6 +383,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
             if (!target) {
               return;
             }
+            seedFromTransaction();
             setIsDialogOpen(true);
           },
         }]}
@@ -434,170 +392,101 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   );
 }
 
-type QueryState = {
-  page: number,
-  pageSize: number,
-  cursor?: string,
+type FilterState = {
   type?: TransactionType,
   customerType?: 'user' | 'team' | 'custom',
 };
 
-const DEFAULT_PAGE_SIZE = 10;
-
-type ColumnKey = "type" | "customer" | "amount" | "detail" | "created" | "actions";
-
-const COLUMN_LAYOUT: ColumnLayout<ColumnKey> = {
-  type: { size: 60, minWidth: 50, maxWidth: 70, width: "60px", headerClassName: "text-center", cellClassName: "text-center" },
-  customer: { size: 180, minWidth: 120, maxWidth: 200, width: "clamp(120px, 20vw, 200px)" },
-  amount: { size: 100, minWidth: 80, maxWidth: 120, width: "clamp(80px, 15vw, 120px)" },
-  detail: { size: 180, minWidth: 120, maxWidth: 220, width: "clamp(120px, 20vw, 220px)" },
-  created: { size: 120, minWidth: 100, maxWidth: 140, width: "clamp(100px, 15vw, 140px)" },
-  actions: { size: 60, minWidth: 50, maxWidth: 70, width: "60px", headerClassName: "text-right", cellClassName: "text-right" },
-};
+const PAGE_SIZE = 25;
+const CUSTOMER_TYPE_OPTIONS = ["user", "team", "custom"] as const satisfies ReadonlyArray<NonNullable<FilterState["customerType"]>>;
 
 export function TransactionTable() {
-  const [query, setQuery] = useState<QueryState>({ page: 1, pageSize: DEFAULT_PAGE_SIZE });
-  const cursorPaginationCache = useCursorPaginationCache();
-
-  useEffect(() => {
-    cursorPaginationCache.resetCache();
-  }, [cursorPaginationCache, query.type, query.customerType, query.pageSize]);
+  const [filters, setFilters] = useState<FilterState>({});
 
   return (
-    <div className="space-y-2">
-      <TransactionTableHeader
-        type={query.type}
-        onTypeChange={(type) => setQuery((prev) => ({ ...prev, type, page: 1, cursor: undefined }))}
-        customerType={query.customerType}
-        onCustomerTypeChange={(customerType) => setQuery((prev) => ({ ...prev, customerType, page: 1, cursor: undefined }))}
-      />
-      <div className="overflow-clip rounded-md border border-border bg-card">
-        <Suspense fallback={<TransactionTableSkeleton pageSize={query.pageSize} />}>
-          <TransactionTableBody
-            query={query}
-            setQuery={setQuery}
-            cursorPaginationCache={cursorPaginationCache}
-          />
-        </Suspense>
-      </div>
-    </div>
-  );
-}
-
-function TransactionTableHeader(props: {
-  type?: TransactionType,
-  onTypeChange: (type: TransactionType | undefined) => void,
-  customerType?: 'user' | 'team' | 'custom',
-  onCustomerTypeChange: (customerType: 'user' | 'team' | 'custom' | undefined) => void,
-}) {
-  const { type, onTypeChange, customerType, onCustomerTypeChange } = props;
-
-  return (
-    <div className="flex items-center gap-2">
-      <Select
-        value={type ?? ''}
-        onValueChange={(v) => onTypeChange(v === '__clear' ? undefined : v as TransactionType)}
-      >
-        <SelectTrigger className="h-8 w-[200px] overflow-x-clip">
-          <div className="flex items-center gap-2">
-            <SelectValue placeholder="Filter by type" />
-          </div>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__clear">All types</SelectItem>
-          {TRANSACTION_TYPES.map((transactionType) => {
-            const { Icon: TypeIcon, label } = formatTransactionTypeLabel(transactionType);
-            return (
-              <SelectItem key={transactionType} value={transactionType}>
-                <div className="flex items-center gap-2">
-                  <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
-                  <span className="truncate">{label}</span>
-                </div>
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
-      <Select
-        value={customerType ?? ''}
-        onValueChange={(v) => onCustomerTypeChange(v === '__clear' ? undefined : v as 'user' | 'team' | 'custom')}
-      >
-        <SelectTrigger className="h-8 w-[180px]">
-          <SelectValue placeholder="Customer type" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__clear">All customers</SelectItem>
-          <SelectItem value="user">User</SelectItem>
-          <SelectItem value="team">Team</SelectItem>
-          <SelectItem value="custom">Custom</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+    <TransactionTableBody filters={filters} setFilters={setFilters} />
   );
 }
 
 function TransactionTableBody(props: {
-  query: QueryState,
-  setQuery: React.Dispatch<React.SetStateAction<QueryState>>,
-  cursorPaginationCache: ReturnType<typeof useCursorPaginationCache>,
+  filters: FilterState,
+  setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
 }) {
   const app = useAdminApp();
-  const { query, setQuery } = props;
+  const { filters, setFilters } = props;
 
-  const { transactions: rawTransactions, nextCursor: rawNextCursor } = app.useTransactions({
-    limit: query.pageSize,
-    cursor: query.cursor,
-    type: query.type,
-    customerType: query.customerType,
-  });
-
-  const { data: transactions, nextCursor, hasNextPage, hasPreviousPage, cursorForPage } = usePaginatedData(
-    {
-      data: rawTransactions,
-      nextCursor: rawNextCursor,
-      query,
-      getFingerprint: createSimpleFingerprint,
+  const dataSource = useMemo<DataGridDataSource<Transaction>>(
+    () => async function* (params) {
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const result = await app.listTransactions({
+        limit: PAGE_SIZE,
+        type: filters.type,
+        customerType: filters.customerType,
+        cursor,
+      });
+      yield {
+        rows: result.transactions,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
     },
-    props.cursorPaginationCache,
+    [app, filters.type, filters.customerType],
   );
 
-  const summaryById = useMemo(() => {
-    return new Map(transactions.map((transaction) => [transaction.id, getTransactionSummary(transaction)]));
-  }, [transactions]);
+  const getRowId = useCallback((row: Transaction) => row.id, []);
 
-  const columns = useMemo((): ColumnDef<Transaction>[] => [
+  // `summaryById` is populated AFTER useDataSource returns rows, but the
+  // column `renderCell` closures read it via ref so columns can be defined
+  // first and stay stable across paginate/append. Empty initially; filled
+  // below once we have rows.
+  const summaryByIdRef = useRef<Map<string, ReturnType<typeof getTransactionSummary>>>(new Map());
+
+  // Same ref indirection as `summaryByIdRef`: the stable (`[]`-deps) column
+  // closures need the grid's `reload`, but `gridData` is created below them.
+  // `handleRefunded` is passed to the refund action cell and re-runs the data
+  // source after a successful refund.
+  const reloadRef = useRef<() => void>(() => {});
+  const handleRefunded = useCallback(() => {
+    reloadRef.current();
+  }, []);
+
+  const columns = useMemo<DataGridColumnDef<Transaction>[]>(() => [
     {
       id: 'type',
-      accessorFn: (transaction) => summaryById.get(transaction.id)?.sourceType ?? 'other',
-      header: () => <span className="text-xs font-medium">Type</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: 'Type',
+      width: 60,
+      minWidth: 50,
+      maxWidth: 70,
+      align: 'center',
+      sortable: false,
+      resizable: false,
+      hideable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         const displayType = summary?.displayType;
         if (!displayType) {
-          return <TextCell size={20}>—</TextCell>;
+          return <span>—</span>;
         }
         const { Icon, label } = displayType;
         return (
-          <TextCell size={20}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
-                  <Icon className="h-4 w-4" aria-hidden />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="left">{label}</TooltipContent>
-            </Tooltip>
-          </TextCell>
+          <SimpleTooltip tooltip={label}>
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
+              <Icon className="h-4 w-4" aria-hidden />
+            </span>
+          </SimpleTooltip>
         );
       },
-      meta: { columnKey: "type" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'customer',
-      accessorFn: (transaction) => summaryById.get(transaction.id)?.customerType ?? '',
-      header: () => <span className="text-xs font-medium">Customer</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: 'Customer',
+      width: 180,
+      minWidth: 120,
+      maxWidth: 200,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         if (summary?.customerType === 'user' && summary.customerId) {
           return <UserAvatarCell userId={summary.customerId} />;
         }
@@ -605,195 +494,201 @@ function TransactionTableBody(props: {
           return <TeamAvatarCell teamId={summary.customerId} />;
         }
         return (
-          <TextCell>
-            <>
-              <span className="capitalize">{summary?.customerType ?? '—'}</span>
-              : {summary?.customerId ?? '—'}
-            </>
-          </TextCell>
+          <span>
+            <span className="capitalize">{summary?.customerType ?? '—'}</span>
+            : {summary?.customerId ?? '—'}
+          </span>
         );
       },
-      meta: { columnKey: "customer" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'amount',
-      header: () => <span className="text-xs font-medium">Amount</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
-        return <TextCell size={80}>{summary?.amountDisplay ?? '—'}</TextCell>;
+      header: 'Amount',
+      width: 100,
+      minWidth: 80,
+      maxWidth: 120,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
+        return <span>{summary?.amountDisplay ?? '—'}</span>;
       },
-      meta: { columnKey: "amount" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'detail',
-      header: () => <span className="text-xs font-medium">Details</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: 'Details',
+      width: 180,
+      minWidth: 120,
+      maxWidth: 220,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         return (
-          <TextCell size={120}>
-            <div className="flex items-center gap-2">
-              <span className="truncate">{summary?.detail ?? '—'}</span>
-              {summary?.refunded ? (
-                <Badge variant="outline" className="text-xs">
-                  Refunded
-                </Badge>
-              ) : null}
-            </div>
-          </TextCell>
+          <div className="flex items-center gap-2">
+            <span className="truncate">{summary?.detail ?? '—'}</span>
+            {summary?.refunded ? (
+              <Badge variant="outline" className="text-xs">
+                Refunded
+              </Badge>
+            ) : null}
+          </div>
         );
       },
-      meta: { columnKey: "detail" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'created',
-      accessorFn: (transaction) => transaction.created_at_millis,
-      header: () => <span className="text-xs font-medium">Created</span>,
-      cell: ({ row }) => (
-        <DateCell date={new Date(row.original.created_at_millis)} />
-      ),
-      meta: { columnKey: "created" } satisfies ColumnMeta<ColumnKey>,
+      header: 'Created',
+      accessor: (row: Transaction) => new Date(row.created_at_millis),
+      width: 120,
+      minWidth: 100,
+      maxWidth: 140,
+      type: 'dateTime',
+      sortable: false,
     },
     {
       id: 'actions',
-      header: () => null,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: '',
+      width: 60,
+      minWidth: 50,
+      maxWidth: 70,
+      align: 'right',
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         return (
           <RefundActionCell
-            transaction={row.original}
+            transaction={row}
             refundTarget={summary?.refundTarget ?? null}
+            onRefunded={handleRefunded}
           />
         );
       },
-      meta: { columnKey: "actions" } satisfies ColumnMeta<ColumnKey>,
     },
-  ], [summaryById]);
+  ], [handleRefunded]);
 
-  const table = useReactTable({
-    data: transactions,
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "transactions" });
+
+  const gridData = useDataSource({
+    dataSource,
     columns,
-    getCoreRowModel: getCoreRowModel(),
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
   });
 
-  return (
-    <div className="flex flex-col">
-      <TableContent
-        table={table}
-        columnLayout={COLUMN_LAYOUT}
-        renderEmptyState={() => (
-          <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">No transactions found</p>
-          </div>
-        )}
-        rowHeightPx={56}
-      />
-      <PaginationControls
-        page={query.page}
-        pageSize={query.pageSize}
-        hasNextPage={hasNextPage}
-        hasPreviousPage={hasPreviousPage}
-        onPageSizeChange={(value) =>
-          setQuery((prev) => ({ ...prev, pageSize: value, page: 1, cursor: undefined }))
-        }
-        onPreviousPage={() => {
-          if (!hasPreviousPage) {
-            return;
-          }
-          const previousPage = query.page - 1;
-          const previousCursor = cursorForPage(previousPage);
-          setQuery((prev) => ({
-            ...prev,
-            page: previousPage,
-            cursor: previousPage === 1 ? undefined : previousCursor ?? undefined,
-          }));
-        }}
-        onNextPage={() => {
-          if (!hasNextPage || !nextCursor) {
-            return;
-          }
-          setQuery((prev) => ({
-            ...prev,
-            page: query.page + 1,
-            cursor: nextCursor,
-          }));
-        }}
-        className="border-t border-border/70"
-      />
-    </div>
+  // Keep the column closures' reload hook pointed at the live grid reload.
+  reloadRef.current = gridData.reload;
+
+  // Populate `summaryByIdRef` from the current rows — the `renderCell`
+  // closures read this on every render.
+  summaryByIdRef.current = useMemo(
+    () => new Map(gridData.rows.map((transaction) => [transaction.id, getTransactionSummary(transaction)])),
+    [gridData.rows],
   );
-}
 
-function TransactionTableSkeleton(props: { pageSize: number }) {
-  const columnOrder: ColumnKey[] = ["type", "customer", "amount", "detail", "created", "actions"];
-  const skeletonHeaders: Record<ColumnKey, string | null> = {
-    type: "Type",
-    customer: "Customer",
-    amount: "Amount",
-    detail: "Details",
-    created: "Created",
-    actions: null,
-  };
+  const filterTypeValue = filters.type ?? "__all";
+  const filterCustomerValue = filters.customerType ?? "__all";
+  const handleTypeChange = useCallback((value: string) => {
+    setFilters((prev) => {
+      if (value === "__all") {
+        return { ...prev, type: undefined };
+      }
 
-  const renderSkeletonCell = (columnKey: ColumnKey): JSX.Element => {
-    switch (columnKey) {
-      case "type": {
-        return <Skeleton className="h-6 w-6 rounded-md mx-auto" />;
+      const selectedType = TRANSACTION_TYPES.find((transactionType) => transactionType === value);
+      if (selectedType == null) {
+        return prev;
       }
-      case "customer": {
-        return (
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <Skeleton className="h-3 w-24" />
-          </div>
-        );
+
+      return { ...prev, type: selectedType };
+    });
+  }, [setFilters]);
+  const handleCustomerTypeChange = useCallback((value: string) => {
+    setFilters((prev) => {
+      if (value === "__all") {
+        return { ...prev, customerType: undefined };
       }
-      case "amount": {
-        return <Skeleton className="h-3 w-16" />;
+
+      const selectedType = CUSTOMER_TYPE_OPTIONS.find((customerType) => customerType === value);
+      if (selectedType == null) {
+        return prev;
       }
-      case "detail": {
-        return <Skeleton className="h-3 w-28" />;
-      }
-      case "created": {
-        return <Skeleton className="h-3 w-20" />;
-      }
-      case "actions": {
-        return <Skeleton className="h-4 w-4 ml-auto" />;
-      }
-      default: {
-        return <Skeleton className="h-3 w-20" />;
-      }
-    }
-  };
+
+      return { ...prev, customerType: selectedType };
+    });
+  }, [setFilters]);
 
   return (
-    <div className="flex flex-col">
-      <TableSkeleton
-        columnOrder={columnOrder}
-        columnLayout={COLUMN_LAYOUT}
-        headerLabels={skeletonHeaders}
-        rowCount={props.pageSize}
-        renderCellSkeleton={renderSkeletonCell}
-        rowHeightPx={56}
-      />
-      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          <span>Rows per page</span>
-          <Skeleton className="h-8 w-16" />
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      fillHeight={false}
+      footer={false}
+      rowHeight={56}
+
+      toolbar={(ctx) => (
+        <DataGridToolbar
+          ctx={ctx}
+          hideQuickSearch
+          extra={
+            <div className="flex items-center gap-2">
+              <Select
+                value={filterTypeValue}
+                onValueChange={handleTypeChange}
+              >
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">All types</SelectItem>
+                  {TRANSACTION_TYPES.map((transactionType) => {
+                    const { Icon: TypeIcon, label } = formatTransactionTypeLabel(transactionType);
+                    return (
+                      <SelectItem key={transactionType} value={transactionType}>
+                        <div className="flex items-center gap-2">
+                          <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                          <span className="truncate">{label}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filterCustomerValue}
+                onValueChange={handleCustomerTypeChange}
+              >
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue placeholder="All customers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">All customers</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="team">Team</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+        />
+      )}
+      emptyState={
+        <div className="text-center py-8">
+          <p className="text-sm text-muted-foreground">No transactions found</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" disabled>
-            <CaretLeftIcon className="mr-1 h-4 w-4" />
-            Previous
-          </Button>
-          <span className="rounded-md border border-border px-3 py-1 text-xs font-medium">
-            Page …
-          </span>
-          <Button variant="ghost" size="sm" disabled>
-            Next
-            <CaretRightIcon className="ml-1 h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
+      }
+    />
   );
 }

@@ -52,11 +52,12 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
   message?: string,
 }>> {
   let finished = false;
+  const strippedEmailConfig = options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']);
   runAsynchronously(async () => {
     await wait(15_000);
     if (!finished) {
       captureError("email-send-timeout", new StackAssertionError("Email send took longer than 15s; maybe the email service is too slow?", {
-        config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
+        config: strippedEmailConfig,
         to: options.to,
         subject: options.subject,
         html: options.html,
@@ -209,7 +210,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
         }
 
         // ============ unknown error ============
-        captureError("unknown-email-send-error", new StackAssertionError("Unknown error while sending email. We should add a better error description for the user.", { cause: error }));
+        captureError("unknown-email-send-error", new StackAssertionError("Unknown error while sending email. We should add a better error description for the user.", { strippedEmailConfig, cause: error }));
         return Result.error({
           rawError: error,
           errorType: 'UNKNOWN',

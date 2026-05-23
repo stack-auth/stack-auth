@@ -2,6 +2,15 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
+A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
+
+## Q: How should Stack CLI GitHub source paths be stored?
+A: Explicit `stack config push --source github` paths should be normalized as repo-relative paths before storing source metadata. Trim whitespace and strip leading `./`, repeated `./`, and leading `/` segments, matching the dashboard workflow generator's normalization for `STACK_AUTH_CONFIG_PATH` and workflow paths.
+
+## Q: How should Stack CLI code handle flags proven present by nearby validation?
+A: Avoid non-null assertions even when an earlier missing-flags check proves presence. Use `flags.foo ?? throwErr("Expected ...; this should have been caught by ...")` so the type system receives a definite value and future refactors fail loudly with the violated assumption.
+
 ## Q: How do anonymous users work in Stack Auth?
 A: Anonymous users are a special type of user that can be created without any authentication. They have `isAnonymous: true` in the database and use different JWT signing keys with a `role: 'anon'` claim. Anonymous JWTs use a prefixed secret ("anon-" + audience) for signing and verification.
 
@@ -217,6 +226,9 @@ A: Check the error location:
 - Callback endpoint (400 error) - Validation failed during callback
 - Token endpoint (400 error) - Validation failed during token exchange
 
+### Q: How should connected-account OAuth access-token refresh errors be classified?
+A: In `apps/backend/src/oauth/providers/base.tsx`, invalid/revoked refresh-token provider errors such as `invalid_grant` return `Result.error({ type: "invalid-refresh-token", ... })` so `access-token-helpers.tsx` can invalidate that stored refresh token and try another. Transient provider/network failures such as openid-client `RPError: outgoing request timed out after 3500ms` return `Result.error({ type: "temporarily-unavailable", cause })`; the connected-account helper converts that to `OAuthProviderTemporarilyUnavailable` without invalidating the refresh token. Expected refresh outcomes should be represented in the provider return type instead of thrown as known/status errors. Refresh requests use a 6s openid-client HTTP timeout and retry transient failures once. If a retry sees `invalid_grant` after an ambiguous transient failure, keep treating it as temporarily unavailable rather than invalidating the refresh token, because the first request may have reached the provider and rotated the token before our client timed out. Sentry should capture non-revocation refresh issues (temporary provider failure, invalid client, unexpected) with provider id/class, attempts, retry count, ambiguity state, final cause, and all provider errors seen during attempts; normal revoked/expired refresh tokens should not be reported.
+
 ## Git and Development Workflow
 
 ### Q: How should you format git commit messages in this project?
@@ -355,3 +367,177 @@ Then restart the dev server. This rebuilds all packages and generates the necess
 
 ## Q: How is backwards compatibility for the offer→product rename handled in the payments purchase APIs?
 A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.
+
+## Q: How does the Stack Auth template dev tool decide whether to iframe the dashboard?
+A: The dev tool always iframes the Dashboard tab and provides an "Open in New Tab" escape hatch for auth or framing issues.
+
+### Q: What's the reliable way to run targeted tests across backend, dashboard, stack-shared, and e2e at once?
+A: Run from the monorepo root with explicit file paths: `pnpm test run "<path1>" "<path2>" ...`. This works even when individual packages do not define a local `test` script. Also avoid passing an extra `run` argument to package-level `test` scripts that already execute `vitest run`.
+
+### Q: What's the new Authorization header format for Stack token forwarding?
+A: Use `getAuthorizationHeader()`, which returns `Bearer stackauth_<base64(getAuthJson())>`. The payload encodes both `accessToken` and `refreshToken`, and request-like token stores should parse this format first, with legacy `x-stack-auth` remaining as a backward-compatible fallback.
+
+### Q: What RequestLike header shapes are supported by tokenStore overrides?
+A: `RequestLike` accepts both `{ headers: { get(name): string | null } }` and `{ headers: Record<string, string | null> }`. Header lookup is case-insensitive for record-style headers, and supports `authorization`, `x-stack-auth`, and `cookie`.
+
+### Q: Which env var should emulator onboarding URLs use for dashboard port?
+A: Use `EMULATOR_DASHBOARD_PORT` (default `26700`) or explicit `STACK_LOCAL_EMULATOR_DASHBOARD_URL`. Do not derive emulator URLs from `NEXT_PUBLIC_STACK_PORT_PREFIX`, because that points to the host dev environment ports (e.g. `92xx`) rather than the emulator host-forwarded ports.
+
+### Q: Why does `PATCH /api/v1/internal/projects/current` fail in local emulator when updating only `onboarding_state`?
+A: `createOrUpdateProjectWithLegacyConfig` always called `overrideEnvironmentConfigOverride`, even when there were zero config override keys to apply. In local emulator mode, environment config overrides are intentionally blocked, so this threw `Environment configuration overrides cannot be changed in the local emulator` and returned 500. The fix is to skip `overrideEnvironmentConfigOverride` unless `configOverrideOverride` has at least one key.
+
+### Q: Why might local emulator UI changes in `apps/dashboard` not appear immediately at `localhost:26700`?
+A: The QEMU local emulator serves the dashboard from the Docker image bundled inside the VM, not from the host repo's live source tree. Source edits in `apps/dashboard` are reflected in lint/typecheck/tests immediately, but you need an updated emulator image/runtime to see the visual change on `26700`.
+
+### Q: Why can local emulator onboarding break with `ParseError` on non-`.ts` config files (e.g. `test-config.untracked`)?
+A: The emulator writes TypeScript-style config source (`import type ...` and `config: StackConfig`) and later evaluates it with Jiti. If the filename has a non-TS extension, Jiti may parse it as plain JS and fail. Fix by evaluating unknown extensions as TypeScript (use a `.ts` eval filename fallback) and add regression coverage for non-`.ts` config paths.
+
+### Q: How should docs fetch the canonical AI setup prompt text?
+A: Expose an unauthenticated backend endpoint at `/api/v1/setup-prompt` that returns `getSdkSetupPrompt("ai-prompt", { tanstackQuery: false })` as plain text and sets `Cache-Control: public, max-age=60`. Mintlify docs should fetch `https://api.stack-auth.com/api/v1/setup-prompt` directly when docs and API are on different origins.
+
+### Q: Can Mintlify snippets import other snippets?
+A: No. Keep snippet logic inline within each snippet file; avoid snippet-to-snippet imports. For setup prompt fetching, point directly to `https://api.stack-auth.com/api/v1/setup-prompt` when docs run on a different origin/port than the API.
+
+## Q: How does `/api/v1/ai/query/generate` reject invalid AI tool names?
+A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/src/lib/ai/schema.ts` via `yupString().oneOf(TOOL_NAMES)`, so the endpoint returns a structured `SCHEMA_ERROR` object mentioning `body.tools[n]` rather than a custom `"Invalid tool names"` string from handler logic.
+
+## Q: Why did the internal metrics E2E snapshots need to change in April 2026?
+A: The `/api/v1/internal/metrics` response now intentionally includes `analytics_overview.daily_anonymous_visitors_fallback`, `analytics_overview.anonymous_visitors_fallback`, and `active_users_by_country`. Those additions are reflected in `packages/stack-shared/src/interface/admin-metrics.ts` and the backend route, so the E2E snapshots must include them instead of treating them as regressions.
+
+## Q: Why can environment config override writes fail with a product/product-line customer type warning after creating a preview project?
+A: The environment override endpoint validates the new environment override against the rendered branch config. Preview dummy payments data must therefore be internally coherent: products assigned to a product line need the same `customerType` as that product line, otherwise unrelated environment patches can fail with warnings like `Product "growth" has customer type "user" but its product line "workspace" has customer type "team"`.
+
+## Q: How do you keep the Stack Auth dev tool from reopening automatically after navigation or reload?
+A: Treat `isOpen` as mount-local state in `packages/template/src/dev-tool/dev-tool-core.ts`: load persisted preferences with `isOpen: false`, and save state back to localStorage with `isOpen: false` so tab/size preferences persist without reopening the panel on the next mount.
+
+## Q: How should the Stack Auth dev tool indicator avoid being hidden by other dev indicators?
+A: Do not dynamically reflow around framework indicators; that makes pointer interaction brittle. Keep the trigger anchored to its saved corner and give `.sdt-trigger` a max practical z-index (`2147483647`) so the Stack indicator renders above Next/Turbo overlays.
+
+## Q: How should Stack Auth dev tool trigger movement feel?
+A: Dragging should remain instant/direct, but programmatic moves like snap-to-corner after drag, resize reposition, and post-measurement correction should use a short snappy left/top transition. In `dev-tool-core.ts`, toggle a dedicated animation class only for those programmatic updates and remove it shortly after.
+
+## Q: How do you prevent duplicate Stack Auth dev tool indicators from multiple package/module instances?
+A: `createDevTool` in `packages/template/src/dev-tool/dev-tool-core.ts` should register a browser-wide singleton instance on `window` with an idempotent cleanup function, call any previous global cleanup before mounting, and remove leftover `#__stack-dev-tool-root` nodes as a fallback for older instances that did not register cleanup.
+
+## Q: How should the Stack Auth dev tool handle Dashboard tab sizing?
+A: Keep the user's default panel width/height in state for normal tabs, but apply a transient fullscreen class while the active tab is `dashboard`. The fullscreen class should override fixed dimensions and hide resize handles, then remove itself and restore the saved default dimensions when any other tab is selected.
+
+## Q: How should the Stack Auth dev tool animate Dashboard fullscreen transitions?
+A: Add a short-lived geometry animation class only around tab-driven switches into or out of Dashboard fullscreen. Animate `width`, `height`, `right`, `bottom`, and radius for the mode change, then remove the class so manual dragging/resizing remains direct and does not lag.
+
+## Q: Should the Stack Auth dev tool Dashboard tab be gated on local emulator mode?
+A: No. The Dashboard tab should always render the dashboard URL in an iframe inside the dev tool, and should also show an "Open in New Tab" link so users can escape iframe/auth/framing issues without losing the embedded view.
+
+## Q: How should the Dashboard iframe use space in the Stack Auth dev tool?
+A: In Dashboard fullscreen mode, the panel should cover the full viewport with no inset or rounded frame, and the iframe should fill all available content space. Put auxiliary actions like "Open in New Tab" in a top-edge overlay below the tab bar so they do not reserve layout height from the iframe.
+
+## Q: How do you maximize iframe tabs inside the Stack Auth dev tool panel?
+A: Mark Docs/Dashboard panes with an iframe-specific class, remove the normal 16px tab-pane padding, hide pane overflow, and give the iframe container explicit `width: 100%` and `height: 100%`. Keep toolbar actions as absolute overlays so they do not reduce iframe layout space.
+
+## Q: How should docs access work in the Stack Auth dev tool?
+A: Docs should not be an iframe-backed tab. Keep docs as a top-bar external link to `https://docs.stack-auth.com` with an up-right arrow icon, and migrate any persisted `activeTab: "docs"` value back to `overview`.
+
+## Q: How should the Stack Auth dev tool Console tab handle large log volumes?
+A: Keep the full log history in the shared log store, but render only the newest 100 entries initially. When the log scroll area nears the bottom, increase the visible count by another 100 and rerender. The Console tab should be a single logs view with Copy, Export, and Clear buttons in the header rather than nested Logs/Config subtabs.
+
+## Q: How should the Stack Auth dev tool Customize page detail show page metadata?
+A: Avoid repeated page-type badges like `Handler` in page tiles or detail headers. Keep actionable badges such as `Outdated`, show the compact route path next to the page title, use `Open` for the page action, and phrase the customization prompt as "Want to customize this page? Paste this prompt into your coding agent." with a `Copy prompt` button below it.
+
+## Q: How should the Stack Auth dev tool Customize page Open action behave?
+A: The page detail `Open` action should be a taller button matching the redirect code chip height, include a small up-right arrow icon, and always open the selected page in a new tab.
+
+## Q: How should the Stack Auth dev tool Support tab be structured?
+A: Do not keep top-level Feedback/Feature Request subtabs unless the backend supports them. The Support tab should mount the feedback form directly, show Discord/Email/GitHub links at the top, keep only Feedback and Bug Report choices in the form, and use a Submit button with a right-arrow icon after the text.
+
+## Q: Which tab should the Stack Auth dev tool show when opened?
+A: Opening the dev tool should always reset `activeTab` to `overview` before creating the panel. Other preferences like size can persist, but each fresh open should start on Overview instead of the last-used tab.
+
+## Q: How should Stack Auth dev tool PR review comments around Overview and trigger behavior be handled?
+A: Keep trigger corner resolution on-screen even in tiny viewports by snapping to bounded edge positions, remove unused trigger-position helpers, treat browser fetch `TypeError`s such as Safari's `Load failed` as best-effort Overview hydration errors, replace auth-method skeletons with a fallback on every load failure, and compute the `Auth method active` checklist row from loaded project config instead of hard-coding it as passing.
+
+## Q: Why can `pnpm run dev` fail with `ERR_MODULE_NOT_FOUND` for `@stackframe/stack/dist/esm/index.js` during OpenAPI docs generation?
+A: Root `dev` starts the OpenAPI docs watcher at the same time as package `dev` watchers. If a package `dev` script removes `dist` before `tsdown --watch` recreates it, the docs generator can import `apps/backend/src/stack.tsx` while `@stackframe/stack`'s ESM entrypoint is temporarily missing. Package watch scripts should update `dist` in place, and eager generators should wait for package imports to resolve before running.
+
+## Q: How do SDK source tests replace the compile-time client version sentinel?
+A: `packages/template/vitest.config.ts` installs a Vite transform plugin for Vitest that replaces `STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL` with `js <package-name>@<version>` from the local package.json. Keep the plugin in `packages/template` so `pnpm pre`/`scripts/generate-sdks.ts` propagates it to `packages/js`, `packages/react`, and `packages/stack`; otherwise tests importing `common.ts` throw `Client version was not replaced` before test collection.
+
+## Q: How does the Mintlify apps sidebar filter stay in sync with theme changes?
+A: `docs-mintlify/apps-sidebar-filter.js` injects the Apps filter with inline styles, so the MutationObserver must reapply `applySidebarAppsFilterTheme` when an existing input is found. Theme detection should handle both `html.dark` and `data-theme="dark"` signals.
+
+## Q: How should `StackAssertionError` preserve an underlying thrown error?
+A: Pass the underlying error as the `cause` property in the second argument. The `StackAssertionError` constructor only forwards `cause` into `ErrorOptions`, so storing a caught error under an `error` property captures it as ordinary metadata instead of preserving the error cause chain.
+
+## Q: How does the local QEMU emulator expose host-side control channels?
+A: `docker/local-emulator/qemu/run-emulator.sh` daemonizes QEMU with a QMP monitor socket at `$EMULATOR_RUN_DIR/vm/monitor.sock`, a QEMU guest agent socket at `$EMULATOR_RUN_DIR/vm/qga.sock`, and serial output redirected to `$EMULATOR_RUN_DIR/vm/serial.log`. The default user networking forwards only Stack-facing service ports, not SSH.
+
+## Q: Where should remote development environment local state live?
+A: Use `~/.stack/dev-envs.json` on macOS/Linux and `%LOCALAPPDATA%\Stack Auth\dev-envs.json` on Windows for local remote-development-environment state. The CLI and local dashboard both read this file; it stores the local dashboard bearer secret, anonymous refresh token, and config-path-to-project credential mappings with owner-only permissions.
+
+## Q: How should `stack dev` run the local dashboard in a published CLI?
+A: The CLI cannot depend on `apps/dashboard` source being present or run `next dev`. Package a Next.js standalone dashboard build into `packages/stack-cli/dist/dashboard`, copy it to a writable runtime directory next to the RDE state file, replace dashboard `STACK_ENV_VAR_SENTINEL_*` values for that launch, and run the standalone `apps/dashboard/server.js` with `node`, `HOSTNAME=127.0.0.1`, `PORT=26700`, and `NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT=true`.
+
+## Q: Where should the RDE local dashboard self-shutdown lifecycle start?
+A: Start the RDE lifecycle from the dashboard server startup path (`apps/dashboard/src/instrumentation.ts`) when `NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT=true`, not lazily after session registration. Keep the shutdown timer idempotent and use a short initial empty-session grace period so failed session registration still exits instead of leaving an orphaned standalone dashboard process. Once a CLI session has been explicitly closed, the dashboard can skip the startup grace and exit on the next shutdown tick if no sessions or operations remain.
+
+## Q: How should the dashboard Stack app be split for the local remote development environment?
+A: Keep `apps/dashboard/src/stack/client.tsx` as the root `StackProvider` app and handler app so the local RDE dashboard can boot without `STACK_SECRET_SERVER_KEY`. Put `StackServerApp` in `apps/dashboard/src/stack/server.tsx`, inherit from the client app, and only import it from server-only routes that are not needed in local RDE.
+
+## Q: How should `stack dev` handle a local RDE dashboard outage while the child command is still running?
+A: Keep it in the existing heartbeat path. If the heartbeat cannot reach the local dashboard and the dashboard session has passed the 5-second stability window, restart the standalone dashboard and re-register the RDE session; otherwise throw to avoid restart loops.
+
+## Q: How should the local RDE dashboard authenticate in the browser without exposing refresh tokens?
+A: The browser should fetch only a short-lived access token from the local RDE auth endpoint, install it into the memory token store with an empty refresh token, and refresh it by calling the local endpoint before expiry. Shared session logic must allow access-token-only sessions to read a still-valid access token; otherwise the SDK treats the session as absent and may redirect or create a separate anonymous user.
+
+## Q: Why can `stack dev` fail to register an RDE session with `ECONNREFUSED` against `localhost`?
+A: The RDE dashboard does server-side SDK calls from Node. If the backend is configured as `http://localhost:<port>`, Node may resolve or probe loopback differently than the browser; normalize exact `localhost` API base URLs to `127.0.0.1` in the CLI. If the backend process is actually down, the dashboard log will still show `ECONNREFUSED 127.0.0.1:<port>` and the dev server needs to be restarted.
+
+## Q: How should Stack CLI `--config-file` options interpret paths?
+A: `--config-file` should point directly to a regular config file. Do not treat an existing directory as a shortcut for `stack.config.ts` inside it; reject directories with a clear error instead. `stack config pull` may default to `./stack.config.ts` when the flag is omitted, but an explicitly provided directory is still invalid.
+
+## Q: How should RDE PR-review fixes handle the local dashboard and CLI lifecycle?
+A: Use the shared RDE browser security helper for browser-local endpoints, mark bearer-token responses `Cache-Control: private, no-store`, and return 400 for malformed local endpoint JSON. `stack dev` should fail loudly if a bundled dashboard sentinel has no environment value, validate session response shapes at runtime before using `env`, recover from HTTP heartbeat failures the same way as network heartbeat failures, and make heartbeat shutdown interruptible so child-process exit is not delayed by the full heartbeat interval.
+
+## Q: How should local RDE endpoints trust browser origins and API base URLs?
+A: Browser-only RDE endpoints should accept only the exact local dashboard origin derived from the dashboard env/state, such as `http://127.0.0.1:26700`, and reject arbitrary localhost subdomains like `evil.localhost`. CLI bearer endpoints should require the bearer secret and a loopback host but should not use broad localhost origins as trust signals. RDE session registration should accept only `https://api.stack-auth.com`, the exact API base URL passed into the local dashboard by the CLI, or exact custom URLs from a `STACK_`-prefixed allowlist.
+
+## Q: How should the Stack CLI depend on the dashboard RDE standalone build in CI?
+A: Do not invoke a nested `turbo run build:rde-standalone` from `packages/stack-cli`'s `build` script. When the outer CI is already running `turbo run build`, that nested Turbo process can start `apps/dashboard`'s Next build while the outer graph is also building it, causing `.next/lock` failures. Model the dependency in `turbo.json` instead with `@stackframe/stack-cli#build` depending on `@stackframe/dashboard#build:rde-standalone`, and let the CLI script only run `tsdown` plus runtime asset copying.
+
+## Q: How should local RDE/browser health endpoints handle active state and origins?
+A: Browser-only RDE endpoints should require RDE to be enabled, a local dashboard state entry with a non-empty secret, loopback host, exact dashboard origin, and same-origin/none fetch metadata. Development-environment health checks should not trust broad localhost origins; reject origins like `evil.localhost` and only allow the exact expected dashboard origins (or no Origin header for same-origin polling).
+
+## Q: How should development-environment project creation seed environment config?
+A: Seed the normal initial environment config before marking the project as `isDevelopmentEnvironment=true`. Existing development-environment projects should continue to reject environment config override writes, but creation needs to populate defaults like RBAC permissions, password sign-in, and installed apps first; otherwise the write guard throws during setup/restart-deps.
+
+## Q: What can cause React error #185 immediately on dashboard load?
+A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
+
+## Q: How should client-side OAuth callback and nested cross-domain auth avoid racing session consumers?
+A: Track startup auth transitions as pending client-app promises and make `_getSession`/react-like `_useSession` wait for them when using the default persistent token store. Auth-transition code that needs to inspect the current session should explicitly call `_getSession(..., { awaitPendingAuthResolutions: false })` instead of relying on a global reentrancy flag.
+
+## Q: When should hosted OAuth callback handling auto-start on a client app page?
+A: Only auto-start hosted OAuth callback handling when the current URL has `code` and `state` and the matching `stack-oauth-outer-${state}` verifier cookie exists. Generic `code/state` or `errorCode/message` query parameters are not Stack-owned enough to run callback processing automatically on every hosted app page.
+
+## Q: Should built-with hosted handler domains be manually configured as trusted domains?
+A: No. Treat the hosted handler origin for the project, such as `https://<project-id>.built-with-stack-auth.com` or the origin derived from `NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE`, as an implicit trusted redirect domain on both client and backend validation paths. The hosted template must put `{projectId}` in the hostname so every project has its own origin; path-based templates like `https://host/{projectId}/{hostedPath}` are not safe for implicit origin trust.
+
+## Q: How should post-auth redirects mint cross-domain auth codes right after sign-in?
+A: When a sign-in/sign-up/OAuth callback immediately redirects through the cross-domain authorize endpoint, pass the freshly returned `{ accessToken, refreshToken }` as an override token store into the redirect path. Do not rely on browser cookies having already flushed; otherwise the request can pair a new access token with an old refresh token and fail the backend refresh-token/session consistency check.
+
+## Q: How should mixed-token cross-domain auth regressions be tested?
+A: Add a source-level template test that creates a client app with a stale persistent token store, calls `_createCrossDomainAuthRedirectUrl` with `overrideTokenStoreInit`, and patches only `sendClientRequest` on the real client interface so session creation remains intact. The assertion should inspect the session passed to the interface and require the fresh refresh token, proving the cross-domain authorize request does not use stale persisted tokens.
+
+## Q: When should cross-domain auth call `captureError`?
+A: Do not call `captureError` for normal cross-domain auth failures such as stale/deleted cookies, untrusted redirect URLs, invalid or mismatched refresh tokens, missing handoff params, or interrupted auth flows. Reserve `captureError` for states that definitely imply a Stack developer mistake; ordinary auth failures should just return or throw their normal user-facing errors.
+
+## Q: How should the npm publish workflow create the post-publish dev version bump?
+A: The workflow needs a full checkout using the fine-grained `NPM_PUBLISH_VERSION_UPDATE_PR_PAT` secret. It then fetches `origin/dev`, checks out `dev`, creates a non-interactive patch changeset, runs `pnpm changeset version`, copies the generated `packages/template/package.json` version line back into `packages/template/package-template.json`, and commit/pushes `chore: update package versions`. Because direct pushes to `dev` are blocked by repository rules requiring PRs and the `all-good` status check, the PAT's owning user or bot account must be added to the ruleset bypass list with "Always allow" rather than "For pull requests only".
+
+## Q: How should the Mintlify docs homepage reuse the generated setup prompt?
+A: Import `generatedSetupPromptText` from `docs-mintlify/snippets/home-prompt-island.jsx` in `docs-mintlify/index.mdx`, render it directly in a `<pre><code>{generatedSetupPromptText}</code></pre>` block, and keep the home copy button wired to that imported value. Clipboard failures can happen when the browser document is not focused, so the button should surface the actual error text instead of only saying "Copy failed".
+
+## Q: Where should Mintlify docs for restricted users live?
+A: Put restricted-user docs at `docs-mintlify/guides/apps/authentication/restricted-users.mdx` and register the page in the Authentication group in `docs-mintlify/docs.json`. The page should cover `includeRestricted: true`, `user.isRestricted`, `user.restrictedReason`, anonymous users being restricted by definition, and JWKS `include_restricted=true` for services that intentionally accept restricted-user tokens.
+
+## Q: How should e2e tests switch to a newly created project?
+A: `Project.createAndSwitch` should leave `backendContext.projectKeys` set to real project API keys, not only `{ projectId, adminAccessToken }`. Internal admin access tokens are regular short-lived access tokens; keeping one in the default project context makes later server/admin requests fail with `ADMIN_ACCESS_TOKEN_EXPIRED` or validate the token against the wrong project.

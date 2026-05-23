@@ -20,4 +20,10 @@ const publish = spawnSync("pnpm", ["spacetime:publish:local"], {
   stdio: "inherit",
 });
 
-process.exit(publish.status ?? 1);
+if (publish.status !== 0) {
+  console.warn(
+    "\n[internal-tool] spacetime publish to local failed (is `spacetime start` running?). Skipping; starting Next anyway.\n",
+  );
+}
+
+process.exit(0);

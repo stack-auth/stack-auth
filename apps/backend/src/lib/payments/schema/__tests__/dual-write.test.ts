@@ -92,6 +92,7 @@ describe("conversion functions", () => {
       canceledAt: null,
       endedAt: null,
       refundedAt: null,
+      productRevokedAt: null,
       creationSource: "TEST_MODE",
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });
@@ -155,7 +156,7 @@ describe("setRow via dual-write conversion", () => {
       customerType: "USER",
       productId: "prod-1",
       priceId: "p1",
-      product: { displayName: "Plan A", customerType: "user", prices: "include-by-default", includedItems: {} },
+      product: { displayName: "Plan A", customerType: "user", prices: {}, includedItems: {} },
       quantity: 1,
       stripeSubscriptionId: null,
       status: "active",
@@ -165,6 +166,7 @@ describe("setRow via dual-write conversion", () => {
       canceledAt: null,
       endedAt: null,
       refundedAt: null,
+      productRevokedAt: null,
       creationSource: "TEST_MODE",
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });
@@ -187,7 +189,7 @@ describe("setRow via dual-write conversion", () => {
       customerType: "USER",
       productId: "prod-1",
       priceId: "p1",
-      product: { displayName: "Plan A", customerType: "user", prices: "include-by-default", includedItems: {} },
+      product: { displayName: "Plan A", customerType: "user", prices: {}, includedItems: {} },
       quantity: 1,
       stripeSubscriptionId: null,
       status: "active",
@@ -197,6 +199,7 @@ describe("setRow via dual-write conversion", () => {
       canceledAt: null,
       endedAt: null,
       refundedAt: null,
+      productRevokedAt: null,
       creationSource: "TEST_MODE",
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });
@@ -210,7 +213,7 @@ describe("setRow via dual-write conversion", () => {
       customerType: "USER",
       productId: "prod-1",
       priceId: "p1",
-      product: { displayName: "Plan A", customerType: "user", prices: "include-by-default", includedItems: {} },
+      product: { displayName: "Plan A", customerType: "user", prices: {}, includedItems: {} },
       quantity: 1,
       stripeSubscriptionId: null,
       status: "canceled",
@@ -220,6 +223,7 @@ describe("setRow via dual-write conversion", () => {
       canceledAt: new Date("2024-01-10T00:00:00Z"),
       endedAt: new Date("2024-01-15T00:00:00Z"),
       refundedAt: null,
+      productRevokedAt: null,
       creationSource: "TEST_MODE",
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });

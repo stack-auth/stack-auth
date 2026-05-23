@@ -93,6 +93,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   await Project.createAndSwitch({
     display_name: "Test Successful Email Project",
     config: {
+      credential_enabled: true,
       email_config: {
         type: "standard",
         host: "localhost",
@@ -104,7 +105,7 @@ it("unsubscribe link should not be sent for emails with transactional notificati
       },
     },
   });
-  const { userId } = await Auth.Password.signUpWithEmail();
+  const { userId } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   const response = await niceBackendFetch(
     "/api/v1/emails/send-email",
     {

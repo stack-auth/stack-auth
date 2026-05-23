@@ -310,7 +310,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ? Prisma.sql`WHERE "tenancyId" = ${tenancyId}::uuid`
     : Prisma.sql``;
 
-  const projectUserStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const projectUserStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -321,7 +321,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Project user stats query returned no rows.");
 
-  const contactChannelStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const contactChannelStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -332,7 +332,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Contact channel stats query returned no rows.");
 
-  const teamStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const teamStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -343,7 +343,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Team stats query returned no rows.");
 
-  const teamMemberStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const teamMemberStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -354,7 +354,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Team member stats query returned no rows.");
 
-  const teamPermissionStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const teamPermissionStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -365,7 +365,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Team permission stats query returned no rows.");
 
-  const teamInvitationStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const teamInvitationStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -378,7 +378,7 @@ async function fetchInternalStats(tenancyId: string | null) {
       : Prisma.sql`WHERE "type" = 'TEAM_INVITATION'`}
   `).at(0) ?? throwErr("Team invitation stats query returned no rows.");
 
-  const emailOutboxStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const emailOutboxStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -389,7 +389,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Email outbox stats query returned no rows.");
 
-  const projectPermissionStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const projectPermissionStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -400,7 +400,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Project permission stats query returned no rows.");
 
-  const notificationPreferenceStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const notificationPreferenceStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -411,7 +411,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Notification preference stats query returned no rows.");
 
-  const refreshTokenStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const refreshTokenStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -422,7 +422,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Refresh token stats query returned no rows.");
 
-  const connectedAccountStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const connectedAccountStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -433,7 +433,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Connected account stats query returned no rows.");
 
-  const deletedRowStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+  const deletedRowStatsRow = (await globalPrismaClient.$replica().$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
@@ -444,7 +444,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Deleted row stats query returned no rows.");
 
-  const deletedRowsByTableRows = await globalPrismaClient.$queryRaw<DeletedRowStatsRow[]>`
+  const deletedRowsByTableRows = await globalPrismaClient.$replica().$queryRaw<DeletedRowStatsRow[]>`
     SELECT
       "tableName" AS "table_name",
       COUNT(*)::bigint AS "total",
@@ -462,7 +462,7 @@ async function fetchInternalStats(tenancyId: string | null) {
     ? Prisma.sql`AND ("qstashOptions"->'body'->>'tenancyId') = ${tenancyId}`
     : Prisma.sql``;
 
-  const outgoingStatsRow = (await globalPrismaClient.$queryRaw<OutgoingStatsRow[]>`
+  const outgoingStatsRow = (await globalPrismaClient.$replica().$queryRaw<OutgoingStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
       COUNT(*) FILTER (WHERE "startedFulfillingAt" IS NULL)::bigint AS "pending",
@@ -1109,13 +1109,13 @@ export const GET = createSmartRouteHandler({
 
       const globalStats = shouldIncludeGlobal ? currentStats : null;
       const globalTenanciesCount = shouldIncludeGlobal
-        ? (await globalPrismaClient.$queryRaw<CountRow[]>`
+        ? (await globalPrismaClient.$replica().$queryRaw<CountRow[]>`
             SELECT COUNT(*)::bigint AS "total"
             FROM "Tenancy"
           `).at(0) ?? throwErr("Tenancy count query returned no rows.")
         : null;
       const globalDbSyncCount = shouldIncludeGlobal
-        ? (await globalPrismaClient.$queryRaw<CountRow[]>`
+        ? (await globalPrismaClient.$replica().$queryRaw<CountRow[]>`
             SELECT COUNT(*)::bigint AS "total"
             FROM "EnvironmentConfigOverride"
             WHERE ("config"->'dbSync'->'externalDatabases') IS NOT NULL

@@ -4,25 +4,25 @@ import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[pr
 import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
+import { createUnifiedAiTransport } from "@/components/assistant-ui/chat-stream";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import type { AppId } from "@/lib/apps-frontend";
-import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { useUpdateConfig } from "@/lib/config-update";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { FloppyDiskIcon } from "@phosphor-icons/react";
-import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useChat, type UIMessage } from "@ai-sdk/react";
-import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
-import { DashboardSandboxHost } from "./dashboard-sandbox-host";
+import { DashboardSandboxHost, stampEsmVersion } from "./dashboard-sandbox-host";
 import { StreamingCodeViewer } from "../../streaming-code-viewer";
+import packageJson from "../../../../package.json";
 
 type DashboardArtifact = {
   prompt: string,
@@ -88,7 +88,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
   const adminApp = useAdminApp(projectId);
   const project = adminApp.useProject();
   const config = project.useConfig();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
   const browserBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? backendBaseUrl;
   const updateConfig = useUpdateConfig();
@@ -118,15 +118,15 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
   const finalizedRef = useRef(false);
 
-  const transport = useMemo(() => new DefaultChatTransport({
-    api: `${browserBaseUrl}/api/latest/ai/query/stream`,
-    headers: () => buildStackAuthHeaders(currentUserRef.current),
-    prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
-      const modelMessages = await convertToModelMessages(uiMessages);
-      const userMessages = modelMessages.map(m => ({
-        role: m.role as string,
-        content: m.content as unknown,
-      }));
+  const transport = useMemo(() => createUnifiedAiTransport({
+    backendBaseUrl: browserBaseUrl,
+    currentUser: () => currentUserRef.current,
+    systemPrompt: "create-dashboard",
+    tools: ["update-dashboard"],
+    quality: "smart",
+    speed: "slow",
+    projectId: projectIdRef.current,
+    transformMessages: async (userMessages) => {
       const contextMessages = await buildDashboardMessages(
         backendBaseUrlRef.current,
         currentUserRef.current,
@@ -134,17 +134,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
         undefined,
         enabledAppIdsRef.current,
       );
-      return {
-        body: {
-          systemPrompt: "create-dashboard",
-          tools: ["update-dashboard"],
-          quality: "smart",
-          speed: "slow",
-          projectId: projectIdRef.current,
-          messages: [...contextMessages, ...userMessages],
-        },
-        headers,
-      };
+      return [...contextMessages, ...userMessages];
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [browserBaseUrl]);
@@ -176,18 +166,19 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     phase = "idle";
   }
 
-  const displayCode = toolPart?.code ?? "";
+  const displayCode = toolPart?.code ? stampEsmVersion(toolPart.code, packageJson.version) : "";
 
   if (toolPart?.state === "input-available" && !artifact && !finalizedRef.current) {
     finalizedRef.current = true;
     const sanitized = sanitizeGeneratedCode(toolPart.code);
+    const stamped = stampEsmVersion(sanitized, packageJson.version);
     setArtifact({
       prompt,
       projectId,
       runtimeCodegen: {
         title: prompt.slice(0, 120),
         description: "",
-        uiRuntimeSourceCode: sanitized,
+        uiRuntimeSourceCode: stamped,
       },
     });
     setIframeReady(false);
@@ -225,7 +216,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
   useDebouncedAction({
     action: generateDashboard,
-    delayMs: 500,
+    delayMs: 1000,
     skip: !projectId || !prompt,
   });
 

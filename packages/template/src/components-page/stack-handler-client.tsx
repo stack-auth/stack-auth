@@ -2,9 +2,13 @@
 
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined, filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+/* IF_PLATFORM react
+import { useRef } from 'react';
+// END_PLATFORM */
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
 import { HandlerUrls, StackClientApp, stackAppInternalsSymbol } from "../lib/stack-app";
@@ -22,9 +26,7 @@ import { PasswordReset } from "./password-reset";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
 
-/* IF_PLATFORM react
 import { MessageCard } from "../components/message-cards/message-card";
-// END_PLATFORM react */
 
 type Components = {
   SignIn: typeof SignIn,
@@ -86,16 +88,16 @@ function renderComponent(props: {
   searchParams: Record<string, string>,
   fullPage: boolean,
   componentProps?: BaseHandlerProps['componentProps'],
-  redirectIfNotHandler?: (name: keyof HandlerUrls) => void,
+  shouldRedirectToPage?: (name: keyof HandlerUrls) => boolean,
   getDefaultUnknownPathUrl?: (path: string) => string | null,
   onNotFound: () => any,
   app: StackClientApp<any> | StackServerApp<any>,
 }) {
-  const { path, searchParams, fullPage, componentProps, redirectIfNotHandler, getDefaultUnknownPathUrl, onNotFound, app } = props;
+  const { path, searchParams, fullPage, componentProps, shouldRedirectToPage, getDefaultUnknownPathUrl, onNotFound, app } = props;
 
   switch (path) {
     case availablePaths.signIn: {
-      redirectIfNotHandler?.('signIn');
+      if (shouldRedirectToPage?.('signIn')) return { redirectToPage: 'signIn' as const };
       return <SignIn
         fullPage={fullPage}
         automaticRedirect
@@ -103,7 +105,7 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.signUp: {
-      redirectIfNotHandler?.('signUp');
+      if (shouldRedirectToPage?.('signUp')) return { redirectToPage: 'signUp' as const };
       return <SignUp
         fullPage={fullPage}
         automaticRedirect
@@ -111,7 +113,7 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.emailVerification: {
-      redirectIfNotHandler?.('emailVerification');
+      if (shouldRedirectToPage?.('emailVerification')) return { redirectToPage: 'emailVerification' as const };
       return <EmailVerification
         searchParams={searchParams}
         fullPage={fullPage}
@@ -119,7 +121,7 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.passwordReset: {
-      redirectIfNotHandler?.('passwordReset');
+      if (shouldRedirectToPage?.('passwordReset')) return { redirectToPage: 'passwordReset' as const };
       return <PasswordReset
         searchParams={searchParams}
         fullPage={fullPage}
@@ -127,28 +129,28 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.forgotPassword: {
-      redirectIfNotHandler?.('forgotPassword');
+      if (shouldRedirectToPage?.('forgotPassword')) return { redirectToPage: 'forgotPassword' as const };
       return <ForgotPassword
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.ForgotPassword)}
       />;
     }
     case availablePaths.signOut: {
-      redirectIfNotHandler?.('signOut');
+      if (shouldRedirectToPage?.('signOut')) return { redirectToPage: 'signOut' as const };
       return <SignOut
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.SignOut)}
       />;
     }
     case availablePaths.oauthCallback: {
-      redirectIfNotHandler?.('oauthCallback');
+      if (shouldRedirectToPage?.('oauthCallback')) return { redirectToPage: 'oauthCallback' as const };
       return <OAuthCallback
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.OAuthCallback)}
       />;
     }
     case availablePaths.magicLinkCallback: {
-      redirectIfNotHandler?.('magicLinkCallback');
+      if (shouldRedirectToPage?.('magicLinkCallback')) return { redirectToPage: 'magicLinkCallback' as const };
       return <MagicLinkCallback
         searchParams={searchParams}
         fullPage={fullPage}
@@ -156,7 +158,7 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.teamInvitation: {
-      redirectIfNotHandler?.('teamInvitation');
+      if (shouldRedirectToPage?.('teamInvitation')) return { redirectToPage: 'teamInvitation' as const };
       return <TeamInvitation
         searchParams={searchParams}
         fullPage={fullPage}
@@ -177,20 +179,21 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.cliAuthConfirm: {
+      if (shouldRedirectToPage?.('cliAuthConfirm')) return { redirectToPage: 'cliAuthConfirm' as const };
       return <CliAuthConfirmation
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.CliAuthConfirmation)}
       />;
     }
     case availablePaths.mfa: {
-      redirectIfNotHandler?.('mfa');
+      if (shouldRedirectToPage?.('mfa')) return { redirectToPage: 'mfa' as const };
       return <MFA
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.MFA)}
       />;
     }
     case availablePaths.onboarding: {
-      redirectIfNotHandler?.('onboarding');
+      if (shouldRedirectToPage?.('onboarding')) return { redirectToPage: 'onboarding' as const };
       return <Onboarding
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.Onboarding)}
@@ -229,8 +232,12 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const currentLocation = pathname;
   const searchParamsSource = searchParamsFromHook;
   /* ELSE_IF_PLATFORM react
-  const currentLocation = props.location ?? window.location.pathname;
-  const searchParamsSource = new URLSearchParams(window.location.search);
+  const navigate = stackApp.useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const currentLocation = props.location ?? (typeof window === "undefined" ? new URL(stackApp.urls.handler, placeholderOrigin).pathname : window.location.pathname);
+  const searchParamsSource = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+  const redirectTargets: (string | undefined)[] = [];
   END_PLATFORM */
 
   const { path, searchParams, handlerPath } = useMemo(() => {
@@ -254,31 +261,17 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     });
   };
 
-  const redirectIfNotHandler = (name: keyof HandlerUrls) => {
+  const shouldRedirectToPage = (name: keyof HandlerUrls): boolean => {
     const url = stackApp.urls[name];
     const isCrossDomainLocalOauthCallback = name === "oauthCallback" && searchParams.stack_cross_domain_auth === "1";
     if (isCrossDomainLocalOauthCallback) {
-      return;
+      return false;
     }
-    const isLocalHandlerTarget = isLocalHandlerUrlTarget({
+    return !isLocalHandlerUrlTarget({
       targetUrl: url,
       handlerPath,
       currentOrigin: typeof window === "undefined" ? undefined : window.location.origin,
     });
-    if (isLocalHandlerTarget) {
-      return;
-    }
-
-    const urlObj = new URL(url, placeholderOrigin);
-    for (const [key, value] of Object.entries(searchParams)) {
-      urlObj.searchParams.set(key, value);
-    }
-
-    // IF_PLATFORM next
-    redirect(toAbsoluteOrRelativeRedirectTarget(urlObj), RedirectType.replace);
-    /* ELSE_IF_PLATFORM react
-    window.location.href = toAbsoluteOrRelativeRedirectTarget(urlObj);
-    END_PLATFORM */
   };
 
   const result = renderComponent({
@@ -286,7 +279,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     searchParams,
     fullPage: props.fullPage,
     componentProps: props.componentProps,
-    redirectIfNotHandler,
+    shouldRedirectToPage,
     getDefaultUnknownPathUrl,
     onNotFound: () =>
       // IF_PLATFORM next
@@ -307,14 +300,56 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     app: stackApp,
   });
 
+  const redirectToPage = (result != null && typeof result === 'object' && 'redirectToPage' in result) ? result.redirectToPage : undefined;
+
+  useEffect(() => {
+    if (redirectToPage == null) return;
+    runAsynchronouslyWithAlert(
+      stackApp[stackAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true })
+    );
+  }, [redirectToPage, stackApp]);
+
+  if (redirectToPage != null) {
+    return (
+      <MessageCard title="Redirecting..." fullPage={props.fullPage} />
+    );
+  }
+
   if (result && 'redirect' in result) {
     // IF_PLATFORM next
     redirect(result.redirect, RedirectType.replace);
     /* ELSE_IF_PLATFORM react
-    window.location.href = result.redirect;
-    return null;
+    redirectTargets.push(result.redirect);
     END_PLATFORM */
   }
+
+  /* IF_PLATFORM react
+  const redirectTarget = redirectTargets[0];
+  const shouldRenderRedirectFallback = redirectTarget != null && stackApp[stackAppInternalsSymbol].getRedirectMethod() === "none";
+  useEffect(() => {
+    if (redirectTarget == null || shouldRenderRedirectFallback) {
+      return;
+    }
+    navigateRef.current(redirectTarget);
+  }, [redirectTarget, shouldRenderRedirectFallback]);
+
+  if (redirectTarget != null && shouldRenderRedirectFallback) {
+    return (
+      <MessageCard
+        title="Continue"
+        fullPage={props.fullPage}
+        primaryButtonText="Continue"
+        primaryAction={() => window.location.assign(redirectTarget)}
+      >
+        Continue to the next page.
+      </MessageCard>
+    );
+  }
+
+  if (redirectTarget != null) {
+    return null;
+  }
+  END_PLATFORM */
 
   return result;
 }

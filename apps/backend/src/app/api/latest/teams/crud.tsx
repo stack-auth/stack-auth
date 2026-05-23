@@ -1,20 +1,21 @@
 import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamInvitationDeletionsForTeam, recordExternalDbSyncTeamMemberDeletionsForTeam, recordExternalDbSyncTeamPermissionDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { createFreePlanSubscriptionRow } from "@/lib/payments/ensure-free-plan";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, PurchaseCreationSource } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
-import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { addUserToTeam } from "../team-memberships/crud";
 
 
@@ -35,6 +36,11 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     user_id: userIdOrMeSchema.optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Filter for the teams that the user is a member of. Can be either `me` or an ID. Must be `me` in the client API', exampleValue: 'me' } }),
     /** @deprecated use creator_user_id in the body instead */
     add_current_user: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: ['Create'], hidden: true } }),
+    order_by: yupString().oneOf(["created_at"]).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Field to order results by. Currently only `created_at` is supported.', exampleValue: 'created_at' } }),
+    desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'Whether to order results in descending order. Defaults to false (ascending).', exampleValue: 'false' } }),
+    limit: yupNumber().integer().min(1).max(200).optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The maximum number of items to return (capped at 200).' } }),
+    cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: 'The cursor to start the result set from. Requires `limit` to also be set.' } }),
+    query: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "A search query to filter the results by. Free-text search applied to the team's id (exact-match) and display name." } }),
   }),
   paramsSchema: yupObject({
     team_id: yupString().uuid().defined(),
@@ -99,43 +105,33 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         });
       }
 
-      let freePlanSubscription = null;
-      if (auth.project.id === "internal") {
-        const freePlanProduct = auth.tenancy.config.payments.products.free;
-        if (freePlanProduct.customerType === "team" && freePlanProduct.productLineId != null) {
-          const prices = freePlanProduct.prices === "include-by-default" ? {} : freePlanProduct.prices;
-          const firstPriceEntry = typedEntries(prices)[0] as [string, Record<string, unknown>] | undefined;
-          const now = new Date();
-          const priceInterval = firstPriceEntry != null && "interval" in firstPriceEntry[1]
-            ? firstPriceEntry[1].interval as [number, "day" | "week" | "month" | "year"] | undefined
-            : undefined;
-          freePlanSubscription = await tx.subscription.create({
-            data: {
-              tenancyId: auth.tenancy.id,
-              customerId: db.teamId,
-              customerType: "TEAM",
-              status: "active",
-              productId: "free",
-              priceId: firstPriceEntry != null ? firstPriceEntry[0] : null,
-              product: freePlanProduct,
-              quantity: 1,
-              currentPeriodStart: now,
-              currentPeriodEnd: priceInterval != null ? addInterval(now, priceInterval) : new Date("2099-12-31T23:59:59Z"),
-              cancelAtPeriodEnd: false,
-              creationSource: "TEST_MODE",
-            },
-          });
-        }
-      }
+      // Grant the free plan to every new internal-project team in the same
+      // transaction as the team create, so either both commit or neither
+      // does. Bulldozer write runs after the tx (it issues its own
+      // BEGIN/COMMIT and can't nest); if that fails, the sub still exists
+      // in Prisma and will be reconciled on the next sync/webhook.
+      //
+      // Silently skip if the `free` product isn't configured (or isn't a
+      // team-typed product in a product line) — we don't want to block
+      // team creation for callers in non-internal projects or in test
+      // setups where the payments config may not be fully hydrated.
+      const freePlanProduct = getOrUndefined(auth.tenancy.config.payments.products, "free");
+      const shouldGrantFreePlan = auth.project.id === "internal"
+        && freePlanProduct != null
+        && freePlanProduct.customerType === "team"
+        && freePlanProduct.productLineId != null;
+      const freePlanSubscription = shouldGrantFreePlan
+        ? await createFreePlanSubscriptionRow({
+          prisma: tx,
+          internalTenancy: auth.tenancy,
+          billingTeamId: db.teamId,
+          creationSource: PurchaseCreationSource.API_GRANT,
+        })
+        : null;
 
       return { db, freePlanSubscription };
     });
 
-    // Bulldozer write must happen outside retryTransaction because it issues its
-    // own BEGIN/COMMIT (for the advisory lock + sort helpers). If this fails after
-    // the Prisma transaction committed, the subscription exists in Prisma but not
-    // in Bulldozer — same trade-off as all other dual-write call sites. The next
-    // sync or webhook will reconcile.
     if (freePlanSubscription != null) {
       await bulldozerWriteSubscription(prisma, freePlanSubscription);
     }
@@ -283,7 +279,28 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       }
     }
 
+    if (query.cursor && !query.limit) {
+      throw new StatusError(StatusError.BadRequest, "`cursor` requires `limit` to also be set.");
+    }
+
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const sortDirection = query.desc === 'true' ? 'desc' : 'asc';
+
+    let queryFilter: Prisma.TeamWhereInput | undefined;
+    if (query.query) {
+      queryFilter = {
+        OR: [
+          ...isUuid(query.query) ? [{ teamId: { equals: query.query } }] : [],
+          {
+            displayName: {
+              contains: query.query,
+              mode: 'insensitive' as const,
+            },
+          },
+        ],
+      };
+    }
+
     const db = await prisma.team.findMany({
       where: {
         tenancyId: auth.tenancy.id,
@@ -294,11 +311,35 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
             },
           },
         } : {},
+        ...queryFilter ?? {},
       },
-      orderBy: {
-        createdAt: 'asc',
-      },
+      orderBy: [
+        { createdAt: sortDirection },
+        { teamId: sortDirection },
+      ],
+      take: query.limit ? query.limit + 1 : undefined,
+      ...query.cursor ? {
+        skip: 1,
+        cursor: {
+          tenancyId_teamId: {
+            tenancyId: auth.tenancy.id,
+            teamId: query.cursor,
+          },
+        },
+      } : {},
     });
+
+    if (query.limit) {
+      const items = db.slice(0, query.limit).map(teamPrismaToCrud);
+      const hasMore = db.length > query.limit;
+      return {
+        items,
+        is_paginated: true,
+        pagination: {
+          next_cursor: hasMore && items.length > 0 ? items[items.length - 1].id : null,
+        },
+      };
+    }
 
     return {
       items: db.map(teamPrismaToCrud),

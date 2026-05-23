@@ -5,7 +5,8 @@ import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
-import type { MetricsResponse } from "./admin-metrics";
+import { urlString } from "../utils/urls";
+import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -13,6 +14,7 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import type {
+  AdminGetSessionReplayResponse,
   AdminGetSessionReplayAllEventsResponse,
   AdminGetSessionReplayChunkEventsResponse,
   AdminListSessionReplayChunksOptions,
@@ -236,6 +238,21 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
+  async listTeamPermissionDefinitionsPaginated(
+    options: { limit: number, cursor?: string, query?: string },
+  ): Promise<{ items: TeamPermissionDefinitionsCrud['Admin']['Read'][], nextCursor: string | null }> {
+    const params = new URLSearchParams();
+    params.set("limit", String(options.limit));
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.query) params.set("query", options.query);
+    const response = await this.sendAdminRequest(`/team-permission-definitions?${params.toString()}`, {}, null);
+    const result = await response.json() as TeamPermissionDefinitionsCrud['Admin']['List'];
+    return {
+      items: result.items,
+      nextCursor: result.pagination?.next_cursor ?? null,
+    };
+  }
+
   async createTeamPermissionDefinition(data: TeamPermissionDefinitionsCrud['Admin']['Create']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
     const response = await this.sendAdminRequest(
       "/team-permission-definitions",
@@ -359,6 +376,28 @@ export class StackAdminInterface extends StackServerInterface {
     return (await response.json()) as MetricsResponse;
   }
 
+  async getUserActivity(userId: string): Promise<UserActivityResponse> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/user-activity?user_id=${userId}`,
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return (await response.json()) as UserActivityResponse;
+  }
+
+  async getMetricsUserCounts(): Promise<MetricsUserCounts> {
+    const response = await this.sendAdminRequest(
+      "/internal/metrics/user-counts",
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return (await response.json()) as MetricsUserCounts;
+  }
+
   async sendTestEmail(data: {
     recipient_email: string,
     email_config: {
@@ -446,6 +485,19 @@ export class StackAdminInterface extends StackServerInterface {
     }> {
     const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/list", {
       method: "GET",
+    }, null);
+    return await response.json();
+  }
+
+  async deleteManagedEmailDomain(data: {
+    resend_domain_id: string,
+  }): Promise<{ status: "deleted" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
     }, null);
     return await response.json();
   }
@@ -790,12 +842,13 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set('cursor', params.cursor);
     if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
     if (params?.type) qs.set('type', params.type);
     if (params?.customerType) qs.set('customer_type', params.customerType);
+    if (params?.customerId) qs.set('customer_id', params.customerId);
     const response = await this.sendAdminRequest(
       `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
       { method: 'GET' },
@@ -818,6 +871,15 @@ export class StackAdminInterface extends StackServerInterface {
     if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
     const response = await this.sendAdminRequest(
       `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplay(sessionReplayId: string): Promise<AdminGetSessionReplayResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}`,
       { method: "GET" },
       null,
     );
@@ -860,8 +922,18 @@ export class StackAdminInterface extends StackServerInterface {
   async refundTransaction(options: {
     type: "subscription" | "one-time-purchase",
     id: string,
-    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-  }): Promise<{ success: boolean }> {
+    invoiceId?: string,
+    amountUsd: MoneyAmount,
+    /**
+     * Lifecycle action for the source purchase:
+     *   "now"           — end product access immediately (revokes product,
+     *                     expires item grants, cancels Stripe sub if any).
+     *   "at-period-end" — schedule sub cancel-at-period-end; subscriptions
+     *                     only — rejected for one-time purchases.
+     *   undefined       — no lifecycle change; refund money only.
+     */
+    endAction?: "now" | "at-period-end",
+  }): Promise<{ success: boolean, refundTransactionId: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
       {
@@ -872,16 +944,15 @@ export class StackAdminInterface extends StackServerInterface {
         body: JSON.stringify({
           type: options.type,
           id: options.id,
-          refund_entries: options.refundEntries.map((entry) => ({
-            entry_index: entry.entryIndex,
-            quantity: entry.quantity,
-            amount_usd: entry.amountUsd,
-          })),
+          ...(options.invoiceId !== undefined ? { invoice_id: options.invoiceId } : {}),
+          amount_usd: options.amountUsd,
+          ...(options.endAction !== undefined ? { end_action: options.endAction } : {}),
         }),
       },
       null,
     );
-    return await response.json();
+    const json = await response.json();
+    return { success: json.success, refundTransactionId: json.refund_transaction_id };
   }
 
 

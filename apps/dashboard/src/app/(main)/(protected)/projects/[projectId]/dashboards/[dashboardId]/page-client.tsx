@@ -1,7 +1,8 @@
 
 "use client";
 
-import { DashboardSandboxHost, type DashboardRuntimeError, type WidgetSelection } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
+import { DashboardSandboxHost, stampEsmVersion, type DashboardRuntimeError, type WidgetSelection } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
+import packageJson from "../../../../../../../../package.json";
 import { useRouter, useRouterConfirm } from "@/components/router";
 import { StreamingCodeViewer } from "@/components/streaming-code-viewer";
 import { ActionDialog, Button, Typography, useToast } from "@/components/ui";
@@ -15,6 +16,7 @@ import {
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { useUpdateConfig } from "@/lib/config-update";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { cn } from "@/lib/utils";
 import {
   ChatCircleIcon,
@@ -29,7 +31,6 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import type { AppId } from "@/lib/apps-frontend";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { getPublicEnvVar } from "@/lib/env";
-import { useUser } from "@stackframe/stack";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
@@ -46,7 +47,7 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const projectId = useProjectId();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
@@ -117,7 +118,7 @@ function DashboardDetailContent({
   adminApp: ReturnType<typeof useAdminApp>,
   updateConfig: ReturnType<typeof useUpdateConfig>,
   router: ReturnType<typeof useRouter>,
-  currentUser: NonNullable<ReturnType<typeof useUser>>,
+  currentUser: ReturnType<typeof useDashboardUser>,
   backendBaseUrl: string,
   enabledAppIds: AppId[],
 }) {
@@ -239,8 +240,9 @@ function DashboardDetailContent({
 
   const handleCodeUpdate = useCallback((toolCall: ToolCallContent) => {
     if (typeof toolCall.args.content === "string") {
-      setPendingCode(toolCall.args.content);
-      setCurrentTsxSource(toolCall.args.content);
+      const stamped = stampEsmVersion(toolCall.args.content, packageJson.version);
+      setPendingCode(stamped);
+      setCurrentTsxSource(stamped);
       clearTimeout(codePhaseTimerRef.current);
       setCodePhase("typing");
       codePhaseTimerRef.current = setTimeout(() => {
@@ -391,7 +393,7 @@ function DashboardDetailContent({
     <PageLayout fillWidth noPadding>
       {/* Both panels are always in the DOM so the iframe never unmounts/reloads.
           The chat panel animates its width; the dashboard panel adjusts via flex-1. */}
-      <div data-full-bleed className="flex h-full">
+      <div data-full-bleed className="flex h-[calc(100vh-4.5rem)] dark:h-[calc(100vh-5.75rem)]">
         {/* Dashboard iframe panel */}
         <div
           className={cn(
@@ -450,7 +452,7 @@ function DashboardDetailContent({
                 <AssistantChat
                   chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, enabledAppIds, projectId, handleRunStart, handleRunEnd)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
-                  toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} currentCode={currentTsxSource} />}
+                  toolComponents={<DashboardToolUI setCurrentCode={(code) => setCurrentTsxSource(stampEsmVersion(code, packageJson.version))} currentCode={currentTsxSource} />}
                   useOffWhiteLightMode
                   composerPlaceholder={currentHasSource ? undefined : DASHBOARD_COMPOSER_PLACEHOLDER}
                   runningStatusMessages={!isCreating ? UPDATE_STATUS_MESSAGES : undefined}

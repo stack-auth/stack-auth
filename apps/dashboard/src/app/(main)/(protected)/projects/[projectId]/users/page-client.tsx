@@ -5,7 +5,7 @@ import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { useMetricsUserCountsOrThrow } from "@/lib/stack-app-internals";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
@@ -13,6 +13,7 @@ import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { UsersKpiCards } from "./users-kpi-cards";
 
 const capturedUsersMetricsErrors = new WeakSet<Error>();
 
@@ -26,14 +27,14 @@ function captureUsersMetricsErrorOnce(error: Error) {
 
 function TotalUsersDisplay() {
   const stackAdminApp = useAdminApp();
-  const metrics = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(false);
-  const metricsIncludingAnonymous = (stackAdminApp as any)[stackAppInternalsSymbol].useMetrics(true);
+  const metrics = useMetricsUserCountsOrThrow(stackAdminApp);
 
-  const anonymousUsersCount = metricsIncludingAnonymous.total_users - metrics.total_users;
+  const anonymousUsersCount = metrics.anonymous_users;
+  const nonAnonymousUsersCount = metrics.total_users - anonymousUsersCount;
 
   return (
     <>
-      {metrics.total_users}
+      {nonAnonymousUsersCount}
       {anonymousUsersCount > 0 ? (
         <>
           {" "}(+ {anonymousUsersCount}{" "}
@@ -57,7 +58,7 @@ function TotalUsersErrorComponent(props: { error: Error }) {
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const firstUser = (stackAdminApp as any).useUsers({ limit: 1 });
+  const firstUserPage = stackAdminApp.useUsers({ limit: 1 });
   const [exportOptions, setExportOptions] = useState<{
     search?: string,
     includeRestricted: boolean,
@@ -106,11 +107,13 @@ export default function PageClient() {
           </div>
         }
       >
-        {firstUser.length > 0 ? null : (
+        {firstUserPage.length > 0 ? null : (
           <Alert variant='success'>
             Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
           </Alert>
         )}
+
+        <UsersKpiCards />
 
         <div data-walkthrough="users-table">
           <UserTable key={refreshKey} onFilterChange={setExportOptions} />

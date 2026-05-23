@@ -3,7 +3,8 @@ import { KnownErrors } from "./known-errors";
 import { isBase64 } from "./utils/bytes";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./utils/currency-constants";
 import type { DayInterval, Interval } from "./utils/dates";
-import { StackAssertionError, throwErr } from "./utils/errors";
+import { getProcessEnv } from "./utils/env";
+import { StackAssertionError } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
@@ -654,12 +655,9 @@ export const productPriceSchema = yupObject({
   serverOnly: yupBoolean(),
   freeTrial: dayIntervalSchema.optional(),
 }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
-export const priceOrIncludeByDefaultSchema = yupUnion(
-  yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
-  yupRecord(
-    userSpecifiedIdSchema("priceId"),
-    productPriceSchema,
-  ),
+export const pricesSchema = yupRecord(
+  userSpecifiedIdSchema("priceId"),
+  productPriceSchema,
 );
 export const productSchema = yupObject({
   displayName: yupString(),
@@ -675,7 +673,7 @@ export const productSchema = yupObject({
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   stackable: yupBoolean(),
-  prices: priceOrIncludeByDefaultSchema.defined(),
+  prices: pricesSchema.defined(),
   includedItems: yupRecord(
     userSpecifiedIdSchema("itemId"),
     yupObject({
@@ -878,11 +876,16 @@ export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authori
 // Neon integration
 export const neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test('is-authorization-header', 'Invalid client_id:client_secret values; did you use the correct values for the integration?', (value) => {
   if (!value) return true;
-  const [clientId, clientSecret] = decodeBasicAuthorizationHeader(value) ?? throwErr(`Authz header invalid? This should've been validated by basicAuthorizationHeaderSchema: ${value}`);
-  for (const neonClientConfig of JSON.parse(process.env.STACK_INTEGRATION_CLIENTS_CONFIG || '[]')) {
+  const decoded = decodeBasicAuthorizationHeader(value);
+  if (decoded === null) return true;
+  const [clientId, clientSecret] = decoded;
+  for (const neonClientConfig of JSON.parse(getProcessEnv("STACK_INTEGRATION_CLIENTS_CONFIG") || '[]')) {
     if (clientId === neonClientConfig.client_id && clientSecret === neonClientConfig.client_secret) return true;
   }
   return false;
+});
+import.meta.vitest?.test("neonAuthorizationHeaderSchema handles malformed Basic auth as a validation error", async ({ expect }) => {
+  await expect(neonAuthorizationHeaderSchema.validate("Basic", { abortEarly: false })).rejects.toThrow('Authorization header must be in the format "Basic <base64>"');
 });
 
 // Utils
@@ -918,6 +921,7 @@ export const branchConfigSourceSchema = yupUnion(
     branch: yupString().defined(),
     commit_hash: yupString().defined(),
     config_file_path: yupString().defined(),
+    workflow_path: yupString().optional(),
   }),
   yupObject({
     type: yupString().oneOf(["pushed-from-unknown"]).defined(),

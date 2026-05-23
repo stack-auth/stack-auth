@@ -1,4 +1,5 @@
 import { CrudTypeOf, createCrud } from "../../crud";
+import { ALL_APPS } from "../../apps/apps-config";
 import * as schemaFields from "../../schema-fields";
 import { yupArray, yupObject, yupString } from "../../schema-fields";
 
@@ -29,6 +30,18 @@ const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_
 
 const enabledOAuthProviderSchema = yupObject({
   id: schemaFields.oauthIdSchema.defined(),
+});
+
+const onboardingConfigChoiceValues = ["create-new", "link-existing"] as const;
+const onboardingSignInMethodValues = ["credential", "magicLink", "passkey", "google", "github", "microsoft"] as const;
+const onboardingPaymentsCountryValues = ["US", "OTHER"] as const;
+
+const projectOnboardingStateSchema = yupObject({
+  selected_config_choice: yupString().oneOf(onboardingConfigChoiceValues).defined(),
+  selected_apps: yupArray(yupString().oneOf(Object.keys(ALL_APPS)).defined()).defined(),
+  selected_sign_in_methods: yupArray(yupString().oneOf(onboardingSignInMethodValues).defined()).defined(),
+  selected_email_theme_id: schemaFields.emailThemeSchema.nullable().defined(),
+  selected_payments_country: yupString().oneOf(onboardingPaymentsCountryValues).defined(),
 });
 
 export const emailConfigSchema = yupObject({
@@ -72,8 +85,10 @@ export const projectsCrudAdminReadSchema = yupObject({
   logo_full_dark_mode_url: schemaFields.projectLogoFullDarkModeUrlSchema.nullable().optional(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
+  is_development_environment: schemaFields.yupBoolean().defined(),
   owner_team_id: schemaFields.yupString().nullable().defined(),
   onboarding_status: schemaFields.projectOnboardingStatusSchema.defined(),
+  onboarding_state: projectOnboardingStateSchema.nullable().optional(),
   /** @deprecated */
   config: yupObject({
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
@@ -109,6 +124,7 @@ export const projectsCrudClientReadSchema = yupObject({
     passkey_enabled: schemaFields.projectPasskeyEnabledSchema.defined(),
     client_team_creation_enabled: schemaFields.projectClientTeamCreationEnabledSchema.defined(),
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
+    allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
@@ -126,6 +142,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
   logo_full_dark_mode_url: schemaFields.projectLogoFullDarkModeUrlSchema.nullable().optional(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.optional(),
   onboarding_status: schemaFields.projectOnboardingStatusSchema.optional(),
+  onboarding_state: projectOnboardingStateSchema.nullable().optional(),
   /** @deprecated */
   config: yupObject({
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.optional(),
@@ -152,6 +169,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
 
 export const projectsCrudAdminCreateSchema = projectsCrudAdminUpdateSchema.concat(yupObject({
   display_name: schemaFields.projectDisplayNameSchema.defined(),
+  is_development_environment: schemaFields.yupBoolean().optional(),
   owner_team_id: schemaFields.yupString().uuid().defined(),
 }).defined());
 

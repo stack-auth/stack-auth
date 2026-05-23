@@ -1,6 +1,10 @@
 "use client";
 
 import {
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  createDefaultDataGridState,
   DesignAlert,
   DesignBadge,
   type DesignBadgeColor,
@@ -8,11 +12,12 @@ import {
   DesignCard,
   DesignCardTint,
   DesignCategoryTabs,
+  DesignDialog,
+  DesignDialogClose,
   DesignInput,
   DesignPillToggle,
-} from "@stackframe/dashboard-ui-components";
+} from "@/components/design-components";
 import {
-  DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
   DesignListItemRow,
@@ -23,20 +28,23 @@ import {
 import { Link } from "@/components/link";
 import {
   Button,
-  DataTableColumnHeader,
   Typography,
   cn,
 } from "@/components/ui";
 import {
+  BrowsersIcon,
   CheckCircle,
   Cube,
   DotsThree,
   Envelope,
   FileText,
+  FlaskIcon,
   HardDrive,
+  InfoIcon,
   MagnifyingGlassIcon,
   Palette,
   PencilSimple,
+  PulseIcon,
   Sliders,
   SquaresFourIcon,
   StackSimple,
@@ -45,7 +53,6 @@ import {
   WarningCircle,
   XCircle
 } from "@phosphor-icons/react";
-import { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import {
   TimeRange,
@@ -61,13 +68,15 @@ function ComponentDemo({
   title,
   description,
   children,
+  className,
 }: {
   title: string,
   description?: string,
   children: React.ReactNode,
+  className?: string,
 }) {
   return (
-    <div className="space-y-4">
+    <div className={cn("space-y-4", className)}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <Typography type="h3" className="text-lg font-semibold">{title}</Typography>
@@ -278,47 +287,64 @@ export default function PageClient() {
     { id: "em_04", recipient: "team@stack.dev", subject: "Invite to Stack Auth", sentAt: 1725739200000, status: "sent" },
   ];
 
-  const demoTableColumns = useMemo<ColumnDef<DemoEmailRow>[]>(() => [
+  const demoTableColumns = useMemo<DataGridColumnDef<DemoEmailRow>[]>(() => [
     {
-      accessorKey: "recipient",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Recipient" />,
-      cell: ({ row }) => (
+      id: "recipient",
+      header: "Recipient",
+      accessor: "recipient",
+      width: 200,
+      type: "string",
+      renderCell: ({ value }) => (
         <span className="text-sm font-medium text-foreground">
-          {row.getValue("recipient")}
+          {String(value)}
         </span>
       ),
     },
     {
-      accessorKey: "subject",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Subject" />,
-      cell: ({ row }) => (
+      id: "subject",
+      header: "Subject",
+      accessor: "subject",
+      width: 220,
+      type: "string",
+      renderCell: ({ value }) => (
         <span className="text-sm text-muted-foreground">
-          {row.getValue("subject")}
+          {String(value)}
         </span>
       ),
     },
     {
-      accessorKey: "sentAt",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Sent At" />,
-      cell: ({ row }) => {
-        const value = row.getValue("sentAt") as number;
-        return (
-          <span className="text-xs text-muted-foreground">
-            {demoDateFormatter.format(new Date(value))}
-          </span>
-        );
-      },
+      id: "sentAt",
+      header: "Sent At",
+      accessor: "sentAt",
+      width: 140,
+      type: "number",
+      renderCell: ({ value }) => (
+        <span className="text-xs text-muted-foreground">
+          {demoDateFormatter.format(new Date(Number(value)))}
+        </span>
+      ),
     },
     {
-      accessorKey: "status",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-      cell: ({ row }) => {
-        const status = row.getValue("status") as DemoEmailRow["status"];
+      id: "status",
+      header: "Status",
+      accessor: "status",
+      width: 120,
+      type: "singleSelect",
+      valueOptions: [
+        { value: "sent", label: "Sent" },
+        { value: "failed", label: "Failed" },
+        { value: "scheduled", label: "Scheduled" },
+      ],
+      renderCell: ({ value }) => {
+        const status = String(value) as DemoEmailRow["status"];
         const config = DEMO_STATUS_MAP[status];
         return <DesignBadge label={config.label} color={config.color} size="sm" />;
       },
     },
   ], [demoDateFormatter]);
+
+  const [dtState, setDtState] = useState(() => createDefaultDataGridState(demoTableColumns));
+  const dtData = useDataSource({ data: demoEmailRows, columns: demoTableColumns, getRowId: (r: DemoEmailRow) => r.id, sorting: dtState.sorting, quickSearch: dtState.quickSearch, pagination: dtState.pagination, paginationMode: "client" });
 
   const editableGridItems = useMemo<DesignEditableGridItem[]>(() => [
     {
@@ -1048,11 +1074,16 @@ export default function PageClient() {
               title="Email Log"
               subtitle="Recent delivery activity with quick filters"
             >
-              <DesignDataTable
-                data={demoEmailRows}
+              <DataGrid
                 columns={demoTableColumns}
-                defaultColumnFilters={[]}
-                defaultSorting={[{ id: "sentAt", desc: true }]}
+                rows={dtData.rows}
+                getRowId={(row) => row.id}
+                totalRowCount={dtData.totalRowCount}
+                isLoading={dtData.isLoading}
+                state={dtState}
+                onChange={setDtState}
+                toolbar={false}
+                maxHeight={300}
               />
             </DesignCard>
           </ComponentDemo>
@@ -1060,16 +1091,188 @@ export default function PageClient() {
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "title", type: "string", description: "Optional table card header title." },
-              { name: "subtitle", type: "string", description: "Optional supporting text below the header title." },
-              { name: "icon", type: "ReactElement", description: "Optional header icon shown before the title." },
-              { name: "columns", type: "ColumnDef[]", description: "Column definitions for headers and cells." },
-              { name: "data", type: "Array<Record<string, unknown>>", description: "Row data to render in the table." },
-              { name: "defaultColumnFilters", type: "ColumnFiltersState", default: "[]", description: "Initial filter state for table columns." },
-              { name: "defaultSorting", type: "SortingState", description: "Initial sort order for the table." },
-              { name: "showDefaultToolbar", type: "boolean", default: "false", description: "Toggle the built-in toolbar controls." },
-              { name: "viewOptions", type: "boolean", default: "false", description: "Use DataTableViewOptions for column toggles." },
-              { name: "onRowClick", type: "(row) => void", description: "Optional row click handler for navigation." },
+              { name: "columns", type: "DataGridColumnDef[]", description: "Column definitions with id, header, accessor, type, and optional renderCell." },
+              { name: "rows", type: "TRow[]", description: "Row data array returned from useDataSource." },
+              { name: "getRowId", type: "(row) => string", description: "Function to derive a unique row identifier." },
+              { name: "state", type: "DataGridState", description: "Controlled grid state (sorting, pagination, search, visibility)." },
+              { name: "onChange", type: "Dispatch<SetStateAction<DataGridState>>", description: "State setter for the controlled grid state." },
+              { name: "totalRowCount", type: "number", description: "Total number of rows for pagination display." },
+              { name: "isLoading", type: "boolean", default: "false", description: "Shows a loading indicator while data is being fetched." },
+              { name: "toolbar", type: "boolean | false", default: "undefined", description: "Set to false to hide the built-in toolbar." },
+              { name: "onRowClick", type: "(row, rowId, event) => void", description: "Optional row click handler for navigation." },
+              { name: "maxHeight", type: "number", description: "Maximum height in pixels for the grid container." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* DIALOG COMPONENT */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="dialog"
+          icon={BrowsersIcon}
+          title="Dialog"
+          description="Use the standard glassmorphic modal for any focus-trapping modal in the dashboard. Supports header/body/footer regions, an icon chip, and an optional rich header card."
+        >
+          <ComponentDemo
+            title="Confirmation dialog"
+            description="The most common shape: icon chip, title, description, body content, and a single secondary close action."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="md"
+                trigger={<DesignButton size="sm">Open confirmation</DesignButton>}
+                icon={InfoIcon}
+                title="Heads up"
+                description="This is a lightweight confirmation modal."
+                footer={
+                  <DesignDialogClose asChild>
+                    <DesignButton variant="secondary" size="sm">Close</DesignButton>
+                  </DesignDialogClose>
+                }
+              >
+                <Typography className="text-sm">
+                  Body content lives in the scrollable region between the header and the
+                  footer. Use it for short messages, inline forms, or detail views.
+                </Typography>
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Rich header with summary card"
+            description="Mirrors the rule trigger history dialog: an icon chip, title, description, and an embedded summary card rendered via headerContent."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="2xl"
+                trigger={<DesignButton variant="secondary" size="sm">Open trigger history</DesignButton>}
+                icon={PulseIcon}
+                title="Rule trigger history"
+                description="3 total triggers for this rule"
+                headerContent={
+                  <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Typography className="text-sm font-semibold truncate flex-1 min-w-0">
+                        Allow @stack.dev signups
+                      </Typography>
+                      <DesignBadge label="Allow" color="green" size="sm" />
+                      <DesignBadge label="Enabled" color="green" size="sm" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+                        <Typography variant="secondary" className="text-[10px] uppercase tracking-wider">Last 24h</Typography>
+                        <Typography className="text-sm font-semibold tabular-nums">12</Typography>
+                      </div>
+                      <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+                        <Typography variant="secondary" className="text-[10px] uppercase tracking-wider">All-time</Typography>
+                        <Typography className="text-sm font-semibold tabular-nums">3</Typography>
+                      </div>
+                      <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2 flex items-center justify-center">
+                        <Typography variant="secondary" className="text-[10px]">sparkline goes here</Typography>
+                      </div>
+                    </div>
+                  </div>
+                }
+                footer={
+                  <DesignDialogClose asChild>
+                    <DesignButton variant="secondary" size="sm">Close</DesignButton>
+                  </DesignDialogClose>
+                }
+              >
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent triggers</span>
+                <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 divide-y divide-foreground/[0.06]">
+                  {["jordan@stack.dev", "ops@stack.dev", "pat@stack.dev"].map((email) => (
+                    <div key={email} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                      <span className="truncate">{email}</span>
+                      <DesignBadge label="2m ago" color="blue" size="sm" />
+                    </div>
+                  ))}
+                </div>
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Wide tester / form modal"
+            description="Use a larger size for forms and tester surfaces. Combine with primary + secondary footer actions."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="5xl"
+                trigger={<DesignButton size="sm">Open tester</DesignButton>}
+                icon={FlaskIcon}
+                title="Test sign-up rules"
+                description="Simulate a sign-up request to see which rules trigger."
+                footer={
+                  <>
+                    <DesignDialogClose asChild>
+                      <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
+                    </DesignDialogClose>
+                    <DesignButton size="sm">Run test</DesignButton>
+                  </>
+                }
+              >
+                <DesignAlert
+                  variant="info"
+                  description="In a real tester this body holds the form. The dialog itself simply provides the surface, structure, and a11y."
+                />
+                <DesignCard>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <DesignInput placeholder="Email" />
+                    <DesignInput placeholder="Country (e.g. US)" />
+                  </div>
+                </DesignCard>
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Sign-up rules shell parity"
+            description="Use region-level class overrides when migrating existing hand-built dialogs and preserving exact shell spacing."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="2xl"
+                trigger={<DesignButton variant="secondary" size="sm">Open parity shell</DesignButton>}
+                icon={PulseIcon}
+                title="Rule trigger history"
+                description="0 total triggers for this rule"
+                overlayClassName="bg-black/50 backdrop-blur-sm"
+                headerClassName="px-6 pt-6 pb-4 border-b border-foreground/[0.06]"
+                bodyClassName="mx-0 my-0 w-auto px-6 py-4"
+                footerClassName="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]"
+                footer={
+                  <DesignDialogClose asChild>
+                    <DesignButton variant="secondary" size="sm">Close</DesignButton>
+                  </DesignDialogClose>
+                }
+              >
+                <DesignAlert
+                  variant="info"
+                  description="This preset mirrors the shell used by the sign-up rules trigger-history and tester dialogs."
+                />
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "trigger", type: "ReactElement", description: "Element wrapped in a DialogTrigger. Optional when controlling externally via open/onOpenChange." },
+              { name: "open / onOpenChange / defaultOpen", type: "boolean / fn / boolean", description: "Standard controlled or uncontrolled state for the dialog." },
+              { name: "size", type: "'sm' | 'md' | 'lg' | 'xl' | '2xl' | ... | '7xl' | 'full'", default: "'lg'", description: "Width preset for the modal surface." },
+              { name: "variant", type: "'glassmorphic' | 'plain'", default: "'glassmorphic'", description: "Visual style for the surface and overlay." },
+              { name: "icon", type: "ElementType | null", description: "Icon component for the header chip. Pass null to skip the chip." },
+              { name: "title / description", type: "ReactNode", description: "Standard header text. `title` is wired into DialogTitle for a11y." },
+              { name: "headerContent", type: "ReactNode", description: "Rich content rendered below the icon/title block (summary cards, badges, etc)." },
+              { name: "customHeader", type: "ReactNode", description: "Override the entire header. You become responsible for rendering DialogTitle." },
+              { name: "footer", type: "ReactNode", description: "Footer node. Renders in a styled bottom bar. Wrap close buttons in DesignDialogClose asChild." },
+              { name: "noBodyPadding", type: "boolean", default: "false", description: "Disable the default px-6 py-4 padding for full-bleed content." },
+              { name: "hideTopCloseButton", type: "boolean", default: "false", description: "Hide the top-right close button rendered by DialogContent." },
+              { name: "className", type: "string", description: "Extra classes for the modal surface container." },
+              { name: "overlayClassName", type: "string", description: "Overlay classes, useful for custom backdrop opacity/blur." },
+              { name: "headerClassName / bodyClassName / footerClassName", type: "string", description: "Region-specific class overrides for exact parity migrations." },
             ]} />
           </div>
         </DesignSection>
@@ -1096,6 +1299,25 @@ export default function PageClient() {
             />
           </ComponentDemo>
 
+          <ComponentDemo
+            title="Category tabs with trailing slot"
+            description="Use `trailing` for actions that live in the tab bar but are not a tab (e.g. “Install apps”)."
+            className="pt-6"
+          >
+            <DesignCategoryTabs
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onSelect={setSelectedCategory}
+              glassmorphic={false}
+              gradient="blue"
+              trailing={(
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+                  + Example action
+                </span>
+              )}
+            />
+          </ComponentDemo>
+
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
@@ -1106,6 +1328,7 @@ export default function PageClient() {
               { name: "size", type: "'sm' | 'md'", default: "'sm'", description: "Controls padding and density." },
               { name: "glassmorphic", type: "boolean", default: "false", description: "Enable when tabs are on glass surfaces." },
               { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
+              { name: "trailing", type: "ReactNode", description: "Renders at the end of the tab bar, after all tab buttons (not a tab)." },
             ]} />
           </div>
         </DesignSection>

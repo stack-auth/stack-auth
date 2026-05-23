@@ -1,8 +1,48 @@
 import { describe, expect, it } from 'vitest';
-import { isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
+import { getOAuthRedirectUrisForTenancy, validateRedirectHostname, isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
 
 describe('validateRedirectUrl', () => {
+  const withHostedHandlerEnv = <T,>(
+    values: {
+      hostedHandlerUrlTemplate?: string,
+      hostedHandlerDomainSuffix?: string,
+      stackPortPrefix?: string,
+    },
+    callback: () => T,
+  ): T => {
+    const processEnv = Reflect.get(process, "env");
+    const oldHostedHandlerUrlTemplate = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE");
+    const oldHostedHandlerDomainSuffix = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX");
+    const oldStackPortPrefix = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_PORT_PREFIX");
+    try {
+      for (const [key, value] of Object.entries({
+        NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
+        NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
+        NEXT_PUBLIC_STACK_PORT_PREFIX: values.stackPortPrefix,
+      })) {
+        if (value == null) {
+          Reflect.deleteProperty(processEnv, key);
+        } else {
+          Reflect.set(processEnv, key, value);
+        }
+      }
+      return callback();
+    } finally {
+      for (const [key, value] of Object.entries({
+        NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: oldHostedHandlerUrlTemplate,
+        NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: oldHostedHandlerDomainSuffix,
+        NEXT_PUBLIC_STACK_PORT_PREFIX: oldStackPortPrefix,
+      })) {
+        if (value == null) {
+          Reflect.deleteProperty(processEnv, key);
+        } else {
+          Reflect.set(processEnv, key, value);
+        }
+      }
+    }
+  };
+
   const createMockTenancy = (config: Partial<Tenancy['config']>): Tenancy => {
     return {
       config: {
@@ -13,10 +53,87 @@ describe('validateRedirectUrl', () => {
         },
         ...config,
       },
+      project: {
+        id: "12345678-1234-4234-8234-123456789abc",
+      },
     } as Tenancy;
   };
 
   describe('exact domain matching', () => {
+    it('should implicitly validate hosted handler domains for the project', () => {
+      withHostedHandlerEnv({
+        hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}",
+        stackPortPrefix: "92",
+      }, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {},
+          },
+        });
+
+        expect(validateRedirectUrl('http://12345678-1234-4234-8234-123456789abc.localhost:9209/anything', tenancy)).toBe(true);
+        expect(validateRedirectUrl('http://other-project.localhost:9209/anything', tenancy)).toBe(false);
+      });
+    });
+
+    it('should reject hosted handler URL templates that put the project ID in the path', () => {
+      withHostedHandlerEnv({
+        hostedHandlerUrlTemplate: "http://localhost:9209/{projectId}/{hostedPath}",
+      }, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {},
+          },
+        });
+
+        expect(() => validateRedirectUrl('http://localhost:9209/anything', tenancy))
+          .toThrowErrorMatchingInlineSnapshot(`
+            [StackAssertionError: The hosted handler URL template must put {projectId} in the hostname.
+
+            This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+          `);
+      });
+    });
+
+    it('should include the implicit hosted callback in OAuth redirect URIs', () => {
+      withHostedHandlerEnv({}, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {
+              '1': { baseUrl: 'https://example.com', handlerPath: '/handler' },
+            },
+          },
+        });
+
+        expect(getOAuthRedirectUrisForTenancy(tenancy)).toMatchInlineSnapshot(`
+          [
+            "https://example.com/handler",
+            "https://12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com/handler/oauth-callback",
+          ]
+        `);
+      });
+    });
+
+    it('should validate Turnstile hostnames through the same trusted domains', () => {
+      withHostedHandlerEnv({}, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {
+              '1': { baseUrl: 'https://*.example.com', handlerPath: '/handler' },
+            },
+          },
+        });
+
+        expect(validateRedirectHostname('app.example.com', tenancy)).toBe(true);
+        expect(validateRedirectHostname('12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com', tenancy)).toBe(true);
+        expect(validateRedirectHostname('evil.example.test', tenancy)).toBe(false);
+      });
+    });
+
     it('should validate exact domain matches', () => {
       const tenancy = createMockTenancy({
         domains: {

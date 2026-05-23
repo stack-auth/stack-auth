@@ -1,87 +1,83 @@
-# PR body template
+# PR Body Template
 
-Reconstructed from SKILL.md hints. Treat this as a starting point and adapt to the PR's actual content — don't force-fit sections that don't apply.
+Markdown structure for a visual-heavy PR description. Adapt freely — these are patterns, not a rigid form.
 
-## Full structure
+## Top-of-body template
 
 ```markdown
 ## Summary
 
-<One-paragraph summary of what the PR does and why. Reviewer-oriented, not
-changelog-oriented — answer "what am I about to review and why does it exist".>
+<1-2 paragraphs explaining what the PR does and why. Not the commit list.>
 
-**Base:** `<base-branch>` → **Head:** `<head-branch>`
-**Scope:** <N> files changed · +<added> / -<removed> lines
-
----
+**Base:** `<base>` → **Head:** `<head>`
+**Scope:** <N> files, ~+<M>k additions
 
 ## Screenshots
 
-### <Flagship page 1 name>
+Captured from the local dev server (viewport: **<W>×<H>** standard, **<W2>×<H2>** widescreen). Assets hosted in [this gist](<gist-url>).
 
-<One-line description of the page and what changed.>
+> 🔴 Red outlines on the "after" shots mark the new or changed UI introduced by this PR.
 
-| Light | Dark |
-| --- | --- |
-| ![light](<raw-url>) | ![dark](<raw-url>) |
+### <Flagship page 1> — <short descriptor>
 
-<Widescreen if captured:>
+|        | Before | After |
+| ---    | ---    | ---   |
+| Light  | ![<page>-before-light](<url>) | ![<page>-after-light](<url>) |
+| Dark   | ![<page>-before-dark](<url>)  | ![<page>-after-dark](<url>)  |
 
-| Wide (light) | Wide (dark) |
-| --- | --- |
-| ![wide-light](<raw-url>) | ![wide-dark](<raw-url>) |
+Widescreen:
 
-### <Flagship page 2 name>
+|        | Before | After |
+| ---    | ---    | ---   |
+| Light  | ![<page>-before-light-wide](<url>) | ![<page>-after-light-wide](<url>) |
+| Dark   | ![<page>-before-dark-wide](<url>)  | ![<page>-after-dark-wide](<url>)  |
 
-...
+### <Flagship page 2>
 
----
+<...same before/after pattern...>
 
-### Other migrated surfaces
+### Other migrated surfaces (after only)
 
 | Page | Light | Dark |
 | --- | --- | --- |
-| Route A | ![](<raw-url>) | ![](<raw-url>) |
-| Route B | ![](<raw-url>) | ![](<raw-url>) |
-| ...    | ...             | ...             |
+| <name> | ![<page>-after-light](<url>) | ![<page>-after-dark](<url>) |
+| <name> | ![<page>-after-light](<url>) | ![<page>-after-dark](<url>) |
 
----
+### <Optional: scroll behaviour / sticky header / interactions>
 
-## Scroll behaviour
-
-| Light | Dark |
-| --- | --- |
-| ![scroll-light](<raw-url>) | ![scroll-dark](<raw-url>) |
-
----
-
-## What's new
-
-- bullet 1
-- bullet 2
-
-## Notes for reviewers
-
-- Anything tricky, non-obvious, or worth flagging.
-- Known follow-ups or things deliberately out of scope.
-
-## Test plan
-
-- [ ] Check X
-- [ ] Check Y
-- [ ] Visual sanity — the screenshots above are the canonical reference.
+| Page | Light | Dark |
+| --- | --- | --- |
+| <name> | ![<page>-scroll-light](<gif-url>) | ![<page>-scroll-dark](<gif-url>) |
 ```
 
-## Patterns that pull weight
+## What goes after the visuals
 
-- **Two-column tables for light/dark**: reviewers can scan both themes at once without scrolling vertically. A single-column list of 10 alternating light/dark shots is much harder to parse.
-- **Flagship vs. long tail**: promote 3–5 pages with their own subsection + heading. Everything else goes in a compact table. This gives reviewers a clear "start here" signal.
-- **Raw URLs, not markdown image links with titles**: keep `![alt](url)` minimal. Long alt text makes the source unreadable for anyone editing later.
-- **Scope line up top**: the `files changed · +x/-y` line answers "how big is this" before the reviewer scrolls.
+Everything normal for a PR body: _What's new_, _Notes for reviewers_, _Test plan_. Don't skip these — the visuals sell the PR but reviewers still need a map of the code.
 
-## Anti-patterns
+## Picking flagship vs. long-tail pages
 
-- Don't embed WebM. Gist-hosted WebM renders as a download link, not a player. Convert to GIF first.
-- Don't link to the gist itself — link directly to each raw URL so the asset renders inline.
-- Don't include a mega-wall of every page × every theme. If the PR touches 15 pages, put 5 in the hero and 10 in the compact table.
-- Don't skip the text sections (What's new / Test plan) just because you have pretty pictures. Reviewers still want the prose.
+Flagship treatment (its own section, widescreen variant, maybe a scroll GIF):
+- Pages with the richest content in this PR
+- Pages the reviewer is most likely to open first
+- Usually 3-5 max — more and the body gets noisy
+
+Long-tail treatment (one row in the "Other surfaces" table):
+- Same-pattern pages where the screenshot is mostly the existing dashboard chrome
+- Empty-state or near-empty pages where seed data didn't populate them
+
+## Alt text
+
+Use the base filename as alt text (e.g. `users-after-light`) — it's greppable, consistent, and survives when images fail to load. The `before`/`after` token in the alt text matters: if the gist is ever wiped, reviewers can still tell from broken-image alt which cell was which.
+
+## Before/after pairing rules
+
+- For every "after" shot in a flagship section, pair it with the matching "before" shot at the same theme + viewport.
+- If there is no "before" (greenfield route), use a one-row "After only" table and note `*New route — no base equivalent.*` underneath.
+- If "before" and "after" are pixel-identical for a long-tail page (refactor that didn't touch this surface), drop that page from the body entirely. Don't pad with no-op pairs.
+
+## Don't do these
+
+- **Don't embed 20+ inline images.** If you have that many UI surfaces, you probably have a few flagships + a long tail. Put the long tail in a compact table, not a wall of images.
+- **Don't mix hosting sources.** If some images are on `user-attachments` and others on gist, reviewers can't tell why and the mixing looks sloppy. Pick one hosting path and stick to it.
+- **Don't forget the non-visual sections.** A PR body that's 90% screenshots and 10% prose reads as marketing, not engineering communication.
+- **Don't use HTML `<video>` or `<details>` with videos.** GitHub sanitizes both unless the video is on `user-attachments`. Use GIFs (which render as images).

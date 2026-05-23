@@ -50,6 +50,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
     stripePaymentIntentId: `pi-${id}`,
     revokedAtMillis: null,
     refundedAtMillis: null,
+    productRevokedAtMillis: null,
     creationSource: "PURCHASE_PAGE",
     createdAtMillis: opts.createdAtMillis,
   }));
@@ -156,6 +157,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       stripePaymentIntentId: null,
       revokedAtMillis: null,
       refundedAtMillis: null,
+      productRevokedAtMillis: null,
       creationSource: "TEST_MODE",
       createdAtMillis: 500,
     })));

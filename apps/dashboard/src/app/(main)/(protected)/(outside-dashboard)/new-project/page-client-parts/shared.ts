@@ -2,11 +2,14 @@ import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { AdminOwnedProject } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
+import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
 export type SignInMethod = "credential" | "magicLink" | "passkey" | "google" | "github" | "microsoft";
+export type OnboardingConfigChoice = "create-new" | "link-existing";
+export type OnboardingPaymentsCountry = "US" | "OTHER";
 
 export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
   { id: "credential", label: "Email & password" },
@@ -20,6 +23,19 @@ export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
 export const REQUIRED_APP_IDS: AppId[] = ["authentication", "emails"];
 export const PRIMARY_APP_IDS: AppId[] = ["authentication", "emails", "payments", "analytics"];
 export const ALL_APP_IDS = Object.keys(ALL_APPS) as AppId[];
+export const ONBOARDING_APP_IDS = ALL_APP_IDS.filter((appId) => ALL_APPS[appId].stage !== "alpha");
+export const OAUTH_SIGN_IN_METHODS = ["google", "github", "microsoft"] satisfies SignInMethod[];
+export const SHARED_OAUTH_SIGN_IN_METHODS = sharedProviders.filter((provider): provider is (typeof sharedProviders)[number] & SignInMethod => {
+  return OAUTH_SIGN_IN_METHODS.some((method) => method === provider);
+});
+
+export type ProjectOnboardingState = {
+  selected_config_choice: OnboardingConfigChoice,
+  selected_apps: AppId[],
+  selected_sign_in_methods: SignInMethod[],
+  selected_email_theme_id: string | null,
+  selected_payments_country: OnboardingPaymentsCountry,
+};
 
 export type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
@@ -35,6 +51,79 @@ export const PAYMENT_COUNTRY_OPTIONS = [
   { value: "US", label: "United States" },
   { value: "OTHER", label: "Other" },
 ] as const;
+
+export function isProjectOnboardingState(value: unknown): value is ProjectOnboardingState {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const selectedConfigChoice = Reflect.get(value, "selected_config_choice");
+  if (selectedConfigChoice !== "create-new" && selectedConfigChoice !== "link-existing") {
+    return false;
+  }
+  const selectedApps = Reflect.get(value, "selected_apps");
+  if (!Array.isArray(selectedApps) || !selectedApps.every((entry) => ALL_APP_IDS.some((appId) => appId === entry))) {
+    return false;
+  }
+  const selectedSignInMethods = Reflect.get(value, "selected_sign_in_methods");
+  if (
+    !Array.isArray(selectedSignInMethods)
+    || !selectedSignInMethods.every((entry) => SIGN_IN_METHODS.some((method) => method.id === entry))
+  ) {
+    return false;
+  }
+  const selectedEmailThemeId = Reflect.get(value, "selected_email_theme_id");
+  if (selectedEmailThemeId !== null && typeof selectedEmailThemeId !== "string") {
+    return false;
+  }
+  const selectedPaymentsCountry = Reflect.get(value, "selected_payments_country");
+  if (selectedPaymentsCountry !== "US" && selectedPaymentsCountry !== "OTHER") {
+    return false;
+  }
+  return true;
+}
+
+export function normalizeProjectOnboardingState(
+  value: ProjectOnboardingState,
+  options?: { developmentEnvironment: boolean },
+): ProjectOnboardingState {
+  const selectedApps = ALL_APP_IDS.filter((appId) => (
+    value.selected_apps.some((selectedAppId) => selectedAppId === appId)
+    || REQUIRED_APP_IDS.some((requiredAppId) => requiredAppId === appId)
+  ));
+  const selectedSignInMethods = SIGN_IN_METHODS
+    .map((method) => method.id)
+    .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));
+  const developmentEnvironment = options?.developmentEnvironment === true;
+  const normalizedSignInMethods = developmentEnvironment
+    ? selectedSignInMethods.filter((methodId) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === methodId))
+    : selectedSignInMethods;
+  return {
+    selected_config_choice: developmentEnvironment ? "create-new" : value.selected_config_choice,
+    selected_apps: selectedApps,
+    selected_sign_in_methods: normalizedSignInMethods,
+    selected_email_theme_id: value.selected_email_theme_id,
+    selected_payments_country: value.selected_payments_country,
+  };
+}
+
+export function createProjectOnboardingState(options: {
+  selectedConfigChoice: OnboardingConfigChoice,
+  selectedApps: Set<AppId>,
+  selectedSignInMethods: Set<SignInMethod>,
+  selectedEmailThemeId: string | null,
+  selectedPaymentsCountry: OnboardingPaymentsCountry,
+  developmentEnvironment: boolean,
+}): ProjectOnboardingState {
+  return normalizeProjectOnboardingState({
+    selected_config_choice: options.selectedConfigChoice,
+    selected_apps: ALL_APP_IDS.filter((appId) => options.selectedApps.has(appId)),
+    selected_sign_in_methods: SIGN_IN_METHODS
+      .map((method) => method.id)
+      .filter((methodId) => options.selectedSignInMethods.has(methodId)),
+    selected_email_theme_id: options.selectedEmailThemeId,
+    selected_payments_country: options.selectedPaymentsCountry,
+  }, { developmentEnvironment: options.developmentEnvironment });
+}
 
 export function isStackAppInternals(value: unknown): value is StackAppInternals {
   return (
@@ -65,11 +154,12 @@ export function isProjectOnboardingStatus(value: unknown): value is ProjectOnboa
 }
 
 export function orderedAppIds() {
-  const primarySet = new Set(PRIMARY_APP_IDS);
-  const secondary = ALL_APP_IDS.filter((appId) => !primarySet.has(appId)).sort((a, b) => {
+  const primary = PRIMARY_APP_IDS.filter((appId) => ONBOARDING_APP_IDS.some((onboardingAppId) => onboardingAppId === appId));
+  const primarySet = new Set(primary);
+  const secondary = ONBOARDING_APP_IDS.filter((appId) => !primarySet.has(appId)).sort((a, b) => {
     return stringCompare(ALL_APPS[a].displayName, ALL_APPS[b].displayName);
   });
-  return [...PRIMARY_APP_IDS, ...secondary];
+  return [...primary, ...secondary];
 }
 
 export function normalizeTrustedDomain(input: string): string {

@@ -8,14 +8,18 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
+import { isPaidPlan } from "@stackframe/stack-shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
+import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { inviteUser, listInvitations, revokeInvitation } from "./actions";
+import Footer from "./footer";
+import PreviewProjectRedirect from "./preview-project-redirect";
 
 type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
@@ -53,27 +57,62 @@ function isProjectOnboardingStatus(value: unknown): value is ProjectOnboardingSt
 }
 
 export default function PageClient() {
+  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+
+  return (
+    <>
+      <DottedBackground />
+      {isPreview ? <PreviewProjectRedirect /> : <ProjectsListPage />}
+      <Footer />
+    </>
+  );
+}
+
+function DottedBackground() {
+  return (
+    <div
+      inert
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'radial-gradient(circle, rgba(127, 127, 127, 0.15) 1px, transparent 1px)',
+        backgroundSize: '10px 10px',
+      }}
+    />
+  );
+}
+
+function ProjectsListPage() {
   const app = useStackApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  const user = useUser({
+    or: isRemoteDevelopmentEnvironment ? "anonymous-if-exists[deprecated]" : "redirect",
+    projectIdMustMatch: "internal",
+  }) ?? throwErr("Projects page expected a user because useUser was called with an explicit required user mode.");
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
-  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
   const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
   const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
+  const [recentConfigProjects, setRecentConfigProjects] = useState<Array<{ project_id: string, absolute_file_path: string, display_name: string }>>([]);
+  const [recentConfigProjectsError, setRecentConfigProjectsError] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
+  const [projectTotalUsers, setProjectTotalUsers] = useState<Map<string, number>>(new Map());
+  const [projectDailySignups, setProjectDailySignups] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
+  const [loadingProjectMetrics, setLoadingProjectMetrics] = useState(true);
+  const [projectMetricsError, setProjectMetricsError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (rawProjects.length === 0 && !isLocalEmulator && !isPreview) {
+    if (rawProjects.length === 0 && !isLocalEmulator && !isRemoteDevelopmentEnvironment) {
       router.push('/new-project');
     }
-  }, [isLocalEmulator, isPreview, router, rawProjects]);
+  }, [isLocalEmulator, isRemoteDevelopmentEnvironment, router, rawProjects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,17 +157,146 @@ export default function PageClient() {
     };
   }, [appInternals, rawProjects.length]);
 
+  useEffect(() => {
+    let cancelled = false;
+    runAsynchronously(async () => {
+      if (!cancelled) {
+        setLoadingProjectMetrics(true);
+        setProjectMetricsError(false);
+      }
+      try {
+        const response = await appInternals.sendRequest("/internal/projects-metrics", {}, "client");
+        if (!response.ok) {
+          throw new Error(`Failed to load project metrics: ${response.status} ${await response.text()}`);
+        }
+        const body = await response.json();
+        if (
+          body == null ||
+          typeof body !== "object" ||
+          !("projects" in body) ||
+          body.projects == null ||
+          typeof body.projects !== "object" ||
+          Array.isArray(body.projects)
+        ) {
+          throw new Error("Failed to load project metrics: response body did not include a projects object.");
+        }
+        const totalUsersMap = new Map<string, number>();
+        const dailySignupsMap = new Map<string, { date: string, activity: number }[]>();
+        for (const [projectId, value] of Object.entries(body.projects)) {
+          if (value == null || typeof value !== "object") {
+            continue;
+          }
+          const totalUsers = "total_users" in value ? value.total_users : undefined;
+          if (typeof totalUsers === "number") {
+            totalUsersMap.set(projectId, totalUsers);
+          }
+          const dailySignups = "daily_signups" in value ? value.daily_signups : undefined;
+          if (!Array.isArray(dailySignups)) {
+            continue;
+          }
+          const points: { date: string, activity: number }[] = [];
+          for (const point of dailySignups) {
+            if (point != null && typeof point === "object" && "date" in point && "activity" in point) {
+              const date = point.date;
+              const activity = point.activity;
+              if (typeof date === "string" && typeof activity === "number") {
+                points.push({ date, activity });
+              }
+            }
+          }
+          dailySignupsMap.set(projectId, points);
+        }
+
+        if (!cancelled) {
+          setProjectTotalUsers(totalUsersMap);
+          setProjectDailySignups(dailySignupsMap);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setProjectMetricsError(true);
+        captureError("projects-page-load-metrics", error);
+      } finally {
+        if (!cancelled) {
+          setLoadingProjectMetrics(false);
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [appInternals, rawProjects.length]);
+
+  useEffect(() => {
+    if (!openConfigFileDialog || !isLocalEmulator) return;
+    let cancelled = false;
+    setRecentConfigProjectsError(false);
+    runAsynchronously(async () => {
+      try {
+        const response = await appInternals.sendRequest("/internal/local-emulator/project", { method: "GET" }, "client");
+        if (!response.ok) {
+          if (!cancelled) {
+            setRecentConfigProjects([]);
+            setRecentConfigProjectsError(true);
+          }
+          return;
+        }
+        const body = await response.json() as { projects?: unknown };
+        if (cancelled) return;
+        if (!Array.isArray(body.projects)) {
+          throw new Error("Invalid recent-projects payload");
+        }
+        const parsed = body.projects.map((p: unknown): { project_id: string, absolute_file_path: string, display_name: string } => {
+          if (
+            !p || typeof p !== "object"
+            || typeof (p as Record<string, unknown>).project_id !== "string"
+            || typeof (p as Record<string, unknown>).absolute_file_path !== "string"
+            || typeof (p as Record<string, unknown>).display_name !== "string"
+          ) {
+            throw new Error("Invalid recent-projects payload");
+          }
+          const r = p as Record<string, string>;
+          return { project_id: r.project_id, absolute_file_path: r.absolute_file_path, display_name: r.display_name };
+        });
+        setRecentConfigProjects(parsed);
+      } catch {
+        if (!cancelled) {
+          setRecentConfigProjects([]);
+          setRecentConfigProjectsError(true);
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openConfigFileDialog, isLocalEmulator, appInternals]);
+
+  const pathCopyTip = useMemo(() => {
+    const p = typeof navigator !== "undefined" ? navigator.platform : "";
+    if (/Mac|iPhone|iPad|iPod/i.test(p)) {
+      return "Tip: in Finder, right-click the file → hold ⌥ Option → Copy as Pathname, then paste here.";
+    }
+    if (/Win/i.test(p)) {
+      return "Note: the emulator runs in a Linux VM and needs a POSIX path. From WSL, run `wslpath -a stack.config.ts` (or `realpath stack.config.ts`) and paste that here.";
+    }
+    return "Tip: from your project folder, run `realpath stack.config.ts` in a terminal.";
+  }, []);
+
   const handleOpenConfigFile = async () => {
     const trimmedPath = absoluteConfigFilePath.trim();
     if (trimmedPath.length === 0) {
-      throw new Error("Please enter an absolute config file path.");
+      toast({ description: "Please enter a path to your project or stack.config.ts.", variant: "destructive" });
+      return;
     }
 
-    const hasUnixAbsolutePath = trimmedPath.startsWith("/");
-    const hasWindowsAbsolutePath = /^[a-zA-Z]:[\\/]/.test(trimmedPath);
-    const hasWindowsUncPath = trimmedPath.startsWith("\\\\");
-    if (!hasUnixAbsolutePath && !hasWindowsAbsolutePath && !hasWindowsUncPath) {
-      throw new Error("Config file path must be absolute.");
+    if (!trimmedPath.startsWith("/")) {
+      const looksWindows = /^[a-zA-Z]:[\\/]/.test(trimmedPath) || trimmedPath.startsWith("\\\\");
+      toast({
+        description: looksWindows
+          ? "The local emulator runs in a Linux VM and only accepts POSIX paths (e.g. /Users/you/project). Windows paths aren't supported — use WSL or the in-VM path."
+          : "The path must be absolute (e.g. /Users/you/project or /Users/you/project/stack.config.ts).",
+        variant: "destructive",
+      });
+      return;
     }
 
     setOpeningConfigFile(true);
@@ -149,19 +317,20 @@ export default function PageClient() {
       const responseBody = await response.json();
 
       if (!response.ok) {
+        let message = "Couldn't open that path. Make sure it points to your project folder or a valid stack.config.ts.";
         if (typeof responseBody === "string" && responseBody.length > 0) {
-          throw new Error(responseBody);
-        }
-        if (
+          message = responseBody;
+        } else if (
           responseBody != null &&
           typeof responseBody === "object" &&
           "error" in responseBody &&
           typeof responseBody.error === "string" &&
           responseBody.error.length > 0
         ) {
-          throw new Error(responseBody.error);
+          message = responseBody.error;
         }
-        throw new Error("Failed to open config file project in local emulator.");
+        toast({ description: message, variant: "destructive" });
+        return;
       }
 
       if (
@@ -170,14 +339,35 @@ export default function PageClient() {
         !("project_id" in responseBody) ||
         typeof responseBody.project_id !== "string"
       ) {
-        throw new Error("Local emulator endpoint returned an invalid response.");
+        toast({ description: "Local emulator endpoint returned an invalid response.", variant: "destructive" });
+        return;
+      }
+      const onboardingStatus = "onboarding_status" in responseBody
+        ? responseBody.onboarding_status
+        : undefined;
+      if (!isProjectOnboardingStatus(onboardingStatus)) {
+        throw new Error("Local emulator endpoint returned an invalid onboarding status.");
       }
 
       setOpenConfigFileDialog(false);
       setAbsoluteConfigFilePath("");
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(responseBody.project_id, onboardingStatus);
+        return next;
+      });
       await appInternals.refreshOwnedProjects();
-      router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
+      if (onboardingStatus === "completed") {
+        router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
+      } else {
+        router.push(`/new-project?project_id=${encodeURIComponent(responseBody.project_id)}`);
+      }
       await wait(2000);
+    } catch (e) {
+      toast({
+        description: e instanceof Error ? e.message : "Something went wrong opening that project.",
+        variant: "destructive",
+      });
     } finally {
       setOpeningConfigFile(false);
     }
@@ -239,17 +429,20 @@ export default function PageClient() {
             </SelectContent>
           </Select>
 
-          <Button
-            onClick={async () => {
-              if (isLocalEmulator) {
-                setOpenConfigFileDialog(true);
-                return;
-              }
-              router.push("/new-project");
-              return await wait(2000);
-            }}
-          >{isLocalEmulator ? "Open config file" : "Create Project"}
-          </Button>
+          {!isRemoteDevelopmentEnvironment && (
+            <Button
+              className="rounded-xl"
+              onClick={async () => {
+                if (isLocalEmulator) {
+                  setOpenConfigFileDialog(true);
+                  return;
+                }
+                router.push("/new-project");
+                return await wait(2000);
+              }}
+            >{isLocalEmulator ? "Open a project" : "Create Project"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -264,24 +457,57 @@ export default function PageClient() {
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Open config file</DialogTitle>
+            <DialogTitle>Open your Stack Auth project</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">
-              Enter the absolute path to your local Stack config file. The local emulator will create or reuse the mapped project and open it in the dashboard.
+              Point the local dashboard at the <code>stack.config.ts</code> in your project. If you just ran <code>stack init</code>, it was created at the root of that project.
             </Typography>
+            <Typography variant="secondary" className="text-xs">
+              Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>stack.config.ts</code> for you.
+            </Typography>
+            {recentConfigProjects.length > 0 && (
+              <div className="space-y-1">
+                <Typography variant="secondary" className="text-xs uppercase tracking-wide">Recent</Typography>
+                <div className="max-h-40 overflow-y-auto rounded-md border">
+                  {recentConfigProjects.map((p) => (
+                    <button
+                      key={p.project_id}
+                      type="button"
+                      className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
+                      onClick={() => setAbsoluteConfigFilePath(p.absolute_file_path)}
+                      title={p.absolute_file_path}
+                    >
+                      {p.absolute_file_path}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {recentConfigProjectsError && recentConfigProjects.length === 0 && (
+              <Typography variant="secondary" className="text-xs text-destructive">
+                Couldn&apos;t load recent projects. Paste a path below to continue.
+              </Typography>
+            )}
             <Input
               autoFocus
               placeholder="/Users/you/project/stack.config.ts"
               value={absoluteConfigFilePath}
               onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
             />
+            <Typography variant="secondary" className="text-xs">
+              {pathCopyTip}
+            </Typography>
           </div>
           <DialogFooter className="pt-2">
             <Button variant="outline" onClick={() => setOpenConfigFileDialog(false)} disabled={openingConfigFile}>
               Cancel
             </Button>
-            <Button onClick={handleOpenConfigFile} loading={openingConfigFile}>
+            <Button
+              onClick={handleOpenConfigFile}
+              loading={openingConfigFile}
+              disabled={absoluteConfigFilePath.trim().length === 0}
+            >
               Open project
             </Button>
           </DialogFooter>
@@ -300,7 +526,7 @@ export default function PageClient() {
                 <TeamAddUserDialog team={team} />
               )}
             </div>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 bg">
               {projects.map((project) => {
                 const onboardingStatus = projectStatuses.get(project.id);
                 if (!loadingProjectStatuses && onboardingStatus == null) {
@@ -316,6 +542,10 @@ export default function PageClient() {
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
+                    totalUsers={projectTotalUsers.get(project.id)}
+                    dailySignups={projectDailySignups.get(project.id)}
+                    metricsLoading={loadingProjectMetrics}
+                    metricsError={projectMetricsError}
                   />
                 );
               })}
@@ -378,18 +608,30 @@ function TeamAddUserDialogContent(props: {
   onClose: () => void,
 }) {
   const [invitations, setInvitations] = useState<Awaited<ReturnType<typeof listInvitations>>>();
+  const [invitationsError, setInvitationsError] = useState<string | null>(null);
 
   const fetchInvitations = useCallback(async () => {
-    const invitations = await listInvitations(props.team.id);
-    setInvitations(invitations);
+    setInvitationsError(null);
+    try {
+      const invitations = await listInvitations(props.team.id);
+      setInvitations(invitations);
+    } catch (error) {
+      setInvitationsError("Failed to load invitations. Please try again.");
+    }
   }, [props.team.id]);
 
   useEffect(() => {
     let canceled = false;
     runAsynchronously(async () => {
-      const invitations = await listInvitations(props.team.id);
-      if (!canceled) {
-        setInvitations(invitations);
+      try {
+        const invitations = await listInvitations(props.team.id);
+        if (!canceled) {
+          setInvitations(invitations);
+        }
+      } catch (error) {
+        if (!canceled) {
+          setInvitationsError("Failed to load invitations. Please try again.");
+        }
       }
     });
     return () => {
@@ -399,16 +641,19 @@ function TeamAddUserDialogContent(props: {
 
   const users = props.team.useUsers();
   const admins = props.team.useItem("dashboard_admins");
+  const products = props.team.useProducts();
+  const hasPaidPlan = isPaidPlan(products);
 
   const [email, setEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
+  const invitationsLoaded = invitations != null;
   const activeSeats = users.length + (invitations?.length ?? 0);
   const seatLimit = admins.quantity;
-  const atCapacity = activeSeats >= seatLimit;
+  const atCapacity = invitationsLoaded && activeSeats >= seatLimit;
 
   const handleInvite = async () => {
-    if (atCapacity) {
+    if (!invitationsLoaded || atCapacity) {
       return;
     }
 
@@ -429,17 +674,20 @@ function TeamAddUserDialogContent(props: {
     }
   };
 
+  const handleAddSeat = async () => {
+    const checkoutUrl = await props.team.createCheckoutUrl({
+      productId: "extra-seats",
+      returnUrl: window.location.href,
+    });
+    window.location.assign(checkoutUrl);
+  };
+
   const handleUpgrade = async () => {
-    try {
-      const checkoutUrl = await props.team.createCheckoutUrl({
-        productId: "team",
-        returnUrl: window.location.href,
-      });
-      window.location.assign(checkoutUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      toast({ variant: "destructive", title: "Failed to start upgrade", description: message });
-    };
+    const checkoutUrl = await props.team.createCheckoutUrl({
+      productId: "team",
+      returnUrl: window.location.href,
+    });
+    window.location.assign(checkoutUrl);
   };
 
   return (
@@ -447,13 +695,19 @@ function TeamAddUserDialogContent(props: {
       <div className="space-y-4 py-2">
         <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
           <Typography type="label">Dashboard admin seats</Typography>
-          <Typography variant="secondary">
-            {activeSeats}/{seatLimit}
-          </Typography>
+          {invitationsLoaded ? (
+            <Typography variant="secondary">
+              {activeSeats}/{seatLimit}
+            </Typography>
+          ) : (
+            <Skeleton className="h-4 w-12" />
+          )}
         </div>
         {atCapacity && (
           <Typography variant="secondary" className="text-destructive">
-            You are at capacity. Upgrade your plan to add more admins.
+            {hasPaidPlan
+              ? "You are at capacity. Add an extra seat for $29/month."
+              : "You are at capacity. Upgrade your plan to add more admins."}
           </Typography>
         )}
         <div className="space-y-2">
@@ -467,7 +721,7 @@ function TeamAddUserDialogContent(props: {
             }}
             placeholder="Email"
             type="email"
-            disabled={atCapacity}
+            disabled={(!invitationsLoaded && !invitationsError) || atCapacity}
             autoFocus
           />
           {formError && (
@@ -479,7 +733,20 @@ function TeamAddUserDialogContent(props: {
 
         <div className="space-y-2">
           <Typography type="label">Pending invitations</Typography>
-          {invitations?.length === 0 ? (
+          {invitationsError ? (
+            <div className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2">
+              <Typography variant="secondary" className="text-destructive text-sm">
+                {invitationsError}
+              </Typography>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchInvitations}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : invitations?.length === 0 ? (
             <Typography variant="secondary">None</Typography>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -516,11 +783,17 @@ function TeamAddUserDialogContent(props: {
           Close
         </Button>
         {atCapacity ? (
-          <Button onClick={handleUpgrade} variant="default">
-            Upgrade plan
-          </Button>
+          hasPaidPlan ? (
+            <Button onClick={handleAddSeat} variant="default">
+              Add seat ($29/mo)
+            </Button>
+          ) : (
+            <Button onClick={handleUpgrade} variant="default">
+              Upgrade plan
+            </Button>
+          )
         ) : (
-          <Button onClick={handleInvite}>
+          <Button onClick={handleInvite} disabled={!invitationsLoaded && !invitationsError}>
             Invite
           </Button>
         )}

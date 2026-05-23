@@ -60,15 +60,26 @@ const queryEventDataJson = async (params: {
   },
 });
 
+// The events under test are produced *asynchronously* by the sign-in path:
+// `runAsynchronouslyAndWaitUntil(logEvent)` fires after the HTTP response
+// returns and runs through SDK self-call → quota debit → Postgres insert →
+// ClickHouse async_insert (which is server-buffered, no wait_for_async_insert).
+// Under CI load this whole pipeline can take well over 10s before the row
+// becomes queryable. We use a 30s time-based timeout (via performance.now())
+// which is conservative; the loop breaks out as soon as the row appears.
+const DEFAULT_QUERY_TIMEOUT_MS = 30_000;
+const DEFAULT_QUERY_RETRY_DELAY_MS = 500;
+
 const fetchEventDataJsonWithRetry = async (
   params: { userId?: string, eventType?: string },
-  options: { attempts?: number, delayMs?: number } = {}
+  options: { timeoutMs?: number, delayMs?: number } = {}
 ) => {
-  const attempts = options.attempts ?? 5;
-  const delayMs = options.delayMs ?? 250;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_QUERY_TIMEOUT_MS;
+  const delayMs = options.delayMs ?? DEFAULT_QUERY_RETRY_DELAY_MS;
+  const startedAt = performance.now();
 
   let response = await queryEventDataJson(params);
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  while (performance.now() - startedAt < timeoutMs) {
     if (response.status !== 200) {
       break;
     }
@@ -85,13 +96,14 @@ const fetchEventDataJsonWithRetry = async (
 
 const fetchEventsWithRetry = async (
   params: { userId?: string, eventType?: string },
-  options: { attempts?: number, delayMs?: number } = {}
+  options: { timeoutMs?: number, delayMs?: number } = {}
 ) => {
-  const attempts = options.attempts ?? 5;
-  const delayMs = options.delayMs ?? 250;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_QUERY_TIMEOUT_MS;
+  const delayMs = options.delayMs ?? DEFAULT_QUERY_RETRY_DELAY_MS;
+  const startedAt = performance.now();
 
   let response = await queryEvents(params);
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  while (performance.now() - startedAt < timeoutMs) {
     if (response.status !== 200) {
       break;
     }
@@ -158,11 +170,11 @@ it("stores $token-refresh data in snake_case without row identity fields", async
 it("cannot read events from other projects", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const projectAKeys = backendContext.value.projectKeys;
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   // Switch to another project and generate its own event
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  const { userId: projectBUserId } = await Auth.Otp.signIn();
+  const { userId: projectBUserId } = await Auth.fastSignUp();
   const projectBResponse = await fetchEventsWithRetry({
     userId: projectBUserId,
     eventType: "$token-refresh",
@@ -202,7 +214,7 @@ it("cannot read events from other projects", async ({ expect }) => {
   `);
 });
 
-it("filters analytics events by user within a project", async ({ expect }) => {
+it("filters analytics events by user within a project", { timeout: 120_000 }, async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const { userId: userA } = await Auth.Otp.signIn();
   await bumpEmailAddress();

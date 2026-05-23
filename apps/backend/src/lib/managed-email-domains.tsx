@@ -103,7 +103,7 @@ export async function getManagedEmailDomainByTenancyAndSubdomain(options: {
   tenancyId: string,
   subdomain: string,
 }): Promise<ManagedEmailDomain | null> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "tenancyId" = ${options.tenancyId}
@@ -117,7 +117,7 @@ export async function getManagedEmailDomainByTenancyAndSubdomain(options: {
 }
 
 export async function getManagedEmailDomainByResendDomainId(resendDomainId: string): Promise<ManagedEmailDomain | null> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "resendDomainId" = ${resendDomainId}
@@ -181,6 +181,22 @@ export async function updateManagedEmailDomainWebhookStatus(options: {
   return mapRow(rows[0]!);
 }
 
+export async function demoteOtherAppliedManagedEmailDomains(options: {
+  tenancyId: string,
+  keepId: string,
+}): Promise<void> {
+  await globalPrismaClient.$queryRaw(Prisma.sql`
+    UPDATE "ManagedEmailDomain"
+    SET
+      "status" = 'VERIFIED'::"ManagedEmailDomainStatus",
+      "appliedAt" = NULL,
+      "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "tenancyId" = ${options.tenancyId}
+      AND "id" <> ${options.keepId}
+      AND "status" = 'APPLIED'::"ManagedEmailDomainStatus"
+  `);
+}
+
 export async function markManagedEmailDomainApplied(id: string): Promise<ManagedEmailDomain> {
   const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     UPDATE "ManagedEmailDomain"
@@ -200,11 +216,36 @@ export async function markManagedEmailDomainApplied(id: string): Promise<Managed
 }
 
 export async function listManagedEmailDomainsForTenancy(tenancyId: string): Promise<ManagedEmailDomain[]> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "tenancyId" = ${tenancyId}
     ORDER BY "isActive" DESC, "updatedAt" DESC
   `);
   return rows.map(mapRow);
+}
+
+export async function deleteManagedEmailDomainById(id: string): Promise<ManagedEmailDomain | null> {
+  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+    DELETE FROM "ManagedEmailDomain"
+    WHERE "id" = ${id}
+    RETURNING *
+  `);
+  if (rows.length === 0) {
+    return null;
+  }
+  return mapRow(rows[0]!);
+}
+
+export async function countManagedEmailDomainsBySubdomainExcludingId(options: {
+  subdomain: string,
+  excludeId: string,
+}): Promise<number> {
+  const rows = await globalPrismaClient.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS count
+    FROM "ManagedEmailDomain"
+    WHERE "subdomain" = ${options.subdomain}
+      AND "id" <> ${options.excludeId}
+  `);
+  return Number(rows[0]?.count ?? 0n);
 }

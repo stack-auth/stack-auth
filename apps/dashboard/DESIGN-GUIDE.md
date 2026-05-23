@@ -46,10 +46,12 @@ Use this when implementing a new dashboard UI quickly:
    - Use `DesignListItemRow` (or `DesignUserList` for user rows).
 9. Need settings/property grid editor?
    - Use `DesignEditableGrid`.
-10. Need data table with consistent dashboard style?
-   - Use `DesignDataTable`.
+10. Need interactive / sortable / searchable data table?
+   - Use `DataGrid` + `useDataSource` + `createDefaultDataGridState` from `@stackframe/dashboard-ui-components`.
 11. Need dropdown action/selector/toggle menu?
    - Use `DesignMenu`.
+12. Need a focus-trapping modal/dialog (confirmation, rich modal, tester, form)?
+   - Use `DesignDialog`.
 
 ---
 
@@ -57,9 +59,12 @@ Use this when implementing a new dashboard UI quickly:
 
 `@/components/ui/*` can still be used for primitives that do not currently have a design-components equivalent:
 
-- dialogs/sheets/popovers (`ActionDialog`, `FormDialog`, `Sheet`, etc.)
+- confirmation-pattern helpers like `ActionDialog` / `FormDialog` (these wrap an `onClick`/form submit lifecycle and remain useful when you only need a dressed-up confirm/submit prompt)
+- side-sheets/popovers (`Sheet`, `Popover`, etc.)
 - complex layout containers where design-components does not provide one
 - highly specialized editor internals
+
+For any general-purpose modal surface (rich detail dialogs, tester surfaces, data dialogs, settings popovers presented as modals), use `DesignDialog` instead of wiring `Dialog` + `DialogContent` + `DialogHeader` etc. by hand. `DesignDialog` is the canonical glassmorphic dialog surface for the dashboard — see §4.14 below.
 
 When using a primitive directly:
 
@@ -524,26 +529,94 @@ Rules:
 - prefer this for config forms that are row-based and editable inline
 - use deferred save mode when many fields should be committed together
 
-### 4.12 `DesignDataTable`
+### 4.12 `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
-File: `apps/dashboard/src/components/design-components/table.tsx`
+Package: `@stackframe/dashboard-ui-components`
 
 Use for:
 
-- dashboard data tables where shared table behavior is required
+- interactive, sortable, searchable data tables
+- any table with more than ~20 rows or that needs pagination, column visibility, quick search, or CSV export
 
-Props:
+Canonical pattern:
 
-- `columns`, `data`
-- `defaultColumnFilters`
-- `defaultSorting`
-- `showDefaultToolbar`
-- `showResetFilters`
-- `onRowClick`
+```tsx
+import { DataGrid, useDataSource, createDefaultDataGridState, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+
+const columns: DataGridColumnDef<MyRow>[] = [
+  { id: "name", header: "Name", accessor: "name", width: 200, type: "string" },
+  { id: "status", header: "Status", accessor: "status", width: 120, type: "singleSelect",
+    valueOptions: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }],
+    renderCell: ({ value }) => <DesignBadge label={String(value)} color={value === "active" ? "green" : "red"} size="sm" /> },
+];
+
+const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+const gridData = useDataSource({
+  data: myRows,
+  columns,
+  getRowId: (row) => row.id,
+  sorting: gridState.sorting,
+  quickSearch: gridState.quickSearch,
+  pagination: gridState.pagination,
+  paginationMode: "client",
+});
+
+<DataGrid
+  columns={columns}
+  rows={gridData.rows}
+  getRowId={(row) => row.id}
+  totalRowCount={gridData.totalRowCount}
+  isLoading={gridData.isLoading}
+  state={gridState}
+  onChange={setGridState}
+  toolbar={false}       // set to false to hide; omit for default toolbar
+  onRowClick={(row) => handleClick(row)}
+  maxHeight={400}
+/>
+```
+
+Key props:
+
+- `columns` (`DataGridColumnDef[]`): column definitions with `id`, `header`, `accessor`, `type`, optional `renderCell`, optional `cellOverflow`
+- `rows` (`TRow[]`): always `gridData.rows` from `useDataSource`, NEVER your raw array
+- `getRowId` (`(row) => RowId`): unique row identifier (`RowId` is `string`)
+- `state` / `onChange`: fully controlled grid state (sorting, pagination, search, visibility)
+- `totalRowCount`: total rows for pagination display
+- `toolbar`: `false` to hide, omit for default, or render function for custom
+- `onRowClick`: optional row click handler
+- `maxHeight`: max pixel height before scrolling
+- `rowHeight`: number (default 44) for fixed height, or `"auto"` for dynamic row measurement
+- `estimatedRowHeight`: estimated row height for the virtualizer when `rowHeight="auto"` (default 44)
+
+Cell overflow:
+
+- `cellOverflow: "truncate"` (default): single-line with text-overflow ellipsis
+- `cellOverflow: "wrap"`: content wraps naturally; rows grow when `rowHeight="auto"`
+- Use `cellOverflow: "wrap"` for badge lists, permission chips, multi-line text
+- Use default truncate for UUIDs, emails, dates, single-line text
+
+```tsx
+const columns: DataGridColumnDef<MyRow>[] = [
+  { id: "userId", header: "User ID", width: 130 },                            // truncates (default)
+  { id: "auth", header: "Auth methods", width: 150, cellOverflow: "wrap",     // badges wrap, row grows
+    renderCell: ({ row }) => (
+      <div className="flex flex-wrap gap-1">
+        {row.authTypes.map((t) => <Badge key={t}>{t}</Badge>)}
+      </div>
+    ),
+  },
+];
+
+<DataGrid columns={columns} rowHeight="auto" estimatedRowHeight={48} ... />
+```
 
 Rules:
 
-- use this wrapper instead of raw `DataTable` for consistency unless you need a custom table architecture
+- always initialize state with `createDefaultDataGridState(columns)` — never build the state object by hand
+- always use `useDataSource` to process data — the grid does not sort/filter/paginate on its own
+- columns must be stable across renders (define outside component or wrap in `useMemo`)
+- `renderCell` must be a pure function — no React hooks inside it
+- read the full JSDoc on the `DataGrid` component for iron rules and advanced usage
 
 ### 4.13 `CursorBlastEffect`
 
@@ -566,6 +639,99 @@ Rules:
 
 - keep as optional enhancement, not required UX
 - avoid distracting overuse in production-critical flows
+
+### 4.14 `DesignDialog`
+
+File: `packages/dashboard-ui-components/src/components/dialog.tsx` (re-exported through `@/components/design-components`)
+
+Use for:
+
+- any focus-trapping modal in the dashboard (confirmations, rich detail dialogs, tester surfaces, settings forms presented as modals)
+- replacing hand-wired `Dialog` + `DialogContent` + `DialogHeader` combinations from `@stackframe/stack-ui`
+
+Props you should use most:
+
+- `trigger`: element wrapped in a `DialogTrigger`. Skip when controlling externally via `open`/`onOpenChange`/`defaultOpen`.
+- `size`: `"sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl" | "full"` (defaults to `"lg"`).
+- `variant`: `"glassmorphic"` (default) or `"plain"`. `glassmorphic` applies the dashboard's blurred surface + dimmed overlay.
+- `icon`: a Phosphor icon component (or `null` to skip the chip).
+- `title` / `description`: standard header text. `title` is automatically wired into `DialogTitle` for a11y.
+- `headerContent`: rich content rendered below the icon/title block — use this for embedded summary cards, metric tiles, or status pills inside the header.
+- `customHeader`: complete override of the header region. You become responsible for rendering an accessible `DialogTitle`.
+- `footer`: footer node rendered in a styled bottom bar. Wrap close buttons in `DesignDialogClose asChild` (re-exported by the same module).
+- `noBodyPadding`: disable the default `px-6 py-4` padding for full-bleed body content.
+- `hideTopCloseButton`: hide the top-right "X" rendered by `DialogContent` for fully custom close affordances.
+- `bodyClassName` / `headerClassName` / `footerClassName` / `overlayClassName` / `className`: fine-grained class overrides for each region.
+
+Re-exports (import these from the same module — do not mix with `@stackframe/stack-ui` for the same dialog):
+
+- `DesignDialogClose` (alias of `DialogClose`)
+- `DesignDialogTrigger` (alias of `DialogTrigger`)
+- `DesignDialogTitle` / `DesignDialogDescription`
+- `DesignDialogRoot` (alias of `Dialog`) for the rare cases that need raw `Dialog.Root` semantics
+
+Rules:
+
+- Do not write `Dialog` + `DialogContent` + `DialogHeader` + `DialogBody` + `DialogFooter` directly when building a full-page modal — use `DesignDialog`.
+- When refactoring an existing dialog, preserve any `headerContent` summary cards, sparklines, or stat tiles by passing them via the `headerContent` prop rather than crafting a `customHeader` from scratch.
+- Footer slot already provides border + background + responsive flex; don't re-add wrapping divs with the same styling.
+- Use the smallest `size` that fits your content. `md`/`lg` for confirmations, `2xl`/`3xl` for detail dialogs with summary cards, `5xl`+ for tester/forms.
+
+Common shapes (for AI agents):
+
+```tsx
+// Confirmation
+<DesignDialog
+  trigger={<DesignButton size="sm">Open</DesignButton>}
+  icon={InfoIcon}
+  title="Heads up"
+  description="You're about to do something."
+  footer={
+    <DesignDialogClose asChild>
+      <DesignButton variant="secondary" size="sm">Close</DesignButton>
+    </DesignDialogClose>
+  }
+>
+  <p className="text-sm">Body content.</p>
+</DesignDialog>
+
+// Rich modal with summary card
+<DesignDialog
+  open={open}
+  onOpenChange={setOpen}
+  size="2xl"
+  icon={PulseIcon}
+  title="Rule trigger history"
+  description="3 total triggers"
+  headerContent={<SummaryCard />}
+  footer={
+    <DesignDialogClose asChild>
+      <DesignButton variant="secondary" size="sm">Close</DesignButton>
+    </DesignDialogClose>
+  }
+>
+  {/* recent triggers list */}
+</DesignDialog>
+
+// Wide tester / form
+<DesignDialog
+  trigger={<DesignButton size="sm">Open tester</DesignButton>}
+  size="5xl"
+  icon={FlaskIcon}
+  title="Test sign-up rules"
+  description="Simulate a sign-up request."
+  footer={
+    <>
+      <DesignDialogClose asChild>
+        <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
+      </DesignDialogClose>
+      <DesignButton size="sm">Run test</DesignButton>
+    </>
+  }
+>
+  <TesterForm />
+</DesignDialog>
+```
 
 ---
 
@@ -604,7 +770,7 @@ Use:
 - alerts: `DesignAlert` (`variant` by state)
 - status chips: `DesignBadge` (`green` for sent, `red` for failed)
 - actions: `DesignButton`
-- table: `DesignDataTable`
+- table: `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
 Avoid:
 
@@ -645,7 +811,7 @@ Use:
 - filters: `DesignSelectorDropdown`, `DesignInput`
 - status badges: `DesignBadge`
 - action buttons/menus: `DesignButton`, `DesignMenu`
-- data grid/list table: `DesignDataTable` when feasible
+- data grid/list table: `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
 Avoid:
 
@@ -743,7 +909,7 @@ Use this checklist before opening a dashboard UI PR:
 - [ ] Replaced ad-hoc row/list cards with `DesignListItemRow` or `DesignUserList`.
 - [ ] Used `DesignButton` for async actions.
 - [ ] Used `DesignSelectorDropdown`/`DesignInput` for standard field controls.
-- [ ] Used `DesignDataTable` for standard tables.
+- [ ] Used `DataGrid` + `useDataSource` + `createDefaultDataGridState` for interactive tables.
 - [ ] Did not introduce duplicate local wrappers for components already in design-components.
 - [ ] Kept hover/motion behavior aligned with this guide.
 
@@ -823,6 +989,7 @@ Use this checklist before opening a dashboard UI PR:
 - Creating local status pills instead of `DesignBadge`.
 - Creating local segmented/pill selectors instead of `DesignPillToggle`.
 - Using raw `Alert`/`Button` in standard dashboard surfaces where `DesignAlert`/`DesignButton` should be used.
+- Using `DesignDataTable` or raw `DataTable` instead of `DataGrid` + `useDataSource` + `createDefaultDataGridState`. `DesignDataTable` is deprecated; all new and migrated tables use `DataGrid`.
 - Repeating large inline class strings for common design-components patterns.
 
 ---
@@ -837,7 +1004,7 @@ When touching existing email/project pages, migrate in this order:
 4. Toggles/tabs (`DesignPillToggle` / `DesignCategoryTabs`)
 5. Rows/lists (`DesignListItemRow`)
 6. Buttons/menus (`DesignButton` / `DesignMenu`)
-7. Tables/forms (`DesignDataTable`, `DesignInput`, `DesignSelectorDropdown`, `DesignEditableGrid`)
+7. Tables/forms (`DataGrid`, `DesignInput`, `DesignSelectorDropdown`, `DesignEditableGrid`)
 
 This order yields the biggest consistency win first.
 

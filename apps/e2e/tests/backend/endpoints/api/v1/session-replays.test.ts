@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
 async function uploadBatch(options: {
   browserSessionId: string,
@@ -527,6 +528,16 @@ it("admin list session replays paginates without skipping items", async ({ expec
   expect(uploadB.status).toBe(200);
   const recordingB = uploadB.body?.session_replay_id;
 
+  // Wait for ClickHouse to ingest both replays before paginating
+  await listReplaysWithRetry(
+    {},
+    (res) => {
+      const items = res.body?.items ?? [];
+      const ids = items.map((i: any) => i.id);
+      return res.status === 200 && ids.includes(recordingA) && ids.includes(recordingB);
+    },
+  );
+
   const first = await niceBackendFetch("/api/v1/internal/session-replays?limit=1", {
     method: "GET",
     accessType: "admin",
@@ -551,6 +562,140 @@ it("admin list session replays paginates without skipping items", async ({ expec
   const secondId = second.body?.items?.[0]?.id;
   expect([recordingA, recordingB]).toContain(secondId);
   expect(secondId).not.toBe(firstId);
+});
+
+it("admin can fetch a single session replay by id", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [
+      { type: 2, timestamp: 1_700_000_000_100 },
+      { type: 3, timestamp: 1_700_000_000_250 },
+    ],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  expect(typeof recordingId).toBe("string");
+  if (typeof recordingId !== "string") {
+    throw new Error("Expected session replay id.");
+  }
+
+  const res = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "chunk_count": 1,
+        "event_count": 2,
+        "id": "<stripped UUID>",
+        "last_event_at_millis": 1700000000250,
+        "project_user": {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+        },
+        "started_at_millis": 1700000000100,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("admin get session replay returns 404 for nonexistent id", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const fakeId = randomUUID();
+  const res = await niceBackendFetch(`/api/v1/internal/session-replays/${fakeId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "ITEM_NOT_FOUND",
+        "details": { "item_id": "<stripped UUID>" },
+        "error": "Item with ID \\"<stripped UUID>\\" not found.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ITEM_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("non-admin access cannot call single session replay endpoint", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  expect(typeof recordingId).toBe("string");
+
+  const clientRes = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "client",
+  });
+  expect(clientRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "client",
+          "allowed_access_types": ["admin"],
+        },
+        "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+  const serverRes = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(serverRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "server",
+          "allowed_access_types": ["admin"],
+        },
+        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("admin list session replays rejects unknown cursor", async ({ expect }) => {
@@ -617,10 +762,16 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
   expect(upload2.status).toBe(200);
   const recording2 = upload2.body?.session_replay_id;
 
-  const first = await niceBackendFetch(`/api/v1/internal/session-replays/${recording1}/chunks?limit=1`, {
-    method: "GET",
-    accessType: "admin",
-  });
+  // Wait for ClickHouse to ingest both sessions' chunks before paginating
+  let first: any;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    first = await niceBackendFetch(`/api/v1/internal/session-replays/${recording1}/chunks?limit=1`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    if (first.status === 200 && (first.body?.items?.length ?? 0) >= 1 && first.body?.pagination?.next_cursor) break;
+    await wait(500);
+  }
   expect(first.status).toBe(200);
   expect(first.body?.items?.length).toBe(1);
 
@@ -675,7 +826,7 @@ it("admin events endpoint does not allow fetching a chunk via the wrong session 
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // session1: upload under first refresh token
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const batchId = randomUUID();
   const upload1 = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -688,7 +839,7 @@ it("admin events endpoint does not allow fetching a chunk via the wrong session 
   const recording1 = upload1.body?.session_replay_id;
 
   // session2: upload under a different refresh token
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const upload2 = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -836,12 +987,28 @@ async function listReplays(queryParams: Record<string, string> = {}) {
   });
 }
 
+async function listReplaysWithRetry(
+  queryParams: Record<string, string>,
+  predicate: (res: Awaited<ReturnType<typeof listReplays>>) => boolean,
+  options: { attempts?: number, delayMs?: number } = {},
+) {
+  const attempts = options.attempts ?? 30;
+  const delayMs = options.delayMs ?? 500;
+  let res = await listReplays(queryParams);
+  for (let i = 0; i < attempts; i++) {
+    if (predicate(res)) return res;
+    await wait(delayMs);
+    res = await listReplays(queryParams);
+  }
+  return res;
+}
+
 it("admin list session replays filters by user_ids", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // User A
-  const userA = await Auth.Otp.signIn();
+  const userA = await Auth.fastSignUp();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -852,8 +1019,7 @@ it("admin list session replays filters by user_ids", async ({ expect }) => {
   expect(uploadA.status).toBe(200);
 
   // User B
-  await bumpEmailAddress();
-  const userB = await Auth.Otp.signIn();
+  const userB = await Auth.fastSignUp();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
@@ -863,22 +1029,31 @@ it("admin list session replays filters by user_ids", async ({ expect }) => {
   });
   expect(uploadB.status).toBe(200);
 
-  // Filter by user A only
-  const resA = await listReplays({ user_ids: userA.userId });
+  // Wait for ClickHouse to ingest both replays before asserting filters
+  const resBoth = await listReplaysWithRetry(
+    { user_ids: `${userA.userId},${userB.userId}` },
+    (res) => res.status === 200 && res.body?.items?.length === 2,
+  );
+  expect(resBoth.status).toBe(200);
+  expect(resBoth.body?.items?.length).toBe(2);
+
+  // Filter by user A only (ClickHouse already confirmed ingested above)
+  const resA = await listReplaysWithRetry(
+    { user_ids: userA.userId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resA.status).toBe(200);
   expect(resA.body?.items?.length).toBe(1);
   expect(resA.body?.items?.[0]?.project_user?.id).toBe(userA.userId);
 
   // Filter by user B only
-  const resB = await listReplays({ user_ids: userB.userId });
+  const resB = await listReplaysWithRetry(
+    { user_ids: userB.userId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resB.status).toBe(200);
   expect(resB.body?.items?.length).toBe(1);
   expect(resB.body?.items?.[0]?.project_user?.id).toBe(userB.userId);
-
-  // Filter by both users
-  const resBoth = await listReplays({ user_ids: `${userA.userId},${userB.userId}` });
-  expect(resBoth.status).toBe(200);
-  expect(resBoth.body?.items?.length).toBe(2);
 
   // Filter by nonexistent user
   const resNone = await listReplays({ user_ids: randomUUID() });
@@ -915,8 +1090,11 @@ it("admin list session replays filters by team_ids", async ({ expect }) => {
   });
   expect(uploadB.status).toBe(200);
 
-  // Filter by team → only user A's replay
-  const resTeam = await listReplays({ team_ids: teamId });
+  // Filter by team → only user A's replay (wait for ClickHouse to ingest)
+  const resTeam = await listReplaysWithRetry(
+    { team_ids: teamId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resTeam.status).toBe(200);
   expect(resTeam.body?.items?.length).toBe(1);
   expect(resTeam.body?.items?.[0]?.project_user?.id).toBe(userA.userId);
@@ -964,22 +1142,31 @@ it("admin list session replays filters by duration range", async ({ expect }) =>
   expect(uploadLong.status).toBe(200);
   const longId = uploadLong.body?.session_replay_id;
 
+  // Wait for ClickHouse to ingest both replays before asserting filters
+  const resBoth = await listReplaysWithRetry(
+    { duration_ms_min: "0", duration_ms_max: "50000" },
+    (res) => res.status === 200 && res.body?.items?.length === 2,
+  );
+  expect(resBoth.status).toBe(200);
+  expect(resBoth.body?.items?.length).toBe(2);
+
   // duration_ms_min=10000 → only long replay
-  const resMin = await listReplays({ duration_ms_min: "10000" });
+  const resMin = await listReplaysWithRetry(
+    { duration_ms_min: "10000" },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resMin.status).toBe(200);
   expect(resMin.body?.items?.length).toBe(1);
   expect(resMin.body?.items?.[0]?.id).toBe(longId);
 
   // duration_ms_max=10000 → only short replay
-  const resMax = await listReplays({ duration_ms_max: "10000" });
+  const resMax = await listReplaysWithRetry(
+    { duration_ms_max: "10000" },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resMax.status).toBe(200);
   expect(resMax.body?.items?.length).toBe(1);
   expect(resMax.body?.items?.[0]?.id).toBe(shortId);
-
-  // duration range that includes both: 0–50000
-  const resBoth = await listReplays({ duration_ms_min: "0", duration_ms_max: "50000" });
-  expect(resBoth.status).toBe(200);
-  expect(resBoth.body?.items?.length).toBe(2);
 
   // duration range that includes neither: 10000–20000
   const resNeither = await listReplays({ duration_ms_min: "10000", duration_ms_max: "20000" });
@@ -1019,26 +1206,32 @@ it("admin list session replays filters by last_event_at time range", async ({ ex
   expect(uploadLate.status).toBe(200);
   const lateId = uploadLate.body?.session_replay_id;
 
-  // Filter from midpoint → only late replay
+  // Wait for ClickHouse to ingest both replays before asserting filters
   const midpoint = earlyTime + 50_000;
-  const resFrom = await listReplays({ last_event_at_from_millis: String(midpoint) });
+  const resBoth = await listReplaysWithRetry(
+    { last_event_at_from_millis: String(earlyTime), last_event_at_to_millis: String(lateTime + 200) },
+    (res) => res.status === 200 && res.body?.items?.length === 2,
+  );
+  expect(resBoth.status).toBe(200);
+  expect(resBoth.body?.items?.length).toBe(2);
+
+  // Filter from midpoint → only late replay
+  const resFrom = await listReplaysWithRetry(
+    { last_event_at_from_millis: String(midpoint) },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resFrom.status).toBe(200);
   expect(resFrom.body?.items?.length).toBe(1);
   expect(resFrom.body?.items?.[0]?.id).toBe(lateId);
 
   // Filter to midpoint → only early replay
-  const resTo = await listReplays({ last_event_at_to_millis: String(midpoint) });
+  const resTo = await listReplaysWithRetry(
+    { last_event_at_to_millis: String(midpoint) },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(resTo.status).toBe(200);
   expect(resTo.body?.items?.length).toBe(1);
   expect(resTo.body?.items?.[0]?.id).toBe(earlyId);
-
-  // Filter range that includes both
-  const resBoth = await listReplays({
-    last_event_at_from_millis: String(earlyTime),
-    last_event_at_to_millis: String(lateTime + 200),
-  });
-  expect(resBoth.status).toBe(200);
-  expect(resBoth.body?.items?.length).toBe(2);
 });
 
 it("admin list session replays filters by click_count_min", async ({ expect }) => {
@@ -1048,7 +1241,7 @@ it("admin list session replays filters by click_count_min", async ({ expect }) =
   const now = Date.now();
 
   // Replay A: user with 3 clicks
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const segmentIdA = randomUUID();
   const uploadA = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -1087,8 +1280,7 @@ it("admin list session replays filters by click_count_min", async ({ expect }) =
   expect(eventBatchA.status).toBe(200);
 
   // Replay B: user with 1 click
-  await bumpEmailAddress();
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const segmentIdB = randomUUID();
   const uploadB = await uploadBatch({
     browserSessionId: randomUUID(),
@@ -1111,21 +1303,20 @@ it("admin list session replays filters by click_count_min", async ({ expect }) =
   });
   expect(eventBatchB.status).toBe(200);
 
-  // Retry loop for ClickHouse eventual consistency
-  let foundOnlyA = false;
-  for (let i = 0; i < 15; i++) {
-    const res = await listReplays({ click_count_min: "2" });
-    expect(res.status).toBe(200);
-    if (res.body?.items?.length === 1 && res.body?.items?.[0]?.id === replayIdA) {
-      foundOnlyA = true;
-      break;
-    }
-    await wait(500);
-  }
-  expect(foundOnlyA).toBe(true);
+  // Wait for ClickHouse to ingest click events and replays
+  const resClickMin = await listReplaysWithRetry(
+    { click_count_min: "2" },
+    (res) => res.status === 200 && res.body?.items?.length === 1 && res.body?.items?.[0]?.id === replayIdA,
+  );
+  expect(resClickMin.status).toBe(200);
+  expect(resClickMin.body?.items?.length).toBe(1);
+  expect(resClickMin.body?.items?.[0]?.id).toBe(replayIdA);
 
   // click_count_min=0 should return both (no-op filter)
-  const resAll = await listReplays({ click_count_min: "0" });
+  const resAll = await listReplaysWithRetry(
+    { click_count_min: "0" },
+    (res) => res.status === 200 && (res.body?.items?.length ?? 0) >= 2,
+  );
   expect(resAll.status).toBe(200);
   expect(resAll.body?.items?.length).toBeGreaterThanOrEqual(2);
 });
@@ -1182,6 +1373,16 @@ it("admin list session replays paginates correctly when last_event_at timestamps
   expect(uploadB.status).toBe(200);
   const replayIdB = uploadB.body?.session_replay_id;
 
+  // Wait for ClickHouse to ingest both replays before paginating
+  await listReplaysWithRetry(
+    {},
+    (res) => {
+      const items = res.body?.items ?? [];
+      const ids = items.map((i: any) => i.id);
+      return res.status === 200 && ids.includes(replayIdA) && ids.includes(replayIdB);
+    },
+  );
+
   const first = await listReplays({ limit: "1" });
   expect(first.status).toBe(200);
   expect(first.body?.items?.length).toBe(1);
@@ -1228,7 +1429,11 @@ it("admin list session replays combines filters with AND semantics", async ({ ex
   });
   expect(uploadB.status).toBe(200);
 
-  const matchingIntersection = await listReplays({ user_ids: userA.userId, team_ids: teamId });
+  // Wait for ClickHouse to ingest both replays before asserting combined filters
+  const matchingIntersection = await listReplaysWithRetry(
+    { user_ids: userA.userId, team_ids: teamId },
+    (res) => res.status === 200 && res.body?.items?.length === 1,
+  );
   expect(matchingIntersection.status).toBe(200);
   expect(matchingIntersection.body?.items?.length).toBe(1);
   expect(matchingIntersection.body?.items?.[0]?.project_user?.id).toBe(userA.userId);
@@ -1381,4 +1586,140 @@ it("admin list session replays rejects invalid filter parameters", async ({ expe
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+// ============================================================================
+// Session replay limit enforcement tests
+// ============================================================================
+
+async function getSessionReplayItemQuantity(ownerTeamId: string) {
+  return await withInternalProject(async () => {
+    const response = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/session_replays`, {
+      accessType: "server",
+    });
+    if (response.status !== 200) {
+      throw new Error(`Failed to get session_replays item: ${JSON.stringify(response.body)}`);
+    }
+    return response.body.quantity as number;
+  });
+}
+
+async function setSessionReplayItemQuantity(ownerTeamId: string, quantity: number) {
+  const currentQuantity = await getSessionReplayItemQuantity(ownerTeamId);
+  const delta = quantity - currentQuantity;
+
+  await withInternalProject(async () => {
+    const response = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/session_replays/update-quantity?allow_negative=true`, {
+      method: "POST",
+      accessType: "server",
+      body: { delta },
+    });
+    if (response.status !== 200) {
+      throw new Error(`Failed to set session_replays quantity: ${JSON.stringify(response.body)}`);
+    }
+  });
+}
+
+it("free plan starts with correct session replay allocation", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  const quantity = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantity).toBe(PLAN_LIMITS.free.sessionReplays);
+});
+
+it("rejects new session replay when quota is exhausted", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  await Auth.Otp.signIn();
+  await setSessionReplayItemQuantity(ownerTeamId, 0);
+
+  const now = Date.now();
+  const res = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [{ type: 2, timestamp: now + 100 }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
+});
+
+it("accepts new session replay and debits quota by 1", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  await Auth.Otp.signIn();
+
+  const quantityBefore = await getSessionReplayItemQuantity(ownerTeamId);
+
+  const now = Date.now();
+  const res = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [{ type: 2, timestamp: now + 100 }],
+  });
+
+  expect(res.status).toBe(200);
+  expect(res.body.deduped).toBe(false);
+
+  const quantityAfter = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantityAfter).toBe(quantityBefore - 1);
+});
+
+it("does not debit quota when appending chunks to an existing session replay, even after quota is exhausted", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const firstBatch = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [{ type: 2, timestamp: now + 100 }],
+  });
+  expect(firstBatch.status).toBe(200);
+  expect(firstBatch.body.deduped).toBe(false);
+
+  const quantityAfterFirst = await getSessionReplayItemQuantity(ownerTeamId);
+
+  const secondBatch = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 1000,
+    events: [{ type: 3, timestamp: now + 500 }],
+  });
+  expect(secondBatch.status).toBe(200);
+  expect(secondBatch.body.session_replay_id).toBe(firstBatch.body.session_replay_id);
+
+  const quantityAfterSecond = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantityAfterSecond).toBe(quantityAfterFirst);
+
+  // Exhaust quota — existing replays should still be able to append
+  await setSessionReplayItemQuantity(ownerTeamId, 0);
+
+  const thirdBatch = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 1500,
+    events: [{ type: 3, timestamp: now + 1000 }],
+  });
+  expect(thirdBatch.status).toBe(200);
+  expect(thirdBatch.body.session_replay_id).toBe(firstBatch.body.session_replay_id);
+
+  const quantityAfterThird = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantityAfterThird).toBe(0);
 });

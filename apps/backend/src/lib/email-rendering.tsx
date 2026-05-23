@@ -154,7 +154,7 @@ export async function renderEmailWithTemplate(
         // This can happen with complex or invalid JSX
         captureError("email-transpilation-template-error", new StackAssertionError(
           "Failed to transpile template for editable markers",
-          { error: e instanceof Error ? e.message : String(e) }
+          { cause: e }
         ));
       }
     }
@@ -169,7 +169,7 @@ export async function renderEmailWithTemplate(
         // If transpilation fails, fall back to original source
         captureError("email-transpilation-theme-error", new StackAssertionError(
           "Failed to transpile theme for editable markers",
-          { error: e instanceof Error ? e.message : String(e) }
+          { cause: e }
         ));
       }
     }

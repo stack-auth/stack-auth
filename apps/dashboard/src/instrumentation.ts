@@ -1,12 +1,26 @@
 import * as Sentry from "@sentry/nextjs";
-import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import "./polyfills";
 
-export function register() {
+async function startRemoteDevelopmentEnvironmentLifecycleIfNeeded(): Promise<void> {
+  if (getNextRuntime() !== "nodejs" || getEnvVariable("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT", "") !== "true") {
+    return;
+  }
+
+  const { startRemoteDevelopmentEnvironmentLifecycle } = await import("./lib/remote-development-environment/manager");
+  startRemoteDevelopmentEnvironmentLifecycle();
+}
+
+export async function register() {
   if (getNextRuntime() === "nodejs") {
-    globalThis.process.title = `stack-dashboard:${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")} (node/nextjs)`;
+    if (getEnvBoolean("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT")) {
+      globalThis.process.title = `Stack Auth — Development Server (port ${getEnvVariable("PORT", "?")})`;
+    } else {
+      globalThis.process.title = `stack-dashboard:${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")} (node/nextjs)`;
+    }
+    await startRemoteDevelopmentEnvironmentLifecycleIfNeeded();
   }
 
   if (getNextRuntime() === "nodejs" || getNextRuntime() === "edge") {

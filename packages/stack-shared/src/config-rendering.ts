@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { isValidConfig, normalize } from "./config/format";
+import { parseStackConfigFileContent, renderConfigFileContent } from "./stack-config-file";
+export { parseStackConfigFileContent, renderConfigFileContent };
 
 /**
  * Packages that export the `StackConfig` type, in priority order.
@@ -12,8 +13,6 @@ const STACKFRAME_CONFIG_PACKAGES = [
   "@stackframe/js",
   "@stackframe/template",
 ] as const;
-
-const DEFAULT_CONFIG_IMPORT_PACKAGE = "@stackframe/js";
 
 /**
  * Given a list of dependency names (from package.json), returns the
@@ -56,25 +55,6 @@ export function detectImportPackageFromDir(dir: string): string | undefined {
   return undefined;
 }
 
-export function renderConfigFileContent(config: unknown, importPackage?: string): string {
-  if (!isValidConfig(config)) {
-    throw new Error("Invalid config: expected a plain object.");
-  }
-
-  const droppedKeys: string[] = [];
-  const normalizedConfig = normalize(config, {
-    onDotIntoNonObject: "ignore",
-    onDotIntoNull: "empty-object",
-    droppedKeys,
-  });
-  if (droppedKeys.length > 0) {
-    throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
-  }
-  const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
-  const importLine = `import type { StackConfig } from "${pkg}";`;
-  return `${importLine}\n\nexport const config: StackConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
-}
-
 import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({ expect }) => {
   expect(renderConfigFileContent({
     "payments.items.todos.displayName": "Todo Slots",
@@ -89,6 +69,33 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
     }
   }
 };`);
+});
+
+import.meta.vitest?.test("parseStackConfigFileContent parses static config exports", ({ expect }) => {
+  expect(parseStackConfigFileContent(`
+    import type { StackConfig } from "@stackframe/js";
+    export const config: StackConfig = {
+      auth: { allowSignUp: true },
+      payments: { testMode: false },
+    };
+  `, "stack.config.ts")).toMatchInlineSnapshot(`
+    {
+      "auth": {
+        "allowSignUp": true,
+      },
+      "payments": {
+        "testMode": false,
+      },
+    }
+  `);
+});
+
+import.meta.vitest?.test("parseStackConfigFileContent parses show-onboarding", ({ expect }) => {
+  expect(parseStackConfigFileContent('export const config = "show-onboarding";', "stack.config.ts")).toBe("show-onboarding");
+});
+
+import.meta.vitest?.test("parseStackConfigFileContent rejects dynamic config exports", ({ expect }) => {
+  expect(() => parseStackConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {

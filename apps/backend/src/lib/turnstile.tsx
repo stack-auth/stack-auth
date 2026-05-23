@@ -10,8 +10,8 @@ import {
   turnstileDevelopmentKeys,
   turnstilePhaseValues,
 } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "@stackframe/stack-shared/dist/utils/urls";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
+import { validateRedirectHostname } from "./redirect-urls";
 import { Tenancy } from "./tenancies";
 
 
@@ -47,15 +47,7 @@ type SiteverifyResponse = {
 const FETCH_TIMEOUT_MS = 10_000;
 
 function isAllowedTurnstileHostname(hostname: string, tenancy: Tenancy): boolean {
-  if (tenancy.config.domains.allowLocalhost && isLocalhost(`http://${hostname}`)) {
-    return true;
-  }
-  return Object.values(tenancy.config.domains.trustedDomains).some(({ baseUrl }) => {
-    if (baseUrl == null) return false;
-    const pattern = createUrlIfValid(baseUrl)?.hostname
-      ?? baseUrl.match(/^[^:]+:\/\/([^/:]+)/)?.[1];
-    return pattern != null && matchHostnamePattern(pattern, hostname);
-  });
+  return validateRedirectHostname(hostname, tenancy);
 }
 
 function getSecretKey(override?: string): string {
@@ -324,7 +316,7 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
     expect(captureErrorSpy).not.toHaveBeenCalled();
   });
 
-  const allowMyapp = (h: string) => h === "myapp.com" || matchHostnamePattern("*.myapp.com", h);
+  const allowMyapp = (h: string) => h === "myapp.com" || h.endsWith(".myapp.com");
 
   test("returns invalid when hostname does not match allowed hostnames", async ({ expect }) => {
     stubFetch({ success: true, action: "sign_up_with_credential", hostname: "evil.example.com" });

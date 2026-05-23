@@ -17,6 +17,7 @@ import {
   TooltipProvider,
   Typography,
 } from "@/components/ui";
+import { getPublicEnvVar } from "@/lib/env";
 import { useUpdateConfig } from "@/lib/config-update";
 import {
   ArrowsClockwiseIcon,
@@ -30,8 +31,8 @@ import {
 } from "@phosphor-icons/react";
 import { AdminOwnedProject, AuthPage } from "@stackframe/stack";
 import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { type EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
-import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -49,10 +50,17 @@ import {
   deriveInitialApps,
   deriveInitialSignInMethods,
   getStepIndex,
+  normalizeProjectOnboardingState,
+  createProjectOnboardingState,
+  OAUTH_SIGN_IN_METHODS,
+  type OnboardingConfigChoice,
+  type OnboardingPaymentsCountry,
   orderedAppIds,
   PAYMENT_COUNTRY_OPTIONS,
   PRIMARY_APP_IDS,
+  type ProjectOnboardingState,
   REQUIRED_APP_IDS,
+  SHARED_OAUTH_SIGN_IN_METHODS,
   SIGN_IN_METHODS,
   type SignInMethod,
 } from "./shared";
@@ -63,28 +71,49 @@ const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 export function ProjectOnboardingWizard(props: {
   project: AdminOwnedProject,
   status: ProjectOnboardingStatus,
+  onboardingState: ProjectOnboardingState | null,
   mode: string | null,
   setMode: (mode: string | null) => void,
   setStatus: (status: ProjectOnboardingStatus) => Promise<void>,
+  setOnboardingState: (state: ProjectOnboardingState) => Promise<void>,
+  clearOnboardingState: () => Promise<void>,
   onComplete: () => void,
 }) {
   const router = useRouter();
-  const { project, status, setMode, setStatus, onComplete } = props;
+  const { project, status, onboardingState, setMode, setStatus, setOnboardingState, clearOnboardingState, onComplete } = props;
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
+  const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
   const completeConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const setProjectOnboardingStatus = setStatus;
   const finishProjectOnboarding = onComplete;
+  const deriveCurrentOnboardingState = useCallback((onboardingStatus: ProjectOnboardingStatus): ProjectOnboardingState => {
+    const defaultState = createProjectOnboardingState({
+      selectedConfigChoice: "create-new",
+      selectedApps: deriveInitialApps(completeConfig, onboardingStatus),
+      selectedSignInMethods: deriveInitialSignInMethods(project, onboardingStatus),
+      selectedEmailThemeId: completeConfig.emails.selectedThemeId,
+      selectedPaymentsCountry: "US",
+      developmentEnvironment: isDevelopmentEnvironment,
+    });
+    if (onboardingState == null) {
+      return defaultState;
+    }
+    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment });
+  }, [completeConfig, isDevelopmentEnvironment, onboardingState, project]);
+  const initialOnboardingState = deriveCurrentOnboardingState(status);
   const [saving, setSaving] = useState(false);
-  const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => deriveInitialApps(completeConfig, status));
-  const [signInMethods, setSignInMethods] = useState<Set<SignInMethod>>(() => deriveInitialSignInMethods(project, status));
+  const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => new Set(initialOnboardingState.selected_apps));
+  const [signInMethods, setSignInMethods] = useState<Set<SignInMethod>>(() => new Set(initialOnboardingState.selected_sign_in_methods));
   const [trustedDomain, setTrustedDomain] = useState("");
   const [domainHandlerPath, setDomainHandlerPath] = useState("/handler");
   const [managedSubdomain, setManagedSubdomain] = useState("");
   const [managedSenderLocalPart, setManagedSenderLocalPart] = useState("");
   const [managedDomainSetupStatus, setManagedDomainSetupStatus] = useState<string | null>(null);
-  const [selectedEmailThemeId, setSelectedEmailThemeId] = useState(completeConfig.emails.selectedThemeId);
-  const [selectedPaymentsCountry, setSelectedPaymentsCountry] = useState("US");
-  const [selectedConfigChoice, setSelectedConfigChoice] = useState<"create-new" | "link-existing">("create-new");
+  const [selectedEmailThemeId, setSelectedEmailThemeId] = useState<string | null>(initialOnboardingState.selected_email_theme_id);
+  const [selectedPaymentsCountry, setSelectedPaymentsCountry] = useState<OnboardingPaymentsCountry>(initialOnboardingState.selected_payments_country);
+  const [selectedConfigChoice, setSelectedConfigChoice] = useState<OnboardingConfigChoice>(initialOnboardingState.selected_config_choice);
   const [authSetupMobileTab, setAuthSetupMobileTab] = useState<"methods" | "preview">("methods");
   const [domainSetupAutoAdvanceError, setDomainSetupAutoAdvanceError] = useState<string | null>(null);
   const [domainSetupAutoAdvancing, setDomainSetupAutoAdvancing] = useState(false);
@@ -107,8 +136,9 @@ export function ProjectOnboardingWizard(props: {
     }
     previousProjectId.current = project.id;
 
-    setSelectedApps(deriveInitialApps(completeConfig, status));
-    setSignInMethods(deriveInitialSignInMethods(project, status));
+    const onboardingState = deriveCurrentOnboardingState(status);
+    setSelectedApps(new Set(onboardingState.selected_apps));
+    setSignInMethods(new Set(onboardingState.selected_sign_in_methods));
 
     const trustedDomains = Object.values(completeConfig.domains.trustedDomains)
       .filter((entry) => entry.baseUrl != null)
@@ -129,17 +159,18 @@ export function ProjectOnboardingWizard(props: {
     const serverConfig = completeConfig.emails.server;
     setManagedSubdomain(serverConfig.managedSubdomain ?? "");
     setManagedSenderLocalPart(serverConfig.managedSenderLocalPart ?? "");
-    setSelectedEmailThemeId(completeConfig.emails.selectedThemeId);
+    setSelectedEmailThemeId(onboardingState.selected_email_theme_id);
     setManagedDomainSetupStatus(null);
-    setSelectedConfigChoice("create-new");
+    setSelectedConfigChoice(onboardingState.selected_config_choice);
+    setSelectedPaymentsCountry(onboardingState.selected_payments_country);
     setAuthSetupMobileTab("methods");
     setDomainSetupAutoAdvanceError(null);
     setDomainSetupAutoAdvancing(false);
     paymentsAutoCompletingRef.current = false;
-  }, [completeConfig, project, project.id, status]);
+  }, [completeConfig, deriveCurrentOnboardingState, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
-  const isLinkExistingMode = props.mode === "link-existing";
+  const isLinkExistingMode = !isDevelopmentEnvironment && props.mode === "link-existing";
   const paymentsAppEnabledInConfig = completeConfig.apps.installed.payments?.enabled === true;
   const includePayments = (
     status === "payments_setup"
@@ -165,6 +196,14 @@ export function ProjectOnboardingWizard(props: {
       await setStatus(step);
     });
   }, [currentTimelineIndex, props.mode, setMode, setStatus, timelineSteps]);
+
+  const handleBack = useMemo(() => {
+    if (currentTimelineIndex <= 0) {
+      return undefined;
+    }
+    const previousStep = timelineSteps[currentTimelineIndex - 1].id;
+    return () => handleTimelineStepClick(previousStep);
+  }, [currentTimelineIndex, handleTimelineStepClick, timelineSteps]);
 
   const advanceFromDomainSetup = useCallback(() => {
     return runAsynchronouslyWithAlert(async () => {
@@ -197,8 +236,8 @@ export function ProjectOnboardingWizard(props: {
         credentialEnabled: signInMethods.has("credential"),
         magicLinkEnabled: signInMethods.has("magicLink"),
         passkeyEnabled: signInMethods.has("passkey"),
-        oauthProviders: (allProviders as readonly string[])
-          .filter((providerId) => signInMethods.has(providerId as SignInMethod))
+        oauthProviders: SHARED_OAUTH_SIGN_IN_METHODS
+          .filter((providerId) => signInMethods.has(providerId))
           .map((providerId) => ({ id: providerId, type: "shared" as const })),
       },
     };
@@ -233,12 +272,108 @@ export function ProjectOnboardingWizard(props: {
     });
   };
 
+  const buildOnboardingState = useCallback((): ProjectOnboardingState => {
+    return createProjectOnboardingState({
+      selectedConfigChoice,
+      selectedApps,
+      selectedSignInMethods: signInMethods,
+      selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
+      selectedPaymentsCountry,
+      developmentEnvironment: isDevelopmentEnvironment,
+    });
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
+
+  const persistOnboardingState = useCallback(async () => {
+    await setOnboardingState(buildOnboardingState());
+  }, [buildOnboardingState, setOnboardingState]);
+
+  const buildBranchConfigUpdate = useCallback(() => {
+    const emailThemeId = selectedEmailThemeId ?? completeConfig.emails.selectedThemeId;
+    const configUpdate: EnvironmentConfigOverrideOverride = {
+      "auth.password.allowSignIn": signInMethods.has("credential"),
+      "auth.otp.allowSignIn": signInMethods.has("magicLink"),
+      "auth.passkey.allowSignIn": signInMethods.has("passkey"),
+      "emails.selectedThemeId": emailThemeId,
+    };
+    for (const appId of ALL_APP_IDS) {
+      configUpdate[`apps.installed.${appId}.enabled`] = selectedApps.has(appId);
+    }
+    if (isDevelopmentEnvironment) {
+      configUpdate["auth.oauth.providers.google"] = signInMethods.has("google") ? {
+        type: "google",
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      } : null;
+      configUpdate["auth.oauth.providers.github"] = signInMethods.has("github") ? {
+        type: "github",
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      } : null;
+      configUpdate["auth.oauth.providers.microsoft"] = signInMethods.has("microsoft") ? {
+        type: "microsoft",
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      } : null;
+    }
+    return configUpdate;
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
+
+  const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
+    const configUpdate: EnvironmentConfigOverrideOverride = {};
+    for (const providerId of SHARED_OAUTH_SIGN_IN_METHODS) {
+      configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId) ? {
+        type: providerId,
+        isShared: true,
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      } : null;
+    }
+    return configUpdate;
+  }, [signInMethods]);
+
   const finalizeOnboarding = useCallback(async () => {
     await runWithSaving(async () => {
+      if (!isLinkExistingMode) {
+        await persistOnboardingState();
+
+        const branchConfigUpdated = await updateConfig({
+          adminApp: props.project.app,
+          configUpdate: buildBranchConfigUpdate(),
+          pushable: true,
+        });
+        if (!branchConfigUpdated) {
+          return;
+        }
+
+        if (!isDevelopmentEnvironment) {
+          const providersUpdated = await updateConfig({
+            adminApp: props.project.app,
+            configUpdate: buildEnvironmentOAuthConfigUpdate(),
+            pushable: false,
+          });
+          if (!providersUpdated) {
+            return;
+          }
+        }
+      }
+
       await setProjectOnboardingStatus("completed");
+      await clearOnboardingState();
       finishProjectOnboarding();
     });
-  }, [finishProjectOnboarding, runWithSaving, setProjectOnboardingStatus]);
+  }, [
+    buildBranchConfigUpdate,
+    buildEnvironmentOAuthConfigUpdate,
+    finishProjectOnboarding,
+    isLinkExistingMode,
+    isDevelopmentEnvironment,
+    persistOnboardingState,
+    props.project.app,
+    clearOnboardingState,
+    runWithSaving,
+    setProjectOnboardingStatus,
+    updateConfig,
+  ]);
 
   useEffect(() => {
     if (status !== "payments_setup" || stripeAccountInfo?.details_submitted !== true || paymentsAutoCompletingRef.current) {
@@ -248,13 +383,14 @@ export function ProjectOnboardingWizard(props: {
     paymentsAutoCompletingRef.current = true;
     runAsynchronouslyWithAlert(async () => {
       try {
+        await persistOnboardingState();
         await setStatus("welcome");
       } catch (error) {
         paymentsAutoCompletingRef.current = false;
         throw error;
       }
     });
-  }, [setStatus, status, stripeAccountInfo?.details_submitted]);
+  }, [persistOnboardingState, setStatus, status, stripeAccountInfo?.details_submitted]);
 
   if (props.status === "welcome") {
     return (
@@ -267,7 +403,7 @@ export function ProjectOnboardingWizard(props: {
     );
   }
 
-  if (props.status === "config_choice" && props.mode === "link-existing") {
+  if (props.status === "config_choice" && props.mode === "link-existing" && !isDevelopmentEnvironment) {
     return (
       <LinkExistingOnboarding
         project={props.project}
@@ -293,6 +429,42 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "config_choice") {
+    if (isDevelopmentEnvironment) {
+      const developmentEnvironmentName = isRemoteDevelopmentEnvironment ? "remote development environment" : "local emulator";
+      return (
+        <OnboardingPage
+          stepKey="config-choice"
+          title="Welcome to Stack Auth!"
+          subtitle={`You are running Stack Auth in the ${developmentEnvironmentName}.`}
+          steps={timelineSteps}
+          currentStep="config_choice"
+          onStepClick={handleTimelineStepClick}
+          disabled={saving}
+          primaryAction={
+            <DesignButton
+              className="w-full rounded-full"
+              loading={saving}
+              onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+                await persistOnboardingState();
+                await props.setStatus("apps_selection");
+              }))}
+            >
+              Continue
+            </DesignButton>
+          }
+        >
+          <div className="mx-auto max-w-xl rounded-2xl bg-white/70 p-6 text-center ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.06]">
+            <Typography className="text-base leading-relaxed">
+              This development-environment project is ready for onboarding.
+            </Typography>
+            <Typography variant="secondary" className="mt-3 text-sm leading-relaxed">
+              Next, we will guide you through the onboarding flow to set up your Stack Auth configuration.
+            </Typography>
+          </div>
+        </OnboardingPage>
+      );
+    }
+
     const createNewSelected = selectedConfigChoice === "create-new";
     const linkExistingSelected = selectedConfigChoice === "link-existing";
 
@@ -304,12 +476,14 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="config_choice"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         primaryAction={
           <DesignButton
             className="w-full rounded-full"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              await persistOnboardingState();
               if (selectedConfigChoice === "create-new") {
                 await props.setStatus("apps_selection");
               } else {
@@ -330,7 +504,7 @@ export function ProjectOnboardingWizard(props: {
               "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
               createNewSelected
                 ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
-                : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
+                : "bg-white/90 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-white/[0.06] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
             )}
           >
             {createNewSelected && (
@@ -358,7 +532,7 @@ export function ProjectOnboardingWizard(props: {
               "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
               linkExistingSelected
                 ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
-                : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
+                : "bg-white/90 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-white/[0.06] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
             )}
           >
             {linkExistingSelected && (
@@ -398,6 +572,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="apps_selection"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         wide
         primaryAction={
@@ -405,21 +580,7 @@ export function ProjectOnboardingWizard(props: {
             className="w-full rounded-full"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              const appConfigUpdateEntries = new Map(
-                ALL_APP_IDS.map((appId) => [
-                  `apps.installed.${appId}.enabled`,
-                  selectedApps.has(appId),
-                ])
-              );
-
-              const configUpdated = await updateConfig({
-                adminApp: props.project.app,
-                configUpdate: Object.fromEntries(appConfigUpdateEntries),
-                pushable: true,
-              });
-              if (!configUpdated) {
-                return;
-              }
+              await persistOnboardingState();
               await props.setStatus("auth_setup");
             }))}
           >
@@ -504,6 +665,10 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "auth_setup") {
+    const availableSignInMethods = isDevelopmentEnvironment
+      ? SIGN_IN_METHODS.filter((method) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === method.id))
+      : SIGN_IN_METHODS;
+
     return (
       <OnboardingPage
         stepKey="auth-setup"
@@ -512,6 +677,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="auth_setup"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         wide
         primaryAction={
@@ -522,50 +688,7 @@ export function ProjectOnboardingWizard(props: {
               if (signInMethods.size === 0) {
                 throw new Error("Select at least one sign-in method before continuing.");
               }
-
-              const authMethodsUpdated = await updateConfig({
-                adminApp: props.project.app,
-                configUpdate: {
-                  "auth.password.allowSignIn": signInMethods.has("credential"),
-                  "auth.otp.allowSignIn": signInMethods.has("magicLink"),
-                  "auth.passkey.allowSignIn": signInMethods.has("passkey"),
-                },
-                pushable: true,
-              });
-
-              if (!authMethodsUpdated) {
-                return;
-              }
-
-              const providersUpdated = await updateConfig({
-                adminApp: props.project.app,
-                configUpdate: {
-                  "auth.oauth.providers.google": signInMethods.has("google") ? {
-                    type: "google",
-                    isShared: true,
-                    allowSignIn: true,
-                    allowConnectedAccounts: true,
-                  } : null,
-                  "auth.oauth.providers.github": signInMethods.has("github") ? {
-                    type: "github",
-                    isShared: true,
-                    allowSignIn: true,
-                    allowConnectedAccounts: true,
-                  } : null,
-                  "auth.oauth.providers.microsoft": signInMethods.has("microsoft") ? {
-                    type: "microsoft",
-                    isShared: true,
-                    allowSignIn: true,
-                    allowConnectedAccounts: true,
-                  } : null,
-                },
-                pushable: false,
-              });
-
-              if (!providersUpdated) {
-                return;
-              }
-
+              await persistOnboardingState();
               await props.setStatus("email_theme_setup");
             }))}
           >
@@ -603,14 +726,14 @@ export function ProjectOnboardingWizard(props: {
                   Sign-in methods
                 </Typography>
                 <div className="overflow-hidden rounded-xl bg-white/90 ring-1 ring-black/[0.06] dark:bg-foreground/[0.04] dark:ring-white/[0.06]">
-                  {SIGN_IN_METHODS.map((method, index) => {
+                  {availableSignInMethods.map((method, index) => {
                     const checked = signInMethods.has(method.id);
                     return (
                       <label
                         key={method.id}
                         className={cn(
                           "flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 md:gap-4 md:px-4 md:py-3",
-                          index !== SIGN_IN_METHODS.length - 1 && "border-b border-black/[0.06] dark:border-white/[0.06]",
+                          index !== availableSignInMethods.length - 1 && "border-b border-black/[0.06] dark:border-white/[0.06]",
                         )}
                       >
                         <span className="text-sm">{method.label}</span>
@@ -668,6 +791,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="email_theme_setup"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         wide
         primaryAction={
@@ -675,18 +799,7 @@ export function ProjectOnboardingWizard(props: {
             className="w-full rounded-full"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              if (selectedEmailThemeId !== completeConfig.emails.selectedThemeId) {
-                const configUpdated = await updateConfig({
-                  adminApp: props.project.app,
-                  configUpdate: {
-                    "emails.selectedThemeId": selectedEmailThemeId,
-                  },
-                  pushable: true,
-                });
-                if (!configUpdated) {
-                  return;
-                }
-              }
+              await persistOnboardingState();
 
               if (includePayments) {
                 await props.setStatus("payments_setup");
@@ -705,7 +818,6 @@ export function ProjectOnboardingWizard(props: {
               variant="warning"
               title="No themes found"
               description="Theme selection is temporarily unavailable. You can still continue."
-              glassmorphic
             />
           )}
           <div className="grid gap-4 sm:grid-cols-3">
@@ -716,8 +828,10 @@ export function ProjectOnboardingWizard(props: {
                   key={theme.id}
                   type="button"
                   onClick={() => setSelectedEmailThemeId(theme.id)}
+                  disabled={saving}
                   className={cn(
                     "relative flex flex-col overflow-hidden rounded-2xl text-left transition-[box-shadow,background-color] duration-150 hover:transition-none",
+                    "disabled:cursor-not-allowed disabled:opacity-60",
                     isSelected
                       ? cn(
                           "bg-blue-500/[0.06] dark:bg-blue-500/[0.04] ring-1 ring-blue-500/40",
@@ -725,8 +839,8 @@ export function ProjectOnboardingWizard(props: {
                           "dark:shadow-[0_14px_48px_-10px_rgba(96,165,250,0.38),0_0_1px_rgba(96,165,250,0.25)]",
                         )
                       : cn(
-                          "bg-white/60 dark:bg-background/40 dark:backdrop-blur-xl",
-                          "ring-1 ring-black/[0.05] hover:ring-black/[0.09] dark:ring-white/[0.05] dark:hover:ring-white/[0.09]",
+                          "bg-white/90 dark:bg-white/[0.06]",
+                          "ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
                         ),
                   )}
                 >
@@ -773,6 +887,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="payments_setup"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         actionsLayout="inline"
         primaryAction={
@@ -780,6 +895,7 @@ export function ProjectOnboardingWizard(props: {
             className="rounded-full px-6"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              await persistOnboardingState();
               await props.setStatus("welcome");
             }))}
 
@@ -835,7 +951,12 @@ export function ProjectOnboardingWizard(props: {
                 <Typography className="text-xs font-medium text-muted-foreground">Country of residence</Typography>
                 <DesignSelectorDropdown
                   value={selectedPaymentsCountry}
-                  onValueChange={setSelectedPaymentsCountry}
+                  onValueChange={(value) => {
+                    if (value !== "US" && value !== "OTHER") {
+                      throw new Error(`Invalid payments country: ${value}`);
+                    }
+                    setSelectedPaymentsCountry(value);
+                  }}
                   options={PAYMENT_COUNTRY_OPTIONS.map((country) => ({ value: country.value, label: country.label }))}
                   size="md"
                 />

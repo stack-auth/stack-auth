@@ -43,14 +43,15 @@ const queryEvents = async (params: {
  */
 const fetchEventsWithRetry = async (
   params: { userId?: string, eventType?: string },
-  options: { attempts?: number, delayMs?: number, expectedCount?: number } = {}
+  options: { attempts?: number, delayMs?: number, expectedCount?: number, timeoutMs?: number } = {}
 ) => {
-  const attempts = options.attempts ?? 10;
-  const delayMs = options.delayMs ?? 300;
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const delayMs = options.delayMs ?? 500;
   const expectedCount = options.expectedCount ?? 1;
+  const startedAt = performance.now();
 
   let response = await queryEvents(params);
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  while (performance.now() - startedAt < timeoutMs) {
     if (response.status !== 200) {
       break;
     }
@@ -77,7 +78,7 @@ const expectExactlyNTokenRefreshEvents = async (
   // First, wait for events to appear
   const response = await fetchEventsWithRetry(
     { userId, eventType: "$token-refresh" },
-    { expectedCount, attempts: 15, delayMs: 300 }
+    { expectedCount }
   );
 
   if (response.status !== 200) {
@@ -85,7 +86,7 @@ const expectExactlyNTokenRefreshEvents = async (
   }
 
   // Wait a bit more to catch any delayed duplicate events
-  await wait(500);
+  await wait(1000);
 
   // Query again to get the final count
   const finalResponse = await queryEvents({ userId, eventType: "$token-refresh" });
@@ -188,7 +189,7 @@ it("anonymous signup creates exactly one $token-refresh event", async ({ expect 
   });
 });
 
-it("OAuth signup creates exactly one $token-refresh event", async ({ expect }) => {
+it("OAuth signup creates exactly one $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{
@@ -222,7 +223,7 @@ it("OAuth signup creates exactly one $token-refresh event", async ({ expect }) =
 // Signin Tests
 // ============================================================================
 
-it("password signin (existing user) creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("password signin (existing user) creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { credential_enabled: true },
   });
@@ -245,7 +246,7 @@ it("password signin (existing user) creates exactly one additional $token-refres
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("OTP signin (existing user) creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("OTP signin (existing user) creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { magic_link_enabled: true },
   });
@@ -266,7 +267,7 @@ it("OTP signin (existing user) creates exactly one additional $token-refresh eve
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("OAuth signin (existing user) creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("OAuth signin (existing user) creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{
@@ -298,7 +299,7 @@ it("OAuth signin (existing user) creates exactly one additional $token-refresh e
 // Session Refresh Tests
 // ============================================================================
 
-it("session refresh endpoint creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("session refresh endpoint creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { magic_link_enabled: true },
   });
@@ -316,13 +317,13 @@ it("session refresh endpoint creates exactly one additional $token-refresh event
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("multiple session refreshes create one event each", async ({ expect }) => {
+it("multiple session refreshes create one event each", { timeout: 180_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { magic_link_enabled: true },
   });
   await InternalApiKey.createAndSetProjectKeys();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   await expectExactlyNTokenRefreshEvents(userId, 1, { projectId });
 
   // Refresh multiple times
@@ -343,7 +344,7 @@ it("multiple session refreshes create one event each", async ({ expect }) => {
 // OAuth Refresh Token Grant Tests
 // ============================================================================
 
-it("OAuth refresh token grant creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("OAuth refresh token grant creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{
@@ -390,7 +391,7 @@ it("OAuth refresh token grant creates exactly one additional $token-refresh even
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("multiple OAuth refresh token grants create one event each", async ({ expect }) => {
+it("multiple OAuth refresh token grants create one event each", { timeout: 180_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{

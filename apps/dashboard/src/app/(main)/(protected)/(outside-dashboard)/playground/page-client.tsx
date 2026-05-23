@@ -2,7 +2,6 @@
 
 import { CodeBlock } from "@/components/code-block";
 import {
-  DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
   type DesignEditableGridSize,
@@ -12,17 +11,20 @@ import {
   DesignUserList,
 } from "@/components/design-components";
 import { DesignAnalyticsCard, DesignAnalyticsCardHeader, DesignChartLegend } from "@/components/design-components/analytics-card";
-import { DataTableColumnHeader, SearchToolbarItem, Typography } from "@/components/ui";
+import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   Cube,
   Envelope,
   FileText,
+  FlaskIcon,
   HardDrive,
+  InfoIcon,
   MagnifyingGlassIcon,
   Package,
   PencilSimple,
+  PulseIcon,
   Sliders,
   Sparkle,
   StackSimple,
@@ -44,10 +46,13 @@ import {
   DesignButton,
   DesignCard,
   DesignCategoryTabs,
+  DesignDialog,
+  DesignDialogClose,
+  type DesignDialogSize,
+  type DesignDialogVariant,
   DesignInput,
   DesignPillToggle,
-} from "@stackframe/dashboard-ui-components";
-import { ColumnDef } from "@tanstack/react-table";
+} from "@/components/design-components";
 import { useMemo, useRef, useState } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -62,6 +67,7 @@ type ComponentId =
   | "cursor-blast"
   | "data-grid"
   | "data-table"
+  | "dialog"
   | "editable-grid"
   | "input"
   | "list-item-row"
@@ -80,6 +86,7 @@ const COMPONENT_LIST: Array<{ value: ComponentId, label: string }> = [
   { value: "cursor-blast", label: "Cursor Blast Effect" },
   { value: "data-grid", label: "Data Grid" },
   { value: "data-table", label: "Data Table" },
+  { value: "dialog", label: "Dialog" },
   { value: "editable-grid", label: "Editable Grid" },
   { value: "input", label: "Input" },
   { value: "list-item-row", label: "List Item Row" },
@@ -204,6 +211,53 @@ const STATUS_BADGE: Record<DemoProduct["status"], { label: string, color: Design
   draft: { label: "Draft", color: "orange" },
   archived: { label: "Archived", color: "red" },
 };
+
+const DEMO_PRODUCT_COLUMNS: DataGridColumnDef<DemoProduct>[] = [
+  {
+    id: "name",
+    header: "Name",
+    accessor: "name",
+    width: 180,
+    type: "string",
+    renderCell: ({ value }) => <span className="text-sm font-medium text-foreground">{String(value)}</span>,
+  },
+  {
+    id: "category",
+    header: "Category",
+    accessor: "category",
+    width: 150,
+    type: "string",
+    renderCell: ({ value }) => <span className="text-sm text-muted-foreground">{String(value)}</span>,
+  },
+  {
+    id: "price",
+    header: "Price",
+    accessor: "price",
+    width: 120,
+    type: "number",
+    renderCell: ({ value }) => (
+      <span className="text-sm text-muted-foreground">
+        ${Number(value).toFixed(2)}
+      </span>
+    ),
+  },
+  {
+    id: "status",
+    header: "Status",
+    accessor: "status",
+    width: 120,
+    type: "singleSelect",
+    valueOptions: [
+      { value: "active", label: "Active" },
+      { value: "draft", label: "Draft" },
+      { value: "archived", label: "Archived" },
+    ],
+    renderCell: ({ value }) => {
+      const s = String(value) as DemoProduct["status"];
+      return <DesignBadge label={STATUS_BADGE[s].label} color={STATUS_BADGE[s].color} size="sm" />;
+    },
+  },
+];
 
 const DEMO_USERS = [
   { name: "Ada Lovelace", email: "ada@example.com", time: "Active 1h ago", color: "cyan" as const },
@@ -396,8 +450,22 @@ export default function PageClient() {
   // Data Table
   const [tableClickableRows, setTableClickableRows] = useState(false);
   const [tableLastRowClick, setTableLastRowClick] = useState("");
-  const [tableGlass, setTableGlass] = useState<boolean | undefined>(undefined);
-  const [tableShowToolbar, setTableShowToolbar] = useState(false);
+  const [tableShowToolbar, setTableShowToolbar] = useState(true);
+  const [dtState, setDtState] = useState(() => createDefaultDataGridState(DEMO_PRODUCT_COLUMNS));
+  const dtData = useDataSource({ data: DEMO_PRODUCTS, columns: DEMO_PRODUCT_COLUMNS, getRowId: (r: DemoProduct) => r.id, sorting: dtState.sorting, quickSearch: dtState.quickSearch, pagination: dtState.pagination, paginationMode: "client" });
+
+  // Dialog
+  const [dialogShape, setDialogShape] = useState<"confirm" | "rich" | "wide">("confirm");
+  const [dialogSize, setDialogSize] = useState<DesignDialogSize>("md");
+  const [dialogVariant, setDialogVariant] = useState<DesignDialogVariant>("glassmorphic");
+  const [dialogTitle, setDialogTitle] = useState("Heads up");
+  const [dialogDescription, setDialogDescription] = useState("This is a lightweight confirmation modal.");
+  const [dialogShowFooter, setDialogShowFooter] = useState(true);
+  const [dialogShowIcon, setDialogShowIcon] = useState(true);
+  const [dialogHideTopClose, setDialogHideTopClose] = useState(false);
+  const [dialogUseCustomHeader, setDialogUseCustomHeader] = useState(false);
+  const [dialogNoBodyPadding, setDialogNoBodyPadding] = useState(false);
+  const [dialogAccentClassNames, setDialogAccentClassNames] = useState(false);
 
   // Editable Grid
   const [gridCols, setGridCols] = useState<1 | 2>(2);
@@ -458,41 +526,6 @@ export default function PageClient() {
   const [userShowAvatar, setUserShowAvatar] = useState(true);
   const [userGradient, setUserGradient] = useState<"blue-purple" | "cyan-blue" | "none">("blue-purple");
   const [userLastClick, setUserLastClick] = useState("");
-
-  // ─── Demo table columns ──────────────────────────────────────────────────
-
-  const tableColumns = useMemo<ColumnDef<DemoProduct>[]>(
-    () => [
-      {
-        accessorKey: "name",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Name" />,
-        cell: ({ row }) => <span className="text-sm font-medium text-foreground">{row.getValue("name")}</span>,
-      },
-      {
-        accessorKey: "category",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Category" />,
-        cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.getValue("category")}</span>,
-      },
-      {
-        accessorKey: "price",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Price" />,
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
-            ${(row.getValue("price") as number).toFixed(2)}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-        cell: ({ row }) => {
-          const s = row.getValue("status") as DemoProduct["status"];
-          return <DesignBadge label={STATUS_BADGE[s].label} color={STATUS_BADGE[s].color} size="sm" />;
-        },
-      },
-    ],
-    []
-  );
 
   // ─── Demo editable grid items ────────────────────────────────────────────
 
@@ -900,16 +933,138 @@ export default function PageClient() {
         </div>
       );
     }
+    if (selected === "dialog") {
+      const dialogTriggerLabel = dialogShape === "rich"
+        ? "Open trigger history"
+        : dialogShape === "wide"
+          ? "Open tester"
+          : "Open confirmation";
+      const dialogIcon = dialogShowIcon
+        ? (dialogShape === "rich" ? PulseIcon : dialogShape === "wide" ? FlaskIcon : InfoIcon)
+        : null;
+      const headerContent = dialogShape === "rich" ? (
+        <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-semibold truncate flex-1 min-w-0">Allow @stack.dev signups</span>
+            <DesignBadge label="Allow" color="green" size="sm" />
+            <DesignBadge label="Enabled" color="green" size="sm" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+              <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">Last 24h</span>
+              <span className="text-sm font-semibold tabular-nums">12</span>
+            </div>
+            <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+              <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">All-time</span>
+              <span className="text-sm font-semibold tabular-nums">3</span>
+            </div>
+            <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2 flex items-center justify-center">
+              <span className="text-[10px] text-muted-foreground">sparkline</span>
+            </div>
+          </div>
+        </div>
+      ) : undefined;
+
+      let body: React.ReactNode;
+      if (dialogShape === "rich") {
+        body = (
+          <>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent triggers</span>
+            <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 divide-y divide-foreground/[0.06]">
+              {["jordan@stack.dev", "ops@stack.dev", "pat@stack.dev"].map((email) => (
+                <div key={email} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                  <span className="truncate">{email}</span>
+                  <DesignBadge label="2m ago" color="blue" size="sm" />
+                </div>
+              ))}
+            </div>
+          </>
+        );
+      } else if (dialogShape === "wide") {
+        body = (
+          <>
+            <DesignAlert
+              variant="info"
+              description="Use a wider size for forms and tester surfaces. The body region is scrollable."
+            />
+            <DesignCard>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DesignInput placeholder="Email" />
+                <DesignInput placeholder="Country (e.g. US)" />
+              </div>
+            </DesignCard>
+          </>
+        );
+      } else {
+        body = (
+          <p className="text-sm">
+            Body content lives in the scrollable region between the header and the footer.
+            Use it for short messages, inline forms, or detail views.
+          </p>
+        );
+      }
+
+      const footer = dialogShowFooter ? (
+        dialogShape === "wide" ? (
+          <>
+            <DesignDialogClose asChild>
+              <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
+            </DesignDialogClose>
+            <DesignButton size="sm">Run test</DesignButton>
+          </>
+        ) : (
+          <DesignDialogClose asChild>
+            <DesignButton variant="secondary" size="sm">Close</DesignButton>
+          </DesignDialogClose>
+        )
+      ) : undefined;
+
+      const customHeader = dialogUseCustomHeader ? (
+        <div className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-indigo-500/15 via-fuchsia-500/10 to-transparent border-b border-foreground/[0.06]">
+          <div className="h-8 w-8 rounded-full bg-foreground/10 grid place-items-center text-xs font-semibold">JD</div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate">Custom header block</div>
+            <div className="text-xs text-muted-foreground truncate">Renders instead of the default title/description region.</div>
+          </div>
+        </div>
+      ) : undefined;
+      return (
+        <DesignDialog
+          size={dialogSize}
+          variant={dialogVariant}
+          icon={dialogIcon}
+          title={dialogTitle || "Dialog"}
+          description={dialogDescription || undefined}
+          headerContent={headerContent}
+          customHeader={customHeader}
+          footer={footer}
+          hideTopCloseButton={dialogHideTopClose}
+          noBodyPadding={dialogNoBodyPadding}
+          className={dialogAccentClassNames ? "ring-2 ring-indigo-500/40" : undefined}
+          overlayClassName={dialogAccentClassNames ? "bg-indigo-950/40" : undefined}
+          headerClassName={dialogAccentClassNames ? "bg-indigo-500/5" : undefined}
+          bodyClassName={dialogAccentClassNames ? "bg-foreground/[0.02]" : undefined}
+          footerClassName={dialogAccentClassNames ? "bg-foreground/[0.02]" : undefined}
+          trigger={<DesignButton size="sm">{dialogTriggerLabel}</DesignButton>}
+        >
+          {body}
+        </DesignDialog>
+      );
+    }
     if (selected === "data-table") {
       return (
         <div className="w-full max-w-2xl">
-          <DesignDataTable
-            data={DEMO_PRODUCTS}
-            columns={tableColumns}
-            defaultSorting={[{ id: "name", desc: false }]}
-            glassmorphic={tableGlass}
-            toolbarRender={tableShowToolbar ? (table) => <SearchToolbarItem table={table} keyName="name" placeholder="Filter by name" /> : undefined}
+          <DataGrid
+            columns={DEMO_PRODUCT_COLUMNS}
+            rows={dtData.rows}
+            getRowId={(row) => row.id}
+            totalRowCount={dtData.totalRowCount}
+            isLoading={dtData.isLoading}
+            state={dtState}
+            onChange={setDtState}
+            toolbar={tableShowToolbar ? undefined : false}
             onRowClick={tableClickableRows ? (row) => setTableLastRowClick(row.name) : undefined}
+            maxHeight={400}
           />
           {tableLastRowClick && (
             <Typography variant="secondary" className="text-xs mt-2">
@@ -1586,14 +1741,114 @@ export default function PageClient() {
     if (selected === "data-table") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
-          <PropField label="Glassmorphic">
-            <GlassmorphicToggle value={tableGlass} onChange={setTableGlass} />
-          </PropField>
           <PropField label="Toolbar">
             <BoolToggle value={tableShowToolbar} onChange={setTableShowToolbar} on="Shown" off="Hidden" />
           </PropField>
           <PropField label="Row Click">
             <BoolToggle value={tableClickableRows} onChange={setTableClickableRows} on="Enabled" off="Disabled" />
+          </PropField>
+        </div>
+      );
+    }
+    if (selected === "dialog") {
+      const sizeOptions: Array<{ value: DesignDialogSize, label: string }> = [
+        { value: "sm", label: "Small" },
+        { value: "md", label: "Medium" },
+        { value: "lg", label: "Large" },
+        { value: "xl", label: "XL" },
+        { value: "2xl", label: "2XL" },
+        { value: "3xl", label: "3XL" },
+        { value: "4xl", label: "4XL" },
+        { value: "5xl", label: "5XL" },
+        { value: "6xl", label: "6XL" },
+        { value: "7xl", label: "7XL" },
+        { value: "full", label: "Full" },
+      ];
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
+          <PropField label="Shape">
+            <DesignSelectorDropdown
+              value={dialogShape}
+              onValueChange={(v) => {
+                if (v === "confirm" || v === "rich" || v === "wide") {
+                  setDialogShape(v);
+                  if (v === "confirm") {
+                    setDialogSize("md");
+                    setDialogTitle("Heads up");
+                    setDialogDescription("This is a lightweight confirmation modal.");
+                  } else if (v === "rich") {
+                    setDialogSize("2xl");
+                    setDialogTitle("Rule trigger history");
+                    setDialogDescription("3 total triggers for this rule");
+                  } else {
+                    setDialogSize("5xl");
+                    setDialogTitle("Test sign-up rules");
+                    setDialogDescription("Simulate a sign-up request to see which rules trigger.");
+                  }
+                  return;
+                }
+                throw new Error(`Unknown dialog shape "${v}"`);
+              }}
+              options={[
+                { value: "confirm", label: "Confirmation" },
+                { value: "rich", label: "Rule trigger history" },
+                { value: "wide", label: "Open tester" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Size">
+            <DesignSelectorDropdown
+              value={dialogSize}
+              onValueChange={(v) => {
+                const match = sizeOptions.find((o) => o.value === v);
+                if (!match) throw new Error(`Unknown dialog size "${v}"`);
+                setDialogSize(match.value);
+              }}
+              options={sizeOptions}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Variant">
+            <DesignSelectorDropdown
+              value={dialogVariant}
+              onValueChange={(v) => {
+                if (v === "glassmorphic" || v === "plain") {
+                  setDialogVariant(v);
+                  return;
+                }
+                throw new Error(`Unknown dialog variant "${v}"`);
+              }}
+              options={[
+                { value: "glassmorphic", label: "Glassmorphic" },
+                { value: "plain", label: "Plain" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Title">
+            <DesignInput size="sm" value={dialogTitle} onChange={(e) => setDialogTitle(e.target.value)} />
+          </PropField>
+          <PropField label="Description">
+            <DesignInput size="sm" value={dialogDescription} onChange={(e) => setDialogDescription(e.target.value)} placeholder="(empty = none)" />
+          </PropField>
+          <PropField label="Header Icon">
+            <BoolToggle value={dialogShowIcon} onChange={setDialogShowIcon} on="Show" off="Hide" />
+          </PropField>
+          <PropField label="Footer">
+            <BoolToggle value={dialogShowFooter} onChange={setDialogShowFooter} on="Show" off="Hide" />
+          </PropField>
+          <PropField label="Top-right Close">
+            <BoolToggle value={!dialogHideTopClose} onChange={(v) => setDialogHideTopClose(!v)} on="Show" off="Hide" />
+          </PropField>
+          <PropField label="Custom Header">
+            <BoolToggle value={dialogUseCustomHeader} onChange={setDialogUseCustomHeader} on="On" off="Off" />
+          </PropField>
+          <PropField label="No Body Padding">
+            <BoolToggle value={dialogNoBodyPadding} onChange={setDialogNoBodyPadding} on="On" off="Off" />
+          </PropField>
+          <PropField label="Accent classNames">
+            <BoolToggle value={dialogAccentClassNames} onChange={setDialogAccentClassNames} on="On" off="Off" />
           </PropField>
         </div>
       );
@@ -2042,26 +2297,72 @@ export default function PageClient() {
 />`;
     }
     if (selected === "data-grid") {
-      return `<DataGrid
-  columns={columns}
-  data={users}
+      return `<DataGrid<DemoGridUser>
+  columns={DEMO_GRID_COLUMNS}
+  rows={dgData.rows}
   getRowId={(row) => row.id}
-  state={gridState}
-  onChange={setGridState}
+  totalRowCount={dgData.totalRowCount}
+  isLoading={dgData.isLoading}
+  state={dgState}
+  onChange={setDgState}
   selectionMode="${dgSelectionMode}"
   rowHeight={${dgRowHeight}}
-  toolbar={${dgShowToolbar}}
+  toolbar={${dgShowToolbar ? "undefined" : "false"}}
   maxHeight={400}
 />`;
     }
+    if (selected === "dialog") {
+      const dialogTriggerLabel = dialogShape === "rich"
+        ? "Open trigger history"
+        : dialogShape === "wide"
+          ? "Open tester"
+          : "Open confirmation";
+      const iconImport = dialogShowIcon
+        ? (dialogShape === "rich" ? "PulseIcon" : dialogShape === "wide" ? "FlaskIcon" : "InfoIcon")
+        : null;
+      const iconProp = iconImport ? `\n  icon={${iconImport}}` : `\n  icon={null}`;
+      const descProp = dialogDescription ? `\n  description="${escapeAttr(dialogDescription)}"` : "";
+      const variantProp = dialogVariant === "glassmorphic" ? "" : `\n  variant="${dialogVariant}"`;
+      const hideCloseProp = dialogHideTopClose ? `\n  hideTopCloseButton` : "";
+      const headerContentProp = dialogShape === "rich"
+        ? `\n  headerContent={\n    <div className=\"rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3\">\n      {/* summary card: title row + 3 stat tiles */}\n    </div>\n  }`
+        : "";
+      const footerProp = dialogShowFooter
+        ? (dialogShape === "wide"
+          ? `\n  footer={\n    <>\n      <DesignDialogClose asChild>\n        <DesignButton variant=\"secondary\" size=\"sm\">Cancel</DesignButton>\n      </DesignDialogClose>\n      <DesignButton size=\"sm\">Run test</DesignButton>\n    </>\n  }`
+          : `\n  footer={\n    <DesignDialogClose asChild>\n      <DesignButton variant=\"secondary\" size=\"sm\">Close</DesignButton>\n    </DesignDialogClose>\n  }`)
+        : "";
+      const bodySnippet = dialogShape === "rich"
+        ? `\n  <span className=\"text-xs font-semibold uppercase tracking-wider text-muted-foreground\">Recent triggers</span>\n  {/* recent triggers list */}`
+        : dialogShape === "wide"
+          ? `\n  <DesignAlert variant=\"info\" description=\"Wide-form body content\" />\n  {/* tester form */}`
+          : `\n  <p className=\"text-sm\">Body content lives here.</p>`;
+      const customHeaderProp = dialogUseCustomHeader
+        ? `\n  customHeader={\n    <div className=\"flex items-center gap-3 px-6 py-4 ...\">\n      {/* custom header content; replaces title/description region */}\n    </div>\n  }`
+        : "";
+      const noBodyPaddingProp = dialogNoBodyPadding ? `\n  noBodyPadding` : "";
+      const classNameProps = dialogAccentClassNames
+        ? `\n  className=\"ring-2 ring-indigo-500/40\"\n  overlayClassName=\"bg-indigo-950/40\"\n  headerClassName=\"bg-indigo-500/5\"\n  bodyClassName=\"bg-foreground/[0.02]\"\n  footerClassName=\"bg-foreground/[0.02]\"`
+        : "";
+      return `<DesignDialog
+  size="${dialogSize}"${variantProp}${iconProp}
+  title="${escapeAttr(dialogTitle || "Dialog")}"${descProp}${headerContentProp}${customHeaderProp}${footerProp}${hideCloseProp}${noBodyPaddingProp}${classNameProps}
+  trigger={<DesignButton size="sm">${escapeAttr(dialogTriggerLabel)}</DesignButton>}
+>${bodySnippet}
+</DesignDialog>`;
+    }
     if (selected === "data-table") {
-      const glassProp = tableGlass === undefined ? "" : `\n  glassmorphic={${tableGlass}}`;
-      const toolbarProp = tableShowToolbar ? `\n  toolbarRender={(table) => <SearchToolbarItem table={table} keyName="name" placeholder="Filter by name" />}` : "";
-      return `<DesignDataTable
-  data={products}
-  columns={columns}
-  defaultSorting={[{ id: "name", desc: false }]}${glassProp}${toolbarProp}
-  onRowClick={${tableClickableRows ? "(row) => setLastClickedRow(row.name)" : "undefined"}}
+      return `<DataGrid
+  columns={DEMO_PRODUCT_COLUMNS}
+  rows={dtData.rows}
+  getRowId={(row) => row.id}
+  totalRowCount={dtData.totalRowCount}
+  isLoading={dtData.isLoading}
+  state={dtState}
+  onChange={setDtState}
+  toolbar={${tableShowToolbar ? "undefined" : "false"}}
+  onRowClick={${tableClickableRows ? "(row) => setTableLastRowClick(row.name)" : "undefined"}}
+  maxHeight={400}
 />`;
     }
     if (selected === "editable-grid") {

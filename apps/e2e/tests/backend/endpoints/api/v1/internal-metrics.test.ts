@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, Team, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
@@ -43,7 +43,7 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
 
   // ClickHouse ingestion is async; poll until anonymous users are excluded again.
   let response!: NiceResponse;
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 30; i++) {
     await wait(2_000);
     response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
     const noAnonymousInRecentlyRegistered = (response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous);
@@ -72,14 +72,14 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
 
 async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: string, expectedCount: number }): Promise<NiceResponse> {
   let response!: NiceResponse;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 30; i++) {
     response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
     if (response.body?.users_by_country?.[options.countryCode] === options.expectedCount) {
       return response;
     }
     await wait(2_000);
   }
-  return response;
+  throw new Error(`Timed out waiting for users_by_country[${options.countryCode}] === ${options.expectedCount}; last response: ${JSON.stringify(response.body?.users_by_country)}`);
 }
 
 async function waitForMetricsMatch(
@@ -88,14 +88,14 @@ async function waitForMetricsMatch(
 ): Promise<NiceResponse> {
   let response!: NiceResponse;
   const suffix = includeAnonymous ? "?include_anonymous=true" : "";
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 60; i++) {
     response = await niceBackendFetch(`/api/v1/internal/metrics${suffix}`, { accessType: 'admin' });
     if (predicate(response)) {
       return response;
     }
     await wait(1_000);
   }
-  return response;
+  throw new Error(`Timed out waiting for metrics predicate to match (include_anonymous=${includeAnonymous}); last response body: ${JSON.stringify(response.body)}`);
 }
 
 async function waitForAnalyticsRowsForSessionReplaySegment(
@@ -123,7 +123,7 @@ async function waitForAnalyticsRowsForSessionReplaySegment(
   throw new Error(`Timed out waiting for ${expectedCount} analytics rows for session replay segment ${sessionReplaySegmentId}`);
 }
 
-it("should return metrics data", async ({ expect }) => {
+it("should return metrics data", { timeout: 120_000 }, async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
@@ -173,9 +173,12 @@ it("should return metrics data with users", async ({ expect }) => {
   backendContext.set({ mailbox: mailboxes[2], ipData: { country: "CH", ipAddress: "127.0.0.1", city: "Zurich", region: "ZH", latitude: 47.3769, longitude: 8.5417, tzIdentifier: "Europe/Zurich" } });
   await Auth.Otp.signIn();
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  const response = await waitForMetricsMatch(
+    false,
+    (r) =>
+      r.body?.users_by_country?.["CH"] === 1 &&
+      (r.body?.active_users_by_country?.["AQ"]?.length ?? 0) >= 2,
+  );
   expect(response).toMatchSnapshot(`metrics_result_with_users`);
 
   await ensureAnonymousUsersAreStillExcluded(response);
@@ -299,9 +302,11 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
     await Auth.Anonymous.signUp();
   }
 
-  await wait(3000);  // the event log is async, so let's give it some time to be written to the DB
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  const response = await waitForMetricsMatch(false, (r) => {
+    if (r.body?.total_users !== 1) return false;
+    const dau = r.body?.daily_active_users?.[r.body.daily_active_users.length - 1];
+    return dau?.activity === 1 && r.body?.users_by_country?.["CA"] === 1;
+  });
 
   // Should only count 1 regular user
   expect(response.body.total_users).toBe(1);
@@ -317,6 +322,34 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
   await ensureAnonymousUsersAreStillExcluded(response);
 }, {
   timeout: 120_000,
+});
+
+it("should expose lightweight user counts without loading the full metrics route", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  await InternalApiKey.createAndSetProjectKeys();
+
+  backendContext.set({ mailbox: createMailbox() });
+  await Auth.Otp.signIn();
+  await Auth.Anonymous.signUp();
+  await Auth.Anonymous.signUp();
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics/user-counts", { accessType: 'admin' });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "anonymous_users": 2,
+        "total_users": 3,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("should handle mixed auth methods excluding anonymous users", async ({ expect }) => {
@@ -440,10 +473,12 @@ it("should return correct auth_overview breakdown including teams", async ({ exp
   // Create an anonymous user
   await Auth.Anonymous.signUp();
 
-  await wait(2000);
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-  expect(response.status).toBe(200);
+  const response = await waitForMetricsMatch(false, (r) => {
+    const authOverview = r.body?.auth_overview;
+    if (authOverview == null) return false;
+    const nonAnonFromOverview = authOverview.verified_users + authOverview.unverified_users;
+    return authOverview.anonymous_users >= 1 && nonAnonFromOverview >= 1 && authOverview.total_teams >= 1;
+  });
 
   const authOverview = response.body.auth_overview;
 

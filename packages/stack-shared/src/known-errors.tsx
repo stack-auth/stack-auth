@@ -1132,6 +1132,16 @@ const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
   (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
 );
 
+const TeamInvitationEmailMismatch = createKnownErrorConstructor(
+  KnownError,
+  "TEAM_INVITATION_EMAIL_MISMATCH",
+  () => [
+    403,
+    "This team invitation was sent to a different email address. Sign in with the invited email, or add and verify that email on your account, then try again.",
+  ] as const,
+  () => [] as const,
+);
+
 
 const EmailTemplateAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1428,7 +1438,7 @@ const OAuthProviderTemporarilyUnavailable = createKnownErrorConstructor(
   "OAUTH_PROVIDER_TEMPORARILY_UNAVAILABLE",
   () => [
     503,
-    "The OAuth provider is temporarily unavailable. Please try signing in again.",
+    "The OAuth provider is temporarily unavailable. Please try again later.",
   ] as const,
   () => [] as const,
 );
@@ -1685,6 +1695,11 @@ const OneTimePurchaseNotFound = createKnownErrorConstructor(
   (json) => [json.one_time_purchase_id] as const,
 );
 
+// Used by the three-knob refund flow's legacy backstop — these are thrown
+// when a purchase has the pre-rework `refundedAt` column set (i.e. it was
+// refunded under the previous flow). The new flow's bulldozer-derived
+// prior-refund summary can't see those rows, so this gate prevents
+// double-refunding through Stripe.
 const SubscriptionAlreadyRefunded = createKnownErrorConstructor(
   KnownError,
   "SUBSCRIPTION_ALREADY_REFUNDED",
@@ -1942,6 +1957,7 @@ export const KnownErrors = {
   TeamNotFound,
   TeamMembershipNotFound,
   TeamInvitationRestrictedUserNotAllowed,
+  TeamInvitationEmailMismatch,
   EmailTemplateAlreadyExists,
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,

@@ -3,13 +3,13 @@ import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { Prisma } from "@/generated/prisma/client";
 import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
-import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getOAuthRedirectUrisForTenancy, isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 
@@ -60,13 +60,9 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     let redirectUris: string[] = [];
     try {
-      redirectUris = Object.entries(tenancy.config.domains.trustedDomains)
-        // note that this may include wildcard domains, which is fine because we correctly account for them in
-        // model.validateRedirectUri(...)
-        .filter(([_, domain]) => {
-          return domain.baseUrl;
-        })
-        .map(([_, domain]) => new URL(domain.handlerPath, domain.baseUrl).toString());
+      // This may include wildcard domains and the implicit hosted handler domain;
+      // model.validateRedirectUri(...) performs the authoritative trust check.
+      redirectUris = getOAuthRedirectUrisForTenancy(tenancy);
     } catch (e) {
       captureError("get-oauth-redirect-urls", {
         error: e,
@@ -105,10 +101,16 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
 
-    return await generateAccessTokenFromRefreshTokenIfValid({
+    const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
       tenancy,
       refreshTokenObj,
-    }) ?? throwErr("Get or create refresh token failed; returned refreshTokenObj that's invalid (or maybe it's an ultra-rare race condition and it became invalid in since the function call?)", { refreshTokenObj });  // TODO fix the ultra-rare race condition — although unless we're at gigascale this should basically never happen
+    });
+    if (!accessToken) {
+      // Either the refresh token became invalid between _getOrCreateRefreshTokenObj and now
+      // (e.g. a concurrent sign-out deleted the row), or the user was deleted mid-flight.
+      throw new KnownErrors.RefreshTokenNotFoundOrExpired();
+    }
+    return accessToken;
   }
 
   async _getOrCreateRefreshTokenObj(client: Client, user: User, scope: string[]) {

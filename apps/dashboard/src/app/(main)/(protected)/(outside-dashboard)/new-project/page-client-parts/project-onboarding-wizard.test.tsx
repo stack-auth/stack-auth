@@ -2,7 +2,9 @@
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+const mockUpdateConfig = vi.hoisted(() => vi.fn(async () => true));
 
 vi.mock("@/components/design-components", () => ({
   DesignCard: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -77,8 +79,12 @@ vi.mock("@/components/ui", () => ({
   cn: (...classNames: Array<string | false | null | undefined>) => classNames.filter(Boolean).join(" "),
 }));
 
+vi.mock("@/lib/env", () => ({
+  getPublicEnvVar: () => "false",
+}));
+
 vi.mock("@/lib/config-update", () => ({
-  useUpdateConfig: () => vi.fn(async () => true),
+  useUpdateConfig: () => mockUpdateConfig,
 }));
 
 vi.mock("@stackframe/stack", () => ({
@@ -87,7 +93,8 @@ vi.mock("@stackframe/stack", () => ({
 }));
 
 vi.mock("@stackframe/stack-shared/dist/utils/oauth", () => ({
-  allProviders: [],
+  allProviders: ["google", "github", "microsoft", "spotify"],
+  sharedProviders: ["google", "github", "microsoft", "spotify"],
 }));
 
 vi.mock("@stackframe/stack-shared/dist/utils/promises", () => ({
@@ -133,12 +140,37 @@ vi.mock("./link-existing-onboarding", () => ({
 }));
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
+import { normalizeProjectOnboardingState, orderedAppIds, REQUIRED_APP_IDS } from "./shared";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 
 afterEach(() => {
   cleanup();
+  mockUpdateConfig.mockClear();
 });
 
 describe("ProjectOnboardingWizard", () => {
+  it("keeps required apps when normalizing persisted onboarding state", () => {
+    const normalizedState = normalizeProjectOnboardingState({
+      selected_config_choice: "create-new",
+      selected_apps: [],
+      selected_sign_in_methods: [],
+      selected_email_theme_id: null,
+      selected_payments_country: "US",
+    });
+
+    expect(normalizedState.selected_apps).toEqual(REQUIRED_APP_IDS);
+  });
+
+  it("does not offer alpha apps during app selection", () => {
+    const alphaAppIds = Object.entries(ALL_APPS)
+      .filter(([, app]) => app.stage === "alpha")
+      .map(([appId]) => appId);
+
+    for (const alphaAppId of alphaAppIds) {
+      expect(orderedAppIds()).not.toContain(alphaAppId);
+    }
+  });
+
   it("completes onboarding automatically after Stripe setup returns successfully", async () => {
     const setStatus = vi.fn(async () => {});
     const onComplete = vi.fn();
@@ -183,9 +215,12 @@ describe("ProjectOnboardingWizard", () => {
       <ProjectOnboardingWizard
         project={project as never}
         status="payments_setup"
+        onboardingState={null}
         mode={null}
         setMode={vi.fn()}
         setStatus={setStatus}
+        setOnboardingState={vi.fn(async () => {})}
+        clearOnboardingState={vi.fn(async () => {})}
         onComplete={onComplete}
       />,
     );
@@ -194,5 +229,85 @@ describe("ProjectOnboardingWizard", () => {
       expect(setStatus).toHaveBeenCalledWith("welcome");
     });
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("persists shared OAuth providers selected during onboarding before completing", async () => {
+    const setStatus = vi.fn(async () => {});
+    const clearOnboardingState = vi.fn(async () => {});
+    const onComplete = vi.fn();
+    const app = {
+      setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+      useEmailThemes: () => [],
+      useStripeAccountInfo: () => null,
+    };
+    const project = {
+      id: "proj_123",
+      config: {
+        credentialEnabled: true,
+        magicLinkEnabled: false,
+        passkeyEnabled: false,
+        oauthProviders: [],
+      },
+      useConfig: () => ({
+        apps: {
+          installed: {
+            authentication: { enabled: true },
+            emails: { enabled: true },
+            payments: { enabled: false },
+          },
+        },
+        domains: {
+          trustedDomains: {},
+        },
+        emails: {
+          selectedThemeId: "default",
+          server: {},
+        },
+      }),
+      app,
+    };
+
+    render(
+      <ProjectOnboardingWizard
+        project={project as never}
+        status="welcome"
+        onboardingState={{
+          selected_config_choice: "create-new",
+          selected_apps: ["authentication", "emails"],
+          selected_sign_in_methods: ["credential", "google"],
+          selected_email_theme_id: "default",
+          selected_payments_country: "US",
+        }}
+        mode={null}
+        setMode={vi.fn()}
+        setStatus={setStatus}
+        setOnboardingState={vi.fn(async () => {})}
+        clearOnboardingState={clearOnboardingState}
+        onComplete={onComplete}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(2);
+      expect(mockUpdateConfig).toHaveBeenNthCalledWith(2, {
+        adminApp: app,
+        configUpdate: {
+          "auth.oauth.providers.google": {
+            type: "google",
+            isShared: true,
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          },
+          "auth.oauth.providers.github": null,
+          "auth.oauth.providers.microsoft": null,
+        },
+        pushable: false,
+      });
+      expect(setStatus).toHaveBeenCalledWith("completed");
+      expect(clearOnboardingState).toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalled();
+    });
   });
 });

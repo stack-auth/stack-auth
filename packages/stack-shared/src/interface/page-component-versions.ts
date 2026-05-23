@@ -41,7 +41,7 @@ const stackAuthReminders = deindent`
   - Take extra care to always have great error handling and loading states whenever necessary (including in button onClick handlers; Stack Auth's code examples often use a special onClick class which handles loading states, but your own button may not). Stack Auth's SDK tends to return errors that need to be handled explicitly in its return types.
   - Language, framework, and library-specific details:
     - JavaScript & TypeScript:
-      - Stack Auth has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @stackframe/js (JavaScript/TypeScript), @stackframe/stack (Next.js), @stackframe/react (React). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
+      - Stack Auth has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @stackframe/js (JavaScript/TypeScript), @stackframe/stack (Next.js), @stackframe/react (React), @stackframe/tanstack-start (TanStack Start). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
       - The \`Result<T, E>\` type is \`{ status: "ok", data: T } | { status: "error", error: E }\`.
       - \`KnownErrors[KNOWN_ERROR_CODE]\` refers to a specific known error type. Each KnownError may have its own properties, but they all inherit from \`Error & { statusCode: number, humanReadableMessage: string, details?: Json }\`.
       - React & Next.js:
@@ -1416,6 +1416,59 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       notes: deindent`
         - Treat invitation flow as a gatekeeper: auth state, restricted state, and code validity should be checked in a predictable order.
+      `,
+      versions: {},
+    }),
+    cliAuthConfirm: createCustomPagePrompt({
+      key: "cliAuthConfirm",
+      title: "CLI Auth Confirmation",
+      minSdkVersion: "0.0.1",
+      structure: deindent`
+        - Use \`useCliAuthConfirmation()\`.
+        - If \`status === "invalid"\`, show an invalid-link state.
+        - If \`status === "success"\`, tell the user they can close the browser and return to the CLI.
+        - If \`status === "error"\`, show the error and a retry action.
+        - Otherwise, show a confirmation step that calls \`authorize()\`.
+        - Use \`isLoading\` to disable or show loading on the confirmation action while the hook is authorizing or redirecting.
+      `,
+      reactExample: deindent`
+        export default function CustomCliAuthConfirmPage() {
+          const cliAuth = useCliAuthConfirmation();
+
+          if (cliAuth.status === "invalid") {
+            return <MessageCard title="Invalid CLI authorization link" />;
+          }
+
+          if (cliAuth.status === "success") {
+            return <MessageCard title="CLI authorized">You can close this window and return to the command line.</MessageCard>;
+          }
+
+          if (cliAuth.status === "error") {
+            return (
+              <MessageCard
+                title="CLI authorization failed"
+                primaryButtonText="Try again"
+                primaryAction={cliAuth.retry}
+              >
+                {cliAuth.error?.message}
+              </MessageCard>
+            );
+          }
+
+          return (
+            <MessageCard
+              title="Authorize CLI application"
+              primaryButtonText={cliAuth.isLoading ? "Authorizing..." : "Authorize"}
+              primaryAction={cliAuth.authorize}
+            >
+              A command line application is requesting access to your account.
+            </MessageCard>
+          );
+        }
+      `,
+      notes: deindent`
+        - Be explicit about the account being authorized. CLI auth grants a refresh token to the command line application.
+        - The hook owns the protocol details: reading \`login_code\`, preserving confirmed state across redirects, claiming anonymous sessions, and completing authorization.
       `,
       versions: {},
     }),

@@ -55,6 +55,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
     canceledAtMillis: null,
     endedAtMillis: null,
     refundedAtMillis: null,
+    productRevokedAtMillis: null,
     creationSource: "TEST_MODE",
     createdAtMillis: 0,
     ...overrides,
@@ -175,6 +176,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
         stripePaymentIntentId: "pi-ev-1",
         revokedAtMillis: null,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 3000,
       })));
@@ -511,6 +513,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
         stripePaymentIntentId: null,
         revokedAtMillis: 30 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));

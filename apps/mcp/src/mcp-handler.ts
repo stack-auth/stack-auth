@@ -1,0 +1,187 @@
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { createMcpHandler } from "@vercel/mcp-adapter";
+import { z } from "zod";
+
+import withPostHog from "@/analytics";
+import packageJson from "../package.json";
+
+function getBackendApiBaseUrl(): string {
+  return (
+    getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") ||
+    getEnvVariable("NEXT_PUBLIC_STACK_API_URL")
+  ).replace(/\/$/, "");
+}
+
+type AiTextContent = {
+  type: "text",
+  text: string,
+};
+
+type AiQueryResponse = {
+  finalText?: string,
+  content?: AiTextContent[],
+  conversationId?: string,
+};
+
+const skillResourceUri = "https://skill.stack-auth.com";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseAiQueryResponse(value: unknown): AiQueryResponse {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const parsed: AiQueryResponse = {};
+
+  if (typeof value.finalText === "string") {
+    parsed.finalText = value.finalText;
+  }
+
+  if (typeof value.conversationId === "string") {
+    parsed.conversationId = value.conversationId;
+  }
+
+  if (Array.isArray(value.content)) {
+    parsed.content = value.content.flatMap((contentItem) => {
+      if (!isRecord(contentItem) || contentItem.type !== "text" || typeof contentItem.text !== "string") {
+        return [];
+      }
+
+      return [{
+        type: "text",
+        text: contentItem.text,
+      }];
+    });
+  }
+
+  return parsed;
+}
+
+async function fetchSkill(): Promise<string> {
+  const res = await fetch(skillResourceUri, {
+    headers: { Accept: "text/markdown" },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch skill from ${skillResourceUri}: ${res.status} ${res.statusText}`);
+  }
+  return await res.text();
+}
+
+export function createStackMcpHandler(config: { streamableHttpEndpoint: string }) {
+  return createMcpHandler(
+    async (server) => {
+      server.resource(
+        "skill",
+        skillResourceUri,
+        {
+          title: "Stack Auth skill",
+          description: "The canonical Stack Auth agent skill (SKILL.md) — how to wire Stack Auth into a project.",
+          mimeType: "text/markdown",
+        },
+        async () => ({
+          contents: [{
+            uri: skillResourceUri,
+            mimeType: "text/markdown",
+            text: await fetchSkill(),
+          }],
+        }),
+      );
+
+      server.prompt(
+        "skill",
+        "Load the Stack Auth skill (SKILL.md) into the conversation — how to wire Stack Auth into a project.",
+        async () => ({
+          messages: [{
+            role: "user",
+            content: {
+              type: "text",
+              text: await fetchSkill(),
+            },
+          }],
+        }),
+      );
+
+      server.tool(
+        "ask_stack_auth",
+        "Ask the Stack Auth documentation assistant. Use this for any question about Stack Auth: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set `reason` to a short explanation of why you are calling this tool (for product analytics and debugging).",
+        {
+          question: z.string().describe("The full question to ask about Stack Auth."),
+          reason: z
+            .string()
+            .min(1)
+            .describe(
+              "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Stack Auth API headers). Used for analytics, not sent to the model.",
+            ),
+          userPrompt: z
+            .string()
+            .min(1)
+            .describe(
+              "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
+            ),
+          conversationId: z
+            .string()
+            .optional()
+            .describe(
+              "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
+            ),
+        },
+        async ({ question, reason, userPrompt, conversationId }) => {
+          await withPostHog(async (posthog) => {
+            posthog.capture({
+              event: "ask_stack_auth_mcp",
+              properties: { question, reason },
+              distinctId: "mcp-handler",
+            });
+          });
+
+          const res = await fetch(`${getBackendApiBaseUrl()}/api/latest/ai/query/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              quality: "smart",
+              speed: "fast",
+              tools: ["docs"],
+              systemPrompt: "docs-ask-ai",
+              messages: [{ role: "user", content: question }],
+              mcpCallMetadata: { toolName: "ask_stack_auth", reason, userPrompt, conversationId },
+            }),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            return {
+              content: [{ type: "text", text: `Stack Auth AI error (${res.status}): ${errText}` }],
+              isError: true,
+            };
+          }
+
+          const body = parseAiQueryResponse(await res.json());
+
+          const contentText = body.content?.map((c) => c.text).join("\n\n");
+          const text = body.finalText ?? contentText ?? "";
+
+          const responseConversationId = body.conversationId ?? conversationId ?? "";
+
+          return {
+            content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} - pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]` }],
+          };
+        },
+      );
+    },
+    {
+      serverInfo: {
+        name: "stack-auth-mcp",
+        version: packageJson.version,
+      },
+      instructions: "Stack Auth's official MCP server. Prefer the `ask_stack_auth` tool for any question about Stack Auth — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Stack Auth changes frequently. The `skill` resource/tool loads SKILL.md (the canonical Stack Auth agent skill) — pull it in when you need a quick reference for project setup, CLI usage, or wiring conventions, but always use `ask_stack_auth` first.",
+    },
+    {
+      streamableHttpEndpoint: config.streamableHttpEndpoint,
+      verboseLogs: true,
+      maxDuration: 120,
+    },
+  );
+}

@@ -8,9 +8,48 @@ These instructions describe how to set up Stack Auth.
 ${web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
-Install mcp server from https://mcp.stack-auth.com if not already installed
+Install both the Stack Auth skill and the Stack Auth MCP server for the current coding agent. Pick the install scope using this rule: if the project root already contains an agent folder or project-scoped MCP/agent config file (e.g. \`.claude/\`, \`.claude.json\`, \`.agents/\`, \`.cursor/\`, \`.cursor/mcp.json\`, \`.codex/\`, \`.codex/config.toml\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, \`.vscode/mcp.json\`), install **per project**; otherwise install **globally** for the detected agent.
 
-For reference, questions, or information on Stack Auth, you can query the docs on https://docs.stack-auth.com via curl or any tools that you have
+### Install the skill
+
+Preferred (one shot — detects the agent and writes to the right place):
+
+\`\`\`sh
+npx -y skills add stack-auth/stack-auth --skill stack-auth
+\`\`\`
+
+If that command isn't available, fall back to a manual install. Download the canonical skill from \`https://skill.stack-auth.com\` (\`WebFetch\` or \`curl -sSL\`) and write it verbatim to \`<skills-dir>/stack-auth/SKILL.md\`. Do not modify the contents. Create missing parent directories. \`<skills-dir>\` per agent (mirrors \`vercel-labs/skills\`):
+
+| Agent | Project \`<skills-dir>\` | Global \`<skills-dir>\` |
+| --- | --- | --- |
+| Claude Code | \`.claude/skills\` | \`~/.claude/skills\` (or \`$CLAUDE_CONFIG_DIR/skills\`) |
+| Codex | \`.agents/skills\` | \`~/.codex/skills\` (or \`$CODEX_HOME/skills\`) |
+| Cursor | \`.agents/skills\` | \`~/.cursor/skills\` |
+| opencode | \`.agents/skills\` | \`~/.config/opencode/skills\` |
+| Windsurf | \`.windsurf/skills\` | \`~/.codeium/windsurf/skills\` |
+| Amp | \`.agents/skills\` | \`~/.config/agents/skills\` |
+| Antigravity | \`.agents/skills\` | \`~/.gemini/antigravity/skills\` |
+| Cline | \`.agents/skills\` | \`~/.agents/skills\` |
+| Roo Code | \`.roo/skills\` | \`~/.roo/skills\` |
+| Kilo Code | \`.kilocode/skills\` | \`~/.kilocode/skills\` |
+| Augment | \`.augment/skills\` | \`~/.augment/skills\` |
+| Continue | \`.continue/skills\` | \`~/.continue/skills\` |
+| Crush | \`.crush/skills\` | \`~/.config/crush/skills\` |
+
+For agents not listed, follow their documented skills directory or fall back to \`.agents/skills\` (project) / \`~/.<agent>/skills\` (global).
+
+### Install the MCP server
+
+Server URL: \`https://mcp.stack-auth.com/mcp\` (HTTP transport). Common per-agent config locations:
+- Claude Code: run \`claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp\` (or edit \`~/.claude.json\`)
+- VS Code: run \`code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'\`
+- Cursor: \`~/.cursor/mcp.json\` (project-scoped: \`.cursor/mcp.json\`)
+- Codex CLI: \`~/.codex/config.toml\`
+- opencode: \`~/.config/opencode/opencode.json\`
+
+For any other agent, register an HTTP MCP server named \`stack-auth\` pointing at \`https://mcp.stack-auth.com/mcp\` using its standard MCP config file.
+
+For reference, questions, or information on Stack Auth, fetch the docs on https://docs.stack-auth.com via curl or any tools available, or — if the MCP server is registered — call its \`ask_stack_auth\` tool.
 
 ## Setup
 
@@ -65,50 +104,12 @@ export const stackServerApp = new StackServerApp({
 });
 \`\`\`
 
-### 3) Create the Stack handler (if available in framework)
+### 3) Wrap your app in a Stack provider
 
-This sets up pages for sign in, sign up, password reset, etc.
-
-\`\`\`tsx
-import { StackHandler } from "@stackframe/stack"; // Next.js
-// import { StackHandler } from "@stackframe/react"; // React
-
-export default function Handler() {
-  return <StackHandler fullPage />;
-}
-\`\`\`
-
-### 4) Create a Suspense boundary
-
-Suspense is necessary for many stack auth hooks such as useUser to function. Add a loading component with a custom loading indicator for the current project. Don't add if one already exists
-
-For example:
-\`\`\`tsx
-//src/loading.tsx
-
-export default function Loading() {
-  return <p>Loading...</p>
-}
-\`\`\`
-
-### 5) Link environment variables
-
-This is only necessary if not using local emulator. Ensure these are ignored by git.
-
-Rename the env var keys in .env to match the framework's convention for client-exposed variables. For example, Vite requires VITE_ prefix, Next.js uses NEXT_PUBLIC_, etc. The values should stay the same — only rename the keys.
-
-The required variables are:
-- Project ID (e.g. NEXT_PUBLIC_STACK_PROJECT_ID, VITE_STACK_PROJECT_ID, etc.)
-- Secret server key: STACK_SECRET_SERVER_KEY (only for frameworks with server-side support, no prefix needed)
-
-The publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.) is only required if your project has publishable client keys enabled as a requirement.
-
-### 6) React only: Wrap the entire page in a Stack provider
-
-This is used for the useUser and useStackApp hooks.
+Required for all React based frameworks (including Next.js). \`StackHandler\`, \`useUser\`, and \`useStackApp\` all depend on it — without it you will get "useStackApp must be used within a StackProvider" at runtime. In Next.js, add it to the root \`app/layout.tsx\` around \`{children}\`. In React/Vite, wrap your root component.
 
 \`\`\`tsx
-import { StackProvider, StackTheme } from "@stackframe/stack";
+import { StackProvider, StackTheme } from "@stackframe/stack"; // or "@stackframe/react" 
 import { stackClientApp } from "../stack/client"; // adjust relative path
 \`\`\`
 
@@ -123,4 +124,43 @@ return (
   </body>
 );
 \`\`\`
+
+### 4) Create the Stack handler (if available in framework)
+
+This sets up pages for sign in, sign up, password reset, etc.
+
+\`\`\`tsx
+import { StackHandler } from "@stackframe/stack"; // Next.js
+// import { StackHandler } from "@stackframe/react"; // React
+
+export default function Handler() {
+  return <StackHandler fullPage />;
+}
+\`\`\`
+
+### 5) Create a Suspense boundary
+
+Suspense is necessary for many stack auth hooks such as useUser to function. Add a loading component with a custom loading indicator for the current project. Don't add if one already exists
+
+For example:
+\`\`\`tsx
+//src/loading.tsx
+
+export default function Loading() {
+  return <p>Loading...</p>
+}
+\`\`\`
+
+### 6) Link environment variables
+
+This is only necessary if not using local emulator. Ensure these are ignored by git.
+
+Rename the env var keys in .env to match the framework's convention for client-exposed variables. For example, Vite requires VITE_ prefix, Next.js uses NEXT_PUBLIC_, etc. The values should stay the same — only rename the keys.
+
+The required variables are:
+- Project ID (e.g. NEXT_PUBLIC_STACK_PROJECT_ID, VITE_STACK_PROJECT_ID, etc.)
+- Secret server key: STACK_SECRET_SERVER_KEY (only for frameworks with server-side support, no prefix needed)
+
+The publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.) is only required if your project has publishable client keys enabled as a requirement.
+
 `;

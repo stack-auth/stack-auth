@@ -1,9 +1,11 @@
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { seedDummyProject } from "@/lib/seed-dummy-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -35,6 +37,17 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.Forbidden, "This endpoint is only available in preview mode");
     }
 
+    // Pre-warm the ClickHouse Cloud connection, then hand the same client to
+    // seedDummyProject so every analytics insert reuses it. The first insert
+    // otherwise pays a one-time ~0.7s cold cost (idle-service wake-up + TLS).
+    // Firing a trivial query now — unawaited — overlaps that wake-up and the
+    // TLS handshake with the Postgres-heavy seeding below; threading the warmed
+    // client through means the handshake is established exactly once.
+    const clickhouseClient = getClickhouseAdminClient();
+    const clickhouseWarmup = clickhouseClient
+      .command({ query: "SELECT 1" });
+    ignoreUnhandledRejection(clickhouseWarmup);
+
     const userId = auth.user.id;
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
@@ -58,7 +71,12 @@ export const POST = createSmartRouteHandler({
       oauthProviderIds: ['github', 'google', 'microsoft', 'spotify'],
       excludeAlphaApps: true,
       skipGithubConfigSource: true,
+      clickhouseClient,
     });
+
+    // Settle the warm-up promise (long since resolved by now) so it does not
+    // float past the handler return.
+    await clickhouseWarmup;
 
     return {
       statusCode: 200,

@@ -1,6 +1,11 @@
-import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { Prisma } from "@/generated/prisma/client";
+import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
+import {
+  aggregateSessionReplayChunksByReplayIds,
+  querySessionReplayAdminRows,
+  sessionReplayAdminRowToApiItem,
+} from "./session-replay-admin-rows";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -158,49 +163,49 @@ export const GET = createSmartRouteHandler({
       };
     }
 
-    // Handle cursor-based pagination
+    // Handle cursor-based pagination — validate the cursor row still matches
+    // the current filter set so that swapping filters between requests doesn't
+    // anchor pagination on a row that no longer qualifies.
     const cursorId = query.cursor;
     let cursorPivot: { id: string, lastEventAt: Date } | null = null;
     if (cursorId) {
-      cursorPivot = await prisma.sessionReplay.findUnique({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
-        select: { id: true, lastEventAt: true },
-      });
-      if (!cursorPivot) {
+      if (clickQualifiedIds && !clickQualifiedIds.includes(cursorId)) {
         throw new KnownErrors.ItemNotFound(cursorId);
       }
+      const row = await prisma.sessionReplay.findFirst({
+        where: {
+          tenancyId: auth.tenancy.id,
+          id: cursorId,
+          ...userIdsFilter.length > 0 ? { projectUserId: { in: userIdsFilter } } : {},
+          ...lastEventAtFrom ? { lastEventAt: { gte: lastEventAtFrom } } : {},
+          ...lastEventAtTo ? { lastEventAt: { lte: lastEventAtTo } } : {},
+          ...teamIdsFilter.length > 0 ? {
+            projectUser: {
+              teamMembers: {
+                some: {
+                  tenancyId: auth.tenancy.id,
+                  teamId: { in: teamIdsFilter },
+                },
+              },
+            },
+          } : {},
+        },
+        select: { id: true, lastEventAt: true, startedAt: true },
+      });
+      if (!row) {
+        throw new KnownErrors.ItemNotFound(cursorId);
+      }
+      const durationMs = row.lastEventAt.getTime() - row.startedAt.getTime();
+      if (durationMsMin !== null && durationMs < durationMsMin) {
+        throw new KnownErrors.ItemNotFound(cursorId);
+      }
+      if (durationMsMax !== null && durationMs > durationMsMax) {
+        throw new KnownErrors.ItemNotFound(cursorId);
+      }
+      cursorPivot = { id: row.id, lastEventAt: row.lastEventAt };
     }
 
-    type ReplayRow = {
-      id: string,
-      projectUserId: string,
-      startedAt: Date,
-      lastEventAt: Date,
-      projectUserDisplayName: string | null,
-      primaryEmail: string | null,
-    };
-
-    const rows = await prisma.$queryRaw<ReplayRow[]>`
-      SELECT
-        sr."id",
-        sr."projectUserId",
-        sr."startedAt",
-        sr."lastEventAt",
-        pu."displayName" AS "projectUserDisplayName",
-        (
-          SELECT cc."value"
-          FROM ${sqlQuoteIdent(schema)}."ContactChannel" cc
-          WHERE cc."projectUserId" = sr."projectUserId"
-            AND cc."tenancyId" = sr."tenancyId"
-            AND cc."type" = 'EMAIL'
-            AND cc."isPrimary" = 'TRUE'::"BooleanTrue"
-          LIMIT 1
-        ) AS "primaryEmail"
-      FROM ${sqlQuoteIdent(schema)}."SessionReplay" sr
-      JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
-        ON pu."projectUserId" = sr."projectUserId"
-        AND pu."tenancyId" = sr."tenancyId"
-      WHERE sr."tenancyId" = ${auth.tenancy.id}::UUID
+    const suffixSql = Prisma.sql`
         ${userIdsFilter.length > 0 ? Prisma.sql`AND sr."projectUserId" IN (${Prisma.join(userIdsFilter)})` : Prisma.empty}
         ${lastEventAtFrom ? Prisma.sql`AND sr."lastEventAt" >= ${lastEventAtFrom}` : Prisma.empty}
         ${lastEventAtTo ? Prisma.sql`AND sr."lastEventAt" <= ${lastEventAtTo}` : Prisma.empty}
@@ -214,34 +219,26 @@ export const GET = createSmartRouteHandler({
         ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
         ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}
         ${cursorPivot ? Prisma.sql`AND (
-          sr."lastEventAt" < ${cursorPivot.lastEventAt}
-          OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
-        )` : Prisma.empty}
+            sr."lastEventAt" < ${cursorPivot.lastEventAt}
+            OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
+          )` : Prisma.empty}
       ORDER BY sr."lastEventAt" DESC, sr."id" DESC
       LIMIT ${limit + 1}
     `;
+
+    const rows = await querySessionReplayAdminRows({
+      prisma,
+      schema,
+      tenancyId: auth.tenancy.id,
+      suffixSql,
+    });
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
     const nextCursor = hasMore ? page[page.length - 1]!.id : null;
 
     const sessionIds = page.map((row) => row.id);
-    const chunkAggs = sessionIds.length
-      ? await prisma.sessionReplayChunk.groupBy({
-        by: ["sessionReplayId"],
-        where: { tenancyId: auth.tenancy.id, sessionReplayId: { in: sessionIds } },
-        _count: { _all: true },
-        _sum: { eventCount: true },
-      })
-      : [];
-
-    const aggBySessionId = new Map<string, { chunkCount: number, eventCount: number }>();
-    for (const a of chunkAggs) {
-      aggBySessionId.set(a.sessionReplayId, {
-        chunkCount: a._count._all,
-        eventCount: a._sum.eventCount ?? 0,
-      });
-    }
+    const aggBySessionId = await aggregateSessionReplayChunksByReplayIds(prisma, auth.tenancy.id, sessionIds);
 
     return {
       statusCode: 200,
@@ -249,18 +246,7 @@ export const GET = createSmartRouteHandler({
       body: {
         items: page.map((row) => {
           const agg = aggBySessionId.get(row.id) ?? { chunkCount: 0, eventCount: 0 };
-          return {
-            id: row.id,
-            project_user: {
-              id: row.projectUserId,
-              display_name: row.projectUserDisplayName ?? null,
-              primary_email: row.primaryEmail ?? null,
-            },
-            started_at_millis: row.startedAt.getTime(),
-            last_event_at_millis: row.lastEventAt.getTime(),
-            chunk_count: agg.chunkCount,
-            event_count: agg.eventCount,
-          };
+          return sessionReplayAdminRowToApiItem(row, agg);
         }),
         pagination: { next_cursor: nextCursor },
       },

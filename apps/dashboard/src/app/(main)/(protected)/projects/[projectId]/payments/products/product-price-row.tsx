@@ -10,11 +10,11 @@ import {
   SimpleTooltip
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { InfoIcon, XIcon } from "@phosphor-icons/react";
+import { InfoIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
-import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
+import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, getPriceCheckoutError, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";
 
 /**
  * Label with optional info tooltip
@@ -36,24 +36,21 @@ function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, toolt
 
 type ProductPriceRowProps = {
   priceId: string,
-  price: (Product['prices'] & object)[string],
-  includeByDefault: boolean,
+  price: Product['prices'][string],
   isFree: boolean,
   readOnly?: boolean,
   startEditing?: boolean,
-  onSave: (newId: string | undefined, price: "include-by-default" | (Product['prices'] & object)[string]) => void,
+  onSave: (newId: string | undefined, price: Product['prices'][string]) => void,
   onRemove?: () => void,
   existingPriceIds: string[],
 };
 
 /**
- * Displays and edits a single price for a product
- * Handles both free prices (with include-by-default option) and paid prices
+ * Displays and edits a single price for a product.
  */
 export function ProductPriceRow({
   priceId,
   price,
-  includeByDefault,
   isFree,
   readOnly,
   startEditing,
@@ -119,43 +116,26 @@ export function ProductPriceRow({
     onSave(undefined, updated);
   };
 
+  const checkoutError = getPriceCheckoutError(price);
+
   return (
     <div
       className={cn(
         "relative rounded-2xl px-4 py-4",
         isEditing
           ? "flex flex-col gap-4 border border-border/60 dark:border-foreground/[0.12] bg-background/60 dark:bg-[hsl(240,10%,7%)]"
-          : "items-center justify-center text-center"
+          : "items-center justify-center text-center",
+        checkoutError && (isEditing
+          ? "border-destructive/40 bg-destructive/[0.03]"
+          : "ring-1 ring-destructive/30 bg-destructive/[0.02]")
       )}
     >
       {isEditing ? (
         <>
           <div className="grid gap-4">
             {isFree ? (
-              // Free price - show include by default option
               <div className="flex flex-col gap-4">
                 <span className="text-xl font-semibold">Free</span>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center space-x-2 rounded-xl">
-                    <Checkbox
-                      id={`include-by-default-${priceId}`}
-                      checked={includeByDefault}
-                      onCheckedChange={(checked) => {
-                        if (readOnly) return;
-                        onSave(undefined, checked ? "include-by-default" : price);
-                      }}
-                    />
-                    <label
-                      htmlFor={`include-by-default-${priceId}`}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      Include by default
-                    </label>
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    If enabled, customers get this product automatically when created
-                  </div>
-                </div>
               </div>
             ) : (
               // Paid price - show full editor
@@ -345,14 +325,16 @@ export function ProductPriceRow({
       ) : (
         // View mode - minimal, centered display
         <div className="flex flex-col items-center gap-0.5">
-          <div className="text-2xl font-semibold tabular-nums tracking-tight">
+          <div className="text-2xl font-semibold tabular-nums tracking-tight flex items-center gap-1.5">
             {isFree ? 'Free' : `$${niceAmount}`}
+            {checkoutError && (
+              <SimpleTooltip tooltip={checkoutError}>
+                <WarningIcon className="h-4 w-4 text-destructive" weight="fill" />
+              </SimpleTooltip>
+            )}
           </div>
           {!isFree && (
             <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'One-time'}</div>
-          )}
-          {includeByDefault && (
-            <div className="text-[11px] text-muted-foreground mt-1">Included by default</div>
           )}
           {!isFree && price.freeTrial && (
             <div className="mt-1.5">

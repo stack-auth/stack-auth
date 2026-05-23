@@ -271,7 +271,6 @@ export class InternalSession {
    * @returns An access token, which may be expired or expire soon, or null if it is known to be invalid.
    */
   private _getPotentiallyInvalidAccessTokenIfAvailable(): AccessToken | null {
-    if (!this._refreshToken) return null;
     if (this.isKnownToBeInvalid()) return null;
 
     const accessToken = this._accessToken.get();

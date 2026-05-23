@@ -1,4 +1,5 @@
 import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
@@ -38,6 +39,7 @@ it("gets current project (internal)", async ({ expect }) => {
       "status": 200,
       "body": {
         "config": {
+          "allow_localhost": true,
           "allow_team_api_keys": false,
           "allow_user_api_keys": false,
           "client_team_creation_enabled": true,
@@ -99,6 +101,7 @@ it("creates and updates the basic project information of a project", async ({ ex
         "description": "Updated description",
         "display_name": "Updated Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": true,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -152,6 +155,7 @@ it("updates the basic project configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -210,6 +214,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -274,6 +279,7 @@ it("updates the project domains configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -332,6 +338,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -433,6 +440,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -496,6 +504,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -545,6 +554,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -594,6 +604,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -657,6 +668,7 @@ it("updates the project email configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -833,6 +845,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -889,6 +902,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -949,6 +963,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -1004,6 +1019,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -1074,6 +1090,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -1144,6 +1161,7 @@ it("updates the project oauth configuration", async ({ expect }) => {
         "description": "",
         "display_name": "New Project",
         "id": "<stripped UUID>",
+        "is_development_environment": false,
         "is_production_mode": false,
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
@@ -1563,10 +1581,20 @@ it("should increment and decrement userCount when a user is added to a project",
   // Create a new user in the project
   await Auth.Password.signUpWithEmail();
 
-  // Check that the userCount has been incremented
-  const updatedProjectResponse = await niceBackendFetch("/api/v1/internal/metrics", { accessType: "admin" });
-  expect(updatedProjectResponse.status).toBe(200);
-  expect(updatedProjectResponse.body.total_users).toBe(1);
+  // The metrics endpoint reads from ClickHouse (eventual consistency).
+  // Poll until the new user is visible.
+  const incrementStart = performance.now();
+  while (true) {
+    const updatedProjectResponse = await niceBackendFetch("/api/v1/internal/metrics", { accessType: "admin" });
+    expect(updatedProjectResponse.status).toBe(200);
+    if (updatedProjectResponse.body.total_users === 1) {
+      break;
+    }
+    if (performance.now() - incrementStart > 30_000) {
+      expect(updatedProjectResponse.body.total_users).toBe(1);
+    }
+    await wait(500);
+  }
 
   // Delete the user
   const deleteRes = await niceBackendFetch("/api/v1/users/me", {
@@ -1575,10 +1603,20 @@ it("should increment and decrement userCount when a user is added to a project",
   });
   expect(deleteRes.status).toBe(200);
 
-  // Check that the userCount has been decremented
-  const finalProjectResponse = await niceBackendFetch("/api/v1/internal/metrics", { accessType: "admin" });
-  expect(finalProjectResponse.status).toBe(200);
-  expect(finalProjectResponse.body.total_users).toBe(0);
+  // The metrics endpoint now reads from ClickHouse, which has eventual
+  // consistency. Poll until the delete has propagated.
+  const startedAt = performance.now();
+  while (true) {
+    const finalProjectResponse = await niceBackendFetch("/api/v1/internal/metrics", { accessType: "admin" });
+    expect(finalProjectResponse.status).toBe(200);
+    if (finalProjectResponse.body.total_users === 0) {
+      break;
+    }
+    if (performance.now() - startedAt > 30_000) {
+      expect(finalProjectResponse.body.total_users).toBe(0);
+    }
+    await wait(500);
+  }
 
 });
 

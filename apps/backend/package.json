@@ -1,7 +1,7 @@
 {
   "name": "@stackframe/backend",
-  "version": "2.8.86",
-  "repository": "https://github.com/stack-auth/stack-auth",
+  "version": "2.8.102",
+  "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "type": "module",
   "scripts": {
@@ -38,6 +38,8 @@
     "db:seed": "pnpm run with-env:dev tsx scripts/db-migrations.ts seed",
     "db:init": "pnpm run with-env:dev tsx scripts/db-migrations.ts init",
     "db:migrate": "pnpm run with-env:dev tsx scripts/db-migrations.ts migrate",
+    "db:backfill-internal-free-plans": "pnpm run with-env:dev tsx scripts/db-migrations.ts backfill-internal-free-plans",
+    "db:regen-internal-subscriptions-to-latest": "pnpm run with-env:dev tsx scripts/db-migrations.ts regen-internal-subscriptions-to-latest",
     "generate-migration-imports": "pnpm run with-env tsx scripts/generate-migration-imports.ts",
     "generate-migration-imports:watch": "chokidar 'prisma/migrations/**/*.sql' -c 'pnpm run generate-migration-imports'",
     "lint": "eslint .",

@@ -52,7 +52,7 @@ export type ManagedEmailProviderListItem = {
   nameServerRecords: string[],
 };
 
-import type { ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
+import type { AdminSessionReplay, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
 
 
@@ -83,6 +83,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       limit?: number,
       type?: TransactionType,
       customerType?: 'user' | 'team' | 'custom',
+      customerId?: string,
     }],
     { transactions: Transaction[], nextCursor: string | null },
     true
@@ -93,6 +94,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createTeamPermissionDefinition(data: AdminTeamPermissionDefinitionCreateOptions): Promise<AdminTeamPermission>,
     updateTeamPermissionDefinition(permissionId: string, data: AdminTeamPermissionDefinitionUpdateOptions): Promise<void>,
     deleteTeamPermissionDefinition(permissionId: string): Promise<void>,
+    /**
+     * @param options.query Free-text search; matches against permission ID and description.
+     */
+    listTeamPermissionDefinitionsPaginated(options: { limit: number, cursor?: string, query?: string }): Promise<{ items: AdminTeamPermissionDefinition[], nextCursor: string | null }>,
 
     createProjectPermissionDefinition(data: AdminProjectPermissionDefinitionCreateOptions): Promise<AdminProjectPermission>,
     updateProjectPermissionDefinition(permissionId: string, data: AdminProjectPermissionDefinitionUpdateOptions): Promise<void>,
@@ -114,6 +119,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     checkManagedEmailStatus(options: { domainId: string, subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderStatus>,
     listManagedEmailDomains(): Promise<ManagedEmailProviderListItem[]>,
     applyManagedEmailProvider(options: { domainId: string }): Promise<{ status: "applied" }>,
+    deleteManagedEmailDomain(options: { resendDomainId: string }): Promise<{ status: "deleted" }>,
 
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
@@ -142,11 +148,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     refundTransaction(options: {
       type: "subscription" | "one-time-purchase",
       id: string,
-      refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-    }): Promise<void>,
+      invoiceId?: string,
+      amountUsd: MoneyAmount,
+      endAction?: "now" | "at-period-end",
+    }): Promise<{ refundTransactionId: string }>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,
+    getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay>,
     listSessionReplayChunks(sessionReplayId: string, options?: ListSessionReplayChunksOptions): Promise<ListSessionReplayChunksResult>,
     getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse>,
     getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<SessionReplayAllEventsResult>,

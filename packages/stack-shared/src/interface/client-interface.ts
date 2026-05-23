@@ -130,6 +130,32 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
   };
 }
 
+async function encodeAnalyticsBody(
+  jsonBody: string,
+  options: { keepalive: boolean },
+): Promise<{ body: BodyInit, contentType: string }> {
+  // pagehide/visibilitychange flushes use keepalive: true. The browser must
+  // dispatch the fetch before tearing the page down — awaiting async gzip
+  // first lets the request slip past tear-down and never start.
+  if (options.keepalive) {
+    return { body: jsonBody, contentType: "application/json" };
+  }
+  const CompressionStreamCtor: typeof CompressionStream | undefined =
+    (globalVar as { CompressionStream?: typeof CompressionStream }).CompressionStream;
+  if (typeof CompressionStreamCtor !== "function" || typeof Blob === "undefined" || typeof Response === "undefined") {
+    return { body: jsonBody, contentType: "application/json" };
+  }
+  try {
+    const stream = new Blob([jsonBody]).stream().pipeThrough(new CompressionStreamCtor("gzip"));
+    const buffer = await new Response(stream).arrayBuffer();
+    return { body: new Uint8Array(buffer), contentType: "application/octet-stream" };
+  } catch {
+    // Partial/broken CompressionStream support: fall back to plain JSON so
+    // EventTracker._flush() doesn't drop the batch via Result.error.
+    return { body: jsonBody, contentType: "application/json" };
+  }
+}
+
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
   private _requestListeners = new Set<RequestListener>();
@@ -529,12 +555,13 @@ export class StackClientInterface {
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
     try {
+      const encoded = await encodeAnalyticsBody(body, { keepalive: options.keepalive });
       const response = await this.sendClientRequest(
         "/analytics/events/batch",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
+          headers: { "Content-Type": encoded.contentType },
+          body: encoded.body,
           keepalive: options.keepalive,
         },
         session,
@@ -696,12 +723,15 @@ export class StackClientInterface {
       throw e;
     }
 
+    const preprocessedRes = await this._preprocessResponse(rawRes);
+
     if (this._requestListeners.size > 0) {
-      const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), status: rawRes.status, duration: Math.round(performance.now() - startTime) };
+      const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), status: preprocessedRes.status, duration: Math.round(performance.now() - startTime) };
       this._requestListeners.forEach((l) => l(entry));
     }
 
-    const processedRes = await this._processResponse(rawRes);
+    const processedRes = await this._processResponse(preprocessedRes);
+
     if (processedRes.status === "error") {
       // If the access token is invalid, reset it and retry
       if (KnownErrors.InvalidAccessToken.isInstance(processedRes.error)) {
@@ -750,7 +780,7 @@ export class StackClientInterface {
 
       if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {
         // Some Vercel deployments seem to have an odd infinite loop bug. In that case, retry.
-        // See: https://github.com/stack-auth/stack-auth/issues/319
+        // See: https://github.com/hexclave/stack-auth/issues/319
         return Result.error(errorObj);
       }
 
@@ -759,7 +789,7 @@ export class StackClientInterface {
     }
   }
 
-  private async _processResponse(rawRes: Response): Promise<Result<Response, KnownError>> {
+  private async _preprocessResponse(rawRes: Response): Promise<Response> {
     let res = rawRes;
     if (rawRes.headers.has("x-stack-actual-status")) {
       const actualStatus = Number(rawRes.headers.get("x-stack-actual-status"));
@@ -769,7 +799,10 @@ export class StackClientInterface {
         headers: rawRes.headers,
       });
     }
+    return res;
+  }
 
+  private async _processResponse(res: Response): Promise<Result<Response, KnownError>> {
     // Handle known errors
     if (res.headers.has("x-stack-known-error")) {
       const errorJson = await res.json();
@@ -1080,7 +1113,7 @@ export class StackClientInterface {
     code: string,
     session: InternalSession,
     type: T,
-  }): Promise<Result<T extends 'details' ? { team_display_name: string } : undefined, KnownErrors["VerificationCodeError"]>> {
+  }): Promise<Result<T extends 'details' ? { team_display_name: string } : undefined, KnownErrors["VerificationCodeError"] | KnownErrors["TeamInvitationEmailMismatch"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       options.type === 'check' ?
         "/team-invitations/accept/check-code" :
@@ -1097,7 +1130,7 @@ export class StackClientInterface {
         }),
       },
       options.session,
-      [KnownErrors.VerificationCodeError]
+      [KnownErrors.VerificationCodeError, KnownErrors.TeamInvitationEmailMismatch]
     );
 
     if (res.status === "error") {
@@ -1529,7 +1562,7 @@ export class StackClientInterface {
           // refresh token was already invalid, just continue like nothing happened
         } else {
           // this should never happen
-          throw new StackAssertionError("Unexpected error", { error: resOrError.error });
+          throw new StackAssertionError("Unexpected error", { cause: resOrError.error });
         }
       } else {
         // user was signed out successfully, all good

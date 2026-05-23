@@ -1,4 +1,4 @@
-// see https://github.com/stack-auth/info/blob/main/eng-handbook/random-thoughts/config-json-format.md
+// see https://github.com/hexclave/info/blob/main/eng-handbook/random-thoughts/config-json-format.md
 
 import { StackAssertionError, throwErr } from "../utils/errors";
 import { deleteKey, filterUndefined, get, hasAndNotUndefined, set } from "../utils/objects";
@@ -15,12 +15,14 @@ export type NormalizedConfig = {
   [key: string]: NormalizedConfigValue | undefined,  // must support undefined for optional values
 };
 
-export type _NormalizesTo<N> = N extends object ? (
-  & Config
-  & { [K in OptionalKeys<N>]?: _NormalizesTo<N[K]> | null }
-  & { [K in RequiredKeys<N>]: undefined extends N[K] ? _NormalizesTo<N[K]> | null : _NormalizesTo<N[K]> }
-  & { [K in `${string}.${string}`]: ConfigValue }
-) : N;
+export type _NormalizesTo<N> = N extends readonly any[]
+  ? { [K in keyof N]: _NormalizesTo<N[K]> }
+  : N extends object ? (
+    & Config
+    & { [K in OptionalKeys<N>]?: _NormalizesTo<N[K]> | null }
+    & { [K in RequiredKeys<N>]: undefined extends N[K] ? _NormalizesTo<N[K]> | null : _NormalizesTo<N[K]> }
+    & { [K in `${string}.${string}`]: ConfigValue }
+  ) : N;
 export type NormalizesTo<N extends NormalizedConfig> = _NormalizesTo<N>;
 
 /**
