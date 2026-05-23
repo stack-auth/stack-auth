@@ -128,6 +128,20 @@ const keyedCookieNamePrefixes = [
   "hexclave-oauth-inner-",
 ] as const;
 
+// Hexclave rebrand: backend dual-writes these Set-Cookie entries alongside the
+// stack-* variants with identical values. Hide the hexclave-* duplicates so
+// snapshots stay focused on the existing stack-* entries — mirrors the
+// hideHeaders strategy for x-hexclave-{known-error,actual-status} and avoids
+// regenerating every OAuth response snapshot in the suite. PR 3 (removing the
+// dual-write) won't need to re-regen them.
+const hiddenSetCookieNamePrefixes = [
+  "hexclave-oauth-inner-",
+] as const;
+
+// Track Headers instances we've already stripped duplicate hexclave Set-Cookies
+// from, to avoid infinite recursion when nicify re-enters on the filtered copy.
+const dualFilteredHeaders = new WeakSet<Headers>();
+
 const stringRegexReplacements = [
   [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
   [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>"],
@@ -258,6 +272,27 @@ const snapshotSerializer: SnapshotSerializer = {
           addAll(newHideFields, snapshotSerializerOptions?.hideFields ?? []);
         }
         if (value instanceof Headers) {
+          // Pre-filter dual-written hexclave-* Set-Cookies before adding hideHeaders,
+          // so the recursive nicify call serializes only the stack-* entries.
+          if (!dualFilteredHeaders.has(value)) {
+            const setCookies = value.getSetCookie();
+            const filteredSetCookies = setCookies.filter(c =>
+              !hiddenSetCookieNamePrefixes.some(prefix => c.startsWith(prefix))
+            );
+            if (filteredSetCookies.length !== setCookies.length) {
+              const filteredHeaders = new Headers();
+              for (const [name, val] of value.entries()) {
+                if (name.toLowerCase() !== "set-cookie") {
+                  filteredHeaders.append(name, val);
+                }
+              }
+              for (const cookie of filteredSetCookies) {
+                filteredHeaders.append("set-cookie", cookie);
+              }
+              dualFilteredHeaders.add(filteredHeaders);
+              return nicify(filteredHeaders, options);
+            }
+          }
           addAll(newHideFields, hideHeaders);
         }
         if (newHideFields.size !== oldHideFields.length) {

@@ -18,7 +18,6 @@ it("should not have have access to the project", async ({ expect }) => {
         \`,
       },
       "headers": Headers {
-        "x-hexclave-known-error": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
         "x-stack-known-error": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
         <some fields may have been hidden>,
       },
@@ -37,7 +36,6 @@ it("is not allowed to list all current projects without signing in", async ({ ex
         "error": "User authentication required for this endpoint.",
       },
       "headers": Headers {
-        "x-hexclave-known-error": "USER_AUTHENTICATION_REQUIRED",
         "x-stack-known-error": "USER_AUTHENTICATION_REQUIRED",
         <some fields may have been hidden>,
       },
