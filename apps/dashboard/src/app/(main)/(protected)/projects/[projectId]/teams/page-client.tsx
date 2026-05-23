@@ -8,6 +8,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { TeamsKpiCards } from "./teams-kpi-cards";
 
 type CreateDialogProps = {
   open: boolean,
@@ -16,7 +17,7 @@ type CreateDialogProps = {
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const teams = stackAdminApp.useTeams();
+  const teams = stackAdminApp.useTeams({ limit: 1 });
   const project = stackAdminApp.useProject();
 
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);
@@ -38,8 +39,9 @@ export default function PageClient() {
             <StyledLink href={teamSettingsPath}>Go here</StyledLink>.
           </Alert>
         )}
+        <TeamsKpiCards />
         <div data-walkthrough="teams-table">
-          <TeamTable teams={teams} />
+          <TeamTable />
         </div>
         <CreateDialog
           open={createTeamsOpen}

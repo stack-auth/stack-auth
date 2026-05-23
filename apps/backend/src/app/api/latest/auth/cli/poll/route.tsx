@@ -48,7 +48,7 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(tenancy);
     const schema = await getPrismaSchemaForTenancy(tenancy);
 
-    const cliAuthRows = await prisma.$queryRaw<CliAuthAttemptRow[]>(Prisma.sql`
+    const cliAuthRows = await prisma.$replica().$queryRaw<CliAuthAttemptRow[]>(Prisma.sql`
       SELECT
         "id",
         "refreshToken",

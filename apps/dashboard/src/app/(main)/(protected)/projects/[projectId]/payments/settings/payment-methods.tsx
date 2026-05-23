@@ -1,7 +1,9 @@
 "use client";
 
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, Typography } from "@/components/ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Switch, Typography } from "@/components/ui";
 import { getPaymentMethodIcon } from "@/components/ui/payment-method-icons";
+import { cn } from "@/lib/utils";
+import { DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { BankIcon, CircleNotchIcon, CreditCardIcon, CurrencyCircleDollarIcon, GlobeIcon, HandCoinsIcon, LightningIcon, ReceiptIcon, WalletIcon } from "@phosphor-icons/react";
 import { getPaymentMethodCategory, PAYMENT_CATEGORIES, PAYMENT_METHOD_DEPENDENCIES, PaymentMethodCategory } from "@stackframe/stack-shared/dist/payments/payment-methods";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -126,38 +128,32 @@ export function PaymentMethods() {
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Methods</CardTitle>
-          <CardDescription>
-            Configure which payment methods your customers can use at checkout.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center h-32 space-y-4">
-            <CircleNotchIcon className="h-8 w-8 animate-spin text-primary" />
-            <Typography className="text-muted-foreground">Loading payment methods...</Typography>
-          </div>
-        </CardContent>
-      </Card>
+      <DesignCard
+        title="Payment Methods"
+        subtitle="Configure which payment methods your customers can use at checkout."
+        icon={CreditCardIcon}
+        gradient="default"
+      >
+        <div className="flex flex-col items-center justify-center py-10 gap-3">
+          <CircleNotchIcon className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Typography variant="secondary" className="text-sm">Loading payment methods…</Typography>
+        </div>
+      </DesignCard>
     );
   }
 
   if (!config) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Methods</CardTitle>
-          <CardDescription>
-            Configure which payment methods your customers can use at checkout.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-32">
-            <Typography className="text-muted-foreground">Failed to load payment methods. Please try again.</Typography>
-          </div>
-        </CardContent>
-      </Card>
+      <DesignCard
+        title="Payment Methods"
+        subtitle="Configure which payment methods your customers can use at checkout."
+        icon={CreditCardIcon}
+        gradient="default"
+      >
+        <div className="flex items-center justify-center py-10">
+          <Typography variant="secondary" className="text-sm">Failed to load payment methods. Please try again.</Typography>
+        </div>
+      </DesignCard>
     );
   }
 
@@ -185,19 +181,24 @@ export function PaymentMethods() {
     return (
       <div
         key={method.id}
-        className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
-          hasChanged ? 'bg-blue-50 dark:bg-blue-950/30' : 'hover:bg-muted/50'
-        }`}
+        className={cn(
+          "flex items-center justify-between px-3 py-2.5 rounded-xl",
+          "transition-colors duration-150 hover:transition-none",
+          hasChanged
+            ? "bg-blue-500/[0.08] dark:bg-blue-400/[0.08] ring-1 ring-blue-500/20 dark:ring-blue-400/20"
+            : "hover:bg-foreground/[0.04]"
+        )}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           {BrandIcon ? (
             <BrandIcon iconSize={20} />
           ) : (
             <FallbackIcon className="h-5 w-5 text-muted-foreground" />
           )}
-          <div>
-            <Typography className="font-medium">{method.name}</Typography>
-          </div>
+          <Typography className="text-sm font-medium text-foreground truncate">{method.name}</Typography>
+          {hasChanged && (
+            <DesignBadge label="Modified" color="blue" size="sm" />
+          )}
         </div>
         <Switch
           checked={isEnabled}
@@ -207,124 +208,119 @@ export function PaymentMethods() {
     );
   };
 
+  const cardActions = hasPendingChanges ? (
+    <div className="flex items-center gap-2">
+      <DesignButton variant="secondary" size="sm" onClick={handleCancel} disabled={saving}>
+        Cancel
+      </DesignButton>
+      <DesignButton size="sm" onClick={handleSave} loading={saving}>
+        Save Changes
+      </DesignButton>
+    </div>
+  ) : undefined;
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Payment Methods</CardTitle>
-              <CardDescription>
-                Configure which payment methods your customers can use at checkout. Some methods only appear for customers in specific regions, currencies, or transaction types.
-              </CardDescription>
-            </div>
-            {hasPendingChanges && (
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={handleCancel} disabled={saving}>
-                  Cancel
-                </Button>
-                <Button onClick={() => runAsynchronouslyWithAlert(handleSave)} disabled={saving}>
-                  {saving ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {controllableMethods.length === 0 ? (
-            <Typography className="text-muted-foreground text-sm py-4">
-              No payment methods are currently available. Complete Stripe onboarding to enable payment methods.
-            </Typography>
-          ) : (
-            <Accordion type="multiple" className="w-full">
-              {methodsByCategory.map(category => {
-                const CategoryIcon = category.icon;
-                const isEmpty = category.methods.length === 0;
+      <DesignCard
+        title="Payment Methods"
+        subtitle="Configure which payment methods your customers can use at checkout. Some methods only appear for customers in specific regions, currencies, or transaction types."
+        icon={CreditCardIcon}
+        gradient="default"
+        actions={cardActions}
+      >
+        {controllableMethods.length === 0 ? (
+          <Typography variant="secondary" className="text-sm py-4">
+            No payment methods are currently available. Complete Stripe onboarding to enable payment methods.
+          </Typography>
+        ) : (
+          <Accordion type="multiple" className="w-full">
+            {methodsByCategory.map(category => {
+              const CategoryIcon = category.icon;
+              const isEmpty = category.methods.length === 0;
 
-                return (
-                  <AccordionItem
-                    key={category.id}
-                    value={category.id}
-                    className={isEmpty ? 'opacity-50' : ''}
+              return (
+                <AccordionItem
+                  key={category.id}
+                  value={category.id}
+                  className={cn("border-b border-border/40", isEmpty && "opacity-50")}
+                  disabled={isEmpty}
+                >
+                  <AccordionTrigger
+                    className="hover:no-underline py-3"
                     disabled={isEmpty}
                   >
-                    <AccordionTrigger
-                      className="hover:no-underline"
-                      disabled={isEmpty}
-                    >
-                      <div className="flex items-center gap-3">
-                        <CategoryIcon className="h-5 w-5 text-muted-foreground" weight="duotone" />
-                        <span className="font-medium">{category.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          ({category.methods.length})
-                        </span>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      {isEmpty ? (
-                        <Typography className="text-muted-foreground text-sm py-2">
-                          No methods available in this category.
-                        </Typography>
-                      ) : (
-                        <div className="space-y-1">
-                          {category.methods.map(renderMethodRow)}
-                        </div>
-                      )}
-                    </AccordionContent>
-                  </AccordionItem>
-                );
-              })}
-
-              {uncategorizedMethods.length > 0 && (
-                <AccordionItem value="other">
-                  <AccordionTrigger className="hover:no-underline">
                     <div className="flex items-center gap-3">
-                      <CreditCardIcon className="h-5 w-5 text-muted-foreground" />
-                      <span className="font-medium">Other</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({uncategorizedMethods.length})
+                      <CategoryIcon className="h-4 w-4 text-muted-foreground" weight="duotone" />
+                      <span className="text-sm font-medium text-foreground">{category.name}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        ({category.methods.length})
                       </span>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <div className="space-y-1">
-                      {uncategorizedMethods.map(renderMethodRow)}
-                    </div>
+                    {isEmpty ? (
+                      <Typography variant="secondary" className="text-sm py-2">
+                        No methods available in this category.
+                      </Typography>
+                    ) : (
+                      <div className="space-y-1 pb-1">
+                        {category.methods.map(renderMethodRow)}
+                      </div>
+                    )}
                   </AccordionContent>
                 </AccordionItem>
-              )}
-            </Accordion>
-          )}
-        </CardContent>
-      </Card>
+              );
+            })}
+
+            {uncategorizedMethods.length > 0 && (
+              <AccordionItem value="other" className="border-b border-border/40">
+                <AccordionTrigger className="hover:no-underline py-3">
+                  <div className="flex items-center gap-3">
+                    <CreditCardIcon className="h-4 w-4 text-muted-foreground" weight="duotone" />
+                    <span className="text-sm font-medium text-foreground">Other</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      ({uncategorizedMethods.length})
+                    </span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-1 pb-1">
+                    {uncategorizedMethods.map(renderMethodRow)}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+          </Accordion>
+        )}
+      </DesignCard>
 
       {uncontrollableMethods.length > 0 && (
-        <Card className="opacity-60">
-          <CardHeader>
-            <CardTitle className="text-lg">Platform-Managed Methods</CardTitle>
-            <CardDescription>
-              These methods are controlled by the platform and cannot be customized.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1">
+        <DesignCard
+          title="Platform-Managed Methods"
+          subtitle="These methods are controlled by the platform and cannot be customized."
+          icon={GlobeIcon}
+          gradient="default"
+          className="opacity-70"
+        >
+          <div className="space-y-1">
             {uncontrollableMethods.slice(0, 10).map((method) => (
               <div
                 key={method.id}
-                className="flex items-center justify-between p-3 rounded-lg"
+                className="flex items-center justify-between px-3 py-2.5 rounded-xl"
               >
-                <div className="flex items-center gap-3">
-                  <Typography className="font-medium text-muted-foreground">{method.name}</Typography>
-                </div>
+                <Typography className="text-sm font-medium text-muted-foreground">
+                  {method.name}
+                </Typography>
                 <Switch disabled checked={method.enabled} />
               </div>
             ))}
             {uncontrollableMethods.length > 10 && (
-              <Typography className="text-muted-foreground text-sm pt-2">
-                And {uncontrollableMethods.length - 10} more...
+              <Typography variant="secondary" className="text-xs pt-2 px-3">
+                And {uncontrollableMethods.length - 10} more…
               </Typography>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </DesignCard>
       )}
     </div>
   );

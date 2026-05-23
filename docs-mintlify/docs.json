@@ -46,7 +46,6 @@
         "tab": "Documentation",
         "pages": [
           "index",
-          "guides/faq",
           {
             "group": "Getting Started",
             "pages": [
@@ -60,6 +59,8 @@
             "pages": [
               "guides/going-further/stack-app",
               "guides/going-further/backend-integration",
+              "guides/going-further/cli",
+              "guides/going-further/local-emulator",
               "guides/going-further/local-development",
               "guides/going-further/user-metadata"
             ]
@@ -73,6 +74,7 @@
                 "pages": [
                   "guides/apps/authentication/overview",
                   "guides/apps/authentication/user-onboarding",
+                  "guides/apps/authentication/restricted-users",
                   "guides/apps/authentication/connected-accounts",
                   "guides/apps/authentication/jwts",
                   "guides/apps/authentication/sign-up-rules",
@@ -131,7 +133,7 @@
             "group": "Other",
             "pages": [
               "guides/other/self-host",
-              "guides/other/mcp-setup",
+              "guides/other/known-errors",
               {
                 "group": "Tutorials",
                 "pages": [
@@ -216,7 +218,7 @@
   "footer": {
     "socials": {
       "x": "https://x.com/stack_auth",
-      "github": "https://github.com/stack-auth/stack",
+      "github": "https://github.com/hexclave/stack",
       "discord": "https://discord.stack-auth.com"
     }
   },
@@ -226,7 +228,7 @@
     }
   },
   "settings": {
-    "customScripts": ["/apps-sidebar-filter.js"]
+    "customScripts": ["/apps-sidebar-filter.js", "/code-language-labels.js"]
   },
   "redirects": []
 }

@@ -238,6 +238,21 @@ export class StackAdminInterface extends StackServerInterface {
     return result.items;
   }
 
+  async listTeamPermissionDefinitionsPaginated(
+    options: { limit: number, cursor?: string, query?: string },
+  ): Promise<{ items: TeamPermissionDefinitionsCrud['Admin']['Read'][], nextCursor: string | null }> {
+    const params = new URLSearchParams();
+    params.set("limit", String(options.limit));
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.query) params.set("query", options.query);
+    const response = await this.sendAdminRequest(`/team-permission-definitions?${params.toString()}`, {}, null);
+    const result = await response.json() as TeamPermissionDefinitionsCrud['Admin']['List'];
+    return {
+      items: result.items,
+      nextCursor: result.pagination?.next_cursor ?? null,
+    };
+  }
+
   async createTeamPermissionDefinition(data: TeamPermissionDefinitionsCrud['Admin']['Create']): Promise<TeamPermissionDefinitionsCrud['Admin']['Read']> {
     const response = await this.sendAdminRequest(
       "/team-permission-definitions",
@@ -470,6 +485,19 @@ export class StackAdminInterface extends StackServerInterface {
     }> {
     const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/list", {
       method: "GET",
+    }, null);
+    return await response.json();
+  }
+
+  async deleteManagedEmailDomain(data: {
+    resend_domain_id: string,
+  }): Promise<{ status: "deleted" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
     }, null);
     return await response.json();
   }
@@ -894,8 +922,18 @@ export class StackAdminInterface extends StackServerInterface {
   async refundTransaction(options: {
     type: "subscription" | "one-time-purchase",
     id: string,
-    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
-  }): Promise<{ success: boolean }> {
+    invoiceId?: string,
+    amountUsd: MoneyAmount,
+    /**
+     * Lifecycle action for the source purchase:
+     *   "now"           — end product access immediately (revokes product,
+     *                     expires item grants, cancels Stripe sub if any).
+     *   "at-period-end" — schedule sub cancel-at-period-end; subscriptions
+     *                     only — rejected for one-time purchases.
+     *   undefined       — no lifecycle change; refund money only.
+     */
+    endAction?: "now" | "at-period-end",
+  }): Promise<{ success: boolean, refundTransactionId: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
       {
@@ -906,16 +944,15 @@ export class StackAdminInterface extends StackServerInterface {
         body: JSON.stringify({
           type: options.type,
           id: options.id,
-          refund_entries: options.refundEntries.map((entry) => ({
-            entry_index: entry.entryIndex,
-            quantity: entry.quantity,
-            amount_usd: entry.amountUsd,
-          })),
+          ...(options.invoiceId !== undefined ? { invoice_id: options.invoiceId } : {}),
+          amount_usd: options.amountUsd,
+          ...(options.endAction !== undefined ? { end_action: options.endAction } : {}),
         }),
       },
       null,
     );
-    return await response.json();
+    const json = await response.json();
+    return { success: json.success, refundTransactionId: json.refund_transaction_id };
   }
 
 

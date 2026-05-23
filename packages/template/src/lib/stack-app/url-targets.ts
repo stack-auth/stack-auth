@@ -1,21 +1,13 @@
 import { getCustomPagePrompts, type CustomPagePrompt } from "@stackframe/stack-shared/dist/interface/handler-urls";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getHostedHandlerUrlFromConfig } from "@stackframe/stack-shared/dist/utils/redirect-urls";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
-const defaultHostedHandlerDomainSuffix = ".built-with-stack-auth.com";
-const hostedHandlerProjectIdPlaceholder = "{projectId}";
-const hostedHandlerPathPlaceholder = "{hostedPath}";
 const localUrlPlaceholderOrigin = "http://example.com";
 const schemePrefixRegex = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 
 const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPagePrompt> = getCustomPagePrompts();
-
-const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
-  if (!input) return input;
-  const prefix = envVars.NEXT_PUBLIC_STACK_PORT_PREFIX;
-  return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
-};
 
 const joinHandlerComponentPath = (basePath: string, pagePath: string): string => {
   const normalizedBasePath = basePath.endsWith("/") && basePath.length > 1
@@ -92,33 +84,6 @@ const getHostedPagePathForHandlerName = (handlerName: keyof HandlerUrls): string
   }
 };
 
-export const getHostedHandlerDomainSuffix = (): string => {
-  const configuredValue = envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX
-    ?? defaultHostedHandlerDomainSuffix;
-  const domainSuffix = replaceStackPortPrefix(configuredValue);
-  if (!domainSuffix.startsWith(".")) {
-    throw new StackAssertionError("The hosted handler domain suffix must start with a dot.", {
-      domainSuffix,
-      hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX to a value like '.built-with-stack-auth.com'.",
-    });
-  }
-  return domainSuffix;
-};
-
-const getHostedHandlerUrlTemplate = (): string => {
-  const configuredTemplate = replaceStackPortPrefix(envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE);
-  if (configuredTemplate != null) {
-    if (!configuredTemplate.includes(hostedHandlerProjectIdPlaceholder) || !configuredTemplate.includes(hostedHandlerPathPlaceholder)) {
-      throw new StackAssertionError("The hosted handler URL template must contain {projectId} and {hostedPath}.", {
-        hostedHandlerUrlTemplate: configuredTemplate,
-        hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE to a value like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}'.",
-      });
-    }
-    return configuredTemplate;
-  }
-  return `https://${hostedHandlerProjectIdPlaceholder}${getHostedHandlerDomainSuffix()}/${hostedHandlerPathPlaceholder}`;
-};
-
 const resolveCustomTargetUrl = (options: {
   target: { type: "custom", url: string, version: number },
   handlerName: keyof HandlerUrls,
@@ -139,11 +104,13 @@ const resolveCustomTargetUrl = (options: {
 export const getHostedHandlerUrl = (options: { projectId: string, pagePath: string }): string => {
   const normalizedPagePath = options.pagePath.replace(/^\/+/, "");
   const hostedPath = normalizedPagePath.length > 0 ? `handler/${normalizedPagePath}` : "handler";
-  const template = getHostedHandlerUrlTemplate();
-  const templateFilled = template
-    .replaceAll(hostedHandlerProjectIdPlaceholder, options.projectId)
-    .replaceAll(hostedHandlerPathPlaceholder, hostedPath);
-  return new URL(templateFilled).toString();
+  return getHostedHandlerUrlFromConfig({
+    projectId: options.projectId,
+    hostedPath,
+    hostedHandlerDomainSuffix: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX,
+    hostedHandlerUrlTemplate: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE,
+    stackPortPrefix: envVars.NEXT_PUBLIC_STACK_PORT_PREFIX,
+  });
 };
 
 const isRelativeUrlString = (url: string): boolean => {
@@ -202,9 +169,29 @@ const resolveUrlTarget = (options: {
   }
 };
 
+const assertOAuthCallbackTargetIsRelative = (target: HandlerUrlTarget): void => {
+  const url = typeof target === "string"
+    ? target
+    : target.type === "custom"
+      ? target.url
+      : null;
+  if (url != null && !isRelativeUrlString(url)) {
+    throw new StackAssertionError("OAuth callback URLs must be relative.", {
+      oauthCallbackUrl: url,
+      hint: "Use a relative URL like '/handler/oauth-callback', or use { type: 'hosted' } to let Stack use the current page for hosted callbacks.",
+    });
+  }
+};
+
 export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefined, projectId: string }): ResolvedHandlerUrls => {
   const configuredUrls = options.urls;
-  const defaultTarget: HandlerUrlTarget = configuredUrls?.default ?? { type: "handler-component" };
+  const defaultTarget = configuredUrls?.default ?? { type: "handler-component" } as const;
+  const oauthCallbackTarget: HandlerUrlTarget = configuredUrls?.oauthCallback ?? (
+    defaultTarget.type === "hosted"
+      ? defaultTarget
+      : { type: "handler-component" }
+  );
+  assertOAuthCallbackTargetIsRelative(oauthCallbackTarget);
   let handlerComponentBasePath = "/handler";
   if (typeof configuredUrls?.handler === "string") {
     handlerComponentBasePath = configuredUrls.handler;
@@ -286,7 +273,7 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
     }),
     home,
     oauthCallback: resolveUrlTarget({
-      target: configuredUrls?.oauthCallback ?? defaultTarget,
+      target: oauthCallbackTarget,
       fallbackPath: joinHandlerComponentPath(handlerComponentBasePath, "oauth-callback"),
       handlerName: "oauthCallback",
       projectId: options.projectId,
@@ -352,10 +339,7 @@ export const resolveUnknownHandlerPathFallbackUrl = (options: {
   projectId: string,
   unknownPath: string,
 }): string | null => {
-  const defaultTarget = options.defaultTarget ?? { type: "handler-component" } satisfies HandlerUrlTarget;
-  if (typeof defaultTarget === "string") {
-    return defaultTarget;
-  }
+  const defaultTarget = options.defaultTarget ?? { type: "handler-component" } satisfies DefaultHandlerUrlTarget;
 
   switch (defaultTarget.type) {
     case "handler-component": {

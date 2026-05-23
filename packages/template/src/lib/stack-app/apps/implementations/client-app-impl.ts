@@ -29,12 +29,13 @@ import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { deepPlainEquals, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { neverResolve, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
+import { getTrustedParentDomain, validateRedirectUrl } from "@stackframe/stack-shared/dist/utils/redirect-urls";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
+import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import { createUrlIfValid, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
@@ -43,8 +44,8 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
-import { getNewOAuthProviderOrScopeUrl, callOAuthCallback } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
@@ -55,14 +56,14 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { buildCliAuthConfirmUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
+import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
-import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
+import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
@@ -84,6 +85,18 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
+
+const nestedCrossDomainAuthQueryParams = {
+  refreshTokenId: "stack_nested_cross_domain_auth_refresh_token_id",
+  callbackUrl: "stack_nested_cross_domain_auth_callback_url",
+  redirectUri: "redirect_uri",
+  state: "state",
+  codeChallenge: "code_challenge",
+  codeChallengeMethod: "code_challenge_method",
+  afterCallbackRedirectUrl: "after_callback_redirect_url",
+} as const;
+
+const oauthCallbackResponseQueryParams = ["code", "state", "error", "error_description", "errorCode", "message", "details"] as const;
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
@@ -314,7 +327,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         this._interface,
         {
           provider,
-          redirectUrl: this.urls.oauthCallback,
+          redirectUrl: this._getOAuthCallbackRedirectUri(),
           errorRedirectUrl: this.urls.error,
           providerScope: mergeScopeStrings(scopeString, (this._oauthScopesOnSignIn[provider as ProviderType] ?? []).join(" ")),
         },
@@ -475,6 +488,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _prefetchedCrossDomainHandoffParams: CrossDomainHandoffParams | null = null;
   private _prefetchedCrossDomainHandoffParamsFetchedAt = 0;
   private _isPrefetchingCrossDomainHandoffParams = false;
+  private _pendingAuthResolutionPromises: Promise<unknown>[] = [];
 
   protected async _createCookieHelper(overrideTokenStoreInit?: TokenStoreInit): Promise<CookieHelper> {
     const tokenStoreInit = overrideTokenStoreInit === undefined ? this._tokenStoreInit : overrideTokenStoreInit;
@@ -518,7 +532,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         this._interface,
         {
           provider: options.providerId,
-          redirectUrl: this.urls.oauthCallback,
+          redirectUrl: this._getOAuthCallbackRedirectUri(),
           errorRedirectUrl: this.urls.error,
           providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
         },
@@ -655,7 +669,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return anonUser._internalSession;
     };
 
-    if (isBrowserLike() && this._hasPersistentTokenStore() && this._analyticsOptions?.replays?.enabled === true) {
+    const analyticsEnabled = this._analyticsOptions?.enabled !== false;
+
+    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
@@ -665,7 +681,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._sessionRecorder.start();
     }
 
-    if (isBrowserLike() && this._hasPersistentTokenStore()) {
+    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
@@ -673,6 +689,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
       });
       this._eventTracker.start();
+    }
+
+    if (isBrowserLike() && this._isOAuthCallbackUrlHosted() && this._currentUrlLooksLikeStackOAuthCallback()) {
+      this._trackPendingAuthResolution(async () => {
+        if (isBrowserLike()) {
+          await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
+        }
+      });
+    }
+
+    if (isBrowserLike()) {
+      this._trackPendingAuthResolution(async () => {
+        await this._maybeHandleNestedCrossDomainAuth();
+      });
     }
 
     // IF_PLATFORM js-like
@@ -690,6 +720,229 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
     }
     allClientApps.set(this._uniqueIdentifier, [this._extraOptions?.checkString ?? undefined, this]);
+  }
+
+  protected _trackPendingAuthResolution(callback: () => Promise<unknown>) {
+    const promise = (async () => {
+      await Promise.resolve();
+      try {
+        await callback();
+      } catch (error) {
+        // Startup auth transitions gate session finality, but malformed nested-auth URLs should
+        // not make every app-level session consumer fail while the tracker is cleaning up.
+        captureError("pending-auth-resolution-failed", error);
+      }
+    })();
+    this._pendingAuthResolutionPromises.push(promise);
+    runAsynchronously(async () => {
+      try {
+        await promise;
+      } finally {
+        this._pendingAuthResolutionPromises = this._pendingAuthResolutionPromises.filter(p => p !== promise);
+      }
+    });
+  }
+
+  protected async _awaitPendingAuthResolutions(
+    overrideTokenStoreInit?: TokenStoreInit,
+    options?: { awaitPendingAuthResolutions?: boolean },
+  ) {
+    if (
+      options?.awaitPendingAuthResolutions === false
+      || overrideTokenStoreInit !== undefined
+      || !this._hasPersistentTokenStore()
+      || this._pendingAuthResolutionPromises.length === 0
+    ) {
+      return;
+    }
+    // A page may construct the app while OAuth callback or nested cross-domain auth is still
+    // deciding whether it will replace the current session. Until those startup transitions
+    // finish, auth consumers should not treat the current token store as final.
+    await Promise.all(this._pendingAuthResolutionPromises);
+  }
+
+  // IF_PLATFORM react-like
+  protected _usePendingAuthResolutions(overrideTokenStoreInit?: TokenStoreInit) {
+    if (
+      overrideTokenStoreInit !== undefined
+      || !this._hasPersistentTokenStore()
+      || this._pendingAuthResolutionPromises.length === 0
+    ) {
+      return;
+    }
+    use(Promise.all(this._pendingAuthResolutionPromises));
+  }
+  // END_PLATFORM
+
+  protected _isOAuthCallbackUrlHosted(): boolean {
+    const oauthCallbackTarget = this._urlOptions.oauthCallback ?? this._urlOptions.default;
+    return typeof oauthCallbackTarget !== "string" && oauthCallbackTarget?.type === "hosted";
+  }
+
+  protected _currentUrlLooksLikeOAuthCallback(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const currentUrl = new URL(window.location.href);
+    return (
+      currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state")
+    ) || (
+      currentUrl.searchParams.has("errorCode") && currentUrl.searchParams.has("message")
+    );
+  }
+
+  protected _currentUrlLooksLikeStackOAuthCallback(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const currentUrl = new URL(window.location.href);
+    const state = currentUrl.searchParams.get("state");
+    if (!currentUrl.searchParams.has("code") || state == null) {
+      return false;
+    }
+    return getCookieClient(`stack-oauth-outer-${state}`) != null;
+  }
+
+  protected _getOAuthCallbackRedirectUri(): string {
+    if (!this._isOAuthCallbackUrlHosted()) {
+      return this.urls.oauthCallback;
+    }
+    if (typeof window === "undefined") {
+      throw new StackAssertionError("Hosted OAuth callback URLs require a browser environment to use the current URL as the redirect URI");
+    }
+
+    const currentUrl = new URL(window.location.href);
+    for (const param of oauthCallbackResponseQueryParams) {
+      currentUrl.searchParams.delete(param);
+    }
+    return currentUrl.toString();
+  }
+
+  protected async _getCurrentRefreshTokenIdIfSignedIn(options?: {
+    awaitPendingAuthResolutions?: boolean,
+    overrideTokenStoreInit?: TokenStoreInit,
+  }): Promise<string | null> {
+    const session = await this._getSession(options?.overrideTokenStoreInit, options);
+    const tokens = await session.getOrFetchLikelyValidTokens(0, null);
+    if (tokens?.refreshToken == null) {
+      return null;
+    }
+    return tokens.accessToken.payload.refresh_token_id;
+  }
+
+  protected async _addNestedCrossDomainAuthParamsToRedirectUrl(options: {
+    url: string,
+    currentUrl: URL,
+    awaitPendingAuthResolutions?: boolean,
+    overrideTokenStoreInit?: TokenStoreInit,
+  }): Promise<string> {
+    const targetUrl = new URL(options.url, options.currentUrl);
+    if (targetUrl.origin === options.currentUrl.origin) {
+      return options.url;
+    }
+
+    const refreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({
+      awaitPendingAuthResolutions: options.awaitPendingAuthResolutions,
+      overrideTokenStoreInit: options.overrideTokenStoreInit,
+    });
+    if (refreshTokenId == null) {
+      return options.url;
+    }
+
+    targetUrl.searchParams.set(nestedCrossDomainAuthQueryParams.refreshTokenId, refreshTokenId);
+    targetUrl.searchParams.set(
+      nestedCrossDomainAuthQueryParams.callbackUrl,
+      new URL(this._getOAuthCallbackRedirectUri(), options.currentUrl).toString(),
+    );
+    return targetUrl.toString();
+  }
+
+  protected async _maybeHandleNestedCrossDomainAuth(): Promise<boolean> {
+    if (typeof window === "undefined") return false;
+    const currentUrl = new URL(window.location.href);
+    // A real OAuth callback wins over nested handoff detection on the final return to b.com.
+    if (currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state")) return false;
+    const refreshTokenId = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.refreshTokenId);
+    if (refreshTokenId == null) return false;
+
+    const redirectUri = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.redirectUri);
+    const state = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.state);
+    const codeChallenge = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallenge);
+    if (redirectUri != null || state != null || codeChallenge != null) {
+      if (redirectUri == null || state == null || codeChallenge == null) {
+        throw new StackAssertionError("Nested cross-domain auth callback URL is missing OAuth request parameters", {
+          redirectUri,
+          state,
+          codeChallenge,
+        });
+      }
+
+      // We are back on a.com acting as the OAuth provider. Only mint the code if the current
+      // source session matches the refresh-token ID that b.com requested.
+      if ((currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallengeMethod) ?? "S256") !== "S256") {
+        throw new StackAssertionError("Nested cross-domain auth only supports S256 PKCE");
+      }
+      if (isRelative(redirectUri)) {
+        throw new Error("Nested cross-domain auth redirect URI must be absolute.");
+      }
+      const redirectUriUrl = new URL(redirectUri);
+      if (!await this._isTrusted(redirectUriUrl.toString())) {
+        throw new Error(`Nested cross-domain auth redirect URI ${redirectUri} is not trusted.`);
+      }
+      const afterCallbackRedirectUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl);
+      const afterCallbackRedirectUrl = afterCallbackRedirectUrlString == null
+        ? redirectUriUrl
+        : new URL(afterCallbackRedirectUrlString, redirectUriUrl);
+      if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
+        throw new Error(`Nested cross-domain auth after-callback redirect URL ${afterCallbackRedirectUrlString} is not trusted.`);
+      }
+      const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+      if (currentRefreshTokenId !== refreshTokenId) {
+        throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
+      }
+      await this._redirectTo({
+        url: await this._createCrossDomainAuthRedirectUrl({
+          redirectUri: redirectUriUrl.toString(),
+          state,
+          codeChallenge,
+          afterCallbackRedirectUrl: afterCallbackRedirectUrl.toString(),
+          awaitPendingAuthResolutions: false,
+        }),
+        replace: true,
+      });
+      return true;
+    }
+
+    // We are on b.com. Bounce to the trusted callback on a.com with a normal OAuth request
+    // shape; a.com will verify the source session and issue the one-time code.
+    const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+    if (currentRefreshTokenId === refreshTokenId) return false;
+    const callbackUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.callbackUrl);
+    if (callbackUrlString == null) {
+      throw new StackAssertionError("Nested cross-domain auth URL is missing callback URL");
+    }
+    if (isRelative(callbackUrlString)) {
+      throw new Error("Nested cross-domain auth callback URL must be absolute.");
+    }
+    const callbackUrl = new URL(callbackUrlString);
+    const isTrusted = await this._isTrusted(callbackUrl.toString());
+    if (!isTrusted) {
+      throw new Error(`Nested cross-domain auth callback URL ${callbackUrlString} is not trusted.`);
+    }
+
+    const afterCallbackRedirectUrl = new URL(currentUrl);
+    afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.refreshTokenId);
+    afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.callbackUrl);
+    const { state: newState, codeChallenge: newCodeChallenge } = await this._getCrossDomainHandoffParamsForRedirect(currentUrl);
+
+    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.refreshTokenId, refreshTokenId);
+    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.redirectUri, new URL(this._getOAuthCallbackRedirectUri(), currentUrl).toString());
+    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.state, newState);
+    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.codeChallenge, newCodeChallenge);
+    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.codeChallengeMethod, "S256");
+    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl, afterCallbackRedirectUrl.toString());
+    await this._redirectTo({ url: callbackUrl, replace: true });
+    return true;
   }
 
   /**
@@ -940,19 +1193,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null, cookieOptions);
     });
   }
-  private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
-    const project = Result.orThrow(await this._interface.getClientProject());
-    const domains = project.config.domains.map(d => d.domain.trim().replace(/^https?:\/\//, "").split("/")[0]?.toLowerCase());
-    const trustedWildcards = domains.filter(d => d.startsWith("**."));
-    const parts = currentDomain.split('.');
-    for (let i = parts.length - 2; i >= 0; i--) {
-      const parentDomain = parts.slice(i).join('.');
-      if (domains.includes(parentDomain) && trustedWildcards.includes("**." + parentDomain)) {
-        return parentDomain;
-      }
-    }
+  private async _getTrustedRedirectConfig(): Promise<{ allowLocalhost: boolean, trustedDomains: string[] }> {
+    const project = Result.orThrow(await this._currentProjectCache.getOrWait([], "write-only"));
+    return {
+      allowLocalhost: project.config.allow_localhost,
+      trustedDomains: [
+        ...project.config.domains.map(d => d.domain),
+        new URL(getHostedHandlerUrl({ projectId: this.projectId, pagePath: "" })).origin,
+      ],
+    };
+  }
 
-    return null;
+  private async _getTrustedParentDomain(currentDomain: string): Promise<string | null> {
+    return getTrustedParentDomain(currentDomain, (await this._getTrustedRedirectConfig()).trustedDomains);
   }
 
   protected _getBrowserCookieTokenStore(): Store<TokenObject> {
@@ -1181,7 +1434,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return session;
   }
 
-  protected async _getSession(overrideTokenStoreInit?: TokenStoreInit): Promise<InternalSession> {
+  protected async _getSession(
+    overrideTokenStoreInit?: TokenStoreInit,
+    options?: { awaitPendingAuthResolutions?: boolean },
+  ): Promise<InternalSession> {
+    await this._awaitPendingAuthResolutions(overrideTokenStoreInit, options);
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper(overrideTokenStoreInit), overrideTokenStoreInit);
     const session = this._getSessionFromTokenStore(tokenStore);
     return session;
@@ -1189,6 +1446,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   protected _useSession(overrideTokenStoreInit?: TokenStoreInit): InternalSession {
+    this._usePendingAuthResolutions(overrideTokenStoreInit);
     const tokenStore = this._useTokenStore(overrideTokenStoreInit);
     const subscribe = useCallback((cb: () => void) => {
       return subscribeSessionRefresh({
@@ -1213,6 +1471,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // populated when useUser() re-renders, avoiding a stale-cache render cycle.
     const newSession = this._getSessionFromTokenStore(tokenStore);
     this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
+  }
+
+  protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {
+    if (tokens.accessToken == null) {
+      return undefined;
+    }
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    };
   }
 
   protected _hasPersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): this is StackClientApp<true, ProjectId> {
@@ -1805,7 +2073,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           app._interface,
           {
             provider,
-            redirectUrl: app.urls.oauthCallback,
+            redirectUrl: app._getOAuthCallbackRedirectUri(),
             errorRedirectUrl: app.urls.error,
             providerScope: mergeScopeStrings(scopeString, (app._oauthScopesOnSignIn[provider as ProviderType] ?? []).join(" ")),
           },
@@ -2409,15 +2677,24 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _isTrusted(url: string): Promise<boolean> {
-    // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
-    // (note that when we do this, that should be on-top of the relativity check, not replacing it)
     if (isRelative(url)) {
       return true;
     }
-    if (typeof window !== "undefined" && window.location.origin === new URL(url).origin) {
+    const parsedUrl = createUrlIfValid(url);
+    if (parsedUrl == null) {
+      return false;
+    }
+    if (typeof window !== "undefined" && window.location.origin === parsedUrl.origin) {
       return true;
     }
-    return isHostedHandlerUrlForProject({ url, projectId: this.projectId });
+    if (isHostedHandlerUrlForProject({ url, projectId: this.projectId })) {
+      return true;
+    }
+    const trustedRedirectConfig = await this._getTrustedRedirectConfig();
+    return validateRedirectUrl(parsedUrl, {
+      allowLocalhost: trustedRedirectConfig.allowLocalhost,
+      trustedDomains: trustedRedirectConfig.trustedDomains,
+    });
   }
 
   get urls(): Readonly<ResolvedHandlerUrls> {
@@ -2480,6 +2757,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected _getLocalOAuthCallbackHandlerUrl(): string {
+    if (this._isOAuthCallbackUrlHosted()) {
+      return this._getOAuthCallbackRedirectUri();
+    }
+
     return resolveHandlerUrls({
       urls: {
         ...this._urlOptions,
@@ -2495,8 +2776,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     state: string,
     codeChallenge: string,
     afterCallbackRedirectUrl: string,
+    awaitPendingAuthResolutions?: boolean,
+    overrideTokenStoreInit?: TokenStoreInit,
   }): Promise<string> {
-    const session = await this._getSession();
+    const session = await this._getSession(options.overrideTokenStoreInit, { awaitPendingAuthResolutions: options.awaitPendingAuthResolutions });
     const response = await this._interface.sendClientRequest(
       "/auth/oauth/cross-domain/authorize",
       {
@@ -2515,7 +2798,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       session,
     );
     if (!response.ok) {
-      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${await response.text()}`);
+      const responseBody = await response.text();
+      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${responseBody}`);
     }
     const result = await response.json();
     if (!("redirect_url" in result) || typeof result.redirect_url !== "string") {
@@ -2594,7 +2878,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._redirectTo({ url, ...options });
   }
 
-  protected async _redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions) {
+  protected async _redirectToHandler(
+    handlerName: keyof HandlerUrls,
+    options?: RedirectToOptions,
+    internalOptions?: {
+      awaitPendingAuthResolutions?: boolean,
+      overrideTokenStoreInit?: TokenStoreInit,
+    },
+  ) {
     const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
     const rawHandlerUrl = rawUrls[handlerName];
     if (!rawHandlerUrl) {
@@ -2619,12 +2910,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         state: plan.state,
         codeChallenge: plan.codeChallenge,
         afterCallbackRedirectUrl: plan.afterCallbackRedirectUrl,
+        awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
+        overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       });
       await this._redirectTo({ url: crossDomainRedirectUrl, ...options });
       return;
     }
 
-    await this._redirectIfTrusted(plan.url, options);
+    const redirectUrl = currentUrl != null && handlerName !== "signOut" && handlerName !== "afterSignOut" && handlerName !== "oauthCallback"
+      ? await this._addNestedCrossDomainAuthParamsToRedirectUrl({
+        url: plan.url,
+        currentUrl,
+        awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
+        overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
+      })
+      : plan.url;
+    await this._redirectIfTrusted(redirectUrl, options);
   }
 
   protected _redirectToHandlerDuringRender(handlerName: keyof HandlerUrls, options?: RedirectToOptions): boolean {
@@ -2959,7 +3260,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const executeOAuth = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
       return await this._interface.authorizeOAuth({
         provider,
-        redirectUrl: constructRedirectUrl(this.urls.oauthCallback, "redirectUrl"),
+        redirectUrl: constructRedirectUrl(this._getOAuthCallbackRedirectUri(), "redirectUrl"),
         errorRedirectUrl: constructRedirectUrl(this.urls.error, "errorRedirectUrl"),
         afterCallbackRedirectUrl,
         type: "authenticate",
@@ -3026,7 +3327,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await callback();
     } catch (e) {
       if (KnownErrors.MultiFactorAuthenticationRequired.isInstance(e)) {
-        return Result.ok(await this._experimentalMfa(e, await this._getSession()));
+        return Result.ok(await this._experimentalMfa(
+          e,
+          await this._getSession(undefined, { awaitPendingAuthResolutions: false }),
+        ));
       }
       throw e;
     }
@@ -3054,7 +3358,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
-        await this.redirectToAfterSignIn({ replace: true });
+        await this._redirectToHandler("afterSignIn", { replace: true }, {
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
       }
       return Result.ok(undefined);
     } else {
@@ -3116,7 +3422,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
       if (!options.noRedirect) {
-        await this.redirectToAfterSignUp({ replace: true });
+        await this._redirectToHandler("afterSignUp", { replace: true }, {
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
       }
       return Result.ok(undefined);
     } else {
@@ -3164,9 +3472,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       await this._signInToAccountWithTokens(result.data);
       if (!(options?.noRedirect)) {
         if (result.data.newUser) {
-          await this.redirectToAfterSignUp({ replace: true });
+          await this._redirectToHandler("afterSignUp", { replace: true }, {
+            awaitPendingAuthResolutions: false,
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         } else {
-          await this.redirectToAfterSignIn({ replace: true });
+          await this._redirectToHandler("afterSignIn", { replace: true }, {
+            awaitPendingAuthResolutions: false,
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         }
       }
       return Result.ok(undefined);
@@ -3304,9 +3618,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       await this._signInToAccountWithTokens(result.data);
       if (!(options?.noRedirect)) {
         if (result.data.newUser) {
-          await this.redirectToAfterSignUp({ replace: true });
+          await this._redirectToHandler("afterSignUp", { replace: true }, {
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         } else {
-          await this.redirectToAfterSignIn({ replace: true });
+          await this._redirectToHandler("afterSignIn", { replace: true }, {
+            overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+          });
         }
       }
       return Result.ok(undefined);
@@ -3347,7 +3665,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
-      await this.redirectToAfterSignIn({ replace: true });
+      await this._redirectToHandler("afterSignIn", { replace: true }, {
+        overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+      });
       return Result.ok(undefined);
     } else {
       return Result.error(result.error);
@@ -3355,12 +3675,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
 
-  async callOAuthCallback() {
+  async callOAuthCallback(
+    options?: {
+      dontWarnAboutMissingQueryParams?: boolean,
+    },
+  ) {
     if (typeof window === "undefined") {
       throw new Error("callOAuthCallback can currently only be called in a browser environment");
     }
-    this._ensurePersistentTokenStore();
-    let oauthCallbackRedirectUri = this.urls.oauthCallback;
+    if (this._currentUrlLooksLikeOAuthCallback()) {
+      this._ensurePersistentTokenStore();
+    }
+    let oauthCallbackRedirectUri = this._getOAuthCallbackRedirectUri();
     const currentUrl = new URL(window.location.href);
     if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1") {
       currentUrl.searchParams.delete("code");
@@ -3370,7 +3696,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     let result;
     try {
       result = await this._catchMfaRequiredError(async () => {
-        return await callOAuthCallback(this._interface, oauthCallbackRedirectUri);
+        return await callOAuthCallback(this._interface, oauthCallbackRedirectUri, options);
       });
     } catch (e) {
       if (KnownErrors.InvalidTotpCode.isInstance(e)) {
@@ -3381,6 +3707,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
     }
     if (result.status === 'ok' && result.data) {
+      this._ensurePersistentTokenStore();
       await this._signInToAccountWithTokens(result.data);
       // TODO fix afterCallbackRedirectUrl for MFA (currently not passed because /mfa/sign-in doesn't return it)
       // or just get rid of afterCallbackRedirectUrl entirely tbh
@@ -3388,10 +3715,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await this._redirectTo({ url: result.data.afterCallbackRedirectUrl, replace: true });
         return true;
       } else if (result.data.newUser) {
-        await this.redirectToAfterSignUp({ replace: true });
+        await this._redirectToHandler("afterSignUp", { replace: true }, {
+          awaitPendingAuthResolutions: false,
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
         return true;
       } else {
-        await this.redirectToAfterSignIn({ replace: true });
+        await this._redirectToHandler("afterSignIn", { replace: true }, {
+          awaitPendingAuthResolutions: false,
+          overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+        });
         return true;
       }
     }
@@ -3643,6 +3976,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       getRedirectMethod: () => this._redirectMethod ?? throwErr("Redirect method should have been initialized in the Stack client app constructor"),
       redirectToUrl: async (url: string | URL, options?: { replace?: boolean }) => {
         await this._redirectTo({ url, ...options });
+      },
+      redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
+        await this._redirectToHandler(handlerName, options);
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());

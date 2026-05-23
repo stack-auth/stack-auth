@@ -5,10 +5,15 @@ export function useWaitForIdle(min = 0, max = 5000) {
   useEffect(() => {
     let cancelled = false;
     setTimeout(() => {
-      requestIdleCallback(() => {
+      const cb = () => {
         if (cancelled) return;
         setHasWaited(true);
-      }, { timeout: max - min });
+      };
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(cb, { timeout: max - min });
+      } else {
+        setTimeout(cb, max - min);
+      }
     }, min);
     return () => {
       cancelled = true;

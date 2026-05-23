@@ -15,13 +15,13 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { PlusIcon } from "@phosphor-icons/react";
-import { useUser } from "@stackframe/stack";
 import { useEffect, useState } from "react";
 
 export function ProjectSelectorPageClient(props: { deepPath: string }) {
   const router = useRouter();
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const projects = user.useOwnedProjects();
   const [selectedProject, setSelectedProject] = useState<string>("");
 

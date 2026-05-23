@@ -42,7 +42,7 @@ import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/
 import { memo, useCallback, useMemo, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
 
-const DEBOUNCE_MS = 400;
+const DEBOUNCE_MS = 1000;
 
 // Component for displaying dates with relative time (specific to command palette)
 function DateValue({ value }: { value: string }) {

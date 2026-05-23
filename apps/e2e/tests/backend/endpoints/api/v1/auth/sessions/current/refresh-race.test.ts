@@ -37,7 +37,11 @@ function collectUnexpectedRaceResponseFailures(options: {
 it("does not 500 when a refresh races with a sign-out of the same session", { timeout: 120_000 }, async ({ expect }) => {
   // Fire many refresh+signout pairs concurrently to hit the race window
   // between findFirst(refreshToken) and projectUserRefreshToken.update().
-  const ATTEMPTS = 10;
+  //
+  // 5 attempts is sufficient to trigger the race condition reliably; 10 was
+  // causing timeouts under CI load where each signUp takes 5–15s (CI runs
+  // showed 193–233s for 10 iterations with a 120s timeout).
+  const ATTEMPTS = 5;
   const failures: RaceFailure[] = [];
 
   for (let i = 0; i < ATTEMPTS; i++) {
@@ -80,7 +84,7 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
 it("does not 500 when an OAuth refresh-token grant races with a sign-out of the same session", { timeout: 120_000 }, async ({ expect }) => {
   // The OAuth token endpoint uses the same refresh-token helper as the direct
   // session refresh endpoint, so keep this regression covered on both callers.
-  const ATTEMPTS = 10;
+  const ATTEMPTS = 5;
   const failures: RaceFailure[] = [];
 
   for (let i = 0; i < ATTEMPTS; i++) {

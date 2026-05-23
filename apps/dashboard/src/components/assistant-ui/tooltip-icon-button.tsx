@@ -1,6 +1,7 @@
 "use client";
 
 import { ComponentPropsWithoutRef, forwardRef } from "react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import {
   Tooltip,
@@ -35,7 +36,9 @@ export const TooltipIconButton = forwardRef<
             <span className="sr-only">{tooltip}</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side={side}>{tooltip}</TooltipContent>
+        <TooltipPrimitive.Portal>
+          <TooltipContent side={side} collisionPadding={8}>{tooltip}</TooltipContent>
+        </TooltipPrimitive.Portal>
       </Tooltip>
     </TooltipProvider>
   );

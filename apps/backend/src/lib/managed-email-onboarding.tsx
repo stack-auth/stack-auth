@@ -8,6 +8,8 @@ import {
   getManagedEmailDomainByTenancyAndSubdomain,
   listManagedEmailDomainsForTenancy,
   markManagedEmailDomainApplied,
+  countManagedEmailDomainsBySubdomainExcludingId,
+  deleteManagedEmailDomainById,
   updateManagedEmailDomainWebhookStatus,
 } from "@/lib/managed-email-domains";
 import { Tenancy } from "@/lib/tenancies";
@@ -223,6 +225,27 @@ async function createDnsimpleZone(subdomain: string): Promise<DnsimpleZone> {
     id: domain.id,
     name: domain.name,
   };
+}
+
+async function deleteDnsimpleZoneByName(zoneName: string): Promise<{ status: "deleted" | "not_found" }> {
+  const dnsimpleBaseUrl = getDnsimpleBaseUrl();
+  const dnsimpleAccountId = getDnsimpleAccountId();
+  const response = await fetch(`${dnsimpleBaseUrl}/${encodeURIComponent(dnsimpleAccountId)}/zones/${encodeURIComponent(zoneName)}`, {
+    method: "DELETE",
+    headers: getDnsimpleHeaders(),
+  });
+  if (response.status === 404) {
+    return { status: "not_found" };
+  }
+  if (!response.ok) {
+    const responseBody = await response.text();
+    throw new StackAssertionError(`DNSimple returned non-OK status when deleting managed email zone`, {
+      zoneName,
+      status: response.status,
+      responseBody,
+    });
+  }
+  return { status: "deleted" };
 }
 
 async function createOrReuseDnsimpleZone(subdomain: string): Promise<DnsimpleZone> {
@@ -650,6 +673,68 @@ export async function applyManagedEmailProvider(options: {
   return { status: "applied" };
 }
 
+function isManagedEmailDomainInUseForTenancy(options: {
+  tenancy: Tenancy,
+  subdomain: string,
+  senderLocalPart: string,
+}): boolean {
+  const emailServer = options.tenancy.config.emails.server;
+  return emailServer.provider === "managed"
+    && emailServer.managedSubdomain === options.subdomain
+    && emailServer.managedSenderLocalPart === options.senderLocalPart;
+}
+
+export async function deleteManagedEmailProvider(options: {
+  tenancy: Tenancy,
+  resendDomainId: string,
+}): Promise<{ status: "deleted" }> {
+  const domain = await getManagedEmailDomainByResendDomainId(options.resendDomainId);
+  if (!domain || domain.tenancyId !== options.tenancy.id) {
+    throw new StatusError(404, "Managed domain not found for this project/branch");
+  }
+  if (isManagedEmailDomainInUseForTenancy({
+    tenancy: options.tenancy,
+    subdomain: domain.subdomain,
+    senderLocalPart: domain.senderLocalPart,
+  })) {
+    throw new StatusError(409, "Cannot delete a managed domain that is currently in use for sending email");
+  }
+
+  // External cleanup must succeed before we drop the DB row; otherwise a failure here
+  // would leak provider-side resources with no record left to retry against.
+  if (!shouldUseMockManagedEmailOnboarding()) {
+    const resendApiKey = getEnvVariable("STACK_RESEND_API_KEY");
+    const resendResponse = await fetch(`https://api.resend.com/domains/${encodeURIComponent(domain.resendDomainId)}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+      },
+    });
+    if (!resendResponse.ok && resendResponse.status !== 404) {
+      const responseBody = await resendResponse.text();
+      throw new StackAssertionError(`Upstream email provider returned non-OK status when deleting managed domain`, {
+        resendDomainId: domain.resendDomainId,
+        status: resendResponse.status,
+        responseBody,
+      });
+    }
+
+    // createOrReuseDnsimpleZone lets multiple ManagedEmailDomain rows share a zone (when
+    // two tenancies pick the same subdomain). Only delete the zone if this row is the
+    // last one referencing it.
+    const remaining = await countManagedEmailDomainsBySubdomainExcludingId({
+      subdomain: domain.subdomain,
+      excludeId: domain.id,
+    });
+    if (remaining === 0) {
+      await deleteDnsimpleZoneByName(domain.subdomain);
+    }
+  }
+
+  await deleteManagedEmailDomainById(domain.id);
+  return { status: "deleted" };
+}
+
 export async function processResendDomainWebhookEvent(options: {
   domainId: string,
   providerStatusRaw: string,
@@ -691,4 +776,3 @@ async function saveManagedEmailProviderConfig(options: {
     },
   });
 }
-

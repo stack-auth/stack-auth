@@ -1,6 +1,11 @@
 'use client';
 
 import { cn } from "@/components/ui";
+import { createUnifiedAiChatAdapter, getFriendlyAiErrorMessage } from "@/components/assistant-ui/chat-stream";
+import { ImageAttachmentAdapter } from "@/components/assistant-ui/image-attachment-adapter";
+import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { Thread } from "@/components/assistant-ui/thread";
+import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import {
   createConversation,
   deleteConversation,
@@ -9,27 +14,52 @@ import {
   replaceConversationMessages,
   type ConversationSummary,
 } from "@/lib/ai-conversations";
-import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
-import { useChat, type UIMessage } from "@ai-sdk/react";
-import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ChatCircleDotsIcon, PaperPlaneTiltIcon, PlusIcon, SparkleIcon, SpinnerGapIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  AssistantRuntimeProvider,
+  useLocalRuntime,
+  type ChatModelAdapter,
+  type ThreadAssistantContentPart,
+  type ThreadMessage,
+  type ThreadMessageLike,
+} from "@assistant-ui/react";
+import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ChatCircleDotsIcon, PlusIcon, SparkleIcon, SpinnerGapIcon, TrashIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { convertToModelMessages, DefaultChatTransport } from "ai";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AssistantMessage,
-  getMessageContent,
-  getToolInvocations,
-  UserMessage,
-  useWordStreaming,
-} from "../commands/ai-chat-shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+type StoredPart = {
+  type: string,
+  text?: string,
+  image?: string,
+  toolCallId?: string,
+  toolName?: string,
+  input?: unknown,
+  output?: unknown,
+  args?: unknown,
+  argsText?: string,
+  result?: unknown,
+  state?: string,
+  isError?: boolean,
+};
+
+type StoredMessage = {
+  id?: string,
+  role: "user" | "assistant" | "system" | "tool",
+  content: unknown,
+};
 
 type ViewMode =
   | { view: 'list' }
-  | { view: 'chat', conversationId: string | null, initialMessages: UIMessage[] };
+  | { view: 'chat', conversationId: string | null, initialMessages: ThreadMessageLike[] };
+
+type ThreadLikeContentArray = Exclude<ThreadMessageLike["content"], string>;
+type ThreadLikeContentPart = ThreadLikeContentArray[number];
+type ThreadLikeToolArgs = Extract<ThreadLikeContentPart, { type: "tool-call" }> extends { args?: infer A } ? NonNullable<A> : never;
+
+const RUNNING_STATUS_MESSAGES = ["Thinking..."];
 
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
@@ -43,6 +73,83 @@ function formatRelativeTime(dateString: string): string {
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 30) return `${diffDays}d ago`;
   return date.toLocaleDateString();
+}
+
+function convertStoredPartsToThreadContent(rawParts: unknown): ThreadLikeContentPart[] {
+  if (!Array.isArray(rawParts)) return [];
+  const result: ThreadLikeContentPart[] = [];
+  for (const candidate of rawParts as unknown[]) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const raw = candidate as StoredPart;
+    if (typeof raw.type !== "string") continue;
+
+    if (raw.type === "text" && typeof raw.text === "string") {
+      result.push({ type: "text", text: raw.text });
+      continue;
+    }
+
+    if (raw.type === "image" && typeof raw.image === "string") {
+      result.push({ type: "image", image: raw.image });
+      continue;
+    }
+
+    if (raw.type === "tool-call") {
+      const args = ((raw.args ?? raw.input ?? {}) as unknown) as ThreadLikeToolArgs;
+      result.push({
+        type: "tool-call",
+        toolCallId: raw.toolCallId ?? crypto.randomUUID(),
+        toolName: raw.toolName ?? "tool",
+        args,
+        argsText: raw.argsText ?? (typeof (raw.args ?? raw.input) === "string"
+          ? String(raw.args ?? raw.input)
+          : JSON.stringify(raw.args ?? raw.input ?? {})),
+        result: raw.result ?? raw.output,
+        isError: raw.isError ?? raw.state === "output-error",
+      });
+      continue;
+    }
+
+    if (raw.type === "dynamic-tool" || raw.type.startsWith("tool-")) {
+      const toolName = raw.type === "dynamic-tool"
+        ? (raw.toolName ?? "tool")
+        : raw.type.slice("tool-".length);
+      const rawInput = raw.input ?? raw.args ?? {};
+      const args = ((typeof rawInput === "object" ? rawInput : {}) as unknown) as ThreadLikeToolArgs;
+      result.push({
+        type: "tool-call",
+        toolCallId: raw.toolCallId ?? crypto.randomUUID(),
+        toolName,
+        args,
+        argsText: typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput),
+        result: raw.output ?? raw.result,
+        isError: raw.state === "output-error" || raw.isError,
+      });
+      continue;
+    }
+  }
+  return result;
+}
+
+function storedMessagesToThreadMessages(stored: readonly StoredMessage[]): ThreadMessageLike[] {
+  const out: ThreadMessageLike[] = [];
+  for (const m of stored) {
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    const content = convertStoredPartsToThreadContent(m.content);
+    if (content.length === 0) continue;
+    out.push({
+      id: m.id,
+      role: m.role,
+      content,
+    });
+  }
+  return out;
+}
+
+function getMessageText(message: ThreadMessage | ThreadMessageLike): string {
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .map(p => p.type === "text" ? p.text : "")
+    .join("");
 }
 
 function ConversationList({
@@ -199,11 +306,7 @@ export function AIChatWidget() {
         const conversations = await listConversations(currentUser, projectId);
         if (conversations.length > 0) {
           const conv = await getConversation(currentUser, conversations[0].id);
-          const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
-            id: msg.id,
-            role: msg.role,
-            parts: msg.content as UIMessage["parts"],
-          }));
+          const initialMessages = storedMessagesToThreadMessages(conv.messages as StoredMessage[]);
           setViewMode({ view: 'chat', conversationId: conversations[0].id, initialMessages });
           setConversationKey(prev => prev + 1);
         }
@@ -216,11 +319,7 @@ export function AIChatWidget() {
 
   const handleSelectConversation = useCallback(async (id: string) => {
     const conv = await getConversation(currentUser, id);
-    const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
-      id: msg.id,
-      role: msg.role,
-      parts: msg.content as UIMessage["parts"],
-    }));
+    const initialMessages = storedMessagesToThreadMessages(conv.messages as StoredMessage[]);
     setConversationKey(prev => prev + 1);
     setViewMode({ view: 'chat', conversationId: id, initialMessages });
   }, [currentUser]);
@@ -285,62 +384,23 @@ function AIChatWidgetInner({
 }: {
   projectId: string | undefined,
   conversationId: string | null,
-  initialMessages: UIMessage[],
+  initialMessages: ThreadMessageLike[],
   onConversationCreated: (id: string) => void,
   onBackToList: () => void,
   onNewChat: () => void,
 }) {
-  const [followUpInput, setFollowUpInput] = useState("");
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const followUpInputRef = useRef<HTMLInputElement>(null);
-  const lastMessageCountRef = useRef(0);
-  const isNearBottomRef = useRef(true);
   const currentUser = useUser();
   const conversationIdRef = useRef(initialConversationId);
-  const prevStatusRef = useRef<string>("");
   const isSavingRef = useRef(false);
-  const pendingMessagesRef = useRef<{ messages: Array<{ role: string; content: unknown }>; title: string } | null>(null);
+  const pendingMessagesRef = useRef<{ messages: Array<{ role: string, content: unknown }>, title: string } | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
-  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL")
+    ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL")
+    ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
 
-  const hasInitialMessages = initialMessages.length > 0;
-  const [input, setInput] = useState("");
-  const [conversationStarted, setConversationStarted] = useState(hasInitialMessages);
-
-  const {
-    messages,
-    status,
-    sendMessage,
-    error: aiError,
-  } = useChat({
-    messages: hasInitialMessages ? initialMessages : undefined,
-    transport: new DefaultChatTransport({
-      api: `${backendBaseUrl}/api/latest/ai/query/stream`,
-      headers: () => buildStackAuthHeaders(currentUser),
-      prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
-        const modelMessages = await convertToModelMessages(uiMessages);
-        return {
-          body: {
-            systemPrompt: "command-center-ask-ai",
-            tools: ["docs", "sql-query"],
-            quality: "smart",
-            speed: "slow",
-            projectId,
-            messages: modelMessages.map(m => ({
-              role: m.role,
-              content: m.content,
-            })),
-          },
-          headers,
-        };
-      },
-    }),
-  });
-
-  const aiLoading = status === "submitted" || status === "streaming";
-
-  const doSave = useCallback(async (messagesToSave: Array<{ role: string; content: unknown }>, title: string) => {
+  const doSave = useCallback(async (messagesToSave: Array<{ role: string, content: unknown }>, title: string) => {
     isSavingRef.current = true;
     try {
       if (conversationIdRef.current) {
@@ -364,349 +424,130 @@ function AIChatWidgetInner({
     }
   }, [currentUser, projectId, onConversationCreated]);
 
-  // Save conversation when streaming completes
-  useEffect(() => {
-    const prevStatus = prevStatusRef.current;
-    prevStatusRef.current = status;
-
-    const completedOk = (prevStatus === "streaming" || prevStatus === "submitted") && status === "ready";
-    const completedWithError = (prevStatus === "streaming" || prevStatus === "submitted") && status === "error";
-
-    if (
-      (completedOk || completedWithError) &&
-      messages.length > 0
-    ) {
-      // On error, only save user messages (strip any partial/failed assistant turn)
-      const safeMessages = completedWithError
-        ? messages.filter(m => m.role === "user")
-        : messages;
-      if (safeMessages.length === 0) return;
-
-      const messagesToSave = safeMessages.map(m => ({
-        role: m.role,
-        content: m.parts,
-      }));
-      const firstUserMessage = messages.find(m => m.role === "user");
-      const title = firstUserMessage
-        ? getMessageContent(firstUserMessage).slice(0, 50) || "New conversation"
-        : "New conversation";
-
-      if (isSavingRef.current) {
-        pendingMessagesRef.current = { messages: messagesToSave, title };
-        return;
-      }
-
-      runAsynchronouslyWithAlert(doSave(messagesToSave, title));
-    }
-  }, [status, messages, doSave]);
-
-  // Word streaming for the last assistant message
-  const lastAssistantMessage = messages.slice().reverse().find((m: UIMessage) => m.role === "assistant");
-  const lastAssistantContent = lastAssistantMessage ? getMessageContent(lastAssistantMessage) : "";
-  const { displayedWordCount, getDisplayContent, isRevealing } = useWordStreaming(lastAssistantContent);
-  const isStreaming = aiLoading && lastAssistantMessage;
-
-  // Auto-focus input on mount
-  useEffect(() => {
-    if (!conversationStarted) {
-      inputRef.current?.focus();
-    } else {
-      followUpInputRef.current?.focus();
-    }
-  }, [conversationStarted]);
-
-  // Track if user is near the bottom of the scroll container
-  const handleScroll = useCallback(() => {
-    if (!messagesContainerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-    isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 100;
-  }, []);
-
-  // Auto-scroll when new messages are added or when already at bottom
-  useEffect(() => {
-    if (!messagesContainerRef.current) return;
-
-    const container = messagesContainerRef.current;
-    const messageCount = messages.length;
-
-    if (messageCount > lastMessageCountRef.current) {
-      container.scrollTop = container.scrollHeight;
-      isNearBottomRef.current = true;
-    } else if (aiLoading && isNearBottomRef.current) {
-      container.scrollTop = container.scrollHeight;
+  const persist = useCallback((priorMessages: readonly ThreadMessage[], finalAssistantContent: ThreadAssistantContentPart[]) => {
+    const allWire: Array<{ role: string, content: unknown }> = priorMessages.map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
+    if (finalAssistantContent.length > 0) {
+      allWire.push({ role: "assistant", content: finalAssistantContent });
     }
 
-    lastMessageCountRef.current = messageCount;
-  }, [messages, aiLoading]);
+    const firstUserMessage = priorMessages.find(m => m.role === "user");
+    const title = firstUserMessage
+      ? getMessageText(firstUserMessage).slice(0, 50) || "New conversation"
+      : "New conversation";
 
-  // Handle initial question submit
-  const handleSubmit = useCallback(() => {
-    if (!input.trim() || aiLoading) return;
-    setConversationStarted(true);
-    runAsynchronously(sendMessage({ text: input.trim() }));
-    setInput("");
-    requestAnimationFrame(() => {
-      followUpInputRef.current?.focus();
-    });
-  }, [input, aiLoading, sendMessage]);
+    if (isSavingRef.current) {
+      pendingMessagesRef.current = { messages: allWire, title };
+      return;
+    }
+    runAsynchronouslyWithAlert(doSave(allWire, title));
+  }, [doSave]);
 
-  // Handle initial input keyboard
-  const handleInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.nativeEvent.isComposing) return;
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSubmit();
-      }
+  const chatAdapter = useMemo<ChatModelAdapter>(() => createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser: currentUser ?? undefined,
+    systemPrompt: "command-center-ask-ai",
+    tools: ["docs", "sql-query"],
+    quality: "smart",
+    speed: "slow",
+    projectId,
+    onRunStart: () => {
+      setRunError(null);
+      setIsRunning(true);
     },
-    [handleSubmit]
-  );
-
-  // Handle follow-up questions
-  const handleFollowUp = useCallback(() => {
-    const text = followUpInput.trim();
-    if (!text || aiLoading) return;
-    setFollowUpInput("");
-    runAsynchronously(sendMessage({ text }));
-    requestAnimationFrame(() => {
-      followUpInputRef.current?.focus();
-    });
-  }, [followUpInput, sendMessage, aiLoading]);
-
-  // Handle follow-up input keyboard
-  const handleFollowUpKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.nativeEvent.isComposing) return;
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleFollowUp();
-      } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-        e.preventDefault();
-        e.stopPropagation();
-        const container = messagesContainerRef.current;
-        if (container) {
-          const scrollAmount = e.key === "ArrowUp" ? -100 : 100;
-          container.scrollBy({ top: scrollAmount, behavior: "smooth" });
-        }
-      }
+    onRunEnd: () => setIsRunning(false),
+    onFinish: ({ threadMessages, assistantContent }) => {
+      persist(threadMessages, assistantContent as ThreadAssistantContentPart[]);
     },
-    [handleFollowUp]
-  );
+    onError: ({ error, threadMessages }) => {
+      setRunError(getFriendlyAiErrorMessage(error));
+      persist(threadMessages.filter(m => m.role === "user"), []);
+    },
+  }), [backendBaseUrl, currentUser, projectId, persist]);
 
-  // Determine what to show in the loading state
-  const showLoadingIndicator = conversationStarted && (messages.length === 0 || (aiLoading && !messages.some((m: UIMessage) => m.role === "assistant" && getMessageContent(m))));
+  const attachmentAdapter = useMemo(() => new ImageAttachmentAdapter(), []);
 
-  // Initial state - show input
-  if (!conversationStarted) {
-    return (
+  const runtime = useLocalRuntime(chatAdapter, {
+    initialMessages,
+    adapters: { attachments: attachmentAdapter },
+  });
+
+  const assistantContentComponents = useMemo(() => ({
+    Text: MarkdownText,
+    tools: { Fallback: ToolFallback },
+  }), []);
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
       <div className="flex flex-col h-full">
-        {/* Back button */}
-        <div className="px-3 py-2 border-b border-foreground/[0.05]">
+        <div className="px-3 py-2 border-b border-black/[0.06] dark:border-foreground/[0.06] bg-white dark:bg-background/40 flex items-center justify-between shrink-0">
           <button
             onClick={onBackToList}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            disabled={isRunning}
+            className={cn(
+              "flex items-center gap-1 text-[11px] transition-colors",
+              isRunning
+                ? "text-muted-foreground/25 cursor-not-allowed"
+                : "text-muted-foreground/60 hover:text-muted-foreground",
+            )}
             type="button"
           >
             <ArrowLeftIcon className="h-3 w-3" />
             <span>Back to history</span>
           </button>
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4">
-          <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center">
-            <SparkleIcon className="h-5 w-5 text-purple-400" />
-          </div>
-          <div className="text-center space-y-1.5">
-            <h3 className="text-sm font-semibold text-foreground">Ask AI</h3>
-            <p className="text-xs text-muted-foreground/70 max-w-[240px]">
-              Get AI-powered answers about Stack Auth, your project, and analytics
-            </p>
-          </div>
-        </div>
-
-        <div className="shrink-0 border-t border-foreground/[0.05] px-3.5 py-2.5">
-          <div className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-3 py-1.5 ring-1 ring-foreground/[0.05] focus-within:ring-purple-500/25 transition-shadow">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              aria-label="Initial prompt"
-              placeholder="Ask a question..."
-              className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!input.trim() || aiLoading}
-              aria-label="Send message"
-              title="Send message"
-              className={cn(
-                "p-1 rounded transition-colors hover:transition-none",
-                input.trim() && !aiLoading
-                  ? "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
-                  : "text-muted-foreground/25 cursor-not-allowed"
-              )}
-              type="button"
-            >
-              <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <p className="text-[9px] text-muted-foreground/40 mt-1.5 text-center">
-            Enter to send
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Conversation view
-  return (
-    <div className="flex flex-col h-full">
-      {/* Back button */}
-      <div className="px-3 py-2 border-b border-foreground/[0.05] flex items-center justify-between">
-        <button
-          onClick={onBackToList}
-          disabled={aiLoading}
-          className={cn(
-            "flex items-center gap-1 text-[11px] transition-colors",
-            aiLoading
-              ? "text-muted-foreground/25 cursor-not-allowed"
-              : "text-muted-foreground/60 hover:text-muted-foreground"
-          )}
-          type="button"
-        >
-          <ArrowLeftIcon className="h-3 w-3" />
-          <span>Back to history</span>
-        </button>
-      </div>
-
-      {/* Messages */}
-      <div
-        ref={messagesContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4"
-        style={{ scrollbarGutter: "stable" }}
-      >
-        {messages.map((message: UIMessage, index: number, arr: UIMessage[]) => {
-          const messageContent = getMessageContent(message);
-          const toolInvocations = message.role === "assistant" ? getToolInvocations(message) : [];
-
-          // For the last assistant message, apply word-by-word streaming
-          const isLastAssistant = message.role === "assistant" &&
-            index === arr.length - 1 - (arr[arr.length - 1]?.role === "user" ? 1 : 0);
-          const displayContent = message.role === "assistant" && isLastAssistant && aiLoading
-            ? getDisplayContent(messageContent)
-            : messageContent;
-
-          // Don't render if no content to show yet AND no tool invocations
-          if (message.role === "assistant" && isLastAssistant && !displayContent && toolInvocations.length === 0) {
-            return null;
-          }
-
-          if (message.role === "user") {
-            return <UserMessage key={message.id || index} content={messageContent} />;
-          }
-          return (
-            <AssistantMessage
-              key={message.id || index}
-              content={displayContent}
-              toolInvocations={toolInvocations}
-            />
-          );
-        })}
-
-        {/* Loading indicator */}
-        {showLoadingIndicator && (
-          <div className="flex gap-2.5 justify-start">
-            <div className="shrink-0 w-6 h-6 rounded-full bg-purple-500/10 flex items-center justify-center">
-              <SparkleIcon className="h-3 w-3 text-purple-400" />
-            </div>
-            <div className="bg-foreground/[0.02] rounded-xl px-3.5 py-2">
-              <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-                <SpinnerGapIcon className="h-3.5 w-3.5 animate-spin" />
-                <span>Thinking...</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Streaming indicator */}
-        {isStreaming && displayedWordCount > 0 && (
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 pl-8">
-            <span className="inline-flex gap-0.5">
-              <span className="w-1 h-1 rounded-full bg-purple-400/60 animate-pulse" />
-              <span className="w-1 h-1 rounded-full bg-purple-400/60 animate-pulse" style={{ animationDelay: "150ms" }} />
-              <span className="w-1 h-1 rounded-full bg-purple-400/60 animate-pulse" style={{ animationDelay: "300ms" }} />
-            </span>
-          </div>
-        )}
-
-        {/* Error display */}
-        {aiError && (
-          <div className="flex items-start gap-2 text-[12px] text-red-400/90 px-3 py-2 bg-red-500/[0.08] rounded-lg ring-1 ring-red-500/20">
-            <span className="shrink-0 mt-0.5">⚠</span>
-            <span>{aiError.message || "Failed to get response. Please try again."}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Follow-up input + new conversation button */}
-      <div className="shrink-0 border-t border-foreground/[0.05] px-3.5 py-2.5">
-        <div className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-3 py-1.5 ring-1 ring-foreground/[0.05] focus-within:ring-purple-500/25 transition-shadow">
-          <input
-            ref={followUpInputRef}
-            type="text"
-            value={followUpInput}
-            onChange={(e) => setFollowUpInput(e.target.value)}
-            onKeyDown={handleFollowUpKeyDown}
-            aria-label="Follow-up question"
-            placeholder="Ask a follow-up question..."
-            className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <button
-            onClick={() => handleFollowUp()}
-            disabled={!followUpInput.trim() || aiLoading}
-            aria-label="Send message"
-            title="Send message"
-            className={cn(
-              "p-1 rounded transition-colors hover:transition-none",
-              followUpInput.trim() && !aiLoading
-                ? "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
-                : "text-muted-foreground/25 cursor-not-allowed"
-            )}
-            type="button"
-          >
-            <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <div className="flex items-center justify-between mt-1.5">
           <button
             onClick={onNewChat}
-            disabled={aiLoading}
+            disabled={isRunning}
             className={cn(
-              "flex items-center gap-1 text-[9px] transition-colors hover:transition-none",
-              aiLoading
+              "flex items-center gap-1 text-[11px] transition-colors",
+              isRunning
                 ? "text-muted-foreground/25 cursor-not-allowed"
-                : "text-muted-foreground/40 hover:text-muted-foreground/70"
+                : "text-muted-foreground/60 hover:text-muted-foreground",
             )}
             type="button"
           >
-            <ArrowCounterClockwiseIcon className="h-2.5 w-2.5" />
+            <ArrowCounterClockwiseIcon className="h-3 w-3" />
             <span>New conversation</span>
           </button>
-          <p className="text-[9px] text-muted-foreground/40">
-            Enter to send
-          </p>
         </div>
+
+        {runError && (
+          <div className="mx-3 mt-2 flex items-start gap-2 text-[12px] text-red-400/90 px-3 py-2 bg-red-500/[0.08] rounded-lg ring-1 ring-red-500/20 shrink-0">
+            <span className="shrink-0 mt-0.5">⚠</span>
+            <span>{runError}</span>
+          </div>
+        )}
+
+        <Thread
+          composerPlaceholder="Ask a question..."
+          runningStatusMessages={RUNNING_STATUS_MESSAGES}
+          assistantContentComponents={assistantContentComponents}
+          welcome={<AskAiWelcome />}
+          composerAttachments
+          attachmentAdapter={attachmentAdapter}
+        />
+      </div>
+    </AssistantRuntimeProvider>
+  );
+}
+
+function AskAiWelcome() {
+  return (
+    <div className="flex w-full max-w-[var(--thread-max-width)] flex-grow flex-col">
+      <div className="flex w-full flex-grow flex-col items-center justify-center py-16 px-6">
+        <div className="w-12 h-12 rounded-2xl bg-purple-500/10 flex items-center justify-center mb-4 ring-1 ring-purple-500/20">
+          <SparkleIcon className="w-6 h-6 text-purple-400" weight="duotone" />
+        </div>
+        <h2 className="text-base font-semibold tracking-tight text-foreground mb-1.5">
+          Ask AI
+        </h2>
+        <p className="text-xs text-muted-foreground text-center max-w-[260px] leading-relaxed">
+          Get AI-powered answers about Stack Auth, your project, and analytics.
+        </p>
       </div>
     </div>
   );
 }
+

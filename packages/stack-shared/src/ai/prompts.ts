@@ -1,20 +1,5 @@
 import { deindent } from "../utils/strings";
 
-export const mcpSetupPrompt = deindent`
-  ## MCP Setup
-
-  <Note>
-    This prompt is not yet implemented.
-  </Note>
-
-  <Steps titleSize="h3">
-    <Step title="Install dependencies">
-      Install the MCP package:
-    </Step>
-    <Step title="Done!" />
-  </Steps>
-`;
-
 export const convexSetupPrompt = deindent`
   ## Convex Setup
 
@@ -166,8 +151,10 @@ export const supabaseSetupPrompt = deindent`
       Also add the Stack Auth environment variables:
 
       \`\`\`.env .env.local
+      # The project ID is the only client-exposed Stack Auth variable; in Next.js it must
+      # be prefixed with NEXT_PUBLIC_. STACK_SECRET_SERVER_KEY is server-only and must
+      # NEVER be prefixed or exposed to the client.
       NEXT_PUBLIC_STACK_PROJECT_ID=<your-stack-project-id>
-      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
       STACK_SECRET_SERVER_KEY=<your-secret-server-key>
       \`\`\`
     </Step>
@@ -355,8 +342,6 @@ export const aiSetupPrompt = deindent`
 
   ${getSdkSetupPrompt("ai-prompt")}
 
-  ${mcpSetupPrompt}
-
   ${convexSetupPrompt}
 
   ${supabaseSetupPrompt}
@@ -369,6 +354,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isMaybeReact = isDefinitelyReact || mainType === "ai-prompt";
   const isDefinitelyNextjs = mainType === "nextjs";
   const isMaybeNextjs = isDefinitelyNextjs || mainType === "ai-prompt";
+  const isDefinitelyTanstackStart = mainType === "tanstack-start";
+  const isMaybeTanstackStart = isDefinitelyTanstackStart || mainType === "ai-prompt";
+  const isDefinitelyVanillaReact = mainType === "react";
+  const isMaybeVanillaReact = isDefinitelyVanillaReact || mainType === "ai-prompt";
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
   const isMaybeBackend = isDefinitelyBackend || mainType === "js" || mainType === "ai-prompt";
@@ -391,7 +380,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     nextjs: "@stackframe/stack",
     react: "@stackframe/react",
     js: "@stackframe/js",
-    "tanstack-start": "@stackframe/react",
+    "tanstack-start": "@stackframe/tanstack-start",
     nodejs: "@stackframe/js",
     bun: "@stackframe/js",
   }[mainType];
@@ -408,6 +397,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
       - Next.js
       - React
+      - TanStack Start
       - Other JS & TS (both frontend and backend)
     ` : ""}
 
@@ -422,6 +412,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           - Next.js: \`@stackframe/stack\`
           - React: \`@stackframe/react\`
+          - TanStack Start: \`@stackframe/tanstack-start\`
           - Other & vanilla JS: \`@stackframe/js\`
 
           You can install the correct JavaScript Stack Auth SDK into your project by running the following command:
@@ -448,6 +439,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           export const stackClientApp = new StackClientApp({
             tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
+            urls: {
+              default: {
+                type: "hosted",
+              }
+            },
           });
           \`\`\`
         ` : ""}
@@ -461,6 +457,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             export const stackServerApp = new StackServerApp({
               tokenStore: null,
+              urls: {
+                default: {
+                  type: "hosted",
+                }
+              },
             });
             \`\`\`
           ` : ""}
@@ -487,16 +488,16 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
       </Step>
 
       <Step title="Setting up the project">
-        It's now time to create a development setup for Stack Auth.
+        It's now time to connect your code to a Stack Auth project.
 
-        You can either run Stack Auth locally, or connect to a project hosted in the cloud.
+        You can either run Stack Auth's dev environment locally, or connect to a production project hosted in the cloud.
 
         ${isAiPrompt ? deindent`
           If you already use Stack Auth for your product, we recommend you re-use the same project to share your configuration between the two.
         ` : ""}
 
         <AccordionGroup>
-          <Accordion title="Option 1: Running Stack Auth locally (recommended)" defaultOpen>
+          <Accordion title="Option 1: Running Stack Auth's dev environment (recommended)" defaultOpen>
             First, create a \`stack.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts stack.config.ts
@@ -506,20 +507,28 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             export const config: StackConfig = "show-onboarding";
             \`\`\`
 
-            To run your application with Stack Auth, you then need to start the emulator and set environment variables expected by your application. The \`emulator run\` CLI command does both of these, so you can simply wrap your existing \`dev\` script in your package.json:
+            To run your application with Stack Auth, you can then start the dev environment and set environment variables expected by your application. Stack Auth's CLI has a \`dev\` command does both of these, so let's install it as a dev dependency and wrap your existing \`dev\` script in your package.json:
+
+            \`\`\`sh
+            npm i -D @stackframe/stack-cli
+            # or: pnpm i -D @stackframe/stack-cli
+            # or: yarn add -D @stackframe/stack-cli
+            # or: bun add --dev @stackframe/stack-cli
+            \`\`\`
 
             \`\`\`json package.json
             {
               // ...
               "scripts": {
                 // ...
-                "dev": "npx @stackframe/stack-cli emulator run --config-file ./stack.config.ts -- <your-existing-dev-script>"
+                "dev": "stack dev --config-file ./stack.config.ts -- npm run dev:without-stack-auth",
+                "dev:without-stack-auth": "<your-existing-dev-script>"
               }
             }
             \`\`\`
           </Accordion>
 
-          <Accordion title="Option 2: Connecting a cloud project">
+          <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
             ${isAiPrompt ? deindent`
               Note: If you're an AI agent, and you don't already have the information you need from the Cloud project, you may have to ask the user for help on this step. You can either ask them to provide the environment variables, or just leave them empty for now and ask the user to complete them at the end.
             ` : ""}
@@ -532,8 +541,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             Go to your project's dashboard on [app.stack-auth.com](https://app.stack-auth.com) and get the project ID. You can find it in the URL after the \`/projects/\` part. Copy-paste it into your \`.env.local\` file (or wherever your environment variables are stored):
 
-            \`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>  # if available, prefix with your framework's convention for client-exposed variables (e.g. NEXT_PUBLIC_, VITE_, etc.)
+            ${isAiPrompt ? `${deindent`
+              Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Stack Auth on a client.
+            `}\n\n` : ""}\`\`\`.env .env.local
+            STACK_PROJECT_ID=<your-project-id>
             \`\`\`
 
             Alternatively, you can also just set the project ID in the \`stack/client.ts\` file:
@@ -552,8 +563,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             Then, copy-paste them into your \`.env.local\` file (or wherever your environment variables are stored):
 
-            \`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>  # if desired, prefix with your framework's convention for client-exposed variables (e.g. NEXT_PUBLIC_, VITE_, etc.)
+            ${isAiPrompt ? `${deindent`
+              If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Stack Auth on a server.
+            `}\n\n` : ""}\`\`\`.env .env.local
+            STACK_PROJECT_ID=<your-project-id>
             STACK_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 
@@ -566,7 +579,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         <Step title="${!isDefinitelyReact ? "React: " : ""}Creating a <StackProvider /> and <StackTheme />">
           In React frameworks, Stack Auth provides \`StackProvider\` and \`StackTheme\` components that should wrap your entire app at the root level.
 
-          ${!isDefinitelyNextjs ? deindent`
+          ${isMaybeVanillaReact && !isDefinitelyNextjs && !isDefinitelyTanstackStart ? deindent`
             For example, if you have an \`App.tsx\` file, update it as follows:
 
             \`\`\`tsx src/App.tsx
@@ -604,6 +617,48 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             }
             \`\`\`
           ` : ""}
+
+          ${isMaybeTanstackStart ? deindent`
+            ${!isDefinitelyTanstackStart ? "For TanStack Start specifically: " : ""}TanStack Start uses file-based routes. The provider goes inside the root route's \`component\` (the inner React tree), while the document shell stays in \`shellComponent\`. Update \`src/routes/__root.tsx\`:
+
+            \`\`\`tsx src/routes/__root.tsx
+            import { StackProvider, StackTheme } from "${isDefinitelyTanstackStart ? packageName : "@stackframe/tanstack-start"}";
+            import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+            import type { ReactNode } from "react";
+            import { stackClientApp } from "../stack/client";
+
+            export const Route = createRootRoute({
+              shellComponent: RootDocument,
+              component: RootComponent,
+            });
+
+            function RootDocument({ children }: { children: ReactNode }) {
+              return (
+                <html lang="en" suppressHydrationWarning>
+                  <head>
+                    <HeadContent />
+                  </head>
+                  <body>
+                    {children}
+                    <Scripts />
+                  </body>
+                </html>
+              );
+            }
+
+            function RootComponent() {
+              return (
+                <StackProvider app={stackClientApp}>
+                  <StackTheme>
+                    <Outlet />
+                  </StackTheme>
+                </StackProvider>
+              );
+            }
+            \`\`\`
+
+            Do not edit \`src/routeTree.gen.ts\` — it is regenerated automatically by the TanStack Start router from the files under \`src/routes/\`.
+          ` : ""}
         </Step>
 
         <Step title="${!isDefinitelyReact ? "React: " : ""}Add Suspense boundary">
@@ -611,7 +666,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           To support the suspension, you need to add a suspense boundary around your app.
           
-          ${!isDefinitelyNextjs ? deindent`
+          ${isMaybeVanillaReact && !isDefinitelyNextjs && !isDefinitelyTanstackStart ? deindent`
             The easiest way to do this is to just wrap your entire app in a \`Suspense\` component:
 
             \`\`\`tsx src/App.tsx
@@ -643,10 +698,57 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             \`\`\`
           ` : ""}
 
+          ${isMaybeTanstackStart ? deindent`
+            ${!isDefinitelyTanstackStart ? "In TanStack Start: " : ""}wrap the \`<Outlet />\` in your root route with a \`Suspense\` boundary so the document shell can stream while child routes wait on Stack Auth. Update \`RootComponent\` in \`src/routes/__root.tsx\`:
+
+            \`\`\`tsx src/routes/__root.tsx
+            import { Suspense } from "react";
+            // ...other imports...
+
+            function RootComponent() {
+              return (
+                <StackProvider app={stackClientApp}>
+                  <StackTheme>
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <Outlet />
+                    </Suspense>
+                  </StackTheme>
+                </StackProvider>
+              );
+            }
+            \`\`\`
+          ` : ""}
+
           ${isAiPrompt ? deindent`
             Note: If you are an AI agent, make sure to make the loading indicator visually appealing and match the design of your app, instead of the example that just says "Loading...".
           ` : ""}
         </Step>
+
+        ${isMaybeTanstackStart ? deindent`
+          <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Stack handler route">
+            Stack Auth's auth flows (sign-in, sign-up, OAuth callbacks, password reset, etc.) are rendered by a single \`StackHandler\` component mounted at \`/handler/*\`. In TanStack Start, expose it as a splat file route at \`src/routes/handler/$.tsx\`:
+
+            \`\`\`tsx src/routes/handler/$.tsx
+            import { StackHandler } from "${isDefinitelyTanstackStart ? packageName : "@stackframe/tanstack-start"}";
+            import { createFileRoute, useLocation } from "@tanstack/react-router";
+
+            export const Route = createFileRoute("/handler/$")({
+              ssr: false,
+              component: HandlerPage,
+            });
+
+            function HandlerPage() {
+              const { pathname } = useLocation();
+              return <StackHandler fullPage location={pathname} />;
+            }
+            \`\`\`
+
+            Two TanStack-specific notes:
+
+            - The route is opted out of SSR with \`ssr: false\`. The handler runs browser-only auth flows (cookies, redirects, popups), so rendering it on the server provides no benefit and can fight with hydration. Other routes can opt into or out of SSR per-route the same way.
+            - Stack Auth resolves the current user during SSR by reading TanStack Start's request cookies through \`@stackframe/tanstack-start\`'s server context. No extra wiring is required — \`useUser()\` "just works" on both server and client routes as long as \`tokenStore: "cookie"\` is set on \`StackClientApp\`.
+          </Step>
+        ` : ""}
       ` : ""}
 
       ${isMaybeBackend && !isDefinitelyNextjs ? deindent`

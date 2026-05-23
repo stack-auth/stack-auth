@@ -100,6 +100,7 @@ describe.sequential("payments schema integration phase 1→3, queue-drained path
         canceledAtMillis: 10 * DAY_MS,
         endedAtMillis: 10 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
@@ -142,6 +143,7 @@ describe.sequential("payments schema integration phase 1→3, queue-drained path
         canceledAtMillis: 20 * DAY_MS,
         endedAtMillis: 20 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 11 * DAY_MS,
       })));
@@ -212,6 +214,7 @@ describe.sequential("payments schema integration phase 1→3, queue-drained path
         canceledAtMillis: null,
         endedAtMillis: 45 * DAY_MS,
         refundedAtMillis: null,
+        productRevokedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));

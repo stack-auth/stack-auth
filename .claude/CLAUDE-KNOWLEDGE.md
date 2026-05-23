@@ -2,6 +2,15 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
+A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
+
+## Q: How should Stack CLI GitHub source paths be stored?
+A: Explicit `stack config push --source github` paths should be normalized as repo-relative paths before storing source metadata. Trim whitespace and strip leading `./`, repeated `./`, and leading `/` segments, matching the dashboard workflow generator's normalization for `STACK_AUTH_CONFIG_PATH` and workflow paths.
+
+## Q: How should Stack CLI code handle flags proven present by nearby validation?
+A: Avoid non-null assertions even when an earlier missing-flags check proves presence. Use `flags.foo ?? throwErr("Expected ...; this should have been caught by ...")` so the type system receives a definite value and future refactors fail loudly with the violated assumption.
+
 ## Q: How do anonymous users work in Stack Auth?
 A: Anonymous users are a special type of user that can be created without any authentication. They have `isAnonymous: true` in the database and use different JWT signing keys with a `role: 'anon'` claim. Anonymous JWTs use a prefixed secret ("anon-" + audience) for signing and verification.
 
@@ -457,3 +466,78 @@ A: `docs-mintlify/apps-sidebar-filter.js` injects the Apps filter with inline st
 
 ## Q: How should `StackAssertionError` preserve an underlying thrown error?
 A: Pass the underlying error as the `cause` property in the second argument. The `StackAssertionError` constructor only forwards `cause` into `ErrorOptions`, so storing a caught error under an `error` property captures it as ordinary metadata instead of preserving the error cause chain.
+
+## Q: How does the local QEMU emulator expose host-side control channels?
+A: `docker/local-emulator/qemu/run-emulator.sh` daemonizes QEMU with a QMP monitor socket at `$EMULATOR_RUN_DIR/vm/monitor.sock`, a QEMU guest agent socket at `$EMULATOR_RUN_DIR/vm/qga.sock`, and serial output redirected to `$EMULATOR_RUN_DIR/vm/serial.log`. The default user networking forwards only Stack-facing service ports, not SSH.
+
+## Q: Where should remote development environment local state live?
+A: Use `~/.stack/dev-envs.json` on macOS/Linux and `%LOCALAPPDATA%\Stack Auth\dev-envs.json` on Windows for local remote-development-environment state. The CLI and local dashboard both read this file; it stores the local dashboard bearer secret, anonymous refresh token, and config-path-to-project credential mappings with owner-only permissions.
+
+## Q: How should `stack dev` run the local dashboard in a published CLI?
+A: The CLI cannot depend on `apps/dashboard` source being present or run `next dev`. Package a Next.js standalone dashboard build into `packages/stack-cli/dist/dashboard`, copy it to a writable runtime directory next to the RDE state file, replace dashboard `STACK_ENV_VAR_SENTINEL_*` values for that launch, and run the standalone `apps/dashboard/server.js` with `node`, `HOSTNAME=127.0.0.1`, `PORT=26700`, and `NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT=true`.
+
+## Q: Where should the RDE local dashboard self-shutdown lifecycle start?
+A: Start the RDE lifecycle from the dashboard server startup path (`apps/dashboard/src/instrumentation.ts`) when `NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT=true`, not lazily after session registration. Keep the shutdown timer idempotent and use a short initial empty-session grace period so failed session registration still exits instead of leaving an orphaned standalone dashboard process. Once a CLI session has been explicitly closed, the dashboard can skip the startup grace and exit on the next shutdown tick if no sessions or operations remain.
+
+## Q: How should the dashboard Stack app be split for the local remote development environment?
+A: Keep `apps/dashboard/src/stack/client.tsx` as the root `StackProvider` app and handler app so the local RDE dashboard can boot without `STACK_SECRET_SERVER_KEY`. Put `StackServerApp` in `apps/dashboard/src/stack/server.tsx`, inherit from the client app, and only import it from server-only routes that are not needed in local RDE.
+
+## Q: How should `stack dev` handle a local RDE dashboard outage while the child command is still running?
+A: Keep it in the existing heartbeat path. If the heartbeat cannot reach the local dashboard and the dashboard session has passed the 5-second stability window, restart the standalone dashboard and re-register the RDE session; otherwise throw to avoid restart loops.
+
+## Q: How should the local RDE dashboard authenticate in the browser without exposing refresh tokens?
+A: The browser should fetch only a short-lived access token from the local RDE auth endpoint, install it into the memory token store with an empty refresh token, and refresh it by calling the local endpoint before expiry. Shared session logic must allow access-token-only sessions to read a still-valid access token; otherwise the SDK treats the session as absent and may redirect or create a separate anonymous user.
+
+## Q: Why can `stack dev` fail to register an RDE session with `ECONNREFUSED` against `localhost`?
+A: The RDE dashboard does server-side SDK calls from Node. If the backend is configured as `http://localhost:<port>`, Node may resolve or probe loopback differently than the browser; normalize exact `localhost` API base URLs to `127.0.0.1` in the CLI. If the backend process is actually down, the dashboard log will still show `ECONNREFUSED 127.0.0.1:<port>` and the dev server needs to be restarted.
+
+## Q: How should Stack CLI `--config-file` options interpret paths?
+A: `--config-file` should point directly to a regular config file. Do not treat an existing directory as a shortcut for `stack.config.ts` inside it; reject directories with a clear error instead. `stack config pull` may default to `./stack.config.ts` when the flag is omitted, but an explicitly provided directory is still invalid.
+
+## Q: How should RDE PR-review fixes handle the local dashboard and CLI lifecycle?
+A: Use the shared RDE browser security helper for browser-local endpoints, mark bearer-token responses `Cache-Control: private, no-store`, and return 400 for malformed local endpoint JSON. `stack dev` should fail loudly if a bundled dashboard sentinel has no environment value, validate session response shapes at runtime before using `env`, recover from HTTP heartbeat failures the same way as network heartbeat failures, and make heartbeat shutdown interruptible so child-process exit is not delayed by the full heartbeat interval.
+
+## Q: How should local RDE endpoints trust browser origins and API base URLs?
+A: Browser-only RDE endpoints should accept only the exact local dashboard origin derived from the dashboard env/state, such as `http://127.0.0.1:26700`, and reject arbitrary localhost subdomains like `evil.localhost`. CLI bearer endpoints should require the bearer secret and a loopback host but should not use broad localhost origins as trust signals. RDE session registration should accept only `https://api.stack-auth.com`, the exact API base URL passed into the local dashboard by the CLI, or exact custom URLs from a `STACK_`-prefixed allowlist.
+
+## Q: How should the Stack CLI depend on the dashboard RDE standalone build in CI?
+A: Do not invoke a nested `turbo run build:rde-standalone` from `packages/stack-cli`'s `build` script. When the outer CI is already running `turbo run build`, that nested Turbo process can start `apps/dashboard`'s Next build while the outer graph is also building it, causing `.next/lock` failures. Model the dependency in `turbo.json` instead with `@stackframe/stack-cli#build` depending on `@stackframe/dashboard#build:rde-standalone`, and let the CLI script only run `tsdown` plus runtime asset copying.
+
+## Q: How should local RDE/browser health endpoints handle active state and origins?
+A: Browser-only RDE endpoints should require RDE to be enabled, a local dashboard state entry with a non-empty secret, loopback host, exact dashboard origin, and same-origin/none fetch metadata. Development-environment health checks should not trust broad localhost origins; reject origins like `evil.localhost` and only allow the exact expected dashboard origins (or no Origin header for same-origin polling).
+
+## Q: How should development-environment project creation seed environment config?
+A: Seed the normal initial environment config before marking the project as `isDevelopmentEnvironment=true`. Existing development-environment projects should continue to reject environment config override writes, but creation needs to populate defaults like RBAC permissions, password sign-in, and installed apps first; otherwise the write guard throws during setup/restart-deps.
+
+## Q: What can cause React error #185 immediately on dashboard load?
+A: React error #185 is a maximum update depth error. In the dashboard root, `useSyncExternalStore` snapshot getters must return cached referentially stable values. Returning a fresh object such as `{ status: "healthy" }` from `getSnapshot` on every call can make React think the external store changed on every render and loop immediately. Use module-level constants for stable snapshots.
+
+## Q: How should client-side OAuth callback and nested cross-domain auth avoid racing session consumers?
+A: Track startup auth transitions as pending client-app promises and make `_getSession`/react-like `_useSession` wait for them when using the default persistent token store. Auth-transition code that needs to inspect the current session should explicitly call `_getSession(..., { awaitPendingAuthResolutions: false })` instead of relying on a global reentrancy flag.
+
+## Q: When should hosted OAuth callback handling auto-start on a client app page?
+A: Only auto-start hosted OAuth callback handling when the current URL has `code` and `state` and the matching `stack-oauth-outer-${state}` verifier cookie exists. Generic `code/state` or `errorCode/message` query parameters are not Stack-owned enough to run callback processing automatically on every hosted app page.
+
+## Q: Should built-with hosted handler domains be manually configured as trusted domains?
+A: No. Treat the hosted handler origin for the project, such as `https://<project-id>.built-with-stack-auth.com` or the origin derived from `NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE`, as an implicit trusted redirect domain on both client and backend validation paths. The hosted template must put `{projectId}` in the hostname so every project has its own origin; path-based templates like `https://host/{projectId}/{hostedPath}` are not safe for implicit origin trust.
+
+## Q: How should post-auth redirects mint cross-domain auth codes right after sign-in?
+A: When a sign-in/sign-up/OAuth callback immediately redirects through the cross-domain authorize endpoint, pass the freshly returned `{ accessToken, refreshToken }` as an override token store into the redirect path. Do not rely on browser cookies having already flushed; otherwise the request can pair a new access token with an old refresh token and fail the backend refresh-token/session consistency check.
+
+## Q: How should mixed-token cross-domain auth regressions be tested?
+A: Add a source-level template test that creates a client app with a stale persistent token store, calls `_createCrossDomainAuthRedirectUrl` with `overrideTokenStoreInit`, and patches only `sendClientRequest` on the real client interface so session creation remains intact. The assertion should inspect the session passed to the interface and require the fresh refresh token, proving the cross-domain authorize request does not use stale persisted tokens.
+
+## Q: When should cross-domain auth call `captureError`?
+A: Do not call `captureError` for normal cross-domain auth failures such as stale/deleted cookies, untrusted redirect URLs, invalid or mismatched refresh tokens, missing handoff params, or interrupted auth flows. Reserve `captureError` for states that definitely imply a Stack developer mistake; ordinary auth failures should just return or throw their normal user-facing errors.
+
+## Q: How should the npm publish workflow create the post-publish dev version bump?
+A: The workflow needs a full checkout using the fine-grained `NPM_PUBLISH_VERSION_UPDATE_PR_PAT` secret. It then fetches `origin/dev`, checks out `dev`, creates a non-interactive patch changeset, runs `pnpm changeset version`, copies the generated `packages/template/package.json` version line back into `packages/template/package-template.json`, and commit/pushes `chore: update package versions`. Because direct pushes to `dev` are blocked by repository rules requiring PRs and the `all-good` status check, the PAT's owning user or bot account must be added to the ruleset bypass list with "Always allow" rather than "For pull requests only".
+
+## Q: How should the Mintlify docs homepage reuse the generated setup prompt?
+A: Import `generatedSetupPromptText` from `docs-mintlify/snippets/home-prompt-island.jsx` in `docs-mintlify/index.mdx`, render it directly in a `<pre><code>{generatedSetupPromptText}</code></pre>` block, and keep the home copy button wired to that imported value. Clipboard failures can happen when the browser document is not focused, so the button should surface the actual error text instead of only saying "Copy failed".
+
+## Q: Where should Mintlify docs for restricted users live?
+A: Put restricted-user docs at `docs-mintlify/guides/apps/authentication/restricted-users.mdx` and register the page in the Authentication group in `docs-mintlify/docs.json`. The page should cover `includeRestricted: true`, `user.isRestricted`, `user.restrictedReason`, anonymous users being restricted by definition, and JWKS `include_restricted=true` for services that intentionally accept restricted-user tokens.
+
+## Q: How should e2e tests switch to a newly created project?
+A: `Project.createAndSwitch` should leave `backendContext.projectKeys` set to real project API keys, not only `{ projectId, adminAccessToken }`. Internal admin access tokens are regular short-lived access tokens; keeping one in the default project context makes later server/admin requests fail with `ADMIN_ACCESS_TOKEN_EXPIRED` or validate the token against the wrong project.

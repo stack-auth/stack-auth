@@ -96,6 +96,12 @@ export const ALL_APPS = {
     tags: ["comms"],
     stage: "stable",
   },
+  "support": {
+    displayName: "Support",
+    subtitle: "Customer conversations, team replies, and internal notes",
+    tags: ["comms", "operations"],
+    stage: "alpha",
+  },
   "email-api": {
     displayName: "Email API",
     subtitle: "Programmatic email sending and delivery",
@@ -160,6 +166,12 @@ export const ALL_APPS = {
     displayName: "Analytics",
     subtitle: "View and explore analytics data",
     tags: ["developers", "operations"],
-    stage: "beta",
+    stage: "stable",
+  },
+  "session-replays": {
+    displayName: "Session Replays",
+    subtitle: "Watch real user sessions to understand how people use your app",
+    tags: ["developers", "operations"],
+    stage: "stable",
   },
 } as const satisfies Record<string, App>;

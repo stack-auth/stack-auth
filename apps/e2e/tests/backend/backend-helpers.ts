@@ -483,20 +483,22 @@ export namespace Auth {
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
-      for (let i = 0; true; i++) {
+      const deadlineMs = 60_000;
+      const intervalMs = 500;
+      const deadline = performance.now() + deadlineMs;
+      while (true) {
         const messages = await mailbox.fetchMessages();
         const containsSubstring = messages.some(message => message.subject.includes("Sign in to") && message.body?.html.includes(response.body.nonce));
         if (containsSubstring) {
           break;
         }
-        await wait(100 + i * 20);
-        if (i >= 40) {
-          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, {
+        if (performance.now() >= deadline) {
+          throw new StackAssertionError(`Sign-in code message not found within ${deadlineMs}ms`, {
             response,
             messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),
-            outboxEmails: await getOutboxEmails(),
           });
         }
+        await wait(intervalMs);
       }
       return {
         sendSignInCodeResponse: response,
@@ -1338,6 +1340,11 @@ export namespace Project {
       },
       userAuth: null
     });
+    const { projectKeys } = await InternalApiKey.create(createResult.adminAccessToken);
+    backendContext.set({
+      projectKeys,
+      userAuth: null
+    });
     return createResult;
   }
 
@@ -1362,7 +1369,7 @@ export namespace Project {
   }
 
   export type BranchConfigSource =
-    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string }
+    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string, workflow_path?: string }
     | { type: "pushed-from-unknown" }
     | { type: "unlinked" };
 

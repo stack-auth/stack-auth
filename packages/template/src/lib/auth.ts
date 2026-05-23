@@ -46,7 +46,9 @@ type OAuthCallbackConsumptionResult =
     error: KnownError,
   };
 
-function consumeOAuthCallbackQueryParams(): OAuthCallbackConsumptionResult | null {
+function consumeOAuthCallbackQueryParams(options?: {
+  dontWarnAboutMissingQueryParams?: boolean,
+}): OAuthCallbackConsumptionResult | null {
   const oauthErrorParams = ["error", "error_description", "errorCode", "message", "details"] as const;
   const requiredParams = ["code", "state"];
   const originalUrl = new URL(window.location.href);
@@ -84,7 +86,9 @@ function consumeOAuthCallbackQueryParams(): OAuthCallbackConsumptionResult | nul
 
   for (const param of requiredParams) {
     if (!originalUrl.searchParams.has(param)) {
-      console.warn(new Error(`Missing required query parameter on OAuth callback: ${param}. Maybe you opened or reloaded the oauth-callback page from your history?`));
+      if (!options?.dontWarnAboutMissingQueryParams) {
+        console.warn(new Error(`Missing required query parameter on OAuth callback: ${param}. Maybe you opened or reloaded the oauth-callback page from your history?`));
+      }
       return null;
     }
   }
@@ -135,11 +139,14 @@ function consumeOAuthCallbackQueryParams(): OAuthCallbackConsumptionResult | nul
 export async function callOAuthCallback(
   iface: StackClientInterface,
   redirectUrl: string,
+  options?: {
+    dontWarnAboutMissingQueryParams?: boolean,
+  },
 ) {
   // note: this part of the function (until the return) needs
   // to be synchronous, to prevent race conditions when
   // callOAuthCallback is called multiple times in parallel
-  const consumed = consumeOAuthCallbackQueryParams();
+  const consumed = consumeOAuthCallbackQueryParams(options);
   if (!consumed) return Result.ok(undefined);
   if (consumed.type === "known-error") {
     throw consumed.error;

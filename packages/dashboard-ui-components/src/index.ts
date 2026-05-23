@@ -13,6 +13,16 @@ export type { DesignCardProps, DesignCardTintProps } from "./components/card";
 export { CursorBlastEffect } from "./components/cursor-blast-effect";
 export type { CursorBlastEffectProps } from "./components/cursor-blast-effect";
 
+export {
+  DesignDialog,
+  DesignDialogClose,
+  DesignDialogDescription,
+  DesignDialogRoot,
+  DesignDialogTitle,
+  DesignDialogTrigger,
+} from "./components/dialog";
+export type { DesignDialogProps, DesignDialogSize, DesignDialogVariant } from "./components/dialog";
+
 export { DesignEditMode, useDesignEditMode } from "./components/edit-mode";
 
 export { DesignInput } from "./components/input";

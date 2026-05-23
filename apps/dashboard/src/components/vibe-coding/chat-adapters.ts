@@ -1,3 +1,4 @@
+import { createUnifiedAiChatAdapter, type WireMessage } from "@/components/assistant-ui/chat-stream";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { AppId } from "@/lib/apps-frontend";
@@ -198,6 +199,15 @@ function stripCodeFences(code: string): string {
   return lines.join("\n");
 }
 
+function sanitizeAiContent(content: ChatContent): ChatContent {
+  return content.map((item) => {
+    if (item.type === "tool-call" && typeof item.args?.content === "string") {
+      return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
+    }
+    return item;
+  });
+}
+
 /**
  * Sends a request to the AI query endpoint and returns the parsed content.
  */
@@ -229,18 +239,6 @@ async function sendAiRequest(
 
   const json = await response.json() as { content?: ChatContent };
   return Array.isArray(json.content) ? json.content : [];
-}
-
-/**
- * Sanitizes tool call content in AI response and returns the sanitized content.
- */
-function sanitizeAiContent(content: ChatContent): ChatContent {
-  return content.map((item) => {
-    if (item.type === "tool-call" && typeof item.args?.content === "string") {
-      return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
-    }
-    return item;
-  });
 }
 
 /**
@@ -449,54 +447,62 @@ export function createChatAdapter(
   onRunStart?: () => void,
   onRunEnd?: () => void,
 ): ChatModelAdapter {
-  return {
-    async run({ messages, abortSignal }: ChatModelRunOptions) {
-      onRunStart?.();
-      try {
-        const formattedMessages = formatThreadMessagesForBackend(messages);
+  const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
-        const { systemPrompt, tools } = CONTEXT_MAP[contextType];
-
-        const contextMessages: Array<{ role: string, content: unknown }> = [];
-        if (getCurrentSource) {
-          const src = getCurrentSource();
-          if (src.length > 0) {
-            contextMessages.push({ role: "user", content: `Here is the current source:\n\`\`\`tsx\n${src}\n\`\`\`` });
-            contextMessages.push({ role: "assistant", content: "Got it, I have the current source code." });
-          }
+  return createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser,
+    systemPrompt,
+    tools: [...tools],
+    quality: "smartest",
+    speed: "fast",
+    sanitizeContent: sanitizeAiContent,
+    transformMessages: (messages) => {
+      const contextMessages: WireMessage[] = [];
+      if (getCurrentSource) {
+        const src = getCurrentSource();
+        if (src.length > 0) {
+          contextMessages.push({ role: "user", content: `Here is the current source:\n\`\`\`tsx\n${src}\n\`\`\`` });
+          contextMessages.push({ role: "assistant", content: "Got it, I have the current source code." });
         }
-
-        const rawContent = await sendAiRequest(
-          backendBaseUrl,
-          currentUser,
-          {
-            quality: "smartest",
-            speed: "fast",
-            systemPrompt,
-            tools: [...tools],
-            messages: [...contextMessages, ...formattedMessages],
-          },
-          abortSignal,
-        );
-
-        const sanitizedContent = sanitizeAiContent(rawContent);
-
-        const toolCall = sanitizedContent.find(isToolCall);
-        if (toolCall) {
-          onToolCall(toolCall);
-        }
-
-        return { content: sanitizedContent };
-      } catch (error) {
-        if (abortSignal.aborted) {
-          return {};
-        }
-        throw new Error("Failed to get AI response. Please try again.");
-      } finally {
-        onRunEnd?.();
+      }
+      return [...contextMessages, ...messages];
+    },
+    onRunStart,
+    onRunEnd,
+    onFinish: ({ assistantContent }) => {
+      const toolCall = assistantContent.find(isToolCall);
+      if (toolCall) {
+        onToolCall(toolCall);
       }
     },
-  };
+    onError: () => {
+      throw new Error("Failed to get AI response. Please try again.");
+    },
+  });
+}
+
+export function createAnalyticsQueryChatAdapter(
+  backendBaseUrl: string,
+  currentUser: CurrentUser | undefined,
+  projectId: string | undefined,
+  onError?: (error: Error) => void,
+): ChatModelAdapter {
+  return createUnifiedAiChatAdapter({
+    backendBaseUrl,
+    currentUser,
+    systemPrompt: "build-analytics-query",
+    tools: ["sql-query"],
+    quality: "smart",
+    speed: "fast",
+    projectId,
+    sanitizeContent: sanitizeAiContent,
+    onError: () => {
+      const wrapped = new Error("Failed to get AI response. Please try again.");
+      onError?.(wrapped);
+      throw wrapped;
+    },
+  });
 }
 
 export function createDashboardChatAdapter(

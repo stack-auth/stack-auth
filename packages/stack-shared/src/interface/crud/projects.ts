@@ -85,6 +85,7 @@ export const projectsCrudAdminReadSchema = yupObject({
   logo_full_dark_mode_url: schemaFields.projectLogoFullDarkModeUrlSchema.nullable().optional(),
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
+  is_development_environment: schemaFields.yupBoolean().defined(),
   owner_team_id: schemaFields.yupString().nullable().defined(),
   onboarding_status: schemaFields.projectOnboardingStatusSchema.defined(),
   onboarding_state: projectOnboardingStateSchema.nullable().optional(),
@@ -123,6 +124,7 @@ export const projectsCrudClientReadSchema = yupObject({
     passkey_enabled: schemaFields.projectPasskeyEnabledSchema.defined(),
     client_team_creation_enabled: schemaFields.projectClientTeamCreationEnabledSchema.defined(),
     client_user_deletion_enabled: schemaFields.projectClientUserDeletionEnabledSchema.defined(),
+    allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
     allow_user_api_keys: schemaFields.yupBoolean().defined(),
     allow_team_api_keys: schemaFields.yupBoolean().defined(),
     enabled_oauth_providers: yupArray(enabledOAuthProviderSchema.defined()).defined().meta({ openapiField: { hidden: true } }),
@@ -167,6 +169,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
 
 export const projectsCrudAdminCreateSchema = projectsCrudAdminUpdateSchema.concat(yupObject({
   display_name: schemaFields.projectDisplayNameSchema.defined(),
+  is_development_environment: schemaFields.yupBoolean().optional(),
   owner_team_id: schemaFields.yupString().uuid().defined(),
 }).defined());
 

@@ -723,7 +723,7 @@ function OnboardingSlideshow() {
 
   return (
     <PageLayout>
-      <div className="flex flex-col items-center h-full">
+      <div className="flex flex-1 min-h-0 flex-col items-center justify-center">
         {/* Slide content container - fills available space */}
         <div className="relative w-full flex-1 min-h-0">
           {slides.map((s, index) => (

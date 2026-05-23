@@ -7,7 +7,7 @@ on:
 
 permissions:
   id-token: write  # Required for npm OIDC provenance
-  contents: read
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,18 +16,22 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: "hexclave/stack-auth — Publish npm packages"
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.NPM_PUBLISH_VERSION_UPDATE_PR_PAT }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 'latest'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -46,3 +50,41 @@ jobs:
         run: pnpm publish -r --no-git-checks --access public
         env:
           NPM_CONFIG_PROVENANCE: true
+
+      - name: Update package versions on dev
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add .
+          git diff --exit-code HEAD
+
+          git fetch origin dev:dev
+          git checkout dev
+          git diff --exit-code dev origin/dev
+
+          pnpm install --frozen-lockfile
+
+          CHANGESET_FILE=".changeset/update-package-versions-${GITHUB_RUN_ID}.md"
+          cat > "$CHANGESET_FILE" <<'EOF'
+          ---
+          "@stackframe/stack": patch
+          ---
+
+          Update package versions.
+          EOF
+
+          pnpm changeset version
+
+          version=$(grep '"version":' packages/template/package.json)
+          sed "s/^[[:space:]]*\"version\":.*/$version/" packages/template/package-template.json > packages/template/package-template.json.untracked.tmp
+          mv packages/template/package-template.json.untracked.tmp packages/template/package-template.json
+
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No package version changes to commit"
+            exit 0
+          fi
+
+          git commit -m "chore: update package versions"
+          git push origin dev

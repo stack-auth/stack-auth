@@ -1,5 +1,4 @@
 import { Prisma } from "@/generated/prisma/client";
-import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
@@ -84,7 +83,7 @@ async function assertLocalEmulatorOwnerTeamReadiness() {
 }
 
 async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<{ projectId: string, created: boolean }> {
-  const existingRows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
+  const existingRows = await globalPrismaClient.$replica().$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
     SELECT "projectId"
     FROM "LocalEmulatorProject"
     WHERE "absoluteFilePath" = ${absoluteFilePath}
@@ -106,6 +105,11 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       ownerTeamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
     },
   });
+  await globalPrismaClient.$executeRaw(Prisma.sql`
+    UPDATE "Project"
+    SET "isDevelopmentEnvironment" = TRUE
+    WHERE "id" = ${projectId}
+  `);
 
   await globalPrismaClient.tenancy.upsert({
     where: {
@@ -124,25 +128,6 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     },
   });
 
-  const created = existingRow === undefined;
-
-  // Seed environment-level defaults BEFORE registering as a LocalEmulatorProject:
-  // once registered, setEnvironmentConfigOverride refuses to write.
-  //   - domains.allowLocalhost: fresh emulator projects allow localhost redirects
-  //     so developers don't hit "Redirect URL not whitelisted" before configuring
-  //     trustedDomains.
-  //   - payments.testMode: emulator payments always go through stripe-mock.
-  if (created) {
-    await overrideEnvironmentConfigOverride({
-      projectId,
-      branchId: DEFAULT_BRANCH_ID,
-      environmentConfigOverrideOverride: {
-        "domains.allowLocalhost": true,
-        "payments.testMode": true,
-      },
-    });
-  }
-
   await globalPrismaClient.$executeRaw(Prisma.sql`
     INSERT INTO "LocalEmulatorProject" ("absoluteFilePath", "projectId", "createdAt", "updatedAt")
     VALUES (${absoluteFilePath}, ${projectId}, NOW(), NOW())
@@ -152,7 +137,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       "updatedAt" = NOW()
   `);
 
-  return { projectId, created };
+  return { projectId, created: existingRow === undefined };
 }
 
 async function getOrCreateCredentials(projectId: string) {
@@ -202,7 +187,7 @@ async function getOrCreateCredentials(projectId: string) {
 }
 
 async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboarding: boolean): Promise<ProjectOnboardingStatus> {
-  const onboardingStateColumnExistsRows = await globalPrismaClient.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+  const onboardingStateColumnExistsRows = await globalPrismaClient.$replica().$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
     SELECT EXISTS (
       SELECT 1
       FROM information_schema.columns
@@ -213,7 +198,7 @@ async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboardi
   `);
   const onboardingStateColumnExists = onboardingStateColumnExistsRows[0]?.exists === true;
 
-  const rows = await globalPrismaClient.$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
     SELECT "onboardingStatus"
     FROM "Project"
     WHERE "id" = ${projectId}
@@ -400,11 +385,11 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
     }
 
-    const rows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
+    const rows = await globalPrismaClient.$replica().$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
       SELECT "projectId", "absoluteFilePath", "updatedAt"
       FROM "LocalEmulatorProject"
       ORDER BY "updatedAt" DESC
-      LIMIT 20
+      LIMIT 100
     `);
 
     const projectIds = rows.map((r) => r.projectId);

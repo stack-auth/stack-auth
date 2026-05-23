@@ -1,11 +1,8 @@
-import { overrideProjectConfigOverride } from "@/lib/config";
-import { getPrismaClientForSourceOfTruth, globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getStackServerApp } from "@/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { neonAuthorizationHeaderSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -44,31 +41,8 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.ProjectNotFound(req.query.project_id);
     }
 
-    const uuidConnectionStrings: Record<string, string> = {};
-    const store = await getStackServerApp().getDataVaultStore('neon-connection-strings');
-    const secret = "no client side encryption";
-    for (const c of req.body.connection_strings) {
-      const uuid = generateUuid();
-      await store.setValue(uuid, c.connection_string, { secret });
-      uuidConnectionStrings[c.branch_id] = uuid;
-    }
-
-    const sourceOfTruthPersisted = {
-      type: 'neon' as const,
-      connectionStrings: uuidConnectionStrings,
-    };
-    await overrideProjectConfigOverride({
-      projectId: provisionedProject.projectId,
-      projectConfigOverrideOverride: {
-        sourceOfTruth: sourceOfTruthPersisted,
-      },
-    });
-
-    await Promise.all(req.body.connection_strings.map(({ branch_id, connection_string }) => getPrismaClientForSourceOfTruth({
-      type: 'neon',
-      connectionString: undefined,
-      connectionStrings: { [branch_id]: connection_string },
-    } as const, branch_id)));
+    // Connection strings used to configure Neon as source-of-truth. That mode no
+    // longer exists, but keep accepting this webhook so old integrations do not fail.
 
     return {
       statusCode: 200,

@@ -1,7 +1,8 @@
 
 "use client";
 
-import { DashboardSandboxHost, type DashboardRuntimeError, type WidgetSelection } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
+import { DashboardSandboxHost, stampEsmVersion, type DashboardRuntimeError, type WidgetSelection } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
+import packageJson from "../../../../../../../../package.json";
 import { useRouter, useRouterConfirm } from "@/components/router";
 import { StreamingCodeViewer } from "@/components/streaming-code-viewer";
 import { ActionDialog, Button, Typography, useToast } from "@/components/ui";
@@ -17,6 +18,7 @@ import { ToolCallContent, type DashboardChip, type DashboardPatchFailure, type D
 import { patchSnapshotKey, registerPatchSnapshot } from "@/components/vibe-coding/dashboard-tool-components";
 import type { AppId } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
+import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import {
@@ -28,7 +30,6 @@ import {
   WarningIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -50,7 +51,7 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const projectId = useProjectId();
-  const currentUser = useUser({ or: "redirect" });
+  const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
@@ -121,7 +122,7 @@ function DashboardDetailContent({
   adminApp: ReturnType<typeof useAdminApp>,
   updateConfig: ReturnType<typeof useUpdateConfig>,
   router: ReturnType<typeof useRouter>,
-  currentUser: NonNullable<ReturnType<typeof useUser>>,
+  currentUser: ReturnType<typeof useDashboardUser>,
   backendBaseUrl: string,
   enabledAppIds: AppId[],
 }) {
@@ -263,8 +264,9 @@ function DashboardDetailContent({
 
   const handleCodeUpdate = useCallback((toolCall: ToolCallContent) => {
     if (typeof toolCall.args.content === "string") {
-      setPendingCode(toolCall.args.content);
-      setCurrentTsxSource(toolCall.args.content);
+      const stamped = stampEsmVersion(toolCall.args.content, packageJson.version);
+      setPendingCode(stamped);
+      setCurrentTsxSource(stamped);
       clearTimeout(codePhaseTimerRef.current);
       setCodePhase("typing");
       codePhaseTimerRef.current = setTimeout(() => {
@@ -507,7 +509,7 @@ function DashboardDetailContent({
                       : undefined
                   }
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
-                  toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} currentCode={currentTsxSource} />}
+                  toolComponents={<DashboardToolUI setCurrentCode={(code) => setCurrentTsxSource(stampEsmVersion(code, packageJson.version))} currentCode={currentTsxSource} />}
                   useOffWhiteLightMode
                   composerPlaceholder={currentHasSource ? undefined : DASHBOARD_COMPOSER_PLACEHOLDER}
                   runningStatusMessages={!isCreating ? UPDATE_STATUS_MESSAGES : undefined}

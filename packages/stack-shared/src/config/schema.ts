@@ -46,17 +46,6 @@ export const projectConfigSchema = yupObject({
     yupObject({
       type: yupString().oneOf(['hosted']).defined(),
     }),
-    yupObject({
-      type: yupString().oneOf(['neon']).defined(),
-      connectionStrings: yupRecord(
-        userSpecifiedIdSchema("connectionStringId").defined(),
-        yupString().defined(),
-      ).defined(),
-    }),
-    yupObject({
-      type: yupString().oneOf(['postgres']).defined(),
-      connectionString: yupString().defined()
-    }),
   ),
   project: yupObject({
     requirePublishableClientKey: yupBoolean(),
@@ -239,7 +228,7 @@ import.meta.vitest?.test("branchPaymentsSchema rejects a product that references
       pro: {
         customerType: "user",
         productLineId: "missing-line",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" specifies product line ID "missing-line", but that product line does not exist]`);
@@ -262,7 +251,7 @@ import.meta.vitest?.test("branchPaymentsSchema rejects null product line entries
       pro: {
         customerType: "user",
         productLineId: "teamLine",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLines cannot be null]`);
@@ -279,7 +268,7 @@ import.meta.vitest?.test("branchPaymentsSchema rejects a product whose customer 
       pro: {
         customerType: "user",
         productLineId: "teamLine",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" has customer type "user" but its product line "teamLine" has customer type "team"]`);
@@ -291,7 +280,7 @@ import.meta.vitest?.test("branchPaymentsSchema lets productLineId schema reject 
       pro: {
         customerType: "user",
         productLineId: "",
-        prices: "include-by-default",
+        prices: {},
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen]`);
@@ -548,9 +537,45 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-04-21: `include-by-default` product prices are no longer supported. Rewrite to an empty price map so legacy configs continue to load.
+  if (isBranchOrHigher) {
+    // Match `payments.products.<productId>.prices` regardless of how many segments the
+    // product-ID portion contributes. mapProperty splits dot-notation override keys on
+    // ".", so a product whose ID itself contains "." (e.g. "my.product") would produce
+    // a path with >4 segments and silently miss an exact-length match.
+    res = mapProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "prices", (value) => {
+      if (value === "include-by-default") return {};
+      return value;
+    });
+  }
+  // END
+
+  // BEGIN 2026-05-23: external source-of-truth config was never used and is no longer supported.
+  // Drop the override so legacy Neon/Postgres configs continue to render as the hosted default.
+  if (type === "project") {
+    res = removeProperty(res, p => p[0] === "sourceOfTruth");
+  }
+  // END
+
   // return the result
   return res;
 };
+
+import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
+  expect(migrateConfigOverride("project", {
+    sourceOfTruth: {
+      type: "neon",
+      connectionStrings: {
+        main: "postgres://user:password@neon.example.com/database",
+      },
+    },
+  })).toEqual({});
+
+  expect(migrateConfigOverride("project", {
+    "sourceOfTruth.type": "postgres",
+    "sourceOfTruth.connectionString": "postgres://user:password@host:5432/database",
+  })).toEqual({});
+});
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
   return mapProperty(obj, pathCond, () => undefined);
@@ -584,6 +609,23 @@ import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) =>
   expect(mapProperty({ "a.b": { c: 1 } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ "a.b": { c: 2 } });
 
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
+
+  // The include-by-default migration uses a prefix/suffix path predicate against dot-notation
+  // keys: `payments.products.<productId>.prices`, where the product-ID portion may be one or
+  // more segments (since override keys are dot-paths and a product ID may itself contain ".").
+  // Verify it matches whether the override is fully nested, dot-notation at the root, a mix,
+  // or contains a dotted product ID.
+  const sentinelToEmpty = (v: any) => v === "include-by-default" ? {} : v;
+  const sentinelPred = (p: string[]) => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "prices";
+  expect(mapProperty({ "payments.products.x.prices": "include-by-default" }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products.x.prices": {} });
+  expect(mapProperty({ payments: { products: { x: { prices: "include-by-default" } } } }, sentinelPred, sentinelToEmpty))
+    .toEqual({ payments: { products: { x: { prices: {} } } } });
+  expect(mapProperty({ "payments.products": { x: { prices: "include-by-default" } } }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products": { x: { prices: {} } } });
+  // Dotted product ID: "my.product" expands to two path segments, total 5.
+  expect(mapProperty({ "payments.products.my.product.prices": "include-by-default" }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products.my.product.prices": {} });
 });
 
 function renameProperty(obj: Record<string, any>, oldPath: string | ((path: string[]) => boolean), newName: string | ((path: string[]) => string)): any {
@@ -640,8 +682,6 @@ import.meta.vitest?.test("renameProperty", ({ expect }) => {
 const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
-    connectionStrings: undefined,
-    connectionString: undefined,
   },
   project: {
     requirePublishableClientKey: false,
@@ -997,23 +1037,12 @@ export function applyOrganizationDefaults(config: OrganizationRenderedConfigBefo
 
 export async function sanitizeProjectConfig<T extends ProjectRenderedConfigBeforeSanitization>(config: T) {
   assertNormalized(config);
-  const oldSourceOfTruth = config.sourceOfTruth;
-  const sourceOfTruth =
-    oldSourceOfTruth.type === 'neon' && typeof oldSourceOfTruth.connectionStrings === 'object' ? {
-      type: 'neon',
-      connectionStrings: { ...filterUndefined(oldSourceOfTruth.connectionStrings) as Record<string, string> }
-    } as const
-      : oldSourceOfTruth.type === 'postgres' && typeof oldSourceOfTruth.connectionString === 'string' ? {
-        type: 'postgres',
-        connectionString: oldSourceOfTruth.connectionString,
-      } as const
-        : {
-          type: 'hosted',
-        } as const;
 
   return {
     ...config,
-    sourceOfTruth,
+    sourceOfTruth: {
+      type: 'hosted',
+    } as const,
   };
 }
 
@@ -1044,12 +1073,12 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     const isAddOnTo = product.isAddOnTo === false ?
       false as const :
       typedFromEntries(Object.keys(product.isAddOnTo).map((key) => [key, true as const]));
-    const prices = product.prices === "include-by-default" ?
-      "include-by-default" as const :
-      typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
-        const data = { serverOnly: false, ...(value ?? {}) };
-        return [key, data];
-      }));
+    type PriceEntry = Partial<typeof product.prices[string]> & { serverOnly: boolean };
+    // `serverOnly` is guaranteed to be a boolean by the applyDefaults step above.
+    const prices: Record<string, PriceEntry> = typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
+      const data: PriceEntry = { ...value };
+      return [key, data];
+    }));
     return [key, {
       ...product,
       isAddOnTo,
@@ -1252,6 +1281,9 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
 
   for (const [key, value] of Object.entries(configOverride)) {
     if (value === undefined) continue;
+    if (/^payments\.products\.[^.]+\.prices$/.test(key) && value === "include-by-default") {
+      return Result.error(`${key} must not be one of the following values: include-by-default`);
+    }
     const subSchema = getSubSchema(schema, key);
     if (!subSchema) {
       // find smallest key prefix that is invalid

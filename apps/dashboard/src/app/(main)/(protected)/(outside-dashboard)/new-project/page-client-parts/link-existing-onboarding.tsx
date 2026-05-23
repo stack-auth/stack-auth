@@ -1,20 +1,24 @@
 "use client";
 
+import { CodeBlock } from "@/components/code-block";
+import { DesignPillToggle } from "@/components/design-components";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignCard } from "@/components/design-components/card";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { ActionDialog, Spinner, Typography, cn } from "@/components/ui";
-import { GithubLogoIcon, LinkBreakIcon, TerminalWindowIcon } from "@phosphor-icons/react";
-import { type AdminOwnedProject, type PushedConfigSource, useUser } from "@stackframe/stack";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
+import { ArrowsClockwiseIcon, GithubLogoIcon, LinkBreakIcon, LockSimpleIcon, TerminalWindowIcon } from "@phosphor-icons/react";
+import { type AdminOwnedProject, type PushedConfigSource } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import sodium from "libsodium-wrappers";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { RemoteSearchCombobox, type ComboboxItem } from "./link-existing-combobox";
 import { OnboardingPage } from "./components";
 import {
   buildWorkflowYaml,
@@ -86,6 +90,7 @@ type PersistedLinkExistingState = {
   selectedRepositoryFullName: string,
   selectedBranch: string,
   configPathInput: string,
+  packageRunner: PackageRunner,
 };
 
 function createRepositoryReference(fullName: string, defaultBranch: string): GithubRepository {
@@ -100,6 +105,9 @@ function createRepositoryReference(fullName: string, defaultBranch: string): Git
 const GITHUB_SCOPE_REQUIREMENTS = ["repo", "workflow"];
 const CONNECT_NEW_GITHUB_ACCOUNT_OPTION = "__connect-new-github-account__";
 const LINK_EXISTING_STEPS: LinkExistingStep[] = ["choose-method", "local", "github-repository", "github-config-path", "github-logs"];
+
+type PackageRunner = "npx" | "pnpx" | "bunx";
+const PACKAGE_RUNNERS: PackageRunner[] = ["npx", "pnpx", "bunx"];
 
 function getLinkExistingStorageKey(projectId: string): string {
   return `stack-auth-link-existing-onboarding:${projectId}`;
@@ -128,12 +136,15 @@ function readPersistedLinkExistingState(projectId: string): PersistedLinkExistin
       return null;
     }
     const selectedGithubAccountIdField = parsed.selectedGithubAccountId;
+    const packageRunnerField = getObjectString(parsed, "packageRunner");
+    const packageRunner: PackageRunner = PACKAGE_RUNNERS.find((entry) => entry === packageRunnerField) ?? "npx";
     return {
       step: parsePersistedLinkExistingStep(parsed.step),
       selectedGithubAccountId: typeof selectedGithubAccountIdField === "string" ? selectedGithubAccountIdField : null,
       selectedRepositoryFullName: getObjectString(parsed, "selectedRepositoryFullName") ?? "",
       selectedBranch: getObjectString(parsed, "selectedBranch") ?? "",
       configPathInput: getObjectString(parsed, "configPathInput") ?? "stack.config.ts",
+      packageRunner,
     };
   } catch {
     return null;
@@ -353,6 +364,26 @@ function parseGitTreePaths(value: unknown): { paths: string[], truncated: boolea
   return { paths, truncated };
 }
 
+// `/repos/{owner}/{repo}/git/matching-refs/heads/{prefix}` returns refs prefixed
+// with `refs/heads/`. Strip the prefix so callers see plain branch names.
+function parseGithubMatchingRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error("GitHub returned an invalid matching refs response.");
+  }
+  const HEADS_PREFIX = "refs/heads/";
+  const branches: string[] = [];
+  for (const item of value) {
+    if (!isObject(item)) {
+      continue;
+    }
+    const ref = getObjectString(item, "ref");
+    if (ref != null && ref.startsWith(HEADS_PREFIX)) {
+      branches.push(ref.slice(HEADS_PREFIX.length));
+    }
+  }
+  return branches;
+}
+
 function parseGitReferenceSha(value: unknown): string {
   if (!isObject(value)) {
     throw new Error("GitHub returned an invalid branch reference response.");
@@ -399,10 +430,19 @@ async function encryptSecretValue(value: string, base64PublicKey: string): Promi
   return sodium.to_base64(encryptedBytes, sodium.base64_variants.ORIGINAL);
 }
 
+// GitHub returns 403/429 with a "rate limit" message when the primary or
+// secondary rate limit is hit. We surface these as inline messages in the
+// combobox rather than firing an alert, since they self-resolve.
+function isGithubRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /rate limit/i.test(error.message);
+}
+
 function buildConfigPathSuggestions(paths: string[]): string[] {
+  // Keep suggestions repo-relative (no `./` prefix) so they match both the
+  // workflow's push `paths` filter and the default config path input.
   return paths
     .filter((path) => path.endsWith("/stack.config.ts") || path.endsWith("/stack.config.js") || path === "stack.config.ts" || path === "stack.config.js")
-    .map((path) => path.startsWith("./") ? path : `./${path}`)
     .sort((a, b) => stringCompare(a, b));
 }
 
@@ -422,7 +462,7 @@ function formatWorkflowState(status: string, conclusion: string | null): string 
 
 export function LinkExistingOnboarding(props: Props) {
   const { project, onContinueAfterLink } = props;
-  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const user = useDashboardInternalUser();
   const githubAccounts = user.useConnectedAccounts().filter((account) => account.provider === "github");
   const persistedState = useMemo(() => readPersistedLinkExistingState(project.id), [project.id]);
 
@@ -455,7 +495,20 @@ export function LinkExistingOnboarding(props: Props) {
   const capturedWorkflowFailureRef = useRef<string | null>(null);
   const localAutoMonitoringKeyRef = useRef<string | null>(null);
   const githubLogsAutoPollingKeyRef = useRef<string | null>(null);
+  const repositoriesLoadedAccountRef = useRef<string | null>(null);
+  const loadRepositoriesRunIdRef = useRef(0);
   const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "stack.config.ts");
+  const [packageRunner, setPackageRunner] = useState<PackageRunner>(persistedState?.packageRunner ?? "npx");
+  const [repoSearchQuery, setRepoSearchQuery] = useState("");
+  const [repoSearchResults, setRepoSearchResults] = useState<GithubRepository[]>([]);
+  const [loadingRepoSearch, setLoadingRepoSearch] = useState(false);
+  const [repoSearchError, setRepoSearchError] = useState<string | null>(null);
+  const [branchSearchQuery, setBranchSearchQuery] = useState("");
+  const [branchSearchResults, setBranchSearchResults] = useState<string[]>([]);
+  const [loadingBranchSearch, setLoadingBranchSearch] = useState(false);
+  const [branchSearchError, setBranchSearchError] = useState<string | null>(null);
+  const [configPathError, setConfigPathError] = useState<string | null>(null);
+  const [isCheckingConfigPath, setIsCheckingConfigPath] = useState(false);
 
   const persistState = useCallback((partial: Partial<PersistedLinkExistingState>) => {
     const existingState = readPersistedLinkExistingState(project.id);
@@ -465,9 +518,10 @@ export function LinkExistingOnboarding(props: Props) {
       selectedRepositoryFullName: partial.selectedRepositoryFullName ?? existingState?.selectedRepositoryFullName ?? selectedRepositoryFullName,
       selectedBranch: partial.selectedBranch ?? existingState?.selectedBranch ?? selectedBranch,
       configPathInput: partial.configPathInput ?? existingState?.configPathInput ?? configPathInput,
+      packageRunner: partial.packageRunner ?? existingState?.packageRunner ?? packageRunner,
       ...partial,
     });
-  }, [configPathInput, project.id, selectedBranch, selectedGithubAccountId, selectedRepositoryFullName, step]);
+  }, [configPathInput, packageRunner, project.id, selectedBranch, selectedGithubAccountId, selectedRepositoryFullName, step]);
 
   const setStepWithPersistence = useCallback((nextStep: LinkExistingStep) => {
     if (nextStep !== "github-logs") {
@@ -490,16 +544,19 @@ export function LinkExistingOnboarding(props: Props) {
 
   const setSelectedRepositoryFullNameWithPersistence = useCallback((nextRepositoryFullName: string) => {
     setSelectedRepositoryFullName(nextRepositoryFullName);
+    setConfigPathError(null);
     persistState({ selectedRepositoryFullName: nextRepositoryFullName });
   }, [persistState]);
 
   const setSelectedBranchWithPersistence = useCallback((nextBranch: string) => {
     setSelectedBranch(nextBranch);
+    setConfigPathError(null);
     persistState({ selectedBranch: nextBranch });
   }, [persistState]);
 
   const setConfigPathInputWithPersistence = useCallback((nextConfigPath: string) => {
     setConfigPathInput(nextConfigPath);
+    setConfigPathError(null);
     persistState({ configPathInput: nextConfigPath });
   }, [persistState]);
 
@@ -750,9 +807,12 @@ export function LinkExistingOnboarding(props: Props) {
       throw new Error("Connect a GitHub account before loading repositories.");
     }
 
+    const runId = ++loadRepositoriesRunIdRef.current;
+    const isCurrent = () => loadRepositoriesRunIdRef.current === runId;
     setLoadingRepositories(true);
     try {
       const userResponse = await githubFetch("/user", undefined, account);
+      if (!isCurrent()) return;
       const githubUser = parseGithubUser(userResponse);
       setGithubAccountLogins((previous) => {
         const next = new Map(previous);
@@ -765,6 +825,7 @@ export function LinkExistingOnboarding(props: Props) {
         undefined,
         account,
       );
+      if (!isCurrent()) return;
       const parsedRepositories = parseGithubRepositories(response);
       setRepositories(parsedRepositories);
       setBranches([]);
@@ -794,7 +855,9 @@ export function LinkExistingOnboarding(props: Props) {
         }
       }
     } finally {
-      setLoadingRepositories(false);
+      if (isCurrent()) {
+        setLoadingRepositories(false);
+      }
     }
   }, [githubFetch, selectedGithubAccount, selectedRepositoryFullName, setSelectedBranchWithPersistence, setSelectedRepositoryFullNameWithPersistence]);
 
@@ -804,8 +867,7 @@ export function LinkExistingOnboarding(props: Props) {
     if (options?.forceConnect) {
       await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
     }
-    await loadRepositories();
-  }, [appendLog, loadRepositories, setStepWithPersistence, user]);
+  }, [appendLog, setStepWithPersistence, user]);
 
   const loadBranches = useCallback(async (repositoryFullName: string): Promise<string> => {
     if (repositoryFullName.length === 0) {
@@ -846,8 +908,23 @@ export function LinkExistingOnboarding(props: Props) {
       setGitTreeTruncated(false);
       const referenceResponse = await githubFetch(githubRepositoryApiPath(owner, repo, urlString`/git/ref/heads/${branch}`));
       const treeSha = parseGitReferenceSha(referenceResponse);
-      const treeResponse = await githubFetch(githubRepositoryApiPath(owner, repo, urlString`/git/trees/${treeSha}?recursive=1`));
-      const { paths: allPaths, truncated } = parseGitTreePaths(treeResponse);
+      let allPaths: string[] = [];
+      let truncated = false;
+      try {
+        const treeResponse = await githubFetch(githubRepositoryApiPath(owner, repo, urlString`/git/trees/${treeSha}?recursive=1`));
+        const parsedTree = parseGitTreePaths(treeResponse);
+        allPaths = parsedTree.paths;
+        truncated = parsedTree.truncated;
+      } catch (error) {
+        // GitHub returns 404 for the empty-tree SHA
+        // (4b825dc642cb6eb9a060e54bf8d69288fbee4904) instead of an empty array,
+        // so a freshly-initialized repo with no files lands here. Treat it as
+        // "no files yet" rather than surfacing a fatal alert.
+        const message = error instanceof Error ? error.message : "";
+        if (!message.includes("Not Found")) {
+          throw error;
+        }
+      }
       setGitTreeTruncated(truncated);
       const suggestions = buildConfigPathSuggestions(allPaths);
       setConfigPathSuggestions(suggestions);
@@ -891,6 +968,42 @@ export function LinkExistingOnboarding(props: Props) {
 
     const sha = getObjectString(response, "sha");
     return sha;
+  }, [githubFetch]);
+
+  const checkConfigPathExists = useCallback(async (
+    owner: string,
+    repo: string,
+    branch: string,
+    path: string,
+  ): Promise<boolean> => {
+    // Same shape as normalizeConfigPath in link-existing-onboarding-workflow.ts:
+    // strip any combination of leading `./` and `/` segments so inputs like
+    // `.//src/...` or `/src/...` collapse to a repo-relative path.
+    const normalizedPath = path.trim().replace(/^(?:\.?\/+)+/, "");
+    if (normalizedPath.length === 0 || normalizedPath.split("/").includes("..")) {
+      return false;
+    }
+    const refQuery = new URLSearchParams({ ref: branch }).toString();
+    try {
+      // `cache: "no-store"` because GitHub's Contents API responds with
+      // `Cache-Control: private, max-age=60` for authenticated reads. Without
+      // this, a user who just pushed the config file and immediately clicks
+      // "Create GitHub Action" can see a cached 404 from before the push.
+      const response = await githubFetch(
+        githubRepositoryApiPath(owner, repo, `/contents/${encodeGitHubPath(normalizedPath)}?${refQuery}`),
+        { cache: "no-store" },
+      );
+      if (!isObject(response) || Array.isArray(response)) {
+        return false;
+      }
+      return getObjectString(response, "type") === "file";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Not Found")) {
+        return false;
+      }
+      throw error;
+    }
   }, [githubFetch]);
 
   const createGithubWorkflowCommit = useCallback(async (
@@ -1004,9 +1117,24 @@ export function LinkExistingOnboarding(props: Props) {
         commitDescription,
       );
 
-      appendLog("Dispatching workflow run...");
-      await triggerGithubWorkflow(owner, repo, selectedBranch);
-      appendLog("Workflow dispatched. Waiting for Stack Auth push...");
+      // workflow_dispatch only works once the workflow exists on the default
+      // branch, so it 404s for runs targeting other branches. The workflow-file
+      // commit above already triggers a run via the push `paths` filter, so a
+      // failed dispatch is non-fatal — continue and let the logs step monitor.
+      try {
+        appendLog("Dispatching workflow run...");
+        await triggerGithubWorkflow(owner, repo, selectedBranch);
+        appendLog("Workflow dispatched. Waiting for Stack Auth push...");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        appendLog(
+          "Skipping direct workflow dispatch — this is expected when the " +
+          "workflow file is not yet on the repository's default branch. " +
+          "The workflow commit above triggers a run via the push filter, " +
+          "so we'll continue monitoring."
+        );
+        appendLog(`(Dispatch error: ${message})`);
+      }
 
       setStepWithPersistence("github-logs");
       setIsCommitDialogOpen(false);
@@ -1094,12 +1222,143 @@ export function LinkExistingOnboarding(props: Props) {
 
   const canContinue = pushedConfigSource != null && pushedConfigSource.type !== "unlinked";
 
-  const localCommand = useMemo(() => {
-    return deindent`
-      pnpx @stackframe/stack-cli@latest login
-      pnpx @stackframe/stack-cli@latest config push --config-file <path-to-your-config-file> --project-id "${project.id}"
-    `;
-  }, [project.id]);
+  const loginCommand = `${packageRunner} @stackframe/stack-cli@latest login`;
+  const configPushCommand = `${packageRunner} @stackframe/stack-cli@latest config push --cloud-project-id ${JSON.stringify(project.id)} --config-file <path-to-your-config-file>`;
+
+  // Also covers landing back on this step after the connect-account OAuth
+  // redirect or a page reload, since the effect runs whenever the account
+  // resolves and we have not yet loaded for it.
+  useEffect(() => {
+    if (step !== "github-repository") {
+      return;
+    }
+    const account = selectedGithubAccount;
+    if (account == null) {
+      return;
+    }
+    if (repositoriesLoadedAccountRef.current === account.providerAccountId) {
+      return;
+    }
+    repositoriesLoadedAccountRef.current = account.providerAccountId;
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        await loadRepositories({ accountOverride: account });
+      } catch (error) {
+        if (repositoriesLoadedAccountRef.current === account.providerAccountId) {
+          repositoriesLoadedAccountRef.current = null;
+        }
+        throw error;
+      }
+    });
+  }, [loadRepositories, selectedGithubAccount, step]);
+
+  // Debounced GitHub search for repositories. /user/repos only returns the
+  // first 100 entries, so for users with many repos we hit /search/repositories
+  // as they type. We scope the query with `user:LOGIN` so results stay within
+  // the connected user's repos — without it, /search/repositories is global
+  // and would surface unrelated public repos ahead of the user's own.
+  // Note: this also excludes repos the user only has access to via org
+  // membership; those still appear via the prefetched /user/repos list.
+  const selectedGithubLogin = selectedGithubAccount != null
+    ? githubAccountLogins.get(selectedGithubAccount.providerAccountId) ?? null
+    : null;
+  useEffect(() => {
+    const trimmed = repoSearchQuery.trim();
+    if (step !== "github-repository" || trimmed.length === 0 || selectedGithubAccount == null) {
+      setRepoSearchResults([]);
+      setLoadingRepoSearch(false);
+      setRepoSearchError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingRepoSearch(true);
+    const handle = setTimeout(() => {
+      runAsynchronouslyWithAlert(async () => {
+        try {
+          const qualifiers = selectedGithubLogin != null ? ` user:${selectedGithubLogin}` : "";
+          const queryString = new URLSearchParams({
+            q: `${trimmed}${qualifiers} fork:true`,
+            per_page: "30",
+            sort: "updated",
+          }).toString();
+          const json = await githubFetch(`/search/repositories?${queryString}`);
+          if (cancelled) {
+            return;
+          }
+          if (isObject(json) && Array.isArray(json.items)) {
+            setRepoSearchResults(parseGithubRepositories(json.items));
+          } else {
+            setRepoSearchResults([]);
+          }
+          setRepoSearchError(null);
+        } catch (error) {
+          if (cancelled) return;
+          if (isGithubRateLimitError(error)) {
+            setRepoSearchResults([]);
+            setRepoSearchError("GitHub rate-limited the search. Wait a moment and try again.");
+            return;
+          }
+          setRepoSearchError(null);
+          throw error;
+        } finally {
+          if (!cancelled) {
+            setLoadingRepoSearch(false);
+          }
+        }
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [githubFetch, repoSearchQuery, selectedGithubAccount, selectedGithubLogin, step]);
+
+  // Debounced GitHub search for branches. The branches endpoint has no search,
+  // but /git/matching-refs/heads/{prefix} returns prefix-matched refs and is
+  // the right tool for repos with many branches.
+  useEffect(() => {
+    const trimmed = branchSearchQuery.trim();
+    if (step !== "github-repository" || trimmed.length === 0 || selectedRepository == null) {
+      setBranchSearchResults([]);
+      setLoadingBranchSearch(false);
+      setBranchSearchError(null);
+      return;
+    }
+    const { owner, repo } = parseRepositoryFullName(selectedRepository.fullName);
+    let cancelled = false;
+    setLoadingBranchSearch(true);
+    const handle = setTimeout(() => {
+      runAsynchronouslyWithAlert(async () => {
+        try {
+          const json = await githubFetch(
+            githubRepositoryApiPath(owner, repo, urlString`/git/matching-refs/heads/${trimmed}`),
+          );
+          if (cancelled) {
+            return;
+          }
+          setBranchSearchResults(parseGithubMatchingRefs(json));
+          setBranchSearchError(null);
+        } catch (error) {
+          if (cancelled) return;
+          if (isGithubRateLimitError(error)) {
+            setBranchSearchResults([]);
+            setBranchSearchError("GitHub rate-limited the search. Wait a moment and try again.");
+            return;
+          }
+          setBranchSearchError(null);
+          throw error;
+        } finally {
+          if (!cancelled) {
+            setLoadingBranchSearch(false);
+          }
+        }
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [branchSearchQuery, githubFetch, selectedRepository, step]);
 
   let title = "Link an existing config";
   let subtitle = "Connect GitHub automation or push your local stack.config file.";
@@ -1162,14 +1421,49 @@ export function LinkExistingOnboarding(props: Props) {
     content = (
       <div className="space-y-4">
         <DesignCard glassmorphic className="border-0 bg-white/70 dark:bg-background/60">
-          <div className="space-y-3">
-            <Typography className="text-sm font-semibold">CLI command</Typography>
-            <pre className="overflow-x-auto rounded-xl bg-foreground/[0.04] p-3 text-xs leading-relaxed text-foreground">
-              {localCommand}
-            </pre>
-            <Typography variant="secondary" className="text-xs leading-relaxed">
-              This signs in to Stack Auth, then pushes your local config file for project <code>{project.id}</code>.
-            </Typography>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Typography className="text-sm font-semibold">CLI commands</Typography>
+              <DesignPillToggle
+                options={PACKAGE_RUNNERS.map((runner) => ({ id: runner, label: runner }))}
+                selected={packageRunner}
+                onSelect={(id) => {
+                  const runner = PACKAGE_RUNNERS.find((entry) => entry === id);
+                  if (runner != null) {
+                    setPackageRunner(runner);
+                    persistState({ packageRunner: runner });
+                  }
+                }}
+                size="sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Typography variant="secondary" className="text-xs font-medium">
+                1. Sign in to Stack Auth
+              </Typography>
+              <CodeBlock
+                title="Sign in"
+                icon="terminal"
+                language="bash"
+                content={loginCommand}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Typography variant="secondary" className="text-xs font-medium">
+                2. Push your config
+              </Typography>
+              <CodeBlock
+                title="Push config"
+                icon="terminal"
+                language="bash"
+                content={configPushCommand}
+              />
+              <Typography variant="secondary" className="text-xs leading-relaxed">
+                Replace <code>&lt;path-to-your-config-file&gt;</code> with your local config file path.
+              </Typography>
+            </div>
           </div>
         </DesignCard>
 
@@ -1203,11 +1497,18 @@ export function LinkExistingOnboarding(props: Props) {
     title = "Choose repository and branch";
     subtitle = "Connect your GitHub account, then choose where the workflow should run.";
 
-    const repoOptions = repositories.map((repository) => ({
+    const repoComboboxItems: ComboboxItem[] = (
+      repoSearchQuery.trim().length > 0 ? repoSearchResults : repositories
+    ).map((repository) => ({
       value: repository.fullName,
-      label: repository.isPrivate ? `${repository.fullName} (private)` : repository.fullName,
+      label: repository.fullName,
+      trailingIcon: repository.isPrivate ? (
+        <LockSimpleIcon weight="fill" className="h-3.5 w-3.5" aria-label="Private repository" />
+      ) : undefined,
     }));
-    const branchOptions = branches.map((branch) => ({
+    const branchComboboxItems: ComboboxItem[] = (
+      branchSearchQuery.trim().length > 0 ? branchSearchResults : branches
+    ).map((branch) => ({
       value: branch,
       label: branch,
     }));
@@ -1221,18 +1522,39 @@ export function LinkExistingOnboarding(props: Props) {
                 Connected GitHub account
               </Typography>
               {githubAccounts.length === 0 ? (
-                <DesignAlert
-                  variant="info"
-                  description="No connected GitHub account found. Connect one to continue."
-                  glassmorphic
-                />
+                <div className="space-y-3">
+                  <DesignAlert
+                    variant="info"
+                    description="No connected GitHub account found. Connect one to continue."
+                    glassmorphic
+                  />
+                  <DesignButton
+                    className="w-full rounded-full"
+                    onClick={() => runAsynchronouslyWithAlert(async () => {
+                      await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
+                    })}
+                  >
+                    Connect GitHub account
+                  </DesignButton>
+                </div>
+              ) : selectedGithubAccount != null && !githubAccountLogins.has(selectedGithubAccount.providerAccountId) ? (
+                // Hide the dropdown until the GitHub /user fetch populates the
+                // login, so we never briefly show the numeric providerAccountId.
+                <div className="flex items-center gap-2 py-1.5">
+                  <Spinner size={14} />
+                  <Typography variant="secondary" className="text-sm">
+                    Loading GitHub account...
+                  </Typography>
+                </div>
               ) : (
                 <DesignSelectorDropdown
                   value={selectedGithubAccount?.providerAccountId ?? ""}
                   onValueChange={(value) => runAsynchronouslyWithAlert(async () => {
                     if (value === CONNECT_NEW_GITHUB_ACCOUNT_OPTION) {
-                      await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
-                      await loadRepositories();
+                      // linkConnectedAccount always starts a fresh OAuth flow;
+                      // getOrLinkConnectedAccount would just return the existing
+                      // account and never let the user add another one.
+                      await user.linkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
                       return;
                     }
 
@@ -1242,7 +1564,6 @@ export function LinkExistingOnboarding(props: Props) {
                     }
 
                     setSelectedGithubAccountIdWithPersistence(value);
-                    await loadRepositories({ accountOverride: account });
                   })}
                   options={[
                     {
@@ -1261,47 +1582,77 @@ export function LinkExistingOnboarding(props: Props) {
 
             <div className="space-y-2">
               <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Repository</Typography>
-              <DesignSelectorDropdown
+              <RemoteSearchCombobox
                 value={selectedRepositoryFullName}
-                onValueChange={(nextRepository) => runAsynchronouslyWithAlert(async () => {
+                items={repoComboboxItems}
+                query={repoSearchQuery}
+                onQueryChange={setRepoSearchQuery}
+                onSelect={(nextRepository) => runAsynchronouslyWithAlert(async () => {
                   setSelectedRepositoryFullNameWithPersistence(nextRepository);
                   setBranches([]);
                   setSelectedBranchWithPersistence("");
+                  setBranchSearchQuery("");
+                  setBranchSearchResults([]);
                   setConfigPathSuggestions([]);
                   setGitTreeTruncated(false);
+                  setRepoSearchQuery("");
                   if (nextRepository.length > 0) {
                     await loadBranches(nextRepository);
                   }
                 })}
-                options={repoOptions}
-                placeholder={loadingRepositories ? "Loading repositories..." : "Select a repository"}
-                size="md"
-                disabled={repositories.length === 0}
+                triggerPlaceholder={loadingRepositories ? "Loading repositories..." : "Select a repository"}
+                inputPlaceholder="Search GitHub repositories..."
+                loading={loadingRepoSearch || (loadingRepositories && repositories.length === 0)}
+                emptyMessage={
+                  repoSearchError
+                    ?? (repoSearchQuery.trim().length === 0 ? "No repositories loaded yet." : "No matching repositories.")
+                }
+                disabled={selectedGithubAccount == null}
               />
             </div>
 
             <div className="space-y-2">
               <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Branch</Typography>
               <div className="flex gap-2">
-                <DesignSelectorDropdown
-                  value={selectedBranch}
-                  onValueChange={setSelectedBranchWithPersistence}
-                  options={branchOptions}
-                  placeholder={loadingBranches ? "Loading branches..." : "Select a branch"}
-                  size="md"
-                  disabled={branches.length === 0}
-                  className="flex-1"
-                />
-                <DesignButton
-                  variant="outline"
-                  loading={loadingBranches}
-                  disabled={selectedRepositoryFullName.length === 0}
+                <div className="min-w-0 flex-1">
+                  <RemoteSearchCombobox
+                    value={selectedBranch}
+                    items={branchComboboxItems}
+                    query={branchSearchQuery}
+                    onQueryChange={setBranchSearchQuery}
+                    onSelect={(nextBranch) => {
+                      setSelectedBranchWithPersistence(nextBranch);
+                      setBranchSearchQuery("");
+                    }}
+                    triggerPlaceholder={loadingBranches ? "Loading branches..." : "Select a branch"}
+                    inputPlaceholder="Search branches..."
+                    loading={loadingBranchSearch || (loadingBranches && branches.length === 0)}
+                    emptyMessage={
+                      branchSearchError
+                        ?? (branchSearchQuery.trim().length === 0 ? "No branches loaded yet." : "No matching branches.")
+                    }
+                    disabled={selectedRepositoryFullName.length === 0}
+                  />
+                </div>
+                <button
+                  type="button"
+                  aria-label="Refresh branches"
+                  title="Refresh branches"
+                  disabled={selectedRepositoryFullName.length === 0 || loadingBranches}
                   onClick={() => runAsynchronouslyWithAlert(async () => {
                     await loadBranches(selectedRepositoryFullName);
                   })}
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                    "border border-black/[0.08] bg-white/80 shadow-sm ring-1 ring-black/[0.08]",
+                    "transition-all duration-150 hover:transition-none hover:ring-black/[0.12]",
+                    "focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/30",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "dark:border-white/[0.06] dark:bg-background/60 dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
+                  )}
                 >
-                  Refresh
-                </DesignButton>
+                  <ArrowsClockwiseIcon className={cn("h-4 w-4 opacity-70", loadingBranches && "animate-spin")} />
+                </button>
               </div>
             </div>
           </div>
@@ -1348,6 +1699,14 @@ export function LinkExistingOnboarding(props: Props) {
             variant="warning"
             title="Repository tree was truncated"
             description="GitHub returned a partial file list. Suggestions may miss stack.config files—type the path manually or retry after reducing repo size."
+            glassmorphic
+          />
+        )}
+        {configPathError != null && (
+          <DesignAlert
+            variant="error"
+            title="Config file not found"
+            description={configPathError}
             glassmorphic
           />
         )}
@@ -1401,10 +1760,28 @@ export function LinkExistingOnboarding(props: Props) {
     primaryAction = (
       <DesignButton
         className="w-full rounded-full"
-        disabled={configPathInput.trim().length === 0}
-        onClick={() => setIsCommitDialogOpen(true)}
+        disabled={configPathInput.trim().length === 0 || isCheckingConfigPath}
+        onClick={() => runAsynchronouslyWithAlert(async () => {
+          if (selectedRepository == null || selectedBranch.length === 0) {
+            return;
+          }
+          const { owner, repo } = parseRepositoryFullName(selectedRepository.fullName);
+          const path = configPathInput.trim();
+          setConfigPathError(null);
+          setIsCheckingConfigPath(true);
+          try {
+            const exists = await checkConfigPathExists(owner, repo, selectedBranch, path);
+            if (!exists) {
+              setConfigPathError(`"${path}" was not found on branch "${selectedBranch}". Double-check the path or push the file to that branch first.`);
+              return;
+            }
+            setIsCommitDialogOpen(true);
+          } finally {
+            setIsCheckingConfigPath(false);
+          }
+        })}
       >
-        Create GitHub Action
+        {isCheckingConfigPath ? "Checking..." : "Create GitHub Action"}
       </DesignButton>
     );
 

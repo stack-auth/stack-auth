@@ -1,5 +1,4 @@
 import { StyledLink } from "@/components/link";
-import { stackServerApp } from "@/stack";
 import { StackHandler } from "@stackframe/stack";
 
 export default function Handler(props: unknown) {
@@ -18,8 +17,6 @@ export default function Handler(props: unknown) {
     <div data-stack-handler-page className="min-h-screen">
       <StackHandler
         fullPage
-        routeProps={props}
-        app={stackServerApp}
         componentProps={{ SignIn: { extraInfo }, SignUp: { extraInfo } }}
       />
     </div>

@@ -11,36 +11,34 @@ import {
 } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { cn } from "@stackframe/stack-ui";
+import {
+  type ColumnDef,
+  type ColumnOrderState,
+  type ColumnPinningState,
+  type ColumnSizingState,
+  type RowSelectionState,
+  type SortingState,
+  type VisibilityState,
+  type Header,
+  type Updater,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import React, {
+  type CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 
 import { DesignSkeleton } from "../skeleton";
-import {
-  applyDraggedColumnWidth,
-  clampColumnWidth,
-  createGridSizingStyle,
-  getColumnSizingStyle,
-} from "./data-grid-sizing";
+import { DEFAULT_COL_WIDTH, clampColumnWidth, getEffectiveMaxWidth, getEffectiveMinWidth } from "./data-grid-sizing";
 import { DataGridToolbar } from "./data-grid-toolbar";
-import {
-  clearSelection,
-  exportToCsv,
-  formatGridDate,
-  getSortDirection,
-  getSortIndex,
-  isColumnVisible,
-  resolveColumnValue,
-  resolveColumnWidth,
-  selectAll,
-  toggleRowSelection,
-  toggleSort,
-} from "./state";
+import { exportToCsv, formatGridDate, resolveColumnValue } from "./state";
 import { resolveDataGridStrings } from "./strings";
 import type {
   DataGridCellContext,
@@ -50,123 +48,26 @@ import type {
   DataGridHeaderContext,
   DataGridPaginationMode,
   DataGridProps,
+  DataGridSelectionModel,
+  DataGridSortItem,
+  DataGridSortModel,
   DataGridState,
   DataGridStrings,
   DataGridToolbarContext,
-  RowId
+  RowId,
 } from "./types";
-// ─── Resize handle ───────────────────────────────────────────────────
 
-function ResizeHandle({
-  onResize,
-  onResizeEnd,
-}: {
-  onResize: (delta: number) => void;
-  onResizeEnd: () => void;
-}) {
-  const startXRef = useRef(0);
-  const rafRef = useRef(0);
-  const latestDeltaRef = useRef(0);
-  const callbacksRef = useRef({ onResize, onResizeEnd });
-
-  callbacksRef.current = { onResize, onResizeEnd };
-
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      startXRef.current = e.clientX;
-      latestDeltaRef.current = 0;
-      const el = e.currentTarget as HTMLElement;
-      el.setPointerCapture(e.pointerId);
-      let finished = false;
-
-      const onMove = (ev: PointerEvent) => {
-        latestDeltaRef.current = ev.clientX - startXRef.current;
-        if (rafRef.current !== 0) {
-          return;
-        }
-
-        rafRef.current = requestAnimationFrame(() => {
-          rafRef.current = 0;
-          callbacksRef.current.onResize(latestDeltaRef.current);
-        });
-      };
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        if (rafRef.current !== 0) {
-          cancelAnimationFrame(rafRef.current);
-          rafRef.current = 0;
-          callbacksRef.current.onResize(latestDeltaRef.current);
-        }
-        el.removeEventListener("pointermove", onMove);
-        el.removeEventListener("pointerup", finish);
-        el.removeEventListener("pointercancel", finish);
-        el.removeEventListener("lostpointercapture", finish);
-        if (el.hasPointerCapture(e.pointerId)) {
-          el.releasePointerCapture(e.pointerId);
-        }
-        callbacksRef.current.onResizeEnd();
-      };
-
-      el.addEventListener("pointermove", onMove);
-      el.addEventListener("pointerup", finish);
-      el.addEventListener("pointercancel", finish);
-      el.addEventListener("lostpointercapture", finish);
-    },
-    [],
-  );
-
-  return (
-    <div
-      className={cn(
-        "absolute right-0 top-0 bottom-0 z-10 w-[5px] cursor-col-resize touch-none",
-        "group-hover/header:bg-foreground/[0.06] hover:!bg-blue-500/30",
-        "transition-colors duration-100",
-      )}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onPointerDown={onPointerDown}
-    />
-  );
-}
-
-function getNearestVerticalScrollElement(element: HTMLElement | null): HTMLElement | Window {
-  let current = element?.parentElement ?? null;
-
-  while (current) {
-    const style = window.getComputedStyle(current);
-    const overflowY = style.overflowY === "visible" ? style.overflow : style.overflowY;
-    const canScrollVertically =
-      (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
-      current.scrollHeight > current.clientHeight + 1;
-
-    if (canScrollVertically) {
-      return current;
-    }
-
-    current = current.parentElement;
-  }
-
-  return window;
-}
+// ─── Row click target ────────────────────────────────────────────────
 
 function getEventTargetElement(target: EventTarget | null): Element | null {
-  if (target instanceof Element) {
-    return target;
-  }
-  if (target instanceof Node) {
-    return target.parentElement;
-  }
+  if (target instanceof Element) return target;
+  if (target instanceof Node) return target.parentElement;
   return null;
 }
 
 export function isDataGridInteractiveRowClickTarget(target: EventTarget | null): boolean {
-  const targetElement = getEventTargetElement(target);
-  return targetElement?.closest([
+  const el = getEventTargetElement(target);
+  return el?.closest([
     "a",
     "button",
     "input",
@@ -183,35 +84,128 @@ function shouldIgnoreRowClick(event: React.MouseEvent): boolean {
   return event.defaultPrevented || isDataGridInteractiveRowClickTarget(event.target);
 }
 
+// ─── State translators (DataGridState ⇄ TanStack) ────────────────────
+
+function toTanstackSorting(sorting: DataGridSortModel): SortingState {
+  return sorting.map((s) => ({ id: s.columnId, desc: s.direction === "desc" }));
+}
+
+function fromTanstackSorting(sorting: SortingState): DataGridSortModel {
+  return sorting.map((s) => ({ columnId: s.id, direction: s.desc ? "desc" : "asc" }));
+}
+
+function toTanstackRowSelection(ids: ReadonlySet<RowId>): RowSelectionState {
+  const out: RowSelectionState = {};
+  for (const id of ids) out[id] = true;
+  return out;
+}
+
+function resolveUpdater<T>(updater: Updater<T>, current: T): T {
+  return typeof updater === "function" ? (updater as (old: T) => T)(current) : updater;
+}
+
+// ─── Flex column width distribution ──────────────────────────────────
+
+function distributeFlexWidths<TRow>(
+  sizes: Record<string, number>,
+  visibleColumns: readonly DataGridColumnDef<TRow>[],
+  available: number,
+): void {
+  const flexCols = visibleColumns.filter((c) => c.flex != null && c.flex > 0);
+  if (flexCols.length === 0 || available <= 0) return;
+  const totalFlex = flexCols.reduce((acc, c) => acc + (c.flex ?? 0), 0);
+  let remaining = available;
+  flexCols.forEach((col, i) => {
+    const isLast = i === flexCols.length - 1;
+    const share = isLast
+      ? remaining
+      : Math.floor(available * ((col.flex ?? 0) / totalFlex));
+    const max = col.maxWidth ?? Infinity;
+    const add = Math.max(0, Math.min(share, max - sizes[col.id]));
+    sizes[col.id] += add;
+    remaining -= add;
+  });
+}
+
+// ─── Selection logic (with shift-range anchor) ───────────────────────
+
+type SelectionInput = {
+  current: DataGridSelectionModel;
+  rowId: RowId;
+  mode: "single" | "multiple";
+  modifiers: { shift: boolean; ctrl: boolean };
+  allRowIds: readonly RowId[];
+};
+
+function selectSingle(current: DataGridSelectionModel, rowId: RowId): DataGridSelectionModel {
+  const isSelected = current.selectedIds.has(rowId);
+  return {
+    selectedIds: isSelected ? new Set() : new Set([rowId]),
+    anchorId: isSelected ? null : rowId,
+  };
+}
+
+function selectRange(
+  current: DataGridSelectionModel,
+  rowId: RowId,
+  allRowIds: readonly RowId[],
+  additive: boolean,
+): DataGridSelectionModel | null {
+  if (current.anchorId == null) return null;
+  const anchorIdx = allRowIds.indexOf(current.anchorId);
+  const currentIdx = allRowIds.indexOf(rowId);
+  if (anchorIdx < 0 || currentIdx < 0) return null;
+  const start = Math.min(anchorIdx, currentIdx);
+  const end = Math.max(anchorIdx, currentIdx);
+  const next = additive ? new Set(current.selectedIds) : new Set<RowId>();
+  for (let i = start; i <= end; i++) next.add(allRowIds[i]!);
+  return { selectedIds: next, anchorId: current.anchorId };
+}
+
+function selectToggle(current: DataGridSelectionModel, rowId: RowId): DataGridSelectionModel {
+  const next = new Set(current.selectedIds);
+  if (next.has(rowId)) next.delete(rowId);
+  else next.add(rowId);
+  return { selectedIds: next, anchorId: rowId };
+}
+
+function nextSelection(input: SelectionInput): DataGridSelectionModel {
+  const { current, rowId, mode, modifiers, allRowIds } = input;
+  if (mode === "single") return selectSingle(current, rowId);
+  if (modifiers.shift) {
+    const range = selectRange(current, rowId, allRowIds, modifiers.ctrl);
+    if (range != null) return range;
+  }
+  if (modifiers.ctrl) return selectToggle(current, rowId);
+  return { selectedIds: new Set([rowId]), anchorId: rowId };
+}
+
 // ─── Header cell ─────────────────────────────────────────────────────
 
 function HeaderCell<TRow>({
+  header,
   col,
-  isSorted,
-  sortIndex,
   resizable,
-  onSort,
-  onResize,
-  onResizeEnd,
 }: {
+  header: Header<TRow, unknown>;
   col: DataGridColumnDef<TRow>;
-  isSorted: false | "asc" | "desc";
-  sortIndex: number | null;
   resizable: boolean;
-  onSort: (columnId: string, multi: boolean) => void;
-  onResize: (columnId: string, delta: number) => void;
-  onResizeEnd: () => void;
 }) {
+  const sorted = header.column.getIsSorted(); // false | "asc" | "desc"
+  const sortIndex = header.column.getSortIndex();
+  const totalSorts = header.column.getCanMultiSort()
+    ? header.getContext().table.getState().sorting.length
+    : 0;
   const ctx: DataGridHeaderContext<TRow> = {
     columnId: col.id,
     columnDef: col,
-    isSorted,
-    sortIndex,
+    isSorted: sorted === false ? false : sorted,
+    sortIndex: totalSorts > 1 && sortIndex >= 0 ? sortIndex + 1 : null,
   };
-  const label =
-    typeof col.header === "function" ? col.header(ctx) : col.header;
-
-  const sortable = col.sortable !== false;
+  const label = typeof col.header === "function" ? col.header(ctx) : col.header;
+  const sortable = header.column.getCanSort();
+  const canResize = resizable && header.column.getCanResize();
+  const isResizing = header.column.getIsResizing();
 
   return (
     <div
@@ -220,11 +214,11 @@ function HeaderCell<TRow>({
         "border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0",
         sortable && "cursor-pointer",
       )}
-      style={getColumnSizingStyle(col)}
+      style={{ width: `calc(var(--col-${col.id}-size) * 1px)` }}
       data-col-id={col.id}
-      onClick={(e) => sortable && onSort(col.id, e.metaKey || e.ctrlKey)}
+      onClick={sortable ? header.column.getToggleSortingHandler() : undefined}
       role="columnheader"
-      aria-sort={isSorted === "asc" ? "ascending" : isSorted === "desc" ? "descending" : "none"}
+      aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"}
     >
       <span
         className={cn(
@@ -236,33 +230,38 @@ function HeaderCell<TRow>({
         {label}
       </span>
 
-      {/* Sort indicator */}
-      {isSorted && (
+      {sorted && (
         <span className="flex items-center gap-0.5 text-foreground/60">
-          {isSorted === "asc" ? (
-            <ArrowUp className="h-3 w-3" weight="bold" />
-          ) : (
-            <ArrowDown className="h-3 w-3" weight="bold" />
-          )}
-          {sortIndex != null && (
-            <span className="text-[10px] font-medium tabular-nums">{sortIndex}</span>
+          {sorted === "asc"
+            ? <ArrowUp className="h-3 w-3" weight="bold" />
+            : <ArrowDown className="h-3 w-3" weight="bold" />}
+          {ctx.sortIndex != null && (
+            <span className="text-[10px] font-medium tabular-nums">{ctx.sortIndex}</span>
           )}
         </span>
       )}
 
-      {/* Unsorted hint on hover */}
-      {!isSorted && sortable && (
+      {!sorted && sortable && (
         <span className="hidden group-hover/header:flex items-center text-foreground/20">
           <CaretUp className="h-2.5 w-2.5 -mb-[1px]" weight="bold" />
           <CaretDown className="h-2.5 w-2.5 -mt-[1px]" weight="bold" />
         </span>
       )}
 
-      {/* Resize handle */}
-      {resizable && col.resizable !== false && (
-        <ResizeHandle
-          onResize={(delta) => onResize(col.id, delta)}
-          onResizeEnd={onResizeEnd}
+      {canResize && (
+        <div
+          onMouseDown={header.getResizeHandler()}
+          onTouchStart={header.getResizeHandler()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          className={cn(
+            "absolute right-0 top-0 bottom-0 z-10 w-[5px] cursor-col-resize touch-none",
+            "group-hover/header:bg-foreground/[0.06] hover:!bg-blue-500/30",
+            "transition-colors duration-100",
+            isResizing && "bg-blue-500/40",
+          )}
         />
       )}
     </div>
@@ -287,27 +286,15 @@ function DataCell<TRow>({
   dateDisplay: DataGridDateDisplay;
 }) {
   const value = resolveColumnValue(col, row);
-  const ctx: DataGridCellContext<TRow> = {
-    row,
-    rowId,
-    rowIndex,
-    value,
-    columnId: col.id,
-    isSelected,
-    dateDisplay,
-  };
+  const ctx: DataGridCellContext<TRow> = { row, rowId, rowIndex, value, columnId: col.id, isSelected, dateDisplay };
 
   const isDateCol = col.type === "date" || col.type === "dateTime";
   let content: React.ReactNode;
-  if (col.renderCell) {
-    content = col.renderCell(ctx);
-  } else if (isDateCol) {
-    content = renderDateCell(value, dateDisplay, col);
-  } else {
-    content = formatCellValue(value);
-  }
-  const hasCellClick = col.onCellClick || col.onCellDoubleClick;
+  if (col.renderCell) content = col.renderCell(ctx);
+  else if (isDateCol) content = renderDateCell(value, dateDisplay, col);
+  else content = formatCellValue(value);
 
+  const hasCellClick = col.onCellClick || col.onCellDoubleClick;
   const isWrap = col.cellOverflow === "wrap";
 
   return (
@@ -321,7 +308,7 @@ function DataCell<TRow>({
         col.align === "right" && "justify-end",
         hasCellClick && "cursor-pointer",
       )}
-      style={getColumnSizingStyle(col)}
+      style={{ width: `calc(var(--col-${col.id}-size) * 1px)` }}
       data-col-id={col.id}
       role="gridcell"
       onClick={col.onCellClick ? (e) => {
@@ -333,9 +320,7 @@ function DataCell<TRow>({
         col.onCellDoubleClick!(ctx, e);
       } : undefined}
     >
-      <div className={cn("min-w-0", isWrap ? "flex-1" : "truncate")}>
-        {content}
-      </div>
+      <div className={cn("min-w-0", isWrap ? "flex-1" : "truncate")}>{content}</div>
     </div>
   );
 }
@@ -344,32 +329,22 @@ function formatCellValue(value: unknown): React.ReactNode {
   if (value == null) return <span className="text-muted-foreground/40">-</span>;
   if (typeof value === "boolean") {
     return (
-      <span
-        className={cn(
-          "inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium",
-          value
-            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-            : "bg-foreground/[0.04] text-muted-foreground",
-        )}
-      >
+      <span className={cn(
+        "inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium",
+        value
+          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          : "bg-foreground/[0.04] text-muted-foreground",
+      )}>
         {value ? "Yes" : "No"}
       </span>
     );
   }
   if (value instanceof Date) {
-    return (
-      <span className="tabular-nums text-muted-foreground">
-        {value.toLocaleDateString()}
-      </span>
-    );
+    return <span className="tabular-nums text-muted-foreground">{value.toLocaleDateString()}</span>;
   }
   return <span className="truncate">{String(value)}</span>;
 }
 
-/** Built-in date cell — mirrors what `formatGridDate` returns but wraps
- * the display in a `<span>` with a `title` tooltip showing the absolute
- * datetime. Only used when the column has `type: "date" | "dateTime"`
- * and no custom `renderCell`. */
 function renderDateCell<TRow>(
   value: unknown,
   dateDisplay: DataGridDateDisplay,
@@ -381,10 +356,7 @@ function renderDateCell<TRow>(
   });
   if (display == null) return <span className="text-muted-foreground/40">-</span>;
   return (
-    <span
-      className="tabular-nums text-muted-foreground truncate cursor-help"
-      title={tooltip ?? undefined}
-    >
+    <span className="tabular-nums text-muted-foreground truncate cursor-help" title={tooltip ?? undefined}>
       {display}
     </span>
   );
@@ -394,9 +366,7 @@ function renderDateCell<TRow>(
 
 function hashStringToInt(value: string): number {
   let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
   return Math.abs(hash);
 }
 
@@ -412,10 +382,7 @@ function SkeletonRow({
   return (
     <div className="flex" style={{ height }} role="row">
       {showCheckbox && (
-        <div
-          className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
-          style={{ width: 44 }}
-        >
+        <div className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]" style={{ width: 44 }}>
           <DesignSkeleton className="h-4 w-4 rounded" />
         </div>
       )}
@@ -423,30 +390,29 @@ function SkeletonRow({
         <div
           key={col.id}
           className="flex items-center px-3 border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0"
-          style={getColumnSizingStyle(col)}
+          style={{ width: `calc(var(--col-${col.id}-size) * 1px)` }}
         >
-          <DesignSkeleton
-            className="h-3.5 rounded-md"
-            style={{ width: `${40 + (hashStringToInt(col.id) % 40)}%` }}
-          />
+          <DesignSkeleton className="h-3.5 rounded-md" style={{ width: `${40 + (hashStringToInt(col.id) % 40)}%` }} />
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Checkbox cell ───────────────────────────────────────────────────
+// ─── Selection checkbox ──────────────────────────────────────────────
 
 function SelectionCheckbox({
   checked,
   indeterminate,
   onChange,
   ariaLabel,
+  title,
 }: {
   checked: boolean;
   indeterminate?: boolean;
   onChange: (event: React.MouseEvent<HTMLButtonElement>) => void;
   ariaLabel: string;
+  title?: string;
 }) {
   const Icon = indeterminate ? MinusSquare : checked ? CheckSquare : Square;
   return (
@@ -463,6 +429,7 @@ function SelectionCheckbox({
         onChange(e);
       }}
       aria-label={ariaLabel}
+      title={title ?? ariaLabel}
       role="checkbox"
       aria-checked={indeterminate ? "mixed" : checked}
     >
@@ -473,9 +440,6 @@ function SelectionCheckbox({
 
 // ─── Infinite scroll sentinel ────────────────────────────────────────
 
-// Stable module-level no-op so passing `onLoadMore ?? NOOP` to
-// InfiniteScrollSentinel doesn't allocate a fresh function every render
-// (which would re-trigger the sentinel's IntersectionObserver effect).
 const NOOP = () => {};
 
 function InfiniteScrollSentinel({
@@ -490,26 +454,16 @@ function InfiniteScrollSentinel({
   strings: DataGridStrings;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-
     const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          onIntersect();
-        }
-      },
-      {
-        root: rootRef?.current ?? null,
-        rootMargin: "200px",
-      },
+      (entries) => { if (entries[0]?.isIntersecting) onIntersect(); },
+      { root: rootRef?.current ?? null, rootMargin: "200px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, [onIntersect, rootRef]);
-
   return (
     <div ref={ref} className="flex items-center justify-center py-4">
       {isLoading && (
@@ -539,35 +493,21 @@ function DefaultFooter<TRow>({
     : undefined;
 
   const setPage = (pageIndex: number) =>
-    onChange((s) => ({
-      ...s,
-      pagination: { ...s.pagination, pageIndex },
-    }));
-
+    onChange((s) => ({ ...s, pagination: { ...s.pagination, pageIndex } }));
   const setPageSize = (pageSize: number) =>
-    onChange((s) => ({
-      ...s,
-      pagination: { ...s.pagination, pageSize, pageIndex: 0 },
-    }));
+    onChange((s) => ({ ...s, pagination: { ...s.pagination, pageSize, pageIndex: 0 } }));
 
   return (
     <div className="flex items-center justify-between px-4 py-2.5 border-t border-foreground/[0.06] text-xs text-muted-foreground">
       <div className="flex items-center gap-3">
         {selectedRowCount > 0 && (
-          <span className="font-medium text-foreground">
-            {strings.rowsSelected(selectedRowCount)}
-          </span>
+          <span className="font-medium text-foreground">{strings.rowsSelected(selectedRowCount)}</span>
         )}
-        {totalRowCount != null && (
-          <span>
-            {visibleRowCount} of {totalRowCount} rows
-          </span>
-        )}
+        {totalRowCount != null && <span>{visibleRowCount} of {totalRowCount} rows</span>}
       </div>
 
       {pagination !== "infinite" && totalPages != null && (
         <div className="flex items-center gap-3">
-          {/* Page size selector */}
           <div className="flex items-center gap-1.5">
             <span>{strings.rowsPerPage}</span>
             <select
@@ -579,15 +519,9 @@ function DefaultFooter<TRow>({
               value={state.pagination.pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
             >
-              {[10, 25, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
+              {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
             </select>
           </div>
-
-          {/* Page navigation */}
           <div className="flex items-center gap-1">
             <button
               className={cn(
@@ -626,262 +560,42 @@ function DefaultFooter<TRow>({
 // ─── Main DataGrid ───────────────────────────────────────────────────
 
 /**
- * Interactive table with sorting, quick search, pagination, selection,
- * and virtualization. Handles 10k+ rows smoothly. Pair with
- * `useDataSource` for client-side data; use an async `dataSource`
- * generator for server or infinite-scroll modes.
+ * Interactive table built on TanStack Table v8. Sorting, column sizing,
+ * visibility, ordering, and pinning are owned by the table instance; we
+ * layer virtualization, sticky toolbar/header/footer, infinite scroll,
+ * quick search, CSV export, and date-format toggling on top.
  *
- * ## Mental model (read this first — everything else depends on it)
- *
- * DataGrid is a **display** component. It does NOT sort, search, or
- * paginate your data directly — you own that, but `useDataSource` does
- * it for you. The `rows` prop is always the already-processed slice to
- * show. The grid tracks user intent in `state` (sort model, quick
- * search text, page index). You feed that state into `useDataSource`,
- * and its output goes back in as `rows`.
- *
- * `useDataSource` IS the processor. Given your full dataset and the
- * grid's state, it returns the searched + sorted + paginated rows
- * ready to pass to DataGrid. This is the ONLY correct pattern for
- * client-side data — do NOT pass a raw array to `rows`.
- *
- * ## Search (client vs async)
- *
- * - **Client mode** (`useDataSource` with `data`): a case-insensitive
- *   substring match across every column is applied automatically.
- *   Override the matcher with `matchRow` for fuzzy / weighted search,
- *   or disable by passing `matchRow: () => true`.
- * - **Async mode** (`useDataSource` with `dataSource`): `state.quickSearch`
- *   is forwarded to the generator as `params.quickSearch`. Same
- *   mechanism as `params.sorting` — a change triggers a refetch, and
- *   the generator is the "matching logic" (typically a WHERE / ILIKE
- *   clause in the backend query). The grid does NO client-side
- *   filtering in async mode.
- *
- * ## The canonical pattern
+ * The grid is display-only — it does not fetch or page data itself. Pair
+ * with `useDataSource` for client- or server-side data and pass the
+ * already-processed slice through `rows`.
  *
  * ```tsx
- * // 1. Columns — define OUTSIDE the component or inside a useMemo. Must be stable.
- * const columns = React.useMemo(() => [
- *   { id: "name", header: "Name", accessor: "name", width: 180, type: "string" },
- *   { id: "email", header: "Email", accessor: "email", width: 240, type: "string" },
- *   { id: "role", header: "Role", accessor: "role", width: 120, type: "singleSelect",
- *     valueOptions: [{ value: "admin", label: "Admin" }, { value: "member", label: "Member" }] },
- *   { id: "signUps", header: "Sign-ups", accessor: "signUps", width: 120, type: "number", align: "right",
- *     renderCell: ({ value }) => <span className="tabular-nums">{Number(value).toLocaleString()}</span> },
- * ], []);
- *
- * // 2. Grid state — one hook, initialized from the columns. NEVER build the state object by hand.
- * const [gridState, setGridState] = React.useState(() => createDefaultDataGridState(columns));
- *
- * // 3. Data source — wires your raw array through the grid state. ALWAYS call this
- * //    hook unconditionally at the top level (no if/return before it).
+ * const columns = useMemo(() => [...], []);
+ * const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
  * const gridData = useDataSource({
- *   data: users,                   // your raw array (can be [] while loading)
- *   columns,
- *   getRowId: (row) => row.id,
+ *   data: users, columns, getRowId: (r) => r.id,
  *   sorting: gridState.sorting,
  *   quickSearch: gridState.quickSearch,
  *   pagination: gridState.pagination,
- *   paginationMode: "client",       // "client" | "server" | "infinite"
+ *   paginationMode: "client",
  * });
  *
- * // 4. Render — `rows` comes from gridData.rows, NOT from your raw array.
  * <DataGrid
  *   columns={columns}
  *   rows={gridData.rows}
- *   getRowId={(row) => row.id}
+ *   getRowId={(r) => r.id}
  *   totalRowCount={gridData.totalRowCount}
  *   isLoading={gridData.isLoading}
  *   state={gridState}
  *   onChange={setGridState}
- *   selectionMode="none"            // "none" | "single" | "multiple"
- *   maxHeight={480}
  * />
  * ```
  *
- * ## Iron rules (violating any of these breaks the grid)
- *
- * 1. The prop is `rows`, NOT `data`. There is no `data` prop on DataGrid.
- *    `data` belongs on `useDataSource`.
- * 2. `rows` is ALWAYS `gridData.rows`. Never pass your raw array to
- *    `rows` — the grid won't search, sort, or paginate it.
- * 3. Columns must be stable across renders. Define them outside the
- *    component or wrap in `React.useMemo`. A fresh columns array every
- *    render will reset sorting state.
- * 4. Initialize grid state with `createDefaultDataGridState(columns)`.
- *    Do NOT spell out the state object manually — you will miss fields
- *    and crash.
- * 5. `onChange` takes a `SetStateAction` (the setter you got from
- *    `useState`). Pass `setGridState` directly. Do NOT wrap it unless
- *    you know exactly what you're doing.
- * 6. Call `useDataSource` ONCE per grid, at the top level, before any
- *    early return. It contains hooks.
- * 7. `renderCell` is a PURE function of its context. NEVER call React
- *    hooks inside it (no `useState`, `useMemo`, `useEffect`, nothing).
- *    If you need derived data per row, compute it BEFORE the render —
- *    e.g. build a `Map<rowId, sparklineData>` in a `useMemo` and look
- *    it up in `renderCell`.
- * 8. `toolbar` accepts `false` (hide it) or a render function
- *    `(ctx) => ReactNode`. Anything else — `true`, `undefined`, a state
- *    variable — will either show the default toolbar or crash. If you
- *    just want the default toolbar, omit the prop entirely.
- * 9. The toolbar's search input writes to `state.quickSearch`. That
- *    value is consumed by `useDataSource` — client mode filters
- *    client-side, async mode forwards to the generator. Do NOT wire
- *    a separate "controlled" search prop, everything flows through
- *    grid state.
- *
- * ## renderCell — what you can and cannot do inside it
- *
- * ```tsx
- * // OK — pure rendering from ctx:
- * renderCell: ({ value }) => <span className="tabular-nums">{Number(value).toLocaleString()}</span>
- * renderCell: ({ row }) => <Badge variant={row.active ? "default" : "outline"}>{row.status}</Badge>
- *
- * // OK — looking up pre-computed data by row id:
- * // BEFORE the return, in the component body:
- * const sparklinesById = React.useMemo(() => {
- *   const m = new Map();
- *   for (const u of users) {
- *     m.set(u.id, u.recentActivity.map((n, i) => ({ ts: i, values: { primary: n } })));
- *   }
- *   return m;
- * }, [users]);
- * // Then inside the column def:
- * renderCell: ({ rowId }) => <MiniSparkline data={sparklinesById.get(rowId) ?? []} />
- *
- * // NOT OK — hooks inside renderCell:
- * renderCell: ({ row }) => {
- *   const [hovered, setHovered] = React.useState(false);  // ← crashes the grid
- *   const data = React.useMemo(() => ..., []);             // ← crashes the grid
- *   return ...;
- * }
- *
- * // NOT OK — embedding AnalyticsChart (or any other controlled, stateful chart) per row:
- * // AnalyticsChart owns its own state, tooltips, zoom, and virtualized data
- * // pipeline. Instantiating one per row is expensive and fights the grid's
- * // virtualizer. Don't do it.
- * ```
- *
- * ## Sparklines and mini-charts in cells — use raw Recharts
- *
- * If you want a tiny chart (sparkline, micro bar chart, trend line) inside
- * a cell, drop down to raw `Recharts.*` components — they are lightweight
- * and stateless, so they render cleanly per row without owning any state.
- * Read pre-computed points off the row (or off a `Map<rowId, points>` you
- * built in a `useMemo` above) and pass them directly to the Recharts
- * primitive. Do NOT wrap them in `DesignChartContainer` or
- * `DesignChartCard` inside a cell — those add chrome meant for full-size
- * charts.
- *
- * ```tsx
- * // OK — raw Recharts sparkline per row:
- * renderCell: ({ rowId }) => {
- *   const points = sparklinesById.get(rowId) ?? [];
- *   return (
- *     <Recharts.ResponsiveContainer width="100%" height={28}>
- *       <Recharts.LineChart data={points} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
- *         <Recharts.Line type="monotone" dataKey="v" stroke="currentColor" strokeWidth={1.5} dot={false} isAnimationActive={false} />
- *       </Recharts.LineChart>
- *     </Recharts.ResponsiveContainer>
- *   );
- * }
- * ```
- *
- * Keep in-cell Recharts configs minimal: no axes, no tooltips, no animation
- * (`isAnimationActive={false}`), tight margins, fixed height. The goal is a
- * visual summary, not an interactive chart.
- *
- * ## State shape (from `createDefaultDataGridState`)
- *
- * ```ts
- * {
- *   sorting: [],                                        // { columnId, direction: "asc" | "desc" }[]
- *   quickSearch: "",                                    // search input text
- *   dateDisplay: "relative",                            // "relative" | "absolute"
- *   columnVisibility: {}, columnWidths: {...},
- *   columnPinning: { left: [], right: [] }, columnOrder: [...],
- *   pagination: { pageIndex: 0, pageSize: 50 },
- *   selection: { selectedIds: new Set(), anchorId: null },
- * }
- * ```
- *
- * Everything is updated through `setGridState` — the toolbar, header,
- * and footer all call it for you. You do not need to wire any of this
- * manually.
- *
- * ## Cell overflow and dynamic row heights
- *
- * By default every cell truncates its content with an ellipsis
- * (`cellOverflow: "truncate"`). For columns whose content should wrap
- * — badge lists, multi-line text, permission chips — set
- * `cellOverflow: "wrap"` on the column definition.
- *
- * To let rows grow to fit their tallest cell, set `rowHeight="auto"`
- * on the grid. The virtualizer will measure each row after render and
- * adjust scroll positions accordingly. Pair with `estimatedRowHeight`
- * (default 44) for better scroll-position estimates before measurement.
- *
- * ```tsx
- * // Columns: UUIDs truncate, auth-method badges wrap
- * const columns = [
- *   { id: "userId", header: "User ID", width: 130 },                      // default truncate
- *   { id: "auth", header: "Auth methods", width: 150, cellOverflow: "wrap",
- *     renderCell: ({ row }) => (
- *       <div className="flex flex-wrap gap-1">
- *         {row.authTypes.map((t) => <Badge key={t}>{t}</Badge>)}
- *       </div>
- *     ),
- *   },
- * ];
- *
- * <DataGrid columns={columns} rowHeight="auto" estimatedRowHeight={48} ... />
- * ```
- *
- * With a fixed numeric `rowHeight` (the default), `cellOverflow: "wrap"`
- * still lets content wrap within the row, but anything exceeding the
- * fixed height is clipped. This is useful when you want controlled
- * wrapping without variable row heights.
- *
- * ## Height and scrolling
- *
- * DataGrid is NOT a card. It has no border, rounded corners, or shadow of
- * its own. Wrap it in whatever chrome you want — a `DesignCard`, a section,
- * or just raw layout. The grid itself fills its parent's height via
- * `h-full`.
- *
- * How the grid gets its height (pick ONE):
- * 1. Bounded parent — put the grid inside a flex/grid container with a
- *    definite height (e.g. `flex-1 min-h-0` inside a page-filling flex
- *    column). The grid stretches to that height and scrolls its body.
- * 2. `maxHeight` prop — pass a number (pixels) or CSS string
- *    (`"480px"`, `"60vh"`, `"100%"`). The grid caps at that size and
- *    scrolls its body.
- * 3. Unbounded — omit `maxHeight` and let the parent grow freely. The
- *    grid renders at its full content height and the page scrolls. Fine
- *    for small lists; bad UX for thousands of rows.
- *
- * The toolbar, header, and footer are always `shrink-0`; only the body
- * scrolls. You do NOT need to subtract toolbar/footer heights from
- * `maxHeight` — the grid's internal flex layout handles that.
- *
- * ## When to use what
- *
- * - Simple static list, < 20 rows, no interaction → use a plain table component instead.
- * - Interactive table, sortable + searchable, any size → `DataGrid` +
- *   `useDataSource` with `paginationMode: "client"`.
- * - Infinite scroll over a huge dataset you fetch in pages → `dataSource` async
- *   generator + `paginationMode: "infinite"`. Only reach for this if you actually
- *   need pagination over a remote source. For anything that fits in memory,
- *   `"client"` is simpler and faster.
- *
- * ## Features you get for free
- *
- * Quick search, sortable columns (shift-click for multi-sort), column
- * visibility toggle, column resize, CSV export, virtualized rendering
- * for 10k+ rows, keyboard navigation, and a relative/absolute date
- * toggle for `date` / `dateTime` columns.
+ * Iron rules:
+ * - `rows` is always `gridData.rows`, never your raw array.
+ * - Columns must be stable (define outside the component or wrap in `useMemo`).
+ * - Initialize state with `createDefaultDataGridState(columns)`.
+ * - `renderCell` must be a pure function — no React hooks inside.
  */
 export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const {
@@ -915,169 +629,287 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     exportFilename = "export",
     strings: stringsOverride,
     className,
-    // Callbacks
     onRowClick,
     onRowDoubleClick,
     onSelectionChange,
     onSortChange,
+    onColumnResize,
+    onColumnVisibilityChange,
   } = props;
 
   const isDynamicRowHeight = rowHeightProp === "auto";
   const fixedRowHeight = isDynamicRowHeight ? undefined : rowHeightProp;
   const estimatedRowHeight = estimatedRowHeightProp ?? (fixedRowHeight ?? 44);
 
-  const strings = useMemo(
-    () => resolveDataGridStrings(stringsOverride),
-    [stringsOverride],
-  );
+  const strings = useMemo(() => resolveDataGridStrings(stringsOverride), [stringsOverride]);
 
-  // ── Visible columns ──────────────────────────────────────────
-  const visibleColumns = useMemo(
+  // ── Build TanStack column defs from our column defs ──────────
+  const tableColumns = useMemo<ColumnDef<TRow>[]>(
     () =>
-      (state.columnOrder.length > 0
-        ? state.columnOrder
-          .map((id) => allColumns.find((c) => c.id === id))
-          .filter(Boolean) as DataGridColumnDef<TRow>[]
-        : allColumns
-      ).filter((col) => isColumnVisible(col.id, state.columnVisibility)),
-    [allColumns, state.columnOrder, state.columnVisibility],
+      allColumns.map((col) => ({
+        id: col.id,
+        accessorFn: (row) => resolveColumnValue(col, row),
+        header: typeof col.header === "string" ? col.header : col.id,
+        size: col.width ?? DEFAULT_COL_WIDTH,
+        minSize: getEffectiveMinWidth(col),
+        maxSize: getEffectiveMaxWidth(col),
+        enableSorting: col.sortable !== false,
+        enableHiding: col.hideable !== false,
+        enableResizing: col.resizable !== false,
+        enableMultiSort: true,
+      })),
+    [allColumns],
   );
 
-  // ── Row IDs (stable) ─────────────────────────────────────────
-  const rowIds = useMemo(() => rows.map(getRowId), [rows, getRowId]);
-
-  // ── Column widths ────────────────────────────────────────────
-  const visibleColumnMetrics = useMemo(() => {
-    const widths = new Map<string, number>();
-    let totalWidth = selectionMode !== "none" ? 44 : 0;
-
-    for (const col of visibleColumns) {
-      const width = resolveColumnWidth(col, state.columnWidths[col.id]);
-      widths.set(col.id, width);
-      totalWidth += width;
-    }
-
-    return { widths, totalWidth };
-  }, [selectionMode, state.columnWidths, visibleColumns]);
-
-  const gridSizingStyle = useMemo(
-    () => createGridSizingStyle(visibleColumnMetrics.widths, visibleColumnMetrics.totalWidth),
-    [visibleColumnMetrics],
+  // ── Translate our state ⇄ TanStack state via change handlers ───
+  const tanstackSorting = useMemo(() => toTanstackSorting(state.sorting), [state.sorting]);
+  const tanstackRowSelection = useMemo(
+    () => toTanstackRowSelection(state.selection.selectedIds),
+    [state.selection.selectedIds],
+  );
+  // ColumnSizing/Visibility/Order/Pinning share the same shape with TanStack.
+  const tanstackColumnPinning = useMemo<ColumnPinningState>(
+    () => ({ left: [...state.columnPinning.left], right: [...state.columnPinning.right] }),
+    [state.columnPinning],
+  );
+  const tanstackColumnOrder = useMemo<ColumnOrderState>(
+    () => [...state.columnOrder],
+    [state.columnOrder],
   );
 
-  // Resize drag tracked via ref — zero React re-renders during drag.
-  // CSS variables on gridRef are mutated directly; committed on pointer up.
-  const resizeRef = useRef<{ columnId: string; baseWidth: number; baseTotalWidth: number; latestWidth: number } | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
+  const allColumnsRef = useRef(allColumns);
+  allColumnsRef.current = allColumns;
 
-  // ── Handlers ─────────────────────────────────────────────────
-  const handleSort = useCallback(
-    (columnId: string, multi: boolean) => {
-      const next = toggleSort(state.sorting, columnId, multi);
-      onChange((s) => ({ ...s, sorting: next }));
-      onSortChange?.(next);
+  const handleSortingChange = useCallback(
+    (updater: Updater<SortingState>) => {
+      const next = resolveUpdater(updater, toTanstackSorting(state.sorting));
+      const ours: DataGridSortItem[] = fromTanstackSorting(next).map((s) => ({ ...s }));
+      // Reset to page 0 — page N of the new sort order is meaningless when
+      // the order itself changed, and would silently scroll past relevant
+      // rows.
+      onChange((s) => ({
+        ...s,
+        sorting: ours,
+        pagination: { ...s.pagination, pageIndex: 0 },
+      }));
+      onSortChange?.(ours);
     },
     [onChange, onSortChange, state.sorting],
   );
 
-  const handleResize = useCallback(
-    (columnId: string, delta: number) => {
-      const col = allColumns.find((c) => c.id === columnId);
-      if (!col) return;
-      if (!resizeRef.current || resizeRef.current.columnId !== columnId) {
-        const baseWidth = visibleColumnMetrics.widths.get(columnId) ?? resolveColumnWidth(col, state.columnWidths[columnId]);
-        resizeRef.current = { columnId, baseWidth, baseTotalWidth: visibleColumnMetrics.totalWidth, latestWidth: baseWidth };
+  const handleColumnSizingChange = useCallback(
+    (updater: Updater<ColumnSizingState>) => {
+      const next = resolveUpdater(updater, state.columnWidths);
+      // Clamp each new width to our canvas-measured min and explicit max.
+      const clamped: Record<string, number> = {};
+      for (const [id, w] of Object.entries(next)) {
+        const col = allColumnsRef.current.find((c) => c.id === id);
+        clamped[id] = col ? clampColumnWidth(col, w) : w;
       }
-      const newWidth = clampColumnWidth(col, resizeRef.current.baseWidth + delta);
-      resizeRef.current.latestWidth = newWidth;
-      if (gridRef.current) {
-        applyDraggedColumnWidth(gridRef.current, columnId, newWidth, resizeRef.current.baseTotalWidth + (newWidth - resizeRef.current.baseWidth));
+      onChange((s) => ({ ...s, columnWidths: clamped }));
+      // Fire onColumnResize for any column whose width changed.
+      if (onColumnResize) {
+        for (const [id, w] of Object.entries(clamped)) {
+          if (state.columnWidths[id] !== w) onColumnResize(id, w);
+        }
       }
     },
-    [allColumns, state.columnWidths, visibleColumnMetrics],
+    [onChange, onColumnResize, state.columnWidths],
   );
 
-  // Re-apply CSS vars after React re-renders (e.g. sort during drag)
-  useLayoutEffect(() => {
-    const r = resizeRef.current;
-    if (r && gridRef.current) {
-      applyDraggedColumnWidth(gridRef.current, r.columnId, r.latestWidth, r.baseTotalWidth + (r.latestWidth - r.baseWidth));
-    }
-  }, [gridSizingStyle]);
+  const handleVisibilityChange = useCallback(
+    (updater: Updater<VisibilityState>) => {
+      const next = resolveUpdater(updater, state.columnVisibility);
+      onChange((s) => ({ ...s, columnVisibility: next }));
+      onColumnVisibilityChange?.(next);
+    },
+    [onChange, onColumnVisibilityChange, state.columnVisibility],
+  );
 
-  const handleResizeEnd = useCallback(() => {
-    const r = resizeRef.current;
-    resizeRef.current = null;
-    if (!r || r.latestWidth === r.baseWidth) return;
-    onChange((s) => ({ ...s, columnWidths: { ...s.columnWidths, [r.columnId]: r.latestWidth } }));
-  }, [onChange]);
+  const handleColumnOrderChange = useCallback(
+    (updater: Updater<ColumnOrderState>) => {
+      const next = resolveUpdater(updater, [...state.columnOrder]);
+      onChange((s) => ({ ...s, columnOrder: next }));
+    },
+    [onChange, state.columnOrder],
+  );
+
+  const handleColumnPinningChange = useCallback(
+    (updater: Updater<ColumnPinningState>) => {
+      const current: ColumnPinningState = {
+        left: [...state.columnPinning.left],
+        right: [...state.columnPinning.right],
+      };
+      const next = resolveUpdater(updater, current);
+      onChange((s) => ({
+        ...s,
+        columnPinning: { left: next.left ?? [], right: next.right ?? [] },
+      }));
+    },
+    [onChange, state.columnPinning],
+  );
+
+  // ── TanStack Table instance ──────────────────────────────────
+  const table = useReactTable<TRow>({
+    data: rows as TRow[],
+    columns: tableColumns,
+    getRowId: (row) => getRowId(row),
+    getCoreRowModel: getCoreRowModel(),
+    state: {
+      sorting: tanstackSorting,
+      columnVisibility: state.columnVisibility,
+      columnSizing: state.columnWidths,
+      columnOrder: tanstackColumnOrder,
+      columnPinning: tanstackColumnPinning,
+      rowSelection: tanstackRowSelection,
+    },
+    onSortingChange: handleSortingChange,
+    onColumnSizingChange: handleColumnSizingChange,
+    onColumnVisibilityChange: handleVisibilityChange,
+    onColumnOrderChange: handleColumnOrderChange,
+    onColumnPinningChange: handleColumnPinningChange,
+    columnResizeMode: "onEnd",
+    enableRowSelection: selectionMode !== "none",
+    enableMultiRowSelection: selectionMode === "multiple",
+    enableColumnResizing: resizable,
+    manualSorting: true,
+    manualPagination: true,
+    manualFiltering: true,
+  });
+
+  // ── Visible columns (in TanStack-resolved order, after visibility) ──
+  const visibleColumns = useMemo(() => {
+    const colMap = new Map(allColumns.map((c) => [c.id, c]));
+    return table
+      .getVisibleLeafColumns()
+      .map((c) => colMap.get(c.id))
+      .filter(Boolean) as DataGridColumnDef<TRow>[];
+  }, [allColumns, table, state.columnOrder, state.columnVisibility]);
+
+  // ── Row IDs (stable across this render) ──────────────────────
+  const rowIds = useMemo(() => rows.map(getRowId), [rows, getRowId]);
+
+  // ── Container width tracking (for `flex` column distribution) ─
+  // Measure the scroll container's clientWidth, which excludes the vertical
+  // scrollbar — using the outer grid would leave a few pixels of phantom
+  // horizontal scroll when rows overflow.
+  const [containerWidth, setContainerWidth] = useState(0);
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    const scroller = scrollContainerRef.current;
+    if (!grid) return;
+    const update = () => {
+      const w = scroller?.clientWidth ?? grid.clientWidth;
+      if (w > 0) setContainerWidth(w);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(grid);
+    if (scroller) observer.observe(scroller);
+    return () => observer.disconnect();
+  }, []);
+
+  // ── Column width CSS variables (TanStack pattern) ────────────
+  // With `columnResizeMode: "onEnd"`, live drag width comes from deltaOffset; committed sizes update on pointer-up.
+  const columnSizingInfo = table.getState().columnSizingInfo;
+  const columnSizes = useMemo<Record<string, number>>(() => {
+    const sizes: Record<string, number> = {};
+    let baseTotal = selectionMode !== "none" ? 44 : 0;
+    const resizingId = columnSizingInfo.isResizingColumn || null;
+    const deltaOffset = columnSizingInfo.deltaOffset ?? 0;
+    for (const col of visibleColumns) {
+      const tsCol = table.getColumn(col.id);
+      const baseSize = tsCol?.getSize() ?? col.width ?? DEFAULT_COL_WIDTH;
+      const liveSize = resizingId === col.id
+        ? clampColumnWidth(col, baseSize + deltaOffset)
+        : baseSize;
+      sizes[col.id] = liveSize;
+      baseTotal += liveSize;
+    }
+    distributeFlexWidths(sizes, visibleColumns, containerWidth - baseTotal);
+    return sizes;
+  }, [visibleColumns, table, columnSizingInfo, state.columnWidths, containerWidth, selectionMode]);
+
+  const totalContentWidth = useMemo(() => {
+    let total = selectionMode !== "none" ? 44 : 0;
+    for (const col of visibleColumns) total += columnSizes[col.id] ?? 0;
+    return total;
+  }, [visibleColumns, columnSizes, selectionMode]);
+
+  const cssVars = useMemo<CSSProperties>(() => {
+    const vars: Record<string, string | number> = { "--grid-total-w": `${totalContentWidth}px` };
+    for (const col of visibleColumns) {
+      vars[`--col-${col.id}-size`] = columnSizes[col.id];
+    }
+    return vars as CSSProperties;
+  }, [visibleColumns, columnSizes, totalContentWidth]);
+
+  // ── Selection handlers ───────────────────────────────────────
+  const fireSelection = useCallback(
+    (next: DataGridSelectionModel) => {
+      onChange((s) => ({ ...s, selection: next }));
+      if (onSelectionChange) {
+        const idSet = next.selectedIds;
+        const selectedRows = rows.filter((r) => idSet.has(getRowId(r)));
+        onSelectionChange(idSet, selectedRows);
+      }
+    },
+    [onChange, onSelectionChange, rows, getRowId],
+  );
 
   const handleRowClick = useCallback(
     (row: TRow, rowId: RowId, event: React.MouseEvent) => {
-      // Selection callbacks fire outside the updater (fixes strict-mode
-      // double-invoke from the old `setTimeout` inside the reducer). Compute
-      // from the current controlled prop instead of from inside the updater,
-      // because React does not guarantee updater functions run synchronously.
       if (selectionMode !== "none") {
-        const next = toggleRowSelection(
-          state.selection,
+        const next = nextSelection({
+          current: state.selection,
           rowId,
-          selectionMode,
-          event.shiftKey,
-          event.metaKey || event.ctrlKey,
-          rowIds,
-        );
-        onChange((s) => ({ ...s, selection: next }));
-        if (onSelectionChange) {
-          const selectedRows = rows.filter((r) => next.selectedIds.has(getRowId(r)));
-          onSelectionChange(next.selectedIds, selectedRows);
-        }
+          mode: selectionMode,
+          modifiers: { shift: event.shiftKey, ctrl: event.metaKey || event.ctrlKey },
+          allRowIds: rowIds,
+        });
+        fireSelection(next);
       }
-
       onRowClick?.(row, rowId, event);
     },
-    [selectionMode, onChange, onRowClick, onSelectionChange, rowIds, rows, getRowId, state.selection],
-  );
-
-  const handleRowSelectionCheckboxClick = useCallback(
-    (
-      row: TRow,
-      rowId: RowId,
-      event: React.MouseEvent<HTMLButtonElement>,
-    ) => {
-      handleRowClick(row, rowId, event);
-    },
-    [handleRowClick],
+    [selectionMode, state.selection, rowIds, fireSelection, onRowClick],
   );
 
   const handleSelectAll = useCallback(() => {
-    const allSelectedNow = rowIds.every((id) => state.selection.selectedIds.has(id));
-    const next = allSelectedNow ? clearSelection() : selectAll(rowIds);
-    const selectedRows = allSelectedNow ? [] : rows;
-    onChange((s) => ({ ...s, selection: next }));
-    if (onSelectionChange) {
-      onSelectionChange(next.selectedIds, [...selectedRows]);
-    }
-  }, [onChange, rowIds, rows, onSelectionChange, state.selection]);
+    const allSelectedNow = rowIds.length > 0 && rowIds.every((id) => state.selection.selectedIds.has(id));
+    fireSelection(
+      allSelectedNow
+        ? { selectedIds: new Set(), anchorId: null }
+        : { selectedIds: new Set(rowIds), anchorId: null },
+    );
+  }, [rowIds, state.selection.selectedIds, fireSelection]);
 
+  // ── CSV export ───────────────────────────────────────────────
+  // The grid only knows about rows currently in memory (the visible page in
+  // paginated mode, or the loaded prefix in infinite mode). To avoid users
+  // assuming "Export CSV" means "everything that exists on the server", we
+  // confirm with the loaded-row count before downloading. Consumers that
+  // want true full-dataset export can override this via a parent toolbar.
   const handleExportCsv = useCallback(() => {
+    if (typeof window !== "undefined" && rows.length > 0) {
+      const totalSuffix = totalRowCount != null && totalRowCount > rows.length
+        ? ` of ${totalRowCount} total — load more rows first to include them`
+        : "";
+      const confirmed = window.confirm(
+        `Export ${rows.length.toLocaleString()} loaded row${rows.length === 1 ? "" : "s"}${totalSuffix}?`,
+      );
+      if (!confirmed) return;
+    }
     exportToCsv(rows, visibleColumns, exportFilename);
-  }, [rows, visibleColumns, exportFilename]);
+  }, [rows, visibleColumns, exportFilename, totalRowCount]);
 
   // ── Virtualizer ──────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const stickyChromeRef = useRef<HTMLDivElement>(null);
   const rowsClipRef = useRef<HTMLDivElement>(null);
-  const measureElementFn = useCallback(
-    (el: Element) => el.getBoundingClientRect().height,
-    [],
-  );
-  // Key each virtual item by its row id (not index) so that when rows are
-  // sorted / filtered, the virtualizer's measurement cache follows the row
-  // rather than the slot. Matters specifically in dynamic-height mode —
-  // otherwise a heavy row scrolling into slot-5 inherits slot-5's old
-  // measurement until the browser re-measures.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const measureElementFn = useCallback((el: Element) => el.getBoundingClientRect().height, []);
+
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollContainerRef.current,
@@ -1090,85 +922,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     ...(isDynamicRowHeight ? { measureElement: measureElementFn } : {}),
   });
 
-  // Composite ancestor backgrounds into a single opaque color so the
-  // sticky header fully covers rows scrolling underneath. Handles
-  // semi-transparent layers like `bg-white/80` by alpha-blending the
-  // full ancestor chain. Re-runs on theme changes (class on <html>).
-  useLayoutEffect(() => {
-    const grid = gridRef.current;
-    const stickyEl = stickyChromeRef.current;
-    if (!grid || !stickyEl) return;
-
-    const parseRgba = (raw: string): [number, number, number, number] | null => {
-      const rgbaMatch = raw.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)/);
-      if (!rgbaMatch) return null;
-      // Alpha is an optional capture group so at runtime this may be
-      // undefined, even though TS's types for `RegExp.match` say otherwise.
-      const alphaRaw = rgbaMatch[4] as string | undefined;
-      return [
-        Number(rgbaMatch[1]),
-        Number(rgbaMatch[2]),
-        Number(rgbaMatch[3]),
-        alphaRaw === undefined ? 1 : Number(alphaRaw),
-      ];
-    };
-
-    const blendOver = (
-      base: [number, number, number, number],
-      top: [number, number, number, number],
-    ): [number, number, number, number] => {
-      const [tr, tg, tb, ta] = top;
-      const [br, bg, bb, ba] = base;
-      const outA = ta + ba * (1 - ta);
-      if (outA === 0) return [0, 0, 0, 0];
-      return [
-        (tr * ta + br * ba * (1 - ta)) / outA,
-        (tg * ta + bg * ba * (1 - ta)) / outA,
-        (tb * ta + bb * ba * (1 - ta)) / outA,
-        outA,
-      ];
-    };
-
-    const detect = () => {
-      const layers: [number, number, number, number][] = [];
-      let ancestor: HTMLElement | null = grid.parentElement;
-      while (ancestor) {
-        const parsed = parseRgba(getComputedStyle(ancestor).backgroundColor);
-        if (parsed && parsed[3] > 0) {
-          layers.push(parsed);
-          if (parsed[3] >= 1) break;
-        }
-        ancestor = ancestor.parentElement;
-      }
-
-      if (layers.length === 0) {
-        stickyEl.style.backgroundColor = "";
-        return;
-      }
-
-      // Blend bottom-up (deepest ancestor is the base)
-      let result: [number, number, number, number] = layers[layers.length - 1]!;
-      for (let i = layers.length - 2; i >= 0; i--) {
-        result = blendOver(result, layers[i]!);
-      }
-
-      const [r, g, b] = result;
-      stickyEl.style.backgroundColor = `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
-    };
-
-    detect();
-
-    const observer = new MutationObserver(detect);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-
-  // Hide row content scrolling behind the sticky chrome by clipping the
-  // rows wrapper. Computes overlap = max(0, stickyBottom - wrapperTop)
-  // in viewport coords and writes `clip-path: inset(<overlap>px 0 0 0)`
-  // directly to the wrapper on every scroll/resize. Direct DOM writes
-  // (no React state, no rAF) keep clip in lockstep with scroll so no
-  // row content flashes through the sticky band for a frame.
+  // ── Sticky chrome clipping ───────────────────────────────────
   useLayoutEffect(() => {
     const gridEl = gridRef.current;
     const stickyEl = stickyChromeRef.current;
@@ -1176,71 +930,35 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     const clipEl = rowsClipRef.current;
     if (!gridEl || !stickyEl || !bodyEl || !clipEl) return;
 
-    const verticalScrollEl = fillHeight
-      ? bodyEl
-      : getNearestVerticalScrollElement(gridEl);
-    let extraObservedScrollEl: HTMLElement | null = null;
-    if (verticalScrollEl instanceof HTMLElement && verticalScrollEl !== bodyEl) {
-      extraObservedScrollEl = verticalScrollEl;
-    }
-
     const updateClip = () => {
       const stickyRect = stickyEl.getBoundingClientRect();
       const clipRect = clipEl.getBoundingClientRect();
       const overlap = Math.max(0, stickyRect.bottom - clipRect.top);
-      const clipValue = overlap > 0 ? `inset(${overlap}px 0 0 0)` : "";
-      const maskValue = overlap > 0
-        ? `linear-gradient(to bottom, transparent 0px, transparent ${overlap}px, black ${overlap}px, black 100%)`
-        : "";
-      clipEl.style.clipPath = clipValue;
-      clipEl.style.setProperty("-webkit-clip-path", clipValue);
-      clipEl.style.maskImage = maskValue;
-      clipEl.style.setProperty("-webkit-mask-image", maskValue);
+      clipEl.style.setProperty("--data-grid-sticky-overlap", `${overlap}px`);
     };
-
     updateClip();
-
     bodyEl.addEventListener("scroll", updateClip);
-    if (verticalScrollEl === window) {
-      window.addEventListener("scroll", updateClip, true);
-    } else if (extraObservedScrollEl) {
-      extraObservedScrollEl.addEventListener("scroll", updateClip);
-    }
+    window.addEventListener("scroll", updateClip, true);
     window.addEventListener("resize", updateClip);
-    const ro = new ResizeObserver(updateClip);
-    ro.observe(gridEl);
-    ro.observe(stickyEl);
-    ro.observe(bodyEl);
-    // NOTE: deliberately not observing `clipEl`. The effect writes
-    // `clip-path`/`mask-image` to `clipEl`, so observing it creates a
-    // feedback loop that thrashes height inside a bounded parent. `gridEl` /
-    // `bodyEl` changing size already covers clip-relevant layout changes.
-    if (extraObservedScrollEl) {
-      ro.observe(extraObservedScrollEl);
-    }
-
+    const observer = new ResizeObserver(updateClip);
+    observer.observe(gridEl);
+    observer.observe(stickyEl);
+    observer.observe(bodyEl);
     return () => {
       bodyEl.removeEventListener("scroll", updateClip);
-      if (verticalScrollEl === window) {
-        window.removeEventListener("scroll", updateClip, true);
-      } else if (extraObservedScrollEl) {
-        extraObservedScrollEl.removeEventListener("scroll", updateClip);
-      }
+      window.removeEventListener("scroll", updateClip, true);
       window.removeEventListener("resize", updateClip);
-      ro.disconnect();
+      observer.disconnect();
     };
-  }, [fillHeight]);
+  }, []);
 
-  // Sync horizontal scroll from body to header
   const handleBodyScroll = useCallback(() => {
     const body = scrollContainerRef.current;
     const header = headerScrollRef.current;
-    if (body && header) {
-      header.scrollLeft = body.scrollLeft;
-    }
+    if (body && header) header.scrollLeft = body.scrollLeft;
   }, []);
 
-  // ── Toolbar context ──────────────────────────────────────────
+  // ── Toolbar / Footer context ─────────────────────────────────
   const toolbarCtx: DataGridToolbarContext<TRow> = useMemo(
     () => ({
       state,
@@ -1254,8 +972,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     }),
     [state, onChange, allColumns, visibleColumns, totalRowCount, strings, handleExportCsv],
   );
-
-  // ── Footer context ───────────────────────────────────────────
   const footerCtx: DataGridFooterContext<TRow> = useMemo(
     () => ({
       state,
@@ -1268,7 +984,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     [state, totalRowCount, rows.length, paginationMode, strings],
   );
 
-  // ── Selection state for header checkbox ──────────────────────
   const allSelected = rowIds.length > 0 && rowIds.every((id) => state.selection.selectedIds.has(id));
   const someSelected = !allSelected && rowIds.some((id) => state.selection.selectedIds.has(id));
   const infiniteScrollRootRef =
@@ -1276,59 +991,54 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       ? scrollContainerRef
       : undefined;
 
-  // ── Render ───────────────────────────────────────────────────
-  //
-  // Height model:
-  // - Root is `flex flex-col h-full min-h-0 bg-transparent`. `h-full`
-  //   makes the grid fill a bounded parent; in an unbounded parent it
-  //   resolves to `auto` and the grid takes the content's intrinsic size.
-  // - Toolbar + header are wrapped in a single `sticky top-0` container
-  //   so they pin to the top of the nearest scroll ancestor. Footer is
-  //   `shrink-0`; the scroll body is `flex-1 min-h-0 overflow-auto`.
-  // - `maxHeight` is applied directly to the root; the scroll body never
-  //   subtracts chrome sizes manually (that math breaks when the toolbar
-  //   wraps, the footer grows, etc.).
-  // - `fillHeight={false}` uses `h-auto` and a non-growing scroll body so the grid
-  //   only occupies the height of its rows (no flex gap above sibling sections).
+  // ── Header rendering helper (TanStack header objects, in order) ──
+  const headers: Header<TRow, unknown>[] = useMemo(
+    () =>
+      table
+        .getHeaderGroups()[0]?.headers
+        .filter((h) => visibleColumns.some((c) => c.id === h.column.id)) ?? [],
+    [table, visibleColumns],
+  );
+  const headerByColId = useMemo(() => {
+    const m = new Map<string, Header<TRow, unknown>>();
+    for (const h of headers) m.set(h.column.id, h);
+    return m;
+  }, [headers]);
+
+  const isBounded = fillHeight || maxHeight != null;
+
   return (
     <div
       ref={gridRef}
       className={cn(
-        "flex w-full min-w-0 max-w-full flex-col bg-transparent rounded-[calc(var(--radius)*2)]",
+        "isolate flex w-full min-w-0 max-w-full flex-col bg-transparent rounded-[calc(var(--radius)*2)]",
         fillHeight ? "min-h-0 h-full" : "min-h-0 h-auto",
+        isBounded && "overflow-hidden",
         className,
       )}
-      style={maxHeight != null ? { ...gridSizingStyle, maxHeight } : gridSizingStyle}
+      style={maxHeight != null ? { ...cssVars, maxHeight } : cssVars}
       role="grid"
       aria-rowcount={totalRowCount ?? rows.length}
       aria-colcount={visibleColumns.length}
     >
-      {/* Sticky chrome: toolbar + header pin to the top of the nearest
-          scroll ancestor so they remain visible while the body scrolls. */}
       <div
         ref={stickyChromeRef}
-        className="sticky z-20 w-full min-w-0 shrink-0 rounded-t-[calc(var(--radius)*2)] bg-background"
-        style={{ top: stickyTop ?? "var(--data-grid-sticky-top, 0px)" }}
+        className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl"
+        style={{ top: stickyTop ?? (maxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
       >
-        {/* Toolbar */}
         {toolbar !== false && (
           <div className="relative bg-transparent">
-            {toolbar ? (
-              toolbar(toolbarCtx)
-            ) : (
-              <DataGridToolbar
-                ctx={toolbarCtx}
-                extra={
-                  typeof toolbarExtra === "function"
-                    ? toolbarExtra(toolbarCtx)
-                    : toolbarExtra
-                }
-              />
-            )}
+            {toolbar
+              ? toolbar(toolbarCtx)
+              : (
+                <DataGridToolbar
+                  ctx={toolbarCtx}
+                  extra={typeof toolbarExtra === "function" ? toolbarExtra(toolbarCtx) : toolbarExtra}
+                />
+              )}
           </div>
         )}
 
-        {/* Header row — syncs horizontal scroll with the body */}
         <div className="relative">
           {isRefetching && (
             <div className="absolute top-0 left-0 right-0 h-0.5 z-30 bg-foreground/[0.04] overflow-hidden">
@@ -1341,7 +1051,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           >
             <div
               className="flex"
-              style={{ height: headerHeight, minWidth: visibleColumnMetrics.totalWidth }}
+              style={{ height: headerHeight, minWidth: totalContentWidth }}
               role="row"
             >
               {selectionMode !== "none" && (
@@ -1354,35 +1064,27 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                       checked={allSelected}
                       indeterminate={someSelected}
                       onChange={handleSelectAll}
-                      ariaLabel="Select all rows"
+                      ariaLabel="Select all rows on this page"
+                      title="Select all rows on this page"
                     />
                   )}
                 </div>
               )}
-              {visibleColumns.map((col) => (
-                <HeaderCell
-                  key={col.id}
-                  col={col}
-                  isSorted={getSortDirection(state.sorting, col.id)}
-                  sortIndex={getSortIndex(state.sorting, col.id)}
-                  resizable={resizable}
-                  onSort={handleSort}
-                  onResize={handleResize}
-                  onResizeEnd={handleResizeEnd}
-                />
-              ))}
+              {visibleColumns.map((col) => {
+                const header = headerByColId.get(col.id);
+                if (!header) return null;
+                return <HeaderCell key={col.id} header={header} col={col} resizable={resizable} />;
+              })}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Scrollable body — flex-1 + min-h-0 when filling parent; flex-none when
-          `fillHeight` is false so row stack height drives the grid (page scroll). */}
       <div
         ref={scrollContainerRef}
         className={cn(
-          "w-full min-w-0 overflow-auto bg-transparent",
-          fillHeight ? "min-h-0 flex-1" : "flex-none",
+          "relative z-0 w-full min-w-0 overflow-auto bg-transparent",
+          isBounded ? "min-h-0 flex-1" : "flex-none",
           "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
@@ -1390,42 +1092,43 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         )}
         onScroll={handleBodyScroll}
       >
-        {/* Clip wrapper — `clip-path` updated on scroll/resize so row
-            content scrolling behind the sticky chrome is physically cut
-            out instead of bleeding through. */}
-        <div ref={rowsClipRef}>
-          {/* Loading initial */}
+        <div
+          ref={rowsClipRef}
+          data-data-grid-rows-clip=""
+          className="relative z-0"
+          style={{
+            minWidth: totalContentWidth,
+            clipPath: "inset(var(--data-grid-sticky-overlap, 0px) 0 0 0)",
+          }}
+        >
           {isLoading && (
-            <div style={{ minWidth: visibleColumnMetrics.totalWidth }}>
-              {loadingState ??
-                Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonRow
-                    key={i}
-                    columns={visibleColumns}
-                    height={estimatedRowHeight}
-                    showCheckbox={selectionMode !== "none"}
-                  />
-                ))}
+            <div style={{ minWidth: totalContentWidth }}>
+              {loadingState ?? Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonRow
+                  key={i}
+                  columns={visibleColumns}
+                  height={estimatedRowHeight}
+                  showCheckbox={selectionMode !== "none"}
+                />
+              ))}
             </div>
           )}
 
-          {/* Empty state */}
           {!isLoading && rows.length === 0 && (
             <div
               className="flex items-center justify-center py-16 text-sm text-muted-foreground"
-              style={{ minWidth: visibleColumnMetrics.totalWidth }}
+              style={{ minWidth: totalContentWidth }}
             >
               {emptyState ?? strings.noData}
             </div>
           )}
 
-          {/* Virtualized rows */}
           {!isLoading && rows.length > 0 && (
             <div
               style={{
                 height: rowVirtualizer.getTotalSize(),
                 width: "100%",
-                minWidth: visibleColumnMetrics.totalWidth,
+                minWidth: totalContentWidth,
                 position: "relative",
               }}
             >
@@ -1435,7 +1138,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                 );
                 const rowId = getRowId(row);
                 const isSelected = state.selection.selectedIds.has(rowId);
-
                 const isOddRow = virtualRow.index % 2 === 1;
                 return (
                   <div
@@ -1459,25 +1161,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         : { height: fixedRowHeight }),
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
-                    onClick={(e) => {
-                      if (shouldIgnoreRowClick(e)) {
-                        return;
-                      }
-                      handleRowClick(row, rowId, e);
-                    }}
-                    onDoubleClick={(e) => {
-                      if (shouldIgnoreRowClick(e)) {
-                        return;
-                      }
-                      onRowDoubleClick?.(row, rowId, e);
-                    }}
+                    onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
+                    onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
                     role="row"
                     aria-rowindex={virtualRow.index + 2}
                     aria-selected={isSelected}
                     data-row-id={rowId}
                     data-state={isSelected ? "selected" : undefined}
                   >
-                    {/* Selection checkbox */}
                     {selectionMode !== "none" && (
                       <div
                         className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
@@ -1485,13 +1176,11 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                       >
                         <SelectionCheckbox
                           checked={isSelected}
-                          onChange={(event) => handleRowSelectionCheckboxClick(row, rowId, event)}
+                          onChange={(event) => handleRowClick(row, rowId, event)}
                           ariaLabel={`Select row ${rowId}`}
                         />
                       </div>
                     )}
-
-                    {/* Data cells */}
                     {visibleColumns.map((col) => (
                       <DataCell
                         key={col.id}
@@ -1509,7 +1198,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             </div>
           )}
 
-          {/* Infinite scroll sentinel */}
           {paginationMode === "infinite" && hasMore && !isLoading && (
             <InfiniteScrollSentinel
               onIntersect={onLoadMore ?? NOOP}
@@ -1521,21 +1209,10 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         </div>
       </div>
 
-      {/* Footer */}
       {footer !== false && (
-        <div className="relative z-10 shrink-0 bg-transparent">
-          {footer ? (
-            footer(footerCtx)
-          ) : (
-            <DefaultFooter
-              ctx={footerCtx}
-              pagination={paginationMode}
-              onChange={onChange}
-            />
-          )}
-          {footerExtra && (
-            typeof footerExtra === "function" ? footerExtra(footerCtx) : footerExtra
-          )}
+        <div className="sticky bottom-0 z-30 shrink-0 overflow-hidden rounded-b-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl">
+          {footer ? footer(footerCtx) : <DefaultFooter ctx={footerCtx} pagination={paginationMode} onChange={onChange} />}
+          {footerExtra && (typeof footerExtra === "function" ? footerExtra(footerCtx) : footerExtra)}
         </div>
       )}
     </div>

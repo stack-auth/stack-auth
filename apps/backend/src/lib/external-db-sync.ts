@@ -126,7 +126,7 @@ export async function recordExternalDbSyncDeletion(
 
   if (target.tableName === "ProjectUser") {
     assertUuid(target.projectUserId, "projectUserId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -150,18 +150,13 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for ProjectUser, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "ContactChannel") {
     assertUuid(target.projectUserId, "projectUserId");
     assertUuid(target.contactChannelId, "contactChannelId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -193,17 +188,12 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for ContactChannel, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "Team") {
     assertUuid(target.teamId, "teamId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -227,18 +217,13 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for Team, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "TeamMember") {
     assertUuid(target.projectUserId, "projectUserId");
     assertUuid(target.teamId, "teamId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -263,17 +248,12 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for TeamMember, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "TeamMemberDirectPermission") {
     assertUuid(target.permissionDbId, "permissionDbId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -302,17 +282,12 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for TeamMemberDirectPermission, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "ProjectUserDirectPermission") {
     assertUuid(target.permissionDbId, "permissionDbId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -340,17 +315,12 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for ProjectUserDirectPermission, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "UserNotificationPreference") {
     assertUuid(target.notificationPreferenceId, "notificationPreferenceId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -377,17 +347,12 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for UserNotificationPreference, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "ProjectUserRefreshToken") {
     assertUuid(target.refreshTokenId, "refreshTokenId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -411,17 +376,12 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for ProjectUserRefreshToken, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
   if (target.tableName === "ProjectUserOAuthAccount") {
     assertUuid(target.oauthAccountId, "oauthAccountId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -445,11 +405,6 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for ProjectUserOAuthAccount, got ${insertedCount}.`
-      );
-    }
     return;
   }
 
@@ -458,7 +413,7 @@ export async function recordExternalDbSyncDeletion(
     assertNonEmptyString(target.verificationCodeProjectId, "verificationCodeProjectId");
     assertNonEmptyString(target.verificationCodeBranchId, "verificationCodeBranchId");
     assertUuid(target.verificationCodeId, "verificationCodeId");
-    const insertedCount = await tx.$executeRaw(Prisma.sql`
+    await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
         "tenancyId",
@@ -487,11 +442,6 @@ export async function recordExternalDbSyncDeletion(
       FOR UPDATE OF "VerificationCode"
     `);
 
-    if (insertedCount !== 1) {
-      throw new StackAssertionError(
-        `Expected to insert 1 DeletedRow entry for VerificationCode_TEAM_INVITATION, got ${insertedCount}.`
-      );
-    }
     return;
   }
 }

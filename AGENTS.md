@@ -95,7 +95,8 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
 - The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
 - When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
-- NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT!
+- NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT! if its already staged and you didnt do it then dont unstage it.
+- NEVER run destructive or working-tree-mutating git operations without EXPLICIT user permission in the current turn. This includes (non-exhaustive): `git stash` / `stash pop` / `stash drop` / `stash clear`, `git reset` (any flag), `git checkout -- <path>` / `git restore`, `git clean`, `git rebase`, `git revert`, `git commit --amend`, `git push --force` / `--force-with-lease`, `git branch -D`, `git tag -d`, `git filter-branch`, `git update-ref`. Read-only inspection (`git status`, `git diff`, `git log`, `git blame`, `git show`, `git show HEAD:path`) is fine. If you think a destructive op is the right move, describe it and wait for a yes — do NOT run it to "verify" or "clean up".
 - When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
@@ -111,6 +112,11 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Always let me know about the tradeoffs and decisions you make while implementing a non-trivial change.
 - Whenever you change the URL of a page in the docs (or remove one), add a redirect in the docs-mintlify/docs.json file to make sure we don't lose any SEO juice.
 - When you made frontend (or docs, dashboard, demo, etc.) changes, and you have a browser MCP in your list of MCP tools, make sure to test the changes in the browser MCP.
+- If you're using the browser to test the dashboard and need to sign in, use GitHub OAuth to sign in (by default it should redirect you to the mock OAuth provider page, where you can sign in with admin@example.com).
+- NEVER INSTALL A NEW PACKAGE (or anything else) WITHOUT EXPLICIT APPROVAL FROM THE USER.
+- A "development environment" is either an RDE (remote development environment; = local dashboard + prod backend) or a local emulator (local dashboard + local backend). When communicating to the user, we always say "development environment" instead of RDE or local emulator (the distinction to the user is minor, even though the implementation is quite different).
+- NEVER EVER return a server error with an internal server error that may contain information that the user shouldn't see. For example, never return the error message on a public API from an upstream provider without properly filtering it first. Most of the time, for internal server errors, you should just use StackAssertionError (which won't pass the message to the user), not StatusError (you almost never want to instantiate a StatusError with status 5xx).
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
+- **Read replicas for raw Prisma queries**: When writing raw SQL queries (`$queryRaw`, `$queryRawUnsafe`), always use `$replica()` for read-only queries (e.g. `globalPrismaClient.$replica().$queryRaw\`SELECT ...\``). This routes reads to the database replica and reduces load on the primary. Do NOT use `$replica()` for queries inside transactions or queries containing writes (INSERT/UPDATE/DELETE, even in CTEs).

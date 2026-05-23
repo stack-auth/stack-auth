@@ -103,7 +103,7 @@ async function getPendingCliAuthAttempt(tenancy: Tenancy, loginCode: string) {
   // CliAuthAttempt lives in the tenancy's source-of-truth DB, consistent with cli/poll/route.tsx.
   const prisma = await getPrismaClientForTenancy(tenancy);
   const schema = await getPrismaSchemaForTenancy(tenancy);
-  const rows = await prisma.$queryRaw<CliAuthAttemptRow[]>(Prisma.sql`
+  const rows = await prisma.$replica().$queryRaw<CliAuthAttemptRow[]>(Prisma.sql`
     SELECT
       "id",
       "tenancyId",
@@ -130,7 +130,7 @@ async function getPendingCliAuthAttempt(tenancy: Tenancy, loginCode: string) {
 
 async function getRefreshTokenSession(tenancyId: string, refreshToken: string) {
   // ProjectUserRefreshToken lives in the global DB (see tokens.tsx and oauth/model.tsx).
-  const rows = await globalPrismaClient.$queryRaw<RefreshTokenRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<RefreshTokenRow[]>(Prisma.sql`
     SELECT
       "id",
       "tenancyId",

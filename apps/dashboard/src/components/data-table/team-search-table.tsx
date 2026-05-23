@@ -9,7 +9,9 @@ import {
   type DataGridColumnDef,
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+
+const PAGE_SIZE = 25;
 
 export function TeamSearchTable(props: {
   action: (team: ServerTeam) => ReactNode,
@@ -46,7 +48,8 @@ export function TeamSearchTable(props: {
         sortable: false,
         hideable: false,
         resizable: false,
-        width: 60,
+        width: 96,
+        align: "right",
         renderCell: ({ row }) => action(row),
       },
     ],
@@ -56,25 +59,47 @@ export function TeamSearchTable(props: {
   const [gridState, setGridState] = useState<DataGridState>(() =>
     createDefaultDataGridState(columns),
   );
+  const [loadedCount, setLoadedCount] = useState(PAGE_SIZE);
 
+  // Reset visible window whenever the search/sort changes so the user
+  // doesn't have to scroll back through stale rows.
+  useEffect(() => {
+    setLoadedCount(PAGE_SIZE);
+  }, [gridState.quickSearch, gridState.sorting]);
+
+  // Pull the full filtered+sorted result, then slice locally for infinite scroll.
   const gridData = useDataSource({
     data: teams,
     columns,
     getRowId: (row) => row.id,
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
-    pagination: gridState.pagination,
+    pagination: { pageIndex: 0, pageSize: Number.MAX_SAFE_INTEGER },
     paginationMode: "client",
   });
+
+  const visibleRows = useMemo(
+    () => gridData.rows.slice(0, loadedCount),
+    [gridData.rows, loadedCount],
+  );
+  const hasMore = loadedCount < gridData.rows.length;
+  const loadMore = useCallback(() => {
+    setLoadedCount((c) => c + PAGE_SIZE);
+  }, []);
 
   return (
     <DataGrid
       columns={columns}
-      rows={gridData.rows}
+      rows={visibleRows}
       getRowId={(row) => row.id}
       totalRowCount={gridData.totalRowCount}
       state={gridState}
       onChange={setGridState}
+      fillHeight={false}
+      maxHeight={420}
+      paginationMode="infinite"
+      hasMore={hasMore}
+      onLoadMore={loadMore}
     />
   );
 }
