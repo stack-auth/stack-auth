@@ -377,7 +377,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
          swallows parse errors. The plumbing script below compiles this with a
          try/catch and forwards any SyntaxError to the parent composer. -->
     <script type="text/plain" id="ai-dashboard-source">
-${sourceCode}
+${sourceCode.replace(/<\/script>/gi, '<\\/script>')}
     </script>
 
     <script type="text/babel">
@@ -480,25 +480,8 @@ ${sourceCode}
         return stackServerApp;
       }
       
-      // Forward uncaught runtime errors (async throws, unhandled rejections) that never
-      // reach the React boundary. React ErrorBoundary alone misses these, so without this
-      // the parent has no way to observe e.g. a fetch() that rejected inside useEffect.
-      window.addEventListener('error', (event) => {
-        const err = event?.error;
-        window.parent.postMessage({
-          type: 'dashboard-error-boundary',
-          message: err?.message || event?.message || 'Unknown runtime error',
-          stack: err?.stack,
-        }, '*');
-      });
-      window.addEventListener('unhandledrejection', (event) => {
-        const reason = event?.reason;
-        window.parent.postMessage({
-          type: 'dashboard-error-boundary',
-          message: (reason && (reason.message || String(reason))) || 'Unhandled promise rejection',
-          stack: reason?.stack,
-        }, '*');
-      });
+      // Uncaught runtime errors and unhandled rejections are forwarded by the
+      // early global listener installed before Babel loads (see top of <head>).
 
       // Error Boundary Component
       class ErrorBoundary extends React.Component {
