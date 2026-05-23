@@ -20,8 +20,8 @@
 
 - TanStack Start SDK integration landed with refreshed OpenAPI schemas.
 - Project overview now shows weekly users metrics.
-- Stack CLI gained self-hosted URL support and clearer cloud/local init next steps.
-![RBAC permissions dashboard](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/changelog/rbac.png)
+- Project permissions kept getting cleaner as dashboard data grids rolled out.
+![Project permissions dashboard](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/changelog/rbac.png)
 
 ## 5/1/26
 
@@ -41,12 +41,12 @@
 
 - The overview page and onboarding experience were redesigned.
 - Dashboard sidebar styling and category navigation were tightened up.
-- AI arrived in Stack Companion with a large-response chat flow.
+- The Payments app introduced a clearer product setup flow.
 ![Payments product setup](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/changelog/payments-products.png)
 
 ---
 
-> **Note:** All older changelogs are deprecated and have been removed. The source of true is this single changelog file.
+> **Note:** All older changelogs are deprecated and have been removed. The source of truth is this single changelog file.
 >
 > Going forward, all changes should be documented in this file only.
 
