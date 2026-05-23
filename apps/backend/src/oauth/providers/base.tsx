@@ -330,8 +330,6 @@ export abstract class OAuthBaseProvider {
       }),
       state: options.state,
       response_type: "code",
-      access_type: "offline",
-      prompt: "consent",
       ...this.authorizationExtraParams,
     });
   }
