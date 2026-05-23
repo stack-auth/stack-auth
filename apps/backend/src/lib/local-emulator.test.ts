@@ -96,7 +96,7 @@ describe("local emulator config", () => {
     await writeConfigToFile(absoluteFilePath, { auth: { allowLocalhost: true } });
 
     await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
-      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
+      `import type { StackConfig } from "@hexclave/js";\n\nexport const config: StackConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
     );
   });
 
@@ -112,7 +112,7 @@ describe("local emulator config", () => {
     await writeShowOnboardingConfigToFile(absoluteFilePath);
 
     await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
-      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = "show-onboarding";\n`
+      `import type { StackConfig } from "@hexclave/js";\n\nexport const config: StackConfig = "show-onboarding";\n`
     );
   });
 

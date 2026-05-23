@@ -1,43 +1,43 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { KnownErrors, HexclaveClientInterface } from "@stackframe/stack-shared";
-import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
-import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
-import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
-import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
-import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
-import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
-import type { CustomerProductsListResponse } from "@stackframe/stack-shared/dist/interface/crud/products";
-import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
-import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
-import { ClientProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { SessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
-import { TeamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
-import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
-import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
-import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
-import { DependenciesMap } from "@stackframe/stack-shared/dist/utils/maps";
-import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
-import { deepPlainEquals, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { neverResolve, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
-import { getTrustedParentDomain, validateRedirectUrl } from "@stackframe/stack-shared/dist/utils/redirect-urls";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
-import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
-import { createUrlIfValid, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
+import { KnownErrors, HexclaveClientInterface } from "@hexclave/shared";
+import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
+import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
+import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
+import type { CustomerInvoicesListResponse } from "@hexclave/shared/dist/interface/crud/invoices";
+import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
+import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
+import { OAuthProviderCrud } from "@hexclave/shared/dist/interface/crud/oauth-providers";
+import type { CustomerProductsListResponse } from "@hexclave/shared/dist/interface/crud/products";
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateOutputSchema, userApiKeysCreateOutputSchema } from "@hexclave/shared/dist/interface/crud/project-api-keys";
+import { ProjectPermissionsCrud } from "@hexclave/shared/dist/interface/crud/project-permissions";
+import { ClientProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { SessionsCrud } from "@hexclave/shared/dist/interface/crud/sessions";
+import { TeamInvitationCrud } from "@hexclave/shared/dist/interface/crud/team-invitation";
+import { TeamMemberProfilesCrud } from "@hexclave/shared/dist/interface/crud/team-member-profiles";
+import { TeamPermissionsCrud } from "@hexclave/shared/dist/interface/crud/team-permissions";
+import { TeamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { InternalSession } from "@hexclave/shared/dist/sessions";
+import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { scrambleDuringCompileTime } from "@hexclave/shared/dist/utils/compile-time";
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { parseJson } from "@hexclave/shared/dist/utils/json";
+import { DependenciesMap } from "@hexclave/shared/dist/utils/maps";
+import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
+import { deepPlainEquals, omit } from "@hexclave/shared/dist/utils/objects";
+import { neverResolve, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { suspend, suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
+import { getTrustedParentDomain, validateRedirectUrl } from "@hexclave/shared/dist/utils/redirect-urls";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { Store, storeLock } from "@hexclave/shared/dist/utils/stores";
+import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
+import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
+import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
+import { createUrlIfValid, isRelative } from "@hexclave/shared/dist/utils/urls";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
+import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
@@ -76,8 +76,8 @@ import { mountDevTool } from "../../../../dev-tool";
 
 let isReactServer = false;
 // IF_PLATFORM next
-import * as sc from "@stackframe/stack-sc";
-import { cookies } from "@stackframe/stack-sc";
+import * as sc from "@hexclave/sc";
+import { cookies } from "@hexclave/sc";
 isReactServer = sc.isReactServer;
 
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.

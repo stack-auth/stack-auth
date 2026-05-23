@@ -42,12 +42,12 @@ import {
   type ConversationStatus,
   type ConversationSummary,
 } from "@/lib/conversation-types";
-import { useUser } from "@stackframe/stack";
-import { computeSlaUrgency, type SlaUrgency } from "@stackframe/stack-shared/dist/helpers/support-sla";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { useUser } from "@hexclave/next";
+import { computeSlaUrgency, type SlaUrgency } from "@hexclave/shared/dist/helpers/support-sla";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import {
   ArrowLeftIcon,
   ArrowSquareOutIcon,

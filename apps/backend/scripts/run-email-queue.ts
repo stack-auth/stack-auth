@@ -1,6 +1,6 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 
 async function main() {
   console.log("Starting email queue processor...");

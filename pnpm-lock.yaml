@@ -126,6 +126,12 @@ importers:
       '@clickhouse/client':
         specifier: ^1.14.0
         version: 1.16.0
+      '@hexclave/next':
+        specifier: workspace:*
+        version: link:../../packages/stack
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../../packages/stack-shared
       '@node-oauth/oauth2-server':
         specifier: ^5.1.0
         version: 5.1.0
@@ -195,12 +201,6 @@ importers:
       '@simplewebauthn/server':
         specifier: ^13.3.0
         version: 13.3.0
-      '@stackframe/stack':
-        specifier: workspace:*
-        version: link:../../packages/stack
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../../packages/stack-shared
       '@upstash/qstash':
         specifier: ^2.8.2
         version: 2.8.2
@@ -382,6 +382,15 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.3)
+      '@hexclave/dashboard-ui-components':
+        specifier: workspace:*
+        version: link:../../packages/dashboard-ui-components
+      '@hexclave/next':
+        specifier: workspace:*
+        version: link:../../packages/stack
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../../packages/stack-shared
       '@hookform/resolvers':
         specifier: ^3.3.4
         version: 3.6.0(react-hook-form@7.53.1(react@19.2.3))
@@ -484,15 +493,6 @@ importers:
       '@sentry/nextjs':
         specifier: ^10.11.0
         version: 10.11.0(@opentelemetry/context-async-hooks@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.1(@opentelemetry/api@1.9.0))(encoding@0.1.13)(next@16.1.7(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(webpack@5.92.0(esbuild@0.24.2))
-      '@stackframe/dashboard-ui-components':
-        specifier: workspace:*
-        version: link:../../packages/dashboard-ui-components
-      '@stackframe/stack':
-        specifier: workspace:*
-        version: link:../../packages/stack
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../../packages/stack-shared
       '@stripe/connect-js':
         specifier: ^3.3.27
         version: 3.3.27
@@ -686,15 +686,15 @@ importers:
 
   apps/e2e:
     dependencies:
+      '@hexclave/js':
+        specifier: workspace:*
+        version: link:../../packages/js
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../../packages/stack-shared
       '@oslojs/otp':
         specifier: ^1.1.0
         version: 1.1.0
-      '@stackframe/js':
-        specifier: workspace:*
-        version: link:../../packages/js
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../../packages/stack-shared
       convex:
         specifier: ^1.27.0
         version: 1.27.0(react@19.2.3)
@@ -720,10 +720,10 @@ importers:
 
   apps/hosted-components:
     dependencies:
-      '@stackframe/react':
+      '@hexclave/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@stackframe/stack-shared':
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
       '@tanstack/react-router':
@@ -781,10 +781,10 @@ importers:
 
   apps/internal-tool:
     dependencies:
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
-      '@stackframe/stack-shared':
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
       clsx:
@@ -842,7 +842,7 @@ importers:
 
   apps/mcp:
     dependencies:
-      '@stackframe/stack-shared':
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
       '@vercel/mcp-adapter':
@@ -941,6 +941,12 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.0
         version: 3.0.83(react@18.3.1)(zod@3.25.76)
+      '@hexclave/next':
+        specifier: workspace:^
+        version: link:../packages/stack
+      '@hexclave/shared':
+        specifier: workspace:^
+        version: link:../packages/stack-shared
       '@modelcontextprotocol/sdk':
         specifier: ^1.17.2
         version: 1.17.2
@@ -965,12 +971,6 @@ importers:
       '@radix-ui/react-tabs':
         specifier: ^1.1.12
         version: 1.1.12(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@stackframe/stack':
-        specifier: workspace:^
-        version: link:../packages/stack
-      '@stackframe/stack-shared':
-        specifier: workspace:^
-        version: link:../packages/stack-shared
       ai:
         specifier: ^6.0.0
         version: 6.0.81(zod@3.25.76)
@@ -1092,7 +1092,7 @@ importers:
 
   examples/cjs-test:
     dependencies:
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
       next:
@@ -1132,10 +1132,10 @@ importers:
 
   examples/convex:
     dependencies:
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
-      '@stackframe/stack-shared':
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
       convex:
@@ -1202,19 +1202,19 @@ importers:
       '@emotion/styled':
         specifier: ^11.13.0
         version: 11.13.0(@emotion/react@11.13.3(@types/react@18.3.12)(react@19.0.1))(@types/react@18.3.12)(react@19.0.1)
-      '@stackframe/js':
+      '@hexclave/js':
         specifier: workspace:*
         version: link:../../packages/js
-      '@stackframe/react':
-        specifier: workspace:*
-        version: link:../../packages/react
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
-      '@stackframe/stack-shared':
+      '@hexclave/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
-      '@stackframe/stack-ui':
+      '@hexclave/ui':
         specifier: workspace:*
         version: link:../../packages/stack-ui
       next:
@@ -1260,13 +1260,13 @@ importers:
       '@emotion/styled':
         specifier: ^11.11.0
         version: 11.11.5(@emotion/react@11.11.4(@types/react@18.3.12)(react@18.3.1))(@types/react@18.3.12)(react@18.3.1)
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
-      '@stackframe/stack-shared':
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
-      '@stackframe/stack-ui':
+      '@hexclave/ui':
         specifier: workspace:*
         version: link:../../packages/stack-ui
       next:
@@ -1306,7 +1306,7 @@ importers:
 
   examples/e-commerce:
     dependencies:
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
       next:
@@ -1343,7 +1343,7 @@ importers:
 
   examples/js-example:
     dependencies:
-      '@stackframe/js':
+      '@hexclave/js':
         specifier: workspace:*
         version: link:../../packages/js
       dotenv-cli:
@@ -1358,6 +1358,9 @@ importers:
 
   examples/lovable-react-18-example:
     dependencies:
+      '@hexclave/react':
+        specifier: workspace:*
+        version: link:../../packages/react
       '@hookform/resolvers':
         specifier: ^3.10.0
         version: 3.10.0(react-hook-form@7.65.0(react@18.3.1))
@@ -1442,9 +1445,6 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.7
         version: 1.2.8(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@stackframe/react':
-        specifier: workspace:*
-        version: link:../../packages/react
       '@tanstack/react-query':
         specifier: ^5.83.0
         version: 5.90.7(react@18.3.1)
@@ -1563,7 +1563,7 @@ importers:
 
   examples/middleware:
     dependencies:
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
       next:
@@ -1597,7 +1597,7 @@ importers:
 
   examples/react-example:
     dependencies:
-      '@stackframe/react':
+      '@hexclave/react':
         specifier: workspace:*
         version: link:../../packages/react
       react:
@@ -1631,7 +1631,7 @@ importers:
 
   examples/supabase:
     dependencies:
-      '@stackframe/stack':
+      '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
       '@supabase/ssr':
@@ -1668,15 +1668,15 @@ importers:
 
   examples/tanstack-start-demo:
     dependencies:
-      '@stackframe/stack-shared':
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
-      '@stackframe/stack-ui':
-        specifier: workspace:*
-        version: link:../../packages/stack-ui
-      '@stackframe/tanstack-start':
+      '@hexclave/tanstack-start':
         specifier: workspace:*
         version: link:../../packages/tanstack-start
+      '@hexclave/ui':
+        specifier: workspace:*
+        version: link:../../packages/stack-ui
       '@tanstack/react-router':
         specifier: ^1.168.23
         version: 1.169.1(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -1732,6 +1732,12 @@ importers:
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
+      '@hexclave/ui':
+        specifier: workspace:*
+        version: link:../stack-ui
       '@phosphor-icons/react':
         specifier: ^2.1.7
         version: 2.1.10(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1744,12 +1750,6 @@ importers:
       '@react-hook/resize-observer':
         specifier: ^2.0.2
         version: 2.0.2(react@19.2.3)
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
-      '@stackframe/stack-ui':
-        specifier: workspace:*
-        version: link:../stack-ui
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1784,7 +1784,7 @@ importers:
 
   packages/init-stack:
     dependencies:
-      '@stackframe/stack-shared':
+      '@hexclave/shared':
         specifier: workspace:*
         version: link:../stack-shared
       commander:
@@ -1830,6 +1830,9 @@ importers:
 
   packages/js:
     dependencies:
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
@@ -1839,9 +1842,6 @@ importers:
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.2.3(react@19.2.1))(react@19.2.1)
@@ -1933,6 +1933,12 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.72
         version: 3.0.143(react@19.2.1)(zod@4.3.6)
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
+      '@hexclave/ui':
+        specifier: workspace:*
+        version: link:../stack-ui
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
@@ -1942,12 +1948,6 @@ importers:
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
-      '@stackframe/stack-ui':
-        specifier: workspace:*
-        version: link:../stack-ui
       '@stripe/react-stripe-js':
         specifier: ^3.8.1
         version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -2072,6 +2072,15 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.72
         version: 3.0.143(react@19.2.1)(zod@4.3.6)
+      '@hexclave/sc':
+        specifier: workspace:*
+        version: link:../stack-sc
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
+      '@hexclave/ui':
+        specifier: workspace:*
+        version: link:../stack-ui
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
@@ -2081,15 +2090,6 @@ importers:
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
-      '@stackframe/stack-sc':
-        specifier: workspace:*
-        version: link:../stack-sc
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
-      '@stackframe/stack-ui':
-        specifier: workspace:*
-        version: link:../stack-ui
       '@stripe/react-stripe-js':
         specifier: ^3.8.1
         version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -2217,18 +2217,18 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.73
         version: 0.2.73(zod@4.3.6)
+      '@hexclave/js':
+        specifier: workspace:*
+        version: link:../js
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
       '@inquirer/prompts':
         specifier: ^7.0.0
         version: 7.10.1(@types/node@20.17.6)
       '@sentry/node':
         specifier: ^10.42.0
         version: 10.45.0
-      '@stackframe/js':
-        specifier: workspace:*
-        version: link:../js
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
       commander:
         specifier: ^13.1.0
         version: 13.1.0
@@ -2385,6 +2385,9 @@ importers:
 
   packages/stack-ui:
     dependencies:
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
       '@radix-ui/react-accordion':
         specifier: ^1.2.1
         version: 1.2.1(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -2472,9 +2475,6 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.1.3
         version: 1.1.3(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
       '@tanstack/react-table':
         specifier: ^8.20.5
         version: 8.20.5(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -2536,6 +2536,12 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.72
         version: 3.0.143(react@19.2.3)(zod@4.3.6)
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
+      '@hexclave/ui':
+        specifier: workspace:*
+        version: link:../stack-ui
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.3))
@@ -2545,12 +2551,6 @@ importers:
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
-      '@stackframe/stack-ui':
-        specifier: workspace:*
-        version: link:../stack-ui
       '@stripe/react-stripe-js':
         specifier: ^3.8.1
         version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -2681,6 +2681,15 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.72
         version: 3.0.143(react@19.2.1)(zod@4.3.6)
+      '@hexclave/sc':
+        specifier: workspace:*
+        version: link:../stack-sc
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../stack-shared
+      '@hexclave/ui':
+        specifier: workspace:*
+        version: link:../stack-ui
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
@@ -2690,15 +2699,6 @@ importers:
       '@simplewebauthn/browser':
         specifier: ^13.2.2
         version: 13.2.2
-      '@stackframe/stack-sc':
-        specifier: workspace:*
-        version: link:../stack-sc
-      '@stackframe/stack-shared':
-        specifier: workspace:*
-        version: link:../stack-shared
-      '@stackframe/stack-ui':
-        specifier: workspace:*
-        version: link:../stack-ui
       '@stripe/react-stripe-js':
         specifier: ^3.8.1
         version: 3.8.1(@stripe/stripe-js@7.7.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -30819,7 +30819,7 @@ snapshots:
       picomatch: 4.0.3
       seroval: 1.5.1
       source-map: 0.7.6
-      srvx: 0.11.9
+      srvx: 0.11.15
       tinyglobby: 0.2.15
       ufo: 1.6.3
       vitefu: 1.1.2(vite@7.3.1(@types/node@22.19.0)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))
@@ -30853,7 +30853,7 @@ snapshots:
       picomatch: 4.0.3
       seroval: 1.5.1
       source-map: 0.7.6
-      srvx: 0.11.9
+      srvx: 0.11.15
       tinyglobby: 0.2.15
       ufo: 1.6.3
       vitefu: 1.1.2(vite@7.3.1(@types/node@24.9.2)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))
@@ -30887,7 +30887,7 @@ snapshots:
       picomatch: 4.0.3
       seroval: 1.5.1
       source-map: 0.7.6
-      srvx: 0.11.9
+      srvx: 0.11.15
       tinyglobby: 0.2.15
       ufo: 1.6.3
       vitefu: 1.1.2(vite@7.3.1(@types/node@24.9.2)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))

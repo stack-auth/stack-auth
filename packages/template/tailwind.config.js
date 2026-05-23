@@ -3,7 +3,7 @@ module.exports = {
   darkMode: ["selector", 'html:has(head > [data-stack-theme="dark"])'],
   content: [
     "./src/**/*.{ts,tsx}",
-    "./node_modules/@stackframe/stack-ui/src/**/*.{ts,tsx}",
+    "./node_modules/@hexclave/ui/src/**/*.{ts,tsx}",
   ],
   prefix: "",
   theme: {

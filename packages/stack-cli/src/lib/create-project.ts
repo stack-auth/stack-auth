@@ -1,5 +1,5 @@
 import { input } from "@inquirer/prompts";
-import type { CurrentInternalUser } from "@stackframe/js";
+import type { CurrentInternalUser } from "@hexclave/js";
 import { DEFAULT_DASHBOARD_URL } from "./auth.js";
 import { CliError } from "./errors.js";
 import { isNonInteractiveEnv } from "./interactive.js";

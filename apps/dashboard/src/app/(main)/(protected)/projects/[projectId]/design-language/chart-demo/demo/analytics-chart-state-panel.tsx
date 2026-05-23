@@ -32,7 +32,7 @@ import {
   type FormatKindDatetime,
   type FormatKindPercent,
   type FormatKindType,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 
 /** Shared wrapper row used throughout the state panel: rounded border,
  * subtle background, label + mono key caption, and a right-side slot. */

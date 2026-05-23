@@ -47,7 +47,7 @@ Use this when implementing a new dashboard UI quickly:
 9. Need settings/property grid editor?
    - Use `DesignEditableGrid`.
 10. Need interactive / sortable / searchable data table?
-   - Use `DataGrid` + `useDataSource` + `createDefaultDataGridState` from `@stackframe/dashboard-ui-components`.
+   - Use `DataGrid` + `useDataSource` + `createDefaultDataGridState` from `@hexclave/dashboard-ui-components`.
 11. Need dropdown action/selector/toggle menu?
    - Use `DesignMenu`.
 12. Need a focus-trapping modal/dialog (confirmation, rich modal, tester, form)?
@@ -531,7 +531,7 @@ Rules:
 
 ### 4.12 `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
-Package: `@stackframe/dashboard-ui-components`
+Package: `@hexclave/dashboard-ui-components`
 
 Use for:
 
@@ -541,7 +541,7 @@ Use for:
 Canonical pattern:
 
 ```tsx
-import { DataGrid, useDataSource, createDefaultDataGridState, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { DataGrid, useDataSource, createDefaultDataGridState, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 
 const columns: DataGridColumnDef<MyRow>[] = [
   { id: "name", header: "Name", accessor: "name", width: 200, type: "string" },
@@ -647,7 +647,7 @@ File: `packages/dashboard-ui-components/src/components/dialog.tsx` (re-exported 
 Use for:
 
 - any focus-trapping modal in the dashboard (confirmations, rich detail dialogs, tester surfaces, settings forms presented as modals)
-- replacing hand-wired `Dialog` + `DialogContent` + `DialogHeader` combinations from `@stackframe/stack-ui`
+- replacing hand-wired `Dialog` + `DialogContent` + `DialogHeader` combinations from `@hexclave/ui`
 
 Props you should use most:
 
@@ -663,7 +663,7 @@ Props you should use most:
 - `hideTopCloseButton`: hide the top-right "X" rendered by `DialogContent` for fully custom close affordances.
 - `bodyClassName` / `headerClassName` / `footerClassName` / `overlayClassName` / `className`: fine-grained class overrides for each region.
 
-Re-exports (import these from the same module — do not mix with `@stackframe/stack-ui` for the same dialog):
+Re-exports (import these from the same module — do not mix with `@hexclave/ui` for the same dialog):
 
 - `DesignDialogClose` (alias of `DialogClose`)
 - `DesignDialogTrigger` (alias of `DialogTrigger`)

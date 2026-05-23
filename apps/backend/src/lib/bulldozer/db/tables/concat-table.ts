@@ -1,5 +1,5 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import type { Table } from "..";
 import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";

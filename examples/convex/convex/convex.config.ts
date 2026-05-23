@@ -1,4 +1,4 @@
-import stackAuthComponent from "@stackframe/stack/convex.config";
+import stackAuthComponent from "@hexclave/next/convex.config";
 import { defineApp } from "convex/server";
 
 const app = defineApp();

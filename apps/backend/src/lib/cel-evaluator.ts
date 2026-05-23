@@ -1,7 +1,7 @@
-import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import { unescapeCelString } from "@stackframe/stack-shared/dist/utils/cel-fields";
+import type { SignUpRiskScoresCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
+import { SignUpAuthMethod } from "@hexclave/shared/dist/utils/auth-methods";
+import { unescapeCelString } from "@hexclave/shared/dist/utils/cel-fields";
 import { evaluate } from "cel-js";
 import { normalizeEmail } from "./emails";
 import { SignUpRiskScores } from "./risk-scores";

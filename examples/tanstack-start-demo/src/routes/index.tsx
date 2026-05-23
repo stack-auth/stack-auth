@@ -1,5 +1,5 @@
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { UserAvatar, useStackApp, useUser } from "@stackframe/tanstack-start";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { UserAvatar, useStackApp, useUser } from "@hexclave/tanstack-start";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
@@ -17,7 +17,7 @@ function HomePage() {
           <p className="mb-2 text-sm font-medium text-zinc-500 dark:text-zinc-400">TanStack Start alpha</p>
           <h1 className="text-3xl font-semibold tracking-tight">Welcome to the Stack demo app.</h1>
           <p className="mt-4 text-zinc-600 dark:text-zinc-300">
-            This example uses <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-sm dark:bg-zinc-800">@stackframe/tanstack-start</code> with file-based routes and Hexclave handler pages.
+            This example uses <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-sm dark:bg-zinc-800">@hexclave/tanstack-start</code> with file-based routes and Hexclave handler pages.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link to="/ssr" className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-100 hover:transition-none dark:border-zinc-700 dark:hover:bg-zinc-800">

@@ -1,9 +1,9 @@
-import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
-import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
-import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
+import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
+import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import { InternalSession } from "@hexclave/shared/dist/sessions";
+import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminEmailOutbox, AdminSentEmail } from "../../email";
 import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";

@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { signUpRiskEngine } from "@/private";
-import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
+import type { SignUpRiskScoresCrud } from "@hexclave/shared/dist/interface/crud/users";
+import type { SignUpAuthMethod } from "@hexclave/shared/dist/utils/auth-methods";
 import { checkEmailWithEmailable } from "./emailable";
 import { type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
 import type { Tenancy } from "./tenancies";

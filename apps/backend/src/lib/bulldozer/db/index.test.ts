@@ -1,4 +1,4 @@
-import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare, templateIdentity } from "@hexclave/shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
 import type { Table } from "./index";

@@ -1,6 +1,6 @@
 import { createMCPClient } from "@ai-sdk/mcp";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { generateText, stepCountIs } from "ai";
 import { getConnection } from "./mcp-logger";
 import { createOpenRouterProvider } from "./models";

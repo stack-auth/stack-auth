@@ -1,7 +1,7 @@
 "use client";
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, Input, Typography } from "@stackframe/stack-ui";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Card, Input, Typography } from "@hexclave/ui";
 import { useState } from "react";
 
 export default function ApiKeyDemo() {

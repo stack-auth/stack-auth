@@ -1,4 +1,4 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const RISK_SCORE_REGEX = /^(100|[1-9]?[0-9])$/;
 

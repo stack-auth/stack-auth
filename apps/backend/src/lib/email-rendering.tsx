@@ -1,15 +1,15 @@
 import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
-import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { HexclaveAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
-import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
+import { emptyEmailTheme } from '@hexclave/shared/dist/helpers/emails';
+import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
+import { bundleJavaScript } from '@hexclave/shared/dist/utils/esbuild';
+import { get, has } from '@hexclave/shared/dist/utils/objects';
 import {
   type EditableMetadata,
   transpileJsxForEditing,
   convertSentinelTokensToComments,
-} from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+} from "@hexclave/shared/dist/utils/jsx-editable-transpiler";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
 
 export function getActiveEmailTheme(tenancy: Tenancy) {

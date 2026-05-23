@@ -11,8 +11,8 @@ import {
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
-import { AdminEmailConfig } from "@stackframe/stack";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { AdminEmailConfig } from "@hexclave/next";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import {
   ArrowLeft,
   ArrowsClockwise,
@@ -32,8 +32,8 @@ import {
   Trash,
   WarningDiamond,
 } from "@phosphor-icons/react";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ActionDialog, Dialog, DialogContent, DialogTitle, Label, Popover, PopoverContent, PopoverTrigger, Typography, useToast } from "@/components/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";

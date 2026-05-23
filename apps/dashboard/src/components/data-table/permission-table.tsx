@@ -8,7 +8,7 @@ import {
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useCallback, useContext, useMemo, useState, createContext } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";

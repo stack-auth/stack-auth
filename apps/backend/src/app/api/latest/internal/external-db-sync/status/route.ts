@@ -2,7 +2,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import {
   adaptSchema,
   adminAuthTypeSchema,
@@ -11,12 +11,12 @@ import {
   yupNumber,
   yupObject,
   yupString,
-} from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { errorToNiceString, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+} from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { errorToNiceString, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { Client } from "pg";
-import { KnownErrors } from "@stackframe/stack-shared";
+import { KnownErrors } from "@hexclave/shared";
 import { traceSpan } from "@/utils/telemetry";
 
 const STALE_CLAIM_INTERVAL_MINUTES = 5;

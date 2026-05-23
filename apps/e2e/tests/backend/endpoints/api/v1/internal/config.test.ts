@@ -1,5 +1,5 @@
-import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { DEFAULT_EMAIL_THEME_ID } from "@hexclave/shared/dist/helpers/emails";
+import { pick } from "@hexclave/shared/dist/utils/objects";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";

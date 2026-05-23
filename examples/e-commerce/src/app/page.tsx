@@ -1,4 +1,4 @@
-import { ServerUser } from "@stackframe/stack";
+import { ServerUser } from "@hexclave/next";
 import { Shop } from "@/shop";
 import { stackServerApp } from "@/stack";
 

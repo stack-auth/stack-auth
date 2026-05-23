@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export type ManagedEmailDomainStatus = "pending_dns" | "pending_verification" | "verified" | "applied" | "failed";
 

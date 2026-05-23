@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@/components/ui";
 import { useMetricsOrThrow } from "@/lib/stack-app-internals";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { Suspense } from "react";
 import { useAdminApp } from "../app/(main)/(protected)/projects/[projectId]/use-admin-app";

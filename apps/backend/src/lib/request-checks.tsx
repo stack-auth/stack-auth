@@ -1,8 +1,8 @@
 import { StandardOAuthProviderType } from "@/generated/prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { ProviderType, standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownErrors } from "@hexclave/shared";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { ProviderType, standardProviders } from "@hexclave/shared/dist/utils/oauth";
+import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 import { listPermissions } from "./permissions";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";

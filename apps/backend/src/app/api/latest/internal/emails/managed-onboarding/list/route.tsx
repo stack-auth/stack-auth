@@ -1,6 +1,6 @@
 import { listManagedEmailProviderDomains } from "@/lib/managed-email-onboarding";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const GET = createSmartRouteHandler({
   metadata: {

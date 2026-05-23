@@ -1,18 +1,12 @@
-// Side-effect import — fires once-per-process @stackframe/* deprecation warning at SDK load time.
-// In packages published as @hexclave/*, scripts/rewrite-packages-to-hexclave.ts rewrites the
-// build-time sentinel inside dist/ (`js @stackframe/<pkg>@<ver>` → `js @hexclave/<new>@<ver>`),
-// so the @stackframe/-prefixed check in deprecation-warning.ts short-circuits there.
-import "./internal/deprecation-warning";
-
 export * from './lib/stack-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
 // Hexclave aliases — same symbols under the new brand name (see RENAME-TO-HEXCLAVE.md, Tier 1)
-export type { StackConfig as HexclaveConfig } from "@stackframe/stack-shared/config";
-export { defineStackConfig as defineHexclaveConfig } from "@stackframe/stack-shared/config";
+export type { StackConfig as HexclaveConfig } from "@hexclave/shared/config";
+export { defineStackConfig as defineHexclaveConfig } from "@hexclave/shared/config";
 /** @deprecated Use `HexclaveConfig` instead — same symbol, new brand name. */
-export type { StackConfig } from "@stackframe/stack-shared/config";
+export type { StackConfig } from "@hexclave/shared/config";
 /** @deprecated Use `defineHexclaveConfig` instead — same symbol, new brand name. */
-export { defineStackConfig } from "@stackframe/stack-shared/config";
+export { defineStackConfig } from "@hexclave/shared/config";
 
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";

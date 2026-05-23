@@ -12,9 +12,9 @@ import {
   getSlowestRequests,
 } from "@/lib/dev-request-stats";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 const requestStatSchema = yupObject({
   method: yupString().defined(),

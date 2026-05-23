@@ -1,6 +1,6 @@
 import { createClient, type ClickHouseClient, type ClickHouseSettings } from "@clickhouse/client";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 // Re-exported so other modules can hold a typed ClickHouse client (e.g. to
 // thread a single warmed client through helpers) without taking a direct

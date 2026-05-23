@@ -1,7 +1,7 @@
 'use client';
 
-import { useUser } from "@stackframe/stack";
-import { Button } from "@stackframe/stack-ui";
+import { useUser } from "@hexclave/next";
+import { Button } from "@hexclave/ui";
 import { useEffect, useState } from "react";
 
 export default function Page() {

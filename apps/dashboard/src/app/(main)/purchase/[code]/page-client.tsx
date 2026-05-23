@@ -5,9 +5,9 @@ import { StripeElementsProvider } from "@/components/payments/stripe-elements-pr
 import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
-import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 import Image from 'next/image';
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";

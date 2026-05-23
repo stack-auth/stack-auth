@@ -7,8 +7,8 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input
 import { CodeEditor, VibeCodeLayout, type ViewportMode } from "@/components/vibe-coding";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, Info, PauseIcon, PencilSimple, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
-import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useRouter } from "@/components/router";
 import { useCallback, useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";

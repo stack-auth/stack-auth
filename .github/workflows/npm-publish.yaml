@@ -68,7 +68,7 @@ jobs:
           CHANGESET_FILE=".changeset/update-package-versions-${GITHUB_RUN_ID}.md"
           cat > "$CHANGESET_FILE" <<'EOF'
           ---
-          "@stackframe/stack": patch
+          "@hexclave/next": patch
           ---
 
           Update package versions.
@@ -89,28 +89,3 @@ jobs:
           git commit -m "chore: update package versions"
           git push origin dev
 
-      # Hexclave rebrand mirror publish (Tier 2). Each publishable `@stackframe/*`
-      # package is re-published as `@hexclave/*` with all cross-deps pinned to one
-      # shared `@hexclave` version. Built artifacts (`dist/`) are also rewritten by
-      # the script so cross-package require()/import specifiers + the build-time
-      # package-version sentinel point at `@hexclave/*` instead of `@stackframe/*`.
-      #
-      # Hardcoded to 1.0.0 — `pnpm publish` skips versions already on npm, so
-      # after the first successful run on main this becomes a no-op. PR 3 in
-      # the rebrand sequence renames the source packages natively to
-      # `@hexclave/*` and deletes this entire mirror flow; until then, 1.0.0
-      # is the one-shot cutover version.
-      #
-      # Runs AFTER `Update package versions on dev` because that step asserts a
-      # clean working tree (`git diff --exit-code HEAD`); the rewrite below
-      # mutates package.json files in-place and would trip that assertion.
-      - name: Checkout main for Hexclave mirror rewrite
-        run: git checkout main
-
-      - name: Rewrite package names to @hexclave/*
-        run: pnpm tsx scripts/rewrite-packages-to-hexclave.ts --version=1.0.0
-
-      - name: Publish @hexclave/* mirror packages
-        run: pnpm publish -r --no-git-checks --access public
-        env:
-          NPM_CONFIG_PROVENANCE: true

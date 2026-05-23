@@ -7,8 +7,8 @@ import { DesignInput } from "@/components/design-components/input";
 import { Logo } from "@/components/logo";
 import { Spinner } from "@/components/ui";
 import { ArrowsLeftRightIcon } from "@phosphor-icons/react";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 
 export type ProjectTransferConfirmUiState = "loading" | "success" | { type: "error", message: string };
 

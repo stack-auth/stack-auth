@@ -1,7 +1,7 @@
 'use client';
 
-import { KnownErrors } from "@stackframe/stack-shared";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import React from "react";
 import { useStackApp, useUser } from "..";
 import { MessageCard } from "../components/message-cards/message-card";

@@ -1,8 +1,8 @@
-import { KnownErrors } from "@stackframe/stack-shared";
-import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { KnownErrors } from "@hexclave/shared";
+import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, stackAppInternalsSymbol, TokenStoreInit } from "../../common";
-import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
+import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";

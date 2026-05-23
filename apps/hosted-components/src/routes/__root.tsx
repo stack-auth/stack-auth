@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { StackClientApp, StackProvider, StackTheme } from '@stackframe/react';
+import { StackClientApp, StackProvider, StackTheme } from '@hexclave/react';
 import {
   HeadContent,
   Outlet,

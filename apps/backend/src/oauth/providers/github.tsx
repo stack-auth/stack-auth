@@ -1,6 +1,6 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getJwtInfo } from "@stackframe/stack-shared/dist/utils/jwt";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { getJwtInfo } from "@hexclave/shared/dist/utils/jwt";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 

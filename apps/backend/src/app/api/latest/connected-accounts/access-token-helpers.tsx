@@ -1,10 +1,10 @@
 import { OAuthBaseProvider } from "@/oauth/providers/base";
 import type { OAuthAccessTokenRefreshError } from "@/oauth/providers/base";
 import { getPrismaClientForTenancy } from "@/prisma-client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownErrors } from "@hexclave/shared";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { extractScopes } from "@hexclave/shared/dist/utils/strings";
 
 function captureOAuthAccessTokenRefreshIssue(options: {
   location: string,

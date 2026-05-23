@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { cn, Spinner, Tooltip, TooltipContent, TooltipTrigger } from "@stackframe/stack-ui";
+import { cn, Spinner, Tooltip, TooltipContent, TooltipTrigger } from "@hexclave/ui";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
 
 type DesignPillToggleSize = "sm" | "md" | "lg";

@@ -1,4 +1,4 @@
-const { StackHandler } = require("@stackframe/stack");
+const { StackHandler } = require("@hexclave/next");
 const { stackServerApp } = require("../../../stack");
 
 function Handler(props) {

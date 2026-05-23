@@ -9,10 +9,10 @@
  * wires it up to GitHub's REST API.
  */
 
-import type { PushedConfigSource } from "@stackframe/stack";
-import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { isValidConfig, override } from "@stackframe/stack-shared/dist/config/format";
-import { parseStackConfigFileContent, renderConfigFileContent, showOnboardingStackConfigValue } from "@stackframe/stack-shared/dist/stack-config-file";
+import type { PushedConfigSource } from "@hexclave/next";
+import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { isValidConfig, override } from "@hexclave/shared/dist/config/format";
+import { parseStackConfigFileContent, renderConfigFileContent, showOnboardingStackConfigValue } from "@hexclave/shared/dist/stack-config-file";
 
 import {
   commitFile,
@@ -21,14 +21,18 @@ import {
 } from "./github-api";
 
 /**
- * Detects the `@stackframe/*` import package used by the existing config file
- * so the re-rendered file keeps the same import line. Falls back to
- * `@stackframe/js` when the file is empty or the import cannot be detected.
+ * Detects the `@hexclave/*` or legacy `@stackframe/*` import package used by
+ * the existing config file so the re-rendered file keeps the same import
+ * line. Falls back to `@hexclave/js` when the file is empty or the import
+ * cannot be detected.
  */
 function detectImportPackage(currentFileContent: string): string | undefined {
-  // Match `from "@stackframe/<name>"` — single or double quotes.
-  const match = currentFileContent.match(/from\s+["']@stackframe\/([a-z0-9-]+)["']/i);
-  return match ? `@stackframe/${match[1]}` : undefined;
+  // Match `from "@hexclave/<name>"` or `from "@stackframe/<name>"` — single
+  // or double quotes. Hexclave preferred when both appear.
+  const hexclave = currentFileContent.match(/from\s+["']@hexclave\/([a-z0-9-]+)["']/i);
+  if (hexclave) return `@hexclave/${hexclave[1]}`;
+  const stackframe = currentFileContent.match(/from\s+["']@stackframe\/([a-z0-9-]+)["']/i);
+  return stackframe ? `@stackframe/${stackframe[1]}` : undefined;
 }
 
 /**
@@ -37,8 +41,8 @@ function detectImportPackage(currentFileContent: string): string | undefined {
  * `updatePushedConfig`), returns the new file contents.
  *
  * The existing import line is preserved when the source file imports
- * `StackConfig` from a known `@stackframe/*` package; otherwise the renderer
- * uses its own default.
+ * `StackConfig` from a known `@hexclave/*` or legacy `@stackframe/*` package;
+ * otherwise the renderer uses its own default.
  */
 export function buildUpdatedConfigFileContent(
   currentFileContent: string,

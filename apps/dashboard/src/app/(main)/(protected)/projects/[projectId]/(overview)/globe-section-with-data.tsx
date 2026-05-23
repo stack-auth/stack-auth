@@ -2,7 +2,7 @@
 
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { cn } from "@/lib/utils";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { useAdminApp } from '../use-admin-app';
 import { GlobeSection } from './globe';

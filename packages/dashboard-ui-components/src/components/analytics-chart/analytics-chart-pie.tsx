@@ -1,5 +1,5 @@
 import { MagnifyingGlassMinusIcon } from "@phosphor-icons/react";
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 import { type DesignChartConfig, DesignChartContainer } from "../chart-container";
 import { type CSSProperties, type Ref, useMemo } from "react";
 import { Cell, Pie, PieChart } from "recharts";

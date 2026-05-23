@@ -2,9 +2,9 @@ import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-chann
 import { Tenancy } from "@/lib/tenancies";
 import { createOrUpgradeAnonymousUserWithRules, SignUpRuleOptions } from "@/lib/users";
 import { PrismaClientTransaction } from "@/prisma-client";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { captureError, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * Find an existing OAuth account for sign-in.

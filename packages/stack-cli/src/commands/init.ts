@@ -2,8 +2,8 @@ import { Command } from "commander";
 import { select, input, checkbox, confirm } from "@inquirer/prompts";
 import * as fs from "fs";
 import * as path from "path";
-import { StackClientApp } from "@stackframe/js";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { StackClientApp } from "@hexclave/js";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
 import { resolveLoginConfig, resolveSessionAuth, DEFAULT_PUBLISHABLE_CLIENT_KEY } from "../lib/auth.js";
 import { getInternalUser } from "../lib/app.js";
 import { writeConfigValue } from "../lib/config.js";
@@ -14,8 +14,8 @@ import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { isEmulatorImageInstalled } from "./emulator.js";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const VALID_INIT_MODES = ["create", "create-cloud", "link-config", "link-cloud"] as const;
 type InitMode = typeof VALID_INIT_MODES[number];
@@ -171,7 +171,7 @@ function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: 
 
   if (args.mode === "create") {
     console.log("  • You're wired up to the local emulator. Start it in another terminal:");
-    console.log("      npx @stackframe/stack-cli emulator start");
+    console.log("      npx @hexclave/cli emulator start");
     console.log("    Local dashboard: http://localhost:26700");
   } else if (args.projectId) {
     console.log("  • Manage this project in the dashboard:");

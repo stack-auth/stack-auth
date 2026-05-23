@@ -9,7 +9,7 @@ import {
   globalOffsetToLocalOffset,
   localOffsetToGlobalOffset,
 } from "@/lib/session-replay-streams";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 // ---------------------------------------------------------------------------
 // Shared constants (also used by the component shell)

@@ -2,9 +2,9 @@ import { ensureClientCanAccessCustomer, ensureCustomerExists } from "@/lib/payme
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 
 
 export const GET = createSmartRouteHandler({

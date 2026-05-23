@@ -2,7 +2,7 @@ import { initSentry } from "./lib/sentry.js";
 initSentry();
 
 import * as Sentry from "@sentry/node";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";

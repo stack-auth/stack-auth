@@ -1,6 +1,6 @@
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { wait } from '@stackframe/stack-shared/dist/utils/promises';
+import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { wait } from '@hexclave/shared/dist/utils/promises';
 import apiVersions from './generated/api-versions.json';
 import routes from './generated/routes.json';
 import './polyfills';

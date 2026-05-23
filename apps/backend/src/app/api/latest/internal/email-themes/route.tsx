@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { internalEmailThemesCudHandlers } from "./cud";
 
 

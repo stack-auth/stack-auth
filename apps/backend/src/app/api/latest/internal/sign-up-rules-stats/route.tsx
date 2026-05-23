@@ -1,7 +1,7 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 const ANALYTICS_HOURS = 48;
 

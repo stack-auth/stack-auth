@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getLatestPageVersions } from "@stackframe/stack-shared/dist/interface/handler-urls";
+import { yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getLatestPageVersions } from "@hexclave/shared/dist/interface/handler-urls";
 
 export const GET = createSmartRouteHandler({
   metadata: {

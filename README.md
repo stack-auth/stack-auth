@@ -140,7 +140,7 @@ pnpm test # useful: --no-watch (disables watch mode) and --bail 1 (stops after t
 
 You can now open the dev launchpad at [http://localhost:8100](http://localhost:8100). From there, you can navigate to the dashboard at [http://localhost:8101](http://localhost:8101), API on port 8102, demo on port 8103, docs on port 8104, Inbucket (e-mails) on port 8105, and Prisma Studio on port 8106. See the dev launchpad for a list of all running services.
 
-Your IDE may show an error on all `@stackframe/XYZ` imports. To fix this, simply restart the TypeScript language server; for example, in VSCode you can open the command palette (Ctrl+Shift+P) and run `Developer: Reload Window` or `TypeScript: Restart TS server`.
+Your IDE may show an error on all `@hexclave/XYZ` imports. To fix this, simply restart the TypeScript language server; for example, in VSCode you can open the command palette (Ctrl+Shift+P) and run `Developer: Reload Window` or `TypeScript: Restart TS server`.
 
 Pre-populated .env files for the setup below are available and used by default in `.env.development` in each of the packages. However, if you're creating a production build (eg. with `pnpm run build`), you must supply the environment variables manually (see below).
 

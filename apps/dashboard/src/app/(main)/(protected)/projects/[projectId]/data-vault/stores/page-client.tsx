@@ -8,8 +8,8 @@ import {
 import { ActionDialog, Label, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { useState } from "react";
 import { useRouter } from "../../../../../../../components/router";
 import { AppEnabledGuard } from "../../app-enabled-guard";

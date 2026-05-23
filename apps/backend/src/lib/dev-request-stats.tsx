@@ -1,4 +1,4 @@
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
 export type RequestStat = {
   method: string,

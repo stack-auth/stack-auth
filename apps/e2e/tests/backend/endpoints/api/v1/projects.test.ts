@@ -1,5 +1,5 @@
-import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { isBase64Url } from "@hexclave/shared/dist/utils/bytes";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 

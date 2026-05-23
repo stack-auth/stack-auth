@@ -1,9 +1,9 @@
 "use client";
 
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { FilterUndefined, filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { FilterUndefined, filterUndefined } from "@hexclave/shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { getRelativePart } from "@hexclave/shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
 import { useEffect, useMemo } from 'react';
 /* IF_PLATFORM react

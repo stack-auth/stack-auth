@@ -1,6 +1,6 @@
 import Editor, { Monaco } from '@monaco-editor/react';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { deindent } from '@hexclave/shared/dist/utils/strings';
 import { useTheme } from '@/lib/theme';
 import { dtsBundles } from './dts';
 import { useState, useCallback } from 'react';

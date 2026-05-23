@@ -12,7 +12,7 @@ How to run the Mintlify docs preview locally from this repository.
   When you change API route OpenAPI metadata, regenerate and **commit** the four specs from the repo root:
 
   ```bash
-  pnpm run --filter @stackframe/backend codegen-docs
+  pnpm run --filter @hexclave/backend codegen-docs
   git add docs-mintlify/openapi/
   ```
 

@@ -1,4 +1,4 @@
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import fs from "fs";
 import path from "path";
 

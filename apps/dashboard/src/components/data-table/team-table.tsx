@@ -2,14 +2,14 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { ActionCell, ActionDialog, Typography } from "@/components/ui";
-import { ServerTeam } from '@stackframe/stack';
+import { ServerTeam } from '@hexclave/next';
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import React, { useCallback, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";

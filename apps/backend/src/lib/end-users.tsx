@@ -1,8 +1,8 @@
-import { normalizeCountryCode } from "@stackframe/stack-shared/dist/utils/country-codes";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { normalizeCountryCode } from "@hexclave/shared/dist/utils/country-codes";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { isIpAddress } from "@hexclave/shared/dist/utils/ips";
+import { pick } from "@hexclave/shared/dist/utils/objects";
 import { headers } from "next/headers";
 
 // An end user is a person sitting behind a computer screen.

@@ -4,7 +4,7 @@ import {
   type CompleteAttachment,
   type PendingAttachment,
 } from "@assistant-ui/react";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 
 /** Chat composer attachments: UUID ids, auto-compressed to fit shared max file size (see `image-limits`). */
 export class ImageAttachmentAdapter implements AttachmentAdapter {

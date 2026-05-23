@@ -24,12 +24,12 @@ import {
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { PlusCircleIcon } from "@phosphor-icons/react";
-import { AdminOwnedProject, useStackApp } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminOwnedProject, useStackApp } from "@hexclave/next";
+import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
+import type { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
   beginPendingAction,

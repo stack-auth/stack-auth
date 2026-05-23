@@ -1,5 +1,5 @@
 import { getPublicEnvVar } from '@/lib/env';
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import packageJson from "../../package.json";
 
 export type VersionCheckResult = {
