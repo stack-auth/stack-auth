@@ -325,7 +325,12 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     throw new KnownErrors.BranchDoesNotExist(branchId);
   }
 
-  const user = await queriesResults.userIfOnGlobalPrismaClient;
+  // As explained above, as a performance optimization we already fetch the user from the global database optimistically
+  // If it turned out that the source-of-truth is not the global database, we'll fetch the user from the source-of-truth
+  // database instead.
+  const user = tenancy.config.sourceOfTruth.type === "hosted"
+    ? await queriesResults.userIfOnGlobalPrismaClient
+    : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
 
   return {
     project,
