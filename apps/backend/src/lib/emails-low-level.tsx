@@ -10,6 +10,7 @@ import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/pro
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
+import { checkSmtpEgressPolicy } from '@/private';
 
 export function isSecureEmailPort(port: number | string) {
   // "secure" in most SMTP clients means implicit TLS from byte 1 (SMTPS)
@@ -76,10 +77,27 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 
     return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
       try {
+        const smtpEgressPolicyResult = await checkSmtpEgressPolicy({
+          host: options.emailConfig.host,
+          port: options.emailConfig.port,
+        });
+        if (smtpEgressPolicyResult.status === "error") {
+          console.warn("SMTP config rejected by the egress policy.", {
+            violation: smtpEgressPolicyResult.violation,
+            config: strippedEmailConfig,
+          });
+          captureError("smtp-egress-policy-report-only", new StackAssertionError("SMTP config would be rejected by the egress policy", {
+            violation: smtpEgressPolicyResult.violation,
+            config: strippedEmailConfig,
+          }));
+        }
+
         const transporter = nodemailer.createTransport({
           host: options.emailConfig.host,
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
+          disableFileAccess: true,
+          disableUrlAccess: true,
           connectionTimeout: 15000,
           greetingTimeout: 10000,
           socketTimeout: 20000,

@@ -179,15 +179,12 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
     </script>`;
 }
 
-function escapeScriptContent(code: string): string {
-  return code
-    .replace(/<\/script/gi, "<\\/script")
-    .replace(/<!--/g, "<\\!--")
-    .replace(/-->/g, "--\\>");
+function encodeSourceForJsonScript(code: string): string {
+  return JSON.stringify(code).replace(/</g, "\\u003c");
 }
 
 function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
-  const sourceCode = escapeScriptContent(artifact.runtimeCodegen.uiRuntimeSourceCode);
+  const encodedSource = encodeSourceForJsonScript(artifact.runtimeCodegen.uiRuntimeSourceCode);
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = extractEsmVersion(artifact.runtimeCodegen.uiRuntimeSourceCode) ?? packageJson.version;
   const esmFallbackVersion = getEsmFallbackVersion(esmVersion);
@@ -337,11 +334,43 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
   <body>
     <div id="root"></div>
     
-    <!-- Babel (for JSX transpilation) -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
+    <!-- Babel (for JSX transpilation). crossorigin=anonymous is required so that
+         errors thrown from inside Babel (e.g. JSX SyntaxErrors from AI-generated
+         code) are not sanitized to "Script error." with no message — unpkg sends
+         the matching Access-Control-Allow-Origin header. -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
+
+    <!-- Install a global error listener BEFORE any AI code runs so that Babel parse
+         errors, uncaught runtime throws, and async rejections all reach the parent.
+         Without this, a JSX SyntaxError in the AI-generated code would surface only
+         as a console error and the user would see a blank iframe. -->
+    <script>
+      (function () {
+        function postError(message, stack) {
+          try {
+            window.parent.postMessage({
+              type: 'dashboard-error-boundary',
+              message: message || 'Unknown dashboard error',
+              stack: stack || undefined,
+            }, '*');
+          } catch (_) { /* parent may be gone */ }
+        }
+        window.__postDashboardError = postError;
+        window.addEventListener('error', function (event) {
+          var err = event && event.error;
+          postError((err && err.message) || (event && event.message) || 'Unknown runtime error', err && err.stack);
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event && event.reason;
+          postError((reason && (reason.message || String(reason))) || 'Unhandled promise rejection', reason && reason.stack);
+        });
+      })();
+    </script>
+
     ${getDependencyScripts(esmVersion, esmFallbackVersion, dashboardUrl)}
-    
+
+    <script type="application/json" id="ai-dashboard-source">${encodedSource}</script>
+
     <script type="text/babel">
       // Navigation API for AI-generated code
       window.dashboardNavigate = function(path) {
@@ -377,7 +406,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         baseUrl: ${JSON.stringify(baseUrl)},
         projectId: ${JSON.stringify(artifact.projectId)},
       };
-      
+
       async function waitForDeps() {
         if (!window.__depsReady) {
           await new Promise(resolve => {
@@ -400,12 +429,12 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
             window.removeEventListener('message', handler);
             reject(new Error('Token request timeout'));
           }, 5000);
-          
+
           const handler = (event) => {
             if (event.data?.type === 'stack-access-token-response' && event.data?.requestId === requestId) {
               clearTimeout(timeout);
               window.removeEventListener('message', handler);
-              
+
               if (event.data.accessToken) {
                 resolve(event.data.accessToken);
               } else {
@@ -413,22 +442,22 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
               }
             }
           };
-          
+
           window.addEventListener('message', handler);
-          window.parent.postMessage({ 
+          window.parent.postMessage({
             type: 'stack-access-token-request',
-            requestId 
+            requestId
           }, '*');
         });
       }
-      
+
       async function initializeStackApp() {
         await waitForDeps();
-        
+
         if (!window.StackAdminApp) {
           throw new Error("Stack SDK failed to load. The SDK should expose window.StackAdminApp.");
         }
-        
+
         const stackServerApp = new window.StackAdminApp({
           projectId: STACK_CONFIG.projectId,
           baseUrl: STACK_CONFIG.baseUrl,
@@ -436,31 +465,14 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
             return await requestAccessToken();
           },
         });
-        
+
         window.stackServerApp = stackServerApp;
-        
+
         return stackServerApp;
       }
-      
-      // Forward uncaught runtime errors (async throws, unhandled rejections) that never
-      // reach the React boundary. React ErrorBoundary alone misses these, so without this
-      // the parent has no way to observe e.g. a fetch() that rejected inside useEffect.
-      window.addEventListener('error', (event) => {
-        const err = event?.error;
-        window.parent.postMessage({
-          type: 'dashboard-error-boundary',
-          message: err?.message || event?.message || 'Unknown runtime error',
-          stack: err?.stack,
-        }, '*');
-      });
-      window.addEventListener('unhandledrejection', (event) => {
-        const reason = event?.reason;
-        window.parent.postMessage({
-          type: 'dashboard-error-boundary',
-          message: (reason && (reason.message || String(reason))) || 'Unhandled promise rejection',
-          stack: reason?.stack,
-        }, '*');
-      });
+
+      // Uncaught runtime errors and unhandled rejections are forwarded by the
+      // early global listener installed before Babel loads (see top of <head>).
 
       // Error Boundary Component
       class ErrorBoundary extends React.Component {
@@ -481,7 +493,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
             componentStack: errorInfo?.componentStack,
           }, '*');
         }
-        
+
         render() {
           if (this.state.hasError) {
             return (
@@ -501,30 +513,69 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           return this.props.children;
         }
       }
-      
+
       // Boot the dashboard
       const rootElement = document.getElementById('root');
       if (!rootElement) {
         throw new Error('Root element not found');
       }
-      
+
       // Initialize deps and boot the dashboard
       initializeStackApp().then(() => {
         const DashboardUI = window.DashboardUI;
         const Recharts = window.Recharts;
-        
+
         if (!DashboardUI) {
           throw new Error("Dashboard UI components failed to load in sandbox.");
         }
         if (!Recharts) {
           throw new Error("Recharts failed to load in sandbox.");
         }
-        
-        // Execute AI-generated code with DashboardUI and Recharts in scope
-        const Dashboard = (() => {
-          ${sourceCode}
-          return Dashboard;
-        })();
+
+        // Execute AI-generated code with DashboardUI and Recharts in scope.
+        // We compile here (rather than via <script type="text/babel">) so that
+        // a JSX SyntaxError in the AI output surfaces as a normal throw — the
+        // window 'error' listener picks it up and forwards it to the parent
+        // composer instead of leaving the iframe blank.
+        const aiSourceEl = document.getElementById('ai-dashboard-source');
+        if (!aiSourceEl || !aiSourceEl.textContent) {
+          throw new Error('Failed to parse aiSource from aiSourceEl: #ai-dashboard-source script tag is missing or empty');
+        }
+        let aiSource;
+        try {
+          aiSource = JSON.parse(aiSourceEl.textContent);
+        } catch (parseErr) {
+          const original = parseErr && parseErr.message ? parseErr.message : String(parseErr);
+          const preview = aiSourceEl.textContent.slice(0, 500);
+          const wrapped = new Error('Failed to parse aiSource from aiSourceEl: ' + original + ' | textContent preview: ' + preview);
+          if (parseErr && parseErr.stack) wrapped.stack = parseErr.stack;
+          throw wrapped;
+        }
+        if (typeof aiSource !== 'string') {
+          throw new Error('Failed to parse aiSource from aiSourceEl: expected JSON-encoded string, got ' + typeof aiSource);
+        }
+        let compiledSource;
+        try {
+          compiledSource = window.Babel.transform(aiSource, { presets: ['react'], sourceType: 'script' }).code;
+        } catch (err) {
+          const message = err && err.message ? 'Dashboard code failed to compile: ' + err.message : 'Dashboard code failed to compile';
+          const stack = err && err.stack ? err.stack : undefined;
+          window.__postDashboardError && window.__postDashboardError(message, stack);
+          const root = ReactDOM.createRoot(rootElement);
+          root.render(
+            <div className="p-6 text-red-500">
+              <h2 className="text-xl font-bold mb-2">Dashboard failed to compile</h2>
+              <pre className="text-sm bg-red-950/20 p-4 rounded overflow-auto whitespace-pre-wrap">
+                {message}
+              </pre>
+            </div>
+          );
+          return;
+        }
+        // eslint-disable-next-line no-new-func
+        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'stackServerApp', compiledSource + '\\nreturn Dashboard;')(
+          React, ReactDOM, DashboardUI, Recharts, window.stackServerApp,
+        );
         
         if (typeof Dashboard !== 'function') {
           throw new Error('Dashboard component not found in generated code');
