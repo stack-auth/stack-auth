@@ -116,6 +116,8 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - NEVER INSTALL A NEW PACKAGE (or anything else) WITHOUT EXPLICIT APPROVAL FROM THE USER.
 - A "development environment" is either an RDE (remote development environment; = local dashboard + prod backend) or a local emulator (local dashboard + local backend). When communicating to the user, we always say "development environment" instead of RDE or local emulator (the distinction to the user is minor, even though the implementation is quite different).
 - NEVER EVER return a server error with an internal server error that may contain information that the user shouldn't see. For example, never return the error message on a public API from an upstream provider without properly filtering it first. Most of the time, for internal server errors, you should just use StackAssertionError (which won't pass the message to the user), not StatusError (you almost never want to instantiate a StatusError with status 5xx).
+- When adding code to the `private` part of the backend, put the actual implementation into `implementation` (if the submodule is checked out), and implement a simple fallback in `implementation-fallback` for self-hosters. `implementation.generated.ts` will automatically be generated, which you can then import from `index.ts`. (See the existing code as an example.) If the submodule isn't checked out, but you need to add code to the `private` part of the backend, let the user know.
+- Security-sensitive code on the backend that shouldn't be public should be in the `private` part of the backend.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

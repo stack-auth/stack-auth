@@ -541,3 +541,6 @@ A: Put restricted-user docs at `docs-mintlify/guides/apps/authentication/restric
 
 ## Q: How should e2e tests switch to a newly created project?
 A: `Project.createAndSwitch` should leave `backendContext.projectKeys` set to real project API keys, not only `{ projectId, adminAccessToken }`. Internal admin access tokens are regular short-lived access tokens; keeping one in the default project context makes later server/admin requests fail with `ADMIN_ACCESS_TOKEN_EXPIRED` or validate the token against the wrong project.
+
+## Q: How should backend SMTP SSRF checks be rolled out?
+A: Keep the real outbound SMTP policy in `apps/backend/src/private/implementation/smtp-egress-policy.ts`, export it through `apps/backend/src/private/index.ts`, and provide a simple `implementation-fallback` function for self-hosters. It should allow only SMTP ports 25, 465, 587, 2465, 2587, and 2525, reject internal IP literals or DNS resolutions, and initially run report-only from `emails-low-level.tsx` via `captureError("smtp-egress-policy-report-only", ...)` before enforcing hard failures.
