@@ -1,20 +1,5 @@
 import { deindent } from "../utils/strings";
 
-export const mcpSetupPrompt = deindent`
-  ## MCP Setup
-
-  <Note>
-    This prompt is not yet implemented.
-  </Note>
-
-  <Steps titleSize="h3">
-    <Step title="Install dependencies">
-      Install the MCP package:
-    </Step>
-    <Step title="Done!" />
-  </Steps>
-`;
-
 export const convexSetupPrompt = deindent`
   ## Convex Setup
 
@@ -356,8 +341,6 @@ export const aiSetupPrompt = deindent`
   To use it, you can use the sections below to set up Stack Auth in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
 
   ${getSdkSetupPrompt("ai-prompt")}
-
-  ${mcpSetupPrompt}
 
   ${convexSetupPrompt}
 
