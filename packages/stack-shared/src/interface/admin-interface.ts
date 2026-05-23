@@ -489,6 +489,19 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async deleteManagedEmailDomain(data: {
+    resend_domain_id: string,
+  }): Promise<{ status: "deleted" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/delete", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
   async applyManagedEmailProvider(data: {
     domain_id: string,
   }): Promise<{ status: "applied" }> {

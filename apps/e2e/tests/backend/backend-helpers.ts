@@ -1340,6 +1340,11 @@ export namespace Project {
       },
       userAuth: null
     });
+    const { projectKeys } = await InternalApiKey.create(createResult.adminAccessToken);
+    backendContext.set({
+      projectKeys,
+      userAuth: null
+    });
     return createResult;
   }
 

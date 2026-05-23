@@ -4,8 +4,8 @@ import { InputField, SwitchField } from "@/components/form-fields";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { SettingCard, SettingSwitch } from "@/components/settings";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Typography } from "@/components/ui";
-import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
+import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -354,7 +354,7 @@ function DomainDataGrid({ domains }: { domains: DomainEntry[] }) {
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
       footer={false}
-
+      fillHeight={false}
     />
   );
 }

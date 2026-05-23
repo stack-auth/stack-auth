@@ -694,6 +694,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return result;
   }
 
+  async deleteManagedEmailDomain(options: { resendDomainId: string }): Promise<{ status: "deleted" }> {
+    return await this._interface.deleteManagedEmailDomain({
+      resend_domain_id: options.resendDomainId,
+    });
+  }
+
   async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }

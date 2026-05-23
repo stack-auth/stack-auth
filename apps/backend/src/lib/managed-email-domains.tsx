@@ -224,3 +224,28 @@ export async function listManagedEmailDomainsForTenancy(tenancyId: string): Prom
   `);
   return rows.map(mapRow);
 }
+
+export async function deleteManagedEmailDomainById(id: string): Promise<ManagedEmailDomain | null> {
+  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+    DELETE FROM "ManagedEmailDomain"
+    WHERE "id" = ${id}
+    RETURNING *
+  `);
+  if (rows.length === 0) {
+    return null;
+  }
+  return mapRow(rows[0]!);
+}
+
+export async function countManagedEmailDomainsBySubdomainExcludingId(options: {
+  subdomain: string,
+  excludeId: string,
+}): Promise<number> {
+  const rows = await globalPrismaClient.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS count
+    FROM "ManagedEmailDomain"
+    WHERE "subdomain" = ${options.subdomain}
+      AND "id" <> ${options.excludeId}
+  `);
+  return Number(rows[0]?.count ?? 0n);
+}

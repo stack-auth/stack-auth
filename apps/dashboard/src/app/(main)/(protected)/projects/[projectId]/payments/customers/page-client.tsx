@@ -1,7 +1,7 @@
 "use client";
 
-import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { TeamSearchTable } from "@/components/data-table/team-search-table";
+import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { NumberField, SelectField } from "@/components/form-fields";
 import { ItemDialog } from "@/components/payments/item-dialog";
@@ -17,12 +17,12 @@ import {
   SelectValue,
   SimpleTooltip,
   Skeleton,
-  Typography,
   toast,
+  Typography,
 } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
+import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -516,6 +516,7 @@ function ItemTable(props: {
       onChange={setGridState}
       toolbar={false}
       footer={false}
+      fillHeight={false}
     />
   );
 }
@@ -763,6 +764,7 @@ function ItemTableSkeleton(props: { rows: number }) {
       onChange={setGridState}
       toolbar={false}
       footer={false}
+      fillHeight={false}
     />
   );
 }

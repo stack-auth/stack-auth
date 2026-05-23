@@ -255,9 +255,7 @@ it("ignores connection_strings while provisioning with hosted source-of-truth", 
   expect(configResponse.body.config_string).toBeDefined();
   const sourceOfTruth = JSON.parse(configResponse.body.config_string).sourceOfTruth;
   expect(sourceOfTruth).toMatchInlineSnapshot(`
-    {
-      "type": "hosted",
-    }
+    { "type": "hosted" }
   `);
 });
 
@@ -295,8 +293,6 @@ it("accepts connection_strings updates without changing hosted source-of-truth",
   expect(configResponse.body.config_string).toBeDefined();
   const sourceOfTruth = JSON.parse(configResponse.body.config_string).sourceOfTruth;
   expect(sourceOfTruth).toMatchInlineSnapshot(`
-    {
-      "type": "hosted",
-    }
+    { "type": "hosted" }
   `);
 });

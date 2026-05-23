@@ -473,10 +473,12 @@ it("should return correct auth_overview breakdown including teams", async ({ exp
   // Create an anonymous user
   await Auth.Anonymous.signUp();
 
-  await wait(2000);
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-  expect(response.status).toBe(200);
+  const response = await waitForMetricsMatch(false, (r) => {
+    const authOverview = r.body?.auth_overview;
+    if (authOverview == null) return false;
+    const nonAnonFromOverview = authOverview.verified_users + authOverview.unverified_users;
+    return authOverview.anonymous_users >= 1 && nonAnonFromOverview >= 1 && authOverview.total_teams >= 1;
+  });
 
   const authOverview = response.body.auth_overview;
 
