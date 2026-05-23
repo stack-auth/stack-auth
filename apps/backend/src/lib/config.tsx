@@ -772,22 +772,18 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   // Actual configs — advanced cases
   expect(await validateConfigOverrideSchema(projectConfigSchema, projectSchemaBase, {
     sourceOfTruth: {
-      type: 'postgres',
-      connectionString: 'postgres://user:pass@host:port/db',
+      type: 'hosted',
     },
   })).toEqual(Result.ok(null));
   expect(await validateConfigOverrideSchema(projectConfigSchema, projectSchemaBase, {
     sourceOfTruth: {
       type: 'postgres',
+      connectionString: 'postgres://user:pass@host:port/db',
     },
   })).toEqual(Result.error(deindent`
-    [WARNING] sourceOfTruth is not matched by any of the provided schemas:
+    [ERROR] sourceOfTruth is not matched by any of the provided schemas:
       Schema 0:
-        sourceOfTruth.type must be one of the following values: hosted
-      Schema 1:
-        sourceOfTruth.connectionStrings must be defined
-      Schema 2:
-        sourceOfTruth.connectionString must be defined
+        sourceOfTruth contains unknown properties: connectionString
   `));
 
   // Dot-notation keys that dot into nothing — detected by simulating the rendering pipeline

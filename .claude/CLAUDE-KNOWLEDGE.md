@@ -544,3 +544,6 @@ A: `Project.createAndSwitch` should leave `backendContext.projectKeys` set to re
 
 ## Q: How should backend SMTP SSRF checks be rolled out?
 A: Keep the real outbound SMTP policy in `apps/backend/src/private/implementation/smtp-egress-policy.ts`, export it through `apps/backend/src/private/index.ts`, and provide a simple `implementation-fallback` function for self-hosters. It should allow only SMTP ports 25, 465, 587, 2465, 2587, and 2525, reject internal IP literals or DNS resolutions, and initially run report-only from `emails-low-level.tsx` via `captureError("smtp-egress-policy-report-only", ...)` before enforcing hard failures.
+
+## Q: What project-level `sourceOfTruth` config is supported?
+A: Project config overrides only support the hosted `sourceOfTruth` shape. Legacy external source-of-truth overrides such as Postgres or Neon are removed by `migrateConfigOverride("project", ...)`, while raw schema validation should reject them.
