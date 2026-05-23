@@ -3,7 +3,6 @@ export {
   StackClientApp
 } from "./interfaces/client-app";
 export type {
-  HexclaveClientApp,
   HexclaveClientAppConstructor,
   HexclaveClientAppConstructorOptions,
   HexclaveClientAppJson,
@@ -17,7 +16,6 @@ export {
   StackServerApp
 } from "./interfaces/server-app";
 export type {
-  HexclaveServerApp,
   HexclaveServerAppConstructor,
   HexclaveServerAppConstructorOptions,
   StackServerAppConstructor,
@@ -29,7 +27,6 @@ export {
   StackAdminApp
 } from "./interfaces/admin-app";
 export type {
-  HexclaveAdminApp,
   HexclaveAdminAppConstructor,
   HexclaveAdminAppConstructorOptions,
   StackAdminAppConstructor,

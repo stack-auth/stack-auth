@@ -7,14 +7,11 @@ export {
   StackServerApp
 } from "./apps";
 export type {
-  HexclaveAdminApp,
   HexclaveAdminAppConstructor,
   HexclaveAdminAppConstructorOptions,
-  HexclaveClientApp,
   HexclaveClientAppConstructor,
   HexclaveClientAppConstructorOptions,
   HexclaveClientAppJson,
-  HexclaveServerApp,
   HexclaveServerAppConstructor,
   HexclaveServerAppConstructorOptions,
   StackAdminAppConstructor,
