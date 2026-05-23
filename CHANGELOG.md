@@ -4,44 +4,44 @@
 
 ## 5/22/26
 
-- Project metrics and preview analytics now lean harder on ClickHouse.
-- Cross-domain handoffs and hosted-domain trust received production polish.
-- Auth method and user-table surfaces got another round of dashboard polish.
+- Faster ClickHouse analytics for project metrics and previews.
+- Smoother cross-domain auth handoffs and hosted-domain trust.
+- Sharper Auth Methods and Users dashboard tables.
 ![Auth method and user table polish](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-auth-methods.png)
 
 ## 5/15/26
 
-- Project transfer, session replay, and team payments screens were redesigned.
-- AI chat surfaces were unified on assistant-ui threads.
-- Team management views picked up cleaner tables and action states.
+- Redesigned Team Management tables with cleaner action states.
+- New project transfer, session replay, and team payments screens.
+- Unified AI chat experience on assistant-ui threads.
 ![Team management table](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-teams.png)
 
 ## 5/8/26
 
-- TanStack Start SDK integration landed with refreshed OpenAPI schemas.
-- Project overview now shows weekly users metrics.
-- Project permissions kept getting cleaner as dashboard data grids rolled out.
+- New TanStack Start SDK integration with refreshed OpenAPI schemas.
+- Weekly active users now appear on Project Overview.
+- Cleaner Project Permissions with upgraded data grids.
 ![Project permissions dashboard](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-rbac.png)
 
 ## 5/1/26
 
-- Session replays gained shareable IDs across dashboard, backend, and SDK surfaces.
-- Data grids and overview layouts were refactored.
-- The emulator can auto-install dependencies when pulling updates.
+- Shareable Session Replay IDs across dashboard, backend, and SDKs.
+- Sleeker Data Vault and overview data-grid layouts.
+- Emulator updates can now auto-install dependencies.
 ![Data Vault dashboard](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-data-vault.png)
 
 ## 4/24/26
 
-- Email Server settings and managed-domain setup were redesigned.
-- Local emulator startup got RAM snapshots and live secret rotation.
-- The sign-up rules tester dialog was simplified.
+- Redesigned Email Server settings and managed-domain setup.
+- Faster local emulator startup with RAM snapshots.
+- Live secret rotation plus a simpler sign-up rules tester.
 ![Email server settings and logs](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-email-server.png)
 
 ## 4/17/26
 
-- The overview page and onboarding experience were redesigned.
-- Dashboard sidebar styling and category navigation were tightened up.
-- The Payments app introduced a clearer product setup flow.
+- Redesigned Overview and onboarding experience.
+- Crisper dashboard sidebar styling and category navigation.
+- New Payments product setup flow.
 ![Payments product setup](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-payments-products.png)
 
 ---
