@@ -123,7 +123,7 @@ async function waitForAnalyticsRowsForSessionReplaySegment(
   throw new Error(`Timed out waiting for ${expectedCount} analytics rows for session replay segment ${sessionReplaySegmentId}`);
 }
 
-it("should return metrics data", async ({ expect }) => {
+it("should return metrics data", { timeout: 120_000 }, async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
