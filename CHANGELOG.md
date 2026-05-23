@@ -2,37 +2,82 @@
 
 ---
 
-## 1/23/26
+## 5/18/26
 
-### Payments
-Introduced a redesigned payments onboarding flow
-![Payments Onboarding](https://raw.githubusercontent.com/stack-auth/stack-auth/dev/apps/dashboard/public/changelog/payments-onboarding.png)
+### Project Setup
+- Link Stack Auth projects to GitHub and push config from the dashboard.
+- Cross-domain handoffs and hosted-domain trust received production polish.
 
-## 1/21/26
+### Analytics
+- Project metrics and preview analytics now lean harder on ClickHouse.
 
-### Payments
-- Payments page updated with new UI changes
-![Create Product](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/payments-create-product.png)
-- Added a new Payments Settings page with an option to temporarily disable all payments
-![Payments Setting](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/payments-settings-1.png)
-- Subscription renewal emails are now sent automatically to users
-- Past payment invoices are now visible on the Account Settings page
-![Past Payments Invoices](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/account-settings-invoices.png)
+![Connected projects, cross-domain polish, and faster analytics](https://app.devin.ai/attachments/0d88615c-4c13-4096-95f1-a67f59f52653/week-2026-05-18.png)
 
-### Documentation
-- Updated JWT documentation to include `isRestricted` and `restrictedReason`
+## 5/11/26
 
-## 1/19/26
-- Updated package dependencies to their newest versions.
+### AI
+- Hexclave AI integration added skill, MCP, and docs endpoints.
+- AI chat surfaces were unified on assistant-ui threads.
 
-## 12/19/25
-- Introduces new changelog and deprecates all older changelogs. 
-- Date versioning for public view.
+### Dashboard
+- Project transfer, session replay, and team payments screens were redesigned.
+
+![AI surfaces, data grids, and project transfers](https://app.devin.ai/attachments/f22fa831-61ac-4ac3-bbc7-e60705b49f83/week-2026-05-11.png)
+
+## 5/4/26
+
+### SDKs
+- TanStack Start SDK integration landed with refreshed OpenAPI schemas.
+
+### Dashboard
+- Project overview now shows weekly users metrics.
+
+### CLI
+- Stack CLI gained self-hosted URL support and clearer cloud/local init next steps.
+
+![TanStack Start, weekly metrics, and smoother CLI setup](https://app.devin.ai/attachments/052b953b-192e-4bb3-a365-34cb34c076c8/week-2026-05-04.png)
+
+## 4/27/26
+
+### Session Replays
+- Session replays gained shareable IDs across dashboard, backend, and SDK surfaces.
+
+### Dashboard
+- Data grids and overview layouts were refactored.
+
+### Emulator
+- The emulator can auto-install dependencies when pulling updates.
+
+![Shareable session replays and dashboard foundations](https://app.devin.ai/attachments/35bb8d24-9433-4a02-bcbb-6869b7c1f049/week-2026-04-27.png)
+
+## 4/20/26
+
+### Email
+- Email Server settings and managed-domain setup were redesigned.
+
+### Emulator
+- Local emulator startup got RAM snapshots and live secret rotation.
+
+### Dashboard
+- The sign-up rules tester dialog was simplified.
+
+![Email domains, faster emulators, and sign-up rules](https://app.devin.ai/attachments/0a7eee82-ae7e-4512-84a2-8d45b48b83f7/week-2026-04-20.png)
+
+## 4/13/26
+
+### Dashboard
+- The overview page and onboarding experience were redesigned.
+- Dashboard sidebar styling and category navigation were tightened up.
+
+### AI
+- AI arrived in Stack Companion with a large-response chat flow.
+
+![Overview revamp, onboarding redo, and AI in Stack Companion](https://app.devin.ai/attachments/8697a84a-2882-4fac-8fcd-8d99e1be4acb/week-2026-04-13.png)
 
 ---
 
 > **Note:** All older changelogs are deprecated and have been removed. The source of true is this single changelog file.
-> 
+>
 > Going forward, all changes should be documented in this file only.
 
 ---
