@@ -800,7 +800,16 @@ export namespace Auth {
       const locationUrl = new URL(location!);
       expect(locationUrl.origin).toBe(localhostUrl("14"));
       expect(locationUrl.pathname).toBe("/auth");
-      expect(response.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+      // Backend dual-writes oauth-inner cookies under both `stack-` and `hexclave-` prefixes
+      // (cookie dual-write — see hexclave rename plan); assert via getSetCookie() to avoid
+      // the comma-join ambiguity that Headers.get("set-cookie") creates with multiple
+      // Set-Cookie headers whose values contain `, ` (e.g. inside Expires=).
+      const oauthInnerSetCookies = response.headers.getSetCookie()
+        .filter(c => /^(?:stack|hexclave)-oauth-inner-/.test(c));
+      expect(oauthInnerSetCookies.length).toBeGreaterThan(0);
+      for (const setCookie of oauthInnerSetCookies) {
+        expect(setCookie).toMatch(/^(?:stack|hexclave)-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+      }
       return {
         authorizeResponse: response,
       };
