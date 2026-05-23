@@ -2,6 +2,9 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: Which Hexclave rename compatibility layers should be avoided in PR #1475 follow-ups?
+A: Do not keep backwards compatibility for the MCP tool name, cross-domain auth query parameter names, `NEXT_PUBLIC_STACK_PORT_PREFIX`, or a parallel `hexclaveAppInternalsSymbol`. For refresh/access cookies, read both legacy Stack and new Hexclave cookie names, but only write the canonical Hexclave cookies.
+
 ## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
 A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
 

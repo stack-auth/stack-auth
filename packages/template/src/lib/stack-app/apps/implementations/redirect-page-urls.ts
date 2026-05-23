@@ -2,10 +2,6 @@ import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/erro
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import { HandlerUrls } from "../../common";
 
-// Hexclave rebrand: cross-domain auth query params travel SDK↔SDK across an auth
-// handoff. A handoff between two SDK majors (one per domain) must still resolve, so
-// we dual-emit both the legacy `stack_*` and the new `hexclave_*` param sets when
-// writing, and accept either when reading (preferring the new name).
 export const crossDomainAuthQueryParams = {
   marker: "hexclave_cross_domain_auth",
   state: "hexclave_cross_domain_state",
@@ -13,31 +9,18 @@ export const crossDomainAuthQueryParams = {
   afterCallbackRedirectUrl: "hexclave_cross_domain_after_callback_redirect_url",
 } as const;
 
-// Hexclave rebrand: legacy param names — accepted on read, also emitted on write
-// for back-compat with older SDKs on the other side of the handoff.
-export const legacyCrossDomainAuthQueryParams = {
-  marker: "stack_cross_domain_auth",
-  state: "stack_cross_domain_state",
-  codeChallenge: "stack_cross_domain_code_challenge",
-  afterCallbackRedirectUrl: "stack_cross_domain_after_callback_redirect_url",
-} as const;
-
 type CrossDomainAuthQueryParamKey = keyof typeof crossDomainAuthQueryParams;
 
-// Hexclave rebrand: reads a cross-domain param under either the new or legacy name.
 function getCrossDomainParam(params: URLSearchParams, key: CrossDomainAuthQueryParamKey): string | null {
-  return params.get(crossDomainAuthQueryParams[key]) ?? params.get(legacyCrossDomainAuthQueryParams[key]);
+  return params.get(crossDomainAuthQueryParams[key]);
 }
 
-// Hexclave rebrand: true if a cross-domain param is present under either name.
 function hasCrossDomainParam(params: URLSearchParams, key: CrossDomainAuthQueryParamKey): boolean {
-  return params.has(crossDomainAuthQueryParams[key]) || params.has(legacyCrossDomainAuthQueryParams[key]);
+  return params.has(crossDomainAuthQueryParams[key]);
 }
 
-// Hexclave rebrand: writes a cross-domain param under both the new and legacy names.
 function setCrossDomainParam(params: URLSearchParams, key: CrossDomainAuthQueryParamKey, value: string): void {
   params.set(crossDomainAuthQueryParams[key], value);
-  params.set(legacyCrossDomainAuthQueryParams[key], value);
 }
 
 export type CrossDomainHandoffParams = {
@@ -92,7 +75,6 @@ function buildCrossDomainAuthCallbackUrl(options: {
       currentUrl: options.currentUrl.toString(),
     });
   }
-  // Hexclave rebrand: dual-emit so an older SDK on the other side still resolves.
   setCrossDomainParam(localOAuthCallbackUrl.searchParams, "marker", "1");
   if (options.state != null) {
     setCrossDomainParam(localOAuthCallbackUrl.searchParams, "state", options.state);
@@ -119,8 +101,6 @@ function buildRedirectBackAwareHandlerUrl(options: {
   if (currentAfterAuthReturnTo != null && !nextUrl.searchParams.has("after_auth_return_to")) {
     nextUrl.searchParams.set("after_auth_return_to", currentAfterAuthReturnTo);
   }
-  // Hexclave rebrand: preserve cross-domain params, reading either name and
-  // re-emitting both so the chain stays compatible across SDK majors.
   for (const preservedParam of ["state", "codeChallenge", "afterCallbackRedirectUrl"] as const) {
     const currentValue = getCrossDomainParam(options.currentUrl.searchParams, preservedParam);
     if (currentValue != null && !hasCrossDomainParam(nextUrl.searchParams, preservedParam)) {
@@ -155,7 +135,6 @@ function buildRedirectBackAwareHandlerUrl(options: {
       });
 
       nextUrl.searchParams.set("after_auth_return_to", callbackUrl.toString());
-      // Hexclave rebrand: dual-emit cross-domain params.
       setCrossDomainParam(nextUrl.searchParams, "afterCallbackRedirectUrl", afterCallbackRedirectUrl);
       if (options.crossDomainHandoffParams != null) {
         setCrossDomainParam(nextUrl.searchParams, "state", options.crossDomainHandoffParams.state);

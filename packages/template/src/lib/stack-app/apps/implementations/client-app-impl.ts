@@ -47,7 +47,7 @@ import { getNewOAuthProviderOrScopeUrl, callOAuthCallback } from "../../../auth"
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -61,7 +61,7 @@ import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } 
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
-import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, legacyCrossDomainAuthQueryParams, planRedirectToHandler } from "./redirect-page-urls";
+import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
@@ -739,31 +739,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return `stack-refresh-${this.projectId}`;
   }
   protected get _refreshTokenCookieName() {
-    return `stack-refresh-${this.projectId}`;
-  }
-  // Hexclave rebrand: the new base name for refresh-token cookies. Cookies are dual-written under both
-  // `stack-refresh-<projectId>` (via `_refreshTokenCookieName`) and `hexclave-refresh-<projectId>`.
-  protected get _hexclaveRefreshTokenCookieName() {
     return `hexclave-refresh-${this.projectId}`;
   }
-  // Hexclave rebrand: returns the default refresh cookie name for both bases (hexclave first = preferred).
-  private _getRefreshTokenDefaultCookieNamesForSecure(secure: boolean): string[] {
-    return [
-      `${secure ? "__Host-" : ""}${this._hexclaveRefreshTokenCookieName}--default`,
-      `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`,
-    ];
+  private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
+    return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
   }
-  // Hexclave rebrand: custom cross-subdomain cookie names for both bases (hexclave first = preferred).
-  private _getCustomRefreshCookieNames(domain: string): string[] {
+  private _getCustomRefreshCookieName(domain: string): string {
     const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
-    return [
-      `${this._hexclaveRefreshTokenCookieName}--custom-${encoded}`,
-      `${this._refreshTokenCookieName}--custom-${encoded}`,
-    ];
+    return `${this._refreshTokenCookieName}--custom-${encoded}`;
   }
   private _getDomainFromCustomRefreshCookieName(name: string): string | null {
-    // Hexclave rebrand: decode custom cookies under either base name.
-    for (const base of [this._hexclaveRefreshTokenCookieName, this._refreshTokenCookieName]) {
+    for (const base of [this._refreshTokenCookieName, this._legacyRefreshTokenCookieName]) {
       const prefix = `${base}--custom-`;
       if (!name.startsWith(prefix)) continue;
       try {
@@ -773,16 +759,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
     }
     return null;
-  }
-  // Hexclave rebrand: back-compat singular helpers. The plural variants above are the canonical
-  // path (they return both bases for dual-write); these return only the legacy stack-* name so
-  // integration tests and any older callers that look up a single name keep resolving.
-  private _getCustomRefreshCookieName(domain: string): string {
-    const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
-    return `${this._refreshTokenCookieName}--custom-${encoded}`;
-  }
-  private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
-    return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
   }
   private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
     return JSON.stringify({
@@ -847,8 +823,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   protected _getTokensFromCookies(cookies: cookie.Cookies): TokenObject {
     const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
-    // Hexclave rebrand: dual-read the access token cookie, preferring the new name.
-    const accessTokenCookie = cookies[this._hexclaveAccessTokenCookieName] ?? cookies[this._accessTokenCookieName] ?? null;
+    const accessTokenCookie = cookies[this._accessTokenCookieName] ?? cookies[this._legacyAccessTokenCookieName] ?? null;
     let accessToken: string | null = null;
     if (accessTokenCookie && accessTokenCookie.startsWith('[\"')) {
       const parsed = parseJson(accessTokenCookie);
@@ -878,11 +853,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // access token in cookies more than once because of how big it is (there's a limit of 4096 bytes for all cookies
     // together). This means that, if you have multiple projects on the same domain, some of them will need to refetch
     // the access token on page reload.
-    return `stack-access`;
-  }
-  // Hexclave rebrand: the new access token cookie name. The access cookie is dual-written under both names.
-  protected get _hexclaveAccessTokenCookieName() {
     return `hexclave-access`;
+  }
+  protected get _legacyAccessTokenCookieName() {
+    return `stack-access`;
   }
   private _getAllBrowserCookies(): cookie.Cookies {
     if (!isBrowserLike()) {
@@ -891,16 +865,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return cookie.parseCookie(document.cookie || "");
   }
   private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
-    // Hexclave rebrand: recognize structured refresh cookies under both the hexclave and stack bases
-    // (plus the `__Host-` variants). The flat legacy names (`stack-refresh-<projectId>` and the pre-projectId
-    // `stack-refresh`) keep being read for backwards compatibility.
     return {
       legacyNames: [this._legacyRefreshTokenCookieName, "stack-refresh"],
       structuredPrefixes: [
-        `${this._hexclaveRefreshTokenCookieName}--`,
-        `__Host-${this._hexclaveRefreshTokenCookieName}--`,
         `${this._refreshTokenCookieName}--`,
         `__Host-${this._refreshTokenCookieName}--`,
+        `${this._legacyRefreshTokenCookieName}--`,
+        `__Host-${this._legacyRefreshTokenCookieName}--`,
       ],
     };
   }
@@ -923,13 +894,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     existingCookies: cookie.Cookies,
     refreshToken: string | null,
     accessToken: string | null,
-    // Hexclave rebrand: the default cookie is dual-written, so multiple names are kept (not deleted).
-    defaultCookieNames: string[],
+    defaultCookieName: string,
   ) {
     const cookieNames = this._collectRefreshTokenCookieNames(existingCookies);
-    for (const defaultCookieName of defaultCookieNames) {
-      cookieNames.delete(defaultCookieName);
-    }
+    cookieNames.delete(defaultCookieName);
     const updatedAt = refreshToken ? Date.now() : null;
     const refreshCookieValue = refreshToken && updatedAt !== null ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
     const accessTokenPayload = this._formatAccessCookieValue(refreshToken, accessToken);
@@ -949,19 +917,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return;
       }
       const cookies = this._getAllBrowserCookies();
-      // Hexclave rebrand: dual-write the custom cross-subdomain cookie under both names. Only
-      // skip if BOTH names already exist — if either is missing (e.g. one was manually cleared),
-      // re-write the pair so the legacy-name read path stays valid.
-      const customCookieNames = this._getCustomRefreshCookieNames(domain.data);
-      if (customCookieNames.every((name) => cookies[name])) {
+      const customCookieName = this._getCustomRefreshCookieName(domain.data);
+      if (cookies[customCookieName]) {
         return;
       }
       const { refreshToken, updatedAt } = this._extractRefreshTokenFromCookieMap(cookies);
       if (refreshToken && updatedAt) {
         const value = this._formatRefreshCookieValue(refreshToken, updatedAt);
-        for (const customCookieName of customCookieNames) {
-          setOrDeleteCookieClient(customCookieName, value, { maxAge: 60 * 60 * 24 * 365, domain: domain.data });
-        }
+        setOrDeleteCookieClient(customCookieName, value, { maxAge: 60 * 60 * 24 * 365, domain: domain.data });
       }
     });
   }
@@ -982,16 +945,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
 
       const cookieOptions = { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true };
-      // Hexclave rebrand: dual-write the custom cross-subdomain cookie under both names.
       const setCookie = async (targetDomain: string, value: string | null) => {
-        const names = this._getCustomRefreshCookieNames(targetDomain);
+        const name = this._getCustomRefreshCookieName(targetDomain);
         const options = { ...cookieOptions, domain: targetDomain };
-        for (const name of names) {
-          if (context === "browser") {
-            setOrDeleteCookieClient(name, value, options);
-          } else {
-            await setOrDeleteCookie(name, value, options);
-          }
+        if (context === "browser") {
+          setOrDeleteCookieClient(name, value, options);
+        } else {
+          await setOrDeleteCookie(name, value, options);
         }
       };
 
@@ -1001,15 +961,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
       await setCookie(domain.data, value);
       const isSecure = await isSecureCookieContext();
-      // Hexclave rebrand: delete the (now-superseded) default cookie under both names. Match the
-      // browser/server split used by setCookie above — otherwise the browser-side onChange path
-      // ends up calling the Next.js server-cookie helper and the default cookie is never cleared.
-      for (const defaultName of this._getRefreshTokenDefaultCookieNamesForSecure(isSecure)) {
-        if (context === "browser") {
-          setOrDeleteCookieClient(defaultName, null, cookieOptions);
-        } else {
-          await setOrDeleteCookie(defaultName, null, cookieOptions);
-        }
+      const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(isSecure);
+      if (context === "browser") {
+        setOrDeleteCookieClient(defaultName, null, cookieOptions);
+      } else {
+        await setOrDeleteCookie(defaultName, null, cookieOptions);
       }
     });
   }
@@ -1057,18 +1013,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         try {
           const refreshToken = value.refreshToken;
           const secure = window.location.protocol === "https:";
-          // Hexclave rebrand: dual-write the default refresh cookie + access cookie under both names.
-          const defaultNames = this._getRefreshTokenDefaultCookieNamesForSecure(secure);
+          const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
           const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
             this._getAllBrowserCookies(),
             refreshToken,
             value.accessToken ?? null,
-            defaultNames,
+            defaultName,
           );
-          for (const defaultName of defaultNames) {
-            setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
-          }
-          setOrDeleteCookieClient(this._hexclaveAccessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
+          setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
           setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
           cookieNamesToDelete.forEach((name) => {
             const domain = this._getDomainFromCustomRefreshCookieName(name);
@@ -1122,19 +1074,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               // so hack it is
               const refreshToken = value.refreshToken;
               const secure = await isSecureCookieContext();
-              // Hexclave rebrand: dual-write the default refresh cookie + access cookie under both names.
-              const defaultNames = this._getRefreshTokenDefaultCookieNamesForSecure(secure);
+              const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(secure);
               const { updatedAt, refreshCookieValue, accessTokenPayload, cookieNamesToDelete } = this._prepareRefreshCookieUpdate(
                 cookieHelper.getAll(),
                 refreshToken,
                 value.accessToken ?? null,
-                defaultNames,
+                defaultName,
               );
               await Promise.all([
-                ...defaultNames.map((defaultName) =>
-                  setOrDeleteCookie(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
-                ),
-                setOrDeleteCookie(this._hexclaveAccessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
+                setOrDeleteCookie(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, noOpIfServerComponent: true }),
                 setOrDeleteCookie(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24, noOpIfServerComponent: true }),
               ]);
               if (cookieNamesToDelete.length > 0) {
@@ -3444,9 +3392,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     let oauthCallbackRedirectUri = this.urls.oauthCallback;
     const currentUrl = new URL(window.location.href);
-    // Hexclave rebrand: accept the cross-domain marker under either the new or legacy param name.
-    if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1"
-      || currentUrl.searchParams.get(legacyCrossDomainAuthQueryParams.marker) === "1") {
+    if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1") {
       currentUrl.searchParams.delete("code");
       currentUrl.searchParams.delete("state");
       oauthCallbackRedirectUri = currentUrl.toString();
@@ -3677,11 +3623,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  // Hexclave rebrand: expose the same internals under the parallel symbol.
-  static get [hexclaveAppInternalsSymbol]() {
-    return this[stackAppInternalsSymbol];
-  }
-
   get [stackAppInternalsSymbol]() {
     return {
       toClientJson: (): StackClientAppJson<HasTokenStore, ProjectId> => {
@@ -3742,8 +3683,4 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   };
 
-  // Hexclave rebrand: expose the same internals under the parallel symbol.
-  get [hexclaveAppInternalsSymbol]() {
-    return this[stackAppInternalsSymbol];
-  }
 }

@@ -211,7 +211,3 @@ export type AuthLike<ExtraOptions = {}> = {
 
 /** @internal */
 export const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
-
-// Hexclave rebrand: parallel internals symbol; app internals are exposed under both this and `stackAppInternalsSymbol`.
-/** @internal */
-export const hexclaveAppInternalsSymbol = Symbol.for("Hexclave--app-internals");

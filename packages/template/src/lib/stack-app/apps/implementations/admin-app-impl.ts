@@ -16,7 +16,7 @@ import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/u
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
-import { EmailConfig, hexclaveAppInternalsSymbol, stackAppInternalsSymbol } from "../../common";
+import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
@@ -589,11 +589,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       // END_PLATFORM
     };
-  }
-
-  // Hexclave rebrand: expose the same internals under the parallel symbol.
-  get [hexclaveAppInternalsSymbol]() {
-    return this[stackAppInternalsSymbol];
   }
 
   async sendTestEmail(options: {

@@ -1,8 +1,22 @@
 export {
-  StackAdminApp, StackClientApp,
+  HexclaveAdminApp,
+  HexclaveClientApp,
+  HexclaveServerApp,
+  StackAdminApp,
+  StackClientApp,
   StackServerApp
 } from "./apps";
 export type {
+  HexclaveAdminApp,
+  HexclaveAdminAppConstructor,
+  HexclaveAdminAppConstructorOptions,
+  HexclaveClientApp,
+  HexclaveClientAppConstructor,
+  HexclaveClientAppConstructorOptions,
+  HexclaveClientAppJson,
+  HexclaveServerApp,
+  HexclaveServerAppConstructor,
+  HexclaveServerAppConstructorOptions,
   StackAdminAppConstructor,
   StackAdminAppConstructorOptions,
   StackClientAppConstructor,
@@ -10,21 +24,6 @@ export type {
   StackClientAppJson,
   StackServerAppConstructor,
   StackServerAppConstructorOptions
-} from "./apps";
-// Hexclave aliases — same symbols under the new brand name (see RENAME-TO-HEXCLAVE.md, Tier 1)
-export {
-  StackAdminApp as HexclaveAdminApp,
-  StackClientApp as HexclaveClientApp,
-  StackServerApp as HexclaveServerApp
-} from "./apps";
-export type {
-  StackAdminAppConstructor as HexclaveAdminAppConstructor,
-  StackAdminAppConstructorOptions as HexclaveAdminAppConstructorOptions,
-  StackClientAppConstructor as HexclaveClientAppConstructor,
-  StackClientAppConstructorOptions as HexclaveClientAppConstructorOptions,
-  StackClientAppJson as HexclaveClientAppJson,
-  StackServerAppConstructor as HexclaveServerAppConstructor,
-  StackServerAppConstructorOptions as HexclaveServerAppConstructorOptions
 } from "./apps";
 
 export type {
@@ -47,8 +46,6 @@ export type {
 
 export {
   stackAppInternalsSymbol,
-  // Hexclave rebrand: parallel internals symbol
-  hexclaveAppInternalsSymbol
 } from "./common";
 export {
   getPagePrompt,
@@ -134,4 +131,3 @@ export type {
   ServerUser,
   User
 } from "./users";
-

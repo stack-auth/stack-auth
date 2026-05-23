@@ -264,9 +264,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
 
   const redirectIfNotHandler = (name: keyof HandlerUrls) => {
     const url = stackApp.urls[name];
-    // Hexclave rebrand: accept the cross-domain auth marker under either name.
-    const isCrossDomainLocalOauthCallback = name === "oauthCallback"
-      && (searchParams.hexclave_cross_domain_auth === "1" || searchParams.stack_cross_domain_auth === "1");
+    const isCrossDomainLocalOauthCallback = name === "oauthCallback" && searchParams.hexclave_cross_domain_auth === "1";
     if (isCrossDomainLocalOauthCallback) {
       return;
     }
