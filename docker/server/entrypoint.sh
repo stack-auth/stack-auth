@@ -45,6 +45,30 @@ if [ -n "${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-}" ]; then
   export STACK_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}
 fi
 
+# ============= HEXCLAVE ↔ STACK URL ENV MIRROR =============
+# The dashboard bundle inlines BOTH process.env.NEXT_PUBLIC_HEXCLAVE_* and
+# process.env.NEXT_PUBLIC_STACK_* references as sentinels (dual-read). At
+# runtime the sentinel-replace loop only substitutes a sentinel when the
+# corresponding env var is set — but the dashboard's fallback chain
+# (`HEXCLAVE_X ?? STACK_X`) treats an unreplaced sentinel as truthy, so it
+# would pick the literal sentinel string instead of the real URL whenever
+# only one of the two env names is set by the self-host operator.
+# Mirror the URL trio HEXCLAVE → STACK and STACK → HEXCLAVE before the
+# sentinel-replace runs, so both sentinels resolve to the same real value
+# regardless of which name the operator chose.
+for _legacy in STACK_API_URL STACK_DASHBOARD_URL STACK_SVIX_SERVER_URL; do
+  _new=HEXCLAVE_${_legacy#STACK_}
+  _legacy_full=NEXT_PUBLIC_${_legacy}
+  _new_full=NEXT_PUBLIC_${_new}
+  _legacy_val=${!_legacy_full:-}
+  _new_val=${!_new_full:-}
+  if [ -n "$_new_val" ] && [ -z "$_legacy_val" ]; then
+    export "$_legacy_full=$_new_val"
+  elif [ -n "$_legacy_val" ] && [ -z "$_new_val" ]; then
+    export "$_new_full=$_legacy_val"
+  fi
+done
+
 export NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=${NEXT_PUBLIC_STACK_DASHBOARD_URL}
 # Hexclave rebrand: the port-prefix var was renamed outright to
 # NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX. The dashboard bundle's post-build sentinel

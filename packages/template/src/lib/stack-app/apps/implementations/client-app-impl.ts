@@ -87,7 +87,13 @@ const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
-// Hexclave rebrand: new Bearer token prefix; the parser accepts both, the emitter emits this one.
+// Hexclave rebrand (PR 1, invisible compat layer): the parser accepts the new
+// `hexclave_` prefix in addition to the legacy `stackauth_`, but the emitter
+// MUST keep emitting `stackauth_`. `getAuthorizationHeader()` is a documented
+// public SDK API whose return shape is part of the wire contract — changing
+// the emitted prefix here would silently break customer/server parsers and
+// version-skewed apps. The emitter flips to `hexclave_` in the user-visible
+// PR 2, not in this invisible compat-only PR.
 const HEXCLAVE_AUTHORIZATION_VALUE_PREFIX = "hexclave_";
 
 function getAuthorizationHeaderValueFromAuthJson(authJson: { accessToken: string | null, refreshToken: string | null }): string | null {
@@ -96,8 +102,7 @@ function getAuthorizationHeaderValueFromAuthJson(authJson: { accessToken: string
   }
 
   const encodedAuthJson = encodeBase64(new TextEncoder().encode(JSON.stringify(authJson)));
-  // Hexclave rebrand: emit the new prefix (the parser still accepts the old one).
-  return `Bearer ${HEXCLAVE_AUTHORIZATION_VALUE_PREFIX}${encodedAuthJson}`;
+  return `Bearer ${STACK_AUTHORIZATION_VALUE_PREFIX}${encodedAuthJson}`;
 }
 
 function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: string): { accessToken: string | null, refreshToken: string | null } | null {
