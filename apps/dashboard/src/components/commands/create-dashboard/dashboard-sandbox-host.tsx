@@ -538,11 +538,21 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         // window 'error' listener picks it up and forwards it to the parent
         // composer instead of leaving the iframe blank.
         const aiSourceEl = document.getElementById('ai-dashboard-source');
-        let aiSource = '';
+        if (!aiSourceEl || !aiSourceEl.textContent) {
+          throw new Error('Failed to parse aiSource from aiSourceEl: #ai-dashboard-source script tag is missing or empty');
+        }
+        let aiSource;
         try {
-          aiSource = aiSourceEl && aiSourceEl.textContent ? JSON.parse(aiSourceEl.textContent) : '';
-        } catch (_) {
-          aiSource = '';
+          aiSource = JSON.parse(aiSourceEl.textContent);
+        } catch (parseErr) {
+          const original = parseErr && parseErr.message ? parseErr.message : String(parseErr);
+          const preview = aiSourceEl.textContent.slice(0, 500);
+          const wrapped = new Error('Failed to parse aiSource from aiSourceEl: ' + original + ' | textContent preview: ' + preview);
+          if (parseErr && parseErr.stack) wrapped.stack = parseErr.stack;
+          throw wrapped;
+        }
+        if (typeof aiSource !== 'string') {
+          throw new Error('Failed to parse aiSource from aiSourceEl: expected JSON-encoded string, got ' + typeof aiSource);
         }
         let compiledSource;
         try {
