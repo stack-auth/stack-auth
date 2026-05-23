@@ -108,6 +108,7 @@ export const QaEntries = __t.object("QaEntries", {
   id: __t.u64(),
   shard: __t.u8(),
   sourceMcpCorrelationId: __t.option(__t.string()),
+  requestId: __t.option(__t.string()),
   question: __t.string(),
   answer: __t.string(),
   createdBy: __t.string(),

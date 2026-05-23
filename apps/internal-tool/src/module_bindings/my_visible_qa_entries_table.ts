@@ -14,6 +14,7 @@ export default __t.row({
   id: __t.u64(),
   shard: __t.u8(),
   sourceMcpCorrelationId: __t.option(__t.string()).name("source_mcp_correlation_id"),
+  requestId: __t.option(__t.string()).name("request_id"),
   question: __t.string(),
   answer: __t.string(),
   createdBy: __t.string().name("created_by"),

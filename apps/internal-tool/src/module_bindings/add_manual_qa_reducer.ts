@@ -16,4 +16,5 @@ export default {
   answer: __t.string(),
   publish: __t.bool(),
   createdBy: __t.string(),
+  requestId: __t.string(),
 };
