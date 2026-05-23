@@ -114,6 +114,12 @@ async function getPrivateJwkFromDerivedSecret(derivedSecret: string, kid: string
   };
 }
 
+// Memoization cache for getPrivateJwks. Key is JSON([primarySecret, oldSecret, audience]).
+// Derivation is purely a function of those three inputs, so the cache is safe across calls
+// as long as the env vars are re-read on every call (which they are, below). Cached entries
+// stay valid even if env vars later change because the key includes the secret values.
+const privateJwksCache = new Map<string, Promise<PrivateJwk[]>>();
+
 /**
  * Returns a list of valid private JWKs for the given audience, with the first one taking precedence when signing new
  * JWTs.
@@ -121,6 +127,12 @@ async function getPrivateJwkFromDerivedSecret(derivedSecret: string, kid: string
 export async function getPrivateJwks(options: {
   audience: string,
 }): Promise<PrivateJwk[]> {
+  const primarySecret = getStackServerSecret();
+  const oldSecret = getOldStackServerSecret();
+  const cacheKey = JSON.stringify([primarySecret, oldSecret, options.audience]);
+  const cached = privateJwksCache.get(cacheKey);
+  if (cached) return await cached;
+
   const derivePairForSecret = async (secret: string): Promise<PrivateJwk[]> => {
     const getHashOfJwkInfo = (type: string) => jose.base64url.encode(
       crypto
@@ -144,13 +156,16 @@ export async function getPrivateJwks(options: {
     ];
   };
 
-  const primarySecret = getStackServerSecret();
-  const oldSecret = getOldStackServerSecret();
-  const primaryPair = await derivePairForSecret(primarySecret);
-  const oldPair = oldSecret !== null && oldSecret !== primarySecret ? await derivePairForSecret(oldSecret) : [];
-
-  // Signing uses index 0 (primary secret, legacy derivation). Verify accepts all entries.
-  return [...primaryPair, ...oldPair];
+  const computePromise = (async () => {
+    const primaryPair = await derivePairForSecret(primarySecret);
+    const oldPair = oldSecret !== null && oldSecret !== primarySecret ? await derivePairForSecret(oldSecret) : [];
+    // Signing uses index 0 (primary secret, legacy derivation). Verify accepts all entries.
+    return [...primaryPair, ...oldPair];
+  })();
+  // Evict on rejection so a transient error doesn't poison the cache.
+  computePromise.catch(() => privateJwksCache.delete(cacheKey));
+  privateJwksCache.set(cacheKey, computePromise);
+  return await computePromise;
 }
 
 export type PublicJwk = {

@@ -45,9 +45,12 @@ it("JWKS publishes 2 entries in steady state or 4 during rotation, all ES256 P-2
   }
   const kids = response.body.keys.map((k: { kid: string }) => k.kid);
   // `getPrivateJwks` dedups when primary === _OLD, so published count matches the
-  // unique kid count in every configuration. Either we're steady (2) or rotating (4).
+  // unique kid count in every configuration.
   expect(new Set(kids).size).toBe(kids.length);
-  expect([2, 4]).toContain(kids.length);
+  // The CI/local e2e env sets STACK_SERVER_SECRET but not STACK_SERVER_SECRET_OLD,
+  // so we expect the steady-state count of 2. (During a live rotation with a distinct
+  // _OLD secret, this would be 4 — kept as a note for the rotation runbook.)
+  expect(kids.length).toBe(2);
 });
 
 it("a client that cached the JWKS before sign-up still validates the minted access token", async ({ expect }) => {

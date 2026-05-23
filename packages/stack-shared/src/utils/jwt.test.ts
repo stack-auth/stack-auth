@@ -36,24 +36,6 @@ function setRotatingEnv(primary: string, previous: string) {
   process.env.STACK_SERVER_SECRET_OLD = previous;
 }
 
-// signJWT only accepts string expirations; for the expiry test we need an explicit past
-// timestamp, so we drop down to jose directly, reusing the same primary private JWK.
-async function signJWTWithExplicitExp(options: {
-  audience: string,
-  issuer: string,
-  expUnixSeconds: number,
-}) {
-  const jwks = await getPrivateJwks({ audience: options.audience });
-  const privateKey = await jose.importJWK(jwks[0]);
-  return await new jose.SignJWT({})
-    .setProtectedHeader({ alg: "ES256", kid: jwks[0].kid })
-    .setIssuer(options.issuer)
-    .setIssuedAt(options.expUnixSeconds - 120)
-    .setAudience(options.audience)
-    .setExpirationTime(options.expUnixSeconds)
-    .sign(privateKey);
-}
-
 describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
   const savedPrimary = process.env.STACK_SERVER_SECRET;
   const savedOld = process.env.STACK_SERVER_SECRET_OLD;
@@ -69,6 +51,26 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
     if (savedOld === undefined) delete process.env.STACK_SERVER_SECRET_OLD;
     else process.env.STACK_SERVER_SECRET_OLD = savedOld;
   });
+
+  // signJWT only accepts string expirations; for the expiry test we need an explicit past
+  // timestamp, so we drop down to jose directly, reusing the same primary private JWK.
+  // Scoped inside this describe because it implicitly depends on STACK_SERVER_SECRET being
+  // set by one of the env-setup helpers (setSteadyStateEnv / setRotatingEnv) inside a test.
+  async function signJWTWithExplicitExp(options: {
+    audience: string,
+    issuer: string,
+    expUnixSeconds: number,
+  }) {
+    const jwks = await getPrivateJwks({ audience: options.audience });
+    const privateKey = await jose.importJWK(jwks[0]);
+    return await new jose.SignJWT({})
+      .setProtectedHeader({ alg: "ES256", kid: jwks[0].kid })
+      .setIssuer(options.issuer)
+      .setIssuedAt(options.expUnixSeconds - 120)
+      .setAudience(options.audience)
+      .setExpirationTime(options.expUnixSeconds)
+      .sign(privateKey);
+  }
 
   it("1. new login after Deploy 1: fresh JWT signs with new secret, verifies, and carries the new kid", async () => {
     setRotatingEnv(randomSecret(), randomSecret());
