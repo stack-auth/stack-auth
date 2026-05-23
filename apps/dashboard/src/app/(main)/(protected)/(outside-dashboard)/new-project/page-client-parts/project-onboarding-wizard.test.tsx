@@ -291,23 +291,23 @@ describe("ProjectOnboardingWizard", () => {
 
     await waitFor(() => {
       expect(mockUpdateConfig).toHaveBeenCalledTimes(2);
-    });
-    expect(mockUpdateConfig).toHaveBeenNthCalledWith(2, {
-      adminApp: app,
-      configUpdate: {
-        "auth.oauth.providers.google": {
-          type: "google",
-          isShared: true,
-          allowSignIn: true,
-          allowConnectedAccounts: true,
+      expect(mockUpdateConfig).toHaveBeenNthCalledWith(2, {
+        adminApp: app,
+        configUpdate: {
+          "auth.oauth.providers.google": {
+            type: "google",
+            isShared: true,
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          },
+          "auth.oauth.providers.github": null,
+          "auth.oauth.providers.microsoft": null,
         },
-        "auth.oauth.providers.github": null,
-        "auth.oauth.providers.microsoft": null,
-      },
-      pushable: false,
+        pushable: false,
+      });
+      expect(setStatus).toHaveBeenCalledWith("completed");
+      expect(clearOnboardingState).toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalled();
     });
-    expect(setStatus).toHaveBeenCalledWith("completed");
-    expect(clearOnboardingState).toHaveBeenCalled();
-    expect(onComplete).toHaveBeenCalled();
   });
 });
