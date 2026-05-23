@@ -188,9 +188,18 @@ else
     # the chosen delimiter and the '&' (which has special meaning in sed replacements).
     escaped_value=$(printf '%s\n' "$value" | sed -e 's/\\/\\\\/g' -e "s/[${delimiter}&]/\\\\&/g")
 
-    # Now replace the sentinel with the (properly escaped) value in all files in the working directory.
-    find $WORK_DIR/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
+    # Hexclave rebrand: only sed files that actually contain the sentinel. The previous
+    # `find … -exec sed -i … {} +` ran sed across the ENTIRE standalone build for every
+    # sentinel (22 sentinels × thousands of files), and got unworkable once the dashboard
+    # bundle grew to include dual-literal _inlineEnvVars references. Restrict to matching
+    # files; also log per-sentinel so a hang at any specific sentinel is visible.
+    echo "  - Replacing $sentinel"
+    files=$(grep -rl "$sentinel" "$WORK_DIR/apps" 2>/dev/null || true)
+    if [ -n "$files" ]; then
+      echo "$files" | xargs sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g"
+    fi
   done
+  echo "Sentinel replacement complete."
   touch "$SENTINEL_MARKER"
 fi
 
