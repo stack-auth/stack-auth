@@ -83,7 +83,8 @@ function isPrivateOrReservedIpv6(groups: number[]): boolean {
   if (groups.slice(0, 7).every(g => g === 0) && groups[7] === 1) return true;
 
   // ::ffff:0:0/96 — IPv4-mapped; check the embedded IPv4 part
-  if (groups.slice(0, 5).every(g => g === 0) && groups[5] === 0xffff) {
+  // ::0:0/96 — IPv4-compatible (deprecated but still accepted by some stacks)
+  if (groups.slice(0, 5).every(g => g === 0) && (groups[5] === 0xffff || groups[5] === 0)) {
     const a = (groups[6]! >> 8) & 0xff;
     const b = groups[6]! & 0xff;
     const c = (groups[7]! >> 8) & 0xff;
@@ -163,11 +164,15 @@ import.meta.vitest?.test("isPrivateOrReservedIp", ({ expect }) => {
   expect(isPrivateOrReservedIp("2001:db8::1")).toBe(true);     // documentation
   expect(isPrivateOrReservedIp("::ffff:127.0.0.1")).toBe(true); // IPv4-mapped loopback
   expect(isPrivateOrReservedIp("::ffff:192.168.1.1")).toBe(true); // IPv4-mapped private
+  expect(isPrivateOrReservedIp("::192.168.1.1")).toBe(true);      // IPv4-compatible private
+  expect(isPrivateOrReservedIp("::10.0.0.1")).toBe(true);         // IPv4-compatible private
+  expect(isPrivateOrReservedIp("::127.0.0.1")).toBe(true);        // IPv4-compatible loopback
 
   // IPv6 public
   expect(isPrivateOrReservedIp("2001:4860:4860::8888")).toBe(false); // Google DNS
   expect(isPrivateOrReservedIp("2606:4700::1111")).toBe(false);      // Cloudflare
   expect(isPrivateOrReservedIp("::ffff:8.8.8.8")).toBe(false);      // IPv4-mapped public
+  expect(isPrivateOrReservedIp("::8.8.8.8")).toBe(false);           // IPv4-compatible public
 
   // Invalid input
   expect(isPrivateOrReservedIp("not-an-ip")).toBe(false);

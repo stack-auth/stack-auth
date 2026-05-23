@@ -40,10 +40,20 @@ export type LowLevelEmailConfig = {
 }
 
 /**
- * Resolves the given SMTP host to IP addresses and throws if any of them are
- * in a private / reserved network range (SSRF protection).
+ * Resolves the given SMTP host to a validated public IP address (SSRF protection).
+ *
+ * Returns `{ resolvedHost, servername }` where `resolvedHost` is a validated
+ * public IP that should be passed directly to the SMTP transport (eliminating
+ * any TOCTOU / split-horizon DNS gap), and `servername` is the original
+ * hostname for TLS SNI.
+ *
+ * Throws if the host resolves to a private/reserved range, or if public DNS
+ * cannot resolve it at all (blocks internal-only hostnames).
  */
-export async function ensureSmtpHostNotPrivateNetwork(host: string): Promise<void> {
+export async function resolveAndValidateSmtpHost(host: string): Promise<{
+  resolvedHost: string,
+  servername: string | undefined,
+}> {
   // If the host is a raw IP literal, check it directly
   if (isIP(host) !== 0) {
     if (isPrivateOrReservedIp(host)) {
@@ -52,10 +62,11 @@ export async function ensureSmtpHostNotPrivateNetwork(host: string): Promise<voi
         { host },
       );
     }
-    return;
+    return { resolvedHost: host, servername: undefined };
   }
 
-  // Resolve hostname via public DNS and reject if any resolved IP is private
+  // Resolve hostname via public DNS (not the system resolver) to avoid
+  // split-horizon attacks where internal DNS returns a different IP
   const resolver = new dns.Resolver();
   resolver.setServers(["1.1.1.1", "8.8.8.8"]);
   const [ipv4Addrs, ipv6Addrs] = await Promise.all([
@@ -65,9 +76,13 @@ export async function ensureSmtpHostNotPrivateNetwork(host: string): Promise<voi
   const allAddrs = [...ipv4Addrs, ...ipv6Addrs];
 
   if (allAddrs.length === 0) {
-    // DNS returned no records — the host doesn't exist.
-    // Let nodemailer's own DNS timeout / EDNS handling deal with this.
-    return;
+    // Public DNS returned no records. This means the hostname either doesn't
+    // exist or is only resolvable via internal DNS (e.g. Kubernetes service
+    // names). Block to prevent SSRF via internal-only hostnames.
+    throw new StackAssertionError(
+      `SMTP host '${host}' could not be resolved via public DNS. Internal-only hostnames are not allowed.`,
+      { host },
+    );
   }
 
   for (const addr of allAddrs) {
@@ -78,6 +93,10 @@ export async function ensureSmtpHostNotPrivateNetwork(host: string): Promise<voi
       );
     }
   }
+
+  // Return the first resolved IP so nodemailer uses it directly (skipping its
+  // own DNS resolution), eliminating the TOCTOU window. Set servername for TLS SNI.
+  return { resolvedHost: allAddrs[0]!, servername: host };
 }
 
 export type LowLevelSendEmailOptions = {
@@ -119,10 +138,15 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
     }
 
     return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
-      // SSRF protection: block SMTP connections to private/reserved networks
+      // SSRF protection: resolve and validate SMTP host, then connect to the
+      // resolved IP directly (eliminates split-horizon DNS / TOCTOU gaps)
+      let smtpHost = options.emailConfig.host;
+      let smtpServername: string | undefined;
       if (options.emailConfig.type !== 'shared') {
         try {
-          await ensureSmtpHostNotPrivateNetwork(options.emailConfig.host);
+          const validated = await resolveAndValidateSmtpHost(options.emailConfig.host);
+          smtpHost = validated.resolvedHost;
+          smtpServername = validated.servername;
         } catch (error) {
           return Result.error({
             rawError: error,
@@ -135,7 +159,8 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 
       try {
         const transporter = nodemailer.createTransport({
-          host: options.emailConfig.host,
+          host: smtpHost,
+          ...(smtpServername ? { name: smtpServername, tls: { servername: smtpServername } } : {}),
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
           connectionTimeout: 15000,
