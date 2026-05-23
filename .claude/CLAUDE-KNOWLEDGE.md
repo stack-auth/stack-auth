@@ -550,3 +550,6 @@ A: Keep the real outbound SMTP policy in `apps/backend/src/private/implementatio
 
 ## Q: What project-level `sourceOfTruth` config is supported?
 A: Project config overrides only support the hosted `sourceOfTruth` shape. Legacy external source-of-truth overrides such as Postgres or Neon are removed by `migrateConfigOverride("project", ...)`, while raw schema validation should reject them.
+
+## Q: How should managed email onboarding e2e tests wait for mock verification?
+A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path flips the domain to `verified` asynchronously through `runAsynchronously`, so tests should poll the managed-onboarding check endpoint until the expected status appears.

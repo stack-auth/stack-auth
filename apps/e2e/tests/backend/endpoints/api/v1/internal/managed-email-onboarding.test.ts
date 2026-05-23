@@ -3,6 +3,34 @@ import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";
 
+async function waitForManagedDomainStatus(options: {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  status: string,
+}) {
+  const deadline = performance.now() + 10_000;
+  let lastBody: unknown = undefined;
+  while (performance.now() < deadline) {
+    const response = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/check", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        domain_id: options.domainId,
+        subdomain: options.subdomain,
+        sender_local_part: options.senderLocalPart,
+      },
+    });
+    lastBody = response.body;
+    if (response.status === 200 && response.body.status === options.status) {
+      return;
+    }
+    await wait(250);
+  }
+
+  throw new Error(`Timed out waiting for managed email domain ${options.domainId} to become ${options.status}; last response body: ${JSON.stringify(lastBody)}`);
+}
+
 describe("managed email onboarding internal endpoints", () => {
   it("rejects client access for setup endpoint", async ({ expect }) => {
     await Project.createAndSwitch();
@@ -51,10 +79,14 @@ describe("managed email onboarding internal endpoints", () => {
     expect(setupResponse.body.domain_id).toBeDefined();
     expect(setupResponse.body.status).toBe("pending_verification");
 
-    // Mock onboarding asynchronously flips status to "verified" ~1s after setup
-    // (mirroring the real Resend webhook flow). Wait for the transition before
-    // asserting verified state.
-    await wait(1500);
+    // Mock onboarding asynchronously flips status to "verified" after setup,
+    // mirroring the real Resend webhook flow.
+    await waitForManagedDomainStatus({
+      domainId: setupResponse.body.domain_id,
+      subdomain: "mail.example.com",
+      senderLocalPart: "noreply",
+      status: "verified",
+    });
 
     const listResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/list", {
       method: "GET",
@@ -202,7 +234,12 @@ describe("managed email onboarding internal endpoints", () => {
         sender_local_part: "noreply",
       },
     });
-    await wait(1500);
+    await waitForManagedDomainStatus({
+      domainId: setupResponse.body.domain_id,
+      subdomain: "mail.example.com",
+      senderLocalPart: "noreply",
+      status: "verified",
+    });
 
     const applyResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/apply", {
       method: "POST",
@@ -240,7 +277,12 @@ describe("managed email onboarding internal endpoints", () => {
         sender_local_part: "noreply",
       },
     });
-    await wait(1500);
+    await waitForManagedDomainStatus({
+      domainId: setupResponse.body.domain_id,
+      subdomain: "mail.example.com",
+      senderLocalPart: "noreply",
+      status: "verified",
+    });
 
     const applyResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/apply", {
       method: "POST",
