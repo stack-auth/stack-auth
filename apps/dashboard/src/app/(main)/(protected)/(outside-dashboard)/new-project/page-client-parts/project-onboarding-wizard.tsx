@@ -33,7 +33,6 @@ import { AdminOwnedProject, AuthPage } from "@stackframe/stack";
 import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { type EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
-import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -61,6 +60,7 @@ import {
   PRIMARY_APP_IDS,
   type ProjectOnboardingState,
   REQUIRED_APP_IDS,
+  SHARED_OAUTH_SIGN_IN_METHODS,
   SIGN_IN_METHODS,
   type SignInMethod,
 } from "./shared";
@@ -236,8 +236,8 @@ export function ProjectOnboardingWizard(props: {
         credentialEnabled: signInMethods.has("credential"),
         magicLinkEnabled: signInMethods.has("magicLink"),
         passkeyEnabled: signInMethods.has("passkey"),
-        oauthProviders: (allProviders as readonly string[])
-          .filter((providerId) => signInMethods.has(providerId as SignInMethod))
+        oauthProviders: SHARED_OAUTH_SIGN_IN_METHODS
+          .filter((providerId) => signInMethods.has(providerId))
           .map((providerId) => ({ id: providerId, type: "shared" as const })),
       },
     };
@@ -319,26 +319,16 @@ export function ProjectOnboardingWizard(props: {
   }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
 
   const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
-    return {
-      "auth.oauth.providers.google": signInMethods.has("google") ? {
-        type: "google",
+    const configUpdate: EnvironmentConfigOverrideOverride = {};
+    for (const providerId of SHARED_OAUTH_SIGN_IN_METHODS) {
+      configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId) ? {
+        type: providerId,
         isShared: true,
         allowSignIn: true,
         allowConnectedAccounts: true,
-      } : null,
-      "auth.oauth.providers.github": signInMethods.has("github") ? {
-        type: "github",
-        isShared: true,
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null,
-      "auth.oauth.providers.microsoft": signInMethods.has("microsoft") ? {
-        type: "microsoft",
-        isShared: true,
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null,
-    };
+      } : null;
+    }
+    return configUpdate;
   }, [signInMethods]);
 
   const finalizeOnboarding = useCallback(async () => {

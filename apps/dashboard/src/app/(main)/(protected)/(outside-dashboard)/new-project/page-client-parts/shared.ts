@@ -2,6 +2,7 @@ import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { AdminOwnedProject } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
+import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
@@ -23,7 +24,10 @@ export const REQUIRED_APP_IDS: AppId[] = ["authentication", "emails"];
 export const PRIMARY_APP_IDS: AppId[] = ["authentication", "emails", "payments", "analytics"];
 export const ALL_APP_IDS = Object.keys(ALL_APPS) as AppId[];
 export const ONBOARDING_APP_IDS = ALL_APP_IDS.filter((appId) => ALL_APPS[appId].stage !== "alpha");
-export const OAUTH_SIGN_IN_METHODS: SignInMethod[] = ["google", "github", "microsoft"];
+export const OAUTH_SIGN_IN_METHODS = ["google", "github", "microsoft"] satisfies SignInMethod[];
+export const SHARED_OAUTH_SIGN_IN_METHODS = sharedProviders.filter((provider): provider is (typeof sharedProviders)[number] & SignInMethod => {
+  return OAUTH_SIGN_IN_METHODS.some((method) => method === provider);
+});
 
 export type ProjectOnboardingState = {
   selected_config_choice: OnboardingConfigChoice,
