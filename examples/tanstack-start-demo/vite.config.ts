@@ -73,7 +73,7 @@ export default defineConfig(({ mode }) => {
       dedupe: ["react", "react-dom"],
     },
     ssr: {
-      noExternal: [/^@stackframe\//, /^@radix-ui\//],
+      noExternal: [/^@hexclave\//, /^@radix-ui\//],
     },
     optimizeDeps: {
       include: ["@hexclave/shared", "@hexclave/shared/config"],

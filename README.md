@@ -1,4 +1,4 @@
-[![Stack Logo](/.github/assets/logo.png)](https://hexclave.com)
+[![Hexclave Logo](/.github/assets/logo.png)](https://hexclave.com)
 
 <h3 align="center">
   <a href="https://docs.hexclave.com">📘 Docs</a>
@@ -13,7 +13,7 @@ Hexclave is a managed user authentication solution. It is developer-friendly and
 
 Hexclave gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
 
-We support Next.js, React, and JavaScript frontends, along with any backend that can use our [REST API](https://docs.hexclave.com/api/overview). Check out our [setup guide](https://docs.hexclave.com/docs/next/getting-started/setup) to get started.
+We support Next.js, React, and JavaScript frontends, along with any backend that can use our [REST API](https://docs.hexclave.com/api/overview). Check out our [setup guide](https://docs.hexclave.com/getting-started/setup) to get started.
 
 <div align="center">
 <img alt="Hexclave Setup" src=".github/assets/create-project.gif" width="400" />
@@ -192,5 +192,5 @@ Note: When working with AI, you should keep a terminal tab with the dev server o
 ## ❤ Contributors
 
 <a href="https://github.com/hexclave/hexclave/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=stack-auth/stack&columns=9" width="100%" />
+  <img src="https://contrib.rocks/image?repo=hexclave/hexclave&columns=9" width="100%" />
 </a>
