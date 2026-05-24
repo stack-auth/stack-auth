@@ -29,7 +29,7 @@ cloud. Your data is always yours to export and self-host.
 Setting up Hexclave is one prompt. Paste this into your coding agent of choice:
 
 ```text
-Read try.hexclave.com and help me setup hexclave in this project
+Read skill.hexclave.com and help me setup hexclave in this project
 ```
 
 ## What's included
