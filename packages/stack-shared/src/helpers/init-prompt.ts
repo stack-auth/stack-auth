@@ -1,14 +1,14 @@
 // TODO: Use configPath in the prompt once local emulator is set up:
-// Add "npx @stackframe/stack-cli emulator run --config-file ${configPath}" to project dev command
+// Add "npx @hexclave/cli emulator run --config-file ${configPath}" to project dev command
 export const createInitPrompt = (web: boolean, configPath?: string) => `=============================
 STACK AUTH SETUP INSTRUCTIONS
 =============================
 
-These instructions describe how to set up Stack Auth.
+These instructions describe how to set up Hexclave.
 ${web ? `
-First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
+First of all, if you have access to a terminal, it is better to use the \`npx @hexclave/cli init\`` : ""}
 
-Install both the Stack Auth skill and the Stack Auth MCP server for the current coding agent. Pick the install scope using this rule: if the project root already contains an agent folder or project-scoped MCP/agent config file (e.g. \`.claude/\`, \`.claude.json\`, \`.agents/\`, \`.cursor/\`, \`.cursor/mcp.json\`, \`.codex/\`, \`.codex/config.toml\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, \`.vscode/mcp.json\`), install **per project**; otherwise install **globally** for the detected agent.
+Install both the Hexclave skill and the Hexclave MCP server for the current coding agent. Pick the install scope using this rule: if the project root already contains an agent folder or project-scoped MCP/agent config file (e.g. \`.claude/\`, \`.claude.json\`, \`.agents/\`, \`.cursor/\`, \`.cursor/mcp.json\`, \`.codex/\`, \`.codex/config.toml\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, \`.vscode/mcp.json\`), install **per project**; otherwise install **globally** for the detected agent.
 
 ### Install the skill
 
@@ -18,7 +18,7 @@ Preferred (one shot — detects the agent and writes to the right place):
 npx -y skills add stack-auth/stack-auth --skill stack-auth
 \`\`\`
 
-If that command isn't available, fall back to a manual install. Download the canonical skill from \`https://skill.stack-auth.com\` (\`WebFetch\` or \`curl -sSL\`) and write it verbatim to \`<skills-dir>/stack-auth/SKILL.md\`. Do not modify the contents. Create missing parent directories. \`<skills-dir>\` per agent (mirrors \`vercel-labs/skills\`):
+If that command isn't available, fall back to a manual install. Download the canonical skill from \`https://skill.hexclave.com\` (\`WebFetch\` or \`curl -sSL\`) and write it verbatim to \`<skills-dir>/stack-auth/SKILL.md\`. Do not modify the contents. Create missing parent directories. \`<skills-dir>\` per agent (mirrors \`vercel-labs/skills\`):
 
 | Agent | Project \`<skills-dir>\` | Global \`<skills-dir>\` |
 | --- | --- | --- |
@@ -40,16 +40,16 @@ For agents not listed, follow their documented skills directory or fall back to 
 
 ### Install the MCP server
 
-Server URL: \`https://mcp.stack-auth.com/mcp\` (HTTP transport). Common per-agent config locations:
-- Claude Code: run \`claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp\` (or edit \`~/.claude.json\`)
-- VS Code: run \`code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'\`
+Server URL: \`https://mcp.hexclave.com/mcp\` (HTTP transport). Common per-agent config locations:
+- Claude Code: run \`claude mcp add --transport http stack-auth https://mcp.hexclave.com/mcp\` (or edit \`~/.claude.json\`)
+- VS Code: run \`code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.hexclave.com/mcp"}'\`
 - Cursor: \`~/.cursor/mcp.json\` (project-scoped: \`.cursor/mcp.json\`)
 - Codex CLI: \`~/.codex/config.toml\`
 - opencode: \`~/.config/opencode/opencode.json\`
 
-For any other agent, register an HTTP MCP server named \`stack-auth\` pointing at \`https://mcp.stack-auth.com/mcp\` using its standard MCP config file.
+For any other agent, register an HTTP MCP server named \`stack-auth\` pointing at \`https://mcp.hexclave.com/mcp\` using its standard MCP config file.
 
-For reference, questions, or information on Stack Auth, fetch the docs on https://docs.stack-auth.com via curl or any tools available, or — if the MCP server is registered — call its \`ask_stack_auth\` tool.
+For reference, questions, or information on Hexclave, fetch the docs on https://docs.hexclave.com via curl or any tools available, or — if the MCP server is registered — call its \`ask_hexclave\` tool.
 
 ## Setup
 
@@ -59,13 +59,13 @@ Run the install command using whatever package manager the project uses (npm, ya
 
 | Framework | Package |
 |-----------|---------|
-| Next.js | \`@stackframe/stack\` |
-| React | \`@stackframe/react\` |
-| Vanilla JS | \`@stackframe/js\` |
+| Next.js | \`@hexclave/next\` |
+| React | \`@hexclave/react\` |
+| Vanilla JS | \`@hexclave/js\` |
 
 ### 2) Create the Stack apps
 
-Depending on whether you're on a client or a server, you will want to create stackClientApp or stackServerApp. Some environments, like Next.js, have both, so create both files.
+Depending on whether you're on a client or a server, you will want to create hexclaveClientApp or hexclaveServerApp. Some environments, like Next.js, have both, so create both files.
 
 The stack client app has client-level permissions. It contains most of the useful methods and hooks for your client-side code.
 The stack server app has full read and write access to all users. It requires STACK_SECRET_SERVER_KEY env variable and should only be used in secure context
@@ -79,9 +79,9 @@ import { useNavigate } from '@tanstack/react-router'
 
 \`\`\`ts
 // src/stack/client.ts
-import { StackClientApp } from "@stackframe/stack"; // or "@stackframe/react" or "@stackframe/js"
+import { HexclaveClientApp } from "@hexclave/next"; // or "@hexclave/react" or "@hexclave/js"
 
-export const stackClientApp = new StackClientApp({
+export const hexclaveClientApp = new HexclaveClientApp({
   // Next.js: omit projectId/publishableClientKey (auto-detected from NEXT_PUBLIC_ env vars)
   // Other frameworks: pass projectId explicitly, and publishableClientKey only if required by your project. For Vite:
   //   projectId: import.meta.env.VITE_STACK_PROJECT_ID,
@@ -96,21 +96,21 @@ If the framework has server-side support (e.g. Next.js), also create a server ap
 \`\`\`ts
 // src/stack/server.ts
 import "server-only";
-import { StackServerApp } from "@stackframe/stack";
-import { stackClientApp } from "./client";
+import { HexclaveServerApp } from "@hexclave/next";
+import { hexclaveClientApp } from "./client";
 
-export const stackServerApp = new StackServerApp({
-  inheritsFrom: stackClientApp,
+export const hexclaveServerApp = new HexclaveServerApp({
+  inheritsFrom: hexclaveClientApp,
 });
 \`\`\`
 
 ### 3) Wrap your app in a Stack provider
 
-Required for all React based frameworks (including Next.js). \`StackHandler\`, \`useUser\`, and \`useStackApp\` all depend on it — without it you will get "useStackApp must be used within a StackProvider" at runtime. In Next.js, add it to the root \`app/layout.tsx\` around \`{children}\`. In React/Vite, wrap your root component.
+Required for all React based frameworks (including Next.js). \`HexclaveHandler\`, \`useUser\`, and \`useHexclaveApp\` all depend on it — without it you will get "useStackApp must be used within a StackProvider" at runtime (the runtime throw still uses the pre-rebrand identifiers as a stable wire string). In Next.js, add it to the root \`app/layout.tsx\` around \`{children}\`. In React/Vite, wrap your root component.
 
 \`\`\`tsx
-import { StackProvider, StackTheme } from "@stackframe/stack"; // or "@stackframe/react" 
-import { stackClientApp } from "../stack/client"; // adjust relative path
+import { HexclaveProvider, HexclaveTheme } from "@hexclave/next"; // or "@hexclave/react" 
+import { hexclaveClientApp } from "../stack/client"; // adjust relative path
 \`\`\`
 
 Then wrap the body content:
@@ -118,9 +118,9 @@ Then wrap the body content:
 \`\`\`tsx
 return (
   <body>
-    <StackProvider app={stackClientApp}>
-      <StackTheme>{children}</StackTheme>
-    </StackProvider>
+    <HexclaveProvider app={hexclaveClientApp}>
+      <HexclaveTheme>{children}</HexclaveTheme>
+    </HexclaveProvider>
   </body>
 );
 \`\`\`
@@ -130,11 +130,11 @@ return (
 This sets up pages for sign in, sign up, password reset, etc.
 
 \`\`\`tsx
-import { StackHandler } from "@stackframe/stack"; // Next.js
-// import { StackHandler } from "@stackframe/react"; // React
+import { HexclaveHandler } from "@hexclave/next"; // Next.js
+// import { HexclaveHandler } from "@hexclave/react"; // React
 
 export default function Handler() {
-  return <StackHandler fullPage />;
+  return <HexclaveHandler fullPage />;
 }
 \`\`\`
 

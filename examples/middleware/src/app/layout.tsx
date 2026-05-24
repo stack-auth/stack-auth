@@ -6,7 +6,7 @@ import { Inter } from "next/font/google";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Stack Auth Middleware Demo",
+  title: "Hexclave Middleware Demo",
   description: "A demo of Stack's middleware capabilities.",
 };
 

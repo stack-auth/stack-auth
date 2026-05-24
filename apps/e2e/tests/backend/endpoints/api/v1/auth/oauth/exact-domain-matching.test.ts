@@ -70,7 +70,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
           "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
@@ -115,7 +115,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
           "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
@@ -160,7 +160,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
           "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
@@ -205,7 +205,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
           "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
@@ -330,7 +330,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
           "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,

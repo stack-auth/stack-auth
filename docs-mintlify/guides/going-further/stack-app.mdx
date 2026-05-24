@@ -4,7 +4,7 @@ description: "The most important object of your Stack project"
 sidebarTitle: "The StackApp Object"
 ---
 
-By now, you may have seen the `useStackApp()` hook and the `stackServerApp` variable. Both return a `StackApp`, of type `StackClientApp` and `StackServerApp` respectively.
+By now, you may have seen the `useHexclaveApp()` hook and the `stackServerApp` variable. Both return a `StackApp`, of type `HexclaveClientApp` and `HexclaveServerApp` respectively.
 
 Nearly all of Stack's functionality is on your `StackApp` object. Think of this object as the "connection" from your code to Stack's servers. Each app is always associated with one specific project ID (by default the one found in your environment variables).
 
@@ -29,7 +29,7 @@ async function ServerComponent() {
 // client-component.tsx
 "use client";
 function ClientComponent() {
-  const app = useStackApp();
+  const app = useHexclaveApp();
   // returns the value directly
   const user = app.useUser();
 
@@ -39,12 +39,12 @@ function ClientComponent() {
 
 ## Client vs. server
 
-`StackClientApp` contains everything needed to build a frontend application, for example the currently authenticated user. It requires a publishable client key in its initialization (usually set by the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable).
+`HexclaveClientApp` contains everything needed to build a frontend application, for example the currently authenticated user. It requires a publishable client key in its initialization (usually set by the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable).
 
-`StackServerApp` has all the functionality of `StackClientApp`, but also some functions with elevated permissions, eg. listing or modifying ALL users. This requires a secret server key (usually set by the `STACK_SECRET_SERVER_KEY` environment variable), which **must always be kept secret**.
+`HexclaveServerApp` has all the functionality of `HexclaveClientApp`, but also some functions with elevated permissions, eg. listing or modifying ALL users. This requires a secret server key (usually set by the `STACK_SECRET_SERVER_KEY` environment variable), which **must always be kept secret**.
 
-There is also a third type, `StackAdminApp`, but it is rarely used. You can use it for automation or internal tools, and can edit your project's configuration.
+There is also a third type, `HexclaveAdminApp`, but it is rarely used. You can use it for automation or internal tools, and can edit your project's configuration.
 
 <Info>
-  Some of the functions have different return types; for example, `StackClientApp.getUser()` returns a `Promise<User>` while `StackServerApp.getUser()` returns a `Promise<ServerUser>`. The `Server` or `Admin` prefixes indicate that the object contains server-/admin-only functionality.
+  Some of the functions have different return types; for example, `HexclaveClientApp.getUser()` returns a `Promise<User>` while `HexclaveServerApp.getUser()` returns a `Promise<ServerUser>`. The `Server` or `Admin` prefixes indicate that the object contains server-/admin-only functionality.
 </Info>

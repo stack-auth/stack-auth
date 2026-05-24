@@ -258,7 +258,7 @@ function renderTabPanels() {
 function renderUnifiedAiPromptTab() {
   return deindent`
     <Tab title="${unifiedAiPromptTabTitle}">
-      Setting up with AI? Use this single prompt in your coding agent to set up Stack Auth for your selected stack.
+      Setting up with AI? Use this single prompt in your coding agent to set up Hexclave for your selected stack.
 
       <div className="not-prose relative mt-3">
         <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-2xl border border-[#cdd7f4] bg-white/75 px-4 py-3 pr-32 font-mono text-xs leading-6 text-zinc-700 backdrop-blur-sm sm:text-sm dark:border-[#33476d] dark:bg-black/20 dark:text-zinc-200"><code>{generatedSetupPromptText}</code></pre>
@@ -300,7 +300,7 @@ writeFileSyncIfChanged(
   deindent`
     ---
     title: Setup
-    description: Install and configure Stack Auth for your project
+    description: Install and configure Hexclave for your project
     sidebarTitle: Setup
     ---
 

@@ -1,5 +1,5 @@
 /**
- * Brings every active subscription on Stack Auth's own billing project up
+ * Brings every active subscription on Hexclave's own billing project up
  * to the latest version of its plan. Runs at deploy / db init time.
  *
  * Why we need it: each Subscription stores a frozen JSON copy of the plan

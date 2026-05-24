@@ -187,7 +187,13 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
           throw new HexclaveAssertionError("userPrefix must contain only alphanumeric characters and underscores. This is so we can register the API key with security scanners. This should've been checked in the creation schema");
         }
         */
-        const isCloudVersion = new URL(url).hostname === "api.stack-auth.com";  // we only want to enable secret scanning on the cloud version
+        // Cloud production serves from both api.hexclave.com (canonical) and
+        // api.stack-auth.com (legacy compat, kept indefinitely). Either host
+        // counts as cloud — keys minted against the legacy host must still
+        // carry the secret-scanning marker bit so GitHub's scanner detects
+        // them when committed by accident.
+        const cloudHostname = new URL(url).hostname;
+        const isCloudVersion = cloudHostname === "api.hexclave.com" || cloudHostname === "api.stack-auth.com";
         const isPublic = body.is_public ?? false;
         const apiKeyId = generateUuid();
 

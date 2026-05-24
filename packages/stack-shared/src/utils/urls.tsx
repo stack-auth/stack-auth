@@ -197,6 +197,15 @@ import.meta.vitest?.test("matchHostnamePattern", ({ expect }) => {
 });
 
 export function getHardcodedFallbackUrls(primaryBaseUrl: string): string[] {
+  if (primaryBaseUrl === "https://api.hexclave.com") {
+    return ["https://api1.hexclave.com", "https://api2.hexclave.com"];
+  }
+  if (primaryBaseUrl === "https://api.dev.hexclave.com") {
+    return ["https://api1.dev.hexclave.com", "https://api2.dev.hexclave.com"];
+  }
+  // Backward-compat: customers with explicit `baseUrl: "https://api.stack-auth.com"`
+  // (the pre-rebrand canonical) keep the same fallbacks they had before. Both
+  // hostnames resolve to the same backend during the deprecation window.
   if (primaryBaseUrl === "https://api.stack-auth.com") {
     return ["https://api1.stack-auth.com", "https://api2.stack-auth.com"];
   }

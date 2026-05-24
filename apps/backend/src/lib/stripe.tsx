@@ -219,7 +219,7 @@ export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountI
   }
 
   if (!accountId) {
-    throwErr(400, "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.");
+    throwErr(400, "Payments are not set up in this Hexclave project. Please go to the Hexclave dashboard and complete the Payments onboarding.");
   }
   return createStripeProxy(new Stripe(stripeSecretKey, { stripeAccount: accountId, ...stripeConfig }), overrides);
 };

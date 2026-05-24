@@ -1,15 +1,15 @@
 ---
 title: "Local Emulator"
-description: "Run Stack Auth locally with the QEMU emulator"
+description: "Run Hexclave locally with the QEMU emulator"
 sidebarTitle: "Local Emulator"
 ---
 
-The Stack Auth local emulator runs the Stack Auth dashboard, backend, and supporting services on your machine. It is useful when you want local-first development, config-file-backed projects, or an isolated Stack Auth environment for testing.
+The Hexclave local emulator runs the Hexclave dashboard, backend, and supporting services on your machine. It is useful when you want local-first development, config-file-backed projects, or an isolated Hexclave environment for testing.
 
 The emulator is managed by the [Stack CLI](/guides/going-further/cli):
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator start
+npx @hexclave/cli@latest emulator start
 ```
 
 On first start, the CLI downloads the emulator image and captures a local fast-start snapshot (the capture step runs `zstd`). This can take a few minutes and requires several gigabytes of disk space. Later starts should be much faster.
@@ -38,7 +38,7 @@ Required tools include:
 Start the emulator:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator start
+npx @hexclave/cli@latest emulator start
 ```
 
 Open the dashboard:
@@ -50,26 +50,26 @@ http://127.0.0.1:26700
 The default local admin credentials are:
 
 ```text
-Email: local-emulator@stack-auth.com
+Email: local-emulator@hexclave.com
 Password: LocalEmulatorPassword
 ```
 
 Check health:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator status
+npx @hexclave/cli@latest emulator status
 ```
 
 Stop the emulator while preserving data:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator stop
+npx @hexclave/cli@latest emulator stop
 ```
 
 Reset emulator state:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator reset
+npx @hexclave/cli@latest emulator reset
 ```
 
 ## Ports
@@ -89,7 +89,7 @@ Override ports with environment variables:
 ```sh title="Terminal"
 EMULATOR_DASHBOARD_PORT=27700 \
 EMULATOR_BACKEND_PORT=27701 \
-npx @stackframe/stack-cli@latest emulator start
+npx @hexclave/cli@latest emulator start
 ```
 
 The app port prefix inside the VM defaults to `81`. Override it with `PORT_PREFIX` or `NEXT_PUBLIC_STACK_PORT_PREFIX`.
@@ -99,7 +99,7 @@ The app port prefix inside the VM defaults to `81`. Override it with `PORT_PREFI
 Pass `--config-file` to map a `stack.config.ts` file to a local emulator project.
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator start --config-file ./stack.config.ts
+npx @hexclave/cli@latest emulator start --config-file ./stack.config.ts
 ```
 
 The command prints project credentials as JSON:
@@ -115,7 +115,7 @@ The command prints project credentials as JSON:
 For development servers, `emulator run` starts the emulator if needed, injects credentials into the child process, and stops the emulator when the child exits if it started that emulator instance:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator run "npm run dev" --config-file ./stack.config.ts
+npx @hexclave/cli@latest emulator run "npm run dev" --config-file ./stack.config.ts
 ```
 
 When `--config-file` is provided, the child process receives:
@@ -141,7 +141,7 @@ When `--config-file` is provided, the child process receives:
 `emulator start` automatically pulls the latest image when none exists. You can also pull manually:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator pull
+npx @hexclave/cli@latest emulator pull
 ```
 
 Useful pull options:
@@ -159,7 +159,7 @@ Useful pull options:
 List published emulator releases:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator list-releases
+npx @hexclave/cli@latest emulator list-releases
 ```
 
 ## Storage and state
@@ -192,10 +192,10 @@ Change the conflicting port with `EMULATOR_DASHBOARD_PORT`, `EMULATOR_BACKEND_PO
 
 ### `run-emulator.sh` permission denied
 
-Some npm installs can leave the bundled emulator script without executable permissions. If `stack emulator start` or `npx @stackframe/stack-cli@latest emulator start` fails with `spawn .../run-emulator.sh EACCES`, apply execute permissions to the installed script:
+Some npm installs can leave the bundled emulator script without executable permissions. If `stack emulator start` or `npx @hexclave/cli@latest emulator start` fails with `spawn .../run-emulator.sh EACCES`, apply execute permissions to the installed script:
 
 ```sh title="Terminal"
-chmod +x /path/to/node_modules/@stackframe/stack-cli/dist/emulator/run-emulator.sh
+chmod +x /path/to/node_modules/@hexclave/cli/dist/emulator/run-emulator.sh
 ```
 
 For `npx`, the path is inside npm's temporary cache and may change between runs. Use the path shown in the error message.
@@ -205,7 +205,7 @@ For `npx`, the path is inside npm's temporary cache and may change between runs.
 Use `--arch arm64` on Apple Silicon or ARM Linux, and `--arch amd64` on Intel/AMD machines.
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator start --arch arm64
+npx @hexclave/cli@latest emulator start --arch arm64
 ```
 
 ### Need a clean environment
@@ -213,7 +213,7 @@ npx @stackframe/stack-cli@latest emulator start --arch arm64
 Run:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest emulator reset
+npx @hexclave/cli@latest emulator reset
 ```
 
 This wipes local emulator state but keeps downloaded images.

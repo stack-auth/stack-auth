@@ -18,7 +18,7 @@ import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, ServerListTeamsOptions, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 
-const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
+const userGetterErrorMessage = "Hexclave: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
 export function withUserDestructureGuard<T extends object>(target: T): T {
   Object.freeze(target);

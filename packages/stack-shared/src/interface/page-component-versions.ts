@@ -34,14 +34,14 @@ export type CustomPagePrompt = {
 };
 
 const stackAuthReminders = deindent`
-  Some quick reminders on Stack Auth: 
+  Some quick reminders on Hexclave: 
 
-  - Stack Auth is a platform that provides a variety of apps that help you connect with your users. As of the time of writing these reminders, Stack Auth provides the following apps (although not all may be enabled): ${Object.entries(ALL_APPS).filter(([, app]) => app.stage !== "alpha").map(([key]) => key).join(", ")}. Don't hardcode this list, as it changes rapidly.
-  - The most important object in Stack Auth is the Stack App object. StackClientApp provides client-side functionality, while StackServerApp also provides server-side functionality (but can usually only be imported on the server, as it requires a secret server key environment variable). You can usually find an instance of this object in a file called \`stack/client.tsx\` or \`stack/server.tsx\`, although it may be in a different location in this particular codebase.
-  - Take extra care to always have great error handling and loading states whenever necessary (including in button onClick handlers; Stack Auth's code examples often use a special onClick class which handles loading states, but your own button may not). Stack Auth's SDK tends to return errors that need to be handled explicitly in its return types.
+  - Hexclave is a platform that provides a variety of apps that help you connect with your users. As of the time of writing these reminders, Hexclave provides the following apps (although not all may be enabled): ${Object.entries(ALL_APPS).filter(([, app]) => app.stage !== "alpha").map(([key]) => key).join(", ")}. Don't hardcode this list, as it changes rapidly.
+  - The most important object in Hexclave is the Stack App object. StackClientApp provides client-side functionality, while StackServerApp also provides server-side functionality (but can usually only be imported on the server, as it requires a secret server key environment variable). You can usually find an instance of this object in a file called \`stack/client.tsx\` or \`stack/server.tsx\`, although it may be in a different location in this particular codebase.
+  - Take extra care to always have great error handling and loading states whenever necessary (including in button onClick handlers; Hexclave's code examples often use a special onClick class which handles loading states, but your own button may not). Hexclave's SDK tends to return errors that need to be handled explicitly in its return types.
   - Language, framework, and library-specific details:
     - JavaScript & TypeScript:
-      - Stack Auth has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @stackframe/js (JavaScript/TypeScript), @stackframe/stack (Next.js), @stackframe/react (React), @stackframe/tanstack-start (TanStack Start). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
+      - Hexclave has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @stackframe/js (JavaScript/TypeScript), @stackframe/stack (Next.js), @stackframe/react (React), @stackframe/tanstack-start (TanStack Start). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
       - The \`Result<T, E>\` type is \`{ status: "ok", data: T } | { status: "error", error: E }\`.
       - \`KnownErrors[KNOWN_ERROR_CODE]\` refers to a specific known error type. Each KnownError may have its own properties, but they all inherit from \`Error & { statusCode: number, humanReadableMessage: string, details?: Json }\`.
       - React & Next.js:
@@ -61,11 +61,11 @@ function createCustomPagePrompt(options: {
   const latestPageVersion = Math.max(1, ...Object.keys(options.versions).map(Number));
   const latestSdkVersion = latestPageVersion === 1 ? options.minSdkVersion : options.versions[latestPageVersion].minSdkVersion;
   const fullPrompt = deindent`
-    This prompt explains how to implement a custom ${options.title} page for Stack Auth. The version of this page that you are implementing is v${latestPageVersion}. It can be found in Stack Auth's documentation, and in the Stack Auth devtool indicator.
+    This prompt explains how to implement a custom ${options.title} page for Hexclave. The version of this page that you are implementing is v${latestPageVersion}. It can be found in Hexclave's documentation, and in the Hexclave devtool indicator.
 
-    First, make sure to upgrade the Stack Auth SDK to a recent version. The minimum supported SDK version for this walkthrough is v${latestSdkVersion}.
+    First, make sure to upgrade the Hexclave SDK to a recent version. The minimum supported SDK version for this walkthrough is v${latestSdkVersion}.
 
-    The user's codebase may already have a ${options.title} page that could be suitable (eg. from an earlier version of Stack Auth, a template, another auth provider before migrating to Stack Auth, etc.). Use your critical thinking skills to determine what the user's intent is; it is likely that instead of creating a new page, you can just modify the existing page to use Stack Auth & support the logic/structure below.
+    The user's codebase may already have a ${options.title} page that could be suitable (eg. from an earlier version of Hexclave, a template, another auth provider before migrating to Hexclave, etc.). Use your critical thinking skills to determine what the user's intent is; it is likely that instead of creating a new page, you can just modify the existing page to use Hexclave & support the logic/structure below.
 
     Below is a description of the logical structure of what this page should contain (note that the visual structure and layout may be different, and up to you). The page can have more content than this, but it should always contain at least what's described below.
 

@@ -44,7 +44,7 @@ describe("get email theme", () => {
             "actual_access_type": "client",
             "allowed_access_types": ["admin"],
           },
-          "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -150,7 +150,7 @@ describe("update email theme", () => {
             "actual_access_type": "client",
             "allowed_access_types": ["admin"],
           },
-          "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

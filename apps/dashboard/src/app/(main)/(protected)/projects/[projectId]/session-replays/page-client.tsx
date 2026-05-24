@@ -2085,7 +2085,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                       <Typography className="mt-2 text-sm text-muted-foreground">
                         Session replays let you watch how users interact with your app. For info on enabling replays,{" "}
                         <StyledLink
-                          href="https://docs.stack-auth.com/docs/apps/analytics"
+                          href="https://docs.hexclave.com/docs/apps/analytics"
                           target="_blank"
                         >
                           look here

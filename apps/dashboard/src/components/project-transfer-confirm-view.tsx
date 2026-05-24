@@ -58,12 +58,12 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
         className="w-full max-w-lg"
         title="Project transfer"
         icon={ArrowsLeftRightIcon}
-        subtitle="This integration wants to move a Stack Auth project into your dashboard account so you can manage users, keys, and settings directly in Stack Auth."
+        subtitle="This integration wants to move a Hexclave project into your dashboard account so you can manage users, keys, and settings directly in Hexclave."
         gradient="blue"
         contentClassName="space-y-5"
         actions={(
           <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
-            <Logo noLink alt="Stack Auth" width={48} height={48} />
+            <Logo noLink alt="Hexclave" width={48} height={48} />
           </div>
         )}
       >
@@ -109,7 +109,7 @@ export function ProjectTransferConfirmView(props: ProjectTransferConfirmViewProp
               <DesignAlert
                 variant="info"
                 title="Sign in to continue"
-                description={"Transferring a project requires an active Stack Auth account. You can sign in or create one on the next step; we'll bring you back here automatically."}
+                description={"Transferring a project requires an active Hexclave account. You can sign in or create one on the next step; we'll bring you back here automatically."}
                 glassmorphic
               />
             )}

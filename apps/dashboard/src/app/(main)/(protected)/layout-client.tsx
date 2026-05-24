@@ -43,7 +43,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
         });
       } else if (isPreview) {
         const id = generateUuid();
-        const email = `preview-${id}@preview.stack-auth.com`;
+        const email = `preview-${id}@preview.hexclave.com`;
         const password = `PreviewPass-${id}`;
         const signInResult = await app.signInWithCredential({ email, password, noRedirect: true });
         if (signInResult.status === "error") {

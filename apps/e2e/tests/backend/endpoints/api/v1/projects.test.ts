@@ -18,9 +18,9 @@ it("should not have access to the project without project keys", async ({ expect
         "code": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
         "details": { "request_type": "client" },
         "error": deindent\`
-          The x-stack-access-type header was 'client', but the x-stack-project-id header was not provided.
+          The x-hexclave-access-type header was 'client', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
           
-          For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+          For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
         \`,
       },
       "headers": Headers {
@@ -56,7 +56,7 @@ it("gets current project (internal)", async ({ expect }) => {
           "passkey_enabled": false,
           "sign_up_enabled": true,
         },
-        "display_name": "Stack Dashboard",
+        "display_name": "Hexclave Dashboard",
         "id": "internal",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -1259,7 +1259,7 @@ it("deletes a project with server access", async ({ expect }) => {
           "actual_access_type": "server",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -1358,7 +1358,7 @@ it("deletes a project with users, teams, and permissions", async ({ expect }) =>
       "body": {
         "code": "CURRENT_PROJECT_NOT_FOUND",
         "details": { "project_id": "<stripped UUID>" },
-        "error": "The current project with ID <stripped UUID> was not found. Please check the value of the x-stack-project-id header.",
+        "error": "The current project with ID <stripped UUID> was not found. Please check the value of the x-hexclave-project-id header. (The legacy x-stack-project-id header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
@@ -1384,7 +1384,7 @@ it("does not allow accessing a current project that doesn't exist", async ({ exp
       "body": {
         "code": "CURRENT_PROJECT_NOT_FOUND",
         "details": { "project_id": "does-not-exist" },
-        "error": "The current project with ID does-not-exist was not found. Please check the value of the x-stack-project-id header.",
+        "error": "The current project with ID does-not-exist was not found. Please check the value of the x-hexclave-project-id header. (The legacy x-stack-project-id header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
@@ -1438,9 +1438,9 @@ it("does not allow accessing a project without a project ID header", async ({ ex
         "code": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
         "details": { "request_type": "admin" },
         "error": deindent\`
-          The x-stack-access-type header was 'admin', but the x-stack-project-id header was not provided.
+          The x-hexclave-access-type header was 'admin', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
           
-          For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+          For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
         \`,
       },
       "headers": Headers {
@@ -1503,7 +1503,7 @@ it("removes a deleted project from a user", async ({ expect }) => {
       "body": {
         "code": "CURRENT_PROJECT_NOT_FOUND",
         "details": { "project_id": "<stripped UUID>" },
-        "error": "The current project with ID <stripped UUID> was not found. Please check the value of the x-stack-project-id header.",
+        "error": "The current project with ID <stripped UUID> was not found. Please check the value of the x-hexclave-project-id header. (The legacy x-stack-project-id header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",

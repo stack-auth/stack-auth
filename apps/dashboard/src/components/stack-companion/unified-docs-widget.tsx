@@ -17,7 +17,7 @@ type DocContent = {
 
 type DocType = 'dashboard' | 'docs' | 'api';
 
-const PROD_DOCS_ORIGIN = 'https://docs.stack-auth.com';
+const PROD_DOCS_ORIGIN = 'https://docs.hexclave.com';
 const LOCAL_DOCS_ORIGIN = 'http://localhost:8104';
 
 const isLocalHostname = (hostname: string): boolean => {
@@ -32,8 +32,10 @@ const isAllowedDocsUrl = (url: URL): boolean => {
 
   if (url.protocol !== 'https:') return false;
   const hostname = url.hostname.toLowerCase();
-  if (hostname === 'docs.stack-auth.com') return true;
-  return hostname.endsWith('.stack-auth.com');
+  if (hostname === 'docs.hexclave.com') return true;
+  // Accept both .hexclave.com (canonical) and .stack-auth.com (legacy, for the
+  // dual-resolving transition window before DNS for *.hexclave.com is live).
+  return hostname.endsWith('.hexclave.com') || hostname.endsWith('.stack-auth.com');
 };
 
 const isLocalEnvironment = (): boolean => {
@@ -91,7 +93,7 @@ const DASHBOARD_ROUTE_PATTERNS = [
   // Configuration
   { pattern: /\/domains(?:\/.*)?$/, docPage: 'domains' },
   { pattern: /\/webhooks(?:\/.*)?$/, docPage: 'webhooks' },
-  { pattern: /\/api-keys(?:\/.*)?$/, docPage: 'stack-auth-keys' },
+  { pattern: /\/api-keys(?:\/.*)?$/, docPage: 'hexclave-keys' },
   { pattern: /\/project-settings(?:\/.*)?$/, docPage: 'project-settings' },
 ];
 
@@ -113,7 +115,7 @@ const getDashboardPage = (path: string): string => {
 
 // Get documentation URL and title for the current page and doc type
 const DASHBOARD_TO_DOCS_MAP = new Map<string, { path: string, title: string }>([
-  ['overview', { path: 'overview', title: 'Stack Auth Overview' }],
+  ['overview', { path: 'overview', title: 'Hexclave Overview' }],
   ['users', { path: 'getting-started/users', title: 'User Management' }],
   ['auth-methods', { path: 'concepts/auth-providers', title: 'Authentication Providers' }],
   ['orgs-and-teams', { path: 'concepts/orgs-and-teams', title: 'Teams & Organizations' }],
@@ -121,7 +123,7 @@ const DASHBOARD_TO_DOCS_MAP = new Map<string, { path: string, title: string }>([
   ['emails', { path: 'concepts/emails', title: 'Emails' }],
   ['domains', { path: 'getting-started/production#domains', title: 'Domains' }],
   ['webhooks', { path: 'concepts/webhooks', title: 'Webhooks' }],
-  ['stack-auth-keys', { path: 'getting-started/setup#update-api-keys', title: 'Stack Auth Keys' }],
+  ['hexclave-keys', { path: 'getting-started/setup#update-api-keys', title: 'Hexclave Keys' }],
   ['project-settings', { path: 'getting-started/production#enabling-production-mode', title: 'Project Configuration' }],
 ]);
 
@@ -141,7 +143,7 @@ const getDocContentForPath = (path: string, docType: DocType): DocContent => {
     case 'docs': {
       // Default to getting started for main docs
       const url = `${getDocsBaseUrl()}/docs-embed/getting-started/setup`;
-      const title = 'Stack Auth Documentation';
+      const title = 'Hexclave Documentation';
       return { title, url, type: 'docs' };
     }
     case 'api': {

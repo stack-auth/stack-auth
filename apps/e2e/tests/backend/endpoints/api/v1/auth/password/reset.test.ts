@@ -22,7 +22,7 @@ async function getResetCode() {
   `);
   const messages = await mailbox.waitForMessagesWithSubject("Reset your password");
   const resetCodeMessage = messages.find((m) => m.subject.includes("Reset your password at")) ?? throwErr("Reset code message not found");
-  expect(resetCodeMessage.subject).toBe("Reset your password at Stack Dashboard");
+  expect(resetCodeMessage.subject).toBe("Reset your password at Hexclave Dashboard");
   const resetCodeUrls = resetCodeMessage.body?.text.match(localRedirectUrlRegex) ?? throwErr("Reset code regex not matched");
   if (resetCodeUrls.length !== 1) {
     throw new HexclaveAssertionError(`Expected exactly one reset code link, received ${resetCodeUrls.length}`, { resetCodeMessage });

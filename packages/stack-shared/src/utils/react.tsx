@@ -273,7 +273,7 @@ export class NoSuspenseBoundaryError extends Error {
       
       4. You caught this error with try-catch or a custom error boundary. Fix this by rethrowing the error or not catching it in the first place.
 
-      5. Your version of Stack Auth is too old. Upgrade to the latest version to see if that fixes the issue.
+      5. Your version of Hexclave is too old. Upgrade to the latest version to see if that fixes the issue.
 
       See: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
 

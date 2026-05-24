@@ -1,5 +1,5 @@
 /**
- * Grants the `free` plan to every billing team on Stack Auth's own
+ * Grants the `free` plan to every billing team on Hexclave's own
  * billing project that doesn't already have a plan. Runs at deploy /
  * db init time.
  *

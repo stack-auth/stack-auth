@@ -233,7 +233,7 @@ describe("isLocalHandlerUrlTarget", () => {
 
   it("treats cross-origin absolute handler URLs as non-local targets", () => {
     expect(isLocalHandlerUrlTarget({
-      targetUrl: "https://project-id.built-with-stack-auth.com/handler/sign-in",
+      targetUrl: "https://project-id.built-with-hexclave.com/handler/sign-in",
       handlerPath: "/handler",
       currentOrigin: "http://p91.localhost:9101",
     })).toBe(false);
