@@ -20,7 +20,7 @@ import {
   MetricsPaymentsOverviewSchema,
   MetricsRecentUserSchema,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
@@ -305,7 +305,7 @@ async function loadLiveUsersCount(
     const captureId = error instanceof ClickHouseError
       ? "internal-metrics-load-live-users-count-clickhouse-error"
       : "internal-metrics-load-live-users-count-unexpected-error";
-    captureError(captureId, new StackAssertionError(
+    captureError(captureId, new HexclaveAssertionError(
       "Failed to load live users count for internal metrics.",
       {
         cause: error,
@@ -637,7 +637,7 @@ async function loadAnonymousVisitorsFromTokenRefresh(
     const captureId = error instanceof ClickHouseError
       ? "internal-metrics-load-anonymous-visitors-fallback-clickhouse-error"
       : "internal-metrics-load-anonymous-visitors-fallback-unexpected-error";
-    captureError(captureId, new StackAssertionError(
+    captureError(captureId, new HexclaveAssertionError(
       "Failed to load anonymous visitors fallback for internal metrics.",
       {
         cause: error,
@@ -692,7 +692,7 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonym
     if (!(error instanceof ClickHouseError)) {
       throw error;
     }
-    captureError("internal-metrics-load-monthly-active-users-failed", new StackAssertionError(
+    captureError("internal-metrics-load-monthly-active-users-failed", new HexclaveAssertionError(
       "Failed to load monthly active users for internal metrics.",
       {
         cause: error,
@@ -974,7 +974,7 @@ async function loadEmailOverview(tenancy: Tenancy, now: Date) {
       }
       default: {
         const _exhaustiveCheck: never = status;
-        captureError("internal-metrics-unknown-email-simple-status", new StackAssertionError(
+        captureError("internal-metrics-unknown-email-simple-status", new HexclaveAssertionError(
           `Unknown EmailOutboxSimpleStatus value: ${String(_exhaustiveCheck)}`,
           { status: _exhaustiveCheck },
         ));
@@ -1315,7 +1315,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     if (!(error instanceof ClickHouseError)) {
       throw error;
     }
-    captureError("internal-metrics-analytics-overview-clickhouse-fallback", new StackAssertionError(
+    captureError("internal-metrics-analytics-overview-clickhouse-fallback", new HexclaveAssertionError(
       "Falling back to empty analytics overview due to ClickHouse query failure.",
       {
         cause: error,

@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
@@ -111,7 +111,7 @@ type StudioTableRecord = {
   table: StudioTable,
 };
 
-const STUDIO_PORT = Number(`${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")}40`);
+const STUDIO_PORT = Number(`${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")}40`);
 const STUDIO_HOST = "127.0.0.1";
 const BULLDOZER_LOCK_ID = 7857391;
 const STUDIO_INSTANCE_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -153,18 +153,18 @@ function isStudioStoredTable(value: StudioTable): value is StudioStoredTable {
 }
 
 function requireRecord(value: unknown, errorMessage: string): Record<string, unknown> {
-  if (!isRecord(value)) throw new StackAssertionError(errorMessage);
+  if (!isRecord(value)) throw new HexclaveAssertionError(errorMessage);
   return value;
 }
 
 function requireString(value: unknown, errorMessage: string): string {
-  if (typeof value !== "string") throw new StackAssertionError(errorMessage);
+  if (typeof value !== "string") throw new HexclaveAssertionError(errorMessage);
   return value;
 }
 
 function requireStringArray(value: unknown, errorMessage: string): string[] {
   if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
-    throw new StackAssertionError(errorMessage);
+    throw new HexclaveAssertionError(errorMessage);
   }
   return value;
 }
@@ -189,7 +189,7 @@ function isJsonValue(value: unknown): value is JsonValue {
 
 function requireJsonValue(value: unknown, errorMessage: string): JsonValue {
   if (!isJsonValue(value)) {
-    throw new StackAssertionError(errorMessage);
+    throw new HexclaveAssertionError(errorMessage);
   }
   return value;
 }
@@ -500,7 +500,7 @@ function createTableRegistry(schema: Record<string, unknown>): {
   walk(schema, "");
 
   if (tables.length === 0) {
-    throw new StackAssertionError("No studio-compatible tables found in schema object.");
+    throw new HexclaveAssertionError("No studio-compatible tables found in schema object.");
   }
 
   const categories: CategoryRecord[] = [];
@@ -536,7 +536,7 @@ let registry = createTableRegistry(
 function switchSchema(name: string): void {
   const factory = Reflect.get(AVAILABLE_SCHEMAS, name);
   if (typeof factory !== "function") {
-    throw new StackAssertionError(`Unknown schema "${name}". Available: ${Object.keys(AVAILABLE_SCHEMAS).join(", ")}`);
+    throw new HexclaveAssertionError(`Unknown schema "${name}". Available: ${Object.keys(AVAILABLE_SCHEMAS).join(", ")}`);
   }
   currentSchemaName = name;
   registry = createTableRegistry(factory());
@@ -886,7 +886,7 @@ async function queryRows(query: SqlQuery): Promise<unknown[]> {
   const rows = await retryTransaction(globalPrismaClient, async (tx) => {
     return await tx.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(query));
   });
-  if (!Array.isArray(rows)) throw new StackAssertionError("Expected SQL query to return an array of rows.");
+  if (!Array.isArray(rows)) throw new HexclaveAssertionError("Expected SQL query to return an array of rows.");
   return rows;
 }
 
@@ -895,7 +895,7 @@ async function readBoolean(expression: SqlExpression<boolean>): Promise<boolean>
     return await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT (${expression.sql}) AS "value"`);
   });
   if (!Array.isArray(rows) || rows.length === 0 || !isRecord(rows[0])) {
-    throw new StackAssertionError("Expected boolean expression query to return one row.");
+    throw new HexclaveAssertionError("Expected boolean expression query to return one row.");
   }
   return Reflect.get(rows[0], "value") === true;
 }
@@ -1256,7 +1256,7 @@ async function readRequestBody(request: http.IncomingMessage): Promise<string> {
     const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     totalBytes += chunkBuffer.byteLength;
     if (totalBytes > MAX_REQUEST_BODY_BYTES) {
-      throw new StackAssertionError("Request body exceeds maximum size.", {
+      throw new HexclaveAssertionError("Request body exceeds maximum size.", {
         maxRequestBodyBytes: MAX_REQUEST_BODY_BYTES,
         receivedBytes: totalBytes,
       });
@@ -1299,7 +1299,7 @@ function requireAuthorizedMutationRequest(request: http.IncomingMessage, request
   const authHeader = request.headers[STUDIO_AUTH_HEADER];
   const token = typeof authHeader === "string" ? authHeader : null;
   if (token !== STUDIO_AUTH_TOKEN) {
-    throw new StackAssertionError("Invalid or missing studio mutation token.");
+    throw new HexclaveAssertionError("Invalid or missing studio mutation token.");
   }
 
   const originHeader = request.headers.origin;
@@ -1308,7 +1308,7 @@ function requireAuthorizedMutationRequest(request: http.IncomingMessage, request
     try {
       originUrl = new URL(originHeader);
     } catch {
-      throw new StackAssertionError("Mutation origin is not allowed.", {
+      throw new HexclaveAssertionError("Mutation origin is not allowed.", {
         origin: originHeader,
         path: requestUrl.pathname,
       });
@@ -1321,7 +1321,7 @@ function requireAuthorizedMutationRequest(request: http.IncomingMessage, request
       || hostname === "::1"
       || hostname.endsWith(".localhost");
     if (!portMatches || !hostnameAllowed) {
-      throw new StackAssertionError("Mutation origin is not allowed.", {
+      throw new HexclaveAssertionError("Mutation origin is not allowed.", {
         origin: originHeader,
         path: requestUrl.pathname,
       });
@@ -4151,7 +4151,7 @@ function getStudioPageHtml(): string {
 
 async function handleRequest(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
   if (!isLoopbackAddress(request.socket.remoteAddress)) {
-    throw new StackAssertionError("Bulldozer Studio only accepts loopback requests.", {
+    throw new HexclaveAssertionError("Bulldozer Studio only accepts loopback requests.", {
       remoteAddress: request.socket.remoteAddress,
     });
   }
@@ -4252,7 +4252,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       const rowIdentifier = requireString(Reflect.get(body, "rowIdentifier"), "rowIdentifier must be a string.");
       const rowData = requireJsonValue(Reflect.get(body, "rowData"), "rowData must be valid JSON.");
       if (!isRecord(rowData)) {
-        throw new StackAssertionError("rowData must be a JSON object.");
+        throw new HexclaveAssertionError("rowData must be a JSON object.");
       }
       const executionContext = createBulldozerExecutionContext();
       const metrics = await executeStatements(record.table.setRow(
@@ -4326,7 +4326,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       pathSegments.length === 0
       || (pathSegments.length === 1 && pathSegments[0] === "table")
     ) {
-      throw new StackAssertionError("Deleting reserved root paths is not allowed.");
+      throw new HexclaveAssertionError("Deleting reserved root paths is not allowed.");
     }
     await retryTransaction(globalPrismaClient, async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL jit = off`);

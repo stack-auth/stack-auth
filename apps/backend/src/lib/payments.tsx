@@ -9,7 +9,7 @@ import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/use
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -82,7 +82,7 @@ export async function ensureProductIdOrInlineProduct(
     return product;
   } else {
     if (!inlineProduct) {
-      throw new StackAssertionError("Inline product does not exist, this should never happen", { inlineProduct, productId });
+      throw new HexclaveAssertionError("Inline product does not exist, this should never happen", { inlineProduct, productId });
     }
     return {
       productLineId: undefined,
@@ -239,7 +239,7 @@ export async function getStripeCustomerForCustomerOrNull(options: {
   }
 
   if (matches.length > 1) {
-    throw new StackAssertionError("Multiple Stripe customers found for customerId; customerType filtering was ambiguous", {
+    throw new HexclaveAssertionError("Multiple Stripe customers found for customerId; customerType filtering was ambiguous", {
       customerId: options.customerId,
       customerType: options.customerType,
       stripeCustomerIds: matches.map((c) => c.id),

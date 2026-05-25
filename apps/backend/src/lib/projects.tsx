@@ -5,7 +5,7 @@ import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrid
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
@@ -49,7 +49,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         `,
     postProcess: async (queryResult) => {
       if (queryResult.length > 1) {
-        throw new StackAssertionError(`Expected 0 or 1 projects with id ${projectId}, got ${queryResult.length}`, { queryResult });
+        throw new HexclaveAssertionError(`Expected 0 or 1 projects with id ${projectId}, got ${queryResult.length}`, { queryResult });
       }
       if (queryResult.length === 0) {
         return null;
@@ -57,7 +57,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
       const row = queryResult[0];
       const onboardingState = row.onboardingState;
       if (onboardingState != null && (typeof onboardingState !== "object" || Array.isArray(onboardingState))) {
-        throw new StackAssertionError("Expected Project.onboardingState to be an object or null.", {
+        throw new HexclaveAssertionError("Expected Project.onboardingState to be an object or null.", {
           projectId,
           onboardingState,
         });
@@ -330,7 +330,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
   }
   const result = await getProject(projectId);
   if (!result) {
-    throw new StackAssertionError("Project not found after creation/update", { projectId });
+    throw new HexclaveAssertionError("Project not found after creation/update", { projectId });
   }
   return result;
 }

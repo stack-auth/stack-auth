@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../../../backend-helpers";
@@ -101,7 +101,7 @@ it("creates sessions that expire", async ({ expect }) => {
   } finally {
     const timeSinceBeginDate = new Date().getTime() - beginDate.getTime();
     if (timeSinceBeginDate > 11_000) {
-      throw new StackAssertionError(`Timeout error: Requests were too slow (${timeSinceBeginDate}ms > 11000ms); try again or try to understand why they were slow.`);
+      throw new HexclaveAssertionError(`Timeout error: Requests were too slow (${timeSinceBeginDate}ms > 11000ms); try again or try to understand why they were slow.`);
     }
   }
   await waitPromise;

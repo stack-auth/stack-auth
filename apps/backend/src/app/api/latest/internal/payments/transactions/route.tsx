@@ -8,7 +8,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { TRANSACTION_TYPES, transactionSchema, type Transaction, type TransactionEntry, type TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const schema = paymentsSchema;
 
@@ -114,7 +114,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
   if (!isRecord(rowData)) {
-    throw new StackAssertionError("Ledger transaction rowData is not an object", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction rowData is not an object", { rowData });
   }
   const txnId = Reflect.get(rowData, "txnId");
   const type = Reflect.get(rowData, "type");
@@ -127,10 +127,10 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
   const refundedAtMillis = refundedAtMillisValue === undefined ? null : refundedAtMillisValue;
 
   if (typeof txnId !== "string" || txnId.length === 0) {
-    throw new StackAssertionError("Ledger transaction row is missing txnId", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction row is missing txnId", { rowData });
   }
   if (typeof customerId !== "string" || customerId.length === 0) {
-    throw new StackAssertionError("Ledger transaction row is missing customerId", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction row is missing customerId", { rowData });
   }
   if (
     type !== "subscription-start" &&
@@ -139,22 +139,22 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
     type !== "subscription-renewal" &&
     type !== "refund"
   ) {
-    throw new StackAssertionError("Unexpected ledger transaction type", { rowData });
+    throw new HexclaveAssertionError("Unexpected ledger transaction type", { rowData });
   }
   if (typeof effectiveAtMillis !== "number" || !Number.isInteger(effectiveAtMillis) || effectiveAtMillis < 0) {
-    throw new StackAssertionError("Ledger transaction row has invalid effectiveAtMillis", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction row has invalid effectiveAtMillis", { rowData });
   }
   if (typeof createdAtMillis !== "number" || !Number.isInteger(createdAtMillis) || createdAtMillis < 0) {
-    throw new StackAssertionError("Ledger transaction row has invalid createdAtMillis", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction row has invalid createdAtMillis", { rowData });
   }
   if (!Array.isArray(entries)) {
-    throw new StackAssertionError("Ledger transaction row has invalid entries", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction row has invalid entries", { rowData });
   }
   if (paymentProvider !== null && paymentProvider !== "test_mode" && paymentProvider !== "stripe") {
-    throw new StackAssertionError("Ledger transaction row has invalid paymentProvider", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction row has invalid paymentProvider", { rowData });
   }
   if (refundedAtMillis !== null && (typeof refundedAtMillis !== "number" || !Number.isInteger(refundedAtMillis) || refundedAtMillis < 0)) {
-    throw new StackAssertionError("Ledger transaction row has invalid refundedAtMillis", { rowData });
+    throw new HexclaveAssertionError("Ledger transaction row has invalid refundedAtMillis", { rowData });
   }
 
   return {
@@ -173,19 +173,19 @@ function readLedgerTransactionRow(rowData: unknown): LedgerTransactionRow {
 function parseSourceId(row: LedgerTransactionRow): string {
   if (row.type === "subscription-start") {
     if (!row.txnId.startsWith("sub-start:")) {
-      throw new StackAssertionError("subscription-start transaction id has invalid prefix", { txnId: row.txnId });
+      throw new HexclaveAssertionError("subscription-start transaction id has invalid prefix", { txnId: row.txnId });
     }
     return row.txnId.slice("sub-start:".length);
   }
   if (row.type === "one-time-purchase") {
     if (!row.txnId.startsWith("otp:")) {
-      throw new StackAssertionError("one-time-purchase transaction id has invalid prefix", { txnId: row.txnId });
+      throw new HexclaveAssertionError("one-time-purchase transaction id has invalid prefix", { txnId: row.txnId });
     }
     return row.txnId.slice("otp:".length);
   }
   if (row.type === "manual-item-quantity-change") {
     if (!row.txnId.startsWith("miqc:")) {
-      throw new StackAssertionError("manual-item-quantity-change transaction id has invalid prefix", { txnId: row.txnId });
+      throw new HexclaveAssertionError("manual-item-quantity-change transaction id has invalid prefix", { txnId: row.txnId });
     }
     return row.txnId.slice("miqc:".length);
   }
@@ -197,7 +197,7 @@ function parseSourceId(row: LedgerTransactionRow): string {
     return row.txnId;
   }
   if (!row.txnId.startsWith("sub-renewal:")) {
-    throw new StackAssertionError("subscription-renewal transaction id has invalid prefix", { txnId: row.txnId });
+    throw new HexclaveAssertionError("subscription-renewal transaction id has invalid prefix", { txnId: row.txnId });
   }
   return row.txnId.slice("sub-renewal:".length);
 }
@@ -206,12 +206,12 @@ function readCustomerType(value: unknown, context: string): "user" | "team" | "c
   if (value === "user" || value === "team" || value === "custom") {
     return value;
   }
-  throw new StackAssertionError(`Invalid customerType for ${context}`, { value });
+  throw new HexclaveAssertionError(`Invalid customerType for ${context}`, { value });
 }
 
 function readDayInterval(value: unknown, context: string): [number, "day" | "week" | "month" | "year"] {
   if (!Array.isArray(value) || value.length !== 2) {
-    throw new StackAssertionError(`Invalid day interval for ${context}`, { value });
+    throw new HexclaveAssertionError(`Invalid day interval for ${context}`, { value });
   }
   const count = value[0];
   const unit = value[1];
@@ -221,7 +221,7 @@ function readDayInterval(value: unknown, context: string): [number, "day" | "wee
     count < 0 ||
     (unit !== "day" && unit !== "week" && unit !== "month" && unit !== "year")
   ) {
-    throw new StackAssertionError(`Invalid day interval for ${context}`, { value });
+    throw new HexclaveAssertionError(`Invalid day interval for ${context}`, { value });
   }
   return [count, unit];
 }
@@ -230,22 +230,22 @@ type InlineProduct = Extract<TransactionEntry, { type: "product_grant" }>["produ
 
 function mapProductSnapshotToInlineProduct(product: unknown): InlineProduct {
   if (!isRecord(product)) {
-    throw new StackAssertionError("Invalid product snapshot", { product });
+    throw new HexclaveAssertionError("Invalid product snapshot", { product });
   }
 
   const customerType = readCustomerType(product.customerType, "product snapshot");
   const includedItemsRaw = product.includedItems;
   if (!isRecord(includedItemsRaw)) {
-    throw new StackAssertionError("Invalid includedItems in product snapshot", { product });
+    throw new HexclaveAssertionError("Invalid includedItems in product snapshot", { product });
   }
   const includedItems: InlineProduct["included_items"] = {};
   for (const [itemId, value] of Object.entries(includedItemsRaw)) {
     if (!isRecord(value)) {
-      throw new StackAssertionError("Invalid included item config", { itemId, value });
+      throw new HexclaveAssertionError("Invalid included item config", { itemId, value });
     }
     const quantity = value.quantity;
     if (typeof quantity !== "number") {
-      throw new StackAssertionError("Invalid included item quantity", { itemId, value });
+      throw new HexclaveAssertionError("Invalid included item quantity", { itemId, value });
     }
     const repeat = value.repeat;
     const parsedRepeat =
@@ -262,7 +262,7 @@ function mapProductSnapshotToInlineProduct(product: unknown): InlineProduct {
       expires !== "when-purchase-expires" &&
       expires !== "when-repeated"
     ) {
-      throw new StackAssertionError("Invalid included item expires value", { itemId, value });
+      throw new HexclaveAssertionError("Invalid included item expires value", { itemId, value });
     }
     includedItems[itemId] = {
       quantity,
@@ -273,11 +273,11 @@ function mapProductSnapshotToInlineProduct(product: unknown): InlineProduct {
 
   const prices: InlineProduct["prices"] = {};
   if (!isRecord(product.prices)) {
-    throw new StackAssertionError("Invalid prices in product snapshot", { product });
+    throw new HexclaveAssertionError("Invalid prices in product snapshot", { product });
   }
   for (const [priceId, value] of Object.entries(product.prices)) {
     if (!isRecord(value)) {
-      throw new StackAssertionError("Invalid price config in product snapshot", { priceId, value });
+      throw new HexclaveAssertionError("Invalid price config in product snapshot", { priceId, value });
     }
     const mappedPrice: InlineProduct["prices"][string] = {};
     for (const currency of SUPPORTED_CURRENCIES) {
@@ -337,25 +337,25 @@ type LedgerItemQuantityChangeEntry = {
 
 function readProductGrantEntry(entry: Record<string, unknown>): LedgerProductGrantEntry {
   if (typeof entry.customerId !== "string") {
-    throw new StackAssertionError("Invalid product-grant customerId", { entry });
+    throw new HexclaveAssertionError("Invalid product-grant customerId", { entry });
   }
   if (entry.productId !== null && typeof entry.productId !== "string") {
-    throw new StackAssertionError("Invalid product-grant productId", { entry });
+    throw new HexclaveAssertionError("Invalid product-grant productId", { entry });
   }
   if (!isRecord(entry.product)) {
-    throw new StackAssertionError("Invalid product-grant product snapshot", { entry });
+    throw new HexclaveAssertionError("Invalid product-grant product snapshot", { entry });
   }
   if (typeof entry.quantity !== "number") {
-    throw new StackAssertionError("Invalid product-grant quantity", { entry });
+    throw new HexclaveAssertionError("Invalid product-grant quantity", { entry });
   }
   if (entry.priceId !== undefined && entry.priceId !== null && typeof entry.priceId !== "string") {
-    throw new StackAssertionError("Invalid product-grant priceId", { entry });
+    throw new HexclaveAssertionError("Invalid product-grant priceId", { entry });
   }
   if (entry.subscriptionId !== undefined && entry.subscriptionId !== null && typeof entry.subscriptionId !== "string") {
-    throw new StackAssertionError("Invalid product-grant subscriptionId", { entry });
+    throw new HexclaveAssertionError("Invalid product-grant subscriptionId", { entry });
   }
   if (entry.oneTimePurchaseId !== undefined && entry.oneTimePurchaseId !== null && typeof entry.oneTimePurchaseId !== "string") {
-    throw new StackAssertionError("Invalid product-grant oneTimePurchaseId", { entry });
+    throw new HexclaveAssertionError("Invalid product-grant oneTimePurchaseId", { entry });
   }
   return {
     type: "product-grant",
@@ -372,10 +372,10 @@ function readProductGrantEntry(entry: Record<string, unknown>): LedgerProductGra
 
 function readMoneyTransferEntry(entry: Record<string, unknown>): LedgerMoneyTransferEntry {
   if (typeof entry.customerId !== "string") {
-    throw new StackAssertionError("Invalid money-transfer customerId", { entry });
+    throw new HexclaveAssertionError("Invalid money-transfer customerId", { entry });
   }
   if (!isRecord(entry.chargedAmount)) {
-    throw new StackAssertionError("Invalid money-transfer chargedAmount", { entry });
+    throw new HexclaveAssertionError("Invalid money-transfer chargedAmount", { entry });
   }
 
   const chargedAmount: Record<string, string> = {};
@@ -395,7 +395,7 @@ function readMoneyTransferEntry(entry: Record<string, unknown>): LedgerMoneyTran
 
 function readItemQuantityChangeEntry(entry: Record<string, unknown>): LedgerItemQuantityChangeEntry {
   if (typeof entry.customerId !== "string" || typeof entry.itemId !== "string" || typeof entry.quantity !== "number") {
-    throw new StackAssertionError("Invalid item-quantity-change entry", { entry });
+    throw new HexclaveAssertionError("Invalid item-quantity-change entry", { entry });
   }
 
   return {
@@ -455,11 +455,11 @@ function mapItemQuantityChangeEntry(entry: LedgerItemQuantityChangeEntry): Extra
 
 function mapLedgerEntry(entry: unknown): TransactionEntry | null {
   if (!isRecord(entry)) {
-    throw new StackAssertionError("Invalid ledger entry value", { entry });
+    throw new HexclaveAssertionError("Invalid ledger entry value", { entry });
   }
   const type = entry.type;
   if (typeof type !== "string") {
-    throw new StackAssertionError("Missing ledger entry type", { entry });
+    throw new HexclaveAssertionError("Missing ledger entry type", { entry });
   }
 
   if (type === "money-transfer") {
@@ -482,7 +482,7 @@ function mapLedgerEntry(entry: unknown): TransactionEntry | null {
       adjustedEntryIndex < 0 ||
       typeof quantity !== "number"
     ) {
-      throw new StackAssertionError("Invalid product-revocation entry", { entry });
+      throw new HexclaveAssertionError("Invalid product-revocation entry", { entry });
     }
     return {
       type: "product_revocation",
@@ -502,7 +502,7 @@ function mapLedgerEntry(entry: unknown): TransactionEntry | null {
       adjustedEntryIndex < 0 ||
       typeof quantity !== "number"
     ) {
-      throw new StackAssertionError("Invalid product-revocation-reversal entry", { entry });
+      throw new HexclaveAssertionError("Invalid product-revocation-reversal entry", { entry });
     }
     return {
       type: "product_revocation_reversal",
@@ -523,7 +523,7 @@ function mapLedgerEntry(entry: unknown): TransactionEntry | null {
     return null;
   }
 
-  throw new StackAssertionError("Unexpected ledger entry type", { entry });
+  throw new HexclaveAssertionError("Unexpected ledger entry type", { entry });
 }
 
 function mapLedgerTransactionTypeToApiType(type: LedgerTransactionType): Transaction["type"] {
@@ -569,11 +569,11 @@ function buildAdjustedByLookupFromRefundRows(rows: unknown[]): Map<string, Trans
   };
   for (const rowData of rows) {
     if (!isRecord(rowData)) {
-      throw new StackAssertionError("Refund transaction rowData is not an object", { rowData });
+      throw new HexclaveAssertionError("Refund transaction rowData is not an object", { rowData });
     }
     const refundTxnId = Reflect.get(rowData, "txnId");
     if (typeof refundTxnId !== "string" || refundTxnId.length === 0) {
-      throw new StackAssertionError("Refund transaction row is missing txnId", { rowData });
+      throw new HexclaveAssertionError("Refund transaction row is missing txnId", { rowData });
     }
     const parsed = parseRefundTxnId(refundTxnId);
     if (parsed) {
@@ -662,7 +662,7 @@ async function getTransactions(options: {
   const seenTxnIds = new Set<string>();
   for (const row of parsedRows) {
     if (seenTxnIds.has(row.txnId)) {
-      throw new StackAssertionError("Duplicate transaction id returned from grouped transactions table", {
+      throw new HexclaveAssertionError("Duplicate transaction id returned from grouped transactions table", {
         txnId: row.txnId,
         tenancyId: options.tenancyId,
       });

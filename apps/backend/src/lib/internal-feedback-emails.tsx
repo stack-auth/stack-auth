@@ -5,7 +5,7 @@ import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { Tenancy } from "@/lib/tenancies";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 
 const transactionalCategoryId = getNotificationCategoryByName("Transactional")?.id ?? throwErr("Transactional notification category not found");
@@ -50,7 +50,7 @@ export function getInternalFeedbackRecipients(): string[] {
   const recipients = rawRecipients.split(",").map((recipient) => recipient.trim());
 
   if (recipients.some((recipient) => recipient.length === 0)) {
-    throw new StackAssertionError("STACK_INTERNAL_FEEDBACK_RECIPIENTS contains an empty recipient", {
+    throw new HexclaveAssertionError("STACK_INTERNAL_FEEDBACK_RECIPIENTS contains an empty recipient", {
       rawRecipients,
     });
   }

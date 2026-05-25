@@ -1,6 +1,6 @@
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { CelEvaluationError, evaluateCelExpression, SignUpRuleContext } from "./cel-evaluator";
 import { logEvent, SystemEventTypes } from "./events";
@@ -31,7 +31,7 @@ async function logRuleTrigger(
     });
   } catch (e) {
     // Don't fail the signup if logging fails
-    captureError(`sign-up-rule-trigger-log-error`, new StackAssertionError(`Failed to log sign-up rule trigger for rule ${ruleId}`, { cause: e }));
+    captureError(`sign-up-rule-trigger-log-error`, new HexclaveAssertionError(`Failed to log sign-up rule trigger for rule ${ruleId}`, { cause: e }));
   }
 }
 
@@ -145,7 +145,7 @@ function evaluateSignUpRulesInternal(
         error = e.message;
         // technically a custom config could cause this, but the dashboard shouldn't allow creating faulty configs
         // so for now, let's capture an error so we know that something is probably wrong on the DB
-        captureError(`cel-evaluation-error:${ruleId}`, new StackAssertionError(`CEL evaluation error for rule ${ruleId}`, { cause: e }));
+        captureError(`cel-evaluation-error:${ruleId}`, new HexclaveAssertionError(`CEL evaluation error for rule ${ruleId}`, { cause: e }));
       } else {
         throw e;
       }

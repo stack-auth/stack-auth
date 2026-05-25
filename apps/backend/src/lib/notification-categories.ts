@@ -1,7 +1,7 @@
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { unsubscribeLinkVerificationCodeHandler } from "../app/api/latest/emails/unsubscribe-link/verification-handler";
 
 // For now, we only have two hardcoded notification categories. TODO: query from database instead and create UI to manage them in dashboard
@@ -33,7 +33,7 @@ export const getNotificationCategoryById = (id: string) => {
 export const hasNotificationEnabled = async (tenancy: Tenancy, userId: string, notificationCategoryId: string) => {
   const notificationCategory = listNotificationCategories().find((category) => category.id === notificationCategoryId);
   if (!notificationCategory) {
-    throw new StackAssertionError('Invalid notification category id', { notificationCategoryId });
+    throw new HexclaveAssertionError('Invalid notification category id', { notificationCategoryId });
   }
 
   const prisma = await getPrismaClientForTenancy(tenancy);

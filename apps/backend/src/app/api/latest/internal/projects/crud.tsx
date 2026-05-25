@@ -7,7 +7,7 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { isNotNull, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
@@ -58,7 +58,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     const projects = (await Promise.all(typedEntries(projectsRecord).map(async ([_, project]) => await project))).filter(isNotNull);
 
     if (projects.length !== projectIds.length) {
-      throw new StackAssertionError('Failed to fetch all projects of a user');
+      throw new HexclaveAssertionError('Failed to fetch all projects of a user');
     }
 
     const projectsWithConfig = await Promise.all(projects.map(async (project) => {

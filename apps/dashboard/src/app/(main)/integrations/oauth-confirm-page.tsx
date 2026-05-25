@@ -1,6 +1,6 @@
 import { getStackServerApp } from "@/stack/server";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { redirect } from "next/navigation";
 import ConfirmCard from "./oauth-confirm-card";
 
@@ -43,7 +43,7 @@ export default async function IntegrationConfirmPage(props: {
     });
     if (!response.ok) {
       const text = await response.text();
-      throw new StackAssertionError(`Failed to confirm integration: ${response.status} ${text}`, { response, text });
+      throw new HexclaveAssertionError(`Failed to confirm integration: ${response.status} ${text}`, { response, text });
     }
     const json = await response.json();
     const authorizationCode = json.authorization_code;

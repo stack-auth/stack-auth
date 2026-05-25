@@ -1,7 +1,7 @@
 import { StackClientApp } from "@stackframe/stack";
 import { envOrDevDefault } from "./lib/env";
 
-const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
 
 const projectId = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_PROJECT_ID, "internal", "NEXT_PUBLIC_STACK_PROJECT_ID");
 const publishableClientKey = envOrDevDefault(

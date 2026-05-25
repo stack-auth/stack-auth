@@ -1,6 +1,6 @@
 import { ALL_APPS } from "../apps/apps-config";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
-import { StackAssertionError } from "../utils/errors";
+import { HexclaveAssertionError } from "../utils/errors";
 import { getOrUndefined, isObjectLike, set, typedEntries, typedFromEntries } from "../utils/objects";
 import { nicify } from "../utils/strings";
 import { normalize, override } from "./format";
@@ -361,7 +361,7 @@ import.meta.vitest?.test("fuzz schemas", async ({ expect }) => {
         },
       } as const;
       console.error("Failed to fuzz schema in iteration ${i}/${totalIterations}!", nicify(data));
-      throw new StackAssertionError(`Error in iteration ${i}/${totalIterations} of schema fuzz: ${e}`, { cause: e });
+      throw new HexclaveAssertionError(`Error in iteration ${i}/${totalIterations} of schema fuzz: ${e}`, { cause: e });
     }
   }
 });

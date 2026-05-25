@@ -1,5 +1,5 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
+import { KnownErrors, HexclaveClientInterface } from "@stackframe/stack-shared";
 import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
@@ -22,7 +22,7 @@ import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
 import { DependenciesMap } from "@stackframe/stack-shared/dist/utils/maps";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
@@ -100,6 +100,14 @@ const oauthCallbackResponseQueryParams = ["code", "state", "error", "error_descr
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
+// Hexclave rebrand (PR 1, invisible compat layer): the parser accepts the new
+// `hexclave_` prefix in addition to the legacy `stackauth_`, but the emitter
+// MUST keep emitting `stackauth_`. `getAuthorizationHeader()` is a documented
+// public SDK API whose return shape is part of the wire contract — changing
+// the emitted prefix here would silently break customer/server parsers and
+// version-skewed apps. The emitter flips to `hexclave_` in the user-visible
+// PR 2, not in this invisible compat-only PR.
+const HEXCLAVE_AUTHORIZATION_VALUE_PREFIX = "hexclave_";
 
 function getAuthorizationHeaderValueFromAuthJson(authJson: { accessToken: string | null, refreshToken: string | null }): string | null {
   if (authJson.accessToken == null && authJson.refreshToken == null) {
@@ -117,11 +125,17 @@ function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: strin
   }
 
   const credential = match[1].trim();
-  if (!credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX)) {
+  // Hexclave rebrand: accept either the new or the legacy prefix; slice whichever matched.
+  const matchedPrefix = credential.startsWith(HEXCLAVE_AUTHORIZATION_VALUE_PREFIX)
+    ? HEXCLAVE_AUTHORIZATION_VALUE_PREFIX
+    : credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX)
+      ? STACK_AUTHORIZATION_VALUE_PREFIX
+      : null;
+  if (matchedPrefix == null) {
     return null;
   }
 
-  const encodedAuthJson = credential.slice(STACK_AUTHORIZATION_VALUE_PREFIX.length);
+  const encodedAuthJson = credential.slice(matchedPrefix.length);
   if (encodedAuthJson.length === 0) {
     throw new Error("Invalid Authorization header format. Expected `Bearer stackauth_<base64(getAuthJson())>`.");
   }
@@ -171,7 +185,7 @@ function getHeaderValueFromRequestLikeHeaders(headers: RequestLike["headers"], n
 function getTanStackStartRequestHeader(name: string): string | null {
   const { getRequestHeader } = tanstackStartServerContext;
   if (getRequestHeader == null) {
-    throw new StackAssertionError("TanStack Start request headers are only available during server rendering");
+    throw new HexclaveAssertionError("TanStack Start request headers are only available during server rendering");
   }
   return getRequestHeader(name) ?? null;
 }
@@ -200,9 +214,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   static readonly LazyStackAdminAppImpl: { value: typeof import("./admin-app-impl")._StackAdminAppImplIncomplete | undefined } = { value: undefined };
 
   protected readonly _options: StackClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>;
-  protected readonly _extraOptions: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface } | undefined;
+  protected readonly _extraOptions: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveClientInterface } | undefined;
   protected _uniqueIdentifier: string | undefined = undefined;
-  protected _interface: StackClientInterface;
+  protected _interface: HexclaveClientInterface;
   protected readonly _tokenStoreInit: TokenStoreInit<HasTokenStore>;
   protected readonly _redirectMethod: RedirectMethod | undefined;
   protected readonly _urlOptions: HandlerUrlOptions;
@@ -556,7 +570,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async getAccessToken() {
         const result = await options.getOrWaitOAuthToken();
         if (!result) {
-          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
+          throw new HexclaveAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
         }
         return result;
       },
@@ -564,7 +578,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       useAccessToken() {
         const result = options.useOAuthToken();
         if (!result) {
-          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
+          throw new HexclaveAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
         }
         return result;
       }
@@ -606,11 +620,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackClientInterface }) {
+  constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveClientInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
     if (!_StackClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
-      throw new StackAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
+      throw new HexclaveAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
     }
 
     this._options = resolvedOptions;
@@ -627,7 +641,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._interface = extraOptions.interface;
     } else {
       const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
-      this._interface = new StackClientInterface({
+      this._interface = new HexclaveClientInterface({
         getBaseUrl: () => apiUrls()[0],
         getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(apiUrls()[0]),
         getApiUrls: apiUrls,
@@ -714,10 +728,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _initUniqueIdentifier() {
     if (!this._uniqueIdentifier) {
-      throw new StackAssertionError("Unique identifier not initialized");
+      throw new HexclaveAssertionError("Unique identifier not initialized");
     }
     if (allClientApps.has(this._uniqueIdentifier)) {
-      throw new StackAssertionError("A Stack client app with the same unique identifier already exists");
+      throw new HexclaveAssertionError("A Stack client app with the same unique identifier already exists");
     }
     allClientApps.set(this._uniqueIdentifier, [this._extraOptions?.checkString ?? undefined, this]);
   }
@@ -808,7 +822,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return this.urls.oauthCallback;
     }
     if (typeof window === "undefined") {
-      throw new StackAssertionError("Hosted OAuth callback URLs require a browser environment to use the current URL as the redirect URI");
+      throw new HexclaveAssertionError("Hosted OAuth callback URLs require a browser environment to use the current URL as the redirect URI");
     }
 
     const currentUrl = new URL(window.location.href);
@@ -870,7 +884,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const codeChallenge = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallenge);
     if (redirectUri != null || state != null || codeChallenge != null) {
       if (redirectUri == null || state == null || codeChallenge == null) {
-        throw new StackAssertionError("Nested cross-domain auth callback URL is missing OAuth request parameters", {
+        throw new HexclaveAssertionError("Nested cross-domain auth callback URL is missing OAuth request parameters", {
           redirectUri,
           state,
           codeChallenge,
@@ -880,7 +894,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // We are back on a.com acting as the OAuth provider. Only mint the code if the current
       // source session matches the refresh-token ID that b.com requested.
       if ((currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.codeChallengeMethod) ?? "S256") !== "S256") {
-        throw new StackAssertionError("Nested cross-domain auth only supports S256 PKCE");
+        throw new HexclaveAssertionError("Nested cross-domain auth only supports S256 PKCE");
       }
       if (isRelative(redirectUri)) {
         throw new Error("Nested cross-domain auth redirect URI must be absolute.");
@@ -919,7 +933,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (currentRefreshTokenId === refreshTokenId) return false;
     const callbackUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.callbackUrl);
     if (callbackUrlString == null) {
-      throw new StackAssertionError("Nested cross-domain auth URL is missing callback URL");
+      throw new HexclaveAssertionError("Nested cross-domain auth URL is missing callback URL");
     }
     if (isRelative(callbackUrlString)) {
       throw new Error("Nested cross-domain auth callback URL must be absolute.");
@@ -964,7 +978,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _useCheckFeatureSupport(name: string, options: any): never {
     runAsynchronously(this._checkFeatureSupport(name, options));
-    throw new StackAssertionError(`${name} is not currently supported. Please reach out to Stack support for more information.`);
+    throw new HexclaveAssertionError(`${name} is not currently supported. Please reach out to Stack support for more information.`);
   }
 
   protected _memoryTokenStore = createEmptyTokenStore();
@@ -976,7 +990,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return `stack-refresh-${this.projectId}`;
   }
   protected get _refreshTokenCookieName() {
-    return `stack-refresh-${this.projectId}`;
+    return `hexclave-refresh-${this.projectId}`;
   }
   private _getRefreshTokenDefaultCookieNameForSecure(secure: boolean): string {
     return `${secure ? "__Host-" : ""}${this._refreshTokenCookieName}--default`;
@@ -986,13 +1000,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return `${this._refreshTokenCookieName}--custom-${encoded}`;
   }
   private _getDomainFromCustomRefreshCookieName(name: string): string | null {
-    const prefix = `${this._refreshTokenCookieName}--custom-`;
-    if (!name.startsWith(prefix)) return null;
-    try {
-      return new TextDecoder().decode(decodeBase32(name.slice(prefix.length)));
-    } catch {
-      return null;
+    for (const base of [this._refreshTokenCookieName, this._legacyRefreshTokenCookieName]) {
+      const prefix = `${base}--custom-`;
+      if (!name.startsWith(prefix)) continue;
+      try {
+        return new TextDecoder().decode(decodeBase32(name.slice(prefix.length)));
+      } catch {
+        return null;
+      }
     }
+    return null;
   }
   private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
     return JSON.stringify({
@@ -1057,7 +1074,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   protected _getTokensFromCookies(cookies: cookie.Cookies): TokenObject {
     const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
-    const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
+    const accessTokenCookie = cookies[this._accessTokenCookieName] ?? cookies[this._legacyAccessTokenCookieName] ?? null;
     let accessToken: string | null = null;
     if (accessTokenCookie && accessTokenCookie.startsWith('[\"')) {
       const parsed = parseJson(accessTokenCookie);
@@ -1087,11 +1104,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // access token in cookies more than once because of how big it is (there's a limit of 4096 bytes for all cookies
     // together). This means that, if you have multiple projects on the same domain, some of them will need to refetch
     // the access token on page reload.
+    return `hexclave-access`;
+  }
+  protected get _legacyAccessTokenCookieName() {
     return `stack-access`;
   }
   private _getAllBrowserCookies(): cookie.Cookies {
     if (!isBrowserLike()) {
-      throw new StackAssertionError("Cannot get browser cookies on the server!");
+      throw new HexclaveAssertionError("Cannot get browser cookies on the server!");
     }
     return cookie.parseCookie(document.cookie || "");
   }
@@ -1101,6 +1121,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       structuredPrefixes: [
         `${this._refreshTokenCookieName}--`,
         `__Host-${this._refreshTokenCookieName}--`,
+        `${this._legacyRefreshTokenCookieName}--`,
+        `__Host-${this._legacyRefreshTokenCookieName}--`,
       ],
     };
   }
@@ -1190,7 +1212,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       const value = refreshToken && updatedAt ? this._formatRefreshCookieValue(refreshToken, updatedAt) : null;
       await setCookie(domain.data, value);
       const isSecure = await isSecureCookieContext();
-      await setOrDeleteCookie(this._getRefreshTokenDefaultCookieNameForSecure(isSecure), null, cookieOptions);
+      const defaultName = this._getRefreshTokenDefaultCookieNameForSecure(isSecure);
+      if (context === "browser") {
+        setOrDeleteCookieClient(defaultName, null, cookieOptions);
+      } else {
+        await setOrDeleteCookie(defaultName, null, cookieOptions);
+      }
     });
   }
   private async _getTrustedRedirectConfig(): Promise<{ allowLocalhost: boolean, trustedDomains: string[] }> {
@@ -1462,7 +1489,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected async _signInToAccountWithTokens(tokens: { accessToken: string | null, refreshToken: string }) {
     if (!("accessToken" in tokens) || !("refreshToken" in tokens)) {
-      throw new StackAssertionError("Invalid tokens object; can't sign in with this", { tokens });
+      throw new HexclaveAssertionError("Invalid tokens object; can't sign in with this", { tokens });
     }
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
@@ -2211,7 +2238,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async sendVerificationEmail(options?: { callbackUrl?: string }) {
         if (!crud.primary_email) {
-          throw new StackAssertionError("User does not have a primary email");
+          throw new HexclaveAssertionError("User does not have a primary email");
         }
         return await app._interface.sendVerificationEmail(
           crud.primary_email,
@@ -2318,7 +2345,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       async registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>> {
         const hostname = (await app._getCurrentUrl())?.hostname;
         if (!hostname) {
-          throw new StackAssertionError("hostname must be provided if the Stack App does not have a redirect method");
+          throw new HexclaveAssertionError("hostname must be provided if the Stack App does not have a redirect method");
         }
 
         const initiationResult = await app._interface.initiatePasskeyRegistration({}, session);
@@ -2331,7 +2358,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
         // HACK: Override the rpID to be the actual domain
         if (options_json.rp.id !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
+          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rp.id}`);
         }
 
         options_json.rp.id = hostname;
@@ -2799,11 +2826,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     );
     if (!response.ok) {
       const responseBody = await response.text();
-      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${responseBody}`);
+      throw new HexclaveAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${responseBody}`);
     }
     const result = await response.json();
     if (!("redirect_url" in result) || typeof result.redirect_url !== "string") {
-      throw new StackAssertionError("Cross-domain authorization endpoint returned an invalid payload", { result });
+      throw new HexclaveAssertionError("Cross-domain authorization endpoint returned an invalid payload", { result });
     }
     return result.redirect_url;
   }
@@ -3104,7 +3131,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             }
           }
           suspend();
-          throw new StackAssertionError("suspend should never return");
+          throw new HexclaveAssertionError("suspend should never return");
         }
         case 'throw': {
           throw new Error("User is not signed in but useUser was called with { or: 'throw' }");
@@ -3119,7 +3146,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             }
           });
           suspend();
-          throw new StackAssertionError("suspend should never return");
+          throw new HexclaveAssertionError("suspend should never return");
         }
         case undefined:
         case "anonymous-if-exists[deprecated]":
@@ -3309,13 +3336,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _experimentalMfa(error: KnownErrors['MultiFactorAuthenticationRequired'], session: InternalSession): Promise<never> {
     // Store the attempt code in session storage so the OTP page can access it
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('stack_mfa_attempt_code', (error.details as any)?.attempt_code ?? throwErr("attempt code missing"));
+      // Hexclave rebrand: write the MFA attempt code under the new storage key (readers prefer it, fall back to the old key).
+      window.sessionStorage.setItem('hexclave_mfa_attempt_code', (error.details as any)?.attempt_code ?? throwErr("attempt code missing"));
     }
 
     // Redirect to the MFA page
     await this.redirectToMfa();
 
-    throw new StackAssertionError("we should have redirected in redirectToMfa()");
+    throw new HexclaveAssertionError("we should have redirected in redirectToMfa()");
   }
 
   /**
@@ -3376,7 +3404,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     verificationCallbackUrl?: string,
   }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
-      throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
+      throw new HexclaveAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
@@ -3398,7 +3426,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
         emailVerificationRedirectUrl !== undefined) {
         if (!options.verificationCallbackUrl) {
-          captureError("signup-verification-url-not-whitelisted", new StackAssertionError("The auto-constructed verification callback URL is not whitelisted; proceeding without email verification", { emailVerificationRedirectUrl }));
+          captureError("signup-verification-url-not-whitelisted", new HexclaveAssertionError("The auto-constructed verification callback URL is not whitelisted; proceeding without email verification", { emailVerificationRedirectUrl }));
 
           result = await this._interface.signUpWithCredential(
             options.email,
@@ -3443,7 +3471,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (result.status === "ok") {
           await this._signInToAccountWithTokens(result.data);
         } else {
-          throw new StackAssertionError("signUpAnonymously() should never return an error");
+          throw new HexclaveAssertionError("signUpAnonymously() should never return an error");
         }
         this._anonymousSignUpInProgress = null;
         return result.data;
@@ -3647,7 +3675,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
         // HACK: Override the rpID to be the actual domain
         if (options_json.rpId !== "THIS_VALUE_WILL_BE_REPLACED.example.com") {
-          throw new StackAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
+          throw new HexclaveAssertionError(`Expected returned RP ID from server to equal sentinel, but found ${options_json.rpId}`);
         }
         options_json.rpId = window.location.hostname;
 
@@ -3909,7 +3937,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (existing) {
           const [existingCheckString, clientApp] = existing;
           if (existingCheckString !== undefined && existingCheckString !== providedCheckString) {
-            throw new StackAssertionError("The provided app JSON does not match the configuration of the existing client app with the same unique identifier", { providedObj: json, existingString: existingCheckString });
+            throw new HexclaveAssertionError("The provided app JSON does not match the configuration of the existing client app with the same unique identifier", { providedObj: json, existingString: existingCheckString });
           }
           return clientApp as any;
         }
@@ -3930,7 +3958,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return {
       toClientJson: (): StackClientAppJson<HasTokenStore, ProjectId> => {
         if (typeof this._redirectMethod !== "string") {
-          throw new StackAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
+          throw new HexclaveAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
         }
 
         const publishableClientKey = "publishableClientKey" in this._interface.options
@@ -3988,4 +4016,5 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
     };
   };
+
 }

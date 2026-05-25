@@ -1,8 +1,19 @@
 export {
-  StackAdminApp, StackClientApp,
+  HexclaveAdminApp,
+  HexclaveClientApp,
+  HexclaveServerApp,
+  StackAdminApp,
+  StackClientApp,
   StackServerApp
 } from "./apps";
 export type {
+  HexclaveAdminAppConstructor,
+  HexclaveAdminAppConstructorOptions,
+  HexclaveClientAppConstructor,
+  HexclaveClientAppConstructorOptions,
+  HexclaveClientAppJson,
+  HexclaveServerAppConstructor,
+  HexclaveServerAppConstructorOptions,
   StackAdminAppConstructor,
   StackAdminAppConstructorOptions,
   StackClientAppConstructor,
@@ -31,7 +42,7 @@ export type {
 } from "./internal-api-keys";
 
 export {
-  stackAppInternalsSymbol
+  stackAppInternalsSymbol,
 } from "./common";
 export {
   getPagePrompt,
@@ -117,4 +128,3 @@ export type {
   ServerUser,
   User
 } from "./users";
-

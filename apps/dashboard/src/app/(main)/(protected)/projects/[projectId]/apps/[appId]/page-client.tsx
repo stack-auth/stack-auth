@@ -6,7 +6,7 @@ import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/lib/config-update";
 import { ALL_APPS_FRONTEND, getAppPath, getDocumentationHref, isSubApp, type AppId } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { PageLayout } from "../../page-layout";
 
@@ -22,7 +22,7 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
 
   const appFrontend = ALL_APPS_FRONTEND[appId];
   if (!(appFrontend as any)) {
-    throw new StackAssertionError(`App frontend not found for appId: ${appId}`, { appId });
+    throw new HexclaveAssertionError(`App frontend not found for appId: ${appId}`, { appId });
   }
   const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
   const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];

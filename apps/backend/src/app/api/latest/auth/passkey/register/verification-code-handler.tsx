@@ -6,7 +6,7 @@ import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import { decodeClientDataJSON } from "@simplewebauthn/server/helpers";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { RegistrationResponseJSON } from "@stackframe/stack-shared/dist/utils/passkey";
 
 export const registerVerificationCodeHandler = createVerificationCodeHandler({
@@ -37,7 +37,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     }),
   }),
   async send() {
-    throw new StackAssertionError("send() called on a Passkey registration verification code handler");
+    throw new HexclaveAssertionError("send() called on a Passkey registration verification code handler");
   },
   async handler(tenancy, _, { challenge }, { credential }, user) {
     if (!tenancy.config.auth.passkey.allowSignIn) {
@@ -45,7 +45,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     }
 
     if (!user) {
-      throw new StackAssertionError("User not found", {
+      throw new HexclaveAssertionError("User not found", {
         tenancyId: tenancy.id,
       });
     }
@@ -92,7 +92,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
 
       if (authMethods.length > 1) {
         // We do not support multiple passkeys per user yet
-        throw new StackAssertionError("User has multiple passkey auth methods.", {
+        throw new HexclaveAssertionError("User has multiple passkey auth methods.", {
           tenancyId: tenancy.id,
           projectUserId: user.id,
         });

@@ -4,10 +4,10 @@
   "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}15",
+    "dev": "next dev --turbo --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}15",
     "clean": "rimraf .next && rimraf node_modules",
     "build": "next build",
-    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}15"
+    "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}15"
   },
   "dependencies": {
     "@stackframe/stack": "workspace:*",

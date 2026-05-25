@@ -2,7 +2,7 @@ import type { ProjectConfigOverride } from "@stackframe/stack-shared/dist/config
 import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -46,10 +46,10 @@ export const backendContext = new Context<BackendContext, Partial<BackendContext
   }),
   (acc, update) => {
     if ("defaultProjectKeys" in update) {
-      throw new StackAssertionError("Cannot set defaultProjectKeys");
+      throw new HexclaveAssertionError("Cannot set defaultProjectKeys");
     }
     if ("mailbox" in update && !(update.mailbox instanceof Mailbox)) {
-      throw new StackAssertionError("Must create a mailbox with createMailbox()!");
+      throw new HexclaveAssertionError("Must create a mailbox with createMailbox()!");
     }
     return {
       ...acc,
@@ -63,7 +63,7 @@ export function createMailbox(email?: string): Mailbox {
     backendContext.set({ generatedMailboxNamesCount: backendContext.value.generatedMailboxNamesCount + 1 });
     email = `mailbox-${backendContext.value.generatedMailboxNamesCount}--${randomUUID()}${generatedEmailSuffix}`;
   }
-  if (!email.includes("@")) throw new StackAssertionError(`Invalid mailbox email: ${email}`);
+  if (!email.includes("@")) throw new HexclaveAssertionError(`Invalid mailbox email: ${email}`);
   return new Mailbox("(we can ignore the disclaimer here)" as any, email);
 }
 
@@ -118,7 +118,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
   } else {
     for (const [key, value] of Object.entries(obj)) {
       if (key.match(/^[a-z0-9][A-Z][a-z0-9]+$/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
-        throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
+        throw new HexclaveAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
       if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata", "variables", "skipped_details"].includes(key)) continue;
       // because email templates
@@ -143,10 +143,10 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
 }): Promise<NiceResponse> {
   const { body, rawBody, rawContentType, headers, accessType, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (body !== undefined && rawBody !== undefined) {
-    throw new StackAssertionError("niceBackendFetch: pass either body or rawBody, not both");
+    throw new HexclaveAssertionError("niceBackendFetch: pass either body or rawBody, not both");
   }
   if (rawContentType !== undefined && rawBody === undefined) {
-    throw new StackAssertionError("niceBackendFetch: rawContentType only makes sense with rawBody");
+    throw new HexclaveAssertionError("niceBackendFetch: rawContentType only makes sense with rawBody");
   }
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
@@ -154,8 +154,8 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   const projectKeys = backendContext.value.projectKeys;
   const userAuth = userAuthOverride ?? backendContext.value.userAuth;
   const fullUrl = new URL(url, STACK_BACKEND_BASE_URL);
-  if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new StackAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
-  if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new StackAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
+  if (fullUrl.origin !== new URL(STACK_BACKEND_BASE_URL).origin) throw new HexclaveAssertionError(`Invalid niceBackendFetch origin: ${fullUrl.origin}`);
+  if (fullUrl.protocol !== new URL(STACK_BACKEND_BASE_URL).protocol) throw new HexclaveAssertionError(`Invalid niceBackendFetch protocol: ${fullUrl.protocol}`);
   const res = await niceFetch(fullUrl, {
     ...otherOptions,
     ...body !== undefined ? { body: JSON.stringify(body) } : {},
@@ -192,7 +192,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     }),
   });
   if (res.status >= 500 && res.status < 600) {
-    throw new StackAssertionError(`API threw ISE in ${otherOptions.method ?? "GET"} ${url}: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
+    throw new HexclaveAssertionError(`API threw ISE in ${otherOptions.method ?? "GET"} ${url}: ${res.status} ${typeof res.body === "string" ? res.body : nicify(res.body)}`);
   }
   if (res.headers.has("x-stack-known-error")) {
     expect(res.status).toBeGreaterThanOrEqual(400);
@@ -262,7 +262,7 @@ export async function waitForOutboxEmailWithStatus(subject: string, status: stri
     }
     await wait(500);
   }
-  throw new StackAssertionError(
+  throw new HexclaveAssertionError(
     `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
     { foundEmails: emails }
   );
@@ -361,7 +361,7 @@ export namespace Auth {
   export async function expectSessionToBeValid() {
     const response = await niceBackendFetch("/api/v1/auth/sessions/current/refresh", { method: "POST", accessType: "client" });
     if (response.status !== 200) {
-      throw new StackAssertionError("Expected session to be valid, but was actually invalid.", { response });
+      throw new HexclaveAssertionError("Expected session to be valid, but was actually invalid.", { response });
     }
     expect(response).toMatchObject({
       status: 200,
@@ -391,7 +391,7 @@ export namespace Auth {
     await ensureParsableAccessToken();
     const response = await niceBackendFetch("/api/v1/users/me", { accessType: "client" });
     if (response.status === 200) {
-      throw new StackAssertionError("Expected access token to be invalid, but was actually valid.", { response });
+      throw new HexclaveAssertionError("Expected access token to be invalid, but was actually valid.", { response });
     }
   }
 
@@ -405,7 +405,7 @@ export namespace Auth {
     await ensureParsableAccessToken();
     const response = await niceBackendFetch("/api/v1/users/me", { accessType: "client" });
     if (response.status !== 200) {
-      throw new StackAssertionError("Expected access token to be valid, but was actually invalid.", { response });
+      throw new HexclaveAssertionError("Expected access token to be valid, but was actually invalid.", { response });
     }
   }
 
@@ -493,7 +493,7 @@ export namespace Auth {
           break;
         }
         if (performance.now() >= deadline) {
-          throw new StackAssertionError(`Sign-in code message not found within ${deadlineMs}ms`, {
+          throw new HexclaveAssertionError(`Sign-in code message not found within ${deadlineMs}ms`, {
             response,
             messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),
           });
@@ -524,7 +524,7 @@ export namespace Auth {
 
     export async function signInWithCode(signInCode: string) {
       const projectKeys = backendContext.value.projectKeys;
-      if (projectKeys === "no-project") throw new StackAssertionError("Must provide project keys in the backend context before calling signInWithCode");
+      if (projectKeys === "no-project") throw new HexclaveAssertionError("Must provide project keys in the backend context before calling signInWithCode");
 
       const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
         method: "POST",
@@ -800,7 +800,16 @@ export namespace Auth {
       const locationUrl = new URL(location!);
       expect(locationUrl.origin).toBe(localhostUrl("14"));
       expect(locationUrl.pathname).toBe("/auth");
-      expect(response.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+      // Backend dual-writes oauth-inner cookies under both `stack-` and `hexclave-` prefixes
+      // (cookie dual-write — see hexclave rename plan); assert via getSetCookie() to avoid
+      // the comma-join ambiguity that Headers.get("set-cookie") creates with multiple
+      // Set-Cookie headers whose values contain `, ` (e.g. inside Expires=).
+      const oauthInnerSetCookies = response.headers.getSetCookie()
+        .filter(c => /^(?:stack|hexclave)-oauth-inner-/.test(c));
+      expect(oauthInnerSetCookies.length).toBeGreaterThan(0);
+      for (const setCookie of oauthInnerSetCookies) {
+        expect(setCookie).toMatch(/^(?:stack|hexclave)-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+      }
       return {
         authorizeResponse: response,
       };

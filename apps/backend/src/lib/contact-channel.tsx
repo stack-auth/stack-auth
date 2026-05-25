@@ -1,6 +1,6 @@
 import { BooleanTrue, ContactChannelType } from "@/generated/prisma/client";
 import { markProjectUserForExternalDbSync, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { normalizeEmail } from "./emails";
 import { PrismaTransaction } from "./types";
 
@@ -75,7 +75,7 @@ export async function setContactChannelAsPrimaryById(
   });
 
   if (!targetChannel) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `Contact channel not found with id ${options.contactChannelId} for user ${options.projectUserId} in tenancy ${options.tenancyId}`,
       { options }
     );
@@ -83,7 +83,7 @@ export async function setContactChannelAsPrimaryById(
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (targetChannel.type !== options.type) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `Contact channel type mismatch: expected ${options.type}, got ${targetChannel.type}`,
       { options, actualType: targetChannel.type }
     );

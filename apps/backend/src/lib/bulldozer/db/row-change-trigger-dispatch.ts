@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import type { BulldozerExecutionContext } from "./execution-context";
 import { getBulldozerExecutionContext } from "./execution-context";
@@ -97,7 +97,7 @@ export function attachRowChangeTriggerMetadata(
         .map((statement) => statement.outputName)
         .find((statementOutputName): statementOutputName is string => typeof statementOutputName === "string");
       if (outputName == null) {
-        throw new StackAssertionError("Row change trigger did not produce an output changes table.", {
+        throw new HexclaveAssertionError("Row change trigger did not produce an output changes table.", {
           targetTableId: metadata.targetTableId,
         });
       }
@@ -223,7 +223,7 @@ export function collectRowChangeTriggerStatements(ctx: BulldozerExecutionContext
     const missing = [...discoveredTableIds]
       .filter((tableId) => !topologicalOrder.includes(tableId))
       .sort(stringCompare);
-    throw new StackAssertionError("Cycle detected in trigger dependency graph — topological sort could not order all tables", {
+    throw new HexclaveAssertionError("Cycle detected in trigger dependency graph — topological sort could not order all tables", {
       sourceTableId: options.sourceTableId,
       cyclicTableIds: missing,
       orderedTableIds: topologicalOrder,
@@ -262,7 +262,7 @@ export function collectRowChangeTriggerStatements(ctx: BulldozerExecutionContext
       statements.push(...execution.statements);
       if (trigger.targetTableId == null) continue;
       if (execution.outputChangesTable == null) {
-        throw new StackAssertionError("Row change trigger did not emit output changes table.", {
+        throw new HexclaveAssertionError("Row change trigger did not emit output changes table.", {
           sourceTableId,
           targetTableId: trigger.targetTableId,
         });

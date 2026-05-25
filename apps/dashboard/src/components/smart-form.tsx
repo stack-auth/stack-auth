@@ -1,7 +1,7 @@
 "use client";
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Form } from "@/components/ui";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -108,7 +108,7 @@ function SmartFormField(props: {
     return null;
   }
   if (!("oneOf" in props.description)) {
-    throw new StackAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from lazy yup schema`);
+    throw new HexclaveAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from lazy yup schema`);
   }
 
   switch (props.description.type) {
@@ -130,5 +130,5 @@ function SmartFormField(props: {
     }
   }
 
-  throw new StackAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from schema of type ${JSON.stringify(props.description.type)}. Maybe you need to implement it, or add a stackFormFieldRender meta property to the schema.`);
+  throw new HexclaveAssertionError(`Unsupported yup field ${props.id}; can't create form automatically from schema of type ${JSON.stringify(props.description.type)}. Maybe you need to implement it, or add a stackFormFieldRender meta property to the schema.`);
 }

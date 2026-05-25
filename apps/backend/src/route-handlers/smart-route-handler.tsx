@@ -6,7 +6,7 @@ import { EndpointDocumentation } from "@stackframe/stack-shared/dist/crud";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError, errorToNiceString } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
@@ -135,7 +135,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           recordRequestStats(req.method, req.nextUrl.pathname, time);
 
           if ([301, 302].includes(res.status)) {
-            throw new StackAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: req.nextUrl, req, res });
+            throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: req.nextUrl, req, res });
           }
           if (!disableExtendedLogging) console.log(`[    RES] [${requestId}] ${req.method} ${censoredUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
           return res;
@@ -205,7 +205,8 @@ export type SmartRouteHandler<
 }
 
 function getSmartRouteHandlerSymbol() {
-  return Symbol.for("stack-smartRouteHandler");
+  // Hexclave rebrand: file-private symbol key, renamed outright (no cross-version compat needed).
+  return Symbol.for("hexclave-smartRouteHandler");
 }
 
 export function isSmartRouteHandler(handler: any): handler is SmartRouteHandler {
@@ -240,7 +241,7 @@ export function createSmartRouteHandler<
     overloadGenerator(overloadParam),
   ]));
   if (overloads.size !== overloadParams.length) {
-    throw new StackAssertionError("Duplicate overload parameters");
+    throw new HexclaveAssertionError("Duplicate overload parameters");
   }
 
   const invoke = async (nextRequest: NextRequest | null, requestId: string, smartRequest: SmartRequest, shouldSetContext: boolean = false) => {
@@ -330,9 +331,9 @@ const mergeErrorPriority = [
 function mergeOverloadErrors(errors: StatusError[]): StatusError[] {
   if (errors.length > 6) {
     // TODO fix this
-    throw new StackAssertionError("Too many overloads failed, refusing to trying to merge them as it would be computationally expensive and could be used for a DoS attack. Fix this if we ever have an endpoint with > 8 overloads");
+    throw new HexclaveAssertionError("Too many overloads failed, refusing to trying to merge them as it would be computationally expensive and could be used for a DoS attack. Fix this if we ever have an endpoint with > 8 overloads");
   } else if (errors.length === 0) {
-    throw new StackAssertionError("No errors to merge");
+    throw new HexclaveAssertionError("No errors to merge");
   } else if (errors.length === 1) {
     return [errors[0]];
   } else if (errors.length === 2) {

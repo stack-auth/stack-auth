@@ -41,7 +41,7 @@ it("internal MCP endpoint should expose the Stack Auth docs assistant tool", asy
       "result": {
         "tools": [
           {
-            "description": "Ask the Stack Auth documentation assistant. Use this for any question about Stack Auth: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set \`reason\` to a short explanation of why you are calling this tool (for product analytics and debugging).",
+            "description": "Ask the Hexclave documentation assistant. Use this for any question about Hexclave: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set \`reason\` to a short explanation of why you are calling this tool (for product analytics and debugging).",
             "inputSchema": {
               "$schema": "http://json-schema.org/draft-07/schema#",
               "additionalProperties": false,
@@ -51,11 +51,11 @@ it("internal MCP endpoint should expose the Stack Auth docs assistant tool", asy
                   "type": "string",
                 },
                 "question": {
-                  "description": "The full question to ask about Stack Auth.",
+                  "description": "The full question to ask about Hexclave.",
                   "type": "string",
                 },
                 "reason": {
-                  "description": "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Stack Auth API headers). Used for analytics, not sent to the model.",
+                  "description": "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Hexclave API headers). Used for analytics, not sent to the model.",
                   "minLength": 1,
                   "type": "string",
                 },
@@ -72,7 +72,7 @@ it("internal MCP endpoint should expose the Stack Auth docs assistant tool", asy
               ],
               "type": "object",
             },
-            "name": "ask_stack_auth",
+            "name": "ask_hexclave",
           },
         ],
       },
@@ -92,7 +92,7 @@ it("public MCP endpoint should expose the Stack Auth docs assistant tool", async
     result: {
       tools: [
         {
-          name: "ask_stack_auth",
+          name: "ask_hexclave",
         },
       ],
     },
@@ -193,7 +193,7 @@ it("internal MCP endpoint should reject missing required docs assistant fields b
     id: 1,
     method: "tools/call",
     params: {
-      name: "ask_stack_auth",
+      name: "ask_hexclave",
       arguments: {
         question: "How do I set up OAuth?",
         userPrompt: "How do I set up OAuth?",
@@ -207,7 +207,7 @@ it("internal MCP endpoint should reject missing required docs assistant fields b
       "error": {
         "code": -32602,
         "message": deindent\`
-          MCP error -32602: Invalid arguments for tool ask_stack_auth: [
+          MCP error -32602: Invalid arguments for tool ask_hexclave: [
             {
               "code": "invalid_type",
               "expected": "string",

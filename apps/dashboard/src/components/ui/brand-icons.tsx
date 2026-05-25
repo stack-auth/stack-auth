@@ -1,4 +1,4 @@
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export function Google({ iconSize }: { iconSize: number }) {
   return (
@@ -240,7 +240,7 @@ export function Mapping({
       return <Twitch iconSize={iconSize}/>;
     }
     default: {
-      throw new StackAssertionError(`Icon not found for provider: ${provider}`);
+      throw new HexclaveAssertionError(`Icon not found for provider: ${provider}`);
     }
   }
 }

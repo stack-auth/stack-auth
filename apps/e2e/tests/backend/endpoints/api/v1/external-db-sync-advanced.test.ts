@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect } from 'vitest';
@@ -52,7 +52,7 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
+  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
 }
 
 describe.sequential('External DB Sync - Advanced Tests', () => {

@@ -4,7 +4,7 @@ import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { Json } from '@stackframe/stack-shared/dist/utils/json';
 import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
@@ -30,11 +30,11 @@ function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TE
   if (defaultTemplateId) {
     const template = templateList.get(defaultTemplateId);
     if (!template) {
-      throw new StackAssertionError(`Default email template not found: ${type}`);
+      throw new HexclaveAssertionError(`Default email template not found: ${type}`);
     }
     return template;
   }
-  throw new StackAssertionError(`Unknown email template type: ${type}`);
+  throw new HexclaveAssertionError(`Unknown email template type: ${type}`);
 }
 
 export async function sendEmailToMany(options: {
@@ -106,7 +106,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
   } else {
     if (projectEmailConfig.provider === "managed") {
       if (!projectEmailConfig.password || !projectEmailConfig.managedSubdomain || !projectEmailConfig.managedSenderLocalPart) {
-        throw new StackAssertionError("Managed email config is incomplete despite provider being managed", {
+        throw new HexclaveAssertionError("Managed email config is incomplete despite provider being managed", {
           projectId: tenancy.id,
           emailConfig: projectEmailConfig,
         });
@@ -124,7 +124,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
     }
 
     if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.senderEmail || !projectEmailConfig.senderName) {
-      throw new StackAssertionError("Email config is not complete despite not being shared. This should never happen?", { projectId: tenancy.id, emailConfig: projectEmailConfig });
+      throw new HexclaveAssertionError("Email config is not complete despite not being shared. This should never happen?", { projectId: tenancy.id, emailConfig: projectEmailConfig });
     }
     return {
       host: projectEmailConfig.host,
@@ -163,7 +163,7 @@ export function normalizeEmail(email: string): string {
   const emailParts = emailLower.split(/@/);
 
   if (emailParts.length !== 2) {
-    throw new StackAssertionError('Invalid email address', { email });
+    throw new HexclaveAssertionError('Invalid email address', { email });
   }
 
   let [username, domain] = emailParts;

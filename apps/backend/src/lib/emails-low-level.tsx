@@ -4,7 +4,7 @@
  * providers. You probably shouldn't use this and should instead use the functions in emails.tsx.
  */
 
-import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
 import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
@@ -57,7 +57,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
   runAsynchronously(async () => {
     await wait(15_000);
     if (!finished) {
-      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 15s; maybe the email service is too slow?", {
+      captureError("email-send-timeout", new HexclaveAssertionError("Email send took longer than 15s; maybe the email service is too slow?", {
         config: strippedEmailConfig,
         to: options.to,
         subject: options.subject,
@@ -86,7 +86,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
             violation: smtpEgressPolicyResult.violation,
             config: strippedEmailConfig,
           });
-          captureError("smtp-egress-policy-report-only", new StackAssertionError("SMTP config would be rejected by the egress policy", {
+          captureError("smtp-egress-policy-report-only", new HexclaveAssertionError("SMTP config would be rejected by the egress policy", {
             violation: smtpEgressPolicyResult.violation,
             config: strippedEmailConfig,
           }));
@@ -228,7 +228,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
         }
 
         // ============ unknown error ============
-        captureError("unknown-email-send-error", new StackAssertionError("Unknown error while sending email. We should add a better error description for the user.", { strippedEmailConfig, cause: error }));
+        captureError("unknown-email-send-error", new HexclaveAssertionError("Unknown error while sending email. We should add a better error description for the user.", { strippedEmailConfig, cause: error }));
         return Result.error({
           rawError: error,
           errorType: 'UNKNOWN',
@@ -249,7 +249,7 @@ export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSen
   message?: string,
 }>> {
   if (!options.to) {
-    throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
+    throw new HexclaveAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
   }
 
   const result = await _lowLevelSendEmailWithoutRetries(options);

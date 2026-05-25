@@ -4,7 +4,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, passwordSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { comparePassword } from "@stackframe/stack-shared/dist/utils/hashes";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -56,7 +56,7 @@ export const POST = createSmartRouteHandler({
     }
 
     if (!contactChannel || !passwordAuthMethod) {
-      throw new StackAssertionError("This should never happen (the comparePassword call should've already caused this to fail)");
+      throw new HexclaveAssertionError("This should never happen (the comparePassword call should've already caused this to fail)");
     }
 
     if (contactChannel.projectUser.requiresTotpMfa) {

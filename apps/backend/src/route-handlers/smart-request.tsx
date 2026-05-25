@@ -12,7 +12,7 @@ import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { StackAdaptSentinel, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy, typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
@@ -83,7 +83,7 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRe
     if (error instanceof yup.ValidationError) {
       if (req === null) {
         // we weren't called by a HTTP request, so it must be a logical error in a manual invocation
-        throw new StackAssertionError("Request validation failed", { cause: error });
+        throw new HexclaveAssertionError("Request validation failed", { cause: error });
       } else {
         const inners = error.inner.length ? error.inner : [error];
         const description = schema.describe();
@@ -234,7 +234,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     if (!user) {
       // this is the case when access token is still valid, but the user is deleted from the database
       // this should be very rare, let's log it on Sentry when it happens
-      captureError("admin-access-token-expiration", new StackAssertionError("User not found for admin access token. This may not be a bug, but it's worth investigating"));
+      captureError("admin-access-token-expiration", new HexclaveAssertionError("User not found for admin access token. This may not be a bug, but it's worth investigating"));
       throw new StatusError(401, "The user associated with the admin access token is no longer valid. Please refresh the admin access token and try again.");
     }
 
@@ -315,7 +315,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
         break;
       }
       default: {
-        throw new StackAssertionError(`Unexpected request type: ${requestType}. This should never happen because we should've filtered this earlier`);
+        throw new HexclaveAssertionError(`Unexpected request type: ${requestType}. This should never happen because we should've filtered this earlier`);
       }
     }
   }

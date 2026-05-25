@@ -1,5 +1,5 @@
 import { ITEM_IDS, PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -609,7 +609,7 @@ async function setupProjectWithPlan(planId: PlanId) {
         body: { product_id: planId },
       });
       if (grantResponse.status !== 200) {
-        throw new StackAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
+        throw new HexclaveAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
       }
     });
   }

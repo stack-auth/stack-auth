@@ -10,7 +10,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getStripeOneTimeMinAmount } from "@stackframe/stack-shared/dist/payments/stripe-limits";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -59,7 +59,7 @@ export const POST = createSmartRouteHandler({
     const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     const tenancy = await getTenancy(data.tenancyId);
     if (!tenancy) {
-      throw new StackAssertionError("No tenancy found from purchase code data tenancy id. This should never happen.");
+      throw new HexclaveAssertionError("No tenancy found from purchase code data tenancy id. This should never happen.");
     }
     if (tenancy.config.payments.blockNewPurchases) {
       throw new KnownErrors.NewPurchasesBlocked();
@@ -77,7 +77,7 @@ export const POST = createSmartRouteHandler({
       quantity,
     });
     if (!selectedPrice) {
-      throw new StackAssertionError("Price not resolved for purchase session");
+      throw new HexclaveAssertionError("Price not resolved for purchase session");
     }
 
     // Validate the price amount up-front so a malformed config can't slip past

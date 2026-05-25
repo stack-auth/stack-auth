@@ -3,7 +3,7 @@ import { traceSpan } from "@/utils/telemetry";
 import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 type ResendEmail = {
@@ -83,7 +83,7 @@ const performSignUp = async (email: string, password: string) => {
     const responseBody = await response.text();
 
     if (!response.ok) {
-      throw new StackAssertionError(`Sign-up failed: ${response.status} - ${responseBody}`, {
+      throw new HexclaveAssertionError(`Sign-up failed: ${response.status} - ${responseBody}`, {
         responseBody,
       });
     }
@@ -128,7 +128,7 @@ const waitForVerificationEmail = async (testEmail: string, useInbucket: boolean)
       }
     }
 
-    throw new StackAssertionError(`Couldn't find verification email in time limit`, { recipient_email: testEmail, max_poll_attempts: MAX_POLL_ATTEMPTS, poll_interval_ms: POLL_INTERVAL_MS });
+    throw new HexclaveAssertionError(`Couldn't find verification email in time limit`, { recipient_email: testEmail, max_poll_attempts: MAX_POLL_ATTEMPTS, poll_interval_ms: POLL_INTERVAL_MS });
   });
 };
 
@@ -156,7 +156,7 @@ export const POST = createSmartRouteHandler({
 
     const useInbucket = getEnvVariable("STACK_EMAIL_MONITOR_USE_INBUCKET") === "true";
     if (useInbucket && getNodeEnvironment().includes("prod")) {
-      throw new StackAssertionError("Inbucket is not supported as the email monitor inbox in production");
+      throw new HexclaveAssertionError("Inbucket is not supported as the email monitor inbox in production");
     }
 
     const uniqueId = generateSecureRandomString();

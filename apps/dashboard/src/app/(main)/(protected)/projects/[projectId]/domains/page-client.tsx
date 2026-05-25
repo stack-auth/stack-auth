@@ -7,7 +7,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCel
 import { useUpdateConfig } from "@/lib/config-update";
 import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { isValidHostnameWithWildcards, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -168,7 +168,7 @@ function EditDialog(props: {
       } catch (error) {
         // this piece of code fails a lot, so let's add some additional information to the error
         // TODO: remove this error once we're confident this is no longer happening
-        throw new StackAssertionError(
+        throw new HexclaveAssertionError(
           `Failed to update domains: ${error}`,
           {
             cause: error,

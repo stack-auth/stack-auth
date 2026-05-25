@@ -13,7 +13,7 @@ import {
   yupString,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { errorToNiceString, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Client } from "pg";
 import { KnownErrors } from "@stackframe/stack-shared";

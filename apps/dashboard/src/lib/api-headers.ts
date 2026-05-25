@@ -11,10 +11,11 @@ export async function buildStackAuthHeaders(
 ): Promise<Record<string, string>> {
   const accessToken = currentUser ? await currentUser.getAccessToken() : null;
 
+  // Hexclave rebrand: emit x-hexclave-* request headers; the backend proxy dual-accepts both names.
   return {
-    "x-stack-access-type": "client",
-    "x-stack-project-id": "internal",
-    "x-stack-publishable-client-key": getPublicEnvVar("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY") ?? "",
-    ...(accessToken ? { "x-stack-access-token": accessToken } : {}),
+    "x-hexclave-access-type": "client",
+    "x-hexclave-project-id": "internal",
+    "x-hexclave-publishable-client-key": getPublicEnvVar("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY") ?? "",
+    ...(accessToken ? { "x-hexclave-access-token": accessToken } : {}),
   };
 }

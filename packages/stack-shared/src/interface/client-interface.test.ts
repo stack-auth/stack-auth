@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { KnownErrors } from "../known-errors";
 import { InternalSession } from "../sessions";
 import { Result } from "../utils/results";
-import { StackClientInterface } from "./client-interface";
+import { HexclaveClientInterface } from "./client-interface";
 
 function createClientInterface(options?: {
   baseUrl?: string,
@@ -10,7 +10,7 @@ function createClientInterface(options?: {
   probeRate?: number,
 }) {
   const apiUrls = options?.apiUrls ?? [options?.baseUrl ?? "https://api.example.com"];
-  return new StackClientInterface({
+  return new HexclaveClientInterface({
     clientVersion: "test",
     getBaseUrl: () => apiUrls[0],
     getApiUrls: () => apiUrls,
@@ -76,7 +76,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("StackClientInterface bot challenge compatibility", () => {
+describe("HexclaveClientInterface bot challenge compatibility", () => {
   it("omits bot challenge from magic link requests when no token is provided", async () => {
     const fetchMock = vi.fn(async () => createJsonResponse({ nonce: "nonce" }));
     vi.stubGlobal("fetch", fetchMock);
@@ -374,7 +374,7 @@ describe("_withFallback", () => {
     return log;
   }
 
-  function sendRequest(iface: StackClientInterface) {
+  function sendRequest(iface: HexclaveClientInterface) {
     const session = iface.createSession({ refreshToken: null, accessToken: null });
     return iface.sendClientRequest("/users/me", { method: "GET" }, session);
   }

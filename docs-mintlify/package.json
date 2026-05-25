@@ -3,7 +3,7 @@
   "version": "2.8.103",
   "private": true,
   "scripts": {
-    "dev": "mint dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04 --no-open",
+    "dev": "mint dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}04 --no-open",
     "typecheck": "mint validate",
     "lint": "mint validate",
     "clean": "node -e \"require('node:fs').rmSync('.mintlify', { recursive: true, force: true })\"",

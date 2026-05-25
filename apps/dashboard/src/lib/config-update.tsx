@@ -6,7 +6,7 @@ import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -566,7 +566,7 @@ export function useUpdateConfig() {
 
     if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true") {
       if (!pushable) {
-        throw new StackAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
+        throw new HexclaveAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
       }
 
       const project = await adminApp.getProject();

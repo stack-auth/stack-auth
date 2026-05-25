@@ -230,7 +230,7 @@ function emulatorSpawnEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
 function prepareRuntimeConfigIso(): void {
   const vmDir = join(emulatorRunDir(), "vm");
   mkdirSync(vmDir, { recursive: true });
-  const portPrefix = process.env.PORT_PREFIX ?? process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? DEFAULT_PORT_PREFIX;
+  const portPrefix = process.env.PORT_PREFIX ?? process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? DEFAULT_PORT_PREFIX;
   const dashboardPort = emulatorDashboardPort();
   const backendPort = emulatorBackendPort();
   const minioPort = emulatorMinioPort();

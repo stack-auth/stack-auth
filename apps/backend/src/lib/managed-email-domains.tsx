@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type ManagedEmailDomainStatus = "pending_dns" | "pending_verification" | "verified" | "applied" | "failed";
 
@@ -70,7 +70,7 @@ function statusToDbStatus(status: ManagedEmailDomainStatus): ManagedEmailDomainR
 
 function parseNameServerRecords(value: unknown): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new StackAssertionError("ManagedEmailDomain.nameServerRecords stored invalid JSON", {
+    throw new HexclaveAssertionError("ManagedEmailDomain.nameServerRecords stored invalid JSON", {
       nameServerRecords: value,
     });
   }
@@ -208,7 +208,7 @@ export async function markManagedEmailDomainApplied(id: string): Promise<Managed
     RETURNING *
   `);
   if (rows.length === 0) {
-    throw new StackAssertionError("Managed email domain row missing while applying", {
+    throw new HexclaveAssertionError("Managed email domain row missing while applying", {
       managedEmailDomainId: id,
     });
   }

@@ -90,9 +90,9 @@ describe('validateRedirectUrl', () => {
 
         expect(() => validateRedirectUrl('http://localhost:9209/anything', tenancy))
           .toThrowErrorMatchingInlineSnapshot(`
-            [StackAssertionError: The hosted handler URL template must put {projectId} in the hostname.
+            [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
 
-            This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+            This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
           `);
       });
     });

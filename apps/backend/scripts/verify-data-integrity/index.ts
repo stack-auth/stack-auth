@@ -6,7 +6,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenanc
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
@@ -179,7 +179,7 @@ async function main() {
       await recurse(`[bulldozer table] ${label}`, async () => {
         const errors = await prismaClient.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(table.verifyDataIntegrity(executionContext)));
         if (errors.length > 0) {
-          throw new StackAssertionError(deindent`
+          throw new HexclaveAssertionError(deindent`
             Bulldozer data integrity violation in table ${label}: found ${errors.length} error row(s).
           `, { errors });
         }
@@ -315,7 +315,7 @@ async function main() {
                 // `any` because these endpoint response types aren't imported here,
                 // and this script is intentionally tolerant of response shape changes.
                 if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
-                  throw new StackAssertionError(deindent`
+                  throw new HexclaveAssertionError(deindent`
                       Project permission ${projectPermission.id} not found in project permission definitions.
                     `);
                 }
@@ -344,7 +344,7 @@ async function main() {
                     // `any` because these endpoint response types aren't imported here,
                     // and this script is intentionally tolerant of response shape changes.
                     if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
-                      throw new StackAssertionError(deindent`
+                      throw new HexclaveAssertionError(deindent`
                           Team permission ${teamPermission.id} not found in team permission definitions.
                         `);
                     }

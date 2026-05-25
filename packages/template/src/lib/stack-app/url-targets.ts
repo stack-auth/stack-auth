@@ -1,5 +1,5 @@
 import { getCustomPagePrompts, type CustomPagePrompt } from "@stackframe/stack-shared/dist/interface/handler-urls";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getHostedHandlerUrlFromConfig } from "@stackframe/stack-shared/dist/utils/redirect-urls";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
@@ -109,7 +109,7 @@ export const getHostedHandlerUrl = (options: { projectId: string, pagePath: stri
     hostedPath,
     hostedHandlerDomainSuffix: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX,
     hostedHandlerUrlTemplate: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE,
-    stackPortPrefix: envVars.NEXT_PUBLIC_STACK_PORT_PREFIX,
+    stackPortPrefix: envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX,
   });
 };
 
@@ -176,7 +176,7 @@ const assertOAuthCallbackTargetIsRelative = (target: HandlerUrlTarget): void => 
       ? target.url
       : null;
   if (url != null && !isRelativeUrlString(url)) {
-    throw new StackAssertionError("OAuth callback URLs must be relative.", {
+    throw new HexclaveAssertionError("OAuth callback URLs must be relative.", {
       oauthCallbackUrl: url,
       hint: "Use a relative URL like '/handler/oauth-callback', or use { type: 'hosted' } to let Stack use the current page for hosted callbacks.",
     });

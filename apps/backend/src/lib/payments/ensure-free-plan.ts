@@ -7,7 +7,7 @@ import type { ProductSnapshot } from "@/lib/payments/schema/types";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 
 /**
@@ -27,7 +27,7 @@ import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/util
 async function getInternalBillingTenancy(): Promise<Tenancy> {
   const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
   if (tenancy == null) {
-    throw new StackAssertionError("Internal billing tenancy not found");
+    throw new HexclaveAssertionError("Internal billing tenancy not found");
   }
   return tenancy;
 }
@@ -56,7 +56,7 @@ export async function createFreePlanSubscriptionRow(options: {
   const { prisma, internalTenancy, billingTeamId, creationSource } = options;
   const freePlanProduct = getOrUndefined(internalTenancy.config.payments.products, "free");
   if (freePlanProduct == null || freePlanProduct.customerType !== "team" || freePlanProduct.productLineId == null) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       "Internal tenancy `free` product is not configured as a team-typed, product-line-tagged plan; cannot grant",
       { freePlanProduct },
     );
@@ -67,7 +67,7 @@ export async function createFreePlanSubscriptionRow(options: {
   // non-undefined (no noUncheckedIndexedAccess in our tsconfig).
   const priceEntries = typedEntries(freePlanProduct.prices);
   if (priceEntries.length === 0) {
-    throw new StackAssertionError("Free plan has no prices configured");
+    throw new HexclaveAssertionError("Free plan has no prices configured");
   }
   const [firstPriceId, firstPrice] = priceEntries[0];
   const priceInterval = firstPrice.interval;

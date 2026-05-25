@@ -3,7 +3,7 @@ import type { OAuthAccessTokenRefreshError } from "@/oauth/providers/base";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 
 function captureOAuthAccessTokenRefreshIssue(options: {
@@ -15,7 +15,7 @@ function captureOAuthAccessTokenRefreshIssue(options: {
 }) {
   const providerId = typeof options.errorContext.providerId === "string" ? options.errorContext.providerId : "unknown";
   const providerClass = options.providerInstance.constructor.name;
-  captureError(options.location, new StackAssertionError(
+  captureError(options.location, new HexclaveAssertionError(
     `${options.message} (providerId: ${providerId}, providerClass: ${providerClass}, attempts: ${options.refreshError.attempts}, retries: ${options.refreshError.retryCount})`,
     {
       cause: options.refreshError.cause,
@@ -195,7 +195,7 @@ export async function retrieveOrRefreshAccessToken(options: {
             errorContext,
             refreshError: tokenSetResult.error,
           });
-          const assertionError = new StackAssertionError('Unexpected error refreshing access token — this may indicate a bug or misconfiguration', {
+          const assertionError = new HexclaveAssertionError('Unexpected error refreshing access token — this may indicate a bug or misconfiguration', {
             cause: tokenSetResult.error.cause,
             providerClass: providerInstance.constructor.name,
             refreshErrorType: tokenSetResult.error.type,
@@ -209,7 +209,7 @@ export async function retrieveOrRefreshAccessToken(options: {
         }
         default: {
           const _: never = tokenSetResult.error;
-          throw new StackAssertionError("Unhandled OAuth access token refresh error", { cause: _ });
+          throw new HexclaveAssertionError("Unhandled OAuth access token refresh error", { cause: _ });
         }
       }
     }
@@ -243,7 +243,7 @@ export async function retrieveOrRefreshAccessToken(options: {
 
       return { access_token: tokenSet.accessToken };
     } else {
-      throw new StackAssertionError("No access token returned");
+      throw new HexclaveAssertionError("No access token returned");
     }
   }
 

@@ -103,9 +103,9 @@ describe("handler URL targets", () => {
         oauthCallback: "https://app.example.test/oauth-callback",
       },
     })).toThrowErrorMatchingInlineSnapshot(`
-      [StackAssertionError: OAuth callback URLs must be relative.
+      [HexclaveAssertionError: OAuth callback URLs must be relative.
 
-      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
     `);
   });
 
@@ -116,9 +116,9 @@ describe("handler URL targets", () => {
         oauthCallback: { type: "custom", url: "https://app.example.test/oauth-callback", version: 0 },
       },
     })).toThrowErrorMatchingInlineSnapshot(`
-      [StackAssertionError: OAuth callback URLs must be relative.
+      [HexclaveAssertionError: OAuth callback URLs must be relative.
 
-      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
     `);
   });
 
@@ -174,7 +174,7 @@ describe("handler URL targets", () => {
 
   it("uses the full hosted handler URL template when configured", () => {
     vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}");
-    vi.stubEnv("NEXT_PUBLIC_STACK_PORT_PREFIX", "93");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "93");
 
     const urls = resolveHandlerUrls({
       projectId: "project-id",
@@ -207,9 +207,9 @@ describe("handler URL targets", () => {
         default: { type: "hosted" },
       },
     })).toThrowErrorMatchingInlineSnapshot(`
-      [StackAssertionError: The hosted handler URL template must put {projectId} in the hostname.
+      [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
 
-      This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
     `);
   });
 });

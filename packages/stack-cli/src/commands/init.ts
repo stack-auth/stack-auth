@@ -387,7 +387,8 @@ async function performLogin() {
 }
 
 async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ configPath: string }> {
-  const configPath = path.resolve(outputDir, "stack.config.ts");
+  // Hexclave rebrand: new projects get the `hexclave.config.ts` filename.
+  const configPath = path.resolve(outputDir, "hexclave.config.ts");
 
   console.log(`\nCreating a new config file at ${configPath}!\n`);
 

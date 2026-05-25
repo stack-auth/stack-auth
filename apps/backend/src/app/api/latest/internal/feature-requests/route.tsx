@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getOrCreateFeaturebaseUserFromAuth, requireFeaturebaseApiKey } from "@/lib/featurebase";
 import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 // Typed subset of the Featurebase v2 API responses; fields we don't use are omitted.
 // The response schema validated by yup on output acts as the runtime safety net.
@@ -75,7 +75,7 @@ export const GET = createSmartRouteHandler({
     const data: FeaturebaseListResponse<FeaturebasePost> = await response.json();
 
     if (!response.ok) {
-      throw new StackAssertionError(`Featurebase API error: ${data.error || 'Failed to fetch feature requests'}`, {
+      throw new HexclaveAssertionError(`Featurebase API error: ${data.error || 'Failed to fetch feature requests'}`, {
         details: {
           response: response,
           responseData: data,
@@ -195,7 +195,7 @@ export const POST = createSmartRouteHandler({
     const data = await response.json();
 
     if (!response.ok) {
-      throw new StackAssertionError(`Featurebase API error: ${data.error || 'Failed to create feature request'}`, { data });
+      throw new HexclaveAssertionError(`Featurebase API error: ${data.error || 'Failed to create feature request'}`, { data });
     }
 
     return {

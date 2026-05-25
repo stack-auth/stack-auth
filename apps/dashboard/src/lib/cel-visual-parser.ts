@@ -17,7 +17,7 @@
 
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { type ConditionField, type ConditionOperator, conditionFields, escapeCelString, fieldMetadata, isNumericField, unescapeCelString, validateNumericFieldValue } from "@stackframe/stack-shared/dist/utils/cel-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type { ConditionField, ConditionOperator } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
@@ -79,7 +79,7 @@ export function visualTreeToCel(node: RuleNode): string {
 function normalizeConditionValue(condition: ConditionNode): ConditionNode['value'] {
   if (condition.field !== 'countryCode') return condition.value;
   if (typeof condition.value === 'number') {
-    throw new StackAssertionError(`Invalid numeric value for countryCode: ${condition.value}. Country codes must be strings.`);
+    throw new HexclaveAssertionError(`Invalid numeric value for countryCode: ${condition.value}. Country codes must be strings.`);
   }
   return Array.isArray(condition.value)
     ? condition.value.map(normalizeCountryCode)
@@ -93,7 +93,7 @@ function conditionToCel(condition: ConditionNode): string {
   // Numeric comparisons: field >= 42
   if (operator in comparisonSymbols && isNumericField(field)) {
     const err = validateNumericFieldValue(field, String(value));
-    if (err) throw new StackAssertionError(err);
+    if (err) throw new HexclaveAssertionError(err);
     return `${field} ${comparisonSymbols[operator]} ${typeof value === 'number' ? value : Number(value)}`;
   }
 

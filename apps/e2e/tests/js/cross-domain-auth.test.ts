@@ -97,17 +97,17 @@ it("adds secure cross-domain handoff parameters when redirecting to hosted sign-
     const redirectUrl = new URL(redirectedUrl);
     expect(redirectUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
     expect(redirectUrl.pathname).toBe("/handler/sign-in");
-    expect(redirectUrl.searchParams.get("stack_cross_domain_state")).toEqual(expect.any(String));
-    expect(redirectUrl.searchParams.get("stack_cross_domain_code_challenge")).toEqual(expect.any(String));
-    expect(redirectUrl.searchParams.get("stack_cross_domain_after_callback_redirect_url")).toBe(`${localRedirectUrl}/private-page?foo=bar`);
+    expect(redirectUrl.searchParams.get("hexclave_cross_domain_state")).toEqual(expect.any(String));
+    expect(redirectUrl.searchParams.get("hexclave_cross_domain_code_challenge")).toEqual(expect.any(String));
+    expect(redirectUrl.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBe(`${localRedirectUrl}/private-page?foo=bar`);
     const callbackUrl = new URL(redirectUrl.searchParams.get("after_auth_return_to") ?? "");
     expect(callbackUrl.origin).toBe(new URL(localRedirectUrl).origin);
     expect(callbackUrl.pathname).toBe(new URL(`${localRedirectUrl}/private-page`).pathname);
     expect(callbackUrl.searchParams.get("foo")).toBe("bar");
-    expect(callbackUrl.searchParams.get("stack_cross_domain_auth")).toBe("1");
-    expect(callbackUrl.searchParams.get("stack_cross_domain_state")).toEqual(expect.any(String));
-    expect(callbackUrl.searchParams.get("stack_cross_domain_code_challenge")).toEqual(expect.any(String));
-    expect(callbackUrl.searchParams.get("stack_cross_domain_after_callback_redirect_url")).toBe(`${localRedirectUrl}/private-page?foo=bar`);
+    expect(callbackUrl.searchParams.get("hexclave_cross_domain_auth")).toBe("1");
+    expect(callbackUrl.searchParams.get("hexclave_cross_domain_state")).toEqual(expect.any(String));
+    expect(callbackUrl.searchParams.get("hexclave_cross_domain_code_challenge")).toEqual(expect.any(String));
+    expect(callbackUrl.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBe(`${localRedirectUrl}/private-page?foo=bar`);
   });
 });
 
@@ -132,9 +132,9 @@ it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
       expect(signInUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
       expect(signInUrl.pathname).toBe("/handler/sign-in");
       expect(signInUrl.searchParams.get("after_auth_return_to")).toBeNull();
-      expect(signInUrl.searchParams.get("stack_cross_domain_state")).toBeNull();
-      expect(signInUrl.searchParams.get("stack_cross_domain_code_challenge")).toBeNull();
-      expect(signInUrl.searchParams.get("stack_cross_domain_after_callback_redirect_url")).toBeNull();
+      expect(signInUrl.searchParams.get("hexclave_cross_domain_state")).toBeNull();
+      expect(signInUrl.searchParams.get("hexclave_cross_domain_code_challenge")).toBeNull();
+      expect(signInUrl.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBeNull();
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
@@ -246,10 +246,10 @@ it("does not await pending auth resolutions when post-callback redirect mints a 
     const clientApp = createClientApp(projectId);
     const currentUrl = new URL(`${localRedirectUrl}/callback-page`);
     const redirectBackUrl = new URL(`${localRedirectUrl}/handler/oauth-callback`);
-    redirectBackUrl.searchParams.set("stack_cross_domain_auth", "1");
-    redirectBackUrl.searchParams.set("stack_cross_domain_state", "state");
-    redirectBackUrl.searchParams.set("stack_cross_domain_code_challenge", "challenge");
-    redirectBackUrl.searchParams.set("stack_cross_domain_after_callback_redirect_url", `https://${projectId}.example-stack-hosted.test/after`);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_auth", "1");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_state", "state");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_code_challenge", "challenge");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", `https://${projectId}.example-stack-hosted.test/after`);
     currentUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
 
     const previousWindow = globalThis.window;
@@ -335,10 +335,10 @@ it("keeps cross-domain handoff working when top-level params are dropped before 
     const handoffCodeChallenge = "abcdefghijklmnopqrstuvwxyzABCDEFG_0123456789-._~";
     const handoffAfterCallbackRedirect = `${localRedirectUrl}/cross-domain-handoff`;
     const redirectBackUrl = new URL(`${localRedirectUrl}/handler/oauth-callback`);
-    redirectBackUrl.searchParams.set("stack_cross_domain_auth", "1");
-    redirectBackUrl.searchParams.set("stack_cross_domain_state", handoffState);
-    redirectBackUrl.searchParams.set("stack_cross_domain_code_challenge", handoffCodeChallenge);
-    redirectBackUrl.searchParams.set("stack_cross_domain_after_callback_redirect_url", handoffAfterCallbackRedirect);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_auth", "1");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_state", handoffState);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", handoffAfterCallbackRedirect);
 
     const hostedAfterSignInCallbackUrl = new URL(`https://${projectId}.example-stack-hosted.test/handler/oauth-callback`);
     hostedAfterSignInCallbackUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
@@ -391,10 +391,10 @@ it("keeps cross-domain handoff working when after_auth_return_to is rewritten to
     const handoffCodeChallenge = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
     const handoffAfterCallbackRedirect = "http://p93.localhost:9303/cross-domain-handoff";
     const relativeRedirectBackPath = new URL("/handler/oauth-callback", `https://${projectId}.example-stack-hosted.test`);
-    relativeRedirectBackPath.searchParams.set("stack_cross_domain_auth", "1");
-    relativeRedirectBackPath.searchParams.set("stack_cross_domain_state", handoffState);
-    relativeRedirectBackPath.searchParams.set("stack_cross_domain_code_challenge", handoffCodeChallenge);
-    relativeRedirectBackPath.searchParams.set("stack_cross_domain_after_callback_redirect_url", handoffAfterCallbackRedirect);
+    relativeRedirectBackPath.searchParams.set("hexclave_cross_domain_auth", "1");
+    relativeRedirectBackPath.searchParams.set("hexclave_cross_domain_state", handoffState);
+    relativeRedirectBackPath.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
+    relativeRedirectBackPath.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", handoffAfterCallbackRedirect);
 
     const hostedAfterSignInCallbackUrl = new URL(`https://${projectId}.example-stack-hosted.test/handler/oauth-callback`);
     hostedAfterSignInCallbackUrl.searchParams.set("after_auth_return_to", `${relativeRedirectBackPath.pathname}${relativeRedirectBackPath.search}`);

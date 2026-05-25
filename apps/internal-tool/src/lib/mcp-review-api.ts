@@ -1,8 +1,8 @@
 import { envOrDevDefault } from "./env";
 
-const PORT_PREFIX = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
-const API_URL = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_API_URL, `http://localhost:${PORT_PREFIX}02`, "NEXT_PUBLIC_STACK_API_URL");
-const PROJECT_ID = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_PROJECT_ID, "internal", "NEXT_PUBLIC_STACK_PROJECT_ID");
+const PORT_PREFIX = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
+const API_URL = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_API_URL, `http://localhost:${PORT_PREFIX}02`);
+const PROJECT_ID = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_PROJECT_ID, "internal");
 const PUBLISHABLE_CLIENT_KEY = envOrDevDefault(
   process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   "this-publishable-client-key-is-for-local-development-only",

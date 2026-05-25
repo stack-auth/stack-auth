@@ -36,7 +36,16 @@ it("should redirect the user to the OAuth provider with the right arguments", as
   const firstLocationUrl = new URL(firstLocation!);
   expect(firstLocationUrl.origin).toBe(localhostUrl("14"));
   expect(firstLocationUrl.pathname).toBe("/auth");
-  expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+  // Backend dual-writes oauth-inner cookies under both `stack-` and `hexclave-` prefixes
+  // (see backend-helpers.ts:Auth.OAuth.authorize for the rationale).
+  {
+    const oauthInnerSetCookies = response.authorizeResponse.headers.getSetCookie()
+      .filter(c => /^(?:stack|hexclave)-oauth-inner-/.test(c));
+    expect(oauthInnerSetCookies.length).toBeGreaterThan(0);
+    for (const setCookie of oauthInnerSetCookies) {
+      expect(setCookie).toMatch(/^(?:stack|hexclave)-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+    }
+  }
 });
 
 it("should redirect the user to the OAuth provider with the right arguments even when forcing a branch id", async ({ expect }) => {
@@ -44,8 +53,17 @@ it("should redirect the user to the OAuth provider with the right arguments even
   expect(response.authorizeResponse.status).toBe(307);
   const secondLocation = response.authorizeResponse.headers.get("location");
   expect(secondLocation).toBeTruthy();
-  expect(secondLocation).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent"`);
-  expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+  expect(secondLocation).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent"`);
+  // Backend dual-writes oauth-inner cookies under both `stack-` and `hexclave-` prefixes
+  // (see backend-helpers.ts:Auth.OAuth.authorize for the rationale).
+  {
+    const oauthInnerSetCookies = response.authorizeResponse.headers.getSetCookie()
+      .filter(c => /^(?:stack|hexclave)-oauth-inner-/.test(c));
+    expect(oauthInnerSetCookies.length).toBeGreaterThan(0);
+    for (const setCookie of oauthInnerSetCookies) {
+      expect(setCookie).toMatch(/^(?:stack|hexclave)-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+    }
+  }
 });
 
 it("should return the OAuth location as JSON when requested by the SDK flow", async ({ expect }) => {
@@ -59,7 +77,7 @@ it("should return the OAuth location as JSON when requested by the SDK flow", as
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent" },
+      "body": { "location": "http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent" },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -93,7 +111,7 @@ it("should not redirect the user to the OAuth provider with the right arguments 
 
 it("should be able to fetch the inner callback URL by following the OAuth provider redirects", async ({ expect }) => {
   const { innerCallbackUrl } = await Auth.OAuth.getInnerCallbackUrl();
-  expect(innerCallbackUrl.origin).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02"`);
+  expect(innerCallbackUrl.origin).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>02"`);
   expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
 });
 

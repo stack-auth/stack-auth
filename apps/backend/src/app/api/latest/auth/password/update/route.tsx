@@ -4,7 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { adaptSchema, clientOrHigherAuthTypeSchema, passwordSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { comparePassword, hashPassword } from "@stackframe/stack-shared/dist/utils/hashes";
 
 export const POST = createSmartRouteHandler({
@@ -51,7 +51,7 @@ export const POST = createSmartRouteHandler({
       });
 
       if (authMethods.length > 1) {
-        throw new StackAssertionError("User has multiple password auth methods.", {
+        throw new HexclaveAssertionError("User has multiple password auth methods.", {
           tenancyId: tenancy.id,
           projectUserId: user.id,
         });

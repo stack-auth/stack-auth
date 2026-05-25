@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -34,7 +34,7 @@ export class XProvider extends OAuthBaseProvider {
     );
     if (!fetchRes.ok) {
       const text = await fetchRes.text();
-      throw new StackAssertionError(`Failed to fetch user info from X: ${fetchRes.status} ${text}`, {
+      throw new HexclaveAssertionError(`Failed to fetch user info from X: ${fetchRes.status} ${text}`, {
         status: fetchRes.status,
         text,
       });

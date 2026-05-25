@@ -5,7 +5,7 @@ import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/proje
 import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -138,7 +138,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
     `,
     postProcess: async (queryResult) => {
       if (queryResult.length > 1) {
-        throw new StackAssertionError(`Expected 0 or 1 project config overrides for project ${options.projectId}, got ${queryResult.length}`, { queryResult });
+        throw new HexclaveAssertionError(`Expected 0 or 1 project config overrides for project ${options.projectId}, got ${queryResult.length}`, { queryResult });
       }
       return migrateConfigOverride("project", queryResult[0]?.projectConfigOverride ?? {});
     },
@@ -157,7 +157,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
     `,
     postProcess: async (queryResult) => {
       if (queryResult.length > 1) {
-        throw new StackAssertionError(`Expected 0 or 1 branch config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
+        throw new HexclaveAssertionError(`Expected 0 or 1 branch config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
       }
       return migrateConfigOverride("branch", queryResult[0]?.config ?? {});
     },
@@ -204,7 +204,7 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
     `,
     postProcess: async (queryResult) => {
       if (queryResult.length > 1) {
-        throw new StackAssertionError(`Expected 0 or 1 environment config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
+        throw new HexclaveAssertionError(`Expected 0 or 1 environment config overrides for project ${options.projectId} and branch ${options.branchId}, got ${queryResult.length}`, { queryResult });
       }
       const storedConfigOverride = migrateConfigOverride("environment", queryResult[0]?.config ?? {});
       if (queryResult[0]?.isDevelopmentEnvironment === true) {
@@ -218,7 +218,7 @@ export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): 
 export function getOrganizationConfigOverrideQuery(options: OrganizationOptions): RawQuery<Promise<OrganizationConfigOverride>> {
   // fetch organization config from DB (either our own, or the source of truth one)
   if (!("forUserId" in options) && options.organizationId !== null) {
-    throw new StackAssertionError('Non-null organization ID is not implemented');
+    throw new HexclaveAssertionError('Non-null organization ID is not implemented');
   }
 
   return {
@@ -252,15 +252,15 @@ export async function setProjectConfigOverride(options: {
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
   if (newConfigString.length > 1_000_000) {
-    captureError("set-project-config-too-large", new StackAssertionError(`Project config override for ${options.projectId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+    captureError("set-project-config-too-large", new HexclaveAssertionError(`Project config override for ${options.projectId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
   }
   if (newConfigString.length > 5_000_000) {
-    throw new StackAssertionError(`Project config override for ${options.projectId} is too large.`);
+    throw new HexclaveAssertionError(`Project config override for ${options.projectId} is too large.`);
   }
 
   const overrideErrors = await getConfigOverrideErrors(projectConfigSchema, newConfig);
   if (overrideErrors.status === "error") {
-    captureError("setProjectConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId }));
+    captureError("setProjectConfigOverride", new HexclaveAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId }));
   }
   await globalPrismaClient.project.update({
     where: {
@@ -290,15 +290,15 @@ export async function setBranchConfigOverride(options: {
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
   if (newConfigString.length > 1_000_000) {
-    captureError("set-branch-config-too-large", new StackAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+    captureError("set-branch-config-too-large", new HexclaveAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
   }
   if (newConfigString.length > 5_000_000) {
-    throw new StackAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is too large.`);
+    throw new HexclaveAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is too large.`);
   }
 
   const overrideErrors = await getConfigOverrideErrors(branchConfigSchema, newConfig);
   if (overrideErrors.status === "error") {
-    captureError("setBranchConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
+    captureError("setBranchConfigOverride", new HexclaveAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
   }
   await globalPrismaClient.branchConfigOverride.upsert({
     where: {
@@ -394,7 +394,7 @@ export async function setEnvironmentConfigOverride(options: {
 }): Promise<void> {
   const blockReason = await getEnvironmentConfigWriteBlockReason(options.projectId);
   if (blockReason != null) {
-    throw new StackAssertionError(blockReason, {
+    throw new HexclaveAssertionError(blockReason, {
       projectId: options.projectId,
       branchId: options.branchId,
     });
@@ -405,15 +405,15 @@ export async function setEnvironmentConfigOverride(options: {
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
   if (newConfigString.length > 1_000_000) {
-    captureError("set-environment-config-too-large", new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
+    captureError("set-environment-config-too-large", new HexclaveAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is ${(newConfigString.length/1_000_000).toFixed(1)}MB long!`));
   }
   if (newConfigString.length > 5_000_000) {
-    throw new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
+    throw new HexclaveAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
   }
 
   const overrideErrors = await getConfigOverrideErrors(environmentConfigSchema, newConfig);
   if (overrideErrors.status === "error") {
-    captureError("setEnvironmentConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
+    captureError("setEnvironmentConfigOverride", new HexclaveAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
   }
   await globalPrismaClient.environmentConfigOverride.upsert({
     where: {
@@ -440,7 +440,7 @@ export function setOrganizationConfigOverride(options: {
   organizationConfigOverride: OrganizationConfigOverride,
 }): Promise<void> {
   // save organization config override on DB (either our own, or the source of truth one)
-  throw new StackAssertionError('Not implemented');
+  throw new HexclaveAssertionError('Not implemented');
 }
 
 
@@ -521,7 +521,7 @@ export function overrideOrganizationConfigOverride(options: {
   organizationConfigOverrideOverride: OrganizationConfigOverrideOverride,
 }): Promise<OrganizationConfigOverride> {
   // save organization config override on DB (either our own, or the source of truth one)
-  throw new StackAssertionError('Not implemented');
+  throw new HexclaveAssertionError('Not implemented');
 }
 
 
@@ -656,7 +656,7 @@ function makeUnsanitizedIncompleteConfigQuery<T, O>(options: { previous?: RawQue
       const over = await overPromise;
       const overrideErrors = await getConfigOverrideErrors(options.schema, over);
       if (overrideErrors.status === "error") {
-        captureError("config-override-validation-error", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { extraInfo: options.extraInfo }));
+        captureError("config-override-validation-error", new HexclaveAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { extraInfo: options.extraInfo }));
       }
       return override(prev, over);
     },
@@ -1082,7 +1082,7 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
 import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes for development environment projects', async ({ expect }) => {
   const vi = import.meta.vitest?.vi;
   if (!vi) {
-    throw new StackAssertionError("Vitest context is required for in-source tests.");
+    throw new HexclaveAssertionError("Vitest context is required for in-source tests.");
   }
 
   const developmentEnvironment = await import("./development-environment");

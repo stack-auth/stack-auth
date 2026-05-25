@@ -75,7 +75,7 @@ it("should throw when disabling verification with a callback url provided", asyn
     verificationCallbackUrl: "http://localhost:3000",
   })).rejects.toMatchObject({
     message: expect.stringContaining("verificationCallbackUrl is not allowed when noVerificationCallback is true"),
-    name: "StackAssertionError",
+    name: "HexclaveAssertionError",
   });
 });
 

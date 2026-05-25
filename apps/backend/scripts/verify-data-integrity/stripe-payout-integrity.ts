@@ -2,7 +2,7 @@ import type { Tenancy } from "@/lib/tenancies";
 import { getStripeForAccount } from "@/lib/stripe";
 import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 
@@ -37,7 +37,7 @@ export async function fetchAllTransactionsForProject(options: {
 function parseMoneyAmountToMinorUnits(amount: string, decimals: number): bigint {
   const [wholePart, fractionalPart = ""] = amount.split(".");
   if (fractionalPart.length > decimals) {
-    throw new StackAssertionError("Money amount has too many decimals", { amount, decimals });
+    throw new HexclaveAssertionError("Money amount has too many decimals", { amount, decimals });
   }
   const paddedFraction = fractionalPart.padEnd(decimals, "0");
   return BigInt(`${wholePart}${paddedFraction}`);
@@ -130,7 +130,7 @@ export async function verifyStripePayoutIntegrity(options: {
     stripeAccountId: options.stripeAccountId,
   });
   if (moneyTransferTotalUsdMinor !== stripeBalanceTransactionTotalUsdMinor) {
-    throw new StackAssertionError(deindent`
+    throw new HexclaveAssertionError(deindent`
       Stripe balance transaction mismatch for project ${options.projectId}.
       Money transfers total USD ${formatMinorUnitsToMoneyString(moneyTransferTotalUsdMinor, 2)} vs Stripe balance transactions USD ${formatMinorUnitsToMoneyString(stripeBalanceTransactionTotalUsdMinor, 2)}.
     `, {

@@ -10,7 +10,7 @@ import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID }
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
-import { StackAssertionError } from "../utils/errors";
+import { HexclaveAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
@@ -640,7 +640,7 @@ function renameProperty(obj: Record<string, any>, oldPath: string | ((path: stri
       const pathPrefix = path.slice(0, i + 1);
       if (pathCond(pathPrefix)) {
         const name = pathMapper(pathPrefix);
-        if (name.includes(".")) throw new StackAssertionError(`newName must not contain a dot. Provided: ${name}`);
+        if (name.includes(".")) throw new HexclaveAssertionError(`newName must not contain a dot. Provided: ${name}`);
         path[i] = name;
       }
     }
@@ -1216,7 +1216,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         return yupMixed();
       }
       case "array": {
-        throw new StackAssertionError(`Arrays are not supported in config JSON files (besides tuples). Use a record instead.`, { schemaInfo, schema });
+        throw new HexclaveAssertionError(`Arrays are not supported in config JSON files (besides tuples). Use a record instead.`, { schemaInfo, schema });
 
         // This is how the implementation would look like, but we don't support arrays in config JSON files (besides tuples)
         // const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
@@ -1262,7 +1262,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         return yupNever();
       }
       default: {
-        throw new StackAssertionError(`Unknown schema info at path ${path}: ${JSON.stringify(schemaInfo)}`, { schemaInfo, schema });
+        throw new HexclaveAssertionError(`Unknown schema info at path ${path}: ${JSON.stringify(schemaInfo)}`, { schemaInfo, schema });
       }
     }
   };
@@ -1295,7 +1295,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
           return Result.error(`The key ${JSON.stringify(key)} is not valid (nested object not found in schema: ${JSON.stringify(prefix)}).`);
         }
       }
-      throw new StackAssertionError("Something weird happened? Sub-schema for key is invalid but no prefix is invalid??", { key, subSchema });
+      throw new HexclaveAssertionError("Something weird happened? Sub-schema for key is invalid but no prefix is invalid??", { key, subSchema });
     }
     let restrictedSchema = getRestrictedSchema(key, subSchema);
     try {
@@ -1320,7 +1320,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
 }
 export async function assertNoConfigOverrideErrors<T extends yup.AnySchema>(schema: T, config: unknown, options: { allowPropertiesThatCanNoLongerBeOverridden?: boolean, extraInfo?: any } = {}): Promise<void> {
   const res = await getConfigOverrideErrors(schema, config, options);
-  if (res.status === "error") throw new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config });
+  if (res.status === "error") throw new HexclaveAssertionError(`Config override is invalid — at a place where it should have already been validated! ${res.error}`, { options, config });
 }
 type _ValidatedToHaveNoConfigOverrideErrorsImpl<T> =
   IsUnion<T & object> extends true ? _ValidatedToHaveNoConfigOverrideErrorsImpl<CollapseObjectUnion<T & object> | Exclude<T, object>>

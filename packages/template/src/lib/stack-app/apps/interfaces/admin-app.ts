@@ -177,4 +177,8 @@ export type StackAdminAppConstructor = {
   >(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>): StackAdminApp<HasTokenStore, ProjectId>,
   new(options: StackAdminAppConstructorOptions<boolean, string>): StackAdminApp<boolean, string>,
 };
-export const StackAdminApp: StackAdminAppConstructor = _StackAdminAppImpl;
+export type HexclaveAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackAdminAppConstructorOptions<HasTokenStore, ProjectId>;
+export type HexclaveAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackAdminApp<HasTokenStore, ProjectId>;
+export type HexclaveAdminAppConstructor = StackAdminAppConstructor;
+export const HexclaveAdminApp: HexclaveAdminAppConstructor = _StackAdminAppImpl;
+export const StackAdminApp: StackAdminAppConstructor = HexclaveAdminApp;

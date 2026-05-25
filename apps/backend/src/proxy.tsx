@@ -1,5 +1,5 @@
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import apiVersions from './generated/api-versions.json';
 import routes from './generated/routes.json';
@@ -53,13 +53,23 @@ const corsAllowedResponseHeaders = [
   'x-stack-known-error',
 ];
 
+// Hexclave rebrand: every `x-stack-*` header is dual-accepted under its `x-hexclave-*` equivalent.
+// Derive the alias names so the CORS allowlists never drift. See RENAME-TO-HEXCLAVE.md (Tier 0).
+function withHexclaveHeaderAliases(headers: string[]): string[] {
+  return headers.flatMap((header) => header.startsWith('x-stack-')
+    ? [header, `x-hexclave-${header.slice('x-stack-'.length)}`]
+    : [header]);
+}
+const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedRequestHeaders);
+const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
+
 // This function can be marked `async` if using `await` inside
 export async function proxy(request: NextRequest) {
   const url = new URL(request.url);
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
   if (delay) {
     if (getNodeEnvironment().includes('production')) {
-      throw new StackAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development');
+      throw new HexclaveAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development');
     }
     if (!request.headers.get('x-stack-disable-artificial-development-delay')) {
       await wait(delay);
@@ -72,9 +82,9 @@ export async function proxy(request: NextRequest) {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",  // 1 day (capped to lower values, eg. 10min, by some browsers)
-    "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
-    "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
-    "Vary": corsAllowedRequestHeaders.join(', '),
+    "Access-Control-Allow-Headers": corsAllowedRequestHeadersWithAliases.join(', '),
+    "Access-Control-Expose-Headers": corsAllowedResponseHeadersWithAliases.join(', '),
+    "Vary": corsAllowedRequestHeadersWithAliases.join(', '),
   } : undefined;
 
   // ensure our clients can handle 429 responses
@@ -112,7 +122,15 @@ export async function proxy(request: NextRequest) {
   }
 
   const newRequestHeaders = new Headers(request.headers);
-  // here we could update the request headers (currently we don't)
+  // Hexclave rebrand: dual-accept request headers. New SDKs emit `x-hexclave-*`; copy each onto its
+  // `x-stack-*` equivalent here — before routing and yup validation — so downstream auth parsing
+  // and route schemas (which read `x-stack-*`) keep working unchanged. The new form wins when both
+  // are present. See RENAME-TO-HEXCLAVE.md (Tier 0, HTTP request headers).
+  for (const [name, value] of request.headers) {
+    if (name.startsWith('x-hexclave-')) {
+      newRequestHeaders.set(`x-stack-${name.slice('x-hexclave-'.length)}`, value);
+    }
+  }
 
   const responseInit = isApiRequest ? {
     request: {
@@ -133,7 +151,7 @@ export async function proxy(request: NextRequest) {
     const version = apiVersions[i];
     const nextVersion = apiVersions[i + 1];
     if (!nextVersion.migrationFolder) {
-      throw new StackAssertionError(`No migration folder found for version ${nextVersion.name}. This is a bug because every version except the first should have a migration folder.`);
+      throw new HexclaveAssertionError(`No migration folder found for version ${nextVersion.name}. This is a bug because every version except the first should have a migration folder.`);
     }
     if ((pathname + "/").startsWith(version.servedRoute + "/")) {
       const nextPathname = pathname.replace(version.servedRoute, nextVersion.servedRoute);

@@ -36,7 +36,7 @@ Scoring:
 
 Set needsHumanReview=true if: score < 50, any critical flag, or you are uncertain about correctness.`;
 
-const REVIEW_MODEL_ID = "anthropic/claude-haiku-4.5";
+const REVIEW_MODEL_ID = "x-ai/grok-build-0.1";
 
 export async function clearMcpQaReview(correlationId: string): Promise<void> {
   const token = getEnvVariable("STACK_MCP_LOG_TOKEN", "");

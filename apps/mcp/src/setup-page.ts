@@ -671,7 +671,7 @@ export function renderSetupPageHtml(mcpUrl: string): string {
 
       <section class="features-section">
         <h2>Features</h2>
-        <p>The Stack Auth MCP server exposes <strong><code>ask_stack_auth</code></strong>, which answers questions using live documentation retrieval and the docs-site AI assistant. It can help with:</p>
+        <p>The Hexclave MCP server exposes <strong><code>ask_hexclave</code></strong>, which answers questions using live documentation retrieval and the docs-site AI assistant. It can help with:</p>
         <ul>
           <li><strong>Authentication flows</strong>: Sign-in, sign-up, and user management</li>
           <li><strong>APIs and SDKs</strong>: Endpoints, examples, and framework integration</li>

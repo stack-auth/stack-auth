@@ -9,7 +9,7 @@ export function throwErr(error: Error): never;
 export function throwErr(...args: StatusErrorConstructorParameters): never;
 export function throwErr(...args: any[]): never {
   if (typeof args[0] === "string") {
-    throw new StackAssertionError(args[0], args[1]);
+    throw new HexclaveAssertionError(args[0], args[1]);
   } else if (args[0] instanceof Error) {
     throw args[0];
   } else {
@@ -66,9 +66,9 @@ export function concatStacktraces(first: Error, ...errors: Error[]): void {
 }
 
 
-export class StackAssertionError extends Error {
+export class HexclaveAssertionError extends Error {
   constructor(message: string, public readonly extraData?: Record<string, any> & ErrorOptions) {
-    const disclaimer = `\n\nThis is likely an error in Stack. Please make sure you are running the newest version and report it.`;
+    const disclaimer = `\n\nThis is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.`;
     super(`${message}${message.endsWith(disclaimer) ? "" : disclaimer}`, pick(extraData ?? {}, ["cause"]));
 
     Object.defineProperty(this, "customCaptureExtraArgs", {
@@ -85,7 +85,7 @@ export class StackAssertionError extends Error {
     }
   }
 }
-StackAssertionError.prototype.name = "StackAssertionError";
+HexclaveAssertionError.prototype.name = "HexclaveAssertionError";
 
 
 export function errorToNiceString(error: unknown): string {
@@ -211,7 +211,7 @@ export class StatusError extends Error {
     super(message);
     this.statusCode = status;
     if (!message) {
-      throw new StackAssertionError("StatusError always requires a message unless a Status object is passed", { cause: this });
+      throw new HexclaveAssertionError("StatusError always requires a message unless a Status object is passed", { cause: this });
     }
   }
 

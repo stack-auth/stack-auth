@@ -3,7 +3,7 @@ import {
   type MetricsUserCounts,
   type UserActivityResponse,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
@@ -38,12 +38,12 @@ export type {
 export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): MetricsResponse {
   const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !("useMetrics" in internals)) {
-    throw new StackAssertionError("Admin app internals are unavailable: missing useMetrics");
+    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetrics");
   }
 
   const useMetrics = internals.useMetrics;
   if (typeof useMetrics !== "function") {
-    throw new StackAssertionError("Admin app internals are unavailable: useMetrics is not callable");
+    throw new HexclaveAssertionError("Admin app internals are unavailable: useMetrics is not callable");
   }
 
   return useMetrics(includeAnonymous) as MetricsResponse;
@@ -58,12 +58,12 @@ export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): 
 export function useUserActivityOrThrow(adminApp: object, userId: string): UserActivityResponse {
   const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !("useUserActivity" in internals)) {
-    throw new StackAssertionError("Admin app internals are unavailable: missing useUserActivity");
+    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useUserActivity");
   }
 
   const useUserActivity = internals.useUserActivity;
   if (typeof useUserActivity !== "function") {
-    throw new StackAssertionError("Admin app internals are unavailable: useUserActivity is not callable");
+    throw new HexclaveAssertionError("Admin app internals are unavailable: useUserActivity is not callable");
   }
 
   return useUserActivity(userId) as UserActivityResponse;
@@ -72,12 +72,12 @@ export function useUserActivityOrThrow(adminApp: object, userId: string): UserAc
 export function useMetricsUserCountsOrThrow(adminApp: object): MetricsUserCounts {
   const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !("useMetricsUserCounts" in internals)) {
-    throw new StackAssertionError("Admin app internals are unavailable: missing useMetricsUserCounts");
+    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetricsUserCounts");
   }
 
   const useMetricsUserCounts = internals.useMetricsUserCounts;
   if (typeof useMetricsUserCounts !== "function") {
-    throw new StackAssertionError("Admin app internals are unavailable: useMetricsUserCounts is not callable");
+    throw new HexclaveAssertionError("Admin app internals are unavailable: useMetricsUserCounts is not callable");
   }
 
   return useMetricsUserCounts() as MetricsUserCounts;

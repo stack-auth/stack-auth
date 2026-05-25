@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { decodeJwt } from 'jose';
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
@@ -35,7 +35,7 @@ export class AppleProvider extends OAuthBaseProvider {
     try {
       payload = decodeJwt(idToken);
     } catch (error) {
-      throw new StackAssertionError("Error decoding Apple ID token", { cause: error });
+      throw new HexclaveAssertionError("Error decoding Apple ID token", { cause: error });
     }
 
     return validateUserInfo({

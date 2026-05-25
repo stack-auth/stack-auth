@@ -9,7 +9,9 @@ export default function PostHog() {
   const searchParams = useSearchParams();
   const router = useRouter();
   useEffect(() => {
-    const distinctId = searchParams.get("stack-init-id");
+    // Hexclave rebrand: prefer the new query param name, fall back to the legacy one.
+    const initIdKey = searchParams.has("hexclave-init-id") ? "hexclave-init-id" : "stack-init-id";
+    const distinctId = searchParams.get(initIdKey);
     if (distinctId) {
       posthog.capture('$merge_dangerously',
         {
@@ -17,7 +19,7 @@ export default function PostHog() {
         });
       const newSearchParams = new URLSearchParams();
       searchParams.forEach((value, key) => {
-        if (key !== "stack-init-id") {
+        if (key !== "hexclave-init-id" && key !== "stack-init-id") {
           newSearchParams.append(key, value);
         }
       });

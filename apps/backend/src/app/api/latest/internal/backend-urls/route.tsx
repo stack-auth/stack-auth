@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { getDefaultApiUrls } from "@stackframe/stack-shared/dist/utils/urls";
 
@@ -19,25 +19,25 @@ const urlsArraySchema = yupArray(urlSchema.defined()).min(1).defined();
 
 export function parseAndValidateConfig(raw: unknown): Array<{ probability: number, urls: string[] }> {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new StackAssertionError("STACK_BACKEND_URLS_CONFIG must be a JSON object mapping probability strings to URL arrays");
+    throw new HexclaveAssertionError("STACK_BACKEND_URLS_CONFIG must be a JSON object mapping probability strings to URL arrays");
   }
 
   const entries = Object.entries(raw as Record<string, unknown>).map(([key, value]) => {
     const probability = Number(key);
     if (isNaN(probability) || probability < 0 || probability > 1) {
-      throw new StackAssertionError(`Invalid probability key "${key}": must be a number between 0 and 1`);
+      throw new HexclaveAssertionError(`Invalid probability key "${key}": must be a number between 0 and 1`);
     }
     const urls = urlsArraySchema.validateSync(value);
     return { probability, urls };
   });
 
   if (entries.length === 0) {
-    throw new StackAssertionError("STACK_BACKEND_URLS_CONFIG must have at least one entry");
+    throw new HexclaveAssertionError("STACK_BACKEND_URLS_CONFIG must have at least one entry");
   }
 
   const sum = entries.reduce((acc, e) => acc + e.probability, 0);
   if (sum > 1 + 1e-9) {
-    throw new StackAssertionError(`Probabilities sum to ${sum}, which exceeds 1`);
+    throw new HexclaveAssertionError(`Probabilities sum to ${sum}, which exceeds 1`);
   }
 
   return entries;
@@ -52,7 +52,7 @@ function getCachedConfig() {
       try {
         parsed = JSON.parse(rawEnv);
       } catch (e) {
-        throw new StackAssertionError(`STACK_BACKEND_URLS_CONFIG is not valid JSON: ${e}`);
+        throw new HexclaveAssertionError(`STACK_BACKEND_URLS_CONFIG is not valid JSON: ${e}`);
       }
       cachedEntries = parseAndValidateConfig(parsed);
     } else {

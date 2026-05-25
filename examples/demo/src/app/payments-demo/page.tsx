@@ -172,7 +172,7 @@ export default function PaymentsDemoPage() {
   const [emailCount, setEmailCount] = useState("1");
   const [result, setResult] = useState<ActionResult | null>(null);
   const internalDashboardUrl = useMemo(() => {
-    const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+    const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
     const host = portPrefix === "91" ? "a.localhost" : portPrefix === "92" ? "b.localhost" : portPrefix === "93" ? "c.localhost" : "localhost";
     return `http://${host}:${portPrefix}01/projects/internal`;
   }, []);

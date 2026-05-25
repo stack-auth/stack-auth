@@ -449,7 +449,8 @@ ${colorize.bold`Next steps:`}
 For more information, please visit https://docs.stack-auth.com/getting-started/setup
   `.trim());
   if (!noBrowser) {
-    await open(`https://app.stack-auth.com/wizard-congrats?stack-init-id=${encodeURIComponent(distinctId)}`);
+    // Hexclave rebrand: emit the new query param name (hyphen delimiter preserved).
+    await open(`https://app.stack-auth.com/wizard-congrats?hexclave-init-id=${encodeURIComponent(distinctId)}`);
   }
   await ph_client.shutdown();
 }

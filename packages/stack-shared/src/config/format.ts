@@ -1,6 +1,6 @@
 // see https://github.com/hexclave/info/blob/main/eng-handbook/random-thoughts/config-json-format.md
 
-import { StackAssertionError, throwErr } from "../utils/errors";
+import { HexclaveAssertionError, throwErr } from "../utils/errors";
 import { deleteKey, filterUndefined, get, hasAndNotUndefined, set } from "../utils/objects";
 import { OptionalKeys, RequiredKeys } from "../utils/types";
 
@@ -80,7 +80,7 @@ function getInvalidConfigValueReason(value: unknown, options: { valueName?: stri
 
 export function assertValidConfig(c: unknown) {
   const reason = getInvalidConfigReason(c);
-  if (reason) throw new StackAssertionError(`Invalid config: ${reason}`, { c });
+  if (reason) throw new HexclaveAssertionError(`Invalid config: ${reason}`, { c });
 }
 
 export function override(c1: Config, ...configs: Config[]) {
@@ -265,7 +265,7 @@ export function isNormalized(c: Config): c is NormalizedConfig {
 
 export function assertNormalized(c: Config): asserts c is NormalizedConfig {
   assertValidConfig(c);
-  if (!isNormalized(c)) throw new StackAssertionError(`Config is not normalized: ${JSON.stringify(c)}`);
+  if (!isNormalized(c)) throw new HexclaveAssertionError(`Config is not normalized: ${JSON.stringify(c)}`);
 }
 
 export function normalize(c: Config, options: NormalizeOptions = {}): NormalizedConfig {

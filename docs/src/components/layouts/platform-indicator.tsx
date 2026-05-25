@@ -24,8 +24,9 @@ export function PlatformIndicator({ className }: { className?: string }) {
   useEffect(() => {
     // Initial load from sessionStorage
     const updateFromStorage = () => {
-      const storedPlatform = sessionStorage.getItem('stack-docs-selected-platform');
-      const storedFrameworks = sessionStorage.getItem('stack-docs-selected-frameworks');
+      // Hexclave rebrand: docs-site sessionStorage keys — straight rename.
+      const storedPlatform = sessionStorage.getItem('hexclave-docs-selected-platform');
+      const storedFrameworks = sessionStorage.getItem('hexclave-docs-selected-frameworks');
 
       if (storedPlatform) {
         setPlatform(storedPlatform);
@@ -53,7 +54,7 @@ export function PlatformIndicator({ className }: { className?: string }) {
 
     // Listen for storage events (updates from other components/tabs)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'stack-docs-selected-platform' || e.key === 'stack-docs-selected-frameworks') {
+      if (e.key === 'hexclave-docs-selected-platform' || e.key === 'hexclave-docs-selected-frameworks') {
         updateFromStorage();
       }
     };
@@ -72,13 +73,14 @@ export function PlatformIndicator({ className }: { className?: string }) {
     }) as EventListener;
 
     window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('stack-platform-change', handlePlatformChange);
-    window.addEventListener('stack-framework-change', handleFrameworkChange);
+    // Hexclave rebrand: docs-site custom events — straight rename.
+    window.addEventListener('hexclave-platform-change', handlePlatformChange);
+    window.addEventListener('hexclave-framework-change', handleFrameworkChange);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('stack-platform-change', handlePlatformChange);
-      window.removeEventListener('stack-framework-change', handleFrameworkChange);
+      window.removeEventListener('hexclave-platform-change', handlePlatformChange);
+      window.removeEventListener('hexclave-framework-change', handleFrameworkChange);
     };
   }, [platform]);
 
@@ -100,8 +102,8 @@ export function PlatformIndicator({ className }: { className?: string }) {
 
   const handlePlatformSelect = (selectedPlatform: string) => {
     // Broadcast the platform change
-    sessionStorage.setItem('stack-docs-selected-platform', selectedPlatform);
-    window.dispatchEvent(new CustomEvent('stack-platform-change', { detail: { platform: selectedPlatform } }));
+    sessionStorage.setItem('hexclave-docs-selected-platform', selectedPlatform);
+    window.dispatchEvent(new CustomEvent('hexclave-platform-change', { detail: { platform: selectedPlatform } }));
     setPlatform(selectedPlatform);
 
     // Move to framework selection
@@ -110,7 +112,7 @@ export function PlatformIndicator({ className }: { className?: string }) {
 
   const handleFrameworkSelect = (selectedFramework: string) => {
     // Broadcast the framework change
-    const storedFrameworks = sessionStorage.getItem('stack-docs-selected-frameworks');
+    const storedFrameworks = sessionStorage.getItem('hexclave-docs-selected-frameworks');
     let frameworks: Record<string, string> = {};
     if (storedFrameworks) {
       try {
@@ -120,8 +122,8 @@ export function PlatformIndicator({ className }: { className?: string }) {
       }
     }
     frameworks[platform] = selectedFramework;
-    sessionStorage.setItem('stack-docs-selected-frameworks', JSON.stringify(frameworks));
-    window.dispatchEvent(new CustomEvent('stack-framework-change', { detail: { platform, framework: selectedFramework } }));
+    sessionStorage.setItem('hexclave-docs-selected-frameworks', JSON.stringify(frameworks));
+    window.dispatchEvent(new CustomEvent('hexclave-framework-change', { detail: { platform, framework: selectedFramework } }));
 
     setFramework(selectedFramework);
     setIsOpen(false);

@@ -6,7 +6,7 @@ import { getInternalProjectHeaders } from '@/lib/internal-project-headers';
 import { cn } from '@/lib/utils';
 import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import { useUser } from '@stackframe/stack';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { useCallback, useEffect, useState } from 'react';
@@ -96,7 +96,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
         });
         setUserUpvotes(upvotedPosts);
       } else {
-        throw new StackAssertionError('Fetch response is not OK', {
+        throw new HexclaveAssertionError('Fetch response is not OK', {
           details: {
             response: response,
             responseText: await response.text(),
@@ -159,7 +159,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
         return;
       }
 
-      throw new StackAssertionError('Failed to upvote feature request', {
+      throw new HexclaveAssertionError('Failed to upvote feature request', {
         status: response.status,
         responseText: await response.text(),
       });

@@ -1,5 +1,5 @@
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const SAFE_CLICKHOUSE_ERROR_CODES = [
   62, // SYNTAX_ERROR
@@ -23,7 +23,7 @@ const DEFAULT_CLICKHOUSE_ERROR_MESSAGE = "Error during execution of this query."
 
 export function getSafeClickhouseErrorMessage(error: unknown, query: string) {
   if (typeof error !== "object" || error === null || !("code" in error) || typeof error.code !== "string" || isNaN(Number(error.code)) || !("message" in error) || typeof error.message !== "string") {
-    captureError("unknown-clickhouse-error-for-query-not-clickhouse-error", new StackAssertionError("Unknown error from Clickhouse is not a Clickhouse error", { cause: error, query: query }));
+    captureError("unknown-clickhouse-error-for-query-not-clickhouse-error", new HexclaveAssertionError("Unknown error from Clickhouse is not a Clickhouse error", { cause: error, query: query }));
     return DEFAULT_CLICKHOUSE_ERROR_MESSAGE;
   }
 
@@ -34,7 +34,7 @@ export function getSafeClickhouseErrorMessage(error: unknown, query: string) {
   }
   const isKnown = UNSAFE_CLICKHOUSE_ERROR_CODES.includes(errorCode);
   if (!isKnown) {
-    captureError("unknown-clickhouse-error-for-query", new StackAssertionError(`Unknown Clickhouse error: code ${errorCode} not in safe or unsafe codes`, { cause: error, query: query }));
+    captureError("unknown-clickhouse-error-for-query", new HexclaveAssertionError(`Unknown Clickhouse error: code ${errorCode} not in safe or unsafe codes`, { cause: error, query: query }));
   }
 
   if (getNodeEnvironment() === "development" || getNodeEnvironment() === "test") {

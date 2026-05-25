@@ -6,7 +6,7 @@ import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/proje
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent, typedToLowercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -170,7 +170,7 @@ export function createCudHandlers<
       });
 
       if (availableAccessTypes.length === 0) {
-        throw new StackAssertionError(`No access types available for operation ${operation} in CUD handler; check that the corresponding schemas are defined in the CrudSchema`);
+        throw new HexclaveAssertionError(`No access types available for operation ${operation} in CUD handler; check that the corresponding schemas are defined in the CrudSchema`);
       }
 
       // Build invoke helpers per access type to power both route handlers and direct calls.
@@ -232,10 +232,10 @@ export function createCudHandlers<
           }) as any;
 
           if (listResult.is_paginated) {
-            throw new StackAssertionError("Read operation returned a paginated list; reads must return exactly one item");
+            throw new HexclaveAssertionError("Read operation returned a paginated list; reads must return exactly one item");
           }
           if (listResult.items.length !== 1) {
-            throw new StackAssertionError(`Read operation returned ${listResult.items.length} items; reads must return exactly one item`);
+            throw new HexclaveAssertionError(`Read operation returned ${listResult.items.length} items; reads must return exactly one item`);
           }
           return listResult.items[0];
         };
@@ -318,18 +318,18 @@ export function createCudHandlers<
       ) => {
         if (tenancy) {
           if (project || branchId) {
-            throw new StackAssertionError("Must specify either project and branchId or tenancy, not both");
+            throw new HexclaveAssertionError("Must specify either project and branchId or tenancy, not both");
           }
           return { project: tenancy.project, branchId: tenancy.branchId, tenancy };
         }
         if (project) {
           if (!branchId) {
-            throw new StackAssertionError("Must specify branchId when specifying project");
+            throw new HexclaveAssertionError("Must specify branchId when specifying project");
           }
           const resolvedTenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
           return { project, branchId, tenancy: resolvedTenancy };
         }
-        throw new StackAssertionError("Must specify either project and branchId or tenancy");
+        throw new HexclaveAssertionError("Must specify either project and branchId or tenancy");
       };
 
       const makeDirectInvoke = (entry: (typeof accessTypeEntries) extends Map<unknown, infer V> ? V : never, accessType: "client" | "server" | "admin", directOperation: CudOperation) => {
@@ -362,7 +362,7 @@ export function createCudHandlers<
               });
             });
           } catch (error) {
-            if (allowedErrorTypes?.some((a: any) => error instanceof a) || error instanceof StackAssertionError) {
+            if (allowedErrorTypes?.some((a: any) => error instanceof a) || error instanceof HexclaveAssertionError) {
               throw error;
             }
             throw new CudHandlerInvocationError(error);
@@ -399,7 +399,7 @@ async function validate<T>(obj: unknown, schema: yup.ISchema<T>, currentUser: Us
     });
   } catch (error) {
     if (error instanceof yup.ValidationError) {
-      throw new StackAssertionError(
+      throw new HexclaveAssertionError(
         deindent`
           ${validationDescription} failed in CUD handler.
           

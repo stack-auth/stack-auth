@@ -4,7 +4,7 @@ import { readReplicas } from '@prisma/extension-read-replicas';
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { yupObject, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -171,7 +171,7 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
 
     if (strategy === "pg-stat-replication") {
       if (!/^[0-9A-Fa-f]+\/[0-9A-Fa-f]+$/.test(target)) {
-        throw new StackAssertionError(`Invalid pg_lsn format: ${target}`);
+        throw new HexclaveAssertionError(`Invalid pg_lsn format: ${target}`);
       }
       checkCaughtUp = async (replica) => {
         return await traceSpan({
@@ -192,7 +192,7 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
       };
     } else if (strategy === "aurora") {
       if (!/^\d+$/.test(target)) {
-        throw new StackAssertionError(`Invalid bigint format for Aurora durable_lsn: ${target}`);
+        throw new HexclaveAssertionError(`Invalid bigint format for Aurora durable_lsn: ${target}`);
       }
       const targetBigInt = BigInt(target);
       checkCaughtUp = async (replica) => {
@@ -220,7 +220,7 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
         });
       };
     } else {
-      throw new StackAssertionError(`Unknown replication wait strategy: ${strategy}`);
+      throw new HexclaveAssertionError(`Unknown replication wait strategy: ${strategy}`);
     }
 
     // Wait for all replicas in parallel with timeout and exponential backoff
@@ -288,7 +288,7 @@ function extendWithReplicationWait<T extends PrismaClient>(primary: T, replicaCl
           `;
           target = durable_lsn.toString();
         } else {
-          throw new StackAssertionError(`Unknown replication wait strategy: ${strategy}`);
+          throw new HexclaveAssertionError(`Unknown replication wait strategy: ${strategy}`);
         }
         span.setAttribute('stack.db-replication.target', target);
 
@@ -296,11 +296,11 @@ function extendWithReplicationWait<T extends PrismaClient>(primary: T, replicaCl
         const caughtUp = await waitForReplication(replicaClients, target, 2000);
         if (!caughtUp) {
           span.setAttribute('stack.db-replication.timeout', true);
-          captureError("prisma-client-replication-timeout", new StackAssertionError("Replication wait timed out after 2s. The replica may be behind, or something weird is going on!"));
+          captureError("prisma-client-replication-timeout", new HexclaveAssertionError("Replication wait timed out after 2s. The replica may be behind, or something weird is going on!"));
         }
       } catch (e) {
         span.setAttribute('stack.db-replication.error', `${e}`);
-        captureError("prisma-client-replication-error", new StackAssertionError("Error getting replication target and waiting. We'll just wait 1000ms instead, but please fix this as the replication may not be working.", { cause: e }));
+        captureError("prisma-client-replication-error", new HexclaveAssertionError("Error getting replication target and waiting. We'll just wait 1000ms instead, but please fix this as the replication may not be working.", { cause: e }));
         await wait(1_000);
       }
     });
@@ -506,7 +506,7 @@ export const RawQuery = {
       return acc.filter(c => q.supportedPrismaClients.includes(c));
     }, allSupportedPrismaClients as RawQuery<any>["supportedPrismaClients"]);
     if (supportedPrismaClients.length === 0) {
-      throw new StackAssertionError("The queries must have at least one overlapping supported Prisma client");
+      throw new HexclaveAssertionError("The queries must have at least one overlapping supported Prisma client");
     }
 
     // Only mark combined query as read-only if all individual queries are read-only

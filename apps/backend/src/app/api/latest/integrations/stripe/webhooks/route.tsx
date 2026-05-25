@@ -11,7 +11,7 @@ import { DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emai
 import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import Stripe from "stripe";
@@ -115,11 +115,11 @@ async function getTenancyForStripeAccountId(accountId: string, mockData?: Stripe
   const account = await stripe.accounts.retrieve(accountId);
   const tenancyId = account.metadata?.tenancyId;
   if (!tenancyId) {
-    throw new StackAssertionError("Stripe account metadata missing tenancyId", { accountId });
+    throw new HexclaveAssertionError("Stripe account metadata missing tenancyId", { accountId });
   }
   const tenancy = await getTenancy(tenancyId);
   if (!tenancy) {
-    throw new StackAssertionError("Tenancy not found", { accountId, tenancyId });
+    throw new HexclaveAssertionError("Tenancy not found", { accountId, tenancyId });
   }
   return tenancy;
 }
@@ -159,7 +159,7 @@ async function sendDefaultTemplateEmail(options: {
   const templateId = DEFAULT_TEMPLATE_IDS[options.templateType];
   const template = getOrUndefined(options.tenancy.config.emails.templates, templateId);
   if (!template) {
-    throw new StackAssertionError(`Default email template not found: ${options.templateType}`, { templateId });
+    throw new HexclaveAssertionError(`Default email template not found: ${options.templateType}`, { templateId });
   }
   await sendEmailToMany({
     tenancy: options.tenancy,
@@ -183,7 +183,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     const metadata = paymentIntent.metadata;
     const accountId = event.account;
     if (!accountId) {
-      throw new StackAssertionError("Stripe webhook account id missing", { event });
+      throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
     }
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
     const prisma = await getPrismaClientForTenancy(tenancy);
@@ -198,11 +198,11 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     const qty = Math.max(1, Number(metadata.purchaseQuantity || 1));
     const stripePaymentIntentId = paymentIntent.id;
     if (!metadata.customerId || !metadata.customerType) {
-      throw new StackAssertionError("Missing customer metadata for one-time purchase", { event });
+      throw new HexclaveAssertionError("Missing customer metadata for one-time purchase", { event });
     }
     const customerType = normalizeCustomerType(metadata.customerType);
     if (!customerType) {
-      throw new StackAssertionError("Invalid customer type for one-time purchase", { event });
+      throw new HexclaveAssertionError("Invalid customer type for one-time purchase", { event });
     }
     // dual write - prisma and bulldozer
     const upsertedPurchase = await prisma.oneTimePurchase.upsert({
@@ -260,16 +260,16 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     const metadata = paymentIntent.metadata;
     const accountId = event.account;
     if (!accountId) {
-      throw new StackAssertionError("Stripe webhook account id missing", { event });
+      throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
     }
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
     const prisma = await getPrismaClientForTenancy(tenancy);
     if (!metadata.customerId || !metadata.customerType) {
-      throw new StackAssertionError("Missing customer metadata for one-time purchase failure", { event });
+      throw new HexclaveAssertionError("Missing customer metadata for one-time purchase failure", { event });
     }
     const customerType = normalizeCustomerType(metadata.customerType);
     if (!customerType) {
-      throw new StackAssertionError("Invalid customer type for one-time purchase failure", { event });
+      throw new HexclaveAssertionError("Invalid customer type for one-time purchase failure", { event });
     }
     const recipients = await getPaymentRecipients({
       tenancy,
@@ -306,7 +306,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
     const accountId = event.account;
     if (!accountId) {
-      throw new StackAssertionError("Stripe webhook account id missing", { event });
+      throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
     }
     const dispute = event.data.object as Stripe.Dispute;
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
@@ -325,10 +325,10 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     const accountId = event.account;
     const customerId = event.data.object.customer;
     if (!accountId) {
-      throw new StackAssertionError("Stripe webhook account id missing", { event });
+      throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
     }
     if (typeof customerId !== 'string') {
-      throw new StackAssertionError("Stripe webhook bad customer id", { event });
+      throw new HexclaveAssertionError("Stripe webhook bad customer id", { event });
     }
     const stripe = await getStripeForAccount({ accountId }, mockData);
     await syncStripeSubscriptions(stripe, accountId, customerId);
@@ -345,15 +345,15 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       const prisma = await getPrismaClientForTenancy(tenancy);
       const stripeCustomerId = invoice.customer;
       if (typeof stripeCustomerId !== "string") {
-        throw new StackAssertionError("Stripe invoice customer id missing", { event });
+        throw new HexclaveAssertionError("Stripe invoice customer id missing", { event });
       }
       const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
       if (stripeCustomer.deleted) {
-        throw new StackAssertionError("Stripe invoice customer deleted", { event });
+        throw new HexclaveAssertionError("Stripe invoice customer deleted", { event });
       }
       const customerType = normalizeCustomerType(stripeCustomer.metadata.customerType);
       if (!stripeCustomer.metadata.customerId || !customerType) {
-        throw new StackAssertionError("Stripe invoice customer metadata missing customerId or customerType", { event });
+        throw new HexclaveAssertionError("Stripe invoice customer metadata missing customerId or customerType", { event });
       }
       const recipients = await getPaymentRecipients({
         tenancy,
@@ -391,15 +391,15 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       const prisma = await getPrismaClientForTenancy(tenancy);
       const stripeCustomerId = invoice.customer;
       if (typeof stripeCustomerId !== "string") {
-        throw new StackAssertionError("Stripe invoice customer id missing", { event });
+        throw new HexclaveAssertionError("Stripe invoice customer id missing", { event });
       }
       const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
       if (stripeCustomer.deleted) {
-        throw new StackAssertionError("Stripe invoice customer deleted", { event });
+        throw new HexclaveAssertionError("Stripe invoice customer deleted", { event });
       }
       const customerType = normalizeCustomerType(stripeCustomer.metadata.customerType);
       if (!stripeCustomer.metadata.customerId || !customerType) {
-        throw new StackAssertionError("Stripe invoice customer metadata missing customerId or customerType", { event });
+        throw new HexclaveAssertionError("Stripe invoice customer metadata missing customerId or customerType", { event });
       }
       const recipients = await getPaymentRecipients({
         tenancy,
@@ -431,7 +431,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     return;
   }
   else {
-    throw new StackAssertionError("Unknown stripe webhook type received: " + event.type, { event });
+    throw new HexclaveAssertionError("Unknown stripe webhook type received: " + event.type, { event });
   }
 }
 

@@ -1,4 +1,4 @@
-import { StackAssertionError } from "../utils/errors";
+import { HexclaveAssertionError } from "../utils/errors";
 import { isObjectLike, set, typedEntries } from "../utils/objects";
 
 /**
@@ -17,7 +17,7 @@ function renameProperty(obj: Record<string, any>, oldPath: string | ((path: stri
       const pathPrefix = path.slice(0, i + 1);
       if (pathCond(pathPrefix)) {
         const name = pathMapper(pathPrefix);
-        if (name.includes(".")) throw new StackAssertionError(`newName must not contain a dot. Provided: ${name}`);
+        if (name.includes(".")) throw new HexclaveAssertionError(`newName must not contain a dot. Provided: ${name}`);
         path[i] = name;
       }
     }

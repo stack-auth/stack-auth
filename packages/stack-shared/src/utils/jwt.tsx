@@ -4,7 +4,7 @@ import * as jose from "jose";
 import { JOSEError } from "jose/errors";
 import { encodeBase64Url } from "./bytes";
 import { getEnvVariable } from "./env";
-import { StackAssertionError, errorToNiceString } from "./errors";
+import { HexclaveAssertionError, errorToNiceString } from "./errors";
 import { globalVar } from "./globals";
 import { pick } from "./objects";
 import { Result } from "./results";
@@ -15,7 +15,7 @@ function getStackServerSecret() {
   try {
     jose.base64url.decode(STACK_SERVER_SECRET);
   } catch (e) {
-    throw new StackAssertionError("STACK_SERVER_SECRET is not valid. Please use the generateKeys script to generate a new secret.", { cause: e });
+    throw new HexclaveAssertionError("STACK_SERVER_SECRET is not valid. Please use the generateKeys script to generate a new secret.", { cause: e });
   }
   return STACK_SERVER_SECRET;
 }
@@ -143,7 +143,7 @@ function oldGetPerAudienceSecret(options: {
   audience: string,
 }) {
   if (options.audience === "kid") {
-    throw new StackAssertionError("You cannot use the 'kid' audience for a per-audience secret, see comment below in jwt.tsx");
+    throw new HexclaveAssertionError("You cannot use the 'kid' audience for a per-audience secret, see comment below in jwt.tsx");
   }
   return jose.base64url.encode(
     crypto

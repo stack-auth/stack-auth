@@ -1,5 +1,5 @@
 import { ProjectsCrud } from "../interface/crud/projects";
-import { StackAssertionError, captureError } from "../utils/errors";
+import { HexclaveAssertionError, captureError } from "../utils/errors";
 import { isLocalhost } from "../utils/urls";
 
 export type ProductionModeError = {
@@ -25,7 +25,7 @@ export function getProductionModeErrors(project: ProjectsCrud["Admin"]["Read"]):
       const normalizedDomain = domain.replace(/\*+/g, 'wildcard-placeholder');
       url = new URL(normalizedDomain);
     } catch (e) {
-      captureError("production-mode-domain-not-valid", new StackAssertionError("Domain was somehow not a valid URL; we should've caught this when setting the domain in the first place", {
+      captureError("production-mode-domain-not-valid", new HexclaveAssertionError("Domain was somehow not a valid URL; we should've caught this when setting the domain in the first place", {
         domain,
         projectId: project
       }));

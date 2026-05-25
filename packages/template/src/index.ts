@@ -2,6 +2,9 @@ export * from './lib/stack-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
 export type { StackConfig } from "@stackframe/stack-shared/config";
 export { defineStackConfig } from "@stackframe/stack-shared/config";
+// Hexclave aliases — same symbols under the new brand name (see RENAME-TO-HEXCLAVE.md, Tier 1)
+export type { StackConfig as HexclaveConfig } from "@stackframe/stack-shared/config";
+export { defineStackConfig as defineHexclaveConfig } from "@stackframe/stack-shared/config";
 
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";
@@ -9,6 +12,11 @@ export { default as StackHandler } from "./components-page/stack-handler";
 export { useStackApp, useUser } from "./lib/hooks";
 export { default as StackProvider } from "./providers/stack-provider";
 export { StackTheme } from './providers/theme-provider';
+// Hexclave aliases — same symbols under the new brand name (see RENAME-TO-HEXCLAVE.md, Tier 1)
+export { default as HexclaveHandler } from "./components-page/stack-handler";
+export { useStackApp as useHexclaveApp } from "./lib/hooks";
+export { default as HexclaveProvider } from "./providers/stack-provider";
+export { StackTheme as HexclaveTheme } from './providers/theme-provider';
 
 export { AccountSettings } from "./components-page/account-settings";
 export { AuthPage } from "./components-page/auth-page";

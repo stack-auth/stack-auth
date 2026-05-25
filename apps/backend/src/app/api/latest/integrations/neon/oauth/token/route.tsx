@@ -2,7 +2,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { neonAuthorizationHeaderSchema, yupMixed, yupNumber, yupObject, yupString, yupTuple, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -62,7 +62,7 @@ export const POST = createSmartRouteHandler({
     });
     if (!userInfoResponse.ok) {
       const text = await userInfoResponse.text();
-      throw new StackAssertionError("Failed to fetch user info? This should never happen", { text, userInfoResponse });
+      throw new HexclaveAssertionError("Failed to fetch user info? This should never happen", { text, userInfoResponse });
     }
     const userInfoResponseBody = await userInfoResponse.json();
 
@@ -74,7 +74,7 @@ export const POST = createSmartRouteHandler({
       },
     });
     if (!mapping) {
-      throw new StackAssertionError("No mapping found for account", { accountId });
+      throw new HexclaveAssertionError("No mapping found for account", { accountId });
     }
 
     return {

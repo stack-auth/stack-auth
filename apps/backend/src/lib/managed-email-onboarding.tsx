@@ -14,7 +14,7 @@ import {
 } from "@/lib/managed-email-domains";
 import { Tenancy } from "@/lib/tenancies";
 import { getNodeEnvironment, getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 type ResendDomainRecord = {
@@ -123,7 +123,7 @@ function normalizeRecordContent(content: string) {
 async function parseJsonOrThrow<T>(response: Response, errorContext: string): Promise<T> {
   if (!response.ok) {
     const responseBody = await response.text();
-    throw new StackAssertionError(errorContext, {
+    throw new HexclaveAssertionError(errorContext, {
       status: response.status,
       responseBody,
     });
@@ -157,7 +157,7 @@ type DnsimpleDnsRecord = {
 async function parseDnsimpleJsonOrThrow<T>(response: Response, errorContext: string): Promise<T> {
   const body = await parseJsonOrThrow<DnsimpleResponse<T>>(response, errorContext);
   if (!body.data) {
-    throw new StackAssertionError(errorContext, {
+    throw new HexclaveAssertionError(errorContext, {
       dnsimpleResponseBody: body,
     });
   }
@@ -239,7 +239,7 @@ async function deleteDnsimpleZoneByName(zoneName: string): Promise<{ status: "de
   }
   if (!response.ok) {
     const responseBody = await response.text();
-    throw new StackAssertionError(`DNSimple returned non-OK status when deleting managed email zone`, {
+    throw new HexclaveAssertionError(`DNSimple returned non-OK status when deleting managed email zone`, {
       zoneName,
       status: response.status,
       responseBody,
@@ -251,7 +251,7 @@ async function deleteDnsimpleZoneByName(zoneName: string): Promise<{ status: "de
 async function createOrReuseDnsimpleZone(subdomain: string): Promise<DnsimpleZone> {
   const existingZones = await listDnsimpleZones(subdomain);
   if (existingZones.length > 1) {
-    throw new StackAssertionError("Multiple DNSimple zones found for managed email onboarding subdomain", {
+    throw new HexclaveAssertionError("Multiple DNSimple zones found for managed email onboarding subdomain", {
       subdomain,
       zoneIds: existingZones.map((zone) => `${zone.id}`),
     });
@@ -273,7 +273,7 @@ async function getDnsimpleZoneNameServers(zoneName: string): Promise<string[]> {
   );
   const rawZoneFile = zoneFile.zone;
   if (!rawZoneFile) {
-    throw new StackAssertionError("DNSimple zone file response did not include zone contents", {
+    throw new HexclaveAssertionError("DNSimple zone file response did not include zone contents", {
       zoneName,
       zoneFile,
     });
@@ -315,7 +315,7 @@ function toDnsimpleRecordName(recordName: string, zoneName: string) {
   if (normalizedRecordName.endsWith(`.${normalizedZoneName}`)) {
     return normalizedRecordName.slice(0, -(normalizedZoneName.length + 1));
   }
-  throw new StackAssertionError("DNS record name is not inside zone", {
+  throw new HexclaveAssertionError("DNS record name is not inside zone", {
     recordName,
     zoneName,
   });
@@ -413,14 +413,14 @@ async function upsertDnsimpleResendRecords(zoneName: string, subdomain: string, 
       return existingType === "CNAME";
     });
     if (hasCnameConflict) {
-      throw new StackAssertionError("Cannot create DNSimple DNS record because of CNAME conflict", {
+      throw new HexclaveAssertionError("Cannot create DNSimple DNS record because of CNAME conflict", {
         zoneName,
         desiredRecord,
       });
     }
 
     if (desiredRecord.type === "CNAME" && recordsWithSameName.some((existingRecord) => existingRecord.type.toUpperCase() === "CNAME")) {
-      throw new StackAssertionError("DNSimple CNAME record already exists with different content", {
+      throw new HexclaveAssertionError("DNSimple CNAME record already exists with different content", {
         zoneName,
         desiredRecord,
         existingRecords: recordsWithSameName,
@@ -461,7 +461,7 @@ async function createResendDomain(subdomain: string): Promise<ResendDomain> {
     if ((response.status === 403 || response.status === 409) && isResendDomainAlreadyExistsResponse(responseBody)) {
       throw new StatusError(409, "This subdomain already exists in Resend. If this is from another project, choose a different subdomain.");
     }
-    throw new StackAssertionError("Failed to create Resend domain for managed email onboarding", {
+    throw new HexclaveAssertionError("Failed to create Resend domain for managed email onboarding", {
       status: response.status,
       responseBody,
     });
@@ -478,7 +478,7 @@ async function createResendDomain(subdomain: string): Promise<ResendDomain> {
   });
   if (!verifyResponse.ok) {
     const verifyResponseBody = await verifyResponse.text();
-    throw new StackAssertionError("Failed to trigger Resend domain verification for managed email onboarding", {
+    throw new HexclaveAssertionError("Failed to trigger Resend domain verification for managed email onboarding", {
       status: verifyResponse.status,
       responseBody: verifyResponseBody,
       domainId: body.id,
@@ -512,7 +512,7 @@ async function createResendScopedKey(options: { subdomain: string, domainId: str
     "Failed to create scoped Resend API key while applying managed email domain",
   );
   if (!body.token) {
-    throw new StackAssertionError("Resend did not return an API key token for managed onboarding", {
+    throw new HexclaveAssertionError("Resend did not return an API key token for managed onboarding", {
       domainId: options.domainId,
       tenancyId: options.tenancyId,
       subdomain: options.subdomain,
@@ -588,7 +588,7 @@ export async function setupManagedEmailProvider(options: { subdomain: string, se
 
   const zoneNameServers = await getDnsimpleZoneNameServers(dnsimpleZone.name);
   if (zoneNameServers.length === 0) {
-    throw new StackAssertionError("DNSimple zone was created without nameservers for managed email onboarding", {
+    throw new HexclaveAssertionError("DNSimple zone was created without nameservers for managed email onboarding", {
       zoneId: dnsimpleZone.id,
       subdomain: normalizedSubdomain,
     });
@@ -712,7 +712,7 @@ export async function deleteManagedEmailProvider(options: {
     });
     if (!resendResponse.ok && resendResponse.status !== 404) {
       const responseBody = await resendResponse.text();
-      throw new StackAssertionError(`Upstream email provider returned non-OK status when deleting managed domain`, {
+      throw new HexclaveAssertionError(`Upstream email provider returned non-OK status when deleting managed domain`, {
         resendDomainId: domain.resendDomainId,
         status: resendResponse.status,
         responseBody,
