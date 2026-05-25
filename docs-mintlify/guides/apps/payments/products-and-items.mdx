@@ -237,7 +237,8 @@ export async function consumeCredits(userId: string, amount: number) {
     throw new Error("Insufficient credits");
   }
 
-  return { remaining: credits.quantity };
+  const updatedCredits = await user.getItem("credits");
+  return { remaining: updatedCredits.quantity };
 }
 ```
 
