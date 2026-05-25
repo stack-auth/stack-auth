@@ -131,14 +131,19 @@ await stackServerApp.sendEmail({
 
 ```typescript
 type SendEmailOptions = {
-  userIds: string[];                 // users to send to
   themeId?: string | null | false;   // theme override
   subject?: string;                  // subject line
   notificationCategoryName?: string; // preference category
-  html?: string;                     // raw HTML body
-  templateId?: string;               // template ID
+  scheduledAt?: Date;                // delay delivery until this time
   variables?: Record<string, any>;   // template variables
-};
+} & (
+  | { userIds: string[] }            // specific users
+  | { allUsers: true }               // every user in the project
+) & (
+  | { html: string }                 // raw HTML body
+  | { templateId: string }           // template ID
+  | { draftId: string }              // dashboard draft ID
+);
 ```
 
 <Info>
@@ -147,29 +152,47 @@ type SendEmailOptions = {
 
 ### Error handling
 
-`sendEmail` returns a result object. Handle failures explicitly:
+`sendEmail` resolves once the email has been queued. If validation fails, the user IDs do not exist, or the project is still using the shared email server, it throws a Stack Auth known error with a stable `errorCode`:
 
 ```typescript
-const result = await stackServerApp.sendEmail({
-  userIds: ['user-id'],
-  html: '<p>Hello!</p>',
-  subject: 'Test Email',
-});
+import { stackServerApp } from '@/stack/server';
 
-if (result.status === 'error') {
-  switch (result.error.code) {
-    case 'REQUIRES_CUSTOM_EMAIL_SERVER':
-      console.error('Please configure a custom email server');
-      break;
-    case 'SCHEMA_ERROR':
-      console.error('Invalid email data provided');
-      break;
-    case 'USER_ID_DOES_NOT_EXIST':
-      console.error('One or more user IDs do not exist');
-      break;
+export async function sendTestEmail(userId: string) {
+  try {
+    await stackServerApp.sendEmail({
+      userIds: [userId],
+      html: '<p>Hello!</p>',
+      subject: 'Test Email',
+    });
+  } catch (error) {
+    if (error instanceof Error && "errorCode" in error && typeof error.errorCode === "string") {
+      switch (error.errorCode) {
+        case "REQUIRES_CUSTOM_EMAIL_SERVER":
+          console.error("Please configure a custom email server");
+          break;
+        case "SCHEMA_ERROR":
+          console.error("Invalid email data provided");
+          break;
+        case "USER_ID_DOES_NOT_EXIST":
+          console.error("One or more user IDs do not exist");
+          break;
+        default:
+          console.error("Stack Auth email error", error.errorCode, error.message);
+      }
+    }
+
+    throw error;
   }
 }
 ```
+
+Common errors are:
+
+- **Requires custom email server** - configure SMTP, Resend, or Managed Email before sending.
+- **Schema error** - check that exactly one recipient branch and exactly one content branch were provided.
+- **User ID does not exist** - at least one ID in `userIds` is not a project user.
+
+[Learn more about common errors](/guides/other/known-errors).
 
 ## Scheduling
 

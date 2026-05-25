@@ -76,10 +76,7 @@ This stage submits the draft via:
 ```typescript
 await stackServerApp.sendEmail({
   draftId,
-  // either:
-  userIds: [...],
-  // or:
-  allUsers: true,
+  userIds: ['user-id-1', 'user-id-2'],
   scheduledAt: new Date('2026-12-25T09:00:00Z'),
 });
 ```
