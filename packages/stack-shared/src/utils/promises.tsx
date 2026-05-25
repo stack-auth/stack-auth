@@ -1,6 +1,6 @@
 import { KnownError } from "..";
 import { getProcessEnv } from "./env";
-import { StackAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
+import { HexclaveAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
 import { DependenciesMap } from "./maps";
 import { Result } from "./results";
 import { traceSpan } from "./telemetry";
@@ -261,10 +261,10 @@ export function concatStacktracesIfRejected<T>(promise: Promise<T>): void {
 
 export async function wait(ms: number) {
   if (!Number.isFinite(ms) || ms < 0) {
-    throw new StackAssertionError(`wait() requires a non-negative integer number of milliseconds to wait. (found: ${ms}ms)`);
+    throw new HexclaveAssertionError(`wait() requires a non-negative integer number of milliseconds to wait. (found: ${ms}ms)`);
   }
   if (ms >= 2**31) {
-    throw new StackAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
+    throw new HexclaveAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
   }
   return await traceSpan({ description: 'wait(...)', attributes: { 'stack.wait.ms': ms } }, async (span) => {
     return await new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -308,7 +308,7 @@ import.meta.vitest?.test("waitUntil", async ({ expect }) => {
     await waitUntil(new Date(Date.now() - 1000));
     expect.fail("Should have thrown an error");
   } catch (error) {
-    expect(error).toBeInstanceOf(StackAssertionError);
+    expect(error).toBeInstanceOf(HexclaveAssertionError);
     expect((error as Error).message).toContain("wait() requires a non-negative integer");
   }
 });
@@ -359,7 +359,7 @@ export function runAsynchronously(
     concatStacktracesIfRejected(promiseOrFunc);
     promiseOrFunc.catch(error => {
       options.onError?.(error);
-      const newError = new StackAssertionError(
+      const newError = new HexclaveAssertionError(
         "Uncaught error in asynchronous function: " + errorToNiceString(error),
         { cause: error },
       );

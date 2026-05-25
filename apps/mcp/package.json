@@ -1,15 +1,15 @@
 {
   "name": "@stackframe/mcp",
-  "version": "2.8.96",
+  "version": "2.8.103",
   "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "type": "module",
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
     "typecheck": "tsc --noEmit",
-    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}44",
+    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}44",
     "build": "next build",
-    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}44",
+    "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}44",
     "lint": "eslint ."
   },
   "dependencies": {

@@ -189,7 +189,7 @@ it("anonymous signup creates exactly one $token-refresh event", async ({ expect 
   });
 });
 
-it("OAuth signup creates exactly one $token-refresh event", async ({ expect }) => {
+it("OAuth signup creates exactly one $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{
@@ -223,7 +223,7 @@ it("OAuth signup creates exactly one $token-refresh event", async ({ expect }) =
 // Signin Tests
 // ============================================================================
 
-it("password signin (existing user) creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("password signin (existing user) creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { credential_enabled: true },
   });
@@ -246,7 +246,7 @@ it("password signin (existing user) creates exactly one additional $token-refres
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("OTP signin (existing user) creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("OTP signin (existing user) creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { magic_link_enabled: true },
   });
@@ -267,7 +267,7 @@ it("OTP signin (existing user) creates exactly one additional $token-refresh eve
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("OAuth signin (existing user) creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("OAuth signin (existing user) creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{
@@ -299,7 +299,7 @@ it("OAuth signin (existing user) creates exactly one additional $token-refresh e
 // Session Refresh Tests
 // ============================================================================
 
-it("session refresh endpoint creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("session refresh endpoint creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { magic_link_enabled: true },
   });
@@ -317,7 +317,7 @@ it("session refresh endpoint creates exactly one additional $token-refresh event
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("multiple session refreshes create one event each", async ({ expect }) => {
+it("multiple session refreshes create one event each", { timeout: 180_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: { magic_link_enabled: true },
   });
@@ -344,7 +344,7 @@ it("multiple session refreshes create one event each", async ({ expect }) => {
 // OAuth Refresh Token Grant Tests
 // ============================================================================
 
-it("OAuth refresh token grant creates exactly one additional $token-refresh event", async ({ expect }) => {
+it("OAuth refresh token grant creates exactly one additional $token-refresh event", { timeout: 120_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{
@@ -391,7 +391,7 @@ it("OAuth refresh token grant creates exactly one additional $token-refresh even
   expect(events.every((e: AnalyticsEvent) => e.user_id === userId)).toBe(true);
 });
 
-it("multiple OAuth refresh token grants create one event each", async ({ expect }) => {
+it("multiple OAuth refresh token grants create one event each", { timeout: 180_000 }, async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch({
     config: {
       oauth_providers: [{

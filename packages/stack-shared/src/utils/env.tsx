@@ -1,4 +1,4 @@
-import { StackAssertionError, throwErr } from "./errors";
+import { HexclaveAssertionError, throwErr } from "./errors";
 import { deindent } from "./strings";
 
 export function isBrowserLike() {
@@ -9,6 +9,20 @@ export function isBrowserLike() {
 const ENV_VAR_RENAME: Record<string, string[]> = {
   NEXT_PUBLIC_STACK_API_URL: ['STACK_BASE_URL', 'NEXT_PUBLIC_STACK_URL'],
 };
+
+/**
+ * Hexclave rebrand: compute the `HEXCLAVE_*`-prefixed equivalent of a `STACK_*`
+ * env var name by replacing the first `STACK_` occurrence with `HEXCLAVE_`.
+ * Covers `STACK_FOO`, `NEXT_PUBLIC_STACK_FOO`, `NEXT_PUBLIC_BROWSER_STACK_FOO`,
+ * `NEXT_PUBLIC_SERVER_STACK_FOO`, `VITE_STACK_FOO`. Returns `undefined` when the
+ * name has no `STACK_` segment (caller should behave exactly as before).
+ */
+function getHexclaveEnvVarName(name: string): string | undefined {
+  if (!name.includes("STACK_")) {
+    return undefined;
+  }
+  return name.replace("STACK_", "HEXCLAVE_");
+}
 
 /**
  * Returns the environment variable with the given name, returning the default (if given) or throwing an error (otherwise) if it's undefined or the empty string.
@@ -36,12 +50,16 @@ export function getEnvVariable(name: string, defaultValue?: string | undefined):
     }
   }
 
-  let value = process.env[name];
+  // Hexclave rebrand: prefer the HEXCLAVE_*-prefixed equivalent, fall back to the STACK_* name.
+  const hexclaveName = getHexclaveEnvVarName(name);
+  let value = (hexclaveName ? process.env[hexclaveName] : undefined) ?? process.env[name];
 
   // check the key under the old name if the new name is not found
   if (!value && ENV_VAR_RENAME[name] as any) {
     for (const oldName of ENV_VAR_RENAME[name]) {
-      value = process.env[oldName];
+      // Hexclave rebrand: also accept the HEXCLAVE_*-prefixed equivalent of each old alias.
+      const hexclaveOldName = getHexclaveEnvVarName(oldName);
+      value = (hexclaveOldName ? process.env[hexclaveOldName] : undefined) ?? process.env[oldName];
       if (value) break;
     }
   }
@@ -64,7 +82,7 @@ export function getEnvBoolean(name: string): boolean {
   } else if (value === "false") {
     return false;
   } else {
-    throw new StackAssertionError(`Environment variable ${name} must be either "true" or "false": found ${JSON.stringify(value)}`);
+    throw new HexclaveAssertionError(`Environment variable ${name} must be either "true" or "false": found ${JSON.stringify(value)}`);
   }
 }
 
@@ -93,5 +111,7 @@ export function getProcessEnv(name: string): string | undefined {
   if (typeof process === "undefined" || typeof process.env === "undefined") {
     return undefined;
   }
-  return process.env[name];
+  // Hexclave rebrand: prefer the HEXCLAVE_*-prefixed equivalent, fall back to the STACK_* name.
+  const hexclaveName = getHexclaveEnvVarName(name);
+  return (hexclaveName ? process.env[hexclaveName] : undefined) ?? process.env[name];
 }

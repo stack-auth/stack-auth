@@ -72,7 +72,7 @@ function waitForWorkspacePackages(packages: string[]): Plugin {
 
 export default defineConfig({
   server: {
-    port: Number((process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || "81") + "09"),
+    port: Number((process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || "81") + "09"),
   },
   resolve: {
     dedupe: ['react', 'react-dom'],

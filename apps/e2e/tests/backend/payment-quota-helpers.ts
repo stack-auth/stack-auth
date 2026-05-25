@@ -1,5 +1,5 @@
 import { ItemId } from "@stackframe/stack-shared/dist/plans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { niceBackendFetch, withInternalProject } from "./backend-helpers";
 
@@ -18,7 +18,7 @@ export async function getItemQuantity(ownerTeamId: string, itemId: ItemId): Prom
       accessType: "server",
     });
     if (response.status !== 200) {
-      throw new StackAssertionError(`Failed to fetch item quantity`, { ownerTeamId, itemId, response });
+      throw new HexclaveAssertionError(`Failed to fetch item quantity`, { ownerTeamId, itemId, response });
     }
     return response.body.quantity as number;
   });
@@ -39,7 +39,7 @@ export async function setItemQuantity(ownerTeamId: string, itemId: ItemId, quant
       { method: "POST", accessType: "server", body: { delta } },
     );
     if (response.status !== 200) {
-      throw new StackAssertionError(`Failed to set item quantity`, { ownerTeamId, itemId, quantity, response });
+      throw new HexclaveAssertionError(`Failed to set item quantity`, { ownerTeamId, itemId, quantity, response });
     }
   });
 }
@@ -66,7 +66,7 @@ export async function waitForItemQuantityToReach(
     if (current === expected) return;
 
     if (performance.now() - startedAt > timeoutMs) {
-      throw new StackAssertionError(`Item quantity did not reach expected value within timeout`, {
+      throw new HexclaveAssertionError(`Item quantity did not reach expected value within timeout`, {
         ownerTeamId, itemId, expected, current, timeoutMs,
       });
     }
@@ -113,7 +113,7 @@ export async function waitForItemQuantityToStabilize(
       return last;
     }
     if (elapsed > timeoutMs) {
-      throw new StackAssertionError(`Item quantity did not stabilise within timeout`, {
+      throw new HexclaveAssertionError(`Item quantity did not stabilise within timeout`, {
         ownerTeamId, itemId, last, stableReads, stableForReads, timeoutMs, minimumElapsedMs,
       });
     }

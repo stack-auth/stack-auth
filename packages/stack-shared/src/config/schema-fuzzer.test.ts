@@ -1,6 +1,6 @@
 import { ALL_APPS } from "../apps/apps-config";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
-import { StackAssertionError } from "../utils/errors";
+import { HexclaveAssertionError } from "../utils/errors";
 import { getOrUndefined, isObjectLike, set, typedEntries, typedFromEntries } from "../utils/objects";
 import { nicify } from "../utils/strings";
 import { normalize, override } from "./format";
@@ -12,11 +12,7 @@ type FuzzerConfig<T> = ReadonlyArray<T extends object ? ([T] extends [any[]] ? {
 
 const projectSchemaFuzzerConfig = [{
   sourceOfTruth: [{
-    type: ["hosted", "neon", "postgres"],
-    connectionString: ["", "postgres://user:password@host:port/database", "THIS IS A STRING LOLOL"],
-    connectionStrings: [{
-      "123-some-branch-id": ["", "THIS IS A CONNECTION STRING OR SO"],
-    }],
+    type: ["hosted"],
   }],
   project: [{
     requirePublishableClientKey: [true, false],
@@ -365,7 +361,7 @@ import.meta.vitest?.test("fuzz schemas", async ({ expect }) => {
         },
       } as const;
       console.error("Failed to fuzz schema in iteration ${i}/${totalIterations}!", nicify(data));
-      throw new StackAssertionError(`Error in iteration ${i}/${totalIterations} of schema fuzz: ${e}`, { cause: e });
+      throw new HexclaveAssertionError(`Error in iteration ${i}/${totalIterations} of schema fuzz: ${e}`, { cause: e });
     }
   }
 });

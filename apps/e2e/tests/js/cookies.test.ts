@@ -126,12 +126,12 @@ function findCookieAttributes(cookieWrites: string[], name: string): Map<string,
 
 function getDefaultRefreshCookieName(projectId: string, secure: boolean): string {
   const prefix = secure ? "__Host-" : "";
-  return `${prefix}stack-refresh-${projectId}--default`;
+  return `${prefix}hexclave-refresh-${projectId}--default`;
 }
 
 function getCustomRefreshCookieName(projectId: string, domain: string): string {
   const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
-  return `stack-refresh-${projectId}--custom-${encoded}`;
+  return `hexclave-refresh-${projectId}--custom-${encoded}`;
 }
 
 it("should set refresh token cookies for trusted parent domains", async ({ expect }) => {
@@ -197,7 +197,7 @@ it("should set refresh token cookies for trusted parent domains", async ({ expec
 
   const customAttrs = findCookieAttributes(cookieWrites, customCookieName);
   expect(customAttrs?.get("domain")).toBe("example.com");
-  expect(cookieWrites.some((entry) => entry.toLowerCase().startsWith("stack-refresh-") && entry.toLowerCase().includes("expires="))).toBe(true);
+  expect(cookieWrites.some((entry) => entry.toLowerCase().startsWith("hexclave-refresh-") && entry.toLowerCase().includes("expires="))).toBe(true);
 });
 
 it("should avoid setting custom refresh cookies when no trusted parent domain is configured", async ({ expect }) => {

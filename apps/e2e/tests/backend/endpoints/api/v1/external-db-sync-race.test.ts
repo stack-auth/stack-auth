@@ -344,7 +344,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
     }
 
     function makeInternalDbUrl() {
-      const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || '81';
+      const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || '81';
       return `postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:${portPrefix}28/stackframe`;
     }
 

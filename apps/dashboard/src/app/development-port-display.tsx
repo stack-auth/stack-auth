@@ -6,7 +6,7 @@ import { getPublicEnvVar } from "../lib/env";
 
 export function DevelopmentPortDisplay() {
   const [isVisible, setIsVisible] = useState(true);
-  const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
+  const prefix = getPublicEnvVar("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX");
   if (!prefix || !isVisible || !process.env.NODE_ENV.includes("development")) return null;
   const color = ({
     "91": "#eee",

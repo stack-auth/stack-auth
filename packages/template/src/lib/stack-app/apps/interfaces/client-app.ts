@@ -167,4 +167,9 @@ export type StackClientAppConstructor = {
     ): StackClientApp<HasTokenStore, ProjectId>,
   },
 };
-export const StackClientApp: StackClientAppConstructor = _StackClientAppImpl;
+export type HexclaveClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId>;
+export type HexclaveClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppJson<HasTokenStore, ProjectId>;
+export type HexclaveClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackClientApp<HasTokenStore, ProjectId>;
+export type HexclaveClientAppConstructor = StackClientAppConstructor;
+export const HexclaveClientApp: HexclaveClientAppConstructor = _StackClientAppImpl;
+export const StackClientApp: StackClientAppConstructor = HexclaveClientApp;

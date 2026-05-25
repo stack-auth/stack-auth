@@ -1,4 +1,4 @@
-import { StackAssertionError, captureError } from "./errors";
+import { HexclaveAssertionError, captureError } from "./errors";
 import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "./urls";
 
 type TrustedDomainConfig = {
@@ -28,7 +28,7 @@ function assertHostedHandlerTemplateHasProjectOrigin(template: string): void {
   const projectUrlA = new URL(getHostedHandlerUrlFromTemplate(template, hostedHandlerTemplateProjectIdA, "handler"));
   const projectUrlB = new URL(getHostedHandlerUrlFromTemplate(template, hostedHandlerTemplateProjectIdB, "handler"));
   if (projectUrlA.origin === projectUrlB.origin || !projectUrlA.hostname.includes(hostedHandlerTemplateProjectIdA)) {
-    throw new StackAssertionError("The hosted handler URL template must put {projectId} in the hostname.", {
+    throw new HexclaveAssertionError("The hosted handler URL template must put {projectId} in the hostname.", {
       hostedHandlerUrlTemplate: template,
       hint: "Use a project-specific origin like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}', not a shared-origin path like 'https://example.com/{projectId}/{hostedPath}'.",
     });
@@ -59,7 +59,7 @@ export function getHostedHandlerUrlFromConfig(options: {
     ? (() => {
       const domainSuffix = replaceStackPortPrefix(options.hostedHandlerDomainSuffix, options.stackPortPrefix) ?? defaultHostedHandlerDomainSuffix;
       if (!domainSuffix.startsWith(".")) {
-        throw new StackAssertionError("The hosted handler domain suffix must start with a dot.", {
+        throw new HexclaveAssertionError("The hosted handler domain suffix must start with a dot.", {
           domainSuffix,
           hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX to a value like '.built-with-stack-auth.com'.",
         });
@@ -68,7 +68,7 @@ export function getHostedHandlerUrlFromConfig(options: {
     })()
     : (() => {
       if (!configuredTemplate.includes(hostedHandlerProjectIdPlaceholder) || !configuredTemplate.includes(hostedHandlerPathPlaceholder)) {
-        throw new StackAssertionError("The hosted handler URL template must contain {projectId} and {hostedPath}.", {
+        throw new HexclaveAssertionError("The hosted handler URL template must contain {projectId} and {hostedPath}.", {
           hostedHandlerUrlTemplate: configuredTemplate,
           hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE to a value like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}'.",
         });
@@ -142,7 +142,7 @@ function matchesTrustedDomain(testUrl: URL, pattern: string): boolean {
 
   const parsedPattern = parseWildcardUrlPattern(pattern);
   if (parsedPattern == null) {
-    captureError("invalid-redirect-domain", new StackAssertionError("Invalid domain pattern", { pattern }));
+    captureError("invalid-redirect-domain", new HexclaveAssertionError("Invalid domain pattern", { pattern }));
     return false;
   }
 
@@ -241,9 +241,9 @@ import.meta.vitest?.test("getImplicitlyTrustedDomainsForProject rejects shared-o
     projectId: "12345678-1234-4234-8234-123456789abc",
     hostedHandlerUrlTemplate: "https://host.example.com/{projectId}/{hostedPath}",
   })).toThrowErrorMatchingInlineSnapshot(`
-    [StackAssertionError: The hosted handler URL template must put {projectId} in the hostname.
+    [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
 
-    This is likely an error in Stack. Please make sure you are running the newest version and report it.]
+    This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
   `);
 });
 

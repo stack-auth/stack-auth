@@ -1,6 +1,6 @@
 import { isApiKey, parseProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-keys";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import { SnapshotSerializer } from "vitest";
 import { getPortPrefix } from "./helpers/ports";
@@ -28,6 +28,13 @@ const hideHeaders = [
   "content-encoding",
   "etag",
   "x-stack-request-id",
+  "x-hexclave-request-id",
+  // Hexclave rebrand: backend dual-emits these alongside the x-stack-* variants
+  // with identical values. Hide the duplicates so snapshots stay focused on the
+  // existing x-stack-* entries — avoids bloating every response snapshot in the
+  // suite, and PR 3 (removing the dual-emit) won't need to re-regen them.
+  "x-hexclave-known-error",
+  "x-hexclave-actual-status",
   "x-middleware-rewrite",
 ] as const;
 
@@ -117,12 +124,28 @@ const stripUrlQueryParams = [
 
 const keyedCookieNamePrefixes = [
   "stack-oauth-inner-",
+  // Hexclave rebrand: dual-written OAuth inner-state cookie
+  "hexclave-oauth-inner-",
 ] as const;
+
+// Hexclave rebrand: backend dual-writes these Set-Cookie entries alongside the
+// stack-* variants with identical values. Hide the hexclave-* duplicates so
+// snapshots stay focused on the existing stack-* entries — mirrors the
+// hideHeaders strategy for x-hexclave-{known-error,actual-status} and avoids
+// regenerating every OAuth response snapshot in the suite. PR 3 (removing the
+// dual-write) won't need to re-regen them.
+const hiddenSetCookieNamePrefixes = [
+  "hexclave-oauth-inner-",
+] as const;
+
+// Track Headers instances we've already stripped duplicate hexclave Set-Cookies
+// from, to avoid infinite recursion when nicify re-enters on the filtered copy.
+const dualFilteredHeaders = new WeakSet<Headers>();
 
 const stringRegexReplacements = [
   [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
-  [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_STACK_PORT_PREFIX>"],
-  [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_STACK_PORT_PREFIX%3E"],
+  [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>"],
+  [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX%3E"],
   [/(Timeout exceeded: elapsed )[0-9.]+( ms)/gi, "$1<stripped time>$2"],
 ] as const;
 
@@ -210,7 +233,7 @@ const snapshotSerializer: SnapshotSerializer = {
         // Strip headers
         if (options?.parent?.value instanceof Headers) {
           if (typeof value !== "string") {
-            throw new StackAssertionError("Headers should only contain string values");
+            throw new HexclaveAssertionError("Headers should only contain string values");
           }
           const headerName = options.keyInParent?.toString().toLowerCase();
           if (typedIncludes(stripHeaders, headerName)) {
@@ -219,8 +242,9 @@ const snapshotSerializer: SnapshotSerializer = {
           if (headerName === "set-cookie") {
             const partsStrings = value.split(";").map((part) => part.trim());
             let cookieName = partsStrings[0].split("=")[0];
-            if (keyedCookieNamePrefixes.some((prefix) => cookieName.startsWith(prefix))) {
-              cookieName = `${keyedCookieNamePrefixes}<stripped cookie name key>`;
+            const matchedKeyedPrefix = keyedCookieNamePrefixes.find((prefix) => cookieName.startsWith(prefix));
+            if (matchedKeyedPrefix !== undefined) {
+              cookieName = `${matchedKeyedPrefix}<stripped cookie name key>`;
             }
             const cookieValue = partsStrings[0].split("=")[1];
             const parts = new Map(partsStrings.map((part) => {
@@ -248,6 +272,27 @@ const snapshotSerializer: SnapshotSerializer = {
           addAll(newHideFields, snapshotSerializerOptions?.hideFields ?? []);
         }
         if (value instanceof Headers) {
+          // Pre-filter dual-written hexclave-* Set-Cookies before adding hideHeaders,
+          // so the recursive nicify call serializes only the stack-* entries.
+          if (!dualFilteredHeaders.has(value)) {
+            const setCookies = value.getSetCookie();
+            const filteredSetCookies = setCookies.filter(c =>
+              !hiddenSetCookieNamePrefixes.some(prefix => c.startsWith(prefix))
+            );
+            if (filteredSetCookies.length !== setCookies.length) {
+              const filteredHeaders = new Headers();
+              for (const [name, val] of value.entries()) {
+                if (name.toLowerCase() !== "set-cookie") {
+                  filteredHeaders.append(name, val);
+                }
+              }
+              for (const cookie of filteredSetCookies) {
+                filteredHeaders.append("set-cookie", cookie);
+              }
+              dualFilteredHeaders.add(filteredHeaders);
+              return nicify(filteredHeaders, options);
+            }
+          }
           addAll(newHideFields, hideHeaders);
         }
         if (newHideFields.size !== oldHideFields.length) {

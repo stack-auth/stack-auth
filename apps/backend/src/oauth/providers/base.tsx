@@ -1,5 +1,5 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
@@ -219,7 +219,7 @@ export function getOAuthAccessTokenRefreshError(error: unknown, options: {
 
 function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: number): TokenSet {
   if (!tokenSet.access_token) {
-    throw new StackAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
+    throw new HexclaveAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
   }
 
   // if expires_in or expires_at provided, use that
@@ -227,7 +227,7 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
   // otherwise, use 1h, and log an error
 
   if (!tokenSet.expires_in && !tokenSet.expires_at && !defaultAccessTokenExpiresInMillis) {
-    captureError("processTokenSet", new StackAssertionError(`No expires_in or expires_at received from OAuth provider ${providerName}. Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
+    captureError("processTokenSet", new HexclaveAssertionError(`No expires_in or expires_at received from OAuth provider ${providerName}. Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
   }
 
   return {
@@ -386,7 +386,7 @@ export abstract class OAuthBaseProvider {
         throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Stack Auth dashboard is correct.`);
       }
       if (isRetryableOAuthUserInfoError(error)) {
-        captureError("inner-oauth-callback-retryable-error", new StackAssertionError("Transient OAuth provider failure during callback exchange.", {
+        captureError("inner-oauth-callback-retryable-error", new HexclaveAssertionError("Transient OAuth provider failure during callback exchange.", {
           provider: this.constructor.name,
           params,
           cause: error,
@@ -398,11 +398,11 @@ export abstract class OAuthBaseProvider {
         const missingScope = scopeMatch ? scopeMatch[1] : null;
         throw new StatusError(400, `The OAuth provider does not allow the requested scope${missingScope ? ` "${missingScope}"` : ""}. Please ensure the scope is configured correctly in the provider's dashboard.`);
       }
-      throw new StackAssertionError(`Inner OAuth callback failed due to error: ${error}`, { params, cause: error });
+      throw new HexclaveAssertionError(`Inner OAuth callback failed due to error: ${error}`, { params, cause: error });
     }
 
     if ('error' in tokenSet) {
-      throw new StackAssertionError(`Inner OAuth callback failed due to error: ${tokenSet.error}, ${tokenSet.error_description}`, { params, tokenSet });
+      throw new HexclaveAssertionError(`Inner OAuth callback failed due to error: ${tokenSet.error}, ${tokenSet.error_description}`, { params, tokenSet });
     }
     tokenSet = processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis);
 
@@ -420,7 +420,7 @@ export abstract class OAuthBaseProvider {
     });
 
     if (userInfoResult.status === "error") {
-      captureError("oauth-userinfo-retry-exhausted", new StackAssertionError("Failed to fetch OAuth user info after retries.", {
+      captureError("oauth-userinfo-retry-exhausted", new HexclaveAssertionError("Failed to fetch OAuth user info after retries.", {
         attempts: userInfoResult.attempts,
         provider: this.constructor.name,
         cause: userInfoResult.error,
@@ -475,7 +475,7 @@ export abstract class OAuthBaseProvider {
       }
     }
 
-    throw new StackAssertionError("OAuth access token refresh finished without a result. This should never happen because the refresh loop either returns a result or throws.");
+    throw new HexclaveAssertionError("OAuth access token refresh finished without a result. This should never happen because the refresh loop either returns a result or throws.");
   }
 
   // If the token can be revoked before it expires, override this method to make an API call to the provider to check if the token is valid

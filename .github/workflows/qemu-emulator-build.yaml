@@ -148,10 +148,12 @@ jobs:
       - name: Build stack-cli (for emulator CLI)
         if: matrix.arch == 'amd64'
         run: |
-          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...'
-          # Turbo's trailing `...` filter builds stack-cli AND its workspace
-          # deps (@stackframe/js, @stackframe/stack-shared, etc.) — stack-cli
-          # imports them at runtime from their dist/ outputs.
+          # Turbo's task graph for stack-cli#build includes
+          # @stackframe/dashboard#build:rde-standalone, which transitively
+          # depends on @stackframe/stack#build (via dashboard → stack).
+          # The pnpm filter must cover the dashboard dep tree too so that
+          # devDependencies like tailwindcss are installed for the build.
+          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...' --filter '@stackframe/dashboard...'
           pnpm exec turbo run build --filter='@stackframe/stack-cli...'
 
       - name: Start emulator and verify
@@ -267,10 +269,8 @@ jobs:
 
       - name: Install stack-cli deps + build
         run: |
-          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...'
-          # Turbo's trailing `...` filter builds stack-cli AND its workspace
-          # deps (@stackframe/js, @stackframe/stack-shared, etc.) — stack-cli
-          # imports them at runtime from their dist/ outputs.
+          # See "Build stack-cli" step comment for why dashboard filter is needed
+          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...' --filter '@stackframe/dashboard...'
           pnpm exec turbo run build --filter='@stackframe/stack-cli...'
 
       - name: Download built image

@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { internalEmailThemesCudHandlers } from "../cud";
 
 export const GET = internalEmailThemesCudHandlers.readHandler;
@@ -40,7 +40,7 @@ export const PATCH = createSmartRouteHandler({
 
     const updated = result.items.find((t) => t.id === id);
     if (!updated) {
-      throw new StackAssertionError("Theme was updated but could not be found afterwards", { id });
+      throw new HexclaveAssertionError("Theme was updated but could not be found afterwards", { id });
     }
     return {
       statusCode: 200,

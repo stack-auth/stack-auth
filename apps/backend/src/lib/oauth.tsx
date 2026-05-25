@@ -4,13 +4,13 @@ import { createOrUpgradeAnonymousUserWithRules, SignUpRuleOptions } from "@/lib/
 import { PrismaClientTransaction } from "@/prisma-client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 /**
  * Find an existing OAuth account for sign-in.
  *
  * @returns The existing account if found, or null if no account exists
- * @throws StackAssertionError if multiple accounts are found (should never happen)
+ * @throws HexclaveAssertionError if multiple accounts are found (should never happen)
  */
 export async function findExistingOAuthAccount(
   prisma: PrismaClientTransaction,
@@ -28,7 +28,7 @@ export async function findExistingOAuthAccount(
   });
 
   if (existingAccounts.length > 1) {
-    throw new StackAssertionError("Multiple accounts found for the same provider and account ID", {
+    throw new HexclaveAssertionError("Multiple accounts found for the same provider and account ID", {
       providerId,
       providerAccountId,
     });
@@ -45,7 +45,7 @@ export function getProjectUserIdFromOAuthAccount(
   account: Awaited<ReturnType<typeof findExistingOAuthAccount>>
 ): string {
   if (!account) {
-    throw new StackAssertionError("OAuth account is null");
+    throw new HexclaveAssertionError("OAuth account is null");
   }
   return account.projectUserId ?? throwErr("OAuth account exists but has no associated user");
 }
@@ -88,7 +88,7 @@ export async function handleOAuthEmailMergeStrategy(
 
         if (!emailVerified) {
           // TODO: Handle this case
-          const err = new StackAssertionError(
+          const err = new HexclaveAssertionError(
             "OAuth account merge strategy is set to link_method, but the NEW email is not verified. This is an edge case that we don't handle right now",
             { existingContactChannel, email, emailVerified }
           );

@@ -1,6 +1,6 @@
 "use client";
 
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { FilterUndefined, filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
@@ -201,7 +201,7 @@ function renderComponent(props: {
     }
     default: {
       if (Object.values(availablePaths).includes(path as any)) {
-        throw new StackAssertionError(`Path alias ${path} not included in switch statement, but in availablePaths?`, { availablePaths });
+        throw new HexclaveAssertionError(`Path alias ${path} not included in switch statement, but in availablePaths?`, { availablePaths });
       }
       for (const [key, value] of Object.entries(pathAliases)) {
         if (path.toLowerCase().replaceAll('-', '') === key.toLowerCase().replaceAll('-', '')) {
@@ -263,7 +263,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
 
   const shouldRedirectToPage = (name: keyof HandlerUrls): boolean => {
     const url = stackApp.urls[name];
-    const isCrossDomainLocalOauthCallback = name === "oauthCallback" && searchParams.stack_cross_domain_auth === "1";
+    const isCrossDomainLocalOauthCallback = name === "oauthCallback" && searchParams.hexclave_cross_domain_auth === "1";
     if (isCrossDomainLocalOauthCallback) {
       return false;
     }

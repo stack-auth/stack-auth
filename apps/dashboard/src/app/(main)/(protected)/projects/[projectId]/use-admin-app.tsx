@@ -2,7 +2,7 @@
 
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { StackAdminApp } from "@stackframe/stack";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { notFound, usePathname } from "next/navigation";
 import React from "react";
 
@@ -47,7 +47,7 @@ export function useAdminApp(projectId?: string) {
 export function useProjectId() {
   const pathname = usePathname();
   if (!pathname.startsWith("/projects/")) {
-    throw new StackAssertionError("useProjectId must be used within a project route");
+    throw new HexclaveAssertionError("useProjectId must be used within a project route");
   }
   const projectId = pathname.split("/")[2];
   return projectId;

@@ -4,7 +4,7 @@ import { niceFetch, STACK_BACKEND_BASE_URL } from '../../../../helpers';
 import { InternalApiKey, Project } from '../../../backend-helpers';
 
 
-const PORT_PREFIX = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || '81';
+const PORT_PREFIX = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || '81';
 export const POSTGRES_HOST = process.env.EXTERNAL_DB_TEST_HOST || `localhost:${PORT_PREFIX}28`;
 export const POSTGRES_USER = process.env.EXTERNAL_DB_TEST_USER || 'postgres';
 export const POSTGRES_PASSWORD = process.env.EXTERNAL_DB_TEST_PASSWORD || 'PASSWORD-PLACEHOLDER--uqfEC1hmmv';

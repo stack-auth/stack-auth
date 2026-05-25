@@ -3,7 +3,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { downloadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { promisify } from "node:util";
 import { gunzip as gunzipCb } from "node:zlib";
@@ -117,20 +117,20 @@ export const GET = createSmartRouteHandler({
           try {
             parsed = JSON.parse(new TextDecoder().decode(unzipped));
           } catch (e) {
-            throw new StackAssertionError("Failed to decode session replay chunk JSON", { cause: e });
+            throw new HexclaveAssertionError("Failed to decode session replay chunk JSON", { cause: e });
           }
 
           if (typeof parsed !== "object" || parsed === null) {
-            throw new StackAssertionError("Decoded session replay chunk is not an object");
+            throw new HexclaveAssertionError("Decoded session replay chunk is not an object");
           }
           if (parsed.session_replay_id !== sessionReplayId) {
-            throw new StackAssertionError("Decoded session replay chunk session_replay_id mismatch", {
+            throw new HexclaveAssertionError("Decoded session replay chunk session_replay_id mismatch", {
               expected: sessionReplayId,
               actual: parsed.session_replay_id,
             });
           }
           if (!Array.isArray(parsed.events)) {
-            throw new StackAssertionError("Decoded session replay chunk events is not an array");
+            throw new HexclaveAssertionError("Decoded session replay chunk events is not an array");
           }
           events = parsed.events as any[];
         }

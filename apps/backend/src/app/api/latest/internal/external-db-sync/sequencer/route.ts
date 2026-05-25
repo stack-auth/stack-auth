@@ -12,7 +12,7 @@ import {
   yupTuple,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
@@ -33,7 +33,7 @@ function getSequencerBatchSize(): number {
   if (!rawValue) return DEFAULT_BATCH_SIZE;
   const parsed = Number.parseInt(rawValue, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `${SEQUENCER_BATCH_SIZE_ENV} must be a positive integer. Received: ${JSON.stringify(rawValue)}`
     );
   }

@@ -2,7 +2,7 @@ import { SmartRouteHandler } from '@/route-handlers/smart-route-handler';
 import { CrudlOperation, EndpointDocumentation } from '@stackframe/stack-shared/dist/crud';
 import { WebhookEvent } from '@stackframe/stack-shared/dist/interface/webhooks';
 import { yupNumber, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { HttpMethod } from '@stackframe/stack-shared/dist/utils/http';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { deindent, stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
@@ -146,7 +146,7 @@ function parseRouteHandler(options: {
     }
 
     if (result) {
-      throw new StackAssertionError(deindent`
+      throw new HexclaveAssertionError(deindent`
         OpenAPI generator matched multiple overloads for audience ${options.audience} on endpoint ${options.method} ${options.path}.
         
         This does not necessarily mean there is a bug in the endpoint; the OpenAPI generator uses a heuristic to pick the allowed overloads, and may pick too many. Currently, this heuristic checks whether the request.auth.type property in the schema is a yup.string.oneOf(...) and matches it to the expected audience of the schema. If there are multiple overloads matching a single audience, for example because none of the overloads specify request.auth.type, the OpenAPI generator will not know which overload to generate specs for, and hence fails.
@@ -253,7 +253,7 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
 function toParameters(description: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>, path?: string) {
   const pathParams: string[] = path ? path.match(/{[^}]+}/g) || [] : [];
   if (!isSchemaObjectDescription(description)) {
-    throw new StackAssertionError('Parameters field must be an object schema', { actual: description });
+    throw new HexclaveAssertionError('Parameters field must be an object schema', { actual: description });
   }
 
   return Object.entries(description.fields).map(([key, field]) => {
@@ -275,15 +275,15 @@ function toParameters(description: yup.SchemaFieldDescription, crudOperation?: C
 
 function toHeaderParameters(description: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>) {
   if (!isSchemaObjectDescription(description)) {
-    throw new StackAssertionError('Parameters field must be an object schema', { actual: description });
+    throw new HexclaveAssertionError('Parameters field must be an object schema', { actual: description });
   }
 
   return Object.entries(description.fields).map(([key, tupleField]) => {
     if (!isSchemaTupleDescription(tupleField)) {
-      throw new StackAssertionError('Header field must be a tuple schema', { actual: tupleField, key });
+      throw new HexclaveAssertionError('Header field must be a tuple schema', { actual: tupleField, key });
     }
     if (tupleField.innerType.length !== 1) {
-      throw new StackAssertionError('Header fields of length !== 1 not currently supported', { actual: tupleField, key });
+      throw new HexclaveAssertionError('Header fields of length !== 1 not currently supported', { actual: tupleField, key });
     }
     const field = tupleField.innerType[0];
     const meta = "meta" in field ? field.meta : {};
@@ -313,7 +313,7 @@ function toSchema(description: yup.SchemaFieldDescription, crudOperation?: Capit
       items: toSchema(description.innerType, crudOperation),
     };
   } else {
-    throw new StackAssertionError(`Unsupported schema type in toSchema: ${description.type}`, { actual: description });
+    throw new HexclaveAssertionError(`Unsupported schema type in toSchema: ${description.type}`, { actual: description });
   }
 }
 
@@ -326,7 +326,7 @@ function toRequired(description: yup.SchemaFieldDescription, crudOperation?: Cap
   } else if (isSchemaArrayDescription(description)) {
     res = [];
   } else {
-    throw new StackAssertionError(`Unsupported schema type in toRequired: ${description.type}`, { actual: description });
+    throw new HexclaveAssertionError(`Unsupported schema type in toRequired: ${description.type}`, { actual: description });
   }
   if (res.length === 0) return undefined;
   return res;
@@ -334,7 +334,7 @@ function toRequired(description: yup.SchemaFieldDescription, crudOperation?: Cap
 
 function toExamples(description: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>) {
   if (!isSchemaObjectDescription(description)) {
-    throw new StackAssertionError('Examples field must be an object schema', { actual: description });
+    throw new HexclaveAssertionError('Examples field must be an object schema', { actual: description });
   }
 
   return Object.entries(description.fields).reduce((acc, [key, field]) => {
@@ -391,15 +391,15 @@ export function parseOverload(options: {
 
   for (const { responseDesc, responseTypeDesc, statusCodeDesc } of options.responseVariants) {
     if (!isSchemaStringDescription(responseTypeDesc)) {
-      throw new StackAssertionError(`Expected response type to be a string`, { actual: responseTypeDesc, options });
+      throw new HexclaveAssertionError(`Expected response type to be a string`, { actual: responseTypeDesc, options });
     }
     if (responseTypeDesc.oneOf.length !== 1) {
-      throw new StackAssertionError(`Expected response type to have exactly one value`, { actual: responseTypeDesc, options });
+      throw new HexclaveAssertionError(`Expected response type to have exactly one value`, { actual: responseTypeDesc, options });
     }
     const bodyType = responseTypeDesc.oneOf[0];
 
     if (!isSchemaNumberDescription(statusCodeDesc)) {
-      throw new StackAssertionError('Expected status code to be a number', { actual: statusCodeDesc, options });
+      throw new HexclaveAssertionError('Expected status code to be a number', { actual: statusCodeDesc, options });
     }
 
     // Get all status codes or use 200 as default if none specified
@@ -425,7 +425,7 @@ export function parseOverload(options: {
         }
         case 'text': {
           if (!responseDesc || !isSchemaStringDescription(responseDesc)) {
-            throw new StackAssertionError('Expected response body of bodyType=="text" to be a string schema', { actual: responseDesc });
+            throw new HexclaveAssertionError('Expected response body of bodyType=="text" to be a string schema', { actual: responseDesc });
           }
           allResponses[status] = {
             description: 'Successful response',
@@ -468,7 +468,7 @@ export function parseOverload(options: {
           break;
         }
         default: {
-          throw new StackAssertionError(`Unsupported body type: ${bodyType}`);
+          throw new HexclaveAssertionError(`Unsupported body type: ${bodyType}`);
         }
       }
     }

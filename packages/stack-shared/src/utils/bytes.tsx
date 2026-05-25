@@ -1,4 +1,4 @@
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 
 const crockfordAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const crockfordReplacements = new Map([
@@ -21,7 +21,7 @@ import.meta.vitest?.test("toHexString", ({ expect }) => {
 
 export function getBase32CharacterFromIndex(index: number): string {
   if (index < 0 || index >= crockfordAlphabet.length) {
-    throw new StackAssertionError(`Invalid base32 index: ${index}`);
+    throw new HexclaveAssertionError(`Invalid base32 index: ${index}`);
   }
   return crockfordAlphabet[index];
 }
@@ -33,11 +33,11 @@ import.meta.vitest?.test("getBase32CharacterFromIndex", ({ expect }) => {
 
 export function getBase32IndexFromCharacter(character: string): number {
   if (character.length !== 1) {
-    throw new StackAssertionError(`Invalid base32 character: ${character}`);
+    throw new HexclaveAssertionError(`Invalid base32 character: ${character}`);
   }
   const index = crockfordAlphabet.indexOf(character.toUpperCase());
   if (index === -1) {
-    throw new StackAssertionError(`Invalid base32 character: ${character}`);
+    throw new HexclaveAssertionError(`Invalid base32 character: ${character}`);
   }
   return index;
 }
@@ -65,7 +65,7 @@ export function encodeBase32(input: Uint8Array): string {
 
   // sanity check
   if (!isBase32(output)) {
-    throw new StackAssertionError("Invalid base32 output; this should never happen");
+    throw new HexclaveAssertionError("Invalid base32 output; this should never happen");
   }
 
   return output;
@@ -80,7 +80,7 @@ import.meta.vitest?.test("encodeBase32", ({ expect }) => {
 });
 export function decodeBase32(input: string): Uint8Array<ArrayBuffer> {
   if (!isBase32(input)) {
-    throw new StackAssertionError("Invalid base32 string");
+    throw new HexclaveAssertionError("Invalid base32 string");
   }
 
   const output = new Uint8Array((input.length * 5 / 8) | 0);
@@ -155,11 +155,11 @@ import.meta.vitest?.test("encodeBase64/decodeBase64", ({ expect }) => {
     // expect(...) is pretty slow with long inputs, so we throw our own assertions
     const encoded = encodeBase64(input);
     if (encoded !== expected) {
-      throw new StackAssertionError(`encodeBase64 test case ${i} failed`);
+      throw new HexclaveAssertionError(`encodeBase64 test case ${i} failed`);
     }
     const decoded = decodeBase64(encoded);
     if (decoded.some((b, i) => b !== input[i])) {
-      throw new StackAssertionError(`decodeBase64 test case ${i} failed`);
+      throw new HexclaveAssertionError(`decodeBase64 test case ${i} failed`);
     }
   }
 
@@ -179,7 +179,7 @@ export function encodeBase64Url(input: Uint8Array): string {
 
 export function decodeBase64Url(input: string): Uint8Array<ArrayBuffer> {
   if (!isBase64Url(input)) {
-    throw new StackAssertionError("Invalid base64url string");
+    throw new HexclaveAssertionError("Invalid base64url string");
   }
 
   // Handle empty string case
@@ -214,7 +214,7 @@ export function decodeBase64OrBase64Url(input: string): Uint8Array<ArrayBuffer> 
   } else if (isBase64(input)) {
     return decodeBase64(input);
   } else {
-    throw new StackAssertionError("Invalid base64 or base64url string");
+    throw new HexclaveAssertionError("Invalid base64 or base64url string");
   }
 }
 import.meta.vitest?.test("decodeBase64OrBase64Url", ({ expect }) => {

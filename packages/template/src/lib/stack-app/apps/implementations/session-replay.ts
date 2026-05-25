@@ -87,7 +87,11 @@ export function analyticsOptionsFromJson(json: AnalyticsOptions | undefined): An
 
 // ---------- Recording internals ----------
 
-const LOCAL_STORAGE_PREFIX = "stack:session-replay:v1";
+// Hexclave rebrand: canonical localStorage prefix (colon delimiters preserved).
+const LOCAL_STORAGE_PREFIX = "hexclave:session-replay:v1";
+// Hexclave rebrand: legacy prefix — dual-read only, so a recording session active
+// across an SDK upgrade is not orphaned. Never written.
+const LEGACY_LOCAL_STORAGE_PREFIX = "stack:session-replay:v1";
 const IDLE_TTL_MS = 3 * 60 * 1000;
 
 const FLUSH_INTERVAL_MS = 5_000;
@@ -118,12 +122,20 @@ export function makeStorageKey(projectId: string) {
   return `${LOCAL_STORAGE_PREFIX}:${projectId}`;
 }
 
+// Hexclave rebrand: legacy key, dual-read only (never written).
+export function makeLegacyStorageKey(projectId: string) {
+  return `${LEGACY_LOCAL_STORAGE_PREFIX}:${projectId}`;
+}
+
 export function generateUuid() {
   return crypto.randomUUID();
 }
 
-export function getOrRotateSession(options: { key: string, nowMs: number }): StoredSession {
-  const existing = safeParseStoredSession(localStorage.getItem(options.key));
+export function getOrRotateSession(options: { key: string, legacyKey?: string, nowMs: number }): StoredSession {
+  // Hexclave rebrand: prefer the new key; fall back to the legacy key so a
+  // recording session active across an SDK upgrade is not orphaned.
+  const existing = safeParseStoredSession(localStorage.getItem(options.key))
+    ?? (options.legacyKey ? safeParseStoredSession(localStorage.getItem(options.legacyKey)) : null);
   if (existing && options.nowMs - existing.last_activity_ms <= IDLE_TTL_MS) {
     return existing;
   }
@@ -157,6 +169,8 @@ export class SessionRecorder {
   private _flushInProgress = false;
   private readonly _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
+  // Hexclave rebrand: legacy key used for dual-read fallback only.
+  private readonly _legacyStorageKey: string;
   private readonly _deps: SessionRecorderDeps;
   private readonly _replayOptions: AnalyticsReplayOptions;
 
@@ -165,6 +179,7 @@ export class SessionRecorder {
     this._replayOptions = replayOptions;
     this._sessionReplaySegmentId = generateUuid();
     this._storageKey = makeStorageKey(deps.projectId);
+    this._legacyStorageKey = makeLegacyStorageKey(deps.projectId);
   }
 
   /**
@@ -199,7 +214,7 @@ export class SessionRecorder {
   }
 
   private _persistActivity(nowMs: number): StoredSession {
-    const stored = getOrRotateSession({ key: this._storageKey, nowMs });
+    const stored = getOrRotateSession({ key: this._storageKey, legacyKey: this._legacyStorageKey, nowMs });
     if (nowMs - this._lastPersistActivity < 5_000) return stored;
     this._lastPersistActivity = nowMs;
     const updated: StoredSession = { ...stored, last_activity_ms: nowMs };
@@ -217,7 +232,7 @@ export class SessionRecorder {
     if (this._flushInProgress) return;
 
     const nowMs = Date.now();
-    const stored = getOrRotateSession({ key: this._storageKey, nowMs });
+    const stored = getOrRotateSession({ key: this._storageKey, legacyKey: this._legacyStorageKey, nowMs });
 
     const batchId = generateUuid();
     const payload = {

@@ -13,7 +13,7 @@ function envOrDevDefault(value: string | undefined, devDefault: string): string 
   return value;
 }
 
-const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
 
 const projectId = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_PROJECT_ID, "internal");
 const publishableClientKey = envOrDevDefault(

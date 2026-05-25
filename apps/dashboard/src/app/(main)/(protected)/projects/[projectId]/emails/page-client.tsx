@@ -597,6 +597,7 @@ function EmailLogCard() {
           onRowClick={(row) => {
             router.push(`email-viewer/${row.id}`);
           }}
+          fillHeight={false}
         />
       </div>
     </DesignAnalyticsCard>

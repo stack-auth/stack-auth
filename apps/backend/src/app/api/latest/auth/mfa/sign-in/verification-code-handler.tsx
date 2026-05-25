@@ -6,7 +6,7 @@ import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { signInResponseSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const mfaVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -48,7 +48,7 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
     });
     const totpSecret = user.totpSecret;
     if (!totpSecret) {
-      throw new StackAssertionError("User does not have a TOTP secret", { user });
+      throw new HexclaveAssertionError("User does not have a TOTP secret", { user });
     }
     const isTotpValid = verifyTOTP(totpSecret, 30, 6, body.totp);
     if (!isTotpValid) {

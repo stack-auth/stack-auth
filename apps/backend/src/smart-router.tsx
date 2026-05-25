@@ -1,5 +1,5 @@
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { numberCompare } from "@stackframe/stack-shared/dist/utils/numbers";
 
 
@@ -76,10 +76,10 @@ export const SmartRouter = {
         } as const;
       } else {
         if (!allFiles.includes(`src/app/api/migrations/${version}/beta-changes.txt`)) {
-          throw new StackAssertionError(`API version ${version} does not have a beta-changes.txt file. The beta-changes.txt file should contain the changes since the last beta release.`);
+          throw new HexclaveAssertionError(`API version ${version} does not have a beta-changes.txt file. The beta-changes.txt file should contain the changes since the last beta release.`);
         }
         if (!version.includes("beta") && !allFiles.includes(`src/app/api/migrations/${version}/changes.txt`)) {
-          throw new StackAssertionError(`API version ${version} does not have a changes.txt file. The changes.txt file should contain the changes since the last full (non-beta) release.`);
+          throw new HexclaveAssertionError(`API version ${version} does not have a changes.txt file. The changes.txt file should contain the changes since the last full (non-beta) release.`);
         }
         return {
           name: version,
@@ -97,7 +97,7 @@ export const SmartRouter = {
 
 function parseApiVersionStringToArray(version: string): [number, number] {
   const matchResult = version.match(/^v(\d+)(?:beta(\d+))?$/);
-  if (!matchResult) throw new StackAssertionError(`Invalid API version string: ${version}`);
+  if (!matchResult) throw new HexclaveAssertionError(`Invalid API version string: ${version}`);
   return [+matchResult[1], matchResult[2] === "" ? Number.POSITIVE_INFINITY : +matchResult[2]];
 }
 
@@ -118,14 +118,14 @@ function matchPath(path: string, toMatchWith: string): Record<string, string | s
 
   if (toMatchWithFirst.startsWith("[[...") && toMatchWithFirst.endsWith("]]")) {
     if (modifiedToMatchWith.includes("/")) {
-      throw new StackAssertionError("Optional catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
+      throw new HexclaveAssertionError("Optional catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
     }
     return {
       [toMatchWithFirst.slice(5, -2)]: modifiedPath === "" ? [] : modifiedPath.split("/"),
     };
   } else if (toMatchWithFirst.startsWith("[...") && toMatchWithFirst.endsWith("]")) {
     if (modifiedToMatchWith.includes("/")) {
-      throw new StackAssertionError("Catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
+      throw new HexclaveAssertionError("Catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
     }
     if (modifiedPath === "") return false;
     return {

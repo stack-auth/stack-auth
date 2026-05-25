@@ -2,7 +2,7 @@ import { traceSpan } from '@/utils/telemetry';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
-import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
 import { Freestyle as FreestyleClient } from 'freestyle-sandboxes';
@@ -29,10 +29,10 @@ function createFreestyleEngine(): JsEngine {
 
       if (apiKey === "mock_stack_freestyle_key") {
         if (!["development", "test"].includes(getNodeEnvironment()) && !isLocalEmulatorEnabled()) {
-          throw new StackAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
+          throw new HexclaveAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
         }
         if (!baseUrl) {
-          const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+          const prefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
           baseUrl = `http://localhost:${prefix}22`;
         }
       }
@@ -48,7 +48,7 @@ function createFreestyleEngine(): JsEngine {
       });
 
       if (response.result === undefined) {
-        throw new StackAssertionError("Freestyle execution returned undefined result", { response, innerCode: code, innerOptions: options });
+        throw new HexclaveAssertionError("Freestyle execution returned undefined result", { response, innerCode: code, innerOptions: options });
       }
 
       return response.result as ExecuteResult;
@@ -81,7 +81,7 @@ function createVercelSandboxEngine(): JsEngine {
           const installResult = await sandbox.runCommand('npm', ['install', '--no-save', ...packages]);
 
           if (installResult.exitCode !== 0) {
-            throw new StackAssertionError("Failed to install packages in Vercel Sandbox", { exitCode: installResult.exitCode, innerCode: code, innerOptions: options });
+            throw new HexclaveAssertionError("Failed to install packages in Vercel Sandbox", { exitCode: installResult.exitCode, innerCode: code, innerOptions: options });
           }
         }
 
@@ -102,19 +102,19 @@ function createVercelSandboxEngine(): JsEngine {
         const runResult = await sandbox.runCommand('node', ['/vercel/sandbox/runner.mjs']);
 
         if (runResult.exitCode !== 0) {
-          throw new StackAssertionError("Vercel Sandbox runner exited with non-zero code", { innerCode: code, innerOptions: options, exitCode: runResult.exitCode });
+          throw new HexclaveAssertionError("Vercel Sandbox runner exited with non-zero code", { innerCode: code, innerOptions: options, exitCode: runResult.exitCode });
         }
 
         const resultBuffer = await sandbox.readFileToBuffer({ path: resultPath });
         if (resultBuffer === null) {
-          throw new StackAssertionError("Result file not found in Vercel Sandbox", { resultPath, innerCode: code, innerOptions: options });
+          throw new HexclaveAssertionError("Result file not found in Vercel Sandbox", { resultPath, innerCode: code, innerOptions: options });
         }
         const resultJson = resultBuffer.toString();
 
         try {
           return JSON.parse(resultJson);
         } catch (e: any) {
-          throw new StackAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e, innerCode: code, innerOptions: options });
+          throw new HexclaveAssertionError("Failed to parse result from Vercel Sandbox", { resultJson, cause: e, innerCode: code, innerOptions: options });
         }
       } finally {
         await sandbox.stop();
@@ -151,7 +151,7 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
       return await runWithFallback(code, options);
     } else {
       if (getNodeEnvironment().includes("prod") && !isLocalEmulatorEnabled()) {
-        throw new StackAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
+        throw new HexclaveAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
       }
 
       return await runWithoutFallback(code, options);
@@ -192,7 +192,7 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   }
 
   if (failures.length > 0) {
-    captureError("js-execution-sanity-test-failures", new StackAssertionError(
+    captureError("js-execution-sanity-test-failures", new HexclaveAssertionError(
       `JS execution sanity test: ${failures.length} engine(s) failed`,
       { failures, successfulEngines: results.map(r => r.engine), innerCode: code, innerOptions: options }
     ));
@@ -205,7 +205,7 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   const referenceResult = results[0].result as ExecuteResult;
   const allEqual = results.every(r => areResultsEqual(r.result as ExecuteResult, referenceResult));
   if (!allEqual) {
-    captureError("js-execution-sanity-test-mismatch", new StackAssertionError(
+    captureError("js-execution-sanity-test-mismatch", new HexclaveAssertionError(
       "JS execution sanity test: engines returned different results",
       { results, innerCode: code, innerOptions: options }
     ));
@@ -234,7 +234,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
     return retryResult.data;
   }
 
-  captureError(`js-execution-freestyle-failed`, new StackAssertionError(
+  captureError(`js-execution-freestyle-failed`, new HexclaveAssertionError(
     `JS execution freestyle engine failed, falling back to vercel sandbox engine`,
     { cause: retryResult.error, innerCode: code, innerOptions: options }
   ));
@@ -243,11 +243,11 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
     const result = await vercelSandboxEngine.execute(code, options);
     return result;
   } catch (error){
-      captureError(`js-execution-vercel-sandbox-failed`, new StackAssertionError(
+      captureError(`js-execution-vercel-sandbox-failed`, new HexclaveAssertionError(
         `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
         { cause: error, innerCode: code, innerOptions: options }
       ));
-      throw new StackAssertionError("Vercel Sandbox service unavailable", { cause: error, innerCode: code, innerOptions: options });
+      throw new HexclaveAssertionError("Vercel Sandbox service unavailable", { cause: error, innerCode: code, innerOptions: options });
   }
 }
 
@@ -257,6 +257,6 @@ async function runWithoutFallback(code: string, options: ExecuteJavascriptOption
     const result = await freestyleEngine.execute(code, options);
     return result;
   } catch (error) {
-    throw new StackAssertionError("Freestyle rendering service unavailable when running without fallback", { cause: error, innerCode: code, innerOptions: options });
+    throw new HexclaveAssertionError("Freestyle rendering service unavailable when running without fallback", { cause: error, innerCode: code, innerOptions: options });
   }
 }

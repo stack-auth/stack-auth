@@ -2,6 +2,9 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: Which Hexclave rename compatibility layers should be avoided in PR #1475 follow-ups?
+A: Do not keep backwards compatibility for the MCP tool name, cross-domain auth query parameter names, `NEXT_PUBLIC_STACK_PORT_PREFIX`, or a parallel `hexclaveAppInternalsSymbol`. For refresh/access cookies, read both legacy Stack and new Hexclave cookie names, but only write the canonical Hexclave cookies.
+
 ## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
 A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
 
@@ -535,3 +538,18 @@ A: The workflow needs a full checkout using the fine-grained `NPM_PUBLISH_VERSIO
 
 ## Q: How should the Mintlify docs homepage reuse the generated setup prompt?
 A: Import `generatedSetupPromptText` from `docs-mintlify/snippets/home-prompt-island.jsx` in `docs-mintlify/index.mdx`, render it directly in a `<pre><code>{generatedSetupPromptText}</code></pre>` block, and keep the home copy button wired to that imported value. Clipboard failures can happen when the browser document is not focused, so the button should surface the actual error text instead of only saying "Copy failed".
+
+## Q: Where should Mintlify docs for restricted users live?
+A: Put restricted-user docs at `docs-mintlify/guides/apps/authentication/restricted-users.mdx` and register the page in the Authentication group in `docs-mintlify/docs.json`. The page should cover `includeRestricted: true`, `user.isRestricted`, `user.restrictedReason`, anonymous users being restricted by definition, and JWKS `include_restricted=true` for services that intentionally accept restricted-user tokens.
+
+## Q: How should e2e tests switch to a newly created project?
+A: `Project.createAndSwitch` should leave `backendContext.projectKeys` set to real project API keys, not only `{ projectId, adminAccessToken }`. Internal admin access tokens are regular short-lived access tokens; keeping one in the default project context makes later server/admin requests fail with `ADMIN_ACCESS_TOKEN_EXPIRED` or validate the token against the wrong project.
+
+## Q: How should backend SMTP SSRF checks be rolled out?
+A: Keep the real outbound SMTP policy in `apps/backend/src/private/implementation/smtp-egress-policy.ts`, export it through `apps/backend/src/private/index.ts`, and provide a simple `implementation-fallback` function for self-hosters. It should allow only SMTP ports 25, 465, 587, 2465, 2587, and 2525, reject internal IP literals or DNS resolutions, and initially run report-only from `emails-low-level.tsx` via `captureError("smtp-egress-policy-report-only", ...)` before enforcing hard failures.
+
+## Q: What project-level `sourceOfTruth` config is supported?
+A: Project config overrides only support the hosted `sourceOfTruth` shape. Legacy external source-of-truth overrides such as Postgres or Neon are removed by `migrateConfigOverride("project", ...)`, while raw schema validation should reject them.
+
+## Q: How should managed email onboarding e2e tests wait for mock verification?
+A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path flips the domain to `verified` asynchronously through `runAsynchronously`, so tests should poll the managed-onboarding check endpoint until the expected status appears.

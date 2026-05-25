@@ -3,7 +3,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { decryptWithKms } from "@stackframe/stack-shared/dist/helpers/vault/server-side";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -55,7 +55,7 @@ export const POST = createSmartRouteHandler({
 
     const encryptedData = entry.encrypted as { edkBase64?: string, ciphertextBase64?: string };
     if (!encryptedData.edkBase64 || !encryptedData.ciphertextBase64) {
-      throw new StackAssertionError("Corrupted encrypted data", encryptedData);
+      throw new HexclaveAssertionError("Corrupted encrypted data", encryptedData);
     }
 
     const decryptedValue = await decryptWithKms({

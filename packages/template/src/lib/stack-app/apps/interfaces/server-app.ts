@@ -124,4 +124,8 @@ export type StackServerAppConstructor = {
   >(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>): StackServerApp<HasTokenStore, ProjectId>,
   new (options: StackServerAppConstructorOptions<boolean, string>): StackServerApp<boolean, string>,
 };
-export const StackServerApp: StackServerAppConstructor = _StackServerAppImpl;
+export type HexclaveServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackServerAppConstructorOptions<HasTokenStore, ProjectId>;
+export type HexclaveServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackServerApp<HasTokenStore, ProjectId>;
+export type HexclaveServerAppConstructor = StackServerAppConstructor;
+export const HexclaveServerApp: HexclaveServerAppConstructor = _StackServerAppImpl;
+export const StackServerApp: StackServerAppConstructor = HexclaveServerApp;

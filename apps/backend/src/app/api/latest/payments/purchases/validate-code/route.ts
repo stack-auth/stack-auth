@@ -6,7 +6,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { inlineProductSchema, urlSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -53,7 +53,7 @@ export const POST = createSmartRouteHandler({
     const verificationCode = await purchaseUrlVerificationCodeHandler.validateCode(body.full_code);
     const tenancy = await getTenancy(verificationCode.data.tenancyId);
     if (!tenancy) {
-      throw new StackAssertionError(`No tenancy found for given tenancyId`);
+      throw new HexclaveAssertionError(`No tenancy found for given tenancyId`);
     }
     if (body.return_url && !validateRedirectUrl(body.return_url, tenancy)) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();

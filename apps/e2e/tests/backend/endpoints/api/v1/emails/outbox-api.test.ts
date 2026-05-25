@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { describe } from "vitest";
@@ -674,7 +674,7 @@ describe("email outbox API", () => {
           break;
         } else {
           if (i >= 50) {
-            throw new StackAssertionError(`Timeout waiting for email in the outbox`, {
+            throw new HexclaveAssertionError(`Timeout waiting for email in the outbox`, {
               outboxEmails: await getOutboxEmails(),
             });
           }
@@ -948,7 +948,7 @@ describe("email outbox API", () => {
         });
         if (finalGetResponse.body.status === "sent") break;
         if (i >= 50) {
-          throw new StackAssertionError(`Timed out waiting for email to be sent after unpause`, {
+          throw new HexclaveAssertionError(`Timed out waiting for email to be sent after unpause`, {
             status: finalGetResponse.body.status,
           });
         }

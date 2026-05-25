@@ -1,6 +1,6 @@
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@stackframe/stack-shared/dist/utils/node-http";
 import { NextRequest, NextResponse } from "next/server";
 import { createOidcProvider } from "../../../../idp";
@@ -30,7 +30,7 @@ function getOidcCallbackPromise() {
 const handler = handleApiRequest(async (req: NextRequest) => {
   const newUrl = req.url.replace(pathPrefix, "");
   if (newUrl === req.url) {
-    throw new StackAssertionError("No path prefix found in request URL. Is the pathPrefix correct?", { newUrl, url: req.url, pathPrefix });
+    throw new HexclaveAssertionError("No path prefix found in request URL. Is the pathPrefix correct?", { newUrl, url: req.url, pathPrefix });
   }
   const newHeaders = new Headers(req.headers);
   const incomingBody = new Uint8Array(await req.arrayBuffer());

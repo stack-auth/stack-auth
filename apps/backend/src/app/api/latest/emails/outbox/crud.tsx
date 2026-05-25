@@ -6,7 +6,7 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { emailOutboxCrud, EmailOutboxCrud } from "@stackframe/stack-shared/dist/interface/crud/email-outbox";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
@@ -17,7 +17,7 @@ import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
  */
 function apiRecipientToDb(apiRecipient: EmailOutboxCrud["Server"]["Update"]["to"]): EmailOutboxRecipient {
   if (!apiRecipient) {
-    throw new StackAssertionError("Recipient is required");
+    throw new HexclaveAssertionError("Recipient is required");
   }
   switch (apiRecipient.type) {
     case "user-primary-email": {
@@ -30,7 +30,7 @@ function apiRecipientToDb(apiRecipient: EmailOutboxCrud["Server"]["Update"]["to"
       return { type: "custom-emails", emails: apiRecipient.emails };
     }
     default: {
-      throw new StackAssertionError("Unknown recipient type", { apiRecipient });
+      throw new HexclaveAssertionError("Unknown recipient type", { apiRecipient });
     }
   }
 }
@@ -284,7 +284,7 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
       };
     }
   }
-  throw new StackAssertionError(`Unknown email outbox status: ${status}`, { status });
+  throw new HexclaveAssertionError(`Unknown email outbox status: ${status}`, { status });
 }
 
 const MAX_LIMIT = 100;

@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getOrCreateFeaturebaseUserFromAuth, requireFeaturebaseApiKey } from "@/lib/featurebase";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 // POST /api/latest/internal/feature-requests/[featureRequestId]/upvote
 export const POST = createSmartRouteHandler({
@@ -52,14 +52,14 @@ export const POST = createSmartRouteHandler({
     try {
       data = await response.json();
     } catch (error) {
-      if (error instanceof StackAssertionError) {
+      if (error instanceof HexclaveAssertionError) {
         throw error;
       }
-      throw new StackAssertionError("Failed to parse Featurebase upvote response", { cause: error });
+      throw new HexclaveAssertionError("Failed to parse Featurebase upvote response", { cause: error });
     }
 
     if (!response.ok) {
-      throw new StackAssertionError(`Featurebase upvote API error: ${data.error || 'Failed to toggle upvote'}`, { data });
+      throw new HexclaveAssertionError(`Featurebase upvote API error: ${data.error || 'Failed to toggle upvote'}`, { data });
     }
 
     return {

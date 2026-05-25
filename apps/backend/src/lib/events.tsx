@@ -6,7 +6,7 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
 import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
@@ -220,10 +220,10 @@ export async function logEvent<T extends EventType[]>(
   for (const eventType of eventTypes) {
     if (eventType.id.startsWith("$")) {
       if (!systemEventTypesById.has(eventType.id as any)) {
-        throw new StackAssertionError(`Invalid system event type: ${eventType.id}`, { eventType });
+        throw new HexclaveAssertionError(`Invalid system event type: ${eventType.id}`, { eventType });
       }
     } else {
-      throw new StackAssertionError(`Non-system event types are not supported yet`, { eventType });
+      throw new HexclaveAssertionError(`Non-system event types are not supported yet`, { eventType });
     }
   }
 
@@ -247,7 +247,7 @@ export async function logEvent<T extends EventType[]>(
       data = await eventType.dataSchema.validate(data, { strict: true, stripUnknown: false });
     } catch (error) {
       if (error instanceof yup.ValidationError) {
-        throw new StackAssertionError(`Invalid event data for event type: ${eventType.id}`, { eventType, data, originalData, originalEventTypes: eventTypes, cause: error });
+        throw new HexclaveAssertionError(`Invalid event data for event type: ${eventType.id}`, { eventType, data, originalData, originalEventTypes: eventTypes, cause: error });
       }
       throw error;
     }
@@ -318,11 +318,11 @@ export async function logEvent<T extends EventType[]>(
         const refreshTokenId =
           typeof dataRecord === "object" && dataRecord && typeof dataRecord.refreshTokenId === "string"
             ? dataRecord.refreshTokenId
-            : throwErr(new StackAssertionError("refreshTokenId is required for $token-refresh ClickHouse event", { dataRecord }));
+            : throwErr(new HexclaveAssertionError("refreshTokenId is required for $token-refresh ClickHouse event", { dataRecord }));
         const isAnonymous =
           typeof dataRecord === "object" && dataRecord && typeof dataRecord.isAnonymous === "boolean"
             ? dataRecord.isAnonymous
-            : throwErr(new StackAssertionError("isAnonymous is required for $token-refresh ClickHouse event", { dataRecord }));
+            : throwErr(new HexclaveAssertionError("isAnonymous is required for $token-refresh ClickHouse event", { dataRecord }));
         const ipInfo =
           typeof dataRecord === "object" && dataRecord
             ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
@@ -336,11 +336,11 @@ export async function logEvent<T extends EventType[]>(
         const ruleId =
           typeof dataRecord === "object" && dataRecord && typeof dataRecord.ruleId === "string"
             ? dataRecord.ruleId
-            : throwErr(new StackAssertionError("ruleId is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+            : throwErr(new HexclaveAssertionError("ruleId is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
         const action =
           typeof dataRecord === "object" && dataRecord && typeof dataRecord.action === "string"
             ? dataRecord.action
-            : throwErr(new StackAssertionError("action is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+            : throwErr(new HexclaveAssertionError("action is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
         const email =
           typeof dataRecord === "object" && dataRecord
             ? (dataRecord.email as string | null | undefined) ?? null
@@ -361,11 +361,11 @@ export async function logEvent<T extends EventType[]>(
           oauth_provider: oauthProvider,
         };
       } else {
-        throw new StackAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
+        throw new HexclaveAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
       }
 
       if (!projectId) {
-        throw new StackAssertionError(
+        throw new HexclaveAssertionError(
           `projectId is required for ClickHouse event insertion (${matchingEventType.id})`,
           { matchingEventType, dataRecord }
         );

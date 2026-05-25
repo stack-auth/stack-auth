@@ -5,7 +5,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getAllPaymentMethodIds, getAllPaymentMethodNames, getPaymentMethodName, isKnownPaymentMethod } from "@stackframe/stack-shared/dist/payments/payment-methods";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 const METADATA_FIELDS = new Set([
@@ -71,7 +71,7 @@ export const GET = createSmartRouteHandler({
     const platformConfig = configs.data.find(c => c.application || c.parent);
     const defaultConfig = platformConfig || configs.data.find(c => c.is_default);
     if (!defaultConfig) {
-      throw new StackAssertionError("No payment method configuration found for Stripe account", {
+      throw new HexclaveAssertionError("No payment method configuration found for Stripe account", {
         stripeAccountId: project.stripeAccountId,
         configCount: configs.data.length,
       });

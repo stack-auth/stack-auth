@@ -3,13 +3,13 @@ import { decryptValue, encryptValue, hashKey } from "../helpers/vault/client-sid
 import { KnownErrors } from "../known-errors";
 import { inlineProductSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
-import { StackAssertionError } from "../utils/errors";
+import { HexclaveAssertionError } from "../utils/errors";
 import { filterUndefined } from "../utils/objects";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import {
   ClientInterfaceOptions,
-  StackClientInterface
+  HexclaveClientInterface
 } from "./client-interface";
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
@@ -38,7 +38,7 @@ export type ServerAuthApplicationOptions = (
   )
 );
 
-export class StackServerInterface extends StackClientInterface {
+export class HexclaveServerInterface extends HexclaveClientInterface {
   constructor(public override options: ServerAuthApplicationOptions) {
     super(options);
   }
@@ -49,7 +49,8 @@ export class StackServerInterface extends StackClientInterface {
       {
         ...options,
         headers: {
-          "x-stack-secret-server-key": "secretServerKey" in this.options ? this.options.secretServerKey : "",
+          // Hexclave rebrand: emit x-hexclave-* request header; the backend proxy dual-accepts both names.
+          "x-hexclave-secret-server-key": "secretServerKey" in this.options ? this.options.secretServerKey : "",
           ...options.headers,
         },
       },
@@ -185,12 +186,12 @@ export class StackServerInterface extends StackClientInterface {
       if (KnownErrors.CannotGetOwnUserWithoutUser.isInstance(responseOrError.error)) {
         return null;
       } else {
-        throw new StackAssertionError("Unexpected uncaught error", { cause: responseOrError.error });
+        throw new HexclaveAssertionError("Unexpected uncaught error", { cause: responseOrError.error });
       }
     }
     const response = responseOrError.data;
     const user: CurrentUserCrud['Server']['Read'] = await response.json();
-    if (!(user as any)) throw new StackAssertionError("User endpoint returned null; this should never happen");
+    if (!(user as any)) throw new HexclaveAssertionError("User endpoint returned null; this should never happen");
     return user;
   }
 
@@ -1043,7 +1044,7 @@ export class StackServerInterface extends StackClientInterface {
       customerType = "custom";
       customerId = options.customCustomerId;
     } else {
-      throw new StackAssertionError("updateItemQuantity requires one of userId, teamId, or customCustomerId");
+      throw new HexclaveAssertionError("updateItemQuantity requires one of userId, teamId, or customCustomerId");
     }
 
     const queryParams = new URLSearchParams({ allow_negative: (data.allow_negative ?? false).toString() });
@@ -1068,10 +1069,10 @@ export class StackServerInterface extends StackClientInterface {
     },
   ): Promise<void> {
     if (!options.productId && !options.product) {
-      throw new StackAssertionError("grantProduct requires either productId or product");
+      throw new HexclaveAssertionError("grantProduct requires either productId or product");
     }
     if (options.productId && options.product) {
-      throw new StackAssertionError("grantProduct should not receive both productId and product");
+      throw new HexclaveAssertionError("grantProduct should not receive both productId and product");
     }
     const body = filterUndefined({
       product_id: options.productId,
@@ -1105,12 +1106,12 @@ export class StackServerInterface extends StackClientInterface {
       if (KnownErrors.DataVaultStoreHashedKeyDoesNotExist.isInstance(response.error)) {
         return null;
       } else {
-        throw new StackAssertionError("Unexpected uncaught error", { cause: response.error });
+        throw new HexclaveAssertionError("Unexpected uncaught error", { cause: response.error });
       }
     }
     const json = await response.data.json();
     const encryptedValue = json.encrypted_value;
-    if (typeof encryptedValue !== "string") throw new StackAssertionError("encrypted_value is not a string", { type: typeof encryptedValue });
+    if (typeof encryptedValue !== "string") throw new HexclaveAssertionError("encrypted_value is not a string", { type: typeof encryptedValue });
     return await decryptValue(secret, key, encryptedValue);
   }
 

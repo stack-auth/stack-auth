@@ -62,11 +62,11 @@ export function FeedbackForm() {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (user) {
         const authJson = await user.getAuthJson();
-        headers["X-Stack-Access-Type"] = "client";
-        headers["X-Stack-Project-Id"] = "internal";
-        headers["X-Stack-Publishable-Client-Key"] = getPublicEnvVar("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY") ?? "";
+        headers["X-Hexclave-Access-Type"] = "client";
+        headers["X-Hexclave-Project-Id"] = "internal";
+        headers["X-Hexclave-Publishable-Client-Key"] = getPublicEnvVar("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY") ?? "";
         if (authJson.accessToken) {
-          headers["X-Stack-Access-Token"] = authJson.accessToken;
+          headers["X-Hexclave-Access-Token"] = authJson.accessToken;
         }
       }
       const response = await fetch(`${baseUrl}/api/v1/internal/feedback`, {

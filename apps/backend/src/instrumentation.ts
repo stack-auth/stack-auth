@@ -26,13 +26,13 @@ export async function register() {
     ],
     ...getNodeEnvironment() === "development" && getNextRuntime() === "nodejs" ? {
       traceExporter: new OTLPTraceExporter({
-        url: `http://localhost:${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")}31/v1/traces`,
+        url: `http://localhost:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")}31/v1/traces`,
       }),
     } : {},
   });
 
   if (getNextRuntime() === "nodejs") {
-    (globalThis as any).process.title = `stack-backend:${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")} (node/nextjs)`;
+    (globalThis as any).process.title = `stack-backend:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")} (node/nextjs)`;
 
     // Initialize performance stats collection in development
     initPerfStats();

@@ -9,7 +9,7 @@ import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefres
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 

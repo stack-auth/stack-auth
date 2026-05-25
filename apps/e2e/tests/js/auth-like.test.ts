@@ -13,7 +13,9 @@ const signIn = async (clientApp: any) => {
   });
 };
 
+// Hexclave rebrand: accept either the legacy `stackauth_` prefix or the new `hexclave_` one.
 const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
+const HEXCLAVE_AUTHORIZATION_VALUE_PREFIX = "hexclave_";
 
 function parseAuthorizationHeaderValue(value: string): { accessToken: string | null, refreshToken: string | null } {
   const bearerMatch = value.match(/^Bearer\s+(.+)$/i);
@@ -22,11 +24,14 @@ function parseAuthorizationHeaderValue(value: string): { accessToken: string | n
   }
 
   const credential = bearerMatch[1];
-  if (!credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX)) {
-    throw new Error(`Invalid stackauth authorization credential: ${credential}`);
+  const matchedPrefix = credential.startsWith(HEXCLAVE_AUTHORIZATION_VALUE_PREFIX) ? HEXCLAVE_AUTHORIZATION_VALUE_PREFIX
+    : credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX) ? STACK_AUTHORIZATION_VALUE_PREFIX
+      : null;
+  if (matchedPrefix == null) {
+    throw new Error(`Invalid authorization credential (expected stackauth_/hexclave_ prefix): ${credential}`);
   }
 
-  const encodedAuthJson = credential.slice(STACK_AUTHORIZATION_VALUE_PREFIX.length);
+  const encodedAuthJson = credential.slice(matchedPrefix.length);
   if (encodedAuthJson.length === 0) {
     throw new Error("Missing encoded auth payload.");
   }
@@ -277,7 +282,7 @@ it("getAuthorizationHeader should return a Bearer token that works for authentic
   if (authorizationHeader == null) {
     throw new Error("Expected authorization header for signed-in user.");
   }
-  expect(authorizationHeader).toMatch(/^Bearer\s+stackauth_.+/);
+  expect(authorizationHeader).toMatch(/^Bearer\s+(stackauth_|hexclave_).+/);
   const parsedAuthorizationHeader = parseAuthorizationHeaderValue(authorizationHeader);
   const authJson = await clientApp.getAuthJson();
   expect(parsedAuthorizationHeader).toEqual(authJson);
@@ -372,7 +377,7 @@ it("clientApp.getAuthorizationHeader should return Bearer header value", async (
   if (authorizationHeader == null) {
     throw new Error("Expected authorization header for signed-in user.");
   }
-  expect(authorizationHeader).toMatch(/^Bearer\s+stackauth_.+/);
+  expect(authorizationHeader).toMatch(/^Bearer\s+(stackauth_|hexclave_).+/);
   expect(parseAuthorizationHeaderValue(authorizationHeader)).toEqual(await clientApp.getAuthJson());
 });
 
@@ -391,7 +396,7 @@ it("clientApp.getAuthorizationHeader should work with tokenStore option", async 
   if (authorizationHeader == null) {
     throw new Error("Expected authorization header for signed-in user.");
   }
-  expect(authorizationHeader).toMatch(/^Bearer\s+stackauth_.+/);
+  expect(authorizationHeader).toMatch(/^Bearer\s+(stackauth_|hexclave_).+/);
   expect(parseAuthorizationHeaderValue(authorizationHeader)).toEqual(await clientApp.getAuthJson({ tokenStore: "memory" }));
 });
 
@@ -587,7 +592,7 @@ it("getUser should work with Authorization header in request-like tokenStore", a
   if (authorizationHeader == null) {
     throw new Error("Expected authorization header for signed-in user.");
   }
-  expect(authorizationHeader).toMatch(/^Bearer\s+stackauth_.+/);
+  expect(authorizationHeader).toMatch(/^Bearer\s+(stackauth_|hexclave_).+/);
   expect(parseAuthorizationHeaderValue(authorizationHeader)).toEqual(await clientApp.getAuthJson());
 
   const requestLike = {

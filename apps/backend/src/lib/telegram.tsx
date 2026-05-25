@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 const TELEGRAM_HOSTNAME = "api.telegram.org";
 const TELEGRAM_ENDPOINT_PATH = "/sendMessage";
@@ -33,7 +33,7 @@ export async function sendTelegramMessage(options: TelegramConfig & { message: s
 
   if (!response.ok) {
     const body = await response.text();
-    throw new StackAssertionError("Failed to send Telegram notification.", {
+    throw new HexclaveAssertionError("Failed to send Telegram notification.", {
       status: response.status,
       body,
     });

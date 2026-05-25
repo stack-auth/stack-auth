@@ -12,7 +12,8 @@ if (typeof globalThis === 'undefined') {
   (globalVar as any).globalThis = globalVar;
 }
 
-const stackGlobalsSymbol = Symbol.for('__stack-globals');
+// Hexclave rebrand: file-private symbol key, renamed outright (no cross-version compat needed).
+const stackGlobalsSymbol = Symbol.for('__hexclave-globals');
 globalVar[stackGlobalsSymbol] ??= {};
 
 export function createGlobal<T>(key: string, init: () => T) {

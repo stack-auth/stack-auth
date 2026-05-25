@@ -34,7 +34,8 @@ function MfaForm({ onSuccess, onCancel }: {
 
   useEffect(() => {
     if (!attemptCode && typeof window !== "undefined") {
-      const code = window.sessionStorage.getItem("stack_mfa_attempt_code");
+      // Hexclave rebrand: prefer the new MFA attempt code key, fall back to the legacy key.
+      const code = window.sessionStorage.getItem("hexclave_mfa_attempt_code") ?? window.sessionStorage.getItem("stack_mfa_attempt_code");
       if (code) {
         setAttemptCode(code);
       }
@@ -67,6 +68,8 @@ function MfaForm({ onSuccess, onCancel }: {
 
               // Cleanup session storage
               if (typeof window !== "undefined") {
+                // Hexclave rebrand: remove both the new and legacy MFA attempt code keys.
+                window.sessionStorage.removeItem("hexclave_mfa_attempt_code");
                 window.sessionStorage.removeItem("stack_mfa_attempt_code");
               }
 

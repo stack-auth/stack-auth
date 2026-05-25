@@ -1,7 +1,7 @@
 import * as jose from 'jose';
 import { InferType } from 'yup';
 import { accessTokenPayloadSchema } from './schema-fields';
-import { StackAssertionError, throwErr } from "./utils/errors";
+import { HexclaveAssertionError, throwErr } from "./utils/errors";
 import { runAsynchronously, wait } from './utils/promises';
 import { Store } from "./utils/stores";
 
@@ -28,7 +28,7 @@ export class AccessToken {
     public readonly token: string,
   ) {
     if (token === "undefined") {
-      throw new StackAssertionError("Access token is the string 'undefined'; it's unlikely this is the correct value. They're supposed to be unguessable!");
+      throw new HexclaveAssertionError("Access token is the string 'undefined'; it's unlikely this is the correct value. They're supposed to be unguessable!");
     }
   }
 
@@ -68,7 +68,7 @@ export class RefreshToken {
     public readonly token: string,
   ) {
     if (token === "undefined") {
-      throw new StackAssertionError("Refresh token is the string 'undefined'; it's unlikely this is the correct value. They're supposed to be unguessable!");
+      throw new HexclaveAssertionError("Refresh token is the string 'undefined'; it's unlikely this is the correct value. They're supposed to be unguessable!");
     }
   }
 }
@@ -186,10 +186,10 @@ export class InternalSession {
       const expiresInMillis = newTokens?.accessToken.expiresInMillis;
       const issuedMillisAgo = newTokens?.accessToken.issuedMillisAgo;
       if (expiresInMillis !== undefined && expiresInMillis < minMillisUntilExpiration) {
-        throw new StackAssertionError(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short when they're generated (${expiresInMillis}ms)`);
+        throw new HexclaveAssertionError(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short when they're generated (${expiresInMillis}ms)`);
       }
       if (maxMillisSinceIssued !== null && issuedMillisAgo !== undefined && issuedMillisAgo > maxMillisSinceIssued) {
-        throw new StackAssertionError(`Required access token issuance ${maxMillisSinceIssued}ms is too short; access token issuance is too slow (${issuedMillisAgo}ms)`);
+        throw new HexclaveAssertionError(`Required access token issuance ${maxMillisSinceIssued}ms is too short; access token issuance is too slow (${issuedMillisAgo}ms)`);
       }
       return newTokens;
     }

@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { StackAssertionError } from './errors';
+import { HexclaveAssertionError } from './errors';
 import { toArrayBufferBacked } from './typed-arrays';
 
 export async function sha512(input: Uint8Array | string): Promise<Uint8Array> {
@@ -10,7 +10,7 @@ export async function sha512(input: Uint8Array | string): Promise<Uint8Array> {
 export async function hashPassword(password: string) {
   const passwordBytes = new TextEncoder().encode(password);
   if (passwordBytes.length >= 72) {
-    throw new StackAssertionError(`Password is too long for bcrypt`, { len: passwordBytes.length });
+    throw new HexclaveAssertionError(`Password is too long for bcrypt`, { len: passwordBytes.length });
   }
   const salt = await bcrypt.genSalt(10);
   return await bcrypt.hash(password, salt);
@@ -33,7 +33,7 @@ export async function isPasswordHashValid(hash: string) {
 
 export async function getPasswordHashAlgorithm(hash: string): Promise<"bcrypt" | undefined> {
   if (typeof hash !== "string") {
-    throw new StackAssertionError(`Passed non-string value to getPasswordHashAlgorithm`, { hash });
+    throw new HexclaveAssertionError(`Passed non-string value to getPasswordHashAlgorithm`, { hash });
   }
   if (hash.match(/^\$2[ayb]\$.{56}$/)) {
     try {

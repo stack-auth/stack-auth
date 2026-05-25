@@ -6,8 +6,8 @@ import { runAsynchronouslyAndWaitUntil } from "./utils/background-tasks";
 
 function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
-  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-  return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) : value;
+  const prefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+  return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 
 const sentryErrorSink = (location: string, error: unknown) => {

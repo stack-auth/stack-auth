@@ -1,5 +1,5 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     const project = await globalPrismaClient.project.findFirst({});
 
     if (!project) {
-      throw new StackAssertionError("No project found");
+      throw new HexclaveAssertionError("No project found");
     }
   }
 

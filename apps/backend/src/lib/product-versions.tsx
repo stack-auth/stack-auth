@@ -1,6 +1,6 @@
 import { PrismaClientTransaction } from "@/prisma-client";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import crypto from "crypto";
 
 /**
@@ -85,7 +85,7 @@ export async function getProductVersion(options: {
   });
 
   if (!version) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       "ProductVersion not found. This may indicate a race condition or deleted record.",
       {
         tenancyId: options.tenancyId,

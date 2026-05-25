@@ -1,12 +1,12 @@
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { Response as OAuthResponse } from "@node-oauth/oauth2-server";
-import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export function oauthResponseToSmartResponse(oauthResponse: OAuthResponse) {
   if (!oauthResponse.status) {
-    throw new StackAssertionError(`OAuth response status is missing`, { oauthResponse });
+    throw new HexclaveAssertionError(`OAuth response status is missing`, { oauthResponse });
   } else if (oauthResponse.status >= 500 && oauthResponse.status < 600) {
-    throw new StackAssertionError(`OAuth server error: ${JSON.stringify(oauthResponse.body)}`, { oauthResponse });
+    throw new HexclaveAssertionError(`OAuth server error: ${JSON.stringify(oauthResponse.body)}`, { oauthResponse });
   } else if (oauthResponse.status >= 200 && oauthResponse.status < 500) {
     return {
       statusCode: {
@@ -17,7 +17,7 @@ export function oauthResponseToSmartResponse(oauthResponse: OAuthResponse) {
       headers: Object.fromEntries(Object.entries(oauthResponse.headers || {}).map(([k, v]) => ([k, [v]]))),
     } as const satisfies SmartResponse;
   } else {
-    throw new StackAssertionError(`Invalid OAuth response status code: ${oauthResponse.status}`, { oauthResponse });
+    throw new HexclaveAssertionError(`Invalid OAuth response status code: ${oauthResponse.status}`, { oauthResponse });
   }
 }
 

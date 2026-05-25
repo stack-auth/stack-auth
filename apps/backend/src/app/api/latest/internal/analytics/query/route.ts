@@ -6,7 +6,7 @@ import { getStackServerApp } from "@/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { randomUUID } from "crypto";
 
@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body, auth }) {
     if (body.include_all_branches) {
-      throw new StackAssertionError("include_all_branches is not supported yet");
+      throw new HexclaveAssertionError("include_all_branches is not supported yet");
     }
 
     let effectiveTimeoutMs = body.timeout_ms;

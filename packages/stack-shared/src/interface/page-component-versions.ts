@@ -1507,7 +1507,8 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
           const [error, setError] = useState<string | null>(null);
           const [verified, setVerified] = useState(false);
           const attemptCode = typeof window !== "undefined"
-            ? window.sessionStorage.getItem("stack_mfa_attempt_code")
+            // Hexclave rebrand: prefer the new MFA attempt code key, fall back to the legacy key.
+            ? (window.sessionStorage.getItem("hexclave_mfa_attempt_code") ?? window.sessionStorage.getItem("stack_mfa_attempt_code"))
             : null;
 
           const submit = async () => {
@@ -1516,6 +1517,8 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
             setError(null);
             const result = await stackApp.signInWithMfa(otp, attemptCode, { noRedirect: true });
             if (result.status === "ok") {
+              // Hexclave rebrand: remove both the new and legacy MFA attempt code keys.
+              window.sessionStorage.removeItem("hexclave_mfa_attempt_code");
               window.sessionStorage.removeItem("stack_mfa_attempt_code");
               setVerified(true);
               await stackApp.redirectToAfterSignIn();

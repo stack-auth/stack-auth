@@ -9,7 +9,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, teamApiKeysCrud, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema, userApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { adaptSchema, clientOrHigherAuthTypeSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { createProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-keys";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
@@ -114,14 +114,14 @@ async function prismaToCrud<Type extends "user" | "team">(prisma: ProjectApiKey,
     | TeamApiKeysCrud["Admin"]["Read"]
   > {
   if ((prisma.projectUserId == null) === (prisma.teamId == null)) {
-    throw new StackAssertionError("Exactly one of projectUserId or teamId must be set", { prisma });
+    throw new HexclaveAssertionError("Exactly one of projectUserId or teamId must be set", { prisma });
   }
 
   if (type === "user" && prisma.projectUserId == null) {
-    throw new StackAssertionError("projectUserId must be set for user API keys", { prisma });
+    throw new HexclaveAssertionError("projectUserId must be set for user API keys", { prisma });
   }
   if (type === "team" && prisma.teamId == null) {
-    throw new StackAssertionError("teamId must be set for team API keys", { prisma });
+    throw new HexclaveAssertionError("teamId must be set for team API keys", { prisma });
   }
 
   return {
@@ -184,7 +184,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
         /*
         const userPrefix = body.prefix ?? (isPublic ? "pk" : "sk");
         if (!userPrefix.match(/^[a-zA-Z0-9_]+$/)) {
-          throw new StackAssertionError("userPrefix must contain only alphanumeric characters and underscores. This is so we can register the API key with security scanners. This should've been checked in the creation schema");
+          throw new HexclaveAssertionError("userPrefix must contain only alphanumeric characters and underscores. This is so we can register the API key with security scanners. This should've been checked in the creation schema");
         }
         */
         const isCloudVersion = new URL(url).hostname === "api.stack-auth.com";  // we only want to enable secret scanning on the cloud version

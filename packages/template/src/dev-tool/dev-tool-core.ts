@@ -48,10 +48,11 @@ type DevToolState = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = '__stack-dev-tool-state';
-const TRIGGER_POS_KEY = 'stack-devtool-trigger-position';
-const ROOT_ID = '__stack-dev-tool-root';
-const GLOBAL_INSTANCE_KEY = '__stack-dev-tool-instance';
+// Hexclave rebrand: UI-only local prefs — straight rename (one-time reset is harmless)
+const STORAGE_KEY = '__hexclave-dev-tool-state';
+const TRIGGER_POS_KEY = 'hexclave-devtool-trigger-position';
+const ROOT_ID = '__hexclave-dev-tool-root';
+const GLOBAL_INSTANCE_KEY = '__hexclave-dev-tool-instance';
 const MAX_LOG_ENTRIES = 500;
 const CONSOLE_LOG_BATCH_SIZE = 100;
 const DRAG_THRESHOLD = 5;
@@ -437,7 +438,7 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
   const btn = h('button', {
     className: 'sdt-trigger',
     'aria-label': 'Toggle Stack Auth Dev Tools',
-    'data-stack-devtool-trigger': 'true',
+    'data-hexclave-devtool-trigger': 'true',
     title: 'Stack Auth Dev Tools',
   });
   const logoSpan = h('span', { className: 'sdt-trigger-logo' });
@@ -1169,12 +1170,13 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
 
   function getHeaders(): Record<string, string> {
     const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+    // Hexclave rebrand: emit x-hexclave-* request headers (backend dual-accepts).
     const headers: Record<string, string> = {
-      'X-Stack-Access-Type': 'client',
-      'X-Stack-Project-Id': app.projectId,
+      'X-Hexclave-Access-Type': 'client',
+      'X-Hexclave-Project-Id': app.projectId,
     };
     if ('publishableClientKey' in opts && opts.publishableClientKey) {
-      headers['X-Stack-Publishable-Client-Key'] = opts.publishableClientKey as string;
+      headers['X-Hexclave-Publishable-Client-Key'] = opts.publishableClientKey as string;
     }
     return headers;
   }

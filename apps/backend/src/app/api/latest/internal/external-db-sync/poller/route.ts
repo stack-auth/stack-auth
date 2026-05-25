@@ -13,7 +13,7 @@ import {
   yupTuple,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import type { PublishBatchRequest } from "@upstash/qstash";
 
@@ -41,7 +41,7 @@ function getPollerClaimLimit(): number {
   if (!rawValue) return DEFAULT_POLL_CLAIM_LIMIT;
   const parsed = Number.parseInt(rawValue, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `${POLLER_CLAIM_LIMIT_ENV} must be a positive integer. Received: ${JSON.stringify(rawValue)}`
     );
   }
@@ -136,7 +136,7 @@ export const GET = createSmartRouteHandler({
             const ID_SAMPLE_LIMIT = 10;
             captureError(
               "poller-stale-outgoing-requests",
-              new StackAssertionError(
+              new HexclaveAssertionError(
                 [
                   `Recovered ${total} stale outgoing request(s) (reset=${resetIds.length}, deleted=${deletedIds.length}) older than ${STALE_REQUEST_THRESHOLD_MS}ms.`,
                   `Stale rows are claims that never got cleared after publishing — the most likely cause is a poller lambda dying between the UPDATE that set startedFulfillingAt and the DELETE that should have removed the row.`,

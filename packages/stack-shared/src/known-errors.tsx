@@ -1,4 +1,4 @@
-import { StackAssertionError, StatusError, throwErr } from "./utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "./utils/errors";
 import { identityArgs } from "./utils/functions";
 import { Json } from "./utils/json";
 import { deindent } from "./utils/strings";
@@ -49,7 +49,9 @@ export abstract class KnownError extends StatusError {
   public override getHeaders(): Record<string, string[]> {
     return {
       "Content-Type": ["application/json; charset=utf-8"],
+      // Hexclave rebrand: dual-emit both X-Hexclave-* and X-Stack-* so old and new SDKs can both read it.
       "X-Stack-Known-Error": [this.errorCode],
+      "X-Hexclave-Known-Error": [this.errorCode],
     };
   }
 
@@ -690,7 +692,7 @@ const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
   "PROJECT_NOT_FOUND",
   (projectId: string) => {
-    if (typeof projectId !== "string") throw new StackAssertionError("projectId of KnownErrors.ProjectNotFound must be a string");
+    if (typeof projectId !== "string") throw new HexclaveAssertionError("projectId of KnownErrors.ProjectNotFound must be a string");
     return [
       404,
       `Project ${projectId} not found or is not accessible with the current user.`,

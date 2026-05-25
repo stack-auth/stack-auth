@@ -1,6 +1,6 @@
 import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
 import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
@@ -86,7 +86,7 @@ function getTanStackStartServerContext() {
     || getRequestHeader == null
     || setCookie == null
   ) {
-    throw new StackAssertionError("TanStack Start server context is only available during server rendering");
+    throw new HexclaveAssertionError("TanStack Start server context is only available during server rendering");
   }
   return {
     deleteCookie,
@@ -128,7 +128,7 @@ export type CookieHelper = {
 const placeholderCookieHelperIdentity = { "placeholder cookie helper identity": true };
 export async function createPlaceholderCookieHelper(): Promise<CookieHelper> {
   function throwError(): never {
-    throw new StackAssertionError("Throwing cookie helper is just a placeholder. This should never be called");
+    throw new HexclaveAssertionError("Throwing cookie helper is just a placeholder. This should never be called");
   }
   return {
     get: throwError,
@@ -145,7 +145,7 @@ function requiresSecureAttribute(name: string): boolean {
 
 function validateCookieOptions(name: string, options: DeleteCookieOptions | SetCookieOptions) {
   if (requiresSecureAttribute(name) && options.domain !== undefined) {
-    throw new StackAssertionError("__Host- cookies must not specify a Domain attribute");
+    throw new HexclaveAssertionError("__Host- cookies must not specify a Domain attribute");
   }
 }
 
@@ -177,7 +177,7 @@ export function createCookieHelperSync(): CookieHelper {
     return createBrowserCookieHelper();
   }
   function throwError(): never {
-    throw new StackAssertionError("Synchronous server cookie helpers are not available on this platform");
+    throw new HexclaveAssertionError("Synchronous server cookie helpers are not available on this platform");
   }
   return {
     get: throwError,
@@ -191,16 +191,21 @@ export function createCookieHelperSync(): CookieHelper {
 // IF_PLATFORM tanstack-start
 function determineSecureFromTanStackStartContext(api: ReturnType<typeof getTanStackStartServerContext>): boolean {
   return api.getRequestHeader("x-forwarded-proto") === "https"
+    // Hexclave rebrand: dual-read the is-https hint cookie, preferring the new name
+    || (api.getCookie("hexclave-is-https") !== undefined)
     || (api.getCookie("stack-is-https") !== undefined);
 }
 
 function refreshTanStackStartIsHttpsCookie(api: ReturnType<typeof getTanStackStartServerContext>) {
-  api.setCookie("stack-is-https", "true", {
-    secure: true,
-    maxAge: 60 * 60 * 24 * 365,
-    sameSite: "lax",
-    path: "/",
-  });
+  // Hexclave rebrand: dual-write the is-https hint cookie under both names
+  for (const cookieName of ["hexclave-is-https", "stack-is-https"]) {
+    api.setCookie(cookieName, "true", {
+      secure: true,
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+      path: "/",
+    });
+  }
 }
 
 function createTanStackStartCookieHelper(api: ReturnType<typeof getTanStackStartServerContext>): CookieHelper {
@@ -257,7 +262,7 @@ function handleCookieError(e: unknown, options: DeleteCookieOptions | SetCookieO
     if (options.noOpIfServerComponent) {
       // ignore
     } else {
-      throw new StackAssertionError("Attempted to set cookie in server component. Pass { noOpIfServerComponent: true } in the options of Stack's cookie functions if this is intentional and you want to ignore this error. Read more: https://nextjs.org/docs/app/api-reference/functions/cookies#options");
+      throw new HexclaveAssertionError("Attempted to set cookie in server component. Pass { noOpIfServerComponent: true } in the options of Stack's cookie functions if this is intentional and you want to ignore this error. Read more: https://nextjs.org/docs/app/api-reference/functions/cookies#options");
     }
   } else {
     throw e;
@@ -277,6 +282,8 @@ function createNextCookieHelper(
     getAll: () => {
       // set a helper cookie, see comment in `NextCookieHelper.set` below
       try {
+        // Hexclave rebrand: dual-write the is-https hint cookie under both names
+        rscCookiesAwaited.set("hexclave-is-https", "true", { secure: true, expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365) });
         rscCookiesAwaited.set("stack-is-https", "true", { secure: true, expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365) });
       } catch (e) {
         if (
@@ -352,6 +359,8 @@ export function getCookieClient(name: string): string | null {
 export function getAllCookiesClient(): Record<string, string> {
   ensureClient();
   // set a helper cookie, see comment in `NextCookieHelper.set` above
+  // Hexclave rebrand: dual-write the is-https hint cookie under both names
+  Cookies.set("hexclave-is-https", "true", { secure: true, expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365) });
   Cookies.set("stack-is-https", "true", { secure: true, expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365) });
   return Cookies.get();
 }
@@ -386,7 +395,8 @@ function determineSecureFromServerContext(
   // see the algorithm at the top of this file
   // TODO: We should probably also check that the stack-is-https cookie has a Secure attribute itself,
   // TODO: We should consider adding another cookie __Host-stack-is-https, see the comment in the algorithm at the top of this file
-  return cookies.has("stack-is-https") || headers.get("x-forwarded-proto") === "https";
+  // Hexclave rebrand: dual-read the is-https hint cookie, preferring the new name
+  return cookies.has("hexclave-is-https") || cookies.has("stack-is-https") || headers.get("x-forwarded-proto") === "https";
 }
 // END_PLATFORM
 
@@ -503,6 +513,8 @@ export async function saveVerifierAndState() {
   const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
   const state = generateRandomState();
 
+  // Hexclave rebrand: dual-write the OAuth outer-state cookie under both names
+  await setCookie("hexclave-oauth-outer-" + state, codeVerifier, { maxAge: 60 * 60 });
   await setCookie("stack-oauth-outer-" + state, codeVerifier, { maxAge: 60 * 60 });
 
   return {
@@ -513,12 +525,15 @@ export async function saveVerifierAndState() {
 
 export function consumeVerifierAndStateCookie(state: string) {
   ensureClient();
-  const cookieName = "stack-oauth-outer-" + state;
-  const codeVerifier = getCookieClient(cookieName);
+  // Hexclave rebrand: dual-read the OAuth outer-state cookie, preferring the new name; delete both.
+  const hexclaveCookieName = "hexclave-oauth-outer-" + state;
+  const stackCookieName = "stack-oauth-outer-" + state;
+  const codeVerifier = getCookieClient(hexclaveCookieName) ?? getCookieClient(stackCookieName);
   if (!codeVerifier) {
     return null;
   }
-  deleteCookieClient(cookieName, {});
+  deleteCookieClient(hexclaveCookieName, {});
+  deleteCookieClient(stackCookieName, {});
   return {
     codeVerifier,
   };

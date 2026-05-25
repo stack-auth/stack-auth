@@ -1,6 +1,6 @@
 import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import {
@@ -16,7 +16,7 @@ export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.config.emails.themes;
   const currentActiveTheme = tenancy.config.emails.selectedThemeId;
   if (!(has(themeList, currentActiveTheme))) {
-    throw new StackAssertionError("No active email theme found", {
+    throw new HexclaveAssertionError("No active email theme found", {
       themeList,
       currentActiveTheme,
     });
@@ -128,10 +128,10 @@ export async function renderEmailWithTemplate(
   const user = (previewMode && !options.user) ? { displayName: "John Doe" } : options.user;
   const project = (previewMode && !options.project) ? { displayName: "My Project" } : options.project;
   if (!user) {
-    throw new StackAssertionError("User is required when not in preview mode", { user, project, variables });
+    throw new HexclaveAssertionError("User is required when not in preview mode", { user, project, variables });
   }
   if (!project) {
-    throw new StackAssertionError("Project is required when not in preview mode", { user, project, variables });
+    throw new HexclaveAssertionError("Project is required when not in preview mode", { user, project, variables });
   }
 
   // Process editable markers if requested
@@ -152,7 +152,7 @@ export async function renderEmailWithTemplate(
       } catch (e) {
         // If transpilation fails, fall back to original source
         // This can happen with complex or invalid JSX
-        captureError("email-transpilation-template-error", new StackAssertionError(
+        captureError("email-transpilation-template-error", new HexclaveAssertionError(
           "Failed to transpile template for editable markers",
           { cause: e }
         ));
@@ -167,7 +167,7 @@ export async function renderEmailWithTemplate(
         editableRegions = { ...editableRegions, ...themeResult.editableRegions };
       } catch (e) {
         // If transpilation fails, fall back to original source
-        captureError("email-transpilation-theme-error", new StackAssertionError(
+        captureError("email-transpilation-theme-error", new HexclaveAssertionError(
           "Failed to transpile theme for editable markers",
           { cause: e }
         ));

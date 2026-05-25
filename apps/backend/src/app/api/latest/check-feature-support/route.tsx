@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const POST = createSmartRouteHandler({
@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
     const featureName = req.body?.name as unknown;
     const expectedUnsupportedFeatures: unknown[] = ["rsc-handler-signIn"];
     if (!expectedUnsupportedFeatures.includes(featureName)) {
-      captureError("check-feature-support", new StackAssertionError(`${req.auth?.user?.primaryEmail || "User"} tried to check support of unsupported feature: ${JSON.stringify(req.body, null, 2)}`, { req }));
+      captureError("check-feature-support", new HexclaveAssertionError(`${req.auth?.user?.primaryEmail || "User"} tried to check support of unsupported feature: ${JSON.stringify(req.body, null, 2)}`, { req }));
     }
     return {
       statusCode: 200,

@@ -2,37 +2,52 @@
 
 ---
 
-## 1/23/26
+## 5/22/26
 
-### Payments
-Introduced a redesigned payments onboarding flow
-![Payments Onboarding](https://raw.githubusercontent.com/stack-auth/stack-auth/dev/apps/dashboard/public/changelog/payments-onboarding.png)
+- Faster ClickHouse analytics for project metrics and previews.
+- Smoother cross-domain auth handoffs and hosted-domain trust.
+- Sharper Auth Methods and Users dashboard tables.
+![Auth method and user table polish](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-auth-methods.png)
 
-## 1/21/26
+## 5/15/26
 
-### Payments
-- Payments page updated with new UI changes
-![Create Product](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/payments-create-product.png)
-- Added a new Payments Settings page with an option to temporarily disable all payments
-![Payments Setting](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/payments-settings-1.png)
-- Subscription renewal emails are now sent automatically to users
-- Past payment invoices are now visible on the Account Settings page
-![Past Payments Invoices](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/account-settings-invoices.png)
+- Redesigned Team Management tables with cleaner action states.
+- New project transfer, session replay, and team payments screens.
+- Unified AI chat experience on assistant-ui threads.
+![Team management table](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-teams.png)
 
-### Documentation
-- Updated JWT documentation to include `isRestricted` and `restrictedReason`
+## 5/8/26
 
-## 1/19/26
-- Updated package dependencies to their newest versions.
+- New TanStack Start SDK integration with refreshed OpenAPI schemas.
+- Weekly active users now appear on Project Overview.
+- Cleaner Project Permissions with upgraded data grids.
+![Project permissions dashboard](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-rbac.png)
 
-## 12/19/25
-- Introduces new changelog and deprecates all older changelogs. 
-- Date versioning for public view.
+## 5/1/26
+
+- Shareable Session Replay IDs across dashboard, backend, and SDKs.
+- Sleeker Data Vault and overview data-grid layouts.
+- Emulator updates can now auto-install dependencies.
+![Data Vault dashboard](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-data-vault.png)
+
+## 4/24/26
+
+- Redesigned Email Server settings and managed-domain setup.
+- Faster local emulator startup with RAM snapshots.
+- Live secret rotation plus a simpler sign-up rules tester.
+![Email server settings and logs](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-email-server.png)
+
+## 4/17/26
+
+- Redesigned Overview and onboarding experience.
+- Crisper dashboard sidebar styling and category navigation.
+- New Payments product setup flow.
+![Payments product setup](https://raw.githubusercontent.com/hexclave/stack-auth/dev/apps/dashboard/public/assets/changelog-payments-products.png)
 
 ---
 
-> **Note:** All older changelogs are deprecated and have been removed. The source of true is this single changelog file.
-> 
+> **Note:** All older changelogs are deprecated and have been removed. The source of truth is this single changelog file.
+>
 > Going forward, all changes should be documented in this file only.
 
 ---

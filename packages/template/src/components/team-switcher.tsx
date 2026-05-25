@@ -1,5 +1,5 @@
 'use client';
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Button,
@@ -91,7 +91,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
           if (value !== 'null-sentinel') {
             team = teams?.find(team => team.id === value) || null;
             if (!team) {
-              throw new StackAssertionError('Team not found, this should not happen');
+              throw new HexclaveAssertionError('Team not found, this should not happen');
             }
           } else {
             team = null;

@@ -4,7 +4,6 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
 sidebarTitle: "Overview"
 ---
 
-import { generatedSetupPromptText } from "./snippets/home-prompt-island.jsx";
 
 export const SectionLink = ({ href, children }) => (
   <a href={href} className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
@@ -108,6 +107,8 @@ export const copyGeneratedSetupPrompt = async (event) => {
     </a>
     <a
       href="https://app.stack-auth.com"
+      target="_blank"
+      rel="noopener"
       className="inline-flex items-center justify-center rounded-xl border border-[#9fb5e4] bg-white/60 px-5 py-3 text-sm font-semibold text-[#1f3764] no-underline transition-colors duration-150 hover:transition-none hover:bg-white/85 dark:border-[#3d5a91] dark:bg-transparent dark:text-[#d7e7ff] dark:hover:bg-white/10"
     >
       Go to dashboard
@@ -199,7 +200,7 @@ export const copyGeneratedSetupPrompt = async (event) => {
     </div>
 
     <CardGroup cols={3}>
-      <Card title="Dashboard" icon="table-columns" href="https://app.stack-auth.com" cta="Open app">
+      <Card title="Dashboard" icon="table-columns" href="https://app.stack-auth.com" cta="Open app" target="_blank" rel="noopener noreferrer">
         Manage projects, keys, providers, and authentication settings.
       </Card>
       <Card title="GitHub" icon="github" href="https://github.com/hexclave/stack" cta="View repository">

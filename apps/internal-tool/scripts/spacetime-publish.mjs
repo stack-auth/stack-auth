@@ -11,7 +11,7 @@ function localPublishServerUrl() {
   if (process.env.STACK_SPACETIME_PUBLISH_URL) {
     return process.env.STACK_SPACETIME_PUBLISH_URL;
   }
-  const prefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+  const prefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
   return `http://127.0.0.1:${prefix}39`;
 }
 

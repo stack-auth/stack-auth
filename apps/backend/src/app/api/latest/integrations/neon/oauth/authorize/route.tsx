@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNever, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { redirect } from "next/navigation";
 
 export const GET = createSmartRouteHandler({
@@ -22,7 +22,7 @@ export const GET = createSmartRouteHandler({
   handler: async (req) => {
     const url = new URL(req.url);
     if (url.pathname !== "/api/v1/integrations/neon/oauth/authorize") {
-      throw new StackAssertionError(`Expected pathname to be authorize endpoint but got ${JSON.stringify(url.pathname)}`, { url });
+      throw new HexclaveAssertionError(`Expected pathname to be authorize endpoint but got ${JSON.stringify(url.pathname)}`, { url });
     }
     url.pathname = "/api/v1/integrations/neon/oauth/idp/auth";
     url.search = new URLSearchParams({ ...req.query, scope: "openid" }).toString();

@@ -1,7 +1,7 @@
 import { getSvixClient } from "@/lib/webhooks";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { MessageStatus } from "svix";
 
@@ -60,7 +60,7 @@ export const POST = createSmartRouteHandler({
     ));
     if (messageResult.status === "error") {
       const errorMessage = messageResult.error instanceof Error ? messageResult.error.message : "Unknown error while sending the test webhook.";
-      captureError("send-test-webhook", new StackAssertionError("Failed to send test webhook", {
+      captureError("send-test-webhook", new HexclaveAssertionError("Failed to send test webhook", {
         cause: messageResult.error,
         project_id: projectId,
         endpoint_id: body.endpoint_id,

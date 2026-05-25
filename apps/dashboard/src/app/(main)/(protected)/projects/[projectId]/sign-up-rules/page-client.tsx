@@ -73,7 +73,7 @@ import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
 import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -265,7 +265,7 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
   return resultRows.map((row) => {
     const triggeredAt = row.triggered_at;
     if (typeof triggeredAt !== "string") {
-      throw new StackAssertionError("Expected sign-up rule trigger row to include triggered_at:string", { row });
+      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", { row });
     }
 
     const emailRaw = row.email;
@@ -276,7 +276,7 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
       return { id: generateUuid(), triggeredAt, email: emailRaw };
     }
 
-    throw new StackAssertionError("Expected sign-up rule trigger row to include email:null|string", { row });
+    throw new HexclaveAssertionError("Expected sign-up rule trigger row to include email:null|string", { row });
   });
 }
 
@@ -685,7 +685,7 @@ function ActionDropdown({ state, size = "sm", className }: { state: RuleEditorSt
       value={state.actionType}
       onValueChange={(v) => {
         if (!isActionType(v)) {
-          throw new StackAssertionError(`Unexpected sign-up rule action type: ${v}`);
+          throw new HexclaveAssertionError(`Unexpected sign-up rule action type: ${v}`);
         }
         state.setActionType(v);
       }}
@@ -958,7 +958,7 @@ function DefaultActionRow({
         value={value}
         onValueChange={(v) => {
           if (!isDefaultAction(v)) {
-            throw new StackAssertionError(`Unexpected default sign-up rule action: ${v}`);
+            throw new HexclaveAssertionError(`Unexpected default sign-up rule action: ${v}`);
           }
           onChange(v);
         }}
@@ -1056,7 +1056,7 @@ function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
     );
 
     if (!response.ok) {
-      throw new StackAssertionError(`Failed to test sign-up rules: ${response.status} ${response.statusText}`);
+      throw new HexclaveAssertionError(`Failed to test sign-up rules: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -1566,7 +1566,7 @@ function useSignUpRulesAnalytics() {
         if (cancelled) return;
 
         if (!response.ok) {
-          throw new StackAssertionError(`Failed to fetch sign-up rules stats: ${response.status} ${response.statusText}`);
+          throw new HexclaveAssertionError(`Failed to fetch sign-up rules stats: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();

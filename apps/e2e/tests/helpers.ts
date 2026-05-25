@@ -1,6 +1,6 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Nicifiable } from "@stackframe/stack-shared/dist/utils/strings";
@@ -42,20 +42,20 @@ export class Context<R, T> {
   constructor(private readonly _getInitialValue: () => R, private readonly _reducer: (acc: R, value: T) => R) {
     beforeEach(async () => {
       if (this._isInTest) {
-        throw new StackAssertionError("beforeEach was called twice without a single afterEach! Are you running tests concurrently? This is not supported by withContext.");
+        throw new HexclaveAssertionError("beforeEach was called twice without a single afterEach! Are you running tests concurrently? This is not supported by withContext.");
       }
       if (this._withStorage.getStore()) {
-        throw new StackAssertionError("Did you wrap an entire test into Context.with(...)?");
+        throw new HexclaveAssertionError("Did you wrap an entire test into Context.with(...)?");
       }
       this._reduced = this._getInitialValue();
       this._isInTest = true;
       if (this._yetToReduce.size > 0) {
-        throw new StackAssertionError("Something went wrong; _yetToReduce should be empty here.");
+        throw new HexclaveAssertionError("Something went wrong; _yetToReduce should be empty here.");
       }
     });
     afterEach(async () => {
       if (this._withStorage.getStore()) {
-        throw new StackAssertionError("Test finished before _withStorage was cleaned up! This should not happen.");
+        throw new HexclaveAssertionError("Test finished before _withStorage was cleaned up! This should not happen.");
       }
       this._isInTest = false;
       this._reduced = undefined;
@@ -63,7 +63,7 @@ export class Context<R, T> {
         this._yetToReduce.delete(key);
       }
       if (this._yetToReduce.size > 0) {
-        throw new StackAssertionError("Something went wrong; _yetToReduce should be empty here.");
+        throw new HexclaveAssertionError("Something went wrong; _yetToReduce should be empty here.");
       }
     });
   }
@@ -80,7 +80,7 @@ export class Context<R, T> {
     this._values.set(randomId, value);
     const before = () => {
       if (this._yetToReduce.has(randomId)) {
-        throw new StackAssertionError("Value setter was called twice without a single afterEach! Are you running tests concurrently? This is not supported by withContext.");
+        throw new HexclaveAssertionError("Value setter was called twice without a single afterEach! Are you running tests concurrently? This is not supported by withContext.");
       }
       this._yetToReduce.add(randomId);
     };
@@ -105,7 +105,7 @@ export class Context<R, T> {
 
   private _reduce() {
     if (!this._isInTest) {
-      throw new StackAssertionError("You can only call this function on Context inside a test.");
+      throw new HexclaveAssertionError("You can only call this function on Context inside a test.");
     }
     const yetToReduceOrdered = [...this._values.entries()].filter(([key]) => this._yetToReduce.has(key)).map(([, value]) => value);
     for (const value of yetToReduceOrdered) {
@@ -154,11 +154,11 @@ export class NiceResponse implements Nicifiable {
 
   async follow(options?: NiceRequestInit) {
     if (![301, 302, 303, 307, 308].includes(this.status)) {
-      throw new StackAssertionError(`Cannot follow non-redirect response: ${this.status}`);
+      throw new HexclaveAssertionError(`Cannot follow non-redirect response: ${this.status}`);
     }
     const location = this.headers.get("Location");
     if (!location) {
-      throw new StackAssertionError(`Redirect response has no Location header: ${this.status}`);
+      throw new HexclaveAssertionError(`Redirect response has no Location header: ${this.status}`);
     }
     const followRes = await niceFetch(location, {
       ...[301, 302, 303].includes(this.status) ? { method: "GET" } : {
@@ -254,7 +254,7 @@ export class Mailbox {
         if (Date.now() >= deadline) break;
         await wait(intervalMs);
       }
-      throw new StackAssertionError(`Expected at least ${minCount} messages with subject containing "${subject}", but found ${messages.filter(m => m.subject.includes(subject)).length}`, { messages });
+      throw new HexclaveAssertionError(`Expected at least ${minCount} messages with subject containing "${subject}", but found ${messages.filter(m => m.subject.includes(subject)).length}`, { messages });
     };
   }
 }
@@ -295,8 +295,8 @@ export class MailboxMessage {
 
 function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
-  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-  return prefix ? value.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) : value;
+  const prefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+  return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 for (const [key, value] of Object.entries(process.env)) {
   if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {

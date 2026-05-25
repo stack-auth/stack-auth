@@ -7,7 +7,7 @@ import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } f
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
@@ -60,6 +60,24 @@ const getIssuer = (projectId: string, userType: UserType) => {
   const url = new URL(`/api/v1/projects${suffix}/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   return url.toString();
 };
+// Hexclave rebrand: api.stack-auth.com ↔ api.hexclave.com. During the domain transition a
+// backend served from one host must keep validating tokens issued under the other, so the
+// validator accepts the issuer under both hosts. Signing always uses getIssuer() (the
+// configured host), so new tokens follow the deployment. See RENAME-TO-HEXCLAVE.md (Tier 0, JWT).
+// Use a Map (not a plain object) for the dynamic host lookup — avoids any chance of a
+// prototype-key collision when the input host comes from an attacker-controlled JWT.
+const issuerHostAliases = new Map<string, string>([
+  ["api.stack-auth.com", "api.hexclave.com"],
+  ["api.hexclave.com", "api.stack-auth.com"],
+]);
+const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
+  const issuer = getIssuer(projectId, userType);
+  const aliasHost = issuerHostAliases.get(new URL(issuer).host);
+  if (!aliasHost) return [issuer];
+  const aliasedUrl = new URL(issuer);
+  aliasedUrl.host = aliasHost;
+  return [issuer, aliasedUrl.toString()];
+};
 const getAudience = (projectId: string, userType: UserType) => {
   // TODO: make the audience a URL, and encode the user type in a better way
   return userType === 'anonymous' ? `${projectId}:anon` : userType === 'restricted' ? `${projectId}:restricted` : projectId;
@@ -84,7 +102,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
   return await traceSpan("decoding access token", async (span) => {
 
     if (allowAnonymous && !allowRestricted) {
-      throw new StackAssertionError("If allowAnonymous is true, allowRestricted must also be true");
+      throw new HexclaveAssertionError("If allowAnonymous is true, allowRestricted must also be true");
     }
 
     let payload: jose.JWTPayload;
@@ -98,9 +116,9 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       // Determine allowed issuers based on what types of tokens we accept
       const projectId = aud.split(":")[0];
       const allowedIssuers = [
-        getIssuer(projectId, 'normal'),
-        ...(allowRestricted ? [getIssuer(projectId, 'restricted')] : []),
-        ...(allowAnonymous ? [getIssuer(projectId, 'anonymous')] : []),
+        ...getAllowedIssuers(projectId, 'normal'),
+        ...(allowRestricted ? getAllowedIssuers(projectId, 'restricted') : []),
+        ...(allowAnonymous ? getAllowedIssuers(projectId, 'anonymous') : []),
       ];
 
       payload = await verifyJWT({
@@ -134,33 +152,33 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
 
     // Anonymous users must be restricted
     if (isAnonymous && !isRestricted) {
-      throw new StackAssertionError("Unparsable access token. User is anonymous but not restricted.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is anonymous but not restricted.", { accessToken, payload });
     }
 
     // Enforce consistency between isRestricted and restrictedReason
     if (isRestricted && !restrictedReason) {
-      throw new StackAssertionError("Unparsable access token. User is restricted but restrictedReason is missing.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is restricted but restrictedReason is missing.", { accessToken, payload });
     }
     if (!isRestricted && restrictedReason) {
-      throw new StackAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
     }
 
     // Validate audience matches the user type
     if (aud.endsWith(":anon") && !isAnonymous) {
-      throw new StackAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
     } else if (!aud.endsWith(":anon") && isAnonymous) {
-      throw new StackAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
     }
     if (aud.endsWith(":restricted") && !isRestricted) {
-      throw new StackAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
     } else if (!aud.endsWith(":restricted") && isRestricted && !isAnonymous) {
-      throw new StackAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
+      throw new HexclaveAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
     }
 
     const branchId = payload.branch_id ?? payload.branchId;
     if (branchId !== "main") {
       // TODO instead, we should check here that the aud is `projectId#branch` instead
-      throw new StackAssertionError("Branch ID !== main not currently supported.");
+      throw new HexclaveAssertionError("Branch ID !== main not currently supported.");
     }
 
     const result = await accessTokenSchema.validate({
@@ -345,7 +363,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       restrictedReason: user.restricted_reason,
     });
   } catch (error) {
-    captureError("generated-access-token-payload-does-not-fit-the-access-token-schema", new StackAssertionError("Generated access token payload does not fit the accessTokenSchema. This is a bug — the token data is inconsistent.", { cause: error, payload }));
+    captureError("generated-access-token-payload-does-not-fit-the-access-token-schema", new HexclaveAssertionError("Generated access token payload does not fit the accessTokenSchema. This is a bug — the token data is inconsistent.", { cause: error, payload }));
   }
 
   const userType = getUserType(user.is_anonymous, user.is_restricted);

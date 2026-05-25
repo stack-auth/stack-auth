@@ -17,7 +17,7 @@ import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 
 // Page size for streaming teams. Big enough to amortise round-trips,
@@ -64,7 +64,7 @@ export async function runBackfillInternalFreePlans(): Promise<{
   log("Starting...");
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
   if (internalTenancy == null) {
-    throw new StackAssertionError("Internal billing tenancy not found", {
+    throw new HexclaveAssertionError("Internal billing tenancy not found", {
       billingProjectId: "internal",
       branchId: DEFAULT_BRANCH_ID,
     });
@@ -79,7 +79,7 @@ export async function runBackfillInternalFreePlans(): Promise<{
     || freePlanProduct.customerType !== "team"
     || freePlanProduct.productLineId == null
   ) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       "Internal tenancy `free` product is not configured as a team-typed, product-line-tagged plan; cannot run backfill",
       { freePlanProduct },
     );
