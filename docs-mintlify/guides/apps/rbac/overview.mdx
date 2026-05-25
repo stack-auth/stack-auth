@@ -306,7 +306,7 @@ To get a list of all global permissions a user has, use the `listPermissions` me
 
     export function DisplayGlobalPermissions() {
       const user = useUser({ or: 'redirect' });
-      const permissions = user.usePermissions({ recursive: false });
+      const permissions = user.usePermissions();
 
       return (
         <div>
@@ -324,7 +324,7 @@ To get a list of all global permissions a user has, use the `listPermissions` me
 
     export default async function DisplayGlobalPermissions() {
       const user = await stackServerApp.getUser({ or: 'redirect' });
-      const permissions = await user.listPermissions({ recursive: false });
+      const permissions = await user.listPermissions();
 
       return (
         <div>
@@ -337,6 +337,12 @@ To get a list of all global permissions a user has, use the `listPermissions` me
     ```
   </Tab>
 </Tabs>
+
+If you only want direct project permission grants, pass `{ recursive: false }`:
+
+```tsx
+const directPermissions = await user.listPermissions({ recursive: false });
+```
 
 ### Granting a Project Permission
 
