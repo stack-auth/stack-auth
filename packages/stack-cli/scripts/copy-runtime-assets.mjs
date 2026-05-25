@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync, writeFileSync } from "fs";
-import { dirname, join, resolve } from "path";
+import { dirname, isAbsolute, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,9 +48,13 @@ function collectSymlinks(root, current = root) {
       if (!existsSync(path)) {
         continue;
       }
+      const target = readlinkSync(path);
+      if (isAbsolute(target)) {
+        throw new Error(`Dashboard standalone build contains a non-portable absolute symlink: ${path} -> ${target}`);
+      }
       symlinks.push({
         path: path.slice(root.length + 1),
-        target: readlinkSync(path),
+        target,
       });
       continue;
     }
