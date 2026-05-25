@@ -1,112 +1,77 @@
 ---
-title: "Analytics"
+title: "Overview"
 description: "Explore events, session replays, and SQL queries in your project's analytics dataset"
-icon: "/images/app-icons/analytics.svg"
 ---
 
-The Analytics app gives you direct access to your project's analytics dataset in Stack Auth. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
+The Analytics app gives you direct access to your project's analytics dataset in Stack Auth. You can inspect raw event tables, run ClickHouse SQL queries, ask an AI to write queries for you, and watch session replays to debug real user behavior.
 
-## Overview
+## Pages
 
-Analytics is organized into three areas in the dashboard:
+Analytics is organized into three pages in the dashboard, each documented separately:
 
-- **Tables**: Browse event rows with sorting, search, and incremental loading
-- **Queries**: Run and save reusable ClickHouse SQL queries
-- **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
+<CardGroup cols={3}>
+  <Card title="Tables" icon="table" href="/guides/apps/analytics/tables">
+    Browse rows from any of your project's analytics tables, with sorting, AI-assisted search, and incremental loading.
+  </Card>
+  <Card title="Queries" icon="code" href="/guides/apps/analytics/queries">
+    Write, run, and save reusable ClickHouse SQL queries in folders.
+  </Card>
+  <Card title="Replays" icon="play" href="/guides/apps/analytics/replays">
+    Watch session replays and filter by user, team, duration, last activity, and click count.
+  </Card>
+</CardGroup>
 
 ## How Analytics Works
 
-Stack records analytics events and replay chunks, then exposes them through the Analytics app for read-only querying and investigation.
-
-User activity in your app flows into Stack event ingestion, which stores data in ClickHouse. This data powers the Tables view, the SQL query runner, and the Session replay UI.
+User activity in your app flows into Stack's ingestion pipeline, which stores data in ClickHouse. This dataset powers all three pages.
 
 ### What Gets Tracked
 
 Stack collects both client-side and server-side analytics events:
 
-- **Client-side events**: browser interaction events like `$page-view` and `$click`
-- **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
+- **Client-side events** (captured automatically by `StackClientApp`):
+  - `$page-view`
+  - `$click`
+- **Server-side events** (captured automatically by the backend):
+  - `$token-refresh`
+  - `$sign-up-rule-trigger`
+
+Session replays are recorded as separate `rrweb` chunks tied to the same session/user as the events. Replay recording is **opt-in** — see the [Replays page](/guides/apps/analytics/replays#enabling-replay-recording-in-the-sdk) for SDK setup.
 
 ## Enabling the Analytics App
 
-To use analytics in your project:
+To use Analytics in your project:
 
 1. Open your Stack Auth dashboard
 2. Go to **Apps**
 3. Open **Analytics**
 4. Click **Enable**
 
+Once enabled, the Analytics app gains a sidebar entry with three sub-pages: **Tables**, **Queries**, and **Replays**.
+
 ## Quick Start
 
-1. Enable Analytics in your Stack Auth dashboard (**Apps -> Analytics**)
-2. Initialize Stack Auth on your frontend with `StackClientApp`/`StackProvider`
+1. Enable Analytics in your Stack Auth dashboard (**Apps → Analytics**)
+2. Initialize Stack Auth on your frontend with `StackClientApp` / `StackProvider`
 3. Sign in with a real user session
-4. Open the app and navigate/click around
-5. Check **Analytics -> Tables** to confirm events are arriving
+4. Open the app and navigate / click around
+5. Check **Analytics → Tables** to confirm events are arriving
 
-After setup, Stack automatically captures client-side `$page-view` and `$click` events.
+After setup, Stack automatically captures `$page-view` and `$click` events from the browser. If you also want session replay recordings, enable `analytics.replays.enabled` in your client app config — see [Enabling Replay Recording](/guides/apps/analytics/replays#enabling-replay-recording-in-the-sdk).
 
-If you want replay recordings, also enable `analytics.replays.enabled` in your client app config.
+## Usage and Quotas
 
-## Tables
+Both analytics events and session replays count against your plan's monthly quotas. The Analytics pages show inline warning banners when you approach or hit your limits:
 
-The **Tables** screen is the fastest way to inspect recent analytics records.
+- **Analytics events** — banner appears at ≥80% usage; turns into a destructive banner with no further events being tracked at 100%. Free and Team plans show an **Upgrade plan** button.
+- **Session replays** — banner appears at ≥80% usage; new replays stop being recorded at 100%. Limits reset monthly.
 
-- Currently shows the `events` table
-- Built-in ordering and client-side search
-- Relative/absolute timestamp display toggle
-- Row detail dialog for inspecting full JSON payloads
-
-Use this view when you need to quickly answer "what just happened?" without writing SQL.
-
-## Queries
-
-The **Queries** screen is a ClickHouse SQL workspace for deeper analysis.
-
-- Run read-only SQL queries with a timeout budget
-- Query the users and analytics tables
-- Save reusable queries into folders
-- Re-run saved queries with one click
-- Edit and overwrite saved query definitions
-
-## Session Replays
-
-The **Replays** screen helps you move from "an event happened" to "what the user actually saw."
-
-- Filter sessions by user, team, duration, recency, and click count
-- Play back multi-tab sessions
-- Control playback speed
-- Optionally skip inactive ranges
-- Jump across click/page-view timeline markers
-
-Use replays when metrics alone are not enough to explain user behavior.
-
-### Enabling Replay Recording in the SDK
-
-Session replay recording is disabled by default. To enable it, pass `analytics.replays.enabled: true` when creating your client app.
-
-```ts
-import { StackClientApp } from "@stackframe/stack";
-
-export const stackClientApp = new StackClientApp({
-  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
-  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
-  tokenStore: "nextjs-cookie",
-  analytics: {
-    replays: {
-      enabled: true,
-      // Optional. Defaults to true.
-      maskAllInputs: true,
-    },
-  },
-});
-```
-
-`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it.
+Both banners disappear automatically when usage drops back below 80% (e.g. at the start of a new billing month).
 
 ## Best Practices
 
-1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.
-2. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
-3. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
-4. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
+1. **Use Tables for quick triage** — pick a table from the sidebar and scan recent rows. Use AI search for one-off "what just happened?" questions.
+2. **Use Queries for repeatable analysis** — save important SQL in folders with descriptions, and scope queries with `WHERE` / `LIMIT` so they stay within result and timeout limits.
+3. **Use Replays for behavioral debugging** — start from an event pattern in Tables / Queries, then jump to matching session replays to see what users actually did.
+4. **Keep replay privacy defaults on** — leave `maskAllInputs` enabled unless you have an explicit need for unmasked input recording and a data-handling policy to match.
+5. **Watch the usage banners** — analytics events and replays are metered; if you see the 80% banner, either upgrade or scope down your recording (e.g. gate `analytics.replays.enabled` behind a sampling check).

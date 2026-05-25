@@ -4,6 +4,424 @@ description: "Manage teams and team members"
 sidebarTitle: "Overview"
 ---
 
+Teams provide a structured way to group users and manage their permissions. Users can belong to multiple teams simultaneously, allowing them to represent departments, B2B customers, organizations, or projects.
+
+The server can perform all operations on a team. Client-side team and membership actions are gated by team permissions, so users can only perform the actions they are allowed to perform.
+
+## Dashboard
+
+The Teams app adds two dashboard pages:
+
+- **Teams** - List, create, edit, inspect, and delete teams.
+- **Team Settings** - Configure how teams are created and which permissions are granted by default.
+
+### Teams page
+
+The **Teams** page shows:
+
+- **Create Team** button - Opens a dialog with a required **Display Name** field.
+- **KPI cards** - New active teams, daily active teams, returning team rate, and total teams.
+- **Teams table** - Infinite-scroll table with URL-synced state and a default sort by newest teams first.
+
+The teams table includes:
+
+- **ID** - Monospace team ID.
+- **Display Name** - Team display name.
+- **Created At** - Creation timestamp.
+- **Actions** - Row actions for team-specific workflows.
+
+If no teams exist yet, the page may show an alert pointing project owners to project-level team settings if they were actually trying to invite someone to the project owner team.
+
+### Team row actions
+
+Each team row has an action menu:
+
+- **View Members** - Opens the team detail page.
+- **Edit** - Opens the **Edit Team** dialog. The dialog shows the immutable team ID and lets you update **Display Name**.
+- **Create Checkout** - Opens a product selector for team-scoped payment products, creates a temporary checkout URL, and shows it in a dialog. The URL expires after 24 hours.
+- **Delete** - Opens a destructive confirmation dialog. The confirmation text is:
+
+```text
+I understand that this action cannot be undone and all the team members will be also removed from the team.
+```
+
+Deleting a team removes its memberships as well.
+
+<Info>
+  **Create Checkout** only works with products whose customer type is `team`. If the selected product does not exist, has the wrong customer type, is already granted, or the team customer cannot be found, the dashboard shows an error toast.
+</Info>
+
+### Team detail page
+
+Click a team row or **View Members** to open the team detail page. The header shows:
+
+- Team avatar
+- Editable display name
+- Team creation date
+
+The page has category tabs. Some tabs only appear when the related app is installed:
+
+- **Members** - Always available when Teams is enabled.
+- **Payments** - Appears when Payments is installed.
+- **Analytics** - Appears when Analytics is installed.
+- **Metadata** - Always available.
+- **Install apps** - Shortcut to the Apps page if you want to add related apps.
+
+The selected tab is synced to the URL using the `tab` query parameter.
+
+### Members tab
+
+The **Members** tab shows a team member table and an **Add a user** action.
+
+The **Add a user** dialog has two paths:
+
+- **Invite a new user** - Enter an email address and click **Invite**. The project must have at least one configured non-wildcard domain so the dashboard can build the team invitation callback URL. After a successful invite, the button changes to **Invited!**.
+- **Add an existing user** - Search existing users and click **Add**. Users who are already members show **Added** and cannot be added again.
+
+The member table includes:
+
+- **User** - Avatar and display name, linking to the user detail page.
+- **Email**
+- **User ID** - Shortened ID with a copy-to-clipboard button.
+- **Email Verified** - Hidden by default, available as a column.
+- **Last active** - Default sort column, newest first.
+- **Permissions** - Direct team permissions only, shown as badges.
+- **Actions** - **Edit permissions** and **Remove from team**.
+
+**Edit permissions** opens a nested permission checklist built from the project's team permission definitions. It grants checked permissions and revokes unchecked permissions on save. The table shows only direct permissions; inherited permissions still apply at runtime through RBAC. If the permission fetch fails for a row, the table shows **Failed to load** and disables **Edit permissions** until the table is reloaded.
+
+**Remove from team** opens a destructive confirmation dialog:
+
+```text
+I understand this will cause the user to lose access to the team.
+```
+
+### Payments tab
+
+The **Payments** tab summarizes team-scoped billing when the Payments app is installed. It shows:
+
+- **Active subscriptions**
+- **Products owned**
+- **Lifetime spend** or **Recent spend** if the transaction window is truncated
+- **Products & subscriptions** table with product, type, quantity, and granted date
+- **Transaction history** table with type, detail, date, amount, and status
+- **Item balances** for team-scoped payment items
+
+Metrics are computed from recent team transactions. If the team has more than the dashboard's transaction cap, the page shows that older history is excluded from the metric cards.
+
+### Analytics tab
+
+The **Analytics** tab summarizes activity for the team's members when Analytics is installed. It scopes activity by member user IDs and shows:
+
+- **Members**
+- **Active (7d)**
+- **Active (30d)**
+- **Total events**
+- **Active users by hour of week** heatmap
+- **Daily activity** chart
+- **Top contributors** table
+
+If the team has no members or no activity, the charts show empty states. If analytics queries fail, the tab shows an **Analytics unavailable** card.
+
+### Metadata tab
+
+The **Metadata** tab lets you inspect and edit team metadata:
+
+- **Client metadata** - Readable and writable from client and server SDKs.
+- **Client read-only metadata** - Readable from client and server SDKs, writable from the server and dashboard.
+- **Server metadata** - Server-only metadata, editable from the dashboard.
+
+Use metadata for application-specific team data that belongs on the team object, such as billing identifiers, onboarding state, or workspace settings.
+
+### Team Settings page
+
+The **Team Settings** page controls team creation and default permissions.
+
+#### Team Creation
+
+The **Team Creation** card has two switches with deferred save/discard controls:
+
+- **Client Team Creation** - Controls whether users can create teams from account settings and the team switcher. This must be enabled before client-side `user.createTeam()` can be used.
+- **Personal Team on Sign-up** - Creates a personal team for each new user at sign-up. This does not affect existing users.
+
+Changes are marked as modified until you click **Save** or **Discard**.
+
+#### Default permissions
+
+Two cards control permissions that are automatically granted:
+
+- **Team Creator Default Permissions** - Granted to the user who creates a team.
+- **Team Member Default Permissions** - Granted to users when they join a team.
+
+Each card shows the selected permissions as badges, or **No default permissions set**. Click **Edit** to open a nested permission checklist. Inherited permissions are labeled with `from <permission-id>` so you can see when a selected permission includes another permission indirectly.
+
+Default permissions are based on the team permission definitions from [RBAC](/guides/apps/rbac/overview).
+
+## Concepts
+
+### Team permissions
+
+If you attempt to perform an action without the necessary team permissions, the function will throw an error. Always check if the user has the required permission before performing an action. Learn more about permissions [here](../rbac/overview).
+
+Here is an example of how to check if a user has a specific permission on the client:
+
+```tsx
+const user = useUser({ or: "redirect" });
+const team = user.useTeam("some-team-id");
+
+if (!team) {
+  return <div>Team not found</div>;
+}
+
+const hasPermission = user.usePermission(team, "$invite_members");
+
+if (!hasPermission) {
+  return <div>No permission</div>;
+}
+
+// Perform corresponding action like inviting a user
+```
+
+Always enforce authorization on the server for business logic:
+
+```tsx
+const user = await stackServerApp.getUser({ or: "redirect" });
+const team = await user.getTeam("some-team-id");
+
+if (!team || !(await user.hasPermission(team, "$invite_members"))) {
+  return new Response("Forbidden", { status: 403 });
+}
+```
+
+### Team profile
+
+A user can have a different profile for each team they belong to. This is separate from the user's personal profile. The team profile contains information like `displayName` and `profileImageUrl`. The team profile can be left empty and will automatically fall back to the user's personal profile information.
+
+The team profile is visible to other users in the team that have the `$read_members` permission.
+
+## Retrieving a user's teams
+
+You can list all teams a user belongs to using `listTeams` or `useTeams`, or fetch a specific team with `getTeam` or `useTeam`. These functions work on both clients and servers.
+
+<Tabs>
+  <Tab title="Client Component">
+    ```tsx
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export function TeamList() {
+      const user = useUser({ or: "redirect" });
+      const allTeams = user.useTeams();
+      const someTeam = user.useTeam("some-team-id");
+
+      return (
+        <>
+          <div>
+            {allTeams.map(team => (
+              <div key={team.id}>{team.displayName}</div>
+            ))}
+          </div>
+          <div>
+            {someTeam ? someTeam.displayName : "Not a member of this team"}
+          </div>
+        </>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Server Component">
+    ```tsx
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function TeamList() {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      const allTeams = await user.listTeams();
+      const someTeam = await user.getTeam("some-team-id");
+
+      return (
+        <>
+          <div>
+            {allTeams.map(team => (
+              <div key={team.id}>{team.displayName}</div>
+            ))}
+          </div>
+          <div>
+            {someTeam ? someTeam.displayName : "Not a member of this team"}
+          </div>
+        </>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Creating a team
+
+To create a team for the current user, use `createTeam` on the `User` object. The user is added to the team with the default team creator permissions configured in **Team Settings**.
+
+On the client, this requires **Client Team Creation** to be enabled in **Team Settings**.
+
+```tsx
+const team = await user.createTeam({
+  displayName: "New Team",
+});
+```
+
+To create a team on the server without adding a specific user, use `createTeam` on the server app:
+
+```tsx
+const team = await stackServerApp.createTeam({
+  displayName: "New Team",
+});
+```
+
+## Updating a team
+
+You can update a team with `update` on the `Team` object. On the client, the user must have the `$update_team` permission.
+
+```tsx
+await team.update({
+  displayName: "New Name",
+});
+```
+
+## Custom team metadata
+
+You can store custom metadata on a team object, similar to the user object. The metadata can be any JSON object.
+
+- `clientMetadata`: Can be read and updated on both the client and server sides.
+- `serverMetadata`: Can only be read and updated on the server side.
+- `clientReadOnlyMetadata`: Can be read on both the client and server sides, but can only be updated on the server side.
+
+```tsx
+await team.update({
+  clientMetadata: {
+    customField: "value",
+  },
+});
+
+console.log(team.clientMetadata.customField); // "value"
+```
+
+## Listing users in a team
+
+You can list all users in a team with `listUsers` or `useUsers` on the `Team` object. To show a user's team profile, read `user.teamProfile`.
+
+On the client, the current user must have the `$read_members` permission.
+
+<Tabs>
+  <Tab title="Client Component">
+    ```tsx
+    // ... retrieve the team and ensure user has the necessary permissions
+    const users = team.useUsers();
+
+    return (
+      <div>
+        {users.map(user => (
+          <div key={user.id}>{user.teamProfile.displayName}</div>
+        ))}
+      </div>
+    );
+    ```
+  </Tab>
+  <Tab title="Server Component">
+    ```tsx
+    // ... retrieve the team
+    const users = await team.listUsers();
+
+    return (
+      <div>
+        {users.map(user => (
+          <div key={user.id}>{user.teamProfile.displayName}</div>
+        ))}
+      </div>
+    );
+    ```
+  </Tab>
+</Tabs>
+
+## Current user's team profile
+
+You can get the current user's team profile with `getTeamProfile` or `useTeamProfile` on the `User` object.
+
+<Tabs>
+  <Tab title="Client Component">
+    ```tsx
+    const teamProfile = user.useTeamProfile(team);
+    ```
+  </Tab>
+  <Tab title="Server Component">
+    ```tsx
+    const teamProfile = await user.getTeamProfile(team);
+    ```
+  </Tab>
+</Tabs>
+
+## Inviting users
+
+You can invite a user to a team with `inviteUser` on the `Team` object. The user receives an email with a link to join the team.
+
+On the client, the current user must have the `$invite_members` permission.
+
+```tsx
+await team.inviteUser({
+  email: "person@example.com",
+});
+```
+
+If you need to specify where the invitation returns after acceptance, pass an object with `email` and `callbackUrl`:
+
+```tsx
+await team.inviteUser({
+  email: "person@example.com",
+  callbackUrl: "https://example.com/team-invitation",
+});
+```
+
+## Adding a user directly
+
+If you want to add a user to a team without sending an email, use `addUser` on the server-side `Team` object.
+
+```tsx
+await team.addUser(user.id);
+```
+
+New members receive the default team member permissions configured in **Team Settings**.
+
+## Removing a user from a team
+
+You can remove a user from a team with `removeUser` on the `Team` object. On the client, the current user must have the `$remove_members` permission.
+
+```tsx
+await team.removeUser(user.id);
+```
+
+## Leaving a team
+
+All users can leave a team without any permissions required.
+
+```tsx
+const team = await user.getTeam("some-team-id");
+if (!team) throw new Error("Team not found");
+
+await user.leaveTeam(team);
+```
+
+## Deleting a team
+
+You can delete a team with `delete` on the `Team` object. On the client, the current user must have the `$delete_team` permission.
+
+```tsx
+await team.delete();
+```
+
+Deleting a team removes all memberships for that team. Make sure your app treats deleted team IDs as invalid and refreshes any team switchers after deletion.
+---
+title: "Teams"
+description: "Manage teams and team members"
+sidebarTitle: "Overview"
+---
+
 Teams provide a structured way to group users and manage their permissions. Users can belong to multiple teams simultaneously, allowing them to represent departments, B2B customers, or projects.
 
 The server can perform all operations on a team, but the client can only carry out some actions if the user has the necessary permissions. This applies to all actions that can be performed on a server/client-side `User` object and a `Team` object.

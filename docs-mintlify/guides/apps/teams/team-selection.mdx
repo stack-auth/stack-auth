@@ -25,32 +25,36 @@ To facilitate team selection, Stack provides a component that looks like this:
   <img src="/images/team-switcher.png" alt="TeamSwitcher" />
 </Frame>
 
-You can import and use the `SelectedTeamSwitcher` component for the "current team" method. It updates the `selectedTeam` when a user selects a team:
+You can import and use the `SelectedTeamSwitcher` component for the "current team" method. Pass the user's current `selectedTeam` so the switcher shows the saved selection on first render. When a user selects a different team, the switcher calls `user.setSelectedTeam()`:
 
-```jsx
-import { SelectedTeamSwitcher } from "@stackframe/stack";
+```tsx
+"use client";
+
+import { SelectedTeamSwitcher, useUser } from "@stackframe/stack";
 
 export function MyPage() {
+  const user = useUser({ or: "redirect" });
+
   return (
     <div>
-      <SelectedTeamSwitcher/>
+      <SelectedTeamSwitcher selectedTeam={user.selectedTeam ?? undefined} />
     </div>
   );
 }
 ```
 
-To combine the switcher with the deep link method, you can pass in `urlMap` and `selectedTeam`. The `urlMap` is a function to generate a URL based on the team information, and `selectedTeam` is the team that the user is currently working on. This lets you implement "deep link" + "most recent team". The component will update the `user.selectedTeam` with the `selectedTeam` prop:
+To combine the switcher with the deep link method, pass both `urlMap` and `selectedTeam`. The `urlMap` function generates a URL for each team, and `selectedTeam` is the team for the current page. This implements "deep link" + "most recent team": selecting a team navigates to that team's URL, and the component updates `user.selectedTeam` unless you disable that behavior.
 
-```jsx
+```tsx
 <SelectedTeamSwitcher 
   urlMap={team => `/team/${team.id}`} 
   selectedTeam={team}
 />
 ```
 
-To implement the "deep link" + "default team" method, where you update the `selectedTeam` only when the user clicks "set to default team" or similar, pass `noUpdateSelectedTeam`:
+To implement the "deep link" + "default team" method, where changing pages should not update the user's saved selected team, pass `noUpdateSelectedTeam`:
 
-```jsx
+```tsx
 <SelectedTeamSwitcher 
   urlMap={team => `/team/${team.id}`} 
   selectedTeam={team} 
@@ -58,17 +62,26 @@ To implement the "deep link" + "default team" method, where you update the `sele
 />
 ```
 
+Other useful options:
+
+- `allowNull` - Allows the user to select "no team".
+- `nullLabel` - Custom label for the null option.
+- `onChange` - Called whenever a team is selected.
+- `triggerClassName` - Adds classes to the switcher trigger.
+
 ## Example: Deep Link + Most Recent Team
 
-First, create a page at `/app/team/[teamId]/page.tsx` to display information about a specific team:
+First, create a client page at `app/team/[teamId]/page.tsx` to display information about a specific team:
 
-```jsx 
+```tsx
 "use client";
 
 import { useUser, SelectedTeamSwitcher } from "@stackframe/stack";
+import { useParams } from "next/navigation";
 
-export default function TeamPage({ params }: { params: { teamId: string } }) {
-  const user = useUser({ or: 'redirect' });
+export default function TeamPage() {
+  const user = useUser({ or: "redirect" });
+  const params = useParams<{ teamId: string }>();
   const team = user.useTeam(params.teamId);
 
   if (!team) {
@@ -89,26 +102,27 @@ export default function TeamPage({ params }: { params: { teamId: string } }) {
 }
 ```
 
-Next, create a page to display all teams at `/app/team/page.tsx`:
+Next, create a page to display all teams at `app/team/page.tsx`:
 
-```jsx
+```tsx
 "use client";
 
 import { useRouter } from "next/navigation";
 import { useUser } from "@stackframe/stack";
 
 export default function TeamsPage() {
-  const user = useUser({ or: 'redirect' });
+  const user = useUser({ or: "redirect" });
   const teams = user.useTeams();
   const router = useRouter();
   const selectedTeam = user.selectedTeam;
 
   return (
     <div>
-      {selectedTeam && 
+      {selectedTeam && (
         <button onClick={() => router.push(`/team/${selectedTeam.id}`)}>
           Most recent team
-        </button>}
+        </button>
+      )}
 
       <h2>All Teams</h2>
       {teams.map(team => (
@@ -122,3 +136,30 @@ export default function TeamsPage() {
 ```
 
 Now, if you navigate to `http://localhost:3000/team`, you should be able to see and interact with the teams.
+
+## Example: Allow Personal Scope
+
+Some apps let users work either personally or inside a team. Use `allowNull` to add a null option:
+
+```tsx
+"use client";
+
+import { SelectedTeamSwitcher, useUser } from "@stackframe/stack";
+
+export function ScopeSwitcher() {
+  const user = useUser({ or: "redirect" });
+
+  return (
+    <SelectedTeamSwitcher
+      selectedTeam={user.selectedTeam ?? undefined}
+      allowNull
+      nullLabel="Personal"
+      onChange={(team) => {
+        console.log(team ? `Selected ${team.id}` : "Selected personal scope");
+      }}
+    />
+  );
+}
+```
+
+When `allowNull` is enabled, the `onChange` callback can receive `null`. If `noUpdateSelectedTeam` is not set, selecting a real team updates `user.selectedTeam`; selecting the null option clears it.

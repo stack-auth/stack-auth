@@ -23,12 +23,15 @@ To add a rule:
 
 When building rule conditions, you have access to these context variables:
 
-| Variable        | Type   | Description                                                                             |
-| --------------- | ------ | --------------------------------------------------------------------------------------- |
-| `email`         | string | The user's email address (normalized to lowercase)                                      |
-| `emailDomain`   | string | The domain part of the email (after @)                                                  |
-| `authMethod`    | string | The authentication method: `password`, `otp`, `oauth`, or `passkey`                     |
-| `oauthProvider` | string | The OAuth provider ID if using OAuth (e.g., `google`, `github`), empty string otherwise |
+| Variable | Type | Description |
+| --- | --- | --- |
+| `email` | string | The user's email address (normalized to lowercase). |
+| `emailDomain` | string | The domain part of the email (after `@`). |
+| `authMethod` | string | The authentication method: `password`, `otp`, `oauth`, or `passkey`. |
+| `oauthProvider` | string | The OAuth provider ID if using OAuth (e.g., `google`, `github`), empty string otherwise. |
+| `countryCode` | string | Geo-IP ISO-3166-1 alpha-2 country code (e.g. `US`, `DE`). See [Fraud Protection](./fraud-protection). |
+| `riskScores.bot` | number (0-100) | Bot-confidence score. See [Fraud Protection](./fraud-protection). |
+| `riskScores.free_trial_abuse` | number (0-100) | Free-trial / multi-account abuse score. See [Fraud Protection](./fraud-protection). |
 
 The condition builder supports these operations on string values:
 
@@ -37,6 +40,8 @@ The condition builder supports these operations on string values:
 * `endsWith("suffix")` - Check if value ends with a suffix
 * `matches("regex")` - Check if value matches a regular expression
 * `==` and `!=` - Exact equality comparisons
+
+Numeric fields (the `riskScores.*` family) also support `<`, `<=`, `>`, and `>=`. Enum-style fields (`countryCode`, `authMethod`, `oauthProvider`) support `in_list("a", "b", ...)`.
 
 You can combine multiple conditions using AND/OR logic.
 

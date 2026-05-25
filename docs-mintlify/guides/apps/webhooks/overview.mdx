@@ -6,7 +6,7 @@ icon: "/images/app-icons/webhooks.svg"
 
 Webhooks are a powerful way to keep your backend in sync with Stack. They allow you to receive real-time updates when events occur in your Stack project, such as when a user or team is created, updated, or deleted.
 
-For payload schemas and each webhook event, see the [webhook API reference](/api/webhooks/users/usercreated).
+For payload schemas and generated webhook event references, see the [webhook API reference](/api/webhooks/users/usercreated).
 
 ## Setting up webhooks
 
@@ -18,10 +18,93 @@ In the Stack dashboard, you can create a webhook endpoint in the "Webhooks" sect
   "data": {
     "id": "2209422a-eef7-4668-967d-be79409972c5",
     "display_name": "My Team",
-    ...
+    "profile_image_url": null,
+    "client_metadata": {},
+    "client_read_only_metadata": {},
+    "server_metadata": {},
+    "created_at_millis": 1715360400000
   }
 }
 ```
+
+## Dashboard
+
+The **Webhooks** dashboard page embeds the endpoint manager where you create endpoints, send test events, inspect delivery history, and copy the verification secret for each endpoint.
+
+<Info>
+  Webhooks are unavailable in preview mode. Preview deployments show an informational alert instead of the endpoint manager.
+</Info>
+
+### Endpoints list
+
+The main Webhooks page shows your webhook endpoints. Each endpoint includes:
+
+- **Endpoint URL** - The URL Stack sends events to.
+- **Description** - Optional label for your own reference.
+- **Status** - **Active** or **Disabled**.
+- **Actions** - View details, test, edit, or delete the endpoint.
+
+Use this list to find existing endpoints, open endpoint details, or start endpoint actions.
+
+### Creating an endpoint
+
+Click **Add new endpoint** to open the endpoint creation dialog. The dialog includes:
+
+- **URL** - Required, must be a valid URL.
+- **Description** - Optional, useful for labeling environments like `Production`, `Staging`, or `Local tunnel`.
+
+The dialog warns you to use only URLs you control because webhook payloads can contain sensitive user and team data. If the URL starts with `http://`, the dashboard shows an additional warning:
+
+```text
+Using HTTP endpoints is insecure. This can expose your user data to attackers. Only use HTTP endpoints in development environments.
+```
+
+After creation, the dashboard shows a success state with the endpoint URL and description, plus a **Test endpoint** button so you can immediately send a test event.
+
+### Testing an endpoint
+
+Endpoint rows have a **Test** action, and newly-created endpoints can be tested from the success state. The test dialog sends a `stack.test` event to the selected endpoint and shows the sample payload before sending:
+
+```json
+{
+  "type": "stack.test",
+  "data": {
+    "message": "Stack webhook test event triggered from the Stack dashboard.",
+    "endpointUrl": "https://example.com/api/webhooks/stack"
+  }
+}
+```
+
+Click **Send test event** to send it. On success, the dashboard confirms that the event was sent and the endpoint is ready. On failure, it shows the delivery error returned by the webhook service.
+
+### Editing and deleting endpoints
+
+The endpoint action menu includes:
+
+- **View Details** - Opens the endpoint detail page.
+- **Test** - Opens the test-event dialog.
+- **Edit** - Lets you update the endpoint description. The endpoint URL is not edited in this dialog.
+- **Delete** - Opens a destructive confirmation dialog. Deleted endpoints stop receiving events.
+
+### Endpoint details
+
+The endpoint detail page shows:
+
+- **URL** - The endpoint URL.
+- **Description** - The saved description, or `-` when empty.
+- **Verification Secret** - The endpoint signing secret, with a copy button.
+
+Use the verification secret as `STACK_WEBHOOK_SECRET` (or your own secret environment variable name) in your webhook receiver. Do not expose it to the browser.
+
+### Event history
+
+The endpoint detail page also shows recent message attempts for that endpoint with:
+
+- **ID** - Message attempt ID.
+- **Status** - **Success**, **Pending**, **Fail**, **Sending**, or **Unknown**.
+- **Timestamp** - When the attempt was created.
+
+Use the event history to confirm whether deliveries succeeded, are pending, or failed. If no events have been sent yet, the dashboard shows **No events sent yet.**
 
 ## Testing webhooks locally
 
@@ -184,10 +267,13 @@ def stack_webhook(request):
 ```
 
 ```python FastAPI
+import os
+
 from fastapi import FastAPI, Request
 from svix.webhooks import Webhook
 
 app = FastAPI()
+STACK_WEBHOOK_SECRET = os.environ["STACK_WEBHOOK_SECRET"]
 
 
 @app.post("/api/webhooks/stack")
@@ -207,10 +293,13 @@ async def stack_webhook(request: Request):
 ```
 
 ```python Flask
+import os
+
 from flask import Flask, jsonify, request
 from svix.webhooks import Webhook
 
 app = Flask(__name__)
+STACK_WEBHOOK_SECRET = os.environ["STACK_WEBHOOK_SECRET"]
 
 
 @app.post("/api/webhooks/stack")
@@ -233,11 +322,13 @@ If you do not want to install the Svix client library or are using a language th
 
 ## Event types
 
-These are the `type` values you may receive. Each links to its API reference page.
+These are the `type` values you may receive. Linked events include generated API reference pages with their payload schemas.
 
 - [`user.created`](/api/webhooks/users/usercreated)
 - [`user.updated`](/api/webhooks/users/userupdated)
 - [`user.deleted`](/api/webhooks/users/userdeleted)
+- `project_permission.created` - Triggered when a project-level permission is granted to a user. The payload includes `id` and `user_id`.
+- `project_permission.deleted` - Triggered when a project-level permission is revoked from a user. The payload includes `id` and `user_id`.
 - [`team.created`](/api/webhooks/teams/teamcreated)
 - [`team.updated`](/api/webhooks/teams/teamupdated)
 - [`team.deleted`](/api/webhooks/teams/teamdeleted)
@@ -248,4 +339,4 @@ These are the `type` values you may receive. Each links to its API reference pag
 
 ## Examples
 
-Some members of the community have shared their webhook implementations. For example, [here is an example by Clark Gredona](https://gist.github.com/clarkg/56ffad44949826ae3efe0a431b6021c4) that validates the Webhook schema and update a database user.
+Some members of the community have shared their webhook implementations. For example, [here is an example by Clark Gredona](https://gist.github.com/clarkg/56ffad44949826ae3efe0a431b6021c4) that validates the webhook schema and updates a database user.

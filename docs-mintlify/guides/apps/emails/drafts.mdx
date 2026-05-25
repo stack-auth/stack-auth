@@ -1,0 +1,110 @@
+---
+title: "Drafts"
+description: "Compose, preview, and send one-off emails to selected recipients."
+sidebarTitle: "Drafts"
+---
+
+The **Drafts** tab is your composer for one-off emails - launches, announcements, manual outreach, anything you'd write in Mailchimp. Each draft has a full TSX source, a live preview, an AI builder, a recipient picker, and an optional schedule. Drafts persist between sessions and can be sent later (or scheduled), and every send is logged with its delivery status.
+
+<Info>
+  Drafts can only be sent when you've configured a custom email server. On the shared server you can still create, edit, and preview drafts, but the **Send** action is disabled. See [Email Settings](/guides/apps/emails/email-settings).
+</Info>
+
+## Drafts list
+
+The page is split into two sections:
+
+- **Active Drafts** - in-progress drafts that haven't been sent yet.
+- **History** - drafts that have already been sent. Sent drafts are read-only but you can still inspect their content, recipients, and delivery results.
+
+Each draft card has a quick **Edit** button (revealed on hover) and a `⋮` menu with **Delete**. Deletion is confirmed in a dialog. Deleting a sent draft removes the draft record but does **not** un-send the emails already delivered.
+
+If you're on the shared email server, every card opens a warning dialog before you enter the editor - you can still open the draft, but the **Send** step at the end will be blocked.
+
+## Creating a new draft
+
+The **New Draft** dropdown in the top-right offers two starting points:
+
+### Create from scratch
+
+Opens a dialog that asks for a **Draft name**, then drops you into the editor with an empty template.
+
+### Create from template
+
+Lists every template in your project. Pick one and Stack Auth uses AI to rewrite the template's TSX into a one-off draft (preserving layout and styling so you can tweak the copy). You can rename the draft before it's created.
+
+If no templates exist yet, this option shows a placeholder pointing you to [Templates](/guides/apps/emails/templates).
+
+## The draft editor
+
+Once you open a draft you progress through four stages, shown as a progress bar at the top:
+
+1. **Draft** - write the email.
+2. **Recipients** - decide who receives it.
+3. **Schedule** - decide when.
+4. **Send** - confirmation and delivery view.
+
+You can jump backward to any completed step by clicking on it in the progress bar.
+
+### 1. Draft
+
+This stage uses the same **vibe-coding** layout as Templates - a three-pane workspace with:
+
+- **AI Assistant** (left) - chat with the email builder to make edits, summarize content, restyle, add CTAs, etc. The assistant has full context of the current TSX and can iterate on it.
+- **Preview** (center) - live render of the email. The viewport switcher lets you preview **Edit**, **Desktop**, **Tablet**, or **Phone**. In **Edit** mode you can WYSIWYG-edit directly in the preview, and the AI rewrites the source for you on commit.
+- **Code Editor** (right) - the raw TSX. Edit by hand if you want full control. Templates use the same [`@stackframe/emails`](/guides/apps/emails/templates#authoring-templates) primitives - `<Subject>`, `<NotificationCategory>`, `<Container>`, and React Email components.
+
+The header has an **EmailThemeSelector** so you can swap themes mid-edit. **Save draft** persists your changes; **Undo** reverts to the last saved version. **Next: Recipients** advances the flow.
+
+If saving fails (for example, because of a TSX rendering error), an inline alert shows the rendering message so you can fix it.
+
+### 2. Recipients
+
+Pick who receives the email:
+
+- **All users** - send to every user in the project.
+- **Select users…** - opens the user picker table. Add or remove users by toggling them in the table; selected users appear as removable badges at the top.
+
+You can't advance until at least one recipient is selected (or scope is set to "All users"). Use **Back** to return to the draft.
+
+### 3. Schedule
+
+Choose **Send immediately** or **Schedule for later**. The scheduled option exposes a date and time picker. The final **Send** button is disabled until a valid date and time are set.
+
+This stage submits the draft via:
+
+```typescript
+await stackServerApp.sendEmail({
+  draftId,
+  // either:
+  userIds: [...],
+  // or:
+  allUsers: true,
+  scheduledAt: new Date('2026-12-25T09:00:00Z'),
+});
+```
+
+If the configured email server can't handle the send (e.g. shared SMTP), you get an inline error and stay on the schedule step.
+
+### 4. Send
+
+The final stage shows the **Sent Emails** view scoped to this draft - the same email log you see in [Sent](/guides/apps/emails/sent), filtered to the draft you just sent. You can drill into individual recipients to inspect the rendered HTML and delivery status.
+
+## Sending a draft from code
+
+You don't have to send drafts from the dashboard. Once a draft exists, trigger it from your server using its ID:
+
+```typescript
+await stackServerApp.sendEmail({
+  userIds: ['user-id'],
+  draftId: 'your-draft-id',
+});
+```
+
+You can mix `draftId` with `variables`, `scheduledAt`, `notificationCategoryName`, and `themeId` just like with templates - see the [Overview](/guides/apps/emails/overview#sending-emails) for the full options shape.
+
+## Related
+
+- [Templates](/guides/apps/emails/templates) - reusable templates that can be turned into drafts.
+- [Sent](/guides/apps/emails/sent) - inspect the delivery status of emails launched from a draft.
+- [Email Settings](/guides/apps/emails/email-settings) - required setup before drafts can actually send.

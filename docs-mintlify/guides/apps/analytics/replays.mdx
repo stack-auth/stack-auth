@@ -1,0 +1,130 @@
+---
+title: "Session Replays"
+description: "Watch session replays and filter by user, team, duration, last activity, and click count"
+sidebarTitle: "Replays"
+---
+
+The **Replays** page lets you watch how real users interacted with your app, scoped to a single recording at a time. It lives at **Analytics → Replays** in the dashboard sidebar.
+
+Session replays are recorded by the SDK using [`rrweb`](https://www.rrweb.io) and grouped by session. Multi-tab sessions are stitched together into a single timeline.
+
+<Note>
+  Session replay recording is **opt-in**. Until you enable it in your client app config, no replays will be recorded. See [Enabling Replay Recording in the SDK](#enabling-replay-recording-in-the-sdk).
+</Note>
+
+## Sessions list
+
+The left panel lists every session replay for your project, sorted by most recent activity.
+
+Each row shows:
+
+- The user's display name, email, or ID
+- The session duration (e.g. `2m 14s`)
+- A relative timestamp (e.g. `5 minutes ago`)
+- A click count (when greater than 0)
+
+Scroll to the bottom of the list to load more replays.
+
+### Filters
+
+Click the **Filters** dropdown at the top of the list to filter the sessions list. An indicator badge shows the number of active filters.
+
+| Filter        | Control                                                            |
+| ------------- | ------------------------------------------------------------------ |
+| **User**      | Pick a specific user from a searchable user list                   |
+| **Team**      | Pick a specific team from a searchable team list                   |
+| **Duration**  | Minimum and maximum session duration in seconds                    |
+| **Last active** | Preset windows: `Last 24 hours`, `Last 7 days`, `Last 30 days`   |
+| **Click count** | Minimum number of `$click` events in the session                 |
+
+Active filters appear as chips above the list. Click **clear** to remove all filters.
+
+When the Replays panel is embedded inline on a user's detail page, the **User** filter is locked to that user and isn't counted in the active filter badge.
+
+## Player
+
+Selecting a replay loads it into the player on the right. The header shows:
+
+- The user's name (linked to the user's page in the dashboard)
+- A **copy link** button — copies a direct share link to the replay. The link works at `/projects/<projectId>/session-replays/<replayId>` and opens the standalone replay viewer.
+- A **gear icon** — opens [replay settings](#replay-settings)
+
+### Multi-tab playback
+
+If the session spans multiple browser tabs, the active tab fills the main player area. Up to **2 other tabs** appear as small previews on the right at any one time; click a preview to switch which tab is active.
+
+Tabs are labeled `Tab 1`, `Tab 2`, … based on the order of their first event in the session.
+
+### Timeline
+
+The bottom of the player shows a scrubbable timeline:
+
+- **Play / Pause** button
+- **Current time** and **total time** counters (`mm:ss`)
+- **Speed** selector — `0.5x`, `1x`, `2x`, `4x`
+- **Event markers** above the timeline:
+  - **Blue ticks** — `$click` events; tooltip shows the clicked tag (e.g. *Clicked button*)
+  - **Green ticks** — `$page-view` events; tooltip shows the path
+  - Click a marker to jump to that moment
+- **Progress bar** — clickable for arbitrary seeking
+
+When the replay finishes, the player overlays a **Replay from start** button. Click anywhere on the player to toggle play / pause.
+
+If [skip inactivity](#replay-settings) is on, a *Skipping inactivity* badge appears at the top of the player while fast-forwarding idle ranges.
+
+### Replay settings
+
+Open the gear icon to toggle:
+
+| Setting              | Default | Description                                                                       |
+| -------------------- | ------- | --------------------------------------------------------------------------------- |
+| **Skip inactivity**  | **on**  | Fast-forward idle ranges during playback. While active, a *Skipping inactivity* badge appears. |
+| **Follow active tab** | **off** | Auto-switch the active tab to whichever tab has activity at the current playback time. |
+
+These settings are stored in `localStorage` and persist across sessions and recordings.
+
+## Standalone replay pages
+
+Each replay has a direct URL at `/projects/<projectId>/session-replays/<replayId>`. Opening that URL skips the sessions list and loads the player full-width — useful for sharing a specific replay with a teammate via the **copy link** button.
+
+## Enabling Replay Recording in the SDK
+
+Session replay recording is **disabled by default**. To enable it, pass `analytics.replays.enabled: true` when creating your client app:
+
+```ts
+import { StackClientApp } from "@stackframe/stack";
+
+export const stackClientApp = new StackClientApp({
+  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
+  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
+  tokenStore: "nextjs-cookie",
+  analytics: {
+    replays: {
+      enabled: true,
+      // Optional. Defaults to true.
+      maskAllInputs: true,
+    },
+  },
+});
+```
+
+| Option                            | Type      | Default | Description                                                                 |
+| --------------------------------- | --------- | ------- | --------------------------------------------------------------------------- |
+| `analytics.replays.enabled`       | `boolean` | `false` | Master switch for replay recording.                                         |
+| `analytics.replays.maskAllInputs` | `boolean` | `true`  | Masks all `<input>` values in recordings. Disable only with a privacy plan. |
+
+After enabling, sign in as a real user and interact with your app. Replays will start appearing in the Replays page within a few seconds of session activity.
+
+## Privacy
+
+By default, every `<input>` element in your app is masked in replay recordings (`maskAllInputs: true`). This includes password fields, search boxes, form inputs, and any custom input components — values are replaced with `*` characters in the recorded events.
+
+Only disable `maskAllInputs` if:
+
+- You have a documented data-handling policy that covers user-typed text
+- You've confirmed no sensitive fields (passwords, tokens, PII) will be captured
+- You've considered using rrweb's `data-rrweb-no-record` / `data-rrweb-mask` attributes for finer-grained control on specific elements
+
+## Limits
+
+The session replay usage banner appears at the top of the Replays page when your project is at ≥80% of its monthly replay quota. At 100%, new replays stop being recorded until the next billing month — see [Usage and Quotas](/guides/apps/analytics/overview#usage-and-quotas).

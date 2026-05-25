@@ -79,6 +79,7 @@
                   "guides/apps/authentication/jwts",
                   "guides/apps/authentication/sign-up-rules",
                   "guides/apps/authentication/cli-authentication",
+                  "guides/apps/authentication/fraud-protection",
                   {
                     "group": "All Auth Providers",
                     "root": "guides/apps/authentication/auth-providers",
@@ -101,9 +102,39 @@
                   }
                 ]
               },
-              "guides/apps/emails/overview",
-              "guides/apps/payments/overview",
-              "guides/apps/analytics/overview",
+              {
+                "group": "Emails",
+                "icon": "/images/app-icons/emails.svg",
+                "pages": [
+                  "guides/apps/emails/overview",
+                  "guides/apps/emails/sent",
+                  "guides/apps/emails/drafts",
+                  "guides/apps/emails/templates",
+                  "guides/apps/emails/email-settings"
+                ]
+              },
+              {
+                "group": "Payments",
+                "icon": "/images/app-icons/payments.svg",
+                "pages": [
+                  "guides/apps/payments/overview",
+                  "guides/apps/payments/product-lines",
+                  "guides/apps/payments/products-and-items",
+                  "guides/apps/payments/customers",
+                  "guides/apps/payments/transactions",
+                  "guides/apps/payments/settings"
+                ]
+              },
+              {
+                "group": "Analytics",
+                "icon": "/images/app-icons/analytics.svg",
+                "pages": [
+                  "guides/apps/analytics/overview",
+                  "guides/apps/analytics/tables",
+                  "guides/apps/analytics/queries",
+                  "guides/apps/analytics/replays"
+                ]
+              },
               {
                 "group": "Teams",
                 "icon": "/images/app-icons/teams.svg",
@@ -112,7 +143,6 @@
                   "guides/apps/teams/team-selection"
                 ]
               },
-              "guides/apps/fraud-protection/overview",
               "guides/apps/rbac/overview",
               "guides/apps/api-keys/overview",
               "guides/apps/data-vault/overview",
@@ -230,5 +260,10 @@
   "settings": {
     "customScripts": ["/apps-sidebar-filter.js"]
   },
-  "redirects": []
+  "redirects": [
+    {
+      "source": "/guides/apps/fraud-protection/overview",
+      "destination": "/guides/apps/authentication/fraud-protection"
+    }
+  ]
 }
