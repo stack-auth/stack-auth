@@ -2183,11 +2183,10 @@ function createPanel(
   }
 
   const tabs = getTabsForApp(app);
-  if (!tabs.some((tab) => tab.id === state.get().activeTab)) {
-    state.update({ activeTab: DEFAULT_STATE.activeTab });
-  }
+  const storedActiveTab = state.get().activeTab;
+  const activeTab = tabs.some((tab) => tab.id === storedActiveTab) ? storedActiveTab : DEFAULT_STATE.activeTab;
 
-  applyPanelMode(state.get().activeTab);
+  applyPanelMode(activeTab);
 
   const inner = h('div', { className: 'sdt-panel-inner' });
 
@@ -2203,7 +2202,7 @@ function createPanel(
 
   const trailingControls = h('div', { className: 'sdt-tabbar-actions' }, docsLink, closeBtn);
 
-  const tabBar = createTabBar(tabs, state.get().activeTab, (id) => {
+  const tabBar = createTabBar(tabs, activeTab, (id) => {
     state.update({ activeTab: id as TabId });
     applyPanelMode(id as TabId, { animate: true });
     showTab(id as TabId);
@@ -2277,7 +2276,7 @@ function createPanel(
     pane.classList.add('sdt-tab-pane-active');
   }
 
-  showTab(state.get().activeTab);
+  showTab(activeTab);
 
   function addResizeHandle(edge: 'top' | 'left' | 'top-left') {
     const handle = h('div', { className: `sdt-resize-handle sdt-resize-${edge}` });
@@ -2378,7 +2377,6 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   function openPanel() {
     if (panel) return;
-    state.update({ activeTab: 'overview' });
     panel = createPanel(app, state, logStore, closePanelAndPersistClosed);
     wrapper.appendChild(panel.element);
   }

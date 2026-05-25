@@ -349,7 +349,6 @@ function PageClientInner() {
                   value={projectName}
                   onChange={(event) => setProjectName(event.target.value)}
                   placeholder="My Project"
-                  required
                 />
               </div>
 
