@@ -155,9 +155,20 @@ Generate a checkout URL from the user or team that will own the purchase:
 
 For team purchases, call `createCheckoutUrl` on the team object:
 
-```typescript
-const team = user.useTeam(teamId);
-const checkoutUrl = await team.createCheckoutUrl({ productId: "prod_team_plan" });
+```tsx
+function TeamPurchaseButton({ teamId }: { teamId: string }) {
+  const user = useUser({ or: "redirect" });
+  const team = user.useTeam(teamId);
+
+  return (
+    <button onClick={async () => {
+      const checkoutUrl = await team.createCheckoutUrl({ productId: "prod_team_plan" });
+      window.location.href = checkoutUrl;
+    }}>
+      Purchase team plan
+    </button>
+  );
+}
 ```
 
 <Info>

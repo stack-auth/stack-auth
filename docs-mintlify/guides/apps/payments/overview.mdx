@@ -133,9 +133,20 @@ To sell a product, generate a checkout URL and redirect the user to it. The `cre
 
 For team purchases, call `createCheckoutUrl` on the team object instead:
 
-```typescript
-const team = user.useTeam(teamId);
-const checkoutUrl = await team.createCheckoutUrl({ productId });
+```tsx
+function TeamPurchaseButton({ teamId, productId }: { teamId: string, productId: string }) {
+  const user = useUser({ or: "redirect" });
+  const team = user.useTeam(teamId);
+
+  return (
+    <button onClick={async () => {
+      const checkoutUrl = await team.createCheckoutUrl({ productId });
+      window.location.href = checkoutUrl;
+    }}>
+      Purchase team plan
+    </button>
+  );
+}
 ```
 
 <Info>

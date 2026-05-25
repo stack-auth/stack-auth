@@ -126,10 +126,20 @@ export default function UpgradeButton() {
 
 Team plans work the same way when you call the methods on a team object:
 
-```typescript
-const team = user.useTeam(teamId);
-await team.switchSubscription({
-  fromProductId: "prod_team_pro",
-  toProductId: "prod_team_enterprise",
-});
+```tsx
+function TeamUpgradeButton({ teamId }: { teamId: string }) {
+  const user = useUser({ or: "redirect" });
+  const team = user.useTeam(teamId);
+
+  return (
+    <button onClick={async () => {
+      await team.switchSubscription({
+        fromProductId: "prod_team_pro",
+        toProductId: "prod_team_enterprise",
+      });
+    }}>
+      Upgrade team plan
+    </button>
+  );
+}
 ```
