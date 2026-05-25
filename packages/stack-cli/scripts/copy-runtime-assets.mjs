@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -17,6 +17,7 @@ const dashboardPublicSrc = join(dashboardRoot, "public");
 const distDir = join(packageRoot, "dist");
 const emulatorDist = join(distDir, "emulator");
 const dashboardDist = join(distDir, "dashboard");
+const dashboardSymlinksManifestPath = join(dashboardDist, "symlinks.json");
 
 function assertExists(path, message) {
   if (!existsSync(path)) {
@@ -39,6 +40,27 @@ function copyEmulatorAssets() {
   console.log(`Copied emulator assets into ${emulatorDist} (+ .env.development into ${distDir}).`);
 }
 
+function collectSymlinks(root, current = root) {
+  const symlinks = [];
+  for (const entry of readdirSync(current, { withFileTypes: true })) {
+    const path = join(current, entry.name);
+    if (entry.isSymbolicLink()) {
+      if (!existsSync(path)) {
+        continue;
+      }
+      symlinks.push({
+        path: path.slice(root.length + 1),
+        target: readlinkSync(path),
+      });
+      continue;
+    }
+    if (entry.isDirectory()) {
+      symlinks.push(...collectSymlinks(root, path));
+    }
+  }
+  return symlinks;
+}
+
 function copyDashboardAssets() {
   assertExists(
     join(dashboardStandaloneSrc, "apps/dashboard/server.js"),
@@ -50,11 +72,12 @@ function copyDashboardAssets() {
   );
 
   rmSync(dashboardDist, { recursive: true, force: true });
-  cpSync(dashboardStandaloneSrc, dashboardDist, { recursive: true });
+  cpSync(dashboardStandaloneSrc, dashboardDist, { recursive: true, verbatimSymlinks: true });
   cpSync(dashboardStaticSrc, join(dashboardDist, "apps/dashboard/.next/static"), { recursive: true });
   if (existsSync(dashboardPublicSrc)) {
     cpSync(dashboardPublicSrc, join(dashboardDist, "apps/dashboard/public"), { recursive: true });
   }
+  writeFileSync(dashboardSymlinksManifestPath, `${JSON.stringify(collectSymlinks(dashboardDist), undefined, 2)}\n`);
 
   console.log(`Copied dashboard standalone runtime into ${dashboardDist}.`);
 }

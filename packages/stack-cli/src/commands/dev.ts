@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "child_process";
 import { Command } from "commander";
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "fs";
+import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
@@ -31,6 +31,7 @@ const DASHBOARD_PORT = 26700;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
+const BUNDLED_DASHBOARD_SYMLINKS_MANIFEST_PATH = "symlinks.json";
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
 const SENTINEL_PREFIX = "STACK_ENV_VAR_SENTINEL_";
 const USE_INLINE_ENV_VARS_SENTINEL = "STACK_ENV_VAR_SENTINEL_USE_INLINE_ENV_VARS";
@@ -57,6 +58,11 @@ type ProgressLogger = {
 type DashboardSessionState = {
   session: SessionResponse,
   dashboardReachableSinceMs: number,
+};
+
+type DashboardSymlink = {
+  path: string,
+  target: string,
 };
 
 function wait(ms: number): Promise<void> {
@@ -213,12 +219,46 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
   }
 }
 
+function isDashboardSymlink(value: unknown): value is DashboardSymlink {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+  if (!("path" in value) || !("target" in value)) {
+    return false;
+  }
+  return typeof value.path === "string" && typeof value.target === "string";
+}
+
+function parseDashboardSymlinksManifest(content: string): DashboardSymlink[] {
+  const parsed: unknown = JSON.parse(content);
+  if (!Array.isArray(parsed) || !parsed.every(isDashboardSymlink)) {
+    throw new CliError("The bundled development-environment dashboard has an invalid symlink manifest.");
+  }
+  return parsed;
+}
+
+function restoreDashboardRuntimeSymlinks(root: string): void {
+  const manifestPath = join(root, BUNDLED_DASHBOARD_SYMLINKS_MANIFEST_PATH);
+  if (!existsSync(manifestPath)) {
+    throw new CliError("The bundled development-environment dashboard is missing its symlink manifest.");
+  }
+
+  const manifest = parseDashboardSymlinksManifest(readFileSync(manifestPath, "utf-8"));
+  for (const symlink of manifest) {
+    const path = join(root, symlink.path);
+    rmSync(path, { recursive: true, force: true });
+    mkdirSync(dirname(path), { recursive: true });
+    symlinkSync(symlink.target, path);
+  }
+}
+
 function prepareDashboardRuntime(env: NodeJS.ProcessEnv): string {
   assertBundledDashboardExists();
   const runtimeRoot = dashboardRuntimeRoot();
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   rmSync(runtimeRoot, { recursive: true, force: true });
-  cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
+  cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true, verbatimSymlinks: true });
+  restoreDashboardRuntimeSymlinks(runtimeRoot);
   replaceDashboardRuntimeSentinels(runtimeRoot, env);
 
   const runtimeServerPath = join(runtimeRoot, BUNDLED_DASHBOARD_SERVER_PATH);
