@@ -70,6 +70,17 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
             return null;
           }
 
+          // JSON imports must be bundled inline. Otherwise the verbatim relative
+          // path is preserved in both dist/ (CJS, same depth as src/, accidentally
+          // resolves) and dist/esm/ (one level deeper, resolves one segment too
+          // high), and the ESM consumer fails at module-resolution time. Inlining
+          // also makes the published package work — the imported JSON file isn't
+          // shipped in `files`, so a runtime fetch from the install location would
+          // fail regardless.
+          if (source.endsWith('.json')) {
+            return null;
+          }
+
           return {
             id: source,
             external: true,

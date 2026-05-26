@@ -907,6 +907,9 @@ importers:
 
   apps/skills:
     dependencies:
+      '@stackframe/stack-shared':
+        specifier: workspace:*
+        version: link:../../packages/stack-shared
       next:
         specifier: 16.1.7
         version: 16.1.7(@babel/core@7.26.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -30819,7 +30822,7 @@ snapshots:
       picomatch: 4.0.3
       seroval: 1.5.1
       source-map: 0.7.6
-      srvx: 0.11.9
+      srvx: 0.11.15
       tinyglobby: 0.2.15
       ufo: 1.6.3
       vitefu: 1.1.2(vite@7.3.1(@types/node@22.19.0)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))
@@ -30853,7 +30856,7 @@ snapshots:
       picomatch: 4.0.3
       seroval: 1.5.1
       source-map: 0.7.6
-      srvx: 0.11.9
+      srvx: 0.11.15
       tinyglobby: 0.2.15
       ufo: 1.6.3
       vitefu: 1.1.2(vite@7.3.1(@types/node@24.9.2)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))
@@ -30887,7 +30890,7 @@ snapshots:
       picomatch: 4.0.3
       seroval: 1.5.1
       source-map: 0.7.6
-      srvx: 0.11.9
+      srvx: 0.11.15
       tinyglobby: 0.2.15
       ufo: 1.6.3
       vitefu: 1.1.2(vite@7.3.1(@types/node@24.9.2)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))
