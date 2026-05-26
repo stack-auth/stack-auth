@@ -1,6 +1,6 @@
 ---
 title: Using Hexclave with AI
-description: Teach your coding agent how to use Hexclave — via a copy-paste prompt, an installable skill, or the Hexclave MCP server.
+description: Teach your coding agent how to use Hexclave — via web fetch, an installable skill, or the Hexclave MCP server.
 sidebarTitle: Using Hexclave with AI
 ---
 
@@ -13,18 +13,32 @@ sidebarTitle: Using Hexclave with AI
 There are three ways to give a coding agent working knowledge of Hexclave. They differ only in how the instructions reach the agent — the knowledge is the same.
 
 <CardGroup cols={3}>
-  <Card title="Skill" icon="sparkles" href="#option-1-skill">
+  <Card title="Web Fetch" icon="wand-magic-sparkles" href="#option-1-web-fetch-recommended">
+    Paste a one-line prompt — your agent fetches the live skill on demand.
+  </Card>
+  <Card title="Skill" icon="sparkles" href="#option-2-skill">
     Install the Hexclave `SKILL.md` file so your agent loads it automatically.
   </Card>
-  <Card title="MCP" icon="plug" href="#option-2-mcp">
+  <Card title="MCP" icon="plug" href="#option-3-mcp">
     Connect your agent to the Hexclave MCP server for live docs and `ask_hexclave` search.
-  </Card>
-  <Card title="Prompt" icon="wand-magic-sparkles" href="#option-3-prompt">
-    Paste a one-line prompt — your agent fetches the live skill on demand.
   </Card>
 </CardGroup>
 
-## Option 1: Skill
+
+## Option 1: Web fetch (recommended)
+
+Most coding agents now support web fetch out of the box, so you can simply tell your agent to use Hexclave's skill from the internet.
+
+To do so, paste the prompt below into your coding agent:
+
+````markdown title="One-shot prompt"
+Fetch https://skill.hexclave.com and follow it for this task.
+````
+
+The fetched `SKILL.md` indexes the entire Hexclave docs sidebar and tells the agent to pull fresh content for whichever surface you're touching (auth, orgs/teams, payments, emails, analytics, the CLI). It is purely a reference — paste it whenever you want the agent to use Hexclave knowledge.
+
+
+## Option 2: Skill
 
 Install the skill once so your agent loads it automatically every time Hexclave is relevant — no copy-paste required.
 
@@ -96,7 +110,7 @@ Install the skill once so your agent loads it automatically every time Hexclave 
   </Tab>
 </Tabs>
 
-## Option 2: MCP
+## Option 3: MCP
 
 The Hexclave MCP server (`https://mcp.hexclave.com/mcp`) gives your agent live access to Hexclave docs and skill via prompts, resources and an `ask_hexclave` tool that searches the docs with citations. Install it once per agent — it stays available across every project.
 
@@ -208,16 +222,6 @@ The Hexclave MCP server (`https://mcp.hexclave.com/mcp`) gives your agent live a
     ```
   </Tab>
 </Tabs>
-
-## Option 3: Prompt
-
-No installation. Paste the prompt below into your coding agent whenever you want it to act on Hexclave. The agent fetches the latest Hexclave instructions from `skill.hexclave.com`.
-
-````markdown title="One-shot prompt"
-Fetch https://skill.hexclave.com and follow it for this task.
-````
-
-The fetched `SKILL.md` indexes the entire Hexclave docs sidebar and tells the agent to pull fresh content for whichever surface you're touching (auth, orgs/teams, payments, emails, analytics, the CLI). It is purely a reference — paste it whenever you want the agent to use Hexclave knowledge.
 
 ## Project vs. global scope
 

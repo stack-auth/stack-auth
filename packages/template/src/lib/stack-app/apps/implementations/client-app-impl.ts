@@ -1044,6 +1044,36 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   private _extractRefreshTokenFromCookieMap(cookies: cookie.Cookies): { refreshToken: string | null, updatedAt: number | null } {
     const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
+    const currentStructuredPrefixes = [
+      `${this._refreshTokenCookieName}--`,
+      `__Host-${this._refreshTokenCookieName}--`,
+    ];
+    const getNewestStructuredCookie = (prefixes: string[]) => {
+      let selected: { refreshToken: string, updatedAt: number | null } | null = null;
+      for (const [name, value] of Object.entries(cookies)) {
+        if (!prefixes.some(prefix => name.startsWith(prefix))) continue;
+        const parsed = this._parseStructuredRefreshCookie(value);
+        if (!parsed) continue;
+        const candidateUpdatedAt = parsed.updatedAt ?? Number.NEGATIVE_INFINITY;
+        const selectedUpdatedAt = selected?.updatedAt ?? Number.NEGATIVE_INFINITY;
+        if (!selected || candidateUpdatedAt > selectedUpdatedAt) {
+          selected = parsed;
+        }
+      }
+      return selected;
+    };
+
+    const currentStructuredCookie = getNewestStructuredCookie(currentStructuredPrefixes);
+    if (currentStructuredCookie) {
+      return {
+        refreshToken: currentStructuredCookie.refreshToken,
+        updatedAt: currentStructuredCookie.updatedAt ?? null,
+      };
+    }
+
+    // Legacy cookies are migration-only. Once a Hexclave cookie exists, it wins;
+    // otherwise an old SDK tab with an anonymous legacy cookie can sign a
+    // new-SDK tab out through the compatibility read.
     for (const name of legacyNames) {
       const value = cookies[name];
       if (value) {
@@ -1051,17 +1081,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
     }
 
-    let selected: { refreshToken: string, updatedAt: number | null } | null = null;
-    for (const [name, value] of Object.entries(cookies)) {
-      if (!structuredPrefixes.some(prefix => name.startsWith(prefix))) continue;
-      const parsed = this._parseStructuredRefreshCookie(value);
-      if (!parsed) continue;
-      const candidateUpdatedAt = parsed.updatedAt ?? Number.NEGATIVE_INFINITY;
-      const selectedUpdatedAt = selected?.updatedAt ?? Number.NEGATIVE_INFINITY;
-      if (!selected || candidateUpdatedAt > selectedUpdatedAt) {
-        selected = parsed;
-      }
-    }
+    const selected = getNewestStructuredCookie(structuredPrefixes);
 
     if (!selected) {
       return { refreshToken: null, updatedAt: null };
