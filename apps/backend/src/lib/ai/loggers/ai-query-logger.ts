@@ -2,7 +2,7 @@ import { extractCachedTokens, extractCostFromUsage, extractOpenRouterCost, refin
 import type { CommonLogFields } from "@/lib/ai/types";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { type LanguageModelUsage, type StepResult, type ToolSet } from "ai";
 import { callReducer, opt } from "../spacetimedb-client";
 
@@ -11,7 +11,7 @@ const MAX_TOOL_RESULT_CHARS = 50_000;
 function sanitizeOptionalNumber(name: string, n: number | undefined): number | undefined {
   if (n == null) return undefined;
   if (!Number.isFinite(n)) {
-    captureError("ai-query-logger", new StackAssertionError(`Invalid ${name}: ${n}`));
+    captureError("ai-query-logger", new HexclaveAssertionError(`Invalid ${name}: ${n}`));
     return undefined;
   }
   return n;
@@ -19,7 +19,7 @@ function sanitizeOptionalNumber(name: string, n: number | undefined): number | u
 
 function sanitizeRequiredNumber(name: string, n: number): number {
   if (!Number.isFinite(n)) {
-    captureError("ai-query-logger", new StackAssertionError(`Invalid ${name}: ${n}`));
+    captureError("ai-query-logger", new HexclaveAssertionError(`Invalid ${name}: ${n}`));
     return 0;
   }
   return n;
@@ -30,7 +30,7 @@ function truncateLargeToolResult(toolName: string, output: unknown): unknown {
   if (serialized.length <= MAX_TOOL_RESULT_CHARS) return output;
   captureError(
     "ai-query-tool-result-truncated",
-    new StackAssertionError(
+    new HexclaveAssertionError(
       `Tool ${toolName} returned ${serialized.length} chars (limit ${MAX_TOOL_RESULT_CHARS}); truncating in stepsJson log.`
     )
   );

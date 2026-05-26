@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 function httpBase(): string | null {
   return getEnvVariable("STACK_SPACETIMEDB_URL", "") || null;
@@ -37,7 +37,7 @@ async function getServiceToken(): Promise<string | null> {
 
 async function rawCallReducer(token: string, reducer: string, args: unknown[]): Promise<void> {
   const base = httpBase();
-  if (!base) throw new StackAssertionError("SpacetimeDB not configured");
+  if (!base) throw new HexclaveAssertionError("SpacetimeDB not configured");
   const dbName = getEnvVariable("STACK_SPACETIMEDB_DB_NAME");
   const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/call/${encodeURIComponent(reducer)}`, {
     method: "POST",
@@ -64,7 +64,7 @@ function spacetimeDbError(label: string, status: number, preview: string): Error
   const detail = `${label} (${status}): ${preview}`;
   if (status >= 400 && status < 500) return new StatusError(status, detail);
   if (status >= 500) return new StatusError(StatusError.BadGateway, `${label} (upstream ${status}): ${preview}`);
-  return new StackAssertionError(detail);
+  return new HexclaveAssertionError(detail);
 }
 
 async function withEnrollmentRetry<T>(op: (token: string) => Promise<T>): Promise<T | null> {
@@ -88,7 +88,7 @@ export async function callReducer(reducer: string, args: unknown[]): Promise<voi
 export async function callReducerStrict(reducer: string, args: unknown[]): Promise<void> {
   const ran = await withEnrollmentRetry((token) => rawCallReducer(token, reducer, args));
   if (ran === null) {
-    throw new StackAssertionError(
+    throw new HexclaveAssertionError(
       `SpacetimeDB is not configured. Reducer ${reducer} cannot run. ` +
       `Check STACK_SPACETIMEDB_URL and STACK_SPACETIMEDB_SERVICE_TOKEN.`
     );
@@ -109,7 +109,7 @@ async function rawCallSql(token: string, sql: string): Promise<Array<{
   rows: unknown[][],
 }>> {
   const base = httpBase();
-  if (!base) throw new StackAssertionError("SpacetimeDB not configured");
+  if (!base) throw new HexclaveAssertionError("SpacetimeDB not configured");
   const dbName = getEnvVariable("STACK_SPACETIMEDB_DB_NAME");
   const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/sql`, {
     method: "POST",

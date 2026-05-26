@@ -1,5 +1,5 @@
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ToolSet } from "ai";
 import { patchDashboardTool, updateDashboardTool } from "./create-dashboard";
 import { createEmailDraftTool } from "./create-email-draft";
@@ -71,7 +71,7 @@ export async function getTools(
 
       default: {
         const _exhaustive: never = toolName;
-        captureError("ai-tools-getTools", new StackAssertionError(`Unknown tool name: ${_exhaustive as string}`));
+        captureError("ai-tools-getTools", new HexclaveAssertionError(`Unknown tool name: ${_exhaustive as string}`));
       }
     }
   }

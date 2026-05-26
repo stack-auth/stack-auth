@@ -1,6 +1,6 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateText, stepCountIs } from "ai";
 import { createOpenRouterProvider } from "../models";
 import { callReducer, opt } from "../spacetimedb-client";
@@ -144,7 +144,7 @@ export async function reviewMcpCall(entry: {
 
     const raw = extractJsonObject(result.text);
     if (raw == null) {
-      throw new StackAssertionError(`No valid JSON object found in QA review response: ${result.text.slice(0, 200)}`);
+      throw new HexclaveAssertionError(`No valid JSON object found in QA review response: ${result.text.slice(0, 200)}`);
     }
     if (
       typeof raw.needsHumanReview !== "boolean" ||
@@ -154,7 +154,7 @@ export async function reviewMcpCall(entry: {
       typeof raw.overallScore !== "number" ||
       !Number.isFinite(raw.overallScore)
     ) {
-      throw new StackAssertionError(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
+      throw new HexclaveAssertionError(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
     }
     const parsed = raw as {
       needsHumanReview: boolean,
