@@ -13,6 +13,7 @@
  * from without creating a wrong-direction dependency.
  */
 
+import { remindersPrompt } from "../ai/unified-prompts/reminders";
 import { deindent } from "../utils/strings";
 import type { HandlerPageUrls } from "./handler-urls";
 
@@ -88,7 +89,7 @@ function createCustomPagePrompt(options: {
       },
     \`\`\`
 
-    ${stackAuthReminders}
+    ${remindersPrompt}
   `;
   const versions = {
     1: {
