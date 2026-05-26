@@ -272,15 +272,8 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
   // one-hour fallback and capture telemetry.
   const defaultExpiresInMillis = typeof defaultAccessTokenExpiresInMillis === "function" ? defaultAccessTokenExpiresInMillis(tokenSet) : defaultAccessTokenExpiresInMillis;
 
-  const hasInvalidProviderExpiry =
-    (tokenSet.expires_in != null && getFiniteNumber(tokenSet.expires_in) === undefined)
-    || (tokenSet.expires_at != null && getFiniteNumber(tokenSet.expires_at) === undefined);
-  if (hasInvalidProviderExpiry) {
-    captureError("processTokenSet", new HexclaveAssertionError(`Invalid expires_in or expires_at received from OAuth provider ${providerName}. Falling back to provider/default expiry handling`, { tokenSetKeys: Object.keys(tokenSet) }));
-  }
-
   if (getFiniteNumber(tokenSet.expires_in) === undefined && getFiniteNumber(tokenSet.expires_at) === undefined && defaultExpiresInMillis === undefined) {
-    captureError("processTokenSet", new HexclaveAssertionError(`No expires_in or expires_at received from OAuth provider ${providerName}. Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
+    captureError("processTokenSet", new HexclaveAssertionError(`No valid expires_in or expires_at received from OAuth provider ${providerName}. This provider might not support expires_at, so please add a fallback for this provider based on the information from its documentation (eg. GitHub does not return JWT access tokens so we can't know the actual expiry of the token). Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
   }
 
   return {
