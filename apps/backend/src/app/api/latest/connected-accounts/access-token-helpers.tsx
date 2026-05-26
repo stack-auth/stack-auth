@@ -94,15 +94,20 @@ import.meta.vitest?.describe("isSharedAccessTokenBlocked", () => {
 export async function retrieveOrRefreshAccessToken(options: {
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   providerInstance: OAuthBaseProvider,
+  providerId: string,
   tenancyId: string,
   oauthAccountIds: string[],
   scope: string | undefined,
   errorContext: Record<string, unknown>,
 }): Promise<{ access_token: string }> {
-  const { prisma, providerInstance, tenancyId, oauthAccountIds, scope, errorContext } = options;
+  const { prisma, providerInstance, providerId, tenancyId, oauthAccountIds, scope, errorContext } = options;
   const accountIdFilter = oauthAccountIds.length === 1
     ? { oauthAccountId: oauthAccountIds[0] }
     : { oauthAccountId: { in: oauthAccountIds } };
+  const reauthorizeDetails = "The stored OAuth refresh token is missing, expired, revoked, or no longer accepted by the OAuth provider. The user needs to re-authorize this connected account.";
+  const requiredScopeDetails = scope
+    ? `The OAuth connection does not have a usable refresh token with the required scope (${scope}). The user needs to re-authorize this connected account with the requested scope.`
+    : "The OAuth connection does not have a usable refresh token for this connected account. The user needs to re-authorize this connected account.";
 
   // ====================== retrieve access token if it exists ======================
   const accessTokens = await prisma.oAuthAccessToken.findMany({
@@ -142,10 +147,15 @@ export async function retrieveOrRefreshAccessToken(options: {
     return extractScopes(scope || "").every((s) => t.scopes.includes(s));
   });
 
-  if (filteredRefreshTokens.length === 0) {
-    throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
+  if (refreshTokens.length === 0) {
+    throw new KnownErrors.OAuthAccessTokenNotAvailable(providerId, reauthorizeDetails);
   }
 
+  if (filteredRefreshTokens.length === 0) {
+    throw new KnownErrors.OAuthAccessTokenNotAvailable(providerId, requiredScopeDetails);
+  }
+
+  let invalidatedRefreshTokenDuringAttempt = false;
   for (const token of filteredRefreshTokens) {
     const tokenSetResult = await providerInstance.getAccessToken({
       refreshToken: token.refreshToken,
@@ -162,6 +172,7 @@ export async function retrieveOrRefreshAccessToken(options: {
             where: { id: token.id },
             data: { isValid: false },
           });
+          invalidatedRefreshTokenDuringAttempt = true;
           continue;
         }
         case "temporarily-unavailable": {
@@ -247,5 +258,8 @@ export async function retrieveOrRefreshAccessToken(options: {
     }
   }
 
-  throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
+  throw new KnownErrors.OAuthAccessTokenNotAvailable(
+    providerId,
+    invalidatedRefreshTokenDuringAttempt ? reauthorizeDetails : requiredScopeDetails,
+  );
 }

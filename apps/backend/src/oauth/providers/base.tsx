@@ -217,7 +217,13 @@ export function getOAuthAccessTokenRefreshError(error: unknown, options: {
   return { type: "unexpected", cause: error, ...metadata };
 }
 
-function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: number): TokenSet {
+type DefaultAccessTokenExpiresInMillis = number | ((tokenSet: OIDCTokenSet) => number | undefined);
+
+function getDefaultAccessTokenExpiresInMillis(tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis): number | undefined {
+  return typeof defaultAccessTokenExpiresInMillis === "function" ? defaultAccessTokenExpiresInMillis(tokenSet) : defaultAccessTokenExpiresInMillis;
+}
+
+function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis): TokenSet {
   if (!tokenSet.access_token) {
     throw new HexclaveAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
   }
@@ -225,8 +231,9 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
   // if expires_in or expires_at provided, use that
   // otherwise, if defaultAccessTokenExpiresInMillis provided, use that
   // otherwise, use 1h, and log an error
+  const defaultExpiresInMillis = getDefaultAccessTokenExpiresInMillis(tokenSet, defaultAccessTokenExpiresInMillis);
 
-  if (!tokenSet.expires_in && !tokenSet.expires_at && !defaultAccessTokenExpiresInMillis) {
+  if (!tokenSet.expires_in && !tokenSet.expires_at && !defaultExpiresInMillis) {
     captureError("processTokenSet", new HexclaveAssertionError(`No expires_in or expires_at received from OAuth provider ${providerName}. Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
   }
 
@@ -237,8 +244,8 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
     accessTokenExpiredAt: tokenSet.expires_in ?
       new Date(Date.now() + tokenSet.expires_in * 1000) :
       tokenSet.expires_at ? new Date(tokenSet.expires_at * 1000) :
-        defaultAccessTokenExpiresInMillis ?
-          new Date(Date.now() + defaultAccessTokenExpiresInMillis) :
+        defaultExpiresInMillis ?
+          new Date(Date.now() + defaultExpiresInMillis) :
           new Date(Date.now() + 3600 * 1000),
   };
 }
@@ -249,7 +256,7 @@ export abstract class OAuthBaseProvider {
     public readonly scope: string,
     public readonly redirectUri: string,
     public readonly authorizationExtraParams?: Record<string, string>,
-    public readonly defaultAccessTokenExpiresInMillis?: number,
+    public readonly defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis,
     public readonly noPKCE?: boolean,
     public readonly openid?: boolean,
     public readonly alternativeIssuers?: string[],
@@ -262,7 +269,7 @@ export abstract class OAuthBaseProvider {
       redirectUri: string,
       baseScope: string,
       authorizationExtraParams?: Record<string, string>,
-      defaultAccessTokenExpiresInMillis?: number,
+      defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis,
       tokenEndpointAuthMethod?: "client_secret_post" | "client_secret_basic",
       noPKCE?: boolean,
       alternativeIssuers?: string[],

@@ -4,6 +4,7 @@ import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/cl
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/stack-app";
+import { envVars } from "../lib/env";
 import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
@@ -201,6 +202,17 @@ function nextId() {
 function resolveApiBaseUrl(app: StackClientApp<true>): string {
   const opts = app[stackAppInternalsSymbol].getConstructorOptions();
   return getBaseUrl(opts.baseUrl);
+}
+
+function shouldShowDashboardTab(app: StackClientApp<true>): boolean {
+  return envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
+}
+
+function getTabsForApp(app: StackClientApp<true>): { id: TabId; label: string; icon: string }[] {
+  if (shouldShowDashboardTab(app)) {
+    return TABS;
+  }
+  return TABS.filter((tab) => tab.id !== 'dashboard');
 }
 
 function deriveDashboardBaseUrl(apiBaseUrl: string): string {
@@ -2170,7 +2182,11 @@ function createPanel(
     panel.style.height = state.get().panelHeight + 'px';
   }
 
-  applyPanelMode(state.get().activeTab);
+  const tabs = getTabsForApp(app);
+  const storedActiveTab = state.get().activeTab;
+  const activeTab = tabs.some((tab) => tab.id === storedActiveTab) ? storedActiveTab : DEFAULT_STATE.activeTab;
+
+  applyPanelMode(activeTab);
 
   const inner = h('div', { className: 'sdt-panel-inner' });
 
@@ -2186,7 +2202,7 @@ function createPanel(
 
   const trailingControls = h('div', { className: 'sdt-tabbar-actions' }, docsLink, closeBtn);
 
-  const tabBar = createTabBar(TABS, state.get().activeTab, (id) => {
+  const tabBar = createTabBar(tabs, activeTab, (id) => {
     state.update({ activeTab: id as TabId });
     applyPanelMode(id as TabId, { animate: true });
     showTab(id as TabId);
@@ -2260,7 +2276,7 @@ function createPanel(
     pane.classList.add('sdt-tab-pane-active');
   }
 
-  showTab(state.get().activeTab);
+  showTab(activeTab);
 
   function addResizeHandle(edge: 'top' | 'left' | 'top-left') {
     const handle = h('div', { className: `sdt-resize-handle sdt-resize-${edge}` });
@@ -2361,7 +2377,6 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   function openPanel() {
     if (panel) return;
-    state.update({ activeTab: 'overview' });
     panel = createPanel(app, state, logStore, closePanelAndPersistClosed);
     wrapper.appendChild(panel.element);
   }

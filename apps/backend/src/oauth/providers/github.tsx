@@ -23,10 +23,15 @@ export class GithubProvider extends OAuthBaseProvider {
       userinfoEndpoint: "https://api.github.com/user",
       redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/github",
       baseScope: "user:email",
-      // GitHub token does not expire except for lack of use in a year
-      // We set a default of 1 year
+      // GitHub can return either non-expiring OAuth-App-style access tokens, or
+      // expiring user tokens with refresh tokens. If GitHub gives us expires_in,
+      // the base provider uses that real value. This fallback is only for older
+      // responses without explicit expiry: refresh-token responses should be
+      // treated as short-lived, while access-token-only responses are long-lived
+      // and are still checked against /user before being returned.
+      // https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens
       // https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation#user-token-expired-due-to-github-app-configuration
-      defaultAccessTokenExpiresInMillis: 1000 * 60 * 60 * 8, // 8 hours
+      defaultAccessTokenExpiresInMillis: (tokenSet) => tokenSet.refresh_token ? 1000 * 60 * 60 * 8 : 1000 * 60 * 60 * 24 * 365,
       ...options,
     }));
   }
