@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync } from "fs";
-import { dirname, join, resolve } from "path";
+import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,8 +48,12 @@ function copyDashboardSymlinkTarget(src, dest) {
   cpSync(src, dest, { recursive: true, dereference: true, filter: shouldCopyDashboardFile });
 }
 
+function splitDashboardPath(root, path) {
+  return relative(root, path).split(/[\\/]+/);
+}
+
 function getDashboardDependencyName(pnpmRoot, path) {
-  const parts = path.slice(pnpmRoot.length + 1).split("/");
+  const parts = splitDashboardPath(pnpmRoot, path);
   const nodeModulesIndex = parts.lastIndexOf("node_modules");
   if (nodeModulesIndex < 0) {
     return undefined;
@@ -79,7 +83,8 @@ function copyDashboardHoistedDependencies(pnpmRoot, current = pnpmRoot) {
       continue;
     }
     const target = resolve(current, readlinkSync(path));
-    if (!path.includes("/node_modules/.pnpm/node_modules/")) {
+    const parts = splitDashboardPath(pnpmRoot, path);
+    if (parts[0] !== "node_modules" && existsSync(join(target, "package.json"))) {
       copyDashboardSymlinkTarget(target, join(dashboardDist, "node_modules", dependencyName));
     }
   }
