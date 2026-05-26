@@ -786,17 +786,11 @@ export class HexclaveClientInterface {
     } else {
       const error = await res.text();
 
-      if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {
-        // Some Vercel deployments seem to have an odd infinite loop bug. In that case, retry.
-        // See: https://github.com/hexclave/stack-auth/issues/319
-        return Result.error(new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path }));
-      }
-
       // Do not retry, throw error instead of returning one
       if (res.status >= 400 && res.status < 500) {
         throw new Error(`Failed to send request to ${url}: ${res.status} ${error}`, { cause: res });
       }
-      throw new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path });
+      return Result.error(new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path }));
     }
   }
 

@@ -465,6 +465,40 @@ describe("_withFallback", () => {
     });
   });
 
+  it("retries non-KnownError 5xx responses on a single URL", async () => {
+    let attempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      attempts++;
+      if (attempts < 3) {
+        return createTextResponse("Server unavailable", { status: 503 });
+      }
+      return createJsonResponse({ display_name: "test" });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urlList(1) });
+    await sendRequest(iface);
+    expect(attempts).toBe(3);
+  });
+
+  it("falls back on non-KnownError 5xx responses", async () => {
+    const urls = urlList(3);
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      log.push(url);
+      if (urlIndex(urls, url) === 0) {
+        return createTextResponse("Server unavailable", { status: 503 });
+      }
+      return createJsonResponse({ display_name: "test" });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await sendRequest(iface);
+    expect(log.length).toBe(2);
+    expect(urlIndex(urls, log[0])).toBe(0);
+    expect(urlIndex(urls, log[1])).toBe(1);
+  });
+
   it("makes 2 passes × N URLs attempts before throwing", async () => {
     for (const n of [2, 3, 5]) {
       const urls = urlList(n);
