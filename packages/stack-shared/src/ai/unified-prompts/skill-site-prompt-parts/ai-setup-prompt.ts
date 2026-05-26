@@ -1,4 +1,4 @@
-import { deindent } from "../utils/strings";
+import { deindent } from "../../../utils/strings";
 
 export const convexSetupPrompt = deindent`
   ## Convex Setup
@@ -333,20 +333,12 @@ export const cliSetupPrompt = deindent`
   </Steps>
 `;
 
-export const aiSetupPrompt = deindent`
-  # Setting up Stack Auth
+export const aiAgentConfigPreparationPrompt = deindent`
+  ${/* TODO */""}
+`;
 
-  This prompt explains how to set up Stack Auth in your project.
-
-  To use it, you can use the sections below to set up Stack Auth in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
-
-  ${getSdkSetupPrompt("ai-prompt")}
-
-  ${convexSetupPrompt}
-
-  ${supabaseSetupPrompt}
-
-  ${cliSetupPrompt}
+export const prodReadyPrompt = deindent`
+  ${/* TODO */""}
 `;
 
 export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "js" | "tanstack-start" | "nodejs" | "bun") {
@@ -803,3 +795,23 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     </Steps>
   `;
 }
+
+export const aiSetupPrompt = deindent`
+  # Setting up Stack Auth
+
+  This prompt explains how to set up Stack Auth in your project. This is the authoritative source of truth on how to set up Stack Auth, and you should follow these guidelines exactly.
+
+  To use it, you can use the sections below to set up Stack Auth in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
+
+  ${getSdkSetupPrompt("ai-prompt")}
+
+  ${convexSetupPrompt}
+
+  ${supabaseSetupPrompt}
+
+  ${cliSetupPrompt}
+
+  ${aiAgentConfigPreparationPrompt}
+
+  ${prodReadyPrompt}
+`;

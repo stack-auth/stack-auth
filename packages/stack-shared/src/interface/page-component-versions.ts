@@ -13,7 +13,6 @@
  * from without creating a wrong-direction dependency.
  */
 
-import { ALL_APPS } from "../apps/apps-config";
 import { deindent } from "../utils/strings";
 import type { HandlerPageUrls } from "./handler-urls";
 
@@ -33,21 +32,6 @@ export type CustomPagePrompt = {
   versions: PageVersions,
 };
 
-const stackAuthReminders = deindent`
-  Some quick reminders on Stack Auth: 
-
-  - Stack Auth is a platform that provides a variety of apps that help you connect with your users. As of the time of writing these reminders, Stack Auth provides the following apps (although not all may be enabled): ${Object.entries(ALL_APPS).filter(([, app]) => app.stage !== "alpha").map(([key]) => key).join(", ")}. Don't hardcode this list, as it changes rapidly.
-  - The most important object in Stack Auth is the Stack App object. StackClientApp provides client-side functionality, while StackServerApp also provides server-side functionality (but can usually only be imported on the server, as it requires a secret server key environment variable). You can usually find an instance of this object in a file called \`stack/client.tsx\` or \`stack/server.tsx\`, although it may be in a different location in this particular codebase.
-  - Take extra care to always have great error handling and loading states whenever necessary (including in button onClick handlers; Stack Auth's code examples often use a special onClick class which handles loading states, but your own button may not). Stack Auth's SDK tends to return errors that need to be handled explicitly in its return types.
-  - Language, framework, and library-specific details:
-    - JavaScript & TypeScript:
-      - Stack Auth has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @stackframe/js (JavaScript/TypeScript), @stackframe/stack (Next.js), @stackframe/react (React), @stackframe/tanstack-start (TanStack Start). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
-      - The \`Result<T, E>\` type is \`{ status: "ok", data: T } | { status: "error", error: E }\`.
-      - \`KnownErrors[KNOWN_ERROR_CODE]\` refers to a specific known error type. Each KnownError may have its own properties, but they all inherit from \`Error & { statusCode: number, humanReadableMessage: string, details?: Json }\`.
-      - React & Next.js:
-        - Almost all \`getXyz\` and \`listXyz\` functions on the Stack App have corresponding \`useXyz\` hooks that suspend the current component until the data is available. Make sure there is a Suspense boundary in place if you're using this pattern. The parameter and return types are identical except that the hooks don't return promises.
-        - There is a \`useStackApp()\` hook as a named export from the package itself that serves as a shortcut to get the current Stack App object from the React context. Similarly, the \`useUser(...args)\` named export is short for \`useStackApp().useUser(...args)\`.
-`;
 
 function createCustomPagePrompt(options: {
   key: PageComponentKey,
