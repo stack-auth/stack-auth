@@ -60,8 +60,6 @@
               "guides/going-further/stack-app",
               "guides/going-further/backend-integration",
               "guides/going-further/cli",
-              "guides/going-further/local-emulator",
-              "guides/going-further/local-development",
               "guides/going-further/user-metadata"
             ]
           },
@@ -141,8 +139,7 @@
                   "guides/other/tutorials/build-a-team-based-app",
                   "guides/other/tutorials/ship-production-ready-auth"
                 ]
-              },
-              "guides/other/showcase"
+              }
             ]
           }
         ]
