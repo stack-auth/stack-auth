@@ -17,6 +17,24 @@
       "dark": "#09090b"
     }
   },
+  "contextual": {
+   "options": [
+      "copy",
+      "view",
+      "assistant",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "grok",
+      "aistudio",
+      "devin",
+      "windsurf",
+      "mcp",
+      "cursor",
+      "vscode",
+      "devin-mcp"
+    ]
+  },
   "fonts": {
     "heading": {
       "family": "Geist",

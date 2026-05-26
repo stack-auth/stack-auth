@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KnownErrors } from "../known-errors";
-import { InternalSession } from "../sessions";
+import { InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
 import { HexclaveClientInterface } from "./client-interface";
 
@@ -496,6 +496,21 @@ describe("_withFallback", () => {
     expect(log.length).toBe(2);
     expect(urlIndex(urls, log[0])).toBe(0);
     expect(urlIndex(urls, log[1])).toBe(1);
+  });
+
+  it("does not fall back on wrapped non-KnownError 4xx refresh token responses", async () => {
+    const urls = urlList(3);
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      log.push(url);
+      return createTextResponse("Payments are not set up", { status: 402 });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await expect(iface.fetchNewAccessToken(new RefreshToken("refresh-token"))).rejects.toThrow("Payments are not set up");
+    expect(log.length).toBe(1);
+    expect(urlIndex(urls, log[0])).toBe(0);
   });
 
   it("makes 2 passes × N URLs attempts before throwing", async () => {
