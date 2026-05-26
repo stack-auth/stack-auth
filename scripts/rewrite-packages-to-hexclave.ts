@@ -174,6 +174,19 @@ function rewriteDistFiles(
       const original = fs.readFileSync(p, "utf-8");
       let updated = original;
 
+      // Rewrite the build-time package-version sentinel FIRST, before the
+      // bare-name sweep below. The sentinel encodes both the package name
+      // AND the package version (`js @stackframe/js@2.8.105`) and we need
+      // to bump both halves in lockstep. If the name sweep ran first it
+      // would rewrite just the name half (→ `js @hexclave/js@2.8.105`),
+      // and then this sentinel-specific regex — built from `oldName` —
+      // would no longer match anything in `updated`, silently leaving
+      // the version stuck at the old @stackframe version. Doing the
+      // sentinel rewrite first produces the final string in one shot;
+      // the name sweep that follows won't touch it because the rewritten
+      // sentinel contains no `@stackframe/*` substrings to match.
+      updated = updated.replace(sentinelPattern, newSentinel);
+
       for (const [oldPkg, newPkg] of sortedMappings) {
         if (!updated.includes(oldPkg)) continue;
         // Replace the bare package name as a whole token. Subpaths
@@ -181,10 +194,6 @@ function rewriteDistFiles(
         const pattern = new RegExp(escapeRegex(oldPkg), "g");
         updated = updated.replace(pattern, newPkg);
       }
-
-      // Rewrite the build-time package-version sentinel so the
-      // deprecation-warning short-circuit triggers on @hexclave/* artifacts.
-      updated = updated.replace(sentinelPattern, newSentinel);
 
       if (updated !== original) {
         fs.writeFileSync(p, updated);
