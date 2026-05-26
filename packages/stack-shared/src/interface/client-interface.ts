@@ -219,8 +219,8 @@ export class HexclaveClientInterface {
    *   - Sticky URL fails → exit sticky mode, do a full iteration.
    *
    * In both modes, a full iteration tries every URL once per pass for 2
-   * passes before giving up. KnownErrors are never retried (they're
-   * application-level, not network-level).
+   * passes before giving up. KnownErrors and 4xx API responses are never
+   * retried (they're application-level, not network-level).
    *
    * Single-URL lists skip all of this and use 5-retry behavior directly.
    */
@@ -243,6 +243,15 @@ export class HexclaveClientInterface {
     return await this._iterateUrls(apiUrls, cb);
   }
 
+  private _shouldSkipFallback(error: unknown) {
+    return error instanceof KnownError || this._isNonRetryableApiResponseError(error);
+  }
+
+  private _isNonRetryableApiResponseError(error: unknown) {
+    const cause = error instanceof Error ? error.cause : undefined;
+    return cause instanceof Response && cause.status >= 400 && cause.status < 500;
+  }
+
   /**
    * Attempts the sticky URL, optionally probing primary first.
    * Returns the result on success, or `undefined` if we should fall through to full iteration.
@@ -260,7 +269,7 @@ export class HexclaveClientInterface {
         this._sticky = null;
         return result;
       } catch (e) {
-        if (e instanceof KnownError) throw e;
+        if (this._shouldSkipFallback(e)) throw e;
         sticky.probeRate = Math.max(sticky.probeRate * 0.5, 0.01);
       }
     }
@@ -269,7 +278,7 @@ export class HexclaveClientInterface {
     try {
       return await cb(apiUrls[sticky.index], { maxAttempts: 1, skipDiagnostics: true });
     } catch (e) {
-      if (e instanceof KnownError) throw e;
+      if (this._shouldSkipFallback(e)) throw e;
       this._sticky = null;
       return undefined;
     }
@@ -294,7 +303,7 @@ export class HexclaveClientInterface {
           }
           return result;
         } catch (e) {
-          if (e instanceof KnownError) throw e;
+          if (this._shouldSkipFallback(e)) throw e;
           lastError = e instanceof Error ? e : new Error(String(e));
         }
       }
@@ -777,16 +786,17 @@ export class HexclaveClientInterface {
     } else {
       const error = await res.text();
 
-      const errorObj = new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path });
-
       if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {
         // Some Vercel deployments seem to have an odd infinite loop bug. In that case, retry.
         // See: https://github.com/hexclave/stack-auth/issues/319
-        return Result.error(errorObj);
+        return Result.error(new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path }));
       }
 
       // Do not retry, throw error instead of returning one
-      throw errorObj;
+      if (res.status >= 400 && res.status < 500) {
+        throw new Error(`Failed to send request to ${url}: ${res.status} ${error}`, { cause: res });
+      }
+      throw new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path });
     }
   }
 

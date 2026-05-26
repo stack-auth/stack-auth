@@ -52,6 +52,10 @@ function createKnownErrorResponse(error: InstanceType<typeof KnownErrors[keyof t
   });
 }
 
+function createTextResponse(body: string, options: { status: number, headers?: Record<string, string> }): Response {
+  return new Response(body, options);
+}
+
 function getRequestBody(fetchMock: { mock: { calls: unknown[][] } }): Record<string, unknown> {
   const requestInit = fetchMock.mock.calls[0]?.[1];
   if (requestInit == null || typeof requestInit !== "object" || !("body" in requestInit)) {
@@ -435,6 +439,30 @@ describe("_withFallback", () => {
     const iface = createClientInterface({ apiUrls: urls });
     await expect(sendRequest(iface)).rejects.toThrow();
     expect(log.every(u => urlIndex(urls, u) === 0)).toBe(true);
+  });
+
+  it("does not retry or fall back on non-KnownError 4xx responses", async () => {
+    const urls = urlList(3);
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      log.push(input.toString());
+      return createTextResponse("Payments are not set up", { status: 402 });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await expect(sendRequest(iface)).rejects.toThrow(Error);
+    expect(log.length).toBe(1);
+    expect(urlIndex(urls, log[0])).toBe(0);
+  });
+
+  it("wraps non-KnownError 4xx responses as normal errors", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createTextResponse("Payments are not set up", { status: 402 })));
+
+    const iface = createClientInterface({ apiUrls: urlList(1) });
+    await expect(sendRequest(iface)).rejects.toMatchObject({
+      name: "Error",
+      message: expect.stringContaining("402 Payments are not set up"),
+    });
   });
 
   it("makes 2 passes × N URLs attempts before throwing", async () => {
