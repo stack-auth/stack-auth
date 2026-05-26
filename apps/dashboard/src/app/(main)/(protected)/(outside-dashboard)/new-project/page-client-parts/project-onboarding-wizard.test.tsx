@@ -400,6 +400,7 @@ describe("ProjectOnboardingWizard", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Do Later" }).getAttribute("data-loading")).toBe("true");
     });
+    expect(screen.getByRole("button", { name: "Do Later" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Connect" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Connect" }).getAttribute("data-loading")).toBe("false");
   });
@@ -455,6 +456,7 @@ describe("ProjectOnboardingWizard", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Connect" }).getAttribute("data-loading")).toBe("true");
     });
+    expect(screen.getByRole("button", { name: "Connect" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Do Later" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Do Later" }).getAttribute("data-loading")).toBe("false");
   });

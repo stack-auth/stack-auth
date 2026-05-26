@@ -162,12 +162,12 @@ export function AnalyticsChartPie({
     return config;
   }, [canonicalSeries, segmentColors]);
 
-  const activeRow = hoverKey
+  const activeRow = hoverKey != null
     ? legendRows.find((r) => r.key === hoverKey) ?? null
     : null;
   const [centerDisplayKey, setCenterDisplayKey] = useState<string | null>(null);
   const [centerDisplayVisible, setCenterDisplayVisible] = useState(true);
-  const centerDisplayRow = centerDisplayKey
+  const centerDisplayRow = centerDisplayKey != null
     ? legendRows.find((r) => r.key === centerDisplayKey) ?? null
     : null;
   useEffect(() => {
@@ -197,7 +197,7 @@ export function AnalyticsChartPie({
 
   const outerData = legendRows.map((r) => ({ name: cssIdent(r.key), hoverKey: r.key, value: r.value, fill: r.fill }));
   const innerData = legendRows.map((r) => ({ name: cssIdent(r.key), hoverKey: r.key, value: r.prevValue, fill: r.fillCompare }));
-  const activeIdx = hoverKey ? legendRows.findIndex((r) => r.key === hoverKey) : -1;
+  const activeIdx = hoverKey != null ? legendRows.findIndex((r) => r.key === hoverKey) : -1;
 
   return (
     <div

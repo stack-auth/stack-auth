@@ -2492,7 +2492,7 @@ function RevenueHoverTooltip({ active, payload }: TooltipProps<number, string>) 
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(355, 70%, 68%)" }} />
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-refund_cents)" }} />
             <span className="text-[11px] text-muted-foreground">Refunds</span>
             <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
               {formatUsdCompact(row.refund_cents)}

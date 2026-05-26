@@ -378,8 +378,8 @@ export function ProjectOnboardingWizard(props: {
   ]);
 
   const deferPaymentsSetup = useCallback(async () => {
-    setPaymentsSetupAction("defer");
     await runWithSaving(async () => {
+      setPaymentsSetupAction("defer");
       try {
         if (selectedPaymentsCountry === "US") {
           await props.project.app.setupPayments();
@@ -393,8 +393,8 @@ export function ProjectOnboardingWizard(props: {
   }, [persistOnboardingState, props.project.app, runWithSaving, selectedPaymentsCountry, setStatus]);
 
   const connectPaymentsSetup = useCallback(async () => {
-    setPaymentsSetupAction("connect");
     await runWithSaving(async () => {
+      setPaymentsSetupAction("connect");
       try {
         const setup = await props.project.app.setupPayments();
         const redirectUrl = new URL(setup.url);
@@ -926,7 +926,7 @@ export function ProjectOnboardingWizard(props: {
         primaryAction={
           <DesignButton
             className="rounded-full px-6"
-            disabled={saving && paymentsSetupAction !== "defer"}
+            disabled={saving || paymentsSetupAction != null}
             loading={paymentsSetupAction === "defer"}
             onClick={() => runAsynchronouslyWithAlert(deferPaymentsSetup)}
           >
@@ -937,7 +937,7 @@ export function ProjectOnboardingWizard(props: {
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
-            disabled={saving && paymentsSetupAction !== "connect"}
+            disabled={saving || paymentsSetupAction != null}
             loading={paymentsSetupAction === "connect"}
             onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
           >
