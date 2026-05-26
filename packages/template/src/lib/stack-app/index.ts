@@ -5,7 +5,7 @@ export {
 } from "./apps";
 
 // Legacy Stack* aliases — same runtime symbols, kept for backwards compatibility.
-// Prefer the Hexclave* equivalents in new code. See RENAME-TO-HEXCLAVE.md (Tier 1).
+// Prefer the Hexclave* equivalents in new code.
 /** @deprecated Use `HexclaveAdminApp` instead — same symbol, new brand name. */
 export { StackAdminApp } from "./apps";
 /** @deprecated Use `HexclaveClientApp` instead — same symbol, new brand name. */

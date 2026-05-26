@@ -169,7 +169,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
   // never exposed to OIDC clients (the actual OIDC `aud` claim is set elsewhere).
   // Changing this string rotates ALL outstanding JWT signing keys and invalidates
   // every cached client JWKS — so it is intentionally pinned to the pre-rebrand
-  // domain. Carve-out per RENAME-TO-HEXCLAVE.md ("internal opaque identifiers").
+  // domain (internal opaque identifier — never exposed to clients).
   const privateJwks = await getPrivateJwks({
     audience: `https://idp-jwk-audience.stack-auth.com/${encodeURIComponent(options.id)}`,
   });

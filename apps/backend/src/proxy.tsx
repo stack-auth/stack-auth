@@ -54,7 +54,7 @@ const corsAllowedResponseHeaders = [
 ];
 
 // Hexclave rebrand: every `x-stack-*` header is dual-accepted under its `x-hexclave-*` equivalent.
-// Derive the alias names so the CORS allowlists never drift. See RENAME-TO-HEXCLAVE.md (Tier 0).
+// Derive the alias names so the CORS allowlists never drift.
 function withHexclaveHeaderAliases(headers: string[]): string[] {
   return headers.flatMap((header) => header.startsWith('x-stack-')
     ? [header, `x-hexclave-${header.slice('x-stack-'.length)}`]
@@ -125,7 +125,7 @@ export async function proxy(request: NextRequest) {
   // Hexclave rebrand: dual-accept request headers. New SDKs emit `x-hexclave-*`; copy each onto its
   // `x-stack-*` equivalent here — before routing and yup validation — so downstream auth parsing
   // and route schemas (which read `x-stack-*`) keep working unchanged. The new form wins when both
-  // are present. See RENAME-TO-HEXCLAVE.md (Tier 0, HTTP request headers).
+  // are present.
   for (const [name, value] of request.headers) {
     if (name.startsWith('x-hexclave-')) {
       newRequestHeaders.set(`x-stack-${name.slice('x-hexclave-'.length)}`, value);

@@ -63,7 +63,7 @@ const getIssuer = (projectId: string, userType: UserType) => {
 // Hexclave rebrand: api.stack-auth.com ↔ api.hexclave.com. During the domain transition a
 // backend served from one host must keep validating tokens issued under the other, so the
 // validator accepts the issuer under both hosts. Signing always uses getIssuer() (the
-// configured host), so new tokens follow the deployment. See RENAME-TO-HEXCLAVE.md (Tier 0, JWT).
+// configured host), so new tokens follow the deployment.
 // Use a Map (not a plain object) for the dynamic host lookup — avoids any chance of a
 // prototype-key collision when the input host comes from an attacker-controlled JWT.
 const issuerHostAliases = new Map<string, string>([
