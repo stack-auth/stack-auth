@@ -2,6 +2,9 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: What are the local development ports for the MCP and Skills apps?
+A: The MCP app runs on port suffix `44` from `apps/mcp/package.json`, so with `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=91` it is at `http://localhost:9144/mcp`. The Skills app runs on suffix `45` from `apps/skills/package.json`, so with the same prefix it is at `http://localhost:9145`. The dev launchpad app list in `apps/dev-launchpad/public/index.html` should use these suffixes.
+
 ## Q: How are connected-account OAuth tokens stored and refreshed?
 A: Connected accounts live in `ProjectUserOAuthAccount`. Stored refresh tokens are in `OAuthToken` (`oauthAccountId`, `scopes`, `isValid`), and cached access tokens are in `OAuthAccessToken` (`expiresAt`, `scopes`, `isValid`). A null `OAuthAccessToken.expiresAt` means the OAuth provider did not supply an access-token expiry; `retrieveOrRefreshAccessToken` treats null-expiry tokens as candidates and still calls the provider-specific validity check before returning them. If no usable access token exists, it looks for valid refresh tokens with matching scopes and invalidates only those that the provider explicitly rejects.
 

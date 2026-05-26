@@ -12,34 +12,41 @@ describe('validateRedirectUrl', () => {
     callback: () => T,
   ): T => {
     const processEnv = Reflect.get(process, "env");
-    const oldHostedHandlerUrlTemplate = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE");
-    const oldHostedHandlerDomainSuffix = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX");
-    const oldStackPortPrefix = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_PORT_PREFIX");
-    try {
-      for (const [key, value] of Object.entries({
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
-        NEXT_PUBLIC_STACK_PORT_PREFIX: values.stackPortPrefix,
-      })) {
+    // Hexclave rebrand: getEnvVariable() in stack-shared/utils/env.tsx prefers the
+    // HEXCLAVE_*-prefixed sibling of each STACK_* var. CI sets only the HEXCLAVE_*
+    // variant (e.g. NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX), so writing only the STACK_*
+    // key here would be silently overridden. Mirror every STACK_* key to its
+    // HEXCLAVE_* sibling so both representations resolve to the same value.
+    const stackKeys = [
+      "NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE",
+      "NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX",
+      "NEXT_PUBLIC_STACK_PORT_PREFIX",
+    ] as const;
+    const hexclaveOf = (name: string) => name.replace("STACK_", "HEXCLAVE_");
+    const allKeys = [...stackKeys, ...stackKeys.map(hexclaveOf)];
+    const oldValues = Object.fromEntries(allKeys.map((k) => [k, Reflect.get(processEnv, k)]));
+    const newValues: Record<string, string | undefined> = {
+      NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
+      NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
+      NEXT_PUBLIC_STACK_PORT_PREFIX: values.stackPortPrefix,
+    };
+    for (const stackKey of stackKeys) {
+      newValues[hexclaveOf(stackKey)] = newValues[stackKey];
+    }
+    const applyValues = (entries: Record<string, string | undefined>) => {
+      for (const [key, value] of Object.entries(entries)) {
         if (value == null) {
           Reflect.deleteProperty(processEnv, key);
         } else {
           Reflect.set(processEnv, key, value);
         }
       }
+    };
+    try {
+      applyValues(newValues);
       return callback();
     } finally {
-      for (const [key, value] of Object.entries({
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: oldHostedHandlerUrlTemplate,
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: oldHostedHandlerDomainSuffix,
-        NEXT_PUBLIC_STACK_PORT_PREFIX: oldStackPortPrefix,
-      })) {
-        if (value == null) {
-          Reflect.deleteProperty(processEnv, key);
-        } else {
-          Reflect.set(processEnv, key, value);
-        }
-      }
+      applyValues(oldValues);
     }
   };
 
