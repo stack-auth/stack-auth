@@ -1,5 +1,6 @@
 import { logMcpCall } from "@/lib/ai/mcp-logger";
 import { selectModel } from "@/lib/ai/models";
+import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools } from "@/lib/ai/tools";
@@ -7,7 +8,6 @@ import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
 import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getFullSystemPrompt } from "@/stackframe/stack-shared/dist/ai/unified-prompts/prompts";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
