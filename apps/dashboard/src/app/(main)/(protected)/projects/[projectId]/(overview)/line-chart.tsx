@@ -1970,8 +1970,8 @@ export function DonutChartDisplay({
   }), [chartState, chartSegments, chartSegmentSeries]);
 
   const pieSize = compact
-    ? { innerRadius: 32, outerRadius: 48, className: "h-[140px]" }
-    : { innerRadius: 48, outerRadius: 72, className: "h-[180px]" };
+    ? { innerRadius: 42, outerRadius: 56, className: "h-[140px]", showDateRange: false }
+    : { innerRadius: 62, outerRadius: 78, className: "h-[180px]", showDateRange: false };
 
   return (
     <ChartCard
