@@ -55,6 +55,9 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   expect(columnRows[0].is_nullable).toBe("YES");
   expect(columnRows[0].data_type).toBe("timestamp without time zone");
 
+  // `OAuthAccessToken."updatedAt"` is `DateTime @updatedAt` in Prisma with no
+  // DB-level default — Prisma populates it at the ORM layer on insert. This
+  // raw SQL bypasses Prisma, so the column has to be set explicitly.
   await sql`
     INSERT INTO "OAuthAccessToken" (
       "id",
@@ -62,7 +65,8 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "oauthAccountId",
       "accessToken",
       "scopes",
-      "expiresAt"
+      "expiresAt",
+      "updatedAt"
     )
     VALUES (
       ${randomUUID()}::uuid,
@@ -70,7 +74,8 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       ${ctx.oauthAccountId}::uuid,
       'github-access-token-without-expiry',
       ARRAY['user:email']::text[],
-      NULL
+      NULL,
+      NOW()
     )
   `;
 
