@@ -465,19 +465,16 @@ describe("_withFallback", () => {
     });
   });
 
-  it("retries non-KnownError 5xx responses on a single URL", async () => {
+  it("does not retry non-KnownError 5xx responses on a single URL", async () => {
     let attempts = 0;
     vi.stubGlobal("fetch", vi.fn(async () => {
       attempts++;
-      if (attempts < 3) {
-        return createTextResponse("Server unavailable", { status: 503 });
-      }
-      return createJsonResponse({ display_name: "test" });
+      return createTextResponse("Server unavailable", { status: 503 });
     }));
 
     const iface = createClientInterface({ apiUrls: urlList(1) });
-    await sendRequest(iface);
-    expect(attempts).toBe(3);
+    await expect(sendRequest(iface)).rejects.toThrow("503 Server unavailable");
+    expect(attempts).toBe(1);
   });
 
   it("falls back on non-KnownError 5xx responses", async () => {
