@@ -71,7 +71,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
-    return await Result.or(user, null);
+    return Result.or(user, null);
   });
   private readonly _serverTeamsCache = createCache<[
     userId?: string,
