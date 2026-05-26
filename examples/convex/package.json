@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/convex-example",
-  "version": "2.8.104",
+  "version": "2.8.105",
   "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "scripts": {
