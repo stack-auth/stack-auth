@@ -336,8 +336,10 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
       }
 
       const content = fs.readFileSync(foundPath, "utf-8");
+      // Accept the canonical @hexclave/next scope and the legacy @stackframe/stack
+      // scope (matches the dual-scope detection used elsewhere in the codebase).
       const importsStackProvider =
-        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["']@stackframe\/stack["']/.test(content);
+        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["'](?:@hexclave\/next|@stackframe\/stack)["']/.test(content);
       const wrapsJsx = /<StackProvider\b/.test(content);
 
       const rel = path.relative(ctx.projectDir, foundPath);
