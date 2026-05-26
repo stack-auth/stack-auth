@@ -1,6 +1,6 @@
 ---
 title: Using Stack Auth with AI
-description: Teach your coding agent how to use Stack Auth — via a copy-paste prompt, an installable skill, or the Stack Auth MCP server.
+description: Teach your coding agent how to use Stack Auth — via web fetch, an installable skill, or the Stack Auth MCP server.
 sidebarTitle: Using Stack Auth with AI
 ---
 
@@ -13,18 +13,32 @@ sidebarTitle: Using Stack Auth with AI
 There are three ways to give a coding agent working knowledge of Stack Auth. They differ only in how the instructions reach the agent — the knowledge is the same.
 
 <CardGroup cols={3}>
+  <Card title="Web Fetch" icon="wand-magic-sparkles" href="#option-3-web-fetch">
+    Paste a one-line prompt — your agent fetches the live skill on demand.
+  </Card>
   <Card title="Skill" icon="sparkles" href="#option-1-skill">
     Install the Stack Auth `SKILL.md` file so your agent loads it automatically.
   </Card>
   <Card title="MCP" icon="plug" href="#option-2-mcp">
     Connect your agent to the Stack Auth MCP server for live docs and `ask_stack_auth` search.
   </Card>
-  <Card title="Prompt" icon="wand-magic-sparkles" href="#option-3-prompt">
-    Paste a one-line prompt — your agent fetches the live skill on demand.
-  </Card>
 </CardGroup>
 
-## Option 1: Skill
+
+## Option 1: Web fetch (recommended)
+
+Most coding agents now support web fetch out of the box, so you can simply tell your agent to use Hexclave's skill from the internet.
+
+To do so, paste the prompt below into your coding agent:
+
+````markdown title="One-shot prompt"
+Fetch https://skill.stack-auth.com and follow it for this task.
+````
+
+The fetched `SKILL.md` indexes the entire Stack Auth docs sidebar and tells the agent to pull fresh content for whichever surface you're touching (auth, orgs/teams, payments, emails, analytics, the CLI). It is purely a reference — paste it whenever you want the agent to use Stack Auth knowledge.
+
+
+## Option 2: Skill
 
 Install the skill once so your agent loads it automatically every time Stack Auth is relevant — no copy-paste required.
 
@@ -96,7 +110,7 @@ Install the skill once so your agent loads it automatically every time Stack Aut
   </Tab>
 </Tabs>
 
-## Option 2: MCP
+## Option 3: MCP
 
 The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent live access to Stack Auth docs and skill via prompts, resources and an `ask_stack_auth` tool that searches the docs with citations. Install it once per agent — it stays available across every project.
 
@@ -208,16 +222,6 @@ The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent li
     ```
   </Tab>
 </Tabs>
-
-## Option 3: Prompt
-
-No installation. Paste the prompt below into your coding agent whenever you want it to act on Stack Auth. The agent fetches the latest Stack Auth instructions from `skill.stack-auth.com`.
-
-````markdown title="One-shot prompt"
-Fetch https://skill.stack-auth.com and follow it for this task.
-````
-
-The fetched `SKILL.md` indexes the entire Stack Auth docs sidebar and tells the agent to pull fresh content for whichever surface you're touching (auth, orgs/teams, payments, emails, analytics, the CLI). It is purely a reference — paste it whenever you want the agent to use Stack Auth knowledge.
 
 ## Project vs. global scope
 
