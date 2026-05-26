@@ -56,6 +56,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     return await retrieveOrRefreshAccessToken({
       prisma,
       providerInstance,
+      providerId: params.provider_id,
       tenancyId: auth.tenancy.id,
       oauthAccountIds: oauthAccounts.map(a => a.id),
       scope: data.scope,

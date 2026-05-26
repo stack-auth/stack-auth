@@ -3,6 +3,12 @@ import { localhostUrl } from "../../../../helpers/ports";
 import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 const mockOAuthUrl = (path: string) => localhostUrl("14", path);
+const reauthorizeAccessTokenDetails = "The stored OAuth refresh token is missing, expired, revoked, or no longer accepted by the OAuth provider. The user needs to re-authorize this connected account.";
+const spotifyAccessTokenNotAvailableError = `Failed to retrieve an OAuth access token for the connected account (provider: spotify). ${reauthorizeAccessTokenDetails}`;
+
+function missingScopeDetails(scope: string) {
+  return `The OAuth connection does not have a usable refresh token with the required scope (${scope}). The user needs to re-authorize this connected account with the requested scope.`;
+}
 
 it("should use the connected account access token to access the userinfo endpoint of the oauth provider", async ({ expect }) => {
   await Auth.OAuth.signIn();
@@ -122,6 +128,28 @@ it("should refresh the connected account access token when it is revoked from th
   `);
 });
 
+it("should return a scope-specific error when connected account tokens do not have the requested scope", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const scope = "missing-scope";
+  const details = missingScopeDetails(scope);
+  const response = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: { scope },
+  });
+
+  expect(response.status).toBe(400);
+  expect(response.body).toEqual({
+    code: "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+    details: {
+      provider: "spotify",
+      details,
+    },
+    error: `Failed to retrieve an OAuth access token for the connected account (provider: spotify). ${details}`,
+  });
+});
+
 it("should prompt the user to re-authorize the connected account when the refresh token is revoked from the oauth provider", async ({ expect }) => {
   await Auth.OAuth.signIn();
 
@@ -175,19 +203,15 @@ it("should prompt the user to re-authorize the connected account when the refres
       scope: "openid",
     },
   });
-  expect(response5).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        "error": "The OAuth connection does not have the required scope.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response5.status).toBe(400);
+  expect(response5.body).toEqual({
+    code: "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+    details: {
+      provider: "spotify",
+      details: reauthorizeAccessTokenDetails,
+    },
+    error: spotifyAccessTokenNotAvailableError,
+  });
 });
 
 it("should handle access_denied error gracefully when refreshing token", async ({ expect }) => {
@@ -228,7 +252,7 @@ it("should handle access_denied error gracefully when refreshing token", async (
     }),
   });
 
-  // Try to get a new access token - should fail gracefully with OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE
+  // Try to get a new access token - should fail gracefully and ask the user to re-authorize
   const response3 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
     accessType: "client",
     method: "POST",
@@ -236,19 +260,15 @@ it("should handle access_denied error gracefully when refreshing token", async (
       scope: "openid",
     },
   });
-  expect(response3).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        "error": "The OAuth connection does not have the required scope.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response3.status).toBe(400);
+  expect(response3.body).toEqual({
+    code: "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+    details: {
+      provider: "spotify",
+      details: reauthorizeAccessTokenDetails,
+    },
+    error: spotifyAccessTokenNotAvailableError,
+  });
 });
 
 it("should handle consent_required error gracefully when refreshing token", async ({ expect }) => {
@@ -297,19 +317,15 @@ it("should handle consent_required error gracefully when refreshing token", asyn
       scope: "openid",
     },
   });
-  expect(response3).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        "error": "The OAuth connection does not have the required scope.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response3.status).toBe(400);
+  expect(response3.body).toEqual({
+    code: "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+    details: {
+      provider: "spotify",
+      details: reauthorizeAccessTokenDetails,
+    },
+    error: spotifyAccessTokenNotAvailableError,
+  });
 });
 
 it("should handle invalid_token error gracefully when refreshing token", async ({ expect }) => {
@@ -358,19 +374,15 @@ it("should handle invalid_token error gracefully when refreshing token", async (
       scope: "openid",
     },
   });
-  expect(response3).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        "error": "The OAuth connection does not have the required scope.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response3.status).toBe(400);
+  expect(response3.body).toEqual({
+    code: "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+    details: {
+      provider: "spotify",
+      details: reauthorizeAccessTokenDetails,
+    },
+    error: spotifyAccessTokenNotAvailableError,
+  });
 });
 
 it("should handle unauthorized_client error gracefully when refreshing token", async ({ expect }) => {
@@ -419,19 +431,15 @@ it("should handle unauthorized_client error gracefully when refreshing token", a
       scope: "openid",
     },
   });
-  expect(response3).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        "error": "The OAuth connection does not have the required scope.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response3.status).toBe(400);
+  expect(response3.body).toEqual({
+    code: "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+    details: {
+      provider: "spotify",
+      details: reauthorizeAccessTokenDetails,
+    },
+    error: spotifyAccessTokenNotAvailableError,
+  });
 });
 
 it("should list all connected accounts for the current user", async ({ expect }) => {
@@ -810,9 +818,16 @@ it("should get access token for specific account when user has multiple accounts
     body: { scope: "openid" },
   });
   // The mock OAuth server doesn't have a refresh token for this manually created account,
-  // so it will return an error about not having the required scope
+  // so it will return a re-authorization error instead of a scope-only error.
   expect(response.status).toBe(400);
-  expect(response.body.code).toBe("OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE");
+  expect(response.body).toEqual({
+    code: "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+    details: {
+      provider: "spotify",
+      details: reauthorizeAccessTokenDetails,
+    },
+    error: spotifyAccessTokenNotAvailableError,
+  });
 });
 
 it("should differentiate between accounts with same provider but different account IDs", async ({ expect }) => {

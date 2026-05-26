@@ -1,0 +1,1 @@
+ALTER TABLE "OAuthAccessToken" ALTER COLUMN "expiresAt" DROP NOT NULL;

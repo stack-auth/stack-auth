@@ -76,6 +76,7 @@ function PageClientInner() {
   const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
   const [loadingStatuses, setLoadingStatuses] = useState(true);
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
+  const hasProjectName = projectName.trim().length > 0;
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
@@ -376,6 +377,7 @@ function PageClientInner() {
               </DesignButton>
               <DesignButton
                 className="rounded-xl"
+                disabled={!hasProjectName || creatingProject}
                 loading={creatingProject}
                 onClick={() => {
                   if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {

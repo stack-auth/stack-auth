@@ -282,7 +282,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const result = await this._interface.createProviderAccessToken(providerId, scope || "", session);
         return { accessToken: result.access_token };
       } catch (err) {
-        if (!(KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
+        if (!(KnownErrors.OAuthAccessTokenNotAvailable.isInstance(err) || KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
           throw err;
         }
       }
@@ -317,7 +317,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         const result = await this._interface.createProviderAccessTokenByAccount(providerId, providerAccountId, scope, session);
         return { accessToken: result.access_token };
       } catch (err) {
-        if (KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err)) {
+        if (KnownErrors.OAuthAccessTokenNotAvailable.isInstance(err) || KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err)) {
           return null;
         }
         throw err;
