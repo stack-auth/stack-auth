@@ -456,12 +456,14 @@ describe("_withFallback", () => {
   });
 
   it("wraps non-KnownError 4xx responses as normal errors", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => createTextResponse("Payments are not set up", { status: 402 })));
+    const response = createTextResponse("Payments are not set up", { status: 402 });
+    vi.stubGlobal("fetch", vi.fn(async () => response));
 
     const iface = createClientInterface({ apiUrls: urlList(1) });
     await expect(sendRequest(iface)).rejects.toMatchObject({
       name: "Error",
       message: expect.stringContaining("402 Payments are not set up"),
+      cause: response,
     });
   });
 

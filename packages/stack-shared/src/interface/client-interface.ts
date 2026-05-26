@@ -219,8 +219,8 @@ export class HexclaveClientInterface {
    *   - Sticky URL fails → exit sticky mode, do a full iteration.
    *
    * In both modes, a full iteration tries every URL once per pass for 2
-   * passes before giving up. KnownErrors and 4xx API responses are never
-   * retried (they're application-level, not network-level).
+   * passes before giving up. KnownErrors and 4xx API responses (except 429)
+   * are never retried (they're application-level, not network-level).
    *
    * Single-URL lists skip all of this and use 5-retry behavior directly.
    */
@@ -466,7 +466,7 @@ export class HexclaveClientInterface {
 
       if (!response.data.ok) {
         const body = await response.data.text();
-        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`);
+        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`, { cause: response.data });
       }
 
       return response.data;
