@@ -52,6 +52,10 @@ function createKnownErrorResponse(error: InstanceType<typeof KnownErrors[keyof t
   });
 }
 
+function createTextResponse(body: string, options: { status: number, headers?: Record<string, string> }): Response {
+  return new Response(body, options);
+}
+
 function getRequestBody(fetchMock: { mock: { calls: unknown[][] } }): Record<string, unknown> {
   const requestInit = fetchMock.mock.calls[0]?.[1];
   if (requestInit == null || typeof requestInit !== "object" || !("body" in requestInit)) {
@@ -435,6 +439,63 @@ describe("_withFallback", () => {
     const iface = createClientInterface({ apiUrls: urls });
     await expect(sendRequest(iface)).rejects.toThrow();
     expect(log.every(u => urlIndex(urls, u) === 0)).toBe(true);
+  });
+
+  it("does not retry or fall back on non-KnownError 4xx responses", async () => {
+    const urls = urlList(3);
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      log.push(input.toString());
+      return createTextResponse("Payments are not set up", { status: 402 });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await expect(sendRequest(iface)).rejects.toMatchObject({ name: "Error" });
+    expect(log.length).toBe(1);
+    expect(urlIndex(urls, log[0])).toBe(0);
+  });
+
+  it("wraps non-KnownError 4xx responses as normal errors", async () => {
+    const response = createTextResponse("Payments are not set up", { status: 402 });
+    vi.stubGlobal("fetch", vi.fn(async () => response));
+
+    const iface = createClientInterface({ apiUrls: urlList(1) });
+    await expect(sendRequest(iface)).rejects.toMatchObject({
+      name: "Error",
+      message: expect.stringContaining("402 Payments are not set up"),
+      cause: response,
+    });
+  });
+
+  it("does not retry non-KnownError 5xx responses on a single URL", async () => {
+    let attempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      attempts++;
+      return createTextResponse("Server unavailable", { status: 503 });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urlList(1) });
+    await expect(sendRequest(iface)).rejects.toThrow("503 Server unavailable");
+    expect(attempts).toBe(1);
+  });
+
+  it("falls back on non-KnownError 5xx responses", async () => {
+    const urls = urlList(3);
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      log.push(url);
+      if (urlIndex(urls, url) === 0) {
+        return createTextResponse("Server unavailable", { status: 503 });
+      }
+      return createJsonResponse({ display_name: "test" });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await sendRequest(iface);
+    expect(log.length).toBe(2);
+    expect(urlIndex(urls, log[0])).toBe(0);
+    expect(urlIndex(urls, log[1])).toBe(1);
   });
 
   it("makes 2 passes × N URLs attempts before throwing", async () => {
