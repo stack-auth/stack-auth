@@ -1,6 +1,6 @@
 import docsJson from "../../../../../../docs-mintlify/docs.json";
 
-const DOCS_BASE = "https://docs.stack-auth.com";
+const DOCS_BASE = "https://docs.hexclave.com";
 
 type SidebarPage = string | SidebarGroup;
 type SidebarGroup = { group: string, root?: string, pages: SidebarPage[] };
