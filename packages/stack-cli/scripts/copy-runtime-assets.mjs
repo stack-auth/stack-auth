@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync, writeFileSync } from "fs";
-import { dirname, isAbsolute, join, resolve } from "path";
+import { chmodSync, cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync } from "fs";
+import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,7 +17,6 @@ const dashboardPublicSrc = join(dashboardRoot, "public");
 const distDir = join(packageRoot, "dist");
 const emulatorDist = join(distDir, "emulator");
 const dashboardDist = join(distDir, "dashboard");
-const dashboardSymlinksManifestPath = join(dashboardDist, "symlinks.json");
 
 function assertExists(path, message) {
   if (!existsSync(path)) {
@@ -40,29 +39,50 @@ function copyEmulatorAssets() {
   console.log(`Copied emulator assets into ${emulatorDist} (+ .env.development into ${distDir}).`);
 }
 
-function collectSymlinks(root, current = root) {
-  const symlinks = [];
+function shouldCopyDashboardFile(path) {
+  return existsSync(path);
+}
+
+function copyDashboardSymlinkTarget(src, dest) {
+  rmSync(dest, { recursive: true, force: true });
+  cpSync(src, dest, { recursive: true, dereference: true, filter: shouldCopyDashboardFile });
+}
+
+function getDashboardDependencyName(pnpmRoot, path) {
+  const parts = path.slice(pnpmRoot.length + 1).split("/");
+  const nodeModulesIndex = parts.lastIndexOf("node_modules");
+  if (nodeModulesIndex < 0) {
+    return undefined;
+  }
+  const dependencyParts = parts.slice(nodeModulesIndex + 1);
+  if (dependencyParts.length === 1) {
+    return dependencyParts[0];
+  }
+  if (dependencyParts.length === 2 && dependencyParts[0].startsWith("@")) {
+    return join(dependencyParts[0], dependencyParts[1]);
+  }
+  return undefined;
+}
+
+function copyDashboardHoistedDependencies(pnpmRoot, current = pnpmRoot) {
   for (const entry of readdirSync(current, { withFileTypes: true })) {
     const path = join(current, entry.name);
-    if (entry.isSymbolicLink()) {
-      if (!existsSync(path)) {
-        continue;
-      }
-      const target = readlinkSync(path);
-      if (isAbsolute(target)) {
-        throw new Error(`Dashboard standalone build contains a non-portable absolute symlink: ${path} -> ${target}`);
-      }
-      symlinks.push({
-        path: path.slice(root.length + 1),
-        target,
-      });
+    if (entry.isDirectory()) {
+      copyDashboardHoistedDependencies(pnpmRoot, path);
       continue;
     }
-    if (entry.isDirectory()) {
-      symlinks.push(...collectSymlinks(root, path));
+    if (!entry.isSymbolicLink() || !existsSync(path)) {
+      continue;
+    }
+    const dependencyName = getDashboardDependencyName(pnpmRoot, path);
+    if (dependencyName == null) {
+      continue;
+    }
+    const target = resolve(current, readlinkSync(path));
+    if (!path.includes("/node_modules/.pnpm/node_modules/")) {
+      copyDashboardSymlinkTarget(target, join(dashboardDist, "node_modules", dependencyName));
     }
   }
-  return symlinks;
 }
 
 function copyDashboardAssets() {
@@ -76,12 +96,12 @@ function copyDashboardAssets() {
   );
 
   rmSync(dashboardDist, { recursive: true, force: true });
-  cpSync(dashboardStandaloneSrc, dashboardDist, { recursive: true, verbatimSymlinks: true });
+  cpSync(dashboardStandaloneSrc, dashboardDist, { recursive: true, dereference: true, filter: shouldCopyDashboardFile });
   cpSync(dashboardStaticSrc, join(dashboardDist, "apps/dashboard/.next/static"), { recursive: true });
   if (existsSync(dashboardPublicSrc)) {
     cpSync(dashboardPublicSrc, join(dashboardDist, "apps/dashboard/public"), { recursive: true });
   }
-  writeFileSync(dashboardSymlinksManifestPath, `${JSON.stringify(collectSymlinks(dashboardDist), undefined, 2)}\n`);
+  copyDashboardHoistedDependencies(join(dashboardStandaloneSrc, "node_modules/.pnpm"));
 
   console.log(`Copied dashboard standalone runtime into ${dashboardDist}.`);
 }
