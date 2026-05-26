@@ -218,7 +218,7 @@ function prepareDashboardRuntime(env: NodeJS.ProcessEnv): string {
   const runtimeRoot = dashboardRuntimeRoot();
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   rmSync(runtimeRoot, { recursive: true, force: true });
-  cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true, verbatimSymlinks: true });
+  cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
   replaceDashboardRuntimeSentinels(runtimeRoot, env);
 
   const runtimeServerPath = join(runtimeRoot, BUNDLED_DASHBOARD_SERVER_PATH);
