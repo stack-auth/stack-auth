@@ -450,7 +450,7 @@ describe("_withFallback", () => {
     }));
 
     const iface = createClientInterface({ apiUrls: urls });
-    await expect(sendRequest(iface)).rejects.toThrow(Error);
+    await expect(sendRequest(iface)).rejects.toMatchObject({ name: "Error" });
     expect(log.length).toBe(1);
     expect(urlIndex(urls, log[0])).toBe(0);
   });
