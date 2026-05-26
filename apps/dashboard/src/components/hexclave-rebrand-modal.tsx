@@ -14,7 +14,11 @@ import { useUser } from "@stackframe/stack";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "hexclave-rebrand-modal-dismissed";
+// Per-user dismissal flag. Keyed by user.id so a shared browser (e.g. a
+// machine where two teammates each log into their own accounts) tracks the
+// dismissal separately for each account — otherwise one teammate dismissing
+// would silently hide the announcement from the other.
+const STORAGE_KEY_PREFIX = "hexclave-rebrand-modal-dismissed:";
 const MIGRATION_DOCS_URL = "https://docs.hexclave.com/migration";
 
 // Users who signed up before this instant predate the Stack Auth → Hexclave
@@ -33,8 +37,8 @@ const REBRAND_CUTOFF = new Date("2026-05-27T00:00:00.000Z");
  *
  * For real customers: only renders for a logged-in user who signed up before
  * {@link REBRAND_CUTOFF}. On any dismissal (confirm button, close button,
- * overlay click, or Escape) writes `STORAGE_KEY` to localStorage so the modal
- * never re-appears for that browser.
+ * overlay click, or Escape) writes `${STORAGE_KEY_PREFIX}${user.id}` to
+ * localStorage so the modal never re-appears for that account on that browser.
  */
 export function HexclaveRebrandModal() {
   // Skip in dev/preview environments — same flags the protected layout already
@@ -52,12 +56,16 @@ export function HexclaveRebrandModal() {
     !isDevEnvironment && user != null && user.signedUpAt < REBRAND_CUTOFF;
   const [open, setOpen] = useState(false);
 
+  // Per-user storage key. `null` when there's no user; the gates below
+  // ensure we never try to read/write it in that case.
+  const storageKey = user ? `${STORAGE_KEY_PREFIX}${user.id}` : null;
+
   // Read localStorage after hydration to avoid SSR mismatch — render closed
-  // on the server and only open if we know the user hasn't dismissed it.
+  // on the server and only open if we know this user hasn't dismissed it.
   useEffect(() => {
-    if (!isPreRebrandUser) return;
+    if (!isPreRebrandUser || !storageKey) return;
     try {
-      const dismissed = localStorage.getItem(STORAGE_KEY);
+      const dismissed = localStorage.getItem(storageKey);
       if (dismissed !== "true") {
         setOpen(true);
       }
@@ -66,13 +74,15 @@ export function HexclaveRebrandModal() {
       // unavailable storage as "already dismissed" so we don't spam users
       // who can't persist the dismissal anyway.
     }
-  }, [isPreRebrandUser]);
+  }, [isPreRebrandUser, storageKey]);
 
   const dismiss = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY, "true");
-    } catch {
-      // see above — best-effort write
+    if (storageKey) {
+      try {
+        localStorage.setItem(storageKey, "true");
+      } catch {
+        // see above — best-effort write
+      }
     }
     setOpen(false);
   };
