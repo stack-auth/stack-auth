@@ -82,7 +82,7 @@
     "generate-setup-prompt-docs": "pnpm exec tsx ./scripts/generate-setup-prompt-docs.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
     "generate-openapi-docs:watch": "pnpm exec tsx ./scripts/wait-for-dev-package-imports.ts && pnpm run --filter=@stackframe/backend codegen-docs && chokidar --silent -c 'pnpm run --filter=@stackframe/backend codegen-docs' './apps/backend/src/app/api/latest/**/route.{js,jsx,ts,tsx}' './apps/backend/src/lib/openapi.ts' './packages/stack-shared/src/interface/webhooks.ts' --throttle 2000",
-    "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './packages/stack-shared/src/ai/prompts.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000"
+    "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './packages/stack-shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

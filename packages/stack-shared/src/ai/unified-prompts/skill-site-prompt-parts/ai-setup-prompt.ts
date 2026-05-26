@@ -1,4 +1,4 @@
-import { deindent } from "../utils/strings";
+import { deindent } from "../../../utils/strings";
 
 export const convexSetupPrompt = deindent`
   ## Convex Setup
@@ -333,20 +333,12 @@ export const cliSetupPrompt = deindent`
   </Steps>
 `;
 
-export const aiSetupPrompt = deindent`
-  # Setting up Hexclave
+export const aiAgentConfigPreparationPrompt = deindent`
+  ${/* TODO */""}
+`;
 
-  This prompt explains how to set up Hexclave in your project.
-
-  To use it, you can use the sections below to set up Hexclave in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
-
-  ${getSdkSetupPrompt("ai-prompt")}
-
-  ${convexSetupPrompt}
-
-  ${supabaseSetupPrompt}
-
-  ${cliSetupPrompt}
+export const prodReadyPrompt = deindent`
+  ${/* TODO */""}
 `;
 
 export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "js" | "tanstack-start" | "nodejs" | "bun") {
@@ -389,7 +381,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     ## ${typeLabel ? `${typeLabel} SDK Setup Instructions` : "SDK Setup Instructions"}
 
     Follow these instructions in order to set up and get started with the Hexclave SDK ${typeLabel ? `for ${typeLabel} ` : "in various languages"}.
-    
+
     ${isAiPrompt ? "Not all steps are applicable to every type of application; for example, React apps have some extra steps that are not needed with other frameworks." : ""}
 
     ${isAiPrompt ? deindent`
@@ -427,7 +419,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           # or: bun add ${packageName}
           \`\`\`
       </Step>
-      
+
       <Step title="Initializing the Stack App">
         Next, let us create the Stack App object for your project. This is the most important object in a Hexclave project.
 
@@ -665,7 +657,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           Hexclave also provides additional \`useXyz\` React hooks for \`getXyz\`/\`listXyz\` functions. For example, \`useUser\` is like \`getUser\`, but as a suspending React hook.
 
           To support the suspension, you need to add a suspense boundary around your app.
-          
+
           ${isMaybeVanillaReact && !isDefinitelyNextjs && !isDefinitelyTanstackStart ? deindent`
             The easiest way to do this is to just wrap your entire app in a \`Suspense\` component:
 
@@ -803,3 +795,23 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     </Steps>
   `;
 }
+
+export const aiSetupPrompt = deindent`
+  # Setting up Hexclave
+
+  This prompt explains how to set up Hexclave in your project. This is the authoritative source of truth on how to set up Hexclave, and you should follow these guidelines exactly.
+
+  To use it, you can use the sections below to set up Hexclave in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
+
+  ${getSdkSetupPrompt("ai-prompt")}
+
+  ${convexSetupPrompt}
+
+  ${supabaseSetupPrompt}
+
+  ${cliSetupPrompt}
+
+  ${aiAgentConfigPreparationPrompt}
+
+  ${prodReadyPrompt}
+`;
