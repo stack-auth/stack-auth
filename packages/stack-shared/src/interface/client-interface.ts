@@ -248,8 +248,20 @@ export class HexclaveClientInterface {
   }
 
   private _isNonRetryableApiResponseError(error: unknown) {
-    const cause = error instanceof Error ? error.cause : undefined;
-    return cause instanceof Response && cause.status >= 400 && cause.status < 500;
+    const response = this._getApiResponseFromError(error);
+    return response != null && response.status >= 400 && response.status < 500;
+  }
+
+  private _getApiResponseFromError(error: unknown, seenErrors = new Set<Error>()): Response | null {
+    if (error instanceof Response) {
+      return error;
+    }
+    if (!(error instanceof Error) || seenErrors.has(error)) {
+      return null;
+    }
+
+    seenErrors.add(error);
+    return this._getApiResponseFromError(error.cause, seenErrors);
   }
 
   /**
