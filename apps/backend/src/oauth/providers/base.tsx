@@ -37,7 +37,7 @@ custom.setHttpOptionsDefaults({
 export type TokenSet = {
   accessToken: string,
   refreshToken?: string,
-  accessTokenExpiredAt: Date,
+  accessTokenExpiredAt: Date | null,
   idToken?: string,
 };
 
@@ -217,23 +217,20 @@ export function getOAuthAccessTokenRefreshError(error: unknown, options: {
   return { type: "unexpected", cause: error, ...metadata };
 }
 
-type DefaultAccessTokenExpiresInMillis = number | ((tokenSet: OIDCTokenSet) => number | undefined);
-
-function getDefaultAccessTokenExpiresInMillis(tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis): number | undefined {
-  return typeof defaultAccessTokenExpiresInMillis === "function" ? defaultAccessTokenExpiresInMillis(tokenSet) : defaultAccessTokenExpiresInMillis;
-}
+type DefaultAccessTokenExpiresInMillis = number | null | ((tokenSet: OIDCTokenSet) => number | null | undefined);
 
 function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis): TokenSet {
   if (!tokenSet.access_token) {
     throw new HexclaveAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
   }
 
-  // if expires_in or expires_at provided, use that
-  // otherwise, if defaultAccessTokenExpiresInMillis provided, use that
-  // otherwise, use 1h, and log an error
-  const defaultExpiresInMillis = getDefaultAccessTokenExpiresInMillis(tokenSet, defaultAccessTokenExpiresInMillis);
+  // Use provider-supplied expiry first. If the provider omits expiry, a provider
+  // can supply a fallback duration, return null to explicitly model
+  // "non-expiring/unknown expiry", or leave it undefined to use the generic
+  // one-hour fallback and capture telemetry.
+  const defaultExpiresInMillis = typeof defaultAccessTokenExpiresInMillis === "function" ? defaultAccessTokenExpiresInMillis(tokenSet) : defaultAccessTokenExpiresInMillis;
 
-  if (!tokenSet.expires_in && !tokenSet.expires_at && !defaultExpiresInMillis) {
+  if (tokenSet.expires_in == null && tokenSet.expires_at == null && defaultExpiresInMillis === undefined) {
     captureError("processTokenSet", new HexclaveAssertionError(`No expires_in or expires_at received from OAuth provider ${providerName}. Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
   }
 
@@ -241,12 +238,13 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
     idToken: tokenSet.id_token,
     accessToken: tokenSet.access_token,
     refreshToken: tokenSet.refresh_token,
-    accessTokenExpiredAt: tokenSet.expires_in ?
+    accessTokenExpiredAt: tokenSet.expires_in != null ?
       new Date(Date.now() + tokenSet.expires_in * 1000) :
-      tokenSet.expires_at ? new Date(tokenSet.expires_at * 1000) :
-        defaultExpiresInMillis ?
-          new Date(Date.now() + defaultExpiresInMillis) :
-          new Date(Date.now() + 3600 * 1000),
+      tokenSet.expires_at != null ? new Date(tokenSet.expires_at * 1000) :
+        defaultExpiresInMillis === null ? null :
+          defaultExpiresInMillis !== undefined ?
+            new Date(Date.now() + defaultExpiresInMillis) :
+            new Date(Date.now() + 3600 * 1000),
   };
 }
 

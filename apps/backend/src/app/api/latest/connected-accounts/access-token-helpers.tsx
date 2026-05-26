@@ -114,9 +114,10 @@ export async function retrieveOrRefreshAccessToken(options: {
     where: {
       tenancyId,
       ...accountIdFilter,
-      expiresAt: {
-        gt: new Date(Date.now() + 5 * 60 * 1000),
-      },
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date(Date.now() + 5 * 60 * 1000) } },
+      ],
       isValid: true,
     },
   });

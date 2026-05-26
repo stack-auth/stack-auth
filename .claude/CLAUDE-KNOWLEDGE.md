@@ -3,7 +3,7 @@
 This file contains knowledge learned while working on the codebase in Q&A format.
 
 ## Q: How are connected-account OAuth tokens stored and refreshed?
-A: Connected accounts live in `ProjectUserOAuthAccount`. Stored refresh tokens are in `OAuthToken` (`oauthAccountId`, `scopes`, `isValid`), and cached access tokens are in `OAuthAccessToken` (`expiresAt`, `scopes`, `isValid`). `retrieveOrRefreshAccessToken` first uses an unexpired valid access token with matching scopes; otherwise it looks for valid refresh tokens with matching scopes and invalidates only those that the provider explicitly rejects.
+A: Connected accounts live in `ProjectUserOAuthAccount`. Stored refresh tokens are in `OAuthToken` (`oauthAccountId`, `scopes`, `isValid`), and cached access tokens are in `OAuthAccessToken` (`expiresAt`, `scopes`, `isValid`). A null `OAuthAccessToken.expiresAt` means the OAuth provider did not supply an access-token expiry; `retrieveOrRefreshAccessToken` treats null-expiry tokens as candidates and still calls the provider-specific validity check before returning them. If no usable access token exists, it looks for valid refresh tokens with matching scopes and invalidates only those that the provider explicitly rejects.
 
 ## Q: Which Hexclave rename compatibility layers should be avoided in PR #1475 follow-ups?
 A: Do not keep backwards compatibility for the MCP tool name, cross-domain auth query parameter names, `NEXT_PUBLIC_STACK_PORT_PREFIX`, or a parallel `hexclaveAppInternalsSymbol`. For refresh/access cookies, read both legacy Stack and new Hexclave cookie names, but only write the canonical Hexclave cookies.
