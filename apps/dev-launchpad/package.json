@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/dev-launchpad",
-  "version": "2.8.108",
+  "version": "2.8.109",
   "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "scripts": {
