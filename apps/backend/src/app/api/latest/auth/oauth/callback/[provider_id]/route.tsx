@@ -13,7 +13,7 @@ import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Respons
 import { KnownError, KnownErrors } from "@hexclave/shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
-import { deindent, extractScopes } from "@hexclave/shared/dist/utils/strings";
+import { deindent, extractScopes, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
@@ -224,12 +224,13 @@ const handler = createSmartRouteHandler({
       });
 
       const storeTokens = async (oauthAccountId: string) => {
+        const tokenScopes = extractScopes(mergeScopeStrings(providerObj.scope, providerScope ?? ""));
         if (tokenSet.refreshToken) {
           await prisma.oAuthToken.create({
             data: {
               tenancyId: outerInfo.tenancyId,
               refreshToken: tokenSet.refreshToken,
-              scopes: extractScopes(providerObj.scope + " " + providerScope),
+              scopes: tokenScopes,
               oauthAccountId,
             }
           });
@@ -239,7 +240,7 @@ const handler = createSmartRouteHandler({
           data: {
             tenancyId: outerInfo.tenancyId,
             accessToken: tokenSet.accessToken,
-            scopes: extractScopes(providerObj.scope + " " + providerScope),
+            scopes: tokenScopes,
             expiresAt: tokenSet.accessTokenExpiredAt,
             oauthAccountId,
           }

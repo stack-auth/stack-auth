@@ -219,6 +219,48 @@ export function getOAuthAccessTokenRefreshError(error: unknown, options: {
 
 type DefaultAccessTokenExpiresInMillis = number | null | ((tokenSet: OIDCTokenSet) => number | null | undefined);
 
+function getFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function dateFromMillis(millis: number, context: string): Date {
+  const date = new Date(millis);
+  if (!Number.isFinite(date.getTime())) {
+    throw new HexclaveAssertionError(`Invalid OAuth access token expiry computed from ${context}`, { millis });
+  }
+  return date;
+}
+
+export function resolveOAuthAccessTokenExpiredAt(options: {
+  expiresInSeconds: unknown,
+  expiresAtSeconds: unknown,
+  defaultExpiresInMillis: number | null | undefined,
+  nowMillis: number,
+}): Date | null {
+  const expiresInSeconds = getFiniteNumber(options.expiresInSeconds);
+  if (expiresInSeconds !== undefined) {
+    return dateFromMillis(options.nowMillis + expiresInSeconds * 1000, "expires_in");
+  }
+
+  const expiresAtSeconds = getFiniteNumber(options.expiresAtSeconds);
+  if (expiresAtSeconds !== undefined) {
+    return dateFromMillis(expiresAtSeconds * 1000, "expires_at");
+  }
+
+  if (options.defaultExpiresInMillis === null) {
+    return null;
+  }
+
+  if (options.defaultExpiresInMillis !== undefined) {
+    if (!Number.isFinite(options.defaultExpiresInMillis)) {
+      throw new HexclaveAssertionError("Invalid default OAuth access token expiry", { defaultExpiresInMillis: options.defaultExpiresInMillis });
+    }
+    return dateFromMillis(options.nowMillis + options.defaultExpiresInMillis, "provider default");
+  }
+
+  return dateFromMillis(options.nowMillis + 3600 * 1000, "generic fallback");
+}
+
 function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis): TokenSet {
   if (!tokenSet.access_token) {
     throw new HexclaveAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
@@ -230,7 +272,14 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
   // one-hour fallback and capture telemetry.
   const defaultExpiresInMillis = typeof defaultAccessTokenExpiresInMillis === "function" ? defaultAccessTokenExpiresInMillis(tokenSet) : defaultAccessTokenExpiresInMillis;
 
-  if (tokenSet.expires_in == null && tokenSet.expires_at == null && defaultExpiresInMillis === undefined) {
+  const hasInvalidProviderExpiry =
+    (tokenSet.expires_in != null && getFiniteNumber(tokenSet.expires_in) === undefined)
+    || (tokenSet.expires_at != null && getFiniteNumber(tokenSet.expires_at) === undefined);
+  if (hasInvalidProviderExpiry) {
+    captureError("processTokenSet", new HexclaveAssertionError(`Invalid expires_in or expires_at received from OAuth provider ${providerName}. Falling back to provider/default expiry handling`, { tokenSetKeys: Object.keys(tokenSet) }));
+  }
+
+  if (getFiniteNumber(tokenSet.expires_in) === undefined && getFiniteNumber(tokenSet.expires_at) === undefined && defaultExpiresInMillis === undefined) {
     captureError("processTokenSet", new HexclaveAssertionError(`No expires_in or expires_at received from OAuth provider ${providerName}. Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
   }
 
@@ -238,13 +287,12 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
     idToken: tokenSet.id_token,
     accessToken: tokenSet.access_token,
     refreshToken: tokenSet.refresh_token,
-    accessTokenExpiredAt: tokenSet.expires_in != null ?
-      new Date(Date.now() + tokenSet.expires_in * 1000) :
-      tokenSet.expires_at != null ? new Date(tokenSet.expires_at * 1000) :
-        defaultExpiresInMillis === null ? null :
-          defaultExpiresInMillis !== undefined ?
-            new Date(Date.now() + defaultExpiresInMillis) :
-            new Date(Date.now() + 3600 * 1000),
+    accessTokenExpiredAt: resolveOAuthAccessTokenExpiredAt({
+      expiresInSeconds: tokenSet.expires_in,
+      expiresAtSeconds: tokenSet.expires_at,
+      defaultExpiresInMillis,
+      nowMillis: Date.now(),
+    }),
   };
 }
 

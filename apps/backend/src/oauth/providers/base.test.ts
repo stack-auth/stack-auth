@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getOAuthAccessTokenRefreshError, getOAuthAccessTokenRefreshErrorDisposition, isRetryableOAuthUserInfoError } from "./base";
+import { getOAuthAccessTokenRefreshError, getOAuthAccessTokenRefreshErrorDisposition, isRetryableOAuthUserInfoError, resolveOAuthAccessTokenExpiredAt } from "./base";
 
 describe("isRetryableOAuthUserInfoError", () => {
   it("returns true for openid-client timeout errors", () => {
@@ -99,5 +99,34 @@ describe("getOAuthAccessTokenRefreshError", () => {
       sawAmbiguousRefreshAttempt: true,
       causes: [{ name: "RPError" }, providerError],
     });
+  });
+});
+
+describe("resolveOAuthAccessTokenExpiredAt", () => {
+  it("uses finite provider expires_in values", () => {
+    expect(resolveOAuthAccessTokenExpiredAt({
+      expiresInSeconds: 120,
+      expiresAtSeconds: undefined,
+      defaultExpiresInMillis: null,
+      nowMillis: 1000,
+    })?.toISOString()).toBe("1970-01-01T00:02:01.000Z");
+  });
+
+  it("ignores non-finite provider expires_at values and uses explicit null defaults", () => {
+    expect(resolveOAuthAccessTokenExpiredAt({
+      expiresInSeconds: undefined,
+      expiresAtSeconds: Number.NaN,
+      defaultExpiresInMillis: null,
+      nowMillis: 1000,
+    })).toBeNull();
+  });
+
+  it("ignores non-finite provider expiry values and falls back to one hour", () => {
+    expect(resolveOAuthAccessTokenExpiredAt({
+      expiresInSeconds: Number.NaN,
+      expiresAtSeconds: Number.NaN,
+      defaultExpiresInMillis: undefined,
+      nowMillis: 1000,
+    })?.toISOString()).toBe("1970-01-01T01:00:01.000Z");
   });
 });
