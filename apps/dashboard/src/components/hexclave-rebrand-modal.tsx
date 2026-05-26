@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { getPublicEnvVar } from "@/lib/env";
 import { useUser } from "@stackframe/stack";
 import Image from "next/image";
 import { useEffect, useState } from "react";
@@ -25,16 +26,30 @@ const REBRAND_CUTOFF = new Date("2026-05-27T00:00:00.000Z");
 /**
  * One-time informational modal announcing the Stack Auth → Hexclave rebrand.
  *
- * Only renders for a logged-in user who signed up before {@link REBRAND_CUTOFF}.
- * On any dismissal (confirm button, close button, overlay click, or Escape)
- * writes `STORAGE_KEY` to localStorage so the modal never re-appears for that
- * browser.
+ * Skipped entirely in preview / local-emulator / remote-development environments
+ * — those auto-create throwaway users or seed a fixture admin, so the rebrand
+ * notice would be friction for developers and meaningless for preview visitors
+ * who never used "Stack Auth" in the first place.
+ *
+ * For real customers: only renders for a logged-in user who signed up before
+ * {@link REBRAND_CUTOFF}. On any dismissal (confirm button, close button,
+ * overlay click, or Escape) writes `STORAGE_KEY` to localStorage so the modal
+ * never re-appears for that browser.
  */
 export function HexclaveRebrandModal() {
+  // Skip in dev/preview environments — same flags the protected layout already
+  // gates on. Read at top so we can short-circuit before any hook runs the
+  // useEffect or computes the user-based gate.
+  const isDevEnvironment =
+    getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true"
+    || getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true"
+    || getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+
   // `or: "return-null"` keeps this from triggering the sign-in redirect when
   // it's rendered above the auth boundary — we simply opt out for guests.
   const user = useUser({ or: "return-null" });
-  const isPreRebrandUser = user != null && user.signedUpAt < REBRAND_CUTOFF;
+  const isPreRebrandUser =
+    !isDevEnvironment && user != null && user.signedUpAt < REBRAND_CUTOFF;
   const [open, setOpen] = useState(false);
 
   // Read localStorage after hydration to avoid SSR mismatch — render closed
