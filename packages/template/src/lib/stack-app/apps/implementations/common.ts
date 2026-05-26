@@ -3,9 +3,8 @@ import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createGlobal, getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
+import { ReactPromise, runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
@@ -127,8 +126,13 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
 export const defaultBaseUrl = "https://api.hexclave.com";
 export const defaultAnalyticsBaseUrl = "https://r.hexclave.com";
 
+const analyticsBaseUrlsByApiBaseUrl = new Map<string, string>([
+  [defaultBaseUrl, defaultAnalyticsBaseUrl],
+  ["https://api.stack-auth.com", "https://r.stack-auth.com"], // for legacy compatibility
+]);
+
 export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
-  return regularBaseUrl === defaultBaseUrl ? defaultAnalyticsBaseUrl : regularBaseUrl;
+  return analyticsBaseUrlsByApiBaseUrl.get(regularBaseUrl) ?? regularBaseUrl;
 }
 
 
