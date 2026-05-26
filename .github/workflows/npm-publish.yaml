@@ -111,6 +111,11 @@ jobs:
         run: pnpm tsx scripts/rewrite-packages-to-hexclave.ts --version=1.0.0
 
       - name: Publish @hexclave/* mirror packages
-        run: pnpm publish -r --no-git-checks --access public
+        # Filter to @hexclave/* so this step's correctness does not depend on
+        # `pnpm publish -r` silently skipping already-published @stackframe/*
+        # versions — pnpm's skip-existing-versions check has historically
+        # failed open on registry edge cases, and unfiltered re-publish of an
+        # existing version would 403 the whole run.
+        run: pnpm publish -r --filter "@hexclave/*" --no-git-checks --access public
         env:
           NPM_CONFIG_PROVENANCE: true
