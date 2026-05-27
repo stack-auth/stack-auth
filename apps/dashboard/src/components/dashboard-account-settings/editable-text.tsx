@@ -44,7 +44,10 @@ export function EditableText(props: { value: string, onSave?: (value: string) =>
         <>
           <span className="text-base font-medium text-foreground">{props.value}</span>
           <Button
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setEditingValue(props.value);
+              setEditing(true);
+            }}
             size='icon'
             variant='ghost'
             className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900 h-8 w-8 p-0 transition-colors duration-150"

@@ -9,12 +9,12 @@ import { UploadSimple, User } from '@phosphor-icons/react';
 import { useCallback, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 
-export async function checkImageUrl(url: string){
+export async function checkImageUrl(url: string) {
   try {
     const res = await fetch(url, { method: 'HEAD' });
     const buff = await res.blob();
     return buff.type.startsWith('image/');
-  } catch (e) {
+  } catch {
     return false;
   }
 }
