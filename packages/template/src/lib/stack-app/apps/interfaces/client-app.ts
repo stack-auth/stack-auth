@@ -21,7 +21,7 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   inheritsFrom?: StackClientApp<any, any>,
 
   /**
-   * Whether to show the Stack Auth dev tool indicator in browser-like development environments.
+   * Whether to show the Hexclave dev tool indicator in browser-like development environments.
    *
    * Defaults to true.
    */
@@ -56,7 +56,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     readonly projectId: ProjectId,
 
     /**
-     * The version of the Stack Auth SDK.
+     * The version of the Hexclave SDK.
      */
     readonly version: string,
 

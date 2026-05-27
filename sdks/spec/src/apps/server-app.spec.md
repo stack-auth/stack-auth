@@ -10,7 +10,7 @@ StackServerApp(options)
 Extends StackClientApp constructor options with:
 
 Required:
-  secretServerKey: string - from Stack Auth dashboard
+  secretServerKey: string - from Hexclave dashboard
 
 The secretServerKey enables server-only operations like listing all users,
 creating users, and accessing server metadata.

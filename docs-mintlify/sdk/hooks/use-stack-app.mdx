@@ -1,20 +1,20 @@
 ---
-title: "useStackApp"
-description: "React hook to retrieve the StackClientApp instance from the StackProvider."
-sidebarTitle: "useStackApp"
+title: "useHexclaveApp"
+description: "React hook to retrieve the HexclaveClientApp instance from the HexclaveProvider."
+sidebarTitle: "useHexclaveApp"
 icon: "react"
 mode: "wide"
 ---
 
-The `useStackApp` hook returns a `StackClientApp` object from the one that you provided in the setup flow. If you want to learn more about the `StackClientApp` object, check out the [StackApp](/sdk/objects/stack-app) documentation.
+The `useHexclaveApp` hook returns a `HexclaveClientApp` object from the one that you provided in the setup flow. If you want to learn more about the `HexclaveClientApp` object, check out the [StackApp](/sdk/objects/stack-app) documentation.
 
 ## Usage
 
 ```jsx
-import { useStackApp } from "@stackframe/stack";
+import { useHexclaveApp } from "@hexclave/next";
 
 function MyComponent() {
-  const stackApp = useStackApp();
+  const stackApp = useHexclaveApp();
   return <div>Sign In URL: {stackApp.urls.signIn}</div>;
 }
 ```

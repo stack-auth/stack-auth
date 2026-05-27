@@ -1,4 +1,4 @@
-# Stack Auth Dashboard Design Guide
+# Hexclave Dashboard Design Guide
 
 This guide defines the source of truth for dashboard UI design and implementation.
 It is intentionally written for both humans and AI agents.

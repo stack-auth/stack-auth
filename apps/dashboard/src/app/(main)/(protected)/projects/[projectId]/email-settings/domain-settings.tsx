@@ -85,7 +85,7 @@ function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): Se
 
 function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], projectName: string): Record<string, string> {
   if (config.isShared) {
-    return { senderEmail: "noreply@stackframe.co", senderName: projectName };
+    return { senderEmail: "noreply@sent-with-hexclave.com", senderName: projectName };
   }
   if (config.provider === "managed") {
     const senderEmail = config.managedSubdomain && config.managedSenderLocalPart
@@ -841,7 +841,7 @@ export function DomainSettings() {
         };
 
         const testResult = await stackAdminApp.sendTestEmail({
-          recipientEmail: "test-email-recipient@stackframe.co",
+          recipientEmail: "test-email-recipient@sent-with-hexclave.com",
           emailConfig: emailConf,
         });
 

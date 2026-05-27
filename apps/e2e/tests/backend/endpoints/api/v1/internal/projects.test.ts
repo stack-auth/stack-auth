@@ -12,9 +12,9 @@ it("should not have have access to the project", async ({ expect }) => {
         "code": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
         "details": { "request_type": "client" },
         "error": deindent\`
-          The x-stack-access-type header was 'client', but the x-stack-project-id header was not provided.
+          The x-hexclave-access-type header was 'client', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
           
-          For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+          For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
         \`,
       },
       "headers": Headers {

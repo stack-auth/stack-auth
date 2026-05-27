@@ -273,7 +273,7 @@ export default function TokensDemoPage() {
             🔑 Token Functions Demo
           </Typography>
           <Typography variant="secondary" className="text-gray-500">
-            This page demonstrates all the token-related functions available in Stack Auth.
+            This page demonstrates all the token-related functions available in Hexclave.
           </Typography>
           {!user && (
             <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg inline-block">
@@ -355,7 +355,7 @@ export default function TokensDemoPage() {
             <p><strong>iat</strong> (Issued At): When the token was created</p>
             <p><strong>exp</strong> (Expiration): When the token expires</p>
             <p><strong>sub</strong> (Subject): The user ID</p>
-            <p><strong>iss</strong> (Issuer): The token issuer (Stack Auth)</p>
+            <p><strong>iss</strong> (Issuer): The token issuer (Hexclave)</p>
             <p><strong>aud</strong> (Audience): The intended recipient (your project ID)</p>
           </div>
         </Card>

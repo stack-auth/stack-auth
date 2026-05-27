@@ -1,7 +1,7 @@
 export { generateStaticParams } from "@/lib/generate-empty-static-params";
 
 export const metadata = {
-  title: "Neon x Stack Auth",
+  title: "Neon x Hexclave",
 };
 
 export default async function Layout(props: { children: React.ReactNode }) {

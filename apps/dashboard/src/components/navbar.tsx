@@ -21,7 +21,7 @@ export function Navbar({ ...props }) {
       </div>
       <div className="flex items-center">
         <div className="flex gap-4 mr-4 items-center">
-          <Link href="https://docs.stack-auth.com/">
+          <Link href="https://docs.hexclave.com/">
             <Typography type='label'>Docs</Typography>
           </Link>
           <ThemeToggle />

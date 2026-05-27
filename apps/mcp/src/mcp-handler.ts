@@ -24,7 +24,7 @@ type AiQueryResponse = {
   conversationId?: string,
 };
 
-const skillResourceUri = "https://skill.stack-auth.com";
+const skillResourceUri = "https://skill.hexclave.com";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -78,8 +78,8 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
         "skill",
         skillResourceUri,
         {
-          title: "Stack Auth skill",
-          description: "The canonical Stack Auth agent skill (SKILL.md) — how to wire Stack Auth into a project.",
+          title: "Hexclave skill",
+          description: "The canonical Hexclave agent skill (SKILL.md) — how to wire Hexclave into a project.",
           mimeType: "text/markdown",
         },
         async () => ({
@@ -93,7 +93,7 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
 
       server.prompt(
         "skill",
-        "Load the Stack Auth skill (SKILL.md) into the conversation — how to wire Stack Auth into a project.",
+        "Load the Hexclave skill (SKILL.md) into the conversation — how to wire Hexclave into a project.",
         async () => ({
           messages: [{
             role: "user",

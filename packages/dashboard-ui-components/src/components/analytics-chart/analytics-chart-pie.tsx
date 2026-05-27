@@ -1,7 +1,7 @@
 import { MagnifyingGlassMinusIcon } from "@phosphor-icons/react";
 import { cn } from "@stackframe/stack-ui";
 import { type DesignChartConfig, DesignChartContainer } from "../chart-container";
-import { type CSSProperties, type Ref, useMemo } from "react";
+import { type CSSProperties, type Ref, useEffect, useMemo, useState } from "react";
 import { Cell, Pie, PieChart } from "recharts";
 import { TrendPill } from "./default-analytics-chart-tooltip";
 import { formatDelta } from "./format";
@@ -75,6 +75,11 @@ export function AnalyticsChartPie({
   const compareInnerRadius = pie?.compareInnerRadius ?? 36;
   const compareOuterRadius = pie?.compareOuterRadius ?? 52;
   const containerClassName = pie?.className ?? DEFAULT_PIE_CLASSNAME;
+  const showDateRange = pie?.showDateRange ?? true;
+  const centerTextMaxWidth = Math.max(64, innerRadius * 2 - 28);
+  const segmentTransitionStyle: CSSProperties = {
+    transition: "opacity 180ms ease-out",
+  };
 
   const canonicalSeries = primarySegmentSeries.length > 0
     ? primarySegmentSeries
@@ -157,9 +162,31 @@ export function AnalyticsChartPie({
     return config;
   }, [canonicalSeries, segmentColors]);
 
-  const activeRow = hoverKey
+  const activeRow = hoverKey != null
     ? legendRows.find((r) => r.key === hoverKey) ?? null
     : null;
+  const [centerDisplayKey, setCenterDisplayKey] = useState<string | null>(null);
+  const [centerDisplayVisible, setCenterDisplayVisible] = useState(true);
+  const centerDisplayRow = centerDisplayKey != null
+    ? legendRows.find((r) => r.key === centerDisplayKey) ?? null
+    : null;
+  useEffect(() => {
+    const nextKey = activeRow?.key ?? null;
+    if (nextKey === centerDisplayKey) {
+      return;
+    }
+
+    setCenterDisplayVisible(false);
+    const timeoutId = window.setTimeout(() => {
+      setCenterDisplayKey(nextKey);
+      setCenterDisplayVisible(true);
+    }, 120);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeRow?.key, centerDisplayKey]);
+
   const activeDelta = activeRow
     ? formatDelta(activeRow.value, activeRow.prevValue)
     : formatDelta(aggregatedPrimaryTotal, aggregatedCompareTotal);
@@ -170,7 +197,7 @@ export function AnalyticsChartPie({
 
   const outerData = legendRows.map((r) => ({ name: cssIdent(r.key), hoverKey: r.key, value: r.value, fill: r.fill }));
   const innerData = legendRows.map((r) => ({ name: cssIdent(r.key), hoverKey: r.key, value: r.prevValue, fill: r.fillCompare }));
-  const activeIdx = hoverKey ? legendRows.findIndex((r) => r.key === hoverKey) : -1;
+  const activeIdx = hoverKey != null ? legendRows.findIndex((r) => r.key === hoverKey) : -1;
 
   return (
     <div
@@ -224,6 +251,7 @@ export function AnalyticsChartPie({
                           key={`outer-${d.name}`}
                           fill={`var(--color-${d.name})`}
                           opacity={inactive ? 0.22 : 1}
+                          style={segmentTransitionStyle}
                           onMouseEnter={() => setHoverKey(d.hoverKey)}
                           onMouseLeave={() => setHoverKey(null)}
                         />
@@ -253,6 +281,7 @@ export function AnalyticsChartPie({
                           key={`inner-${d.name}`}
                           fill={`var(--color-compare-${d.name})`}
                           opacity={inactive ? 0.22 : 0.95}
+                          style={segmentTransitionStyle}
                           onMouseEnter={() => setHoverKey(d.hoverKey)}
                           onMouseLeave={() => setHoverKey(null)}
                         />
@@ -263,24 +292,33 @@ export function AnalyticsChartPie({
               </PieChart>
             </DesignChartContainer>
 
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="block max-w-[68px] truncate font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                {activeRow ? activeRow.label : strings.pieTotalCenter}
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center transition-opacity duration-200 ease-out",
+                centerDisplayVisible ? "opacity-100" : "opacity-35",
+              )}
+            >
+              <span className="block truncate font-mono text-[9px] uppercase tracking-wider text-muted-foreground" style={{ maxWidth: centerTextMaxWidth }}>
+                {centerDisplayRow ? centerDisplayRow.label : strings.pieTotalCenter}
               </span>
-              <span className="mt-0.5 block max-w-[72px] truncate font-mono text-xl font-semibold leading-none tabular-nums text-foreground">
-                {fmtValue(activeRow ? activeRow.value : canonicalTotal, yFormatKind)}
+              <span className="mt-0.5 block truncate font-mono text-xl font-semibold leading-none tabular-nums text-foreground" style={{ maxWidth: centerTextMaxWidth }}>
+                {fmtValue(centerDisplayRow ? centerDisplayRow.value : canonicalTotal, yFormatKind)}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-center">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
-              {startLabel} – {endLabel}
-            </span>
-            {showCompare && (
-              <TrendPill delta={activeDelta} size="sm" label={strings.pieVsPrev} />
-            )}
-          </div>
+          {(showDateRange || showCompare) && (
+            <div className="flex items-center gap-2 text-center">
+              {showDateRange && (
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                  {startLabel} – {endLabel}
+                </span>
+              )}
+              {showCompare && (
+                <TrendPill delta={activeDelta} size="sm" label={strings.pieVsPrev} />
+              )}
+            </div>
+          )}
         </div>
 
         <ul className="flex min-w-[200px] max-w-[300px] flex-col gap-1">
@@ -297,7 +335,7 @@ export function AnalyticsChartPie({
                   onFocus={() => setHoverKey(r.key)}
                   onBlur={() => setHoverKey(null)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-[background-color,opacity] duration-150 hover:bg-foreground/[0.04] hover:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20",
+                    "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-[background-color,opacity] duration-200 ease-out hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20",
                     isActive && "bg-foreground/[0.05]",
                     dimmed && "opacity-50",
                   )}

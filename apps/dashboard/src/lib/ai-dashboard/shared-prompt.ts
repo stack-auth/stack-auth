@@ -42,7 +42,7 @@ export async function selectRelevantFiles(
 ): Promise<string[]> {
   const availableFiles = BUNDLED_TYPE_DEFINITIONS.map((f: { path: string }) => f.path);
 
-  const systemPromptText = `You are a code assistant helping to generate dashboard code for Stack Auth.
+  const systemPromptText = `You are a code assistant helping to generate dashboard code for Hexclave.
 
 Your task is to select which Stack SDK type definition files you'll need to generate the requested dashboard.
 
@@ -128,7 +128,7 @@ ${stripComments(file.content)}
   });
 
   return `
-Complete Stack Auth SDK Type Definitions (Selected Files):
+Complete Hexclave SDK Type Definitions (Selected Files):
 These files show the available methods, types, and interfaces for the Stack SDK.
 ${fileContents.join('\n')}
   `.trim();

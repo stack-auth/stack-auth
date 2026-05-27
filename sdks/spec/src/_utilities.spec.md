@@ -10,9 +10,9 @@ All API requests follow this pattern. This section describes the complete reques
 ### Base URL
 
 Construct API URL: `{baseUrl}/api/v1{path}`
-  - baseUrl defaults to `https://api.stack-auth.com`
+  - baseUrl defaults to `https://api.hexclave.com`
   - Remove trailing slash from final URL
-  - Example: `https://api.stack-auth.com/api/v1/users/me`
+  - Example: `https://api.hexclave.com/api/v1/users/me`
 
 
 ### Required Headers (every request)
@@ -113,7 +113,7 @@ See packages/stack-shared/src/known-errors.ts for all error types.
 
 ## StackAuthApiError
 
-The base error type for all Stack Auth API errors.
+The base error type for all Hexclave API errors.
 
 Properties:
   code: string - error code from API, UPPERCASE_WITH_UNDERSCORES (e.g., "USER_NOT_FOUND")

@@ -20,12 +20,12 @@ The email draft is a tsx file that is used to render the email content.
 It must use react-email components.
 It must export one thing:
 - EmailTemplate: A function that renders the email draft
-It must not import from any package besides "@react-email/components", "@stackframe/emails", and "arktype".
+It must not import from any package besides "@react-email/components", "@hexclave/emails", and "arktype".
 It uses tailwind classes for all styling.
 Here is an example of a valid email draft:
 \`\`\`tsx
 import { Container } from "@react-email/components";
-import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+import { Subject, NotificationCategory, Props } from "@hexclave/emails";
 
 export function EmailTemplate({ user, project }: Props) {
   return (

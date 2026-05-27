@@ -7,8 +7,8 @@ import { stackServerApp } from "src/stack";
 import './global.css';
 
 export const metadata: Metadata = {
-  title: 'Stack Demo',
-  description: 'Example of using Stack as your authentication system.',
+  title: 'Hexclave Demo',
+  description: 'Example of using Hexclave as your authentication system.',
 };
 
 export default function RootLayout({

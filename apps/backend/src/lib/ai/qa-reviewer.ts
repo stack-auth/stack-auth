@@ -6,12 +6,12 @@ import { getConnection } from "./mcp-logger";
 import { createOpenRouterProvider } from "./models";
 import { getVerifiedQaContext } from "./verified-qa";
 
-const QA_SYSTEM_PROMPT = `You are a QA reviewer for Stack Auth's AI documentation assistant.
+const QA_SYSTEM_PROMPT = `You are a QA reviewer for Hexclave's AI documentation assistant.
 You will receive a question, the agent's stated reason for asking, and the AI's response.
 
 Your tasks:
 1. RELEVANCE: Does the response actually answer the question? Does the stated reason align with what was asked?
-2. CORRECTNESS: Verify factual claims about Stack Auth. Use human-verified Q&A (appended below, if any) as the highest-priority source of truth — these are always correct. Then use the available tools to look up additional information from the Stack Auth codebase. If the AI response contradicts a human-verified answer, flag it as incorrect.
+2. CORRECTNESS: Verify factual claims about Hexclave. Use human-verified Q&A (appended below, if any) as the highest-priority source of truth — these are always correct. Then use the available tools to look up additional information from the Hexclave codebase. If the AI response contradicts a human-verified answer, flag it as incorrect.
 
 The repo name for all tool calls is "stack-auth/stack-auth". Only use the repository documentation tools (read_wiki_structure, read_wiki_contents, ask_question) — do not create sessions or modify any other resources.
 

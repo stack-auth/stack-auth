@@ -1,6 +1,6 @@
-# Stack Auth Local Emulator — All-in-One Image
+# Hexclave Local Emulator — All-in-One Image
 # Packages: PostgreSQL 16, Redis 7, Inbucket, Svix, ClickHouse, MinIO, QStash
-# + built Stack Auth backend and dashboard
+# + built Hexclave backend and dashboard
 
 ARG NODE_VERSION=22.21.1
 

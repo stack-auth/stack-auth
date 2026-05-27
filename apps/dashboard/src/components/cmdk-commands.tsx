@@ -630,7 +630,7 @@ export function useCmdKCommands({
         id: "ai/ask",
         icon: <SparkleIcon className="h-3.5 w-3.5 text-purple-400" />,
         label: `Ask AI`,
-        description: "Get an AI-powered answer from Stack Auth docs",
+        description: "Get an AI-powered answer from Hexclave docs",
         keywords: ["ai", "assistant", "help", "question"],
         onAction: { type: "focus" },
         preview: AIChatPreview,

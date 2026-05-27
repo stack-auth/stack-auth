@@ -654,7 +654,7 @@ write_files:
   - path: /etc/systemd/system/stack.service
     content: |
       [Unit]
-      Description=Stack Auth local emulator
+      Description=Hexclave local emulator
       Wants=network-online.target docker.service
       After=network-online.target docker.service
 
