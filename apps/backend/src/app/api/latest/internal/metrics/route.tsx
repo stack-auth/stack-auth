@@ -1153,51 +1153,6 @@ async function loadSessionReplayAggregates(tenancy: Tenancy, since: Date): Promi
 
 const DIRECT_REFERRER_LABEL = "(direct)";
 
-// Lightweight User-Agent classifier. Returns short, human-friendly labels for
-// the three analytics-overview breakdowns. Intentionally keyword-only — we
-// don't pull `ua-parser-js` into the backend just for top-of-list grouping.
-//
-// Order matters: tests run top-to-bottom and return on first match (Edge before
-// Chrome, mobile-flavored before desktop).
-export function classifyUserAgent(ua: string, viewportWidth: number | null): {
-  browser: string,
-  os: string,
-  device: "Desktop" | "Mobile" | "Tablet",
-} {
-  const lower = ua.toLowerCase();
-
-  // Browser
-  let browser = "Other";
-  if (lower.includes("edg/") || lower.includes("edge/") || lower.includes("edga/") || lower.includes("edgios/")) browser = "Edge";
-  else if (lower.includes("opr/") || lower.includes("opera")) browser = "Opera";
-  else if (lower.includes("samsungbrowser")) browser = "Samsung Internet";
-  else if (lower.includes("firefox") || lower.includes("fxios")) browser = "Firefox";
-  else if (lower.includes("crios") || lower.includes("chrome")) browser = "Chrome";
-  else if (lower.includes("safari")) browser = "Safari";
-
-  // OS
-  let os = "Other";
-  if (lower.includes("windows")) os = "Windows";
-  else if (lower.includes("android")) os = "Android";
-  else if (lower.includes("iphone") || lower.includes("ipad") || lower.includes("ipod")) os = "iOS";
-  else if (lower.includes("mac os") || lower.includes("macintosh")) os = "macOS";
-  else if (lower.includes("cros")) os = "ChromeOS";
-  else if (lower.includes("linux")) os = "Linux";
-
-  // Device — UA tokens first, viewport width as fallback for ambiguous cases.
-  let device: "Desktop" | "Mobile" | "Tablet" = "Desktop";
-  if (lower.includes("ipad") || lower.includes("tablet") || (lower.includes("android") && !lower.includes("mobile"))) {
-    device = "Tablet";
-  } else if (lower.includes("mobile") || lower.includes("iphone") || lower.includes("ipod") || lower.includes("android")) {
-    device = "Mobile";
-  } else if (viewportWidth != null && Number.isFinite(viewportWidth) && viewportWidth > 0) {
-    if (viewportWidth < 600) device = "Mobile";
-    else if (viewportWidth < 1024) device = "Tablet";
-  }
-
-  return { browser, os, device };
-}
-
 export type AnalyticsOverviewFilters = {
   country_code?: string,
   referrer?: string,
@@ -1221,53 +1176,75 @@ export function normalizeAnalyticsOverviewFilters(filters: AnalyticsOverviewFilt
   };
 }
 
-async function resolveUserAgentFilterSet(
-  tenancy: Tenancy,
-  since: Date,
-  untilExclusive: Date,
-  filters: AnalyticsOverviewFilters,
-): Promise<string[] | null> {
-  const wantBrowser = filters.browser?.trim();
-  const wantOs = filters.os?.trim();
-  const wantDevice = filters.device?.trim();
-  if (!wantBrowser && !wantOs && !wantDevice) return null;
+const analyticsOverviewUserAgentSql = "toString(e.data.user_agent)";
+const analyticsOverviewViewportWidthSql = "toInt32(toInt64OrZero(toString(e.data.viewport_width)))";
 
-  const clickhouseClient = getClickhouseAdminClientForMetrics();
-  const result = await clickhouseClient.query({
-    query: `
-      SELECT
-        toString(e.data.user_agent) AS ua,
-        toInt32(toInt64OrZero(toString(e.data.viewport_width))) AS vw
-      FROM analytics_internal.events AS e
-      WHERE e.event_type = '$page-view'
-        AND e.project_id = {projectId:String}
-        AND e.branch_id = {branchId:String}
-        AND e.event_at >= {since:DateTime}
-        AND e.event_at < {untilExclusive:DateTime}
-        AND toString(e.data.user_agent) != ''
-      GROUP BY ua, vw
-      LIMIT 5000
-    `,
-    query_params: {
-      since: formatClickhouseDateTimeParam(since),
-      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
+const analyticsOverviewBrowserSql = `multiIf(
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edg/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edge/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edga/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edgios/') > 0, 'Edge',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'opr/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'opera') > 0, 'Opera',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'samsungbrowser') > 0, 'Samsung Internet',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'firefox') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'fxios') > 0, 'Firefox',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'crios') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'chrome') > 0, 'Chrome',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'safari') > 0, 'Safari',
+  'Other'
+)`;
+
+const analyticsOverviewOsSql = `multiIf(
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'windows') > 0, 'Windows',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'android') > 0, 'Android',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'iphone') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipad') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipod') > 0, 'iOS',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'mac os') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'macintosh') > 0, 'macOS',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'cros') > 0, 'ChromeOS',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'linux') > 0, 'Linux',
+  'Other'
+)`;
+
+const analyticsOverviewDeviceSql = `multiIf(
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipad') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'tablet') > 0 OR (positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'android') > 0 AND positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'mobile') = 0), 'Tablet',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'mobile') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'iphone') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipod') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'android') > 0, 'Mobile',
+  ${analyticsOverviewViewportWidthSql} > 0 AND ${analyticsOverviewViewportWidthSql} < 600, 'Mobile',
+  ${analyticsOverviewViewportWidthSql} >= 600 AND ${analyticsOverviewViewportWidthSql} < 1024, 'Tablet',
+  'Desktop'
+)`;
+
+function buildAnalyticsOverviewUserAgentFilterFragments(filters: AnalyticsOverviewFilters): {
+  browserFragment: string,
+  osFragment: string,
+  deviceFragment: string,
+  params: Record<string, string>,
+} {
+  return {
+    browserFragment: filters.browser ? `AND ${analyticsOverviewBrowserSql} = {browserFilter:String}` : "",
+    osFragment: filters.os ? `AND ${analyticsOverviewOsSql} = {osFilter:String}` : "",
+    deviceFragment: filters.device ? `AND ${analyticsOverviewDeviceSql} = {deviceFilter:String}` : "",
+    params: {
+      ...(filters.browser ? { browserFilter: filters.browser } : {}),
+      ...(filters.os ? { osFilter: filters.os } : {}),
+      ...(filters.device ? { deviceFilter: filters.device } : {}),
     },
-    format: "JSONEachRow",
-  });
-  const rows: { ua: string, vw: number | string }[] = await result.json();
-  const matching = new Set<string>();
-  for (const row of rows) {
-    if (!row.ua) continue;
-    const vw = Number(row.vw);
-    const { browser, os, device } = classifyUserAgent(row.ua, Number.isFinite(vw) && vw > 0 ? vw : null);
-    if (wantBrowser && browser !== wantBrowser) continue;
-    if (wantOs && os !== wantOs) continue;
-    if (wantDevice && device !== wantDevice) continue;
-    matching.add(row.ua);
-  }
-  return Array.from(matching);
+  };
+}
+
+export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: AnalyticsOverviewFilters): {
+  hasBrowserFilter: boolean,
+  hasOsFilter: boolean,
+  hasDeviceFilter: boolean,
+  params: Record<string, string>,
+  usesRawUserAgentAllowlist: boolean,
+} {
+  const fragments = buildAnalyticsOverviewUserAgentFilterFragments(filters);
+  const combinedFragments = [
+    fragments.browserFragment,
+    fragments.osFragment,
+    fragments.deviceFragment,
+  ].join("\n");
+  return {
+    hasBrowserFilter: fragments.browserFragment.length > 0,
+    hasOsFilter: fragments.osFragment.length > 0,
+    hasDeviceFilter: fragments.deviceFragment.length > 0,
+    params: fragments.params,
+    usesRawUserAgentAllowlist: combinedFragments.includes("matchingUAs") || combinedFragments.includes("IN {"),
+  };
 }
 
 async function loadAnalyticsOverview(
@@ -1318,22 +1295,18 @@ async function loadAnalyticsOverview(
   } | null = null;
 
   try {
-    // Pre-resolve UA filter set in TS (browser/os/device classification lives in
-    // TS via classifyUserAgent — pushing it into SQL would duplicate the rules).
-    const matchingUserAgents = await resolveUserAgentFilterSet(tenancy, since, untilExclusive, filters);
-
     // The `event_at >= since` bound on the inner subquery is load-bearing:
     // without it the GROUP BY hash table holds one row per ever-seen user.
     // Edge case: anonymous page-views by users with no token-refresh in the
     // last 30 days now coalesce to non-anonymous. The proper fix is to stamp
     // `is_anonymous` on page-view/click events at ingest and drop this join
     // entirely (the coalesce below short-circuits on the first non-null arg).
-    const analyticsUserJoin = `
+    const buildAnalyticsUserJoin = (includeCountry: boolean) => `
       LEFT JOIN (
         SELECT
           user_id,
-          argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous,
-          argMax(CAST(data.ip_info.country_code, 'Nullable(String)'), event_at) AS latest_country
+          argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
+          ${includeCountry ? ", argMax(CAST(data.ip_info.country_code, 'Nullable(String)'), event_at) AS latest_country" : ""}
         FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
@@ -1345,7 +1318,10 @@ async function loadAnalyticsOverview(
       ) AS token_refresh_users
         ON e.user_id = token_refresh_users.user_id
     `;
+    const analyticsUserJoinForFilteredEvents = buildAnalyticsUserJoin(filters.country_code != null);
+    const analyticsUserJoinWithCountry = buildAnalyticsUserJoin(true);
     const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
+    const analyticsContributingUserFilter = `e.user_id IS NOT NULL AND ${nonAnonymousAnalyticsUserFilter}`;
 
     // Build per-dimension filter fragments; callers below opt out of the
     // fragment matching their own dimension so top-N queries don't collapse to
@@ -1358,26 +1334,25 @@ async function loadAnalyticsOverview(
     const countryFragment = filters.country_code
       ? `AND upper(coalesce(token_refresh_users.latest_country, '')) = {countryFilter:String}`
       : '';
-    const uaFragment = matchingUserAgents != null
-      ? (matchingUserAgents.length === 0
-        ? `AND 1 = 0`
-        : `AND CAST(e.data.user_agent, 'String') IN {matchingUAs:Array(String)}`)
-      : '';
+    const userAgentFilterFragments = buildAnalyticsOverviewUserAgentFilterFragments(filters);
+    const uaFragment = [
+      userAgentFilterFragments.browserFragment,
+      userAgentFilterFragments.osFragment,
+      userAgentFilterFragments.deviceFragment,
+    ].join(" ");
 
     const sharedExtraFilters = `${referrerFragment} ${countryFragment} ${uaFragment}`.trim();
     const filterParams = {
       ...(filters.referrer && filters.referrer !== DIRECT_REFERRER_LABEL ? { referrerFilter: filters.referrer } : {}),
       ...(filters.country_code ? { countryFilter: filters.country_code } : {}),
-      ...(matchingUserAgents != null && matchingUserAgents.length > 0
-        ? { matchingUAs: matchingUserAgents }
-        : {}),
+      ...userAgentFilterFragments.params,
     };
     const onlineFilteredUserFragment = sharedExtraFilters
       ? `
             AND user_id IN (
               SELECT assumeNotNull(e.user_id)
               FROM analytics_internal.events AS e
-              ${analyticsUserJoin}
+              ${filters.country_code != null ? analyticsUserJoinWithCountry : ""}
               WHERE e.event_type = '$page-view'
                 AND e.project_id = {projectId:String}
                 AND e.branch_id = {branchId:String}
@@ -1396,29 +1371,20 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             toDate(e.event_at) AS day,
-            countIf(
-              e.event_type = '$page-view'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS pv,
-            countIf(
-              e.event_type = '$click'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS cl,
+            countIf(e.event_type = '$page-view') AS pv,
+            countIf(e.event_type = '$click') AS cl,
             uniqExactIf(
               assumeNotNull(e.user_id),
               e.event_type = '$page-view'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
             ) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type IN ('$page-view', '$click')
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
             ${sharedExtraFilters}
           GROUP BY day
           ORDER BY day ASC
@@ -1437,31 +1403,23 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             toStartOfHour(e.event_at) AS hour,
-            countIf(
-              e.event_type = '$page-view'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS pv,
+            countIf(e.event_type = '$page-view') AS pv,
             uniqExactIf(
               assumeNotNull(e.user_id),
               e.event_type IN ('$page-view', '$click')
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
             ) AS active_users,
             uniqExactIf(
               assumeNotNull(e.user_id),
               e.event_type = '$page-view'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
             ) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type IN ('$page-view', '$click')
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
-            AND e.user_id IS NOT NULL
             AND e.event_at >= {hourlySince:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
             ${sharedExtraFilters}
           GROUP BY hour
           ORDER BY hour ASC
@@ -1480,19 +1438,15 @@ async function loadAnalyticsOverview(
       clickhouseClient.query({
         query: `
           SELECT
-            uniqExactIf(
-              assumeNotNull(e.user_id),
-              e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS visitors
+            uniqExact(assumeNotNull(e.user_id)) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type = '$page-view'
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
-            AND e.user_id IS NOT NULL
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
             ${sharedExtraFilters}
         `,
         query_params: {
@@ -1509,18 +1463,15 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
-            uniqExactIf(
-              assumeNotNull(e.user_id),
-              e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS visitors
+            uniqExact(assumeNotNull(e.user_id)) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type = '$page-view'
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
             ${countryFragment}
             ${uaFragment}
           GROUP BY referrer
@@ -1545,19 +1496,15 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             upper(coalesce(token_refresh_users.latest_country, '')) AS country_code,
-            uniqExactIf(
-              assumeNotNull(e.user_id),
-              e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS visitors
+            uniqExact(assumeNotNull(e.user_id)) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinWithCountry}
           WHERE e.event_type = '$page-view'
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
-            AND e.user_id IS NOT NULL
+            AND ${analyticsContributingUserFilter}
             AND coalesce(token_refresh_users.latest_country, '') != ''
             ${referrerFragment}
             ${uaFragment}
@@ -1610,15 +1557,14 @@ async function loadAnalyticsOverview(
             SELECT
               e.session_replay_segment_id AS sid
             FROM analytics_internal.events AS e
-            ${analyticsUserJoin}
+            ${analyticsUserJoinForFilteredEvents}
             WHERE e.session_replay_segment_id IS NOT NULL
               AND e.project_id = {projectId:String}
               AND e.branch_id = {branchId:String}
-              AND e.user_id IS NOT NULL
               AND e.event_at >= {since:DateTime}
               AND e.event_at < {untilExclusive:DateTime}
               AND e.event_type = '$page-view'
-              AND ${nonAnonymousAnalyticsUserFilter}
+              AND ${analyticsContributingUserFilter}
               ${sharedExtraFilters}
             GROUP BY sid
           ),
@@ -1656,36 +1602,46 @@ async function loadAnalyticsOverview(
         },
         format: "JSONEachRow",
       }),
-      // Raw User-Agent buckets, classified in TS afterward. Pulled from the
-      // same `$page-view` event stream so visitor counts line up with the
-      // referrer / region cards on the overview. `data.user_agent` is captured
-      // client-side (navigator.userAgent) with a server-side header fallback,
-      // so older rows that pre-date the capture simply return empty here.
+      // User-Agent buckets pulled from the same `$page-view` event stream so
+      // visitor counts line up with the referrer / region cards on the overview.
+      // `data.user_agent` is captured client-side (navigator.userAgent) with a
+      // server-side header fallback, so older rows that pre-date capture simply
+      // return empty here.
       clickhouseClient.query({
         query: `
           SELECT
-            toString(e.data.user_agent) AS ua,
-            toInt32(toInt64OrZero(toString(e.data.viewport_width))) AS vw,
-            uniqExactIf(
-              assumeNotNull(e.user_id),
-              e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS visitors
-          FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
-          WHERE e.event_type = '$page-view'
-            AND e.project_id = {projectId:String}
-            AND e.branch_id = {branchId:String}
-            AND e.event_at >= {since:DateTime}
-            AND e.event_at < {untilExclusive:DateTime}
-            AND e.user_id IS NOT NULL
-            AND toString(e.data.user_agent) != ''
-            ${referrerFragment}
-            ${countryFragment}
-          GROUP BY ua, vw
+            tupleElement(facet, 1) AS dimension,
+            tupleElement(facet, 2) AS name,
+            uniqExact(assumeNotNull(user_id)) AS visitors
+          FROM (
+            SELECT
+              e.user_id AS user_id,
+              ${analyticsOverviewBrowserSql} AS browser,
+              ${analyticsOverviewOsSql} AS os,
+              ${analyticsOverviewDeviceSql} AS device
+            FROM analytics_internal.events AS e
+            ${analyticsUserJoinForFilteredEvents}
+            WHERE e.event_type = '$page-view'
+              AND e.project_id = {projectId:String}
+              AND e.branch_id = {branchId:String}
+              AND e.event_at >= {since:DateTime}
+              AND e.event_at < {untilExclusive:DateTime}
+              AND ${analyticsContributingUserFilter}
+              AND ${analyticsOverviewUserAgentSql} != ''
+              ${referrerFragment}
+              ${countryFragment}
+          )
+          ARRAY JOIN [
+            ('browser', browser),
+            ('os', os),
+            ('device', device)
+          ] AS facet
+          WHERE ({browserFilterEnabled:UInt8} = 0 OR tupleElement(facet, 1) = 'browser' OR browser = {browserFilter:String})
+            AND ({osFilterEnabled:UInt8} = 0 OR tupleElement(facet, 1) = 'os' OR os = {osFilter:String})
+            AND ({deviceFilterEnabled:UInt8} = 0 OR tupleElement(facet, 1) = 'device' OR device = {deviceFilter:String})
+          GROUP BY dimension, name
           HAVING visitors > 0
-          ORDER BY visitors DESC
-          LIMIT 500
+          ORDER BY dimension ASC, visitors DESC
         `,
         query_params: {
           since: formatClickhouseDateTimeParam(since),
@@ -1693,8 +1649,13 @@ async function loadAnalyticsOverview(
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
-          ...(filters.referrer && filters.referrer !== DIRECT_REFERRER_LABEL ? { referrerFilter: filters.referrer } : {}),
-          ...(filters.country_code ? { countryFilter: filters.country_code } : {}),
+          ...filterParams,
+          browserFilterEnabled: filters.browser ? 1 : 0,
+          browserFilter: filters.browser ?? "",
+          osFilterEnabled: filters.os ? 1 : 0,
+          osFilter: filters.os ?? "",
+          deviceFilterEnabled: filters.device ? 1 : 0,
+          deviceFilter: filters.device ?? "",
         },
         format: "JSONEachRow",
       }),
@@ -1780,30 +1741,19 @@ async function loadAnalyticsOverview(
     const topRegionRows: { country_code: string, visitors: number }[] = await topRegionResult.json();
     const onlineRows: { online: number }[] = await onlineResult.json();
 
-    // Bucket raw UA rows into browser / OS / device labels. We sum visitor
-    // counts because the ClickHouse query already deduped by `(ua, vw)` — two
-    // rows that classify to the same label are distinct visitor cohorts.
-    const userAgentRows: { ua: string, vw: number | string, visitors: number | string }[] = await userAgentResult.json();
+    const userAgentRows: { dimension: string, name: string, visitors: number | string }[] = await userAgentResult.json();
     const browserCounts = new Map<string, number>();
     const osCounts = new Map<string, number>();
     const deviceCounts = new Map<string, number>();
-    const wantBrowser = filters.browser?.trim();
-    const wantOs = filters.os?.trim();
-    const wantDevice = filters.device?.trim();
     for (const row of userAgentRows) {
-      if (!row.ua) continue;
-      const vw = Number(row.vw);
       const visitors = Number(row.visitors);
       if (!Number.isFinite(visitors) || visitors <= 0) continue;
-      const { browser, os, device } = classifyUserAgent(row.ua, Number.isFinite(vw) && vw > 0 ? vw : null);
-      if ((!wantOs || os === wantOs) && (!wantDevice || device === wantDevice)) {
-        browserCounts.set(browser, (browserCounts.get(browser) ?? 0) + visitors);
-      }
-      if ((!wantBrowser || browser === wantBrowser) && (!wantDevice || device === wantDevice)) {
-        osCounts.set(os, (osCounts.get(os) ?? 0) + visitors);
-      }
-      if ((!wantBrowser || browser === wantBrowser) && (!wantOs || os === wantOs)) {
-        deviceCounts.set(device, (deviceCounts.get(device) ?? 0) + visitors);
+      if (row.dimension === "browser") {
+        browserCounts.set(row.name, visitors);
+      } else if (row.dimension === "os") {
+        osCounts.set(row.name, visitors);
+      } else if (row.dimension === "device") {
+        deviceCounts.set(row.name, visitors);
       }
     }
     const toSortedTop = (m: Map<string, number>, limit: number) =>
