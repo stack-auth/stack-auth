@@ -88,20 +88,20 @@ Two approaches for OAuth authentication:
 
 ```swift
 // Opens auth session, handles callback automatically
-// Uses fixed callback scheme: stack-auth-mobile-oauth-url://
+// Uses fixed callback scheme: hexclave-mobile-oauth-url://
 try await stack.signInWithOAuth(provider: "google")
 ```
 
 **2. Manual URL handling** - For custom implementations:
 
-> **Note:** The `stack-auth-mobile-oauth-url://` scheme is automatically accepted. 
+> **Note:** The `hexclave-mobile-oauth-url://` scheme is automatically accepted (the legacy `stack-auth-mobile-oauth-url://` scheme also remains accepted for backwards compatibility).
 
 ```swift
 // Get the OAuth URL (must provide absolute URLs)
 let oauth = try await stack.getOAuthUrl(
     provider: "google",
-    redirectUrl: "stack-auth-mobile-oauth-url://success",
-    errorRedirectUrl: "stack-auth-mobile-oauth-url://error"
+    redirectUrl: "hexclave-mobile-oauth-url://success",
+    errorRedirectUrl: "hexclave-mobile-oauth-url://error"
 )
 
 // Open oauth.url in your own browser/webview
