@@ -36,7 +36,7 @@ import React, {
 } from "react";
 
 import { DesignSkeleton } from "../skeleton";
-import { DEFAULT_COL_WIDTH, clampColumnWidth, getEffectiveMaxWidth, getEffectiveMinWidth } from "./data-grid-sizing";
+import { DEFAULT_COL_WIDTH, clampColumnWidth, fitColumnsToContainer, getEffectiveMaxWidth, getEffectiveMinWidth } from "./data-grid-sizing";
 import { DataGridToolbar } from "./data-grid-toolbar";
 import { exportToCsv, formatGridDate, resolveColumnValue } from "./state";
 import { resolveDataGridStrings } from "./strings";
@@ -102,29 +102,6 @@ function toTanstackRowSelection(ids: ReadonlySet<RowId>): RowSelectionState {
 
 function resolveUpdater<T>(updater: Updater<T>, current: T): T {
   return typeof updater === "function" ? (updater as (old: T) => T)(current) : updater;
-}
-
-// ─── Flex column width distribution ──────────────────────────────────
-
-function distributeFlexWidths<TRow>(
-  sizes: Record<string, number>,
-  visibleColumns: readonly DataGridColumnDef<TRow>[],
-  available: number,
-): void {
-  const flexCols = visibleColumns.filter((c) => c.flex != null && c.flex > 0);
-  if (flexCols.length === 0 || available <= 0) return;
-  const totalFlex = flexCols.reduce((acc, c) => acc + (c.flex ?? 0), 0);
-  let remaining = available;
-  flexCols.forEach((col, i) => {
-    const isLast = i === flexCols.length - 1;
-    const share = isLast
-      ? remaining
-      : Math.floor(available * ((col.flex ?? 0) / totalFlex));
-    const max = col.maxWidth ?? Infinity;
-    const add = Math.max(0, Math.min(share, max - sizes[col.id]));
-    sizes[col.id] += add;
-    remaining -= add;
-  });
 }
 
 // ─── Selection logic (with shift-range anchor) ───────────────────────
@@ -512,9 +489,10 @@ function DefaultFooter<TRow>({
             <span>{strings.rowsPerPage}</span>
             <select
               className={cn(
-                "h-7 rounded-lg border border-black/[0.08] dark:border-white/[0.08] bg-background px-1.5",
+                "h-7 rounded-lg border border-black/[0.08] dark:border-white/[0.06] px-1.5",
+                "bg-white dark:bg-background shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
                 "text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-foreground/[0.1]",
-                "cursor-pointer",
+                "cursor-pointer transition-all duration-150 hover:transition-none hover:ring-black/[0.12] dark:hover:ring-white/[0.1]",
               )}
               value={state.pagination.pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
@@ -798,12 +776,22 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     const grid = gridRef.current;
     const scroller = scrollContainerRef.current;
     if (!grid) return;
-    const update = () => {
-      const w = scroller?.clientWidth ?? grid.clientWidth;
-      if (w > 0) setContainerWidth(w);
+    const update = (entries?: ResizeObserverEntry[]) => {
+      let measured = 0;
+      if (entries != null) {
+        for (const entry of entries) {
+          measured = Math.max(measured, entry.contentRect.width);
+        }
+      }
+      if (measured <= 0) {
+        const scrollerWidth = scroller?.clientWidth ?? 0;
+        const gridWidth = grid.clientWidth;
+        measured = scrollerWidth > 0 ? scrollerWidth : gridWidth;
+      }
+      if (measured > 0) setContainerWidth(measured);
     };
     update();
-    const observer = new ResizeObserver(update);
+    const observer = new ResizeObserver((entries) => update(entries));
     observer.observe(grid);
     if (scroller) observer.observe(scroller);
     return () => observer.disconnect();
@@ -814,7 +802,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const columnSizingInfo = table.getState().columnSizingInfo;
   const columnSizes = useMemo<Record<string, number>>(() => {
     const sizes: Record<string, number> = {};
-    let baseTotal = selectionMode !== "none" ? 44 : 0;
+    const selectionChromeWidth = selectionMode !== "none" ? 44 : 0;
     const resizingId = columnSizingInfo.isResizingColumn || null;
     const deltaOffset = columnSizingInfo.deltaOffset ?? 0;
     for (const col of visibleColumns) {
@@ -824,9 +812,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         ? clampColumnWidth(col, baseSize + deltaOffset)
         : baseSize;
       sizes[col.id] = liveSize;
-      baseTotal += liveSize;
     }
-    distributeFlexWidths(sizes, visibleColumns, containerWidth - baseTotal);
+    fitColumnsToContainer(sizes, visibleColumns, containerWidth, selectionChromeWidth);
     return sizes;
   }, [visibleColumns, table, columnSizingInfo, state.columnWidths, containerWidth, selectionMode]);
 
