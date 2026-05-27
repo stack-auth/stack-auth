@@ -82,8 +82,9 @@ The full docs sidebar — generated from the live navigation. Fetch any of these
 - **Other**
   - [Self Host](https://docs.hexclave.com/guides/other/self-host)
   - [Known Errors](https://docs.hexclave.com/guides/other/known-errors)
+  - [Migration](https://docs.hexclave.com/migration)
   - **Tutorials**
-    - [Build A SAAS With Stack Auth](https://docs.hexclave.com/guides/other/tutorials/build-a-saas-with-stack-auth)
+    - [Build A SAAS With Hexclave](https://docs.hexclave.com/guides/other/tutorials/build-a-saas-with-hexclave)
     - [Build A Team Based App](https://docs.hexclave.com/guides/other/tutorials/build-a-team-based-app)
     - [Ship Production Ready Auth](https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth)
 
