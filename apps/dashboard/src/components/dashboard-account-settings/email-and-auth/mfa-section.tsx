@@ -60,8 +60,9 @@ function MfaSectionInner({ user, project }: { user: CurrentUser, project: Projec
     runAsynchronouslyWithAlert(async () => {
       if (generatedSecret && verifyTOTP(generatedSecret, 30, 6, mfaCode)) {
         await handleSubmit();
+        return;
       }
-      setIsMaybeWrong(true);
+      setIsMaybeWrong(mfaCode.length === 6);
     });
   }, [mfaCode, generatedSecret, handleSubmit]);
 
@@ -144,5 +145,5 @@ function MfaSectionInner({ user, project }: { user: CurrentUser, project: Projec
 
 async function generateTotpQrCode(project: Project, user: CurrentUser, secret: Uint8Array) {
   const uri = createTOTPKeyURI(project.displayName, user.primaryEmail ?? user.id, secret, 30, 6);
-  return await QRCode.toDataURL(uri) as any;
+  return await QRCode.toDataURL(uri);
 }
