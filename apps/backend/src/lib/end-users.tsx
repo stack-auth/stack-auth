@@ -93,7 +93,6 @@ function parseCoordinate(raw: string | null | undefined): number | undefined {
 }
 
 function decodeVercelGeoHeader(raw: string | null | undefined): string | undefined {
-  // An absent or empty geo header carries no city, so normalize both to undefined.
   if (raw == null || raw === "") return undefined;
   try {
     return decodeURIComponent(raw);
