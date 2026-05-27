@@ -27,11 +27,11 @@ export const GET = createSmartRouteHandler({
       bodyType: "text",
       body: llmsTxt,
       headers: {
-        "Cache-Control": [llmsTextHeaders["Cache-Control"]],
-        "Access-Control-Allow-Origin": [llmsTextHeaders["Access-Control-Allow-Origin"]],
-        "Access-Control-Allow-Methods": [llmsTextHeaders["Access-Control-Allow-Methods"]],
-        "Access-Control-Allow-Headers": [llmsTextHeaders["Access-Control-Allow-Headers"]],
-        "Content-Type": [llmsTextHeaders["Content-Type"]],
+        "Cache-Control": [llmsTextHeaders["Cache-Control"]] as const,
+        "Access-Control-Allow-Origin": [llmsTextHeaders["Access-Control-Allow-Origin"]] as const,
+        "Access-Control-Allow-Methods": [llmsTextHeaders["Access-Control-Allow-Methods"]] as const,
+        "Access-Control-Allow-Headers": [llmsTextHeaders["Access-Control-Allow-Headers"]] as const,
+        "Content-Type": [llmsTextHeaders["Content-Type"]] as const,
       },
     };
   },

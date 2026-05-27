@@ -18,7 +18,7 @@ import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/dist/utils/te
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 
-const allowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
+const allowedMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 
 export type SmartRequestAuth = {
   project: Omit<ProjectsCrud["Admin"]["Read"], "config">,
