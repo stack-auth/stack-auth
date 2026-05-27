@@ -160,11 +160,7 @@ export function isAcceptedNativeAppUrl(urlOrString: string): boolean {
   const url = createUrlIfValid(urlOrString);
   if (!url) return false;
 
-  // Dual-accept the legacy `stack-auth-mobile-oauth-url://` scheme alongside the
-  // canonical `hexclave-mobile-oauth-url://`. The old scheme is baked into every
-  // already-shipped customer iOS/macOS app via `Info.plist`; removing it would
-  // break OAuth for those apps until they pushed an App Store update. Keep both
-  // accepted indefinitely (see RENAME-TO-HEXCLAVE.md, Tier 0).
+  // Legacy scheme accepted indefinitely; baked into already-shipped Swift SDK binaries.
   return url.protocol === 'stack-auth-mobile-oauth-url:'
     || url.protocol === 'hexclave-mobile-oauth-url:';
 }

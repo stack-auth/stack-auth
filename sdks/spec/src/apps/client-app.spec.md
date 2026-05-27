@@ -83,7 +83,7 @@ Implementation:
 
 4. Open the authorization URL:
    - Browser: perform redirect according to redirectMethod
-   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "hexclave-mobile-oauth-url" (new SDKs) or "stack-auth-mobile-oauth-url" (legacy SDKs; backend accepts both indefinitely)
+   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "hexclave-mobile-oauth-url" (the legacy "stack-auth-mobile-oauth-url" scheme is still accepted by the backend for app binaries built against older SDK versions)
    - Android: Custom Tabs with callback URL registered as deep link
    - Desktop: Open system browser with registered URL scheme for callback
 
@@ -167,8 +167,8 @@ Returns: { url: string, state: string, codeVerifier: string, redirectUrl: string
   redirectUrl: The redirect URL (same as input, needed for token exchange - must match exactly)
 
 Note on URL schemes:
-- The "hexclave-mobile-oauth-url://" scheme is the canonical scheme for new SDKs and is automatically accepted by the backend without any configuration.
-- The legacy "stack-auth-mobile-oauth-url://" scheme is also accepted indefinitely for backwards compatibility with already-shipped customer apps built against the frozen StackAuth Swift SDK.
+- The "hexclave-mobile-oauth-url://" scheme is the canonical scheme and is automatically accepted by the backend without any configuration.
+- The legacy "stack-auth-mobile-oauth-url://" scheme is also accepted indefinitely for backwards compatibility with already-shipped customer app binaries that linked against older SDK versions.
 
 Implementation:
 1. Generate or use provided state and codeVerifier
