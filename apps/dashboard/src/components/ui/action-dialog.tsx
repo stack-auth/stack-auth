@@ -2,6 +2,7 @@
 
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import {
   DesignButton,
   DesignDialog,
@@ -77,9 +78,11 @@ export function ActionDialog(props: ActionDialogProps) {
     props.onOpenChange?.(nextOpen);
   };
 
-  const trigger = props.trigger != null && React.isValidElement(props.trigger)
-    ? props.trigger
-    : undefined;
+  const trigger = props.trigger == null
+    ? undefined
+    : React.isValidElement(props.trigger)
+      ? props.trigger
+      : throwErr("ActionDialog trigger must be a React element because DesignDialog renders it with asChild");
 
   return (
     <DesignDialog
