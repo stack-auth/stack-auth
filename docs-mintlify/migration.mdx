@@ -8,15 +8,6 @@ Stack Auth is now Hexclave. The dashboard, APIs, and your data are unchanged —
 
 This guide is for projects that want to migrate to `@hexclave/*` packages.
 
-<Warning>
-  Migrating to `@hexclave/*` changes two host-visible things in your app:
-  the JWT `iss` claim on access tokens flips from `api.stack-auth.com` to
-  `api.hexclave.com`, and the OAuth `redirect_uri` Hexclave sends to your
-  identity providers flips host the same way. **You must update your manual
-  JWT verification code and your registered OAuth callback URLs before
-  switching the import path**, or sign-in will break.
-</Warning>
-
 ## 1. Install the new packages
 
 Replace each `@stackframe/*` dependency with its `@hexclave/*` equivalent:
@@ -52,7 +43,7 @@ The `Stack*` symbol names are still re-exported from `@hexclave/next` as `@depre
 
 ## 2. Update manual JWT verification
 
-If your backend verifies Hexclave-issued JWTs directly (for example with `jose.jwtVerify`), the `iss` claim it must accept changes when you switch SDKs. The validator at Hexclave's side accepts tokens issued under either hostname, so the safest pattern is to list both:
+If your backend verifies Hexclave-issued JWTs directly (for example with `jose.jwtVerify`), update the expected `iss` claim — `@hexclave/*` SDKs sign tokens under the hexclave host:
 
 ```ts title="Before"
 const { payload } = await jose.jwtVerify(token, jwks, {
@@ -63,39 +54,28 @@ const { payload } = await jose.jwtVerify(token, jwks, {
 
 ```ts title="After"
 const { payload } = await jose.jwtVerify(token, jwks, {
-  issuer: [
-    'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
-    'https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID',
-  ],
+  issuer: 'https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID',
   audience: 'YOUR_PROJECT_ID',
 });
 ```
 
-The same pattern applies to the anonymous (`/api/v1/projects-anonymous-users/...`) and restricted (`/api/v1/projects-restricted-users/...`) issuer variants — list both hostnames for each.
+The same applies to the anonymous (`/api/v1/projects-anonymous-users/...`) and restricted (`/api/v1/projects-restricted-users/...`) issuer variants.
 
 ## 3. Update your OAuth callback URLs
 
-After migrating, Hexclave will send providers (Google, GitHub, Microsoft, Apple, Facebook, Discord, LinkedIn, GitLab, Bitbucket, Spotify, Twitch, X) a `redirect_uri` on `api.hexclave.com` instead of `api.stack-auth.com`. Each provider compares this byte-for-byte against the URIs you registered in their developer console, so you must update each one before switching SDKs.
+After migrating, Hexclave sends providers (Google, GitHub, Microsoft, Apple, Facebook, Discord, LinkedIn, GitLab, Bitbucket, Spotify, Twitch, X) a `redirect_uri` on `api.hexclave.com`. Update each enabled provider's OAuth app callback URL to:
 
-Update each enabled provider's OAuth app:
+```
+https://api.hexclave.com/api/v1/auth/oauth/callback/<provider>
+```
 
-| Provider | Before | After |
-| --- | --- | --- |
-| Google, GitHub, Microsoft, …all others | `https://api.stack-auth.com/api/v1/auth/oauth/callback/<provider>` | `https://api.hexclave.com/api/v1/auth/oauth/callback/<provider>` |
-
-For 11 of the 12 providers, you can register **both** URLs at the same time and migrate without an outage:
-
-1. Add the new `https://api.hexclave.com/...` URL alongside the existing `https://api.stack-auth.com/...` URL in the provider's console.
-2. Deploy the new SDK.
-3. Optionally remove the old URL later, once no traffic uses it.
-
-<Warning>
-  **GitHub OAuth Apps allow only one callback URL.** You must replace it
-  (not add) — there will be a brief window between updating GitHub's
-  setting and deploying the new SDK where in-flight GitHub OAuth flows can
-  fail. Plan this switch for a low-traffic window. (GitHub Apps — distinct
-  from OAuth Apps — do support up to 10 callback URLs.)
-</Warning>
+<Note>
+  Most providers let you register multiple callback URLs. To avoid any
+  downtime during the SDK swap, you can temporarily keep the old
+  `https://api.stack-auth.com/api/v1/auth/oauth/callback/<provider>` URL
+  registered alongside the new one, then remove the old entry later once no
+  traffic uses it.
+</Note>
 
 ## 4. Update hardcoded references
 
