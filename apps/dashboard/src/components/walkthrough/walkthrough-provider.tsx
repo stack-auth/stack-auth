@@ -3,10 +3,15 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type SpotlightRect, WALKTHROUGH_STEPS } from './walkthrough-steps';
-import { WalkthroughOverlay } from './walkthrough-overlay';
+import { WalkthroughOverlay, type WalkthroughPhase } from './walkthrough-overlay';
 
-// Timing multiplier for debugging — set to 1.0 for production, lower to speed up
+// Tuning knobs. Lower TIMING_MULTIPLIER for debugging.
 const TIMING_MULTIPLIER = 1.0;
+const STEP_DWELL_MS = 4000;
+const INTER_LOOP_PAUSE_MS = 2000;
+const CURSOR_MOVE_MS = 500;
+const TYPE_MIN_MS = 25;
+const TYPE_MAX_MS = 40;
 
 function useProjectId() {
   if (typeof window === 'undefined') return null;
@@ -21,13 +26,12 @@ function waitForElement(selector: string, timeoutMs = 3000): Promise<Element | n
       resolve(existing);
       return;
     }
-
-    const start = Date.now();
+    const start = performance.now();
     const check = () => {
       const el = document.querySelector(selector);
       if (el && el.getBoundingClientRect().height > 0) {
         resolve(el);
-      } else if (Date.now() - start > timeoutMs) {
+      } else if (performance.now() - start > timeoutMs) {
         resolve(null);
       } else {
         requestAnimationFrame(check);
@@ -41,7 +45,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms * TIMING_MULTIPLIER));
 }
 
-// For waits that depend on CSS animations / external timing, not walkthrough pacing
+// For waits tied to external CSS animation durations rather than walkthrough pacing.
 function sleepFixed(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -56,7 +60,7 @@ async function typeIntoInput(input: HTMLInputElement, text: string, cancelled: (
     const currentValue = input.value + char;
     nativeInputValueSetter.call(input, currentValue);
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    await sleep(60 + Math.random() * 40);
+    await sleep(TYPE_MIN_MS + Math.random() * (TYPE_MAX_MS - TYPE_MIN_MS));
   }
 }
 
@@ -78,6 +82,7 @@ export function WalkthroughProvider({ children }: { children: React.ReactNode })
 function WalkthroughEngine() {
   const [isRunning, setIsRunning] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [phase, setPhase] = useState<WalkthroughPhase>('navigating');
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
   const [showSpotlight, setShowSpotlight] = useState(false);
   const [cursorPosition, setCursorPosition] = useState({ x: -50, y: -50 });
@@ -121,7 +126,22 @@ function WalkthroughEngine() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Track mouse hover for "Click to take control" overlay
+  // Keyboard controls: Esc to stop. (Skip-forward intentionally not exposed —
+  // it would race the async tour engine; tour runs at a fixed pace.)
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        stop();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isRunning, stop]);
+
+  // Track mouse hover so we can show the "Click to take control" overlay.
   useEffect(() => {
     if (!isRunning) return;
 
@@ -144,7 +164,6 @@ function WalkthroughEngine() {
     const isCancelled = () => cancelled || stoppedRef.current;
 
     const navigateViaCmdK = async (searchText: string) => {
-      // Move cursor to CmdK trigger button
       const cmdkTrigger = document.querySelector('[data-walkthrough-nav="cmdk-trigger"]') as HTMLElement | null;
       if (!cmdkTrigger) return false;
 
@@ -153,15 +172,13 @@ function WalkthroughEngine() {
         x: triggerRect.left + triggerRect.width / 2,
         y: triggerRect.top + triggerRect.height / 2,
       });
-      await sleep(600);
+      await sleep(CURSOR_MOVE_MS);
       if (isCancelled()) return false;
 
-      // Open CmdK
       window.dispatchEvent(new CustomEvent('spotlight-toggle'));
-      await sleep(400);
+      await sleep(250);
       if (isCancelled()) return false;
 
-      // Find the input and type into it
       const input = document.querySelector('input[placeholder="Search or ask AI..."]') as HTMLInputElement | null;
       if (!input) return false;
 
@@ -170,17 +187,13 @@ function WalkthroughEngine() {
         x: inputRect.left + inputRect.width / 3,
         y: inputRect.top + inputRect.height / 2,
       });
-      await sleep(500);
+      await sleep(300);
       if (isCancelled()) return false;
 
       await typeIntoInput(input, searchText, isCancelled);
       if (isCancelled()) return false;
 
-      await sleep(400);
-      if (isCancelled()) return false;
-
-      // Click the first result
-      await sleep(100);
+      await sleep(250);
       if (isCancelled()) return false;
 
       const cmdkContainer = input.closest('.rounded-2xl');
@@ -192,11 +205,11 @@ function WalkthroughEngine() {
           x: resultRect.left + resultRect.width / 2,
           y: resultRect.top + resultRect.height / 2,
         });
-        await sleep(400);
+        await sleep(300);
         if (isCancelled()) return false;
 
         resultButton.click();
-        await sleep(500);
+        await sleep(350);
         if (isCancelled()) return false;
       }
 
@@ -231,19 +244,14 @@ function WalkthroughEngine() {
 
       let targetLink = findSidebarLink();
 
-      // If link isn't visible, find and expand its parent section
+      // If link isn't visible, expand its parent section first.
       if (!targetLink) {
-        // Find the link in DOM (even if hidden) to locate its parent section button
         for (const link of document.querySelectorAll('aside a')) {
           if (link.textContent.trim() === label) {
-            // Walk up to find the closest collapsed section
             let el = link.parentElement;
             while (el && el.tagName !== 'ASIDE') {
               const prevSibling = el.previousElementSibling;
               if (prevSibling) {
-                // The expand button may be the prevSibling itself, or nested
-                // inside it (the sidebar wraps the chevron toggle in a header
-                // div that also contains the section's main <a>).
                 const expandButton = (prevSibling.tagName === 'BUTTON' && prevSibling.getAttribute('aria-expanded') === 'false')
                   ? prevSibling as HTMLElement
                   : prevSibling.querySelector('button[aria-expanded="false"]') as HTMLElement | null;
@@ -257,21 +265,19 @@ function WalkthroughEngine() {
             break;
           }
         }
-        // Wait for CSS height transition (200ms) to complete
-        await sleepFixed(300);
+        // Wait for sidebar section CSS height transition (200ms) to complete.
+        await sleepFixed(220);
         if (isCancelled()) return false;
         targetLink = findSidebarLink();
       }
 
       if (!targetLink) return false;
 
-      // Scroll the sidebar to make the link visible (not the outer page)
       const scrollContainer = targetLink.closest('[class*="overflow-y-auto"]') ?? targetLink.closest('aside');
       if (scrollContainer) {
         const linkTop = targetLink.offsetTop;
         scrollContainer.scrollTo({ top: linkTop - scrollContainer.clientHeight / 2 });
       }
-      // Wait a frame for scroll to settle before reading position
       await sleepFixed(50);
       if (isCancelled()) return false;
 
@@ -280,11 +286,11 @@ function WalkthroughEngine() {
         x: linkRect.left + linkRect.width / 2,
         y: linkRect.top + linkRect.height / 2,
       });
-      await sleep(600);
+      await sleep(CURSOR_MOVE_MS);
       if (isCancelled()) return false;
 
       targetLink.click();
-      await sleep(500);
+      await sleep(350);
       if (isCancelled()) return false;
 
       return true;
@@ -297,11 +303,11 @@ function WalkthroughEngine() {
 
           const step = WALKTHROUGH_STEPS[i];
           setStepIndex(i);
+          setPhase('navigating');
           setShowSpotlight(false);
 
           const needsNavigation = currentPathRef.current !== step.path;
 
-          // Phase 1: Navigate if needed
           if (needsNavigation) {
             let success = false;
             if (step.cmdkSearch) {
@@ -312,26 +318,23 @@ function WalkthroughEngine() {
             if (isCancelled()) return;
             if (success) {
               currentPathRef.current = step.path;
-              await sleep(300);
+              await sleep(200);
               if (isCancelled()) return;
             }
           }
 
-          // Phase 2: Wait for target element
           const targetEl = await waitForElement(`[data-walkthrough="${step.id}"]`);
           if (isCancelled()) return;
           if (!targetEl) continue;
 
-          // Phase 3: Animate mouse to target element
           const targetRect = targetEl.getBoundingClientRect();
           setCursorPosition({
             x: targetRect.left + targetRect.width / 2,
             y: targetRect.top + targetRect.height / 2,
           });
-          await sleep(600);
+          await sleep(CURSOR_MOVE_MS);
           if (isCancelled()) return;
 
-          // Phase 4: Show spotlight
           setSpotlightRect({
             top: targetRect.top,
             left: targetRect.left,
@@ -339,8 +342,9 @@ function WalkthroughEngine() {
             height: targetRect.height,
           });
           setShowSpotlight(true);
+          setPhase('dwelling');
 
-          // Continuously track element position
+          // Track moving/resizing targets while we dwell.
           const trackElement = () => {
             if (isCancelled()) return;
             const el = document.querySelector(`[data-walkthrough="${step.id}"]`);
@@ -357,11 +361,16 @@ function WalkthroughEngine() {
           };
           rafRef.current = requestAnimationFrame(trackElement);
 
-          // Phase 5: Wait at this step
-          await sleep(8000);
+          await sleep(STEP_DWELL_MS);
           cancelAnimationFrame(rafRef.current);
           if (isCancelled()) return;
         }
+
+        // Finished one full pass — pause briefly, then restart.
+        setPhase('finishing');
+        setShowSpotlight(false);
+        await sleep(INTER_LOOP_PAUSE_MS);
+        currentPathRef.current = '/__force_renav__';
       }
     };
 
@@ -388,7 +397,9 @@ function WalkthroughEngine() {
       spotlightRect={spotlightRect}
       cursorPosition={cursorPosition}
       showSpotlight={showSpotlight}
+      phase={phase}
       isHovering={isHovering}
+      dwellMs={STEP_DWELL_MS * TIMING_MULTIPLIER}
       onStop={stop}
     />
   );
