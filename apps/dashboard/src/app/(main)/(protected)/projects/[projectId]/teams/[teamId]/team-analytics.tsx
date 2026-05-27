@@ -120,18 +120,6 @@ const DAU_QUERY = `
   ORDER BY day ASC
 `;
 
-const HEATMAP_QUERY = `
-  SELECT
-    toDayOfWeek(event_at) AS dow,
-    toHour(event_at) AS hour,
-    toString(uniqExact(user_id)) AS active_users
-  FROM events
-  WHERE user_id IN {memberIds:Array(String)}
-    AND event_at >= {since:DateTime}
-    AND event_at < {until:DateTime}
-  GROUP BY dow, hour
-`;
-
 const TOP_CONTRIBUTORS_QUERY = `
   SELECT
     user_id,
@@ -168,17 +156,6 @@ function parseDau(rows: Record<string, unknown>[]): DauRow[] {
       events: toNumber(row.events),
     }))
     .filter((r) => r.day.length > 0);
-}
-
-function parseHeatmap(rows: Record<string, unknown>[]): HeatmapRow[] {
-  const result: HeatmapRow[] = [];
-  for (const row of rows) {
-    const dow = toNumber(row.dow);
-    const hour = toNumber(row.hour);
-    if (dow < 1 || dow > 7 || hour < 0 || hour > 23) continue;
-    result.push({ dow, hour, active_users: toNumber(row.active_users) });
-  }
-  return result;
 }
 
 function parseContributors(rows: Record<string, unknown>[]): ContributorRow[] {
@@ -323,10 +300,11 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
           prev7dSince: toClickhouseDateTimeParam(prev7dSince),
         }),
         runQuery(DAU_QUERY, baseParams),
-        runQuery(HEATMAP_QUERY, {
-          memberIds,
-          since: toClickhouseDateTimeParam(heatmapSince),
-          until: toClickhouseDateTimeParam(now),
+        stackAdminApp.getAnalyticsHeatmap({
+          kind: "team_user_hour_of_week",
+          member_user_ids: memberIds,
+          since: heatmapSince.toISOString(),
+          until: now.toISOString(),
         }),
         runQuery(TOP_CONTRIBUTORS_QUERY, { ...baseParams, limit: TOP_CONTRIBUTORS_LIMIT }),
       ]);
@@ -351,7 +329,9 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
         data: {
           summary: summaryRes.status === "fulfilled" ? parseSummary(summaryRes.value.result) : emptySummary,
           dau: dauRes.status === "fulfilled" ? parseDau(dauRes.value.result) : [],
-          heatmap: heatmapRes.status === "fulfilled" ? parseHeatmap(heatmapRes.value.result) : [],
+          heatmap: heatmapRes.status === "fulfilled"
+            ? heatmapRes.value.cells.map((cell) => ({ dow: cell.weekday, hour: cell.hour, active_users: cell.value }))
+            : [],
           contributors: contributorsRes.status === "fulfilled" ? parseContributors(contributorsRes.value.result) : [],
         },
       });

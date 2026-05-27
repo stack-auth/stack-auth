@@ -1,7 +1,7 @@
 import { KnownErrors, HexclaveAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { AnalyticsHeatmapDevice, AnalyticsHeatmapResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -1164,6 +1164,20 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
     return await this._interface.queryAnalytics(options);
+  }
+
+  async getAnalyticsHeatmap(options: {
+    kind: "team_user_hour_of_week" | "session_replay_clicks",
+    member_user_ids?: string[],
+    route_path?: string,
+    route_regex?: string,
+    user_id?: string,
+    replay_id?: string,
+    device?: AnalyticsHeatmapDevice,
+    since: string,
+    until: string,
+  }): Promise<AnalyticsHeatmapResponse> {
+    return await this._interface.getAnalyticsHeatmap(options);
   }
 
   async listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult> {

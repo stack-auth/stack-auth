@@ -179,6 +179,53 @@ export const UserActivityResponseBodySchema = yupObject({
   data_points: MetricsDataPointsSchema,
 }).defined();
 
+export const AnalyticsHeatmapKindSchema = yupString().oneOf(["team_user_hour_of_week", "session_replay_clicks"]).defined();
+export const AnalyticsHeatmapDeviceSchema = yupString().oneOf(["tv", "widescreen", "desktop", "laptop", "tablet", "mobile"]).defined();
+
+export const AnalyticsHeatmapCellSchema = yupObject({
+  weekday: yupNumber().integer().min(1).max(7).defined(),
+  hour: yupNumber().integer().min(0).max(23).defined(),
+  value: yupNumber().integer().defined(),
+}).defined();
+
+export const AnalyticsHeatmapResponseBodySchema = yupObject({
+  kind: AnalyticsHeatmapKindSchema,
+  cells: yupArray(AnalyticsHeatmapCellSchema).defined(),
+  points: yupArray(yupObject({
+    x_percent: yupNumber().defined(),
+    y_percent: yupNumber().defined(),
+    count: yupNumber().integer().defined(),
+  }).defined()).optional().default([]),
+  routes: yupArray(yupObject({
+    path: yupString().defined(),
+    clicks: yupNumber().integer().defined(),
+    users: yupNumber().integer().defined(),
+    replays: yupNumber().integer().defined(),
+  }).defined()).optional().default([]),
+  users: yupArray(yupObject({
+    id: yupString().defined(),
+    display_name: yupString().nullable().defined(),
+    primary_email: yupString().nullable().defined(),
+    profile_image_url: yupString().nullable().defined(),
+    clicks: yupNumber().integer().defined(),
+    replays: yupNumber().integer().defined(),
+    last_event_at_millis: yupNumber().defined(),
+  }).defined()).optional().default([]),
+  replays: yupArray(yupObject({
+    id: yupString().defined(),
+    user_id: yupString().nullable().defined(),
+    route_path: yupString().nullable().defined(),
+    viewport_width: yupNumber().integer().nullable().defined(),
+    viewport_height: yupNumber().integer().nullable().defined(),
+    clicks: yupNumber().integer().defined(),
+    last_event_at_millis: yupNumber().defined(),
+  }).defined()).optional().default([]),
+  selectors: yupArray(yupObject({
+    selector: yupString().defined(),
+    clicks: yupNumber().integer().defined(),
+  }).defined()).optional().default([]),
+}).defined();
+
 // Recent "currently live" users keyed by ISO country code. Populated by
 // joining a bounded ClickHouse selection from the live `$token-refresh` window
 // with the corresponding Prisma profile rows, so the overview globe can render
@@ -243,3 +290,7 @@ export type MetricsRecentUser = yup.InferType<typeof MetricsRecentUserSchema>;
 export type MetricsResponse = yup.InferType<typeof MetricsResponseBodySchema>;
 export type MetricsUserCounts = yup.InferType<typeof MetricsUserCountsSchema>;
 export type UserActivityResponse = yup.InferType<typeof UserActivityResponseBodySchema>;
+export type AnalyticsHeatmapKind = yup.InferType<typeof AnalyticsHeatmapKindSchema>;
+export type AnalyticsHeatmapDevice = yup.InferType<typeof AnalyticsHeatmapDeviceSchema>;
+export type AnalyticsHeatmapCell = yup.InferType<typeof AnalyticsHeatmapCellSchema>;
+export type AnalyticsHeatmapResponse = yup.InferType<typeof AnalyticsHeatmapResponseBodySchema>;

@@ -2,6 +2,12 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should the analytics heatmaps canvas avoid replay dimension coupling?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/heatmaps/page-client.tsx`, keep the route heatmap canvas normalized to the backend `x_percent`/`y_percent` coordinates rather than rendering an rrweb replay frame behind it. Replay frames can recursively capture the dashboard and make aggregate clicks look tied to one browser size; use a neutral 100% x 100% grid for aggregate density, and leave exact pixel playback to the Session Replays player.
+
+## Q: How should compact action controls in the analytics heatmaps sidebar header be styled?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/heatmaps/page-client.tsx`, the left sidebar header can get cramped at narrow panel widths. Keep the "Heatmaps (n)" title as `min-w-0 truncate` and use icon-only `DesignButton` controls wrapped in `SimpleTooltip` for clear/refresh actions, with explicit `aria-label`s.
+
 ## Q: What are the local development ports for the MCP and Skills apps?
 A: The MCP app runs on port suffix `44` from `apps/mcp/package.json`, so with `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=91` it is at `http://localhost:9144/mcp`. The Skills app runs on suffix `45` from `apps/skills/package.json`, so with the same prefix it is at `http://localhost:9145`. The dev launchpad app list in `apps/dev-launchpad/public/index.html` should use these suffixes.
 
@@ -562,3 +568,27 @@ A: Project config overrides only support the hosted `sourceOfTruth` shape. Legac
 
 ## Q: How should managed email onboarding e2e tests wait for mock verification?
 A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path flips the domain to `verified` asynchronously through `runAsynchronously`, so tests should poll the managed-onboarding check endpoint until the expected status appears.
+
+## Q: How should route heatmap device filtering work?
+A: Route heatmaps are session replay click-density aggregates. Device filters should be applied in the curated ClickHouse heatmap endpoint, not only in the dashboard, so routes, points, linked users, linked recordings, and selectors all describe the same slice. Use `$click.data.viewport_width` to classify clicks into `tv`, `widescreen`, `desktop`, `laptop`, `tablet`, and `mobile`; keep the dashboard default as all devices.
+
+## Q: What layout should the analytics route heatmaps page use?
+A: Use a two-column workbench layout: a left accordion stack and a dominant right-side route click-density heatmap panel. Routes, Device, Users, Recordings, and Player should all be accordion sections open by default; route search belongs inside the Routes section and should filter the backend aggregate by regex so `/projects` covers matching subroutes. Do not include separate card headers like "Controls" or "Click density".
+
+## Q: How should route heatmap filters bind nullable ClickHouse columns?
+A: Bind selected heatmap `user_id` and `session_replay_id` filters as `Nullable(String)` parameters, matching the `analytics_internal.events` schema. Also avoid selecting aggregate aliases with the same names as filtered columns, e.g. use `any(user_id) AS linked_user_id` instead of `AS user_id`; ClickHouse can resolve `WHERE user_id = ...` against the aggregate alias and throw `ILLEGAL_AGGREGATION`, which surfaces as the generic 503 heatmap-unavailable fallback.
+
+## Q: How should the analytics heatmaps page borrow PostHog-style heatmap behavior?
+A: Keep the route-first workbench, but mirror PostHog's split between heatmap density and clickmap element rollups: render click density over either an rrweb replay background or the normalized grid, and populate a `Clickmaps` accordion from `$click.data.selector` counts. The backend selector query should reuse the same route/user/replay/device filters as the point query so all side panels describe the same slice.
+
+## Q: How should heatmap blobs align with an rrweb replay background?
+A: When the analytics heatmap uses an rrweb replay background, do not position heat blobs against the outer card. The replay is scaled and centered inside that card, so track the rendered rrweb wrapper rectangle after scaling and render the heatmap layer inside that rectangle; keep the normalized grid fallback using the full 100% canvas.
+
+## Q: What should happen to the selected replay when the route heatmap device filter changes?
+A: Clear `selectedReplayId` when the device filter changes. The backend refetches routes, points, users, replays, and selectors for the new device slice, and the replay background should then choose the newest replay from that filtered slice instead of staying pinned to a previously selected desktop/tablet/mobile recording.
+
+## Q: How should the dashboard avoid stale heatmap responses after rapid filter changes?
+A: Guard the analytics heatmap loader with a monotonically increasing generation ref. Device/filter changes can leave older all-devices requests in flight; if those resolve after the newer mobile/tablet/desktop request, ignore them so they cannot overwrite the current filtered replay background and counts.
+
+## Q: How should analytics heatmap route rows show compact route stats?
+A: Keep the route path as the primary sidebar text, truncate it in the row, and show three compact icon counters for clicks, users, and recordings. Use a modest delayed tooltip on each route row to reveal the full route path and label each counter, so users can skim the list without instant hover popups while still understanding the icons.
