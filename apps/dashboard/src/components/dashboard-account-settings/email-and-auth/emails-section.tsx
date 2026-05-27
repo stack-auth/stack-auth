@@ -3,7 +3,7 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +51,7 @@ function EmailsSectionInner({ user }: { user: any }) {
 
   useEffect(() => {
     if (addedEmail) {
-      runAsynchronously(async () => {
+      runAsynchronouslyWithAlert(async () => {
         const cc = contactChannels.find((x: any) => x.value === addedEmail);
         if (cc && !cc.isVerified) {
           await cc.sendVerificationEmail();
@@ -118,7 +118,7 @@ function EmailsSectionInner({ user }: { user: any }) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            runAsynchronously(handleSubmit(onSubmit));
+            runAsynchronouslyWithAlert(handleSubmit(onSubmit));
           }}
           className="bg-zinc-50/50 dark:bg-zinc-900/50 p-4 border border-black/[0.06] dark:border-white/[0.06] rounded-xl flex flex-col gap-3 max-w-md w-full"
         >
@@ -196,7 +196,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                 <DropdownMenuContent align="end" className="w-[180px] rounded-xl border-black/[0.08] dark:border-white/[0.08] shadow-md">
                   {!cc.isVerified && (
                     <DropdownMenuItem
-                      onClick={async () => { await cc.sendVerificationEmail(); }}
+                      onClick={() => runAsynchronouslyWithAlert(async () => { await cc.sendVerificationEmail(); })}
                       className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
                     >
                       Verify Email
@@ -204,7 +204,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                   )}
                   {!cc.isPrimary && cc.isVerified && (
                     <DropdownMenuItem
-                      onClick={async () => { await cc.update({ isPrimary: true }); }}
+                      onClick={() => runAsynchronouslyWithAlert(async () => { await cc.update({ isPrimary: true }); })}
                       className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
                     >
                       Set as Primary
@@ -220,15 +220,17 @@ function EmailsSectionInner({ user }: { user: any }) {
                   )}
                   {!cc.usedForAuth && cc.isVerified && (
                     <DropdownMenuItem
-                      onClick={async () => {
+                      onClick={() => runAsynchronouslyWithAlert(async () => {
                         try {
                           await cc.update({ usedForAuth: true });
                         } catch (e) {
                           if (KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(e)) {
                             alert("This email is already used for sign-in by another user.");
+                            return;
                           }
+                          throw e;
                         }
-                      }}
+                      })}
                       className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
                     >
                       Enable Sign-in
@@ -236,7 +238,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                   )}
                   {cc.usedForAuth && !isLastEmailUsedForAuth && (
                     <DropdownMenuItem
-                      onClick={async () => { await cc.update({ usedForAuth: false }); }}
+                      onClick={() => runAsynchronouslyWithAlert(async () => { await cc.update({ usedForAuth: false }); })}
                       className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
                     >
                       Disable Sign-in
@@ -253,7 +255,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                   <div className="my-1 border-t border-black/[0.04] dark:border-white/[0.04]" />
                   {(!isLastEmailUsedForAuth || !cc.usedForAuth) ? (
                     <DropdownMenuItem
-                      onClick={async () => { await cc.delete(); }}
+                      onClick={() => runAsynchronouslyWithAlert(async () => { await cc.delete(); })}
                       className="cursor-pointer rounded-lg text-red-500 hover:text-red-600 focus:text-red-500"
                     >
                       Remove Email
