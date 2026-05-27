@@ -7,7 +7,7 @@ import type { Colorize, JsonRecord } from "./util";
 import { getCommandPath, logVerbose, shouldWriteConfigFile } from "./util";
 
 const MCP_SERVER_NAME = "stack-auth";
-const MCP_SERVER_URL = "https://mcp.stack-auth.com/mcp";
+const MCP_SERVER_URL = "https://mcp.hexclave.com/mcp";
 const MCP_ACCEPT_HEADER = "application/json, text/event-stream";
 
 type JsonUpdater = (current: JsonRecord) => JsonRecord | null | undefined;

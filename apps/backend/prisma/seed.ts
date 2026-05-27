@@ -84,9 +84,9 @@ export async function seed() {
       type: 'create',
       projectId: 'internal',
       data: {
-        display_name: 'Stack Dashboard',
+        display_name: 'Hexclave Dashboard',
         owner_team_id: internalTeamId,
-        description: 'Stack\'s admin dashboard',
+        description: 'Hexclave\'s admin dashboard',
         is_production_mode: false,
         config: {
           allow_localhost: true,
@@ -310,7 +310,7 @@ export async function seed() {
   // internal project, but the internal team itself is written directly above
   // (bypassing that code path), so it would otherwise end up with zero
   // entitlements and trip the plan-limit enforcement. Grant it the Growth plan
-  // so Stack Auth employees using the dashboard get full quotas. Idempotent —
+  // so Hexclave employees using the dashboard get full quotas. Idempotent —
   // skipped if an active Growth subscription already exists.
   //
   // We create the subscription with raw Prisma (matching seed-dummy-data.ts)

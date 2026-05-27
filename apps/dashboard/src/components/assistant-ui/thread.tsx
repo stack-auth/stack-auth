@@ -109,14 +109,9 @@ export const Thread: FC<{
                     <div className="min-h-6 flex-grow" />
                   </ThreadPrimitive.If>
 
-                  <div className={cn(
-                    "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
-                    useOffWhiteLightMode
-                      ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
-                      : "from-background via-background",
-                  )}>
+                  <div className="sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end pt-6 pb-3">
                     <ThreadScrollToBottom />
-                    <Composer placeholder={composerPlaceholder} topContent={composerTopContent} autoFocus={autoFocusComposer} />
+                    <Composer placeholder={composerPlaceholder} topContent={composerTopContent} autoFocus={autoFocusComposer} useOffWhiteLightMode={useOffWhiteLightMode} />
                   </div>
                 </ThreadPrimitive.Viewport>
               </ThreadPrimitive.Root>
@@ -525,10 +520,13 @@ const ComposerStaticInput: FC<{ placeholder?: string, autoFocus?: boolean }> = (
   );
 };
 
-const Composer: FC<{ placeholder?: ComposerPlaceholder, topContent?: React.ReactNode, autoFocus?: boolean }> = ({ placeholder, topContent, autoFocus = true }) => {
+const Composer: FC<{ placeholder?: ComposerPlaceholder, topContent?: React.ReactNode, autoFocus?: boolean, useOffWhiteLightMode?: boolean }> = ({ placeholder, topContent, autoFocus = true, useOffWhiteLightMode = false }) => {
   const attachmentsEnabled = useComposerAttachmentsEnabled();
   return (
-    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-background/95 dark:bg-background/80 shadow-sm ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
+    <ComposerPrimitive.Root className={cn(
+      "group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] shadow-sm ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30",
+      useOffWhiteLightMode ? "bg-card backdrop-blur-xl dark:bg-background/80" : "bg-background/95 dark:bg-background/80",
+    )}>
       {attachmentsEnabled && <ComposerAttachmentsRow />}
       {topContent}
       {typeof placeholder === "object" ? (

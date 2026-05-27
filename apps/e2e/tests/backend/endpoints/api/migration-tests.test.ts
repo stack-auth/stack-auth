@@ -18,9 +18,9 @@ describe("SmartRouteHandler", () => {
         NiceResponse {
           "status": 404,
           "body": deindent\`
-            404 — this page does not exist in Stack Auth's API.
+            404 — this page does not exist in Hexclave's API.
             
-            Please see the API documentation at https://docs.stack-auth.com, or visit the Stack Auth dashboard at https://app.stack-auth.com.
+            Please see the API documentation at https://docs.hexclave.com, or visit the Hexclave dashboard at https://app.hexclave.com.
             
             URL: http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>02/api/v1/migration-tests/smart-route-handler
           \`,

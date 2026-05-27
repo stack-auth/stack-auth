@@ -387,14 +387,14 @@ export async function getPrismaSchemaForSourceOfTruth(_sourceOfTruth: CompleteCo
 
 class TransactionErrorThatShouldBeRetried extends Error {
   constructor(cause: unknown) {
-    super("This is an internal error used by Stack Auth to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
+    super("This is an internal error used by Hexclave to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
     this.name = 'TransactionErrorThatShouldBeRetried';
   }
 }
 
 class TransactionErrorThatShouldNotBeRetried extends Error {
   constructor(cause: unknown) {
-    super("This is an internal error used by Stack Auth to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
+    super("This is an internal error used by Hexclave to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
     this.name = 'TransactionErrorThatShouldNotBeRetried';
   }
 }

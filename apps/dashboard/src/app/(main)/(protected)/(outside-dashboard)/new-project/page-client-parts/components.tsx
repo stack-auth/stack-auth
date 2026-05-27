@@ -484,7 +484,7 @@ export function WelcomeSlide(props: WelcomeSlideProps) {
 
         <div className="onboarding-cascade flex flex-col items-center gap-3 text-center" style={{ "--cascade-i": 1 } as CSSProperties}>
           <Typography className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Welcome to Stack Auth
+            Welcome to Hexclave
           </Typography>
           <Typography variant="secondary" className="mx-auto max-w-sm text-sm leading-relaxed text-balance">
             Your project is ready. Start building with authentication, emails, payments, and more — all in one place.

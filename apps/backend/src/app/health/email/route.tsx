@@ -96,7 +96,7 @@ const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boo
   // Inbucket wraps emails in angle brackets like "<email@example.com>"
   const matchesRecipient = email.to.some(to => to.includes(testEmail));
   const matchesSubject = email.subject.toLowerCase().includes(EXPECTED_EMAIL_SUBJECT_CONTAINS.toLowerCase());
-  // Skip sender check - in dev it's example.com, in prod it's stackframe.co
+  // Skip sender check - in dev it's example.com, in prod it's sent-with-hexclave.com (formerly stackframe.co)
 
   return matchesRecipient && matchesSubject;
 };

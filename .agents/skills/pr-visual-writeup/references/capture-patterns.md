@@ -108,7 +108,7 @@ Return contract:
 
 Why the two-consecutive-stable-reads check: a single `ready` flicker can land between a skeleton disappearing and the real content swapping in. Two consecutive 250ms ticks with identical body HTML length means the DOM has actually settled.
 
-Tune the skeleton selector list for your codebase. The Stack Auth dashboard uses Tailwind `.animate-pulse` extensively for loading rows — that's the highest-signal one. Inspect the diff or the running app once and add any project-specific loading markers (`Spinner` component class, etc.) to the selector list in the subagent prompt rather than guessing.
+Tune the skeleton selector list for your codebase. The Hexclave dashboard uses Tailwind `.animate-pulse` extensively for loading rows — that's the highest-signal one. Inspect the diff or the running app once and add any project-specific loading markers (`Spinner` component class, etc.) to the selector list in the subagent prompt rather than guessing.
 
 After `wait-for-ready` returns `ok`, still sleep ~300ms before screenshotting so any final animations (slide-in, fade, etc.) land on their resting frame.
 

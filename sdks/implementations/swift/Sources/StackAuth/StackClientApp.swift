@@ -23,7 +23,7 @@ public enum GetUserOr: Sendable {
     case anonymous
 }
 
-/// The main Stack Auth client
+/// The main Hexclave client
 public actor StackClientApp {
     public let projectId: String
     
@@ -35,7 +35,7 @@ public actor StackClientApp {
     public init(
         projectId: String,
         publishableClientKey: String? = nil,
-        baseUrl: String = "https://api.stack-auth.com",
+        baseUrl: String = "https://api.hexclave.com",
         tokenStore: TokenStoreInit = .keychain,
         noAutomaticPrefetch: Bool = false
     ) {
@@ -79,7 +79,7 @@ public actor StackClientApp {
     public init(
         projectId: String,
         publishableClientKey: String? = nil,
-        baseUrl: String = "https://api.stack-auth.com",
+        baseUrl: String = "https://api.hexclave.com",
         tokenStore: TokenStoreInit = .memory,
         noAutomaticPrefetch: Bool = false
     ) {
@@ -263,7 +263,7 @@ public actor StackClientApp {
         try await exchangeAppleIdentityToken(identityToken)
     }
     
-    /// Exchange Apple identity token for Stack Auth tokens
+    /// Exchange Apple identity token for Hexclave tokens
     private func exchangeAppleIdentityToken(_ identityToken: String) async throws {
         let url = URL(string: "\(baseUrl)/api/v1/auth/oauth/callback/apple/native")!
         var request = URLRequest(url: url)

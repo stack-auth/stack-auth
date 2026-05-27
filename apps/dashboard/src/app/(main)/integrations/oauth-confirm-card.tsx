@@ -65,7 +65,7 @@ export default function ConfirmCard(props: {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Typography>
-          You are about to connect your {props.type === "neon" ? "Neon" : "third party"} project with Stack Auth.
+          You are about to connect your {props.type === "neon" ? "Neon" : "third party"} project with Hexclave.
         </Typography>
         <Typography className="mb-3">
           Which projects would you like to connect?
@@ -119,7 +119,7 @@ export default function ConfirmCard(props: {
           </Select>
         </div>
         <Typography className="text-sm text-muted-foreground mt-3">
-          This will create an API key that gives {props.type === "neon" ? "Neon" : "the third party"} full read and write access to all resources and data in the selected Stack project, including users, roles, and permissions. You can always revoke access in the API Keys section of the Stack Auth dashboard.
+          This will create an API key that gives {props.type === "neon" ? "Neon" : "the third party"} full read and write access to all resources and data in the selected Stack project, including users, roles, and permissions. You can always revoke access in the API Keys section of the Hexclave dashboard.
         </Typography>
 
       </CardContent>

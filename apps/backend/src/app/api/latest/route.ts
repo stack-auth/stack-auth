@@ -19,29 +19,39 @@ export const GET = createSmartRouteHandler({
       // empty object means that it will fail if query parameters are given regardless
     }),
     headers: yupObject({
-      // we list all automatically parsed headers here so the documentation shows them
-      "X-Stack-Project-Id": yupTuple([projectIdSchema]),
+      // We list all automatically parsed headers here so the OpenAPI documentation shows them.
+      // The canonical `X-Hexclave-*` header names are documented as primary; the legacy
+      // `X-Stack-*` aliases are accepted on every endpoint and listed here for compatibility.
+      "X-Hexclave-Project-Id": yupTuple([projectIdSchema]).optional(),
+      "X-Hexclave-Branch-Id": yupTuple([projectIdSchema]).optional(),
+      "X-Hexclave-Access-Type": yupTuple([yupString().oneOf(["client", "server", "admin"])]).optional(),
+      "X-Hexclave-Access-Token": yupTuple([yupString()]).optional(),
+      "X-Hexclave-Refresh-Token": yupTuple([yupString()]).optional(),
+      "X-Hexclave-Publishable-Client-Key": yupTuple([yupString()]).optional(),
+      "X-Hexclave-Secret-Server-Key": yupTuple([yupString()]).optional(),
+      "X-Hexclave-Super-Secret-Admin-Key": yupTuple([yupString()]).optional(),
+      "X-Stack-Project-Id": yupTuple([projectIdSchema]).optional(),
       "X-Stack-Branch-Id": yupTuple([projectIdSchema]).optional(),
-      "X-Stack-Access-Type": yupTuple([yupString().oneOf(["client", "server", "admin"])]),
-      "X-Stack-Access-Token": yupTuple([yupString()]),
-      "X-Stack-Refresh-Token": yupTuple([yupString()]),
-      "X-Stack-Publishable-Client-Key": yupTuple([yupString()]),
-      "X-Stack-Secret-Server-Key": yupTuple([yupString()]),
-      "X-Stack-Super-Secret-Admin-Key": yupTuple([yupString()]),
+      "X-Stack-Access-Type": yupTuple([yupString().oneOf(["client", "server", "admin"])]).optional(),
+      "X-Stack-Access-Token": yupTuple([yupString()]).optional(),
+      "X-Stack-Refresh-Token": yupTuple([yupString()]).optional(),
+      "X-Stack-Publishable-Client-Key": yupTuple([yupString()]).optional(),
+      "X-Stack-Secret-Server-Key": yupTuple([yupString()]).optional(),
+      "X-Stack-Super-Secret-Admin-Key": yupTuple([yupString()]).optional(),
     }),
     method: yupString().oneOf(["GET"]).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["text"]).defined(),
-    body: yupString().defined().meta({ openapiField: { exampleValue: "Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com/\n\nAuthentication: None" } }),
+    body: yupString().defined().meta({ openapiField: { exampleValue: "Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com/\n\nAuthentication: None" } }),
   }),
   handler: async (req) => {
     return {
       statusCode: 200,
       bodyType: "text",
       body: deindent`
-        Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+        Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
 
         Authentication: ${!req.auth ? "None" : typedCapitalize(req.auth.type) + "\n" + deindent`
         ${"  "}Project: ${req.auth.project.id}

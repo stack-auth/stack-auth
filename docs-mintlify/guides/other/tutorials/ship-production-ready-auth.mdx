@@ -1,11 +1,11 @@
 ---
 title: Ship Production-Ready Auth
-description: Lock down page and API access, handle secrets and environments, then align domains, OAuth, email, webhooks, and dashboard production mode with Stack Auth.
+description: Lock down page and API access, handle secrets and environments, then align domains, OAuth, email, webhooks, and dashboard production mode with Hexclave.
 ---
 
 Going live is not only “turning on production mode.” This guide focuses on **what must be true** so only signed-in users reach protected surfaces, **secrets stay server-only**, and Stack’s dev-friendly defaults are replaced with **your** domains, OAuth apps, and email.
 
-If you are still wiring Stack into your app, complete [Build a SaaS with Stack Auth](/guides/other/tutorials/build-a-saas-with-stack-auth) first. For team RBAC before launch, see [Build a team-based app](/guides/other/tutorials/build-a-team-based-app).
+If you are still wiring Stack into your app, complete [Build a SaaS with Hexclave](/guides/other/tutorials/build-a-saas-with-hexclave) first. For team RBAC before launch, see [Build a team-based app](/guides/other/tutorials/build-a-team-based-app).
 
 ## What you will have at the end
 
@@ -60,7 +60,7 @@ You typically combine **one or more** of:
     ```tsx title="app/app/settings/client-gate.tsx"
     "use client";
 
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export function SettingsGate({ children }: { children: React.ReactNode }) {
       useUser({ or: "redirect" });
@@ -153,10 +153,10 @@ If you consume Stack webhooks, **verify every payload** (for example with Svix a
 
 | Topic | Guide |
 |--------|--------|
-| First integration | [Build a SaaS with Stack Auth](/guides/other/tutorials/build-a-saas-with-stack-auth) |
+| First integration | [Build a SaaS with Hexclave](/guides/other/tutorials/build-a-saas-with-hexclave) |
 | Page protection details | [User fundamentals](/guides/getting-started/user-fundamentals) |
 | Domains, OAuth, email, prod mode | [Launch checklist](/guides/apps/launch-checklist/overview) |
-| `StackServerApp` and keys | [Stack App](/guides/going-further/stack-app) |
+| `HexclaveServerApp` and keys | [Stack App](/guides/going-further/stack-app) |
 | Webhook verification | [Webhooks](/guides/apps/webhooks/overview) |
 | REST from your backend | [API overview](/api/overview) |
 

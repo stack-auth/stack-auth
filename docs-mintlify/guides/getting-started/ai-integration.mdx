@@ -1,26 +1,26 @@
 ---
-title: Using Stack Auth with AI
-description: Teach your coding agent how to use Stack Auth — via web fetch, an installable skill, or the Stack Auth MCP server.
-sidebarTitle: Using Stack Auth with AI
+title: Using Hexclave with AI
+description: Teach your coding agent how to use Hexclave — via web fetch, an installable skill, or the Hexclave MCP server.
+sidebarTitle: Using Hexclave with AI
 ---
 
 <Note>
-  This page is for giving your own coding agent (Claude Code, Cursor, Codex, opencode, …) ongoing knowledge of Stack Auth so it writes Stack Auth code correctly.
+  This page is for giving your own coding agent (Claude Code, Cursor, Codex, opencode, …) ongoing knowledge of Hexclave so it writes Hexclave code correctly.
 
-  If you would like to use Stack Auth to power your own CLI, see the [CLI Authentication](/guides/apps/authentication/cli-authentication) page.
+  If you would like to use Hexclave to power your own CLI, see the [CLI Authentication](/guides/apps/authentication/cli-authentication) page.
 </Note>
 
-There are three ways to give a coding agent working knowledge of Stack Auth. They differ only in how the instructions reach the agent — the knowledge is the same.
+There are three ways to give a coding agent working knowledge of Hexclave. They differ only in how the instructions reach the agent — the knowledge is the same.
 
 <CardGroup cols={3}>
-  <Card title="Web Fetch" icon="wand-magic-sparkles" href="#option-3-web-fetch">
+  <Card title="Web Fetch" icon="wand-magic-sparkles" href="#option-1-web-fetch-recommended">
     Paste a one-line prompt — your agent fetches the live skill on demand.
   </Card>
-  <Card title="Skill" icon="sparkles" href="#option-1-skill">
-    Install the Stack Auth `SKILL.md` file so your agent loads it automatically.
+  <Card title="Skill" icon="sparkles" href="#option-2-skill">
+    Install the Hexclave `SKILL.md` file so your agent loads it automatically.
   </Card>
-  <Card title="MCP" icon="plug" href="#option-2-mcp">
-    Connect your agent to the Stack Auth MCP server for live docs and `ask_stack_auth` search.
+  <Card title="MCP" icon="plug" href="#option-3-mcp">
+    Connect your agent to the Hexclave MCP server for live docs and `ask_hexclave` search.
   </Card>
 </CardGroup>
 
@@ -32,34 +32,34 @@ Most coding agents now support web fetch out of the box, so you can simply tell 
 To do so, paste the prompt below into your coding agent:
 
 ````markdown title="One-shot prompt"
-Fetch https://skill.stack-auth.com and follow it for this task.
+Fetch https://skill.hexclave.com and follow it for this task.
 ````
 
-The fetched `SKILL.md` indexes the entire Stack Auth docs sidebar and tells the agent to pull fresh content for whichever surface you're touching (auth, orgs/teams, payments, emails, analytics, the CLI). It is purely a reference — paste it whenever you want the agent to use Stack Auth knowledge.
+The fetched `SKILL.md` indexes the entire Hexclave docs sidebar and tells the agent to pull fresh content for whichever surface you're touching (auth, orgs/teams, payments, emails, analytics, the CLI). It is purely a reference — paste it whenever you want the agent to use Hexclave knowledge.
 
 
 ## Option 2: Skill
 
-Install the skill once so your agent loads it automatically every time Stack Auth is relevant — no copy-paste required.
+Install the skill once so your agent loads it automatically every time Hexclave is relevant — no copy-paste required.
 
 <Tabs>
   <Tab title="Cli install">
-    The fastest way to install the Stack Auth skill for a Claude Code-style agent or similar:
+    The fastest way to install the Hexclave skill for a Claude Code-style agent or similar:
 
     ```sh title="Terminal"
     npx -y skills add stack-auth/stack-auth --skill stack-auth
     ```
 
-    This detects your agent and installs the skill in the correct location (per-project or global) automatically. From then on, your agent picks it up whenever the conversation touches Stack Auth.
+    This detects your agent and installs the skill in the correct location (per-project or global) automatically. From then on, your agent picks it up whenever the conversation touches Hexclave.
   </Tab>
 
   <Tab title="Copy-paste prompt">
     If your agent can't run the `npx` command above, paste the prompt below into the chat. The agent will fetch `SKILL.md` and drop it into the right location for your agent — per-project if a project-scoped agent folder exists, global otherwise.
 
     ````markdown title="Skill install prompt"
-    Install the Stack Auth skill (`SKILL.md`) for me so you load it automatically on future Stack Auth tasks. The canonical file lives at:
+    Install the Hexclave skill (`SKILL.md`) for me so you load it automatically on future Hexclave tasks. The canonical file lives at:
 
-    https://raw.githubusercontent.com/stack-auth/stack-auth/dev/skills/stack-auth/SKILL.md
+    https://raw.githubusercontent.com/hexclave/hexclave/dev/skills/stack-auth/SKILL.md
 
     These are the same install locations the `skills` CLI (https://github.com/vercel-labs/skills) uses — match them exactly so the file is picked up the same way.
 
@@ -96,7 +96,7 @@ Install the skill once so your agent loads it automatically every time Stack Aut
     5. **Confirm and offer alternatives.** Print the absolute symlink path and the cache target it points to. Then ask me a single multiple-choice question covering anything I might want to change, e.g.:
 
        ```
-       Installed Stack Auth skill at <path> → <cache path>. Want to change anything?
+       Installed Hexclave skill at <path> → <cache path>. Want to change anything?
        a) Keep it — done
        b) Also symlink at the opposite scope (<other path>)
        c) Install for a different agent instead
@@ -112,7 +112,7 @@ Install the skill once so your agent loads it automatically every time Stack Aut
 
 ## Option 3: MCP
 
-The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent live access to Stack Auth docs and skill via prompts, resources and an `ask_stack_auth` tool that searches the docs with citations. Install it once per agent — it stays available across every project.
+The Hexclave MCP server (`https://mcp.hexclave.com/mcp`) gives your agent live access to Hexclave docs and skill via prompts, resources and an `ask_hexclave` tool that searches the docs with citations. Install it once per agent — it stays available across every project.
 
 <Tabs>
   <Tab title="One-click install">
@@ -120,12 +120,12 @@ The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent li
       <Card title="Add to Cursor" icon="square-arrow-up-right" href="cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS9tY3AifQ==">
         Opens Cursor and adds `stack-auth` to your MCP config.
       </Card>
-      <Card title="Add to VS Code" icon="square-arrow-up-right" href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522type%2522%253A%2522http%2522%252C%2522name%2522%253A%2522stack-auth%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fmcp.stack-auth.com%252Fmcp%2522%257D">
+      <Card title="Add to VS Code" icon="square-arrow-up-right" href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522type%2522%253A%2522http%2522%252C%2522name%2522%253A%2522stack-auth%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fmcp.hexclave.com%252Fmcp%2522%257D">
         Opens VS Code and adds `stack-auth` to your MCP config.
       </Card>
     </CardGroup>
 
-    For the up-to-date list of one-click install buttons for every client (Cursor, VS Code, Claude Desktop, Windsurf, ChatGPT, Gemini, …), visit [`mcp.stack-auth.com`](https://mcp.stack-auth.com) in your browser.
+    For the up-to-date list of one-click install buttons for every client (Cursor, VS Code, Claude Desktop, Windsurf, ChatGPT, Gemini, …), visit [`mcp.hexclave.com`](https://mcp.hexclave.com) in your browser.
   </Tab>
 
   <Tab title="Config files">
@@ -137,7 +137,7 @@ The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent li
         {
           "mcpServers": {
             "stack-auth": {
-              "url": "https://mcp.stack-auth.com/mcp"
+              "url": "https://mcp.hexclave.com/mcp"
             }
           }
         }
@@ -146,26 +146,26 @@ The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent li
 
       <Tab title="Claude Code">
         ```sh title="Terminal"
-        claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp
+        claude mcp add --transport http stack-auth https://mcp.hexclave.com/mcp
         ```
       </Tab>
 
       <Tab title="VS Code">
         ```sh title="Terminal"
-        code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'
+        code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.hexclave.com/mcp"}'
         ```
       </Tab>
 
       <Tab title="Codex">
         ```sh title="Terminal"
-        codex mcp add stack-auth --url https://mcp.stack-auth.com/mcp
+        codex mcp add stack-auth --url https://mcp.hexclave.com/mcp
         ```
 
         Or add to `~/.codex/config.toml`:
 
         ```toml title="config.toml"
         [mcp_servers.stack-auth]
-        url = "https://mcp.stack-auth.com/mcp"
+        url = "https://mcp.hexclave.com/mcp"
         ```
       </Tab>
 
@@ -174,7 +174,7 @@ The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent li
         {
           "mcpServers": {
             "stack-auth": {
-              "serverUrl": "https://mcp.stack-auth.com/mcp"
+              "serverUrl": "https://mcp.hexclave.com/mcp"
             }
           }
         }
@@ -188,7 +188,7 @@ The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent li
         {
           "mcpServers": {
             "stack-auth": {
-              "httpUrl": "https://mcp.stack-auth.com/mcp",
+              "httpUrl": "https://mcp.hexclave.com/mcp",
               "headers": {
                 "Accept": "application/json, text/event-stream"
               }
@@ -199,19 +199,19 @@ The Stack Auth MCP server (`https://mcp.stack-auth.com/mcp`) gives your agent li
       </Tab>
     </Tabs>
 
-    For Claude Desktop, ChatGPT, and copy-paste markdown blocks you can drop into your project README, visit [`mcp.stack-auth.com`](https://mcp.stack-auth.com).
+    For Claude Desktop, ChatGPT, and copy-paste markdown blocks you can drop into your project README, visit [`mcp.hexclave.com`](https://mcp.hexclave.com).
   </Tab>
 
   <Tab title="Ask your agent">
     If your agent can edit its own config, paste this prompt:
 
     ```markdown title="MCP install prompt"
-    Install the Stack Auth MCP server for me. The server URL is https://mcp.stack-auth.com/mcp (HTTP transport).
+    Install the Hexclave MCP server for me. The server URL is https://mcp.hexclave.com/mcp (HTTP transport).
 
     Detect which coding agent I'm using and add the server to the correct config file:
-    - Claude Code → run `claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp`
+    - Claude Code → run `claude mcp add --transport http stack-auth https://mcp.hexclave.com/mcp`
     - Cursor → `~/.cursor/mcp.json`
-    - VS Code → run `code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'`
+    - VS Code → run `code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.hexclave.com/mcp"}'`
     - Codex → `~/.codex/config.toml`
     - opencode → `~/.config/opencode/opencode.json`
     - Gemini CLI → `~/.gemini/settings.json`

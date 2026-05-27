@@ -14,7 +14,7 @@ describe("without project ID", () => {
       NiceResponse {
         "status": 200,
         "body": deindent\`
-          Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
           
           Authentication: None
         \`,
@@ -60,9 +60,9 @@ describe("without project ID", () => {
           "code": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
           "details": { "request_type": "client" },
           "error": deindent\`
-            The x-stack-access-type header was 'client', but the x-stack-project-id header was not provided.
+            The x-hexclave-access-type header was 'client', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
             
-            For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+            For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
           \`,
         },
         "headers": Headers {
@@ -96,7 +96,7 @@ describe("with project ID that doesn't exist", async () => {
         "body": {
           "code": "CURRENT_PROJECT_NOT_FOUND",
           "details": { "project_id": "invalid" },
-          "error": "The current project with ID invalid was not found. Please check the value of the x-stack-project-id header.",
+          "error": "The current project with ID invalid was not found. Please check the value of the x-hexclave-project-id header. (The legacy x-stack-project-id header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "CURRENT_PROJECT_NOT_FOUND",
@@ -231,7 +231,7 @@ describe("with optional publishable client key", () => {
       NiceResponse {
         "status": 200,
         "body": deindent\`
-          Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
           
           Authentication: Client
             Project: <stripped UUID>
@@ -262,7 +262,7 @@ describe("with optional publishable client key", () => {
       NiceResponse {
         "status": 200,
         "body": deindent\`
-          Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
           
           Authentication: Client
             Project: <stripped UUID>
@@ -362,7 +362,7 @@ describe("with required publishable client key", () => {
       NiceResponse {
         "status": 200,
         "body": deindent\`
-          Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+          Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
           
           Authentication: Client
             Project: <stripped UUID>
@@ -410,7 +410,7 @@ describe("with internal project ID", async () => {
         NiceResponse {
           "status": 200,
           "body": deindent\`
-            Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+            Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
             
             Authentication: Client
               Project: internal
@@ -429,7 +429,7 @@ describe("with internal project ID", async () => {
         NiceResponse {
           "status": 200,
           "body": deindent\`
-            Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+            Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
             
             Authentication: Server
               Project: internal
@@ -448,7 +448,7 @@ describe("with internal project ID", async () => {
         NiceResponse {
           "status": 200,
           "body": deindent\`
-            Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+            Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com.
             
             Authentication: Admin
               Project: internal

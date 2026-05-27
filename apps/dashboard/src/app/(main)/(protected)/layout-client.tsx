@@ -3,6 +3,7 @@
 import Loading from "@/app/loading";
 import { CursorBlastEffect } from "@stackframe/dashboard-ui-components";
 import { ConfigUpdateDialogProvider } from "@/lib/config-update";
+import { HexclaveRebrandModal } from "@/components/hexclave-rebrand-modal";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@stackframe/stack";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
@@ -43,7 +44,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
         });
       } else if (isPreview) {
         const id = generateUuid();
-        const email = `preview-${id}@preview.stack-auth.com`;
+        const email = `preview-${id}@preview.hexclave.com`;
         const password = `PreviewPass-${id}`;
         const signInResult = await app.signInWithCredential({ email, password, noRedirect: true });
         if (signInResult.status === "error") {
@@ -60,6 +61,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
     return (
       <ConfigUpdateDialogProvider>
         <CursorBlastEffect />
+        <HexclaveRebrandModal />
         {children}
       </ConfigUpdateDialogProvider>
     );

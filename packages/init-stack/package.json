@@ -1,8 +1,8 @@
 {
   "name": "@stackframe/init-stack",
   "version": "2.8.109",
-  "repository": "https://github.com/hexclave/stack-auth",
-  "description": "The setup wizard for Stack. https://stack-auth.com",
+  "repository": "https://github.com/hexclave/hexclave",
+  "description": "The setup wizard for Hexclave. https://hexclave.com",
   "main": "dist/index.mjs",
   "type": "module",
   "bin": "./dist/index.mjs",
@@ -37,7 +37,7 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "homepage": "https://stack-auth.com",
+  "homepage": "https://hexclave.com",
   "keywords": [],
   "author": "",
   "license": "MIT",

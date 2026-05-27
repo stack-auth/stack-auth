@@ -12,8 +12,8 @@ async function isAllowedApiBaseUrl(value: string): Promise<boolean> {
 
 describe("remote development environment API base URL allowlist", () => {
   it("accepts the production Stack API host", async () => {
-    await expect(isAllowedApiBaseUrl("https://api.stack-auth.com")).resolves.toBe(true);
-    await expect(isAllowedApiBaseUrl("https://api.stack-auth.com/")).resolves.toBe(true);
+    await expect(isAllowedApiBaseUrl("https://api.hexclave.com")).resolves.toBe(true);
+    await expect(isAllowedApiBaseUrl("https://api.hexclave.com/")).resolves.toBe(true);
   });
 
   it("accepts the exact local API base URL passed to the dashboard", async () => {
@@ -28,13 +28,13 @@ describe("remote development environment API base URL allowlist", () => {
     await expect(isAllowedApiBaseUrl("http://127.1.2.3:8102")).resolves.toBe(false);
   });
 
-  it("rejects arbitrary stack-auth subdomains", async () => {
-    await expect(isAllowedApiBaseUrl("https://evil.stack-auth.com")).resolves.toBe(false);
+  it("rejects arbitrary hexclave subdomains", async () => {
+    await expect(isAllowedApiBaseUrl("https://evil.hexclave.com")).resolves.toBe(false);
   });
 
   it("accepts explicit custom hosts from the STACK-prefixed allowlist", async () => {
-    vi.stubEnv("STACK_RDE_API_BASE_URL_ALLOWLIST", "https://api.staging.stack-auth.com");
+    vi.stubEnv("STACK_RDE_API_BASE_URL_ALLOWLIST", "https://api.staging.hexclave.com");
 
-    await expect(isAllowedApiBaseUrl("https://api.staging.stack-auth.com")).resolves.toBe(true);
+    await expect(isAllowedApiBaseUrl("https://api.staging.hexclave.com")).resolves.toBe(true);
   });
 });

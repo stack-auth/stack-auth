@@ -5,7 +5,7 @@ import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
-const PRODUCTION_PROXY_BASE_URL = "https://api.stack-auth.com/api/latest/integrations/ai-proxy";
+const PRODUCTION_PROXY_BASE_URL = "https://api.hexclave.com/api/latest/integrations/ai-proxy";
 
 async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ path?: string[] }> }) {
   const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");

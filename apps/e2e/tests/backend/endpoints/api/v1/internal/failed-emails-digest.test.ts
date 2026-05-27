@@ -154,7 +154,7 @@ describe("with valid credentials", () => {
         "user_ids": [
           userId,
         ],
-        "html": "This is a test email from Stack Auth.",
+        "html": "This is a test email from Hexclave.",
       },
     });
     expect(testEmailResponse).toMatchInlineSnapshot(`
@@ -216,7 +216,7 @@ describe("with valid credentials", () => {
     const messages = await projectOwnerMailbox.fetchMessages();
     const digestEmail = messages.find(msg => msg.subject === "Failed emails digest");
     expect(digestEmail).toBeDefined();
-    expect(digestEmail!.from).toBe("Stack Auth <noreply@example.com>");
+    expect(digestEmail!.from).toBe("Hexclave <noreply@example.com>");
 
   });
 
@@ -306,7 +306,7 @@ describe("with valid credentials", () => {
       accessType: "server",
       body: {
         "user_ids": [],
-        "html": "This is a test email from Stack Auth.",
+        "html": "This is a test email from Hexclave.",
       },
     });
 
@@ -334,7 +334,7 @@ describe("with valid credentials", () => {
       accessType: "server",
       body: {
         "user_ids": [],
-        "html": "This is a test email from Stack Auth.",
+        "html": "This is a test email from Hexclave.",
       },
     });
 
@@ -373,7 +373,7 @@ describe("with valid credentials", () => {
       accessType: "server",
       body: {
         "user_ids": [],
-        "html": "This is a test email from Stack Auth.",
+        "html": "This is a test email from Hexclave.",
       },
     });
 
@@ -442,7 +442,7 @@ describe("with valid credentials", () => {
       accessType: "server",
       body: {
         "user_ids": [],
-        "html": "This is a test email from Stack Auth.",
+        "html": "This is a test email from Hexclave.",
       },
     });
     expect(sendTestEmailResponse.body).toMatchInlineSnapshot(`

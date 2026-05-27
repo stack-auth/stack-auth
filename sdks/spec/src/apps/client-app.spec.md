@@ -8,16 +8,16 @@ The main client-side SDK class.
 StackClientApp(options)
 
 Required:
-  projectId: string - from Stack Auth dashboard
+  projectId: string - from Hexclave dashboard
 
 Optional:
   publishableClientKey: string
-    From Stack Auth dashboard. If omitted, the SDK uses
+    From Hexclave dashboard. If omitted, the SDK uses
     publishableClientKeyNotNecessarySentinel for OAuth client_secret (which
     assumes that the project does not require a publishable client key), and
     no x-stack-publishable-client-key header is sent.
   baseUrl: string | { browser, server } 
-    Default: "https://api.stack-auth.com"
+    Default: "https://api.hexclave.com"
     Can specify different URLs for browser vs server environments.
     
   tokenStore: "cookie" | "memory" | { accessToken, refreshToken } | null
@@ -128,7 +128,7 @@ Native Apple Sign In flow:
 8. Store tokens and complete sign-in
 
 Configuration requirements:
-- The project must have the Apple OAuth provider enabled in the Stack Auth dashboard
+- The project must have the Apple OAuth provider enabled in the Hexclave dashboard
 - For native apps, the "Bundle ID" field must be configured (this is your app's Bundle Identifier)
 - Note: The "Client ID" field in the dashboard is for web OAuth (Services ID), not native apps
 

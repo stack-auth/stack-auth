@@ -16,7 +16,7 @@ async function startRemoteDevelopmentEnvironmentLifecycleIfNeeded(): Promise<voi
 export async function register() {
   if (getNextRuntime() === "nodejs") {
     if (getEnvBoolean("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT")) {
-      globalThis.process.title = `Stack Auth — Development Server (port ${getEnvVariable("PORT", "?")})`;
+      globalThis.process.title = `Hexclave — Development Server (port ${getEnvVariable("PORT", "?")})`;
     } else {
       globalThis.process.title = `stack-dashboard:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")} (node/nextjs)`;
     }

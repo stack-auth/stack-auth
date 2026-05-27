@@ -7,7 +7,7 @@ import { headers } from "next/headers";
 
 // An end user is a person sitting behind a computer screen.
 //
-// For example, if my-stack-app.com is using Stack Auth, and person A is on my-stack-app.com and sends a server action
+// For example, if my-stack-app.com is using Hexclave, and person A is on my-stack-app.com and sends a server action
 // to server B of my-stack-app.com, then the end user is person A, not server B.
 //
 // An end user is not the same as a ProjectUser. For example, if person A is not logged into

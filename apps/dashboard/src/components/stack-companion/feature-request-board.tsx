@@ -243,7 +243,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
   // Handle clicking on a feature request card to view it on Featurebase
   const handleFeatureRequestClick = (requestId: string) => {
     // Construct the Featurebase post URL using the post ID
-    const featureRequestUrl = `https://feedback.stack-auth.com/p/${requestId}`;
+    const featureRequestUrl = `https://feedback.hexclave.com/p/${requestId}`;
     const redirectTo = `/integrations/featurebase/sso?return_to=${encodeURIComponent(featureRequestUrl)}`;
 
     // Open in new tab to maintain the current Stack Companion session
@@ -259,7 +259,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
             Feature request submitted successfully!
           </p>
           <p className="text-xs text-green-600 dark:text-green-300 mt-1">
-            Thank you for helping us improve Stack Auth!
+            Thank you for helping us improve Hexclave!
           </p>
         </div>
       ) : showSubmitForm ? (

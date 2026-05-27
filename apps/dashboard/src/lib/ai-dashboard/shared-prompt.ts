@@ -72,7 +72,7 @@ ${stripComments(file.content)}
   });
 
   return `
-Complete Stack Auth SDK Type Definitions (Selected Files):
+Complete Hexclave SDK Type Definitions (Selected Files):
 These files show the available methods, types, and interfaces for the Stack SDK.
 ${fileContents.join('\n')}
   `.trim();
