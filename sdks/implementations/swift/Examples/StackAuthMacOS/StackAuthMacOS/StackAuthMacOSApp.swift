@@ -58,7 +58,7 @@ struct ContentView: View {
                     }
                 }
                 .listStyle(.sidebar)
-                .navigationTitle("Stack Auth SDK")
+                .navigationTitle("Hexclave SDK")
             } detail: {
                 Group {
                     switch viewModel.selectedSection {

@@ -75,7 +75,7 @@ const entries = [
   comment("# Do not edit manually; update apps/backend/.env.development, apps/dashboard/.env.development, or this generator."),
   blank(),
   comment("# Public emulator/app credentials"),
-  literal("NEXT_PUBLIC_STACK_DOCS_BASE_URL", "https://docs.stack-auth.com"),
+  literal("NEXT_PUBLIC_STACK_DOCS_BASE_URL", "https://docs.hexclave.com"),
   literal("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "true"),
   fromSource("apps/dashboard/.env.development", dashboardEnv, "NEXT_PUBLIC_STACK_PROJECT_ID"),
   fromSource("apps/dashboard/.env.development", dashboardEnv, "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"),

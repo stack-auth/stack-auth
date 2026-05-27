@@ -44,9 +44,9 @@ export const POST = createSmartRouteHandler({
       rpID: "THIS_VALUE_WILL_BE_REPLACED.example.com", // HACK: will be overridden in the frontend to be the actual domain, this is a temporary solution until we have a primary authentication domain
       // Here we set the userId to the user's id, this will cause to have the browser always store only one passkey per user! (browser stores one passkey per userId/rpID pair)
       userID: isoUint8Array.fromUTF8String(user.id),
-      userName: user.display_name || user.primary_email || "Stack Auth User",
+      userName: user.display_name || user.primary_email || "Hexclave User",
       challenge: getEnvVariable("STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING", "") ? isoUint8Array.fromUTF8String("MOCK") : undefined,
-      userDisplayName: user.display_name || user.primary_email || "Stack Auth User",
+      userDisplayName: user.display_name || user.primary_email || "Hexclave User",
       // Force passkey (discoverable/resident)
       authenticatorSelection: {
         residentKey: 'required',

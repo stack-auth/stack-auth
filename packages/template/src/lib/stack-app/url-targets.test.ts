@@ -105,7 +105,7 @@ describe("handler URL targets", () => {
     })).toThrowErrorMatchingInlineSnapshot(`
       [HexclaveAssertionError: OAuth callback URLs must be relative.
 
-      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave. Please make sure you are running the newest version and report it.]
     `);
   });
 
@@ -118,7 +118,7 @@ describe("handler URL targets", () => {
     })).toThrowErrorMatchingInlineSnapshot(`
       [HexclaveAssertionError: OAuth callback URLs must be relative.
 
-      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave. Please make sure you are running the newest version and report it.]
     `);
   });
 
@@ -209,7 +209,7 @@ describe("handler URL targets", () => {
     })).toThrowErrorMatchingInlineSnapshot(`
       [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
 
-      This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
+      This is likely an error in Hexclave. Please make sure you are running the newest version and report it.]
     `);
   });
 });
@@ -233,7 +233,7 @@ describe("isLocalHandlerUrlTarget", () => {
 
   it("treats cross-origin absolute handler URLs as non-local targets", () => {
     expect(isLocalHandlerUrlTarget({
-      targetUrl: "https://project-id.built-with-stack-auth.com/handler/sign-in",
+      targetUrl: "https://project-id.built-with-hexclave.com/handler/sign-in",
       handlerPath: "/handler",
       currentOrigin: "http://p91.localhost:9101",
     })).toBe(false);

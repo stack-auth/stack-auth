@@ -2,7 +2,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { createUrlIfValid } from "@stackframe/stack-shared/dist/utils/urls";
 
 const DEFAULT_REMOTE_DEVELOPMENT_ENVIRONMENT_API_BASE_URLS = [
-  "https://api.stack-auth.com",
+  "https://api.hexclave.com",
 ] as const;
 
 function canonicalApiBaseUrl(value: string | undefined): string | null {

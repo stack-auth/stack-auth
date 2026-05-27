@@ -220,7 +220,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
         <div className="bg-muted/30 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold">Stack Auth releases</h3>
+              <h3 className="text-sm font-semibold">Hexclave releases</h3>
             </div>
           </div>
           {error && (

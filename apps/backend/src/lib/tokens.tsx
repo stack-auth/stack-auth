@@ -69,6 +69,9 @@ const getIssuer = (projectId: string, userType: UserType) => {
 const issuerHostAliases = new Map<string, string>([
   ["api.stack-auth.com", "api.hexclave.com"],
   ["api.hexclave.com", "api.stack-auth.com"],
+  // Staging / preview deployments straddle both dev hosts during the cutover.
+  ["api.dev.stack-auth.com", "api.dev.hexclave.com"],
+  ["api.dev.hexclave.com", "api.dev.stack-auth.com"],
 ]);
 const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
   const issuer = getIssuer(projectId, userType);

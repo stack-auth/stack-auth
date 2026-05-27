@@ -29,7 +29,7 @@ async function getMintlifyMcpClient(): Promise<MCPClient> {
 
 /**
  * Documentation tools backed by Mintlify's generated MCP server.
- * The public Stack Auth MCP server still exposes the higher-level `ask_stack_auth` tool;
+ * The public Hexclave MCP server exposes the higher-level `ask_hexclave` tool;
  * that agent uses these lower-level Mintlify tools for search and page reads.
  */
 export async function createDocsTools() {
@@ -40,10 +40,10 @@ export async function createDocsTools() {
     captureError("mintlify-mcp-docs-tools", error);
     return {
       docsUnavailable: tool({
-        description: "Report that the Stack Auth documentation search tools are currently unavailable.",
+        description: "Report that the Hexclave documentation search tools are currently unavailable.",
         inputSchema: z.object({}),
         execute: async () => ({
-          error: "Stack Auth documentation search is temporarily unavailable. Please try again later.",
+          error: "Hexclave documentation search is temporarily unavailable. Please try again later.",
         }),
       }),
     };

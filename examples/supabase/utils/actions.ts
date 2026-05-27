@@ -4,7 +4,7 @@ import { stackServerApp } from "@/stack";
 import * as jose from "jose";
 
 /*
-This is a server action that returns a Supabase JWT with the Stack Auth user ID
+This is a server action that returns a Supabase JWT with the Hexclave user ID
 */
 export const getSupabaseJwt = async () => {
   const user = await stackServerApp.getUser();

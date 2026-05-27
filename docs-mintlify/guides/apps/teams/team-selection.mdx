@@ -30,7 +30,7 @@ You can import and use the `SelectedTeamSwitcher` component for the "current tea
 ```tsx
 "use client";
 
-import { SelectedTeamSwitcher, useUser } from "@stackframe/stack";
+import { SelectedTeamSwitcher, useUser } from "@hexclave/next";
 
 export function MyPage() {
   const user = useUser({ or: "redirect" });
@@ -76,7 +76,7 @@ First, create a client page at `app/team/[teamId]/page.tsx` to display informati
 ```tsx
 "use client";
 
-import { useUser, SelectedTeamSwitcher } from "@stackframe/stack";
+import { useUser, SelectedTeamSwitcher } from "@hexclave/next";
 import { useParams } from "next/navigation";
 
 export default function TeamPage() {
@@ -108,7 +108,7 @@ Next, create a page to display all teams at `app/team/page.tsx`:
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function TeamsPage() {
   const user = useUser({ or: "redirect" });

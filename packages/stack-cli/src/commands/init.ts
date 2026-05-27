@@ -33,7 +33,7 @@ type InitOptions = {
 export function registerInitCommand(program: Command) {
   program
     .command("init")
-    .description("Initialize Stack Auth in your project")
+    .description("Initialize Hexclave in your project")
     .option("--mode <mode>", "Mode: create, create-cloud, link-config, or link-cloud (skips interactive prompts)")
     .option("--apps <apps>", "Comma-separated app IDs to enable (for create mode)")
     .option("--config-file <path>", "Path to existing config file (for link-config mode)")
@@ -99,7 +99,7 @@ async function runInit(program: Command, opts: InitOptions) {
 
   validateOptions(opts);
 
-  console.log("Welcome to Stack Auth!\n");
+  console.log("Welcome to Hexclave!\n");
 
   let mode: string;
   if (opts.mode) {
@@ -109,14 +109,14 @@ async function runInit(program: Command, opts: InitOptions) {
   } else if (opts.configFile) {
     mode = "link-config";
   } else {
-    console.log("Creating a new Stack Auth project.\n");
+    console.log("Creating a new Hexclave project.\n");
     const localLabel = isEmulatorImageInstalled()
       ? "Local (emulator already installed)"
       : "Local (requires local emulator installation, ~1.3gb storage required)";
     const location = await select({
       message: "Where would you like to create the project?",
       choices: [
-        { name: "Stack Auth Cloud", value: "hosted" as const },
+        { name: "Hexclave Cloud", value: "hosted" as const },
         { name: localLabel, value: "local" as const },
       ],
     });
@@ -145,8 +145,8 @@ async function runInit(program: Command, opts: InitOptions) {
   const useAgent = opts.agent !== false && !isNonInteractiveEnv();
 
   if (useAgent) {
-    console.log("\nRunning your coding agent to wire up Stack Auth.");
-    console.log("This also registers the Stack Auth MCP server (https://mcp.stack-auth.com)");
+    console.log("\nRunning your coding agent to wire up Hexclave.");
+    console.log("This also registers the Hexclave MCP server (https://mcp.hexclave.com)");
     console.log("so your agent can read the docs and answer Stack-specific questions going forward.\n");
     const success = await runClaudeAgent({
       prompt: `Set up Stack Auth in my project now. Do not ask questions — detect the framework and package manager from existing files, apply the relevant sections of the setup guide, and skip sections for integrations this project does not use.\n\n${initPrompt}`,
@@ -178,7 +178,7 @@ function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: 
     console.log(`      ${args.dashboardUrl}/projects/${encodeURIComponent(args.projectId)}`);
   }
 
-  console.log("  • Docs: https://docs.stack-auth.com");
+  console.log("  • Docs: https://docs.hexclave.com");
   console.log("");
 }
 
@@ -244,11 +244,11 @@ async function writeProjectKeysToEnv(
 
   const header = variant === "local"
     ? [
-      "# Stack Auth — local emulator keys",
-      "# These credentials point at your local Stack Auth emulator, not a cloud project.",
+      "# Hexclave — local emulator keys",
+      "# These credentials point at your local Hexclave emulator, not a cloud project.",
       "# They are only valid while the emulator is running (`stack emulator start`).",
     ]
-    : ["# Stack Auth"];
+    : ["# Hexclave"];
 
   const envLines = [
     ...header,
@@ -265,16 +265,16 @@ async function writeProjectKeysToEnv(
 
     if (isNonInteractiveEnv()) {
       fs.appendFileSync(envPath, separator + envLines + "\n");
-      console.log("\nAppended Stack Auth keys to .env");
+      console.log("\nAppended Hexclave keys to .env");
     } else {
       const shouldAppend = await confirm({
-        message: `.env file already exists. Append Stack Auth keys?`,
+        message: `.env file already exists. Append Hexclave keys?`,
         default: true,
       });
 
       if (shouldAppend) {
         fs.appendFileSync(envPath, separator + envLines + "\n");
-        console.log("\nAppended Stack Auth keys to .env");
+        console.log("\nAppended Hexclave keys to .env");
       } else {
         console.log("\nHere are your environment variables:\n");
         console.log(envLines);
@@ -282,7 +282,7 @@ async function writeProjectKeysToEnv(
     }
   } else {
     fs.writeFileSync(envPath, envLines + "\n");
-    console.log("\nCreated .env with Stack Auth keys");
+    console.log("\nCreated .env with Hexclave keys");
   }
 }
 
@@ -317,7 +317,7 @@ async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOp
     }
 
     const shouldCreate = await confirm({
-      message: "You don't have any Stack Auth projects yet. Would you like to create one?",
+      message: "You don't have any Hexclave projects yet. Would you like to create one?",
       default: true,
     });
 

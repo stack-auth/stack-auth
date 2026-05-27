@@ -32,8 +32,8 @@ function captureOAuthAccessTokenRefreshIssue(options: {
 }
 
 /**
- * Access tokens minted under Stack Auth's shared OAuth apps must not be handed
- * to clients — they carry Stack Auth's brand at the provider. Only allowed when
+ * Access tokens minted under Hexclave's shared OAuth apps must not be handed
+ * to clients — they carry Hexclave's brand at the provider. Only allowed when
  * the deployer explicitly opts in via STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS.
  * NOT gated on NODE_ENV — the env-var opt-in is the only escape hatch.
  */
@@ -197,7 +197,7 @@ export async function retrieveOrRefreshAccessToken(options: {
             errorContext,
             refreshError: tokenSetResult.error,
           });
-          throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Stack Auth dashboard is correct.`);
+          throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Hexclave dashboard is correct.`);
         }
         case "unexpected": {
           captureOAuthAccessTokenRefreshIssue({

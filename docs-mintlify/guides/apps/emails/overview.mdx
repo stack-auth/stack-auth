@@ -1,10 +1,11 @@
 ---
 title: "Emails"
-description: "Send custom emails, manage templates, and track delivery - all from Stack Auth."
+description: "Send custom emails, manage templates, and track delivery - all from Hexclave."
 sidebarTitle: "Overview"
+icon: "/images/app-icons/emails.svg"
 ---
 
-Stack Auth includes a full email system for sending transactional and marketing emails to your users. It handles rendering, delivery, scheduling, notification preferences, and tracking out of the box.
+Hexclave includes a full email system for sending transactional and marketing emails to your users. It handles rendering, delivery, scheduling, notification preferences, and tracking out of the box.
 
 The dashboard splits the Emails app into four tabs:
 
@@ -37,7 +38,7 @@ You can monitor every email's status in the dashboard under [Emails → Sent](/g
 
 ## Enabling the Emails app
 
-Like every Stack Auth app, Emails has to be enabled before its dashboard tabs show up in your project. Open the **Apps** picker in the dashboard sidebar and toggle on **Emails**.
+Like every Hexclave app, Emails has to be enabled before its dashboard tabs show up in your project. Open the **Apps** picker in the dashboard sidebar and toggle on **Emails**.
 
 If a feature in the docs assumes the Emails app is enabled and you don't see the corresponding UI, this is the first thing to check.
 
@@ -152,7 +153,7 @@ type SendEmailOptions = {
 
 ### Error handling
 
-`sendEmail` resolves once the email has been queued. If validation fails, the user IDs do not exist, or the project is still using the shared email server, it throws a Stack Auth known error with a stable `errorCode`:
+`sendEmail` resolves once the email has been queued. If validation fails, the user IDs do not exist, or the project is still using the shared email server, it throws a Hexclave known error with a stable `errorCode`:
 
 ```typescript
 import { stackServerApp } from '@/stack/server';
@@ -177,7 +178,7 @@ export async function sendTestEmail(userId: string) {
           console.error("One or more user IDs do not exist");
           break;
         default:
-          console.error("Stack Auth email error", error.errorCode, error.message);
+          console.error("Hexclave email error", error.errorCode, error.message);
       }
     }
 
@@ -211,12 +212,12 @@ If `scheduledAt` is omitted, the email is sent as soon as possible.
 
 ## React components integration
 
-Emails integrate with Stack Auth UI components automatically (for example verification, password reset, and magic-link flows). Each of those flows uses a built-in template that you can customize in [Templates](/guides/apps/emails/templates).
+Emails integrate with Hexclave UI components automatically (for example verification, password reset, and magic-link flows). Each of those flows uses a built-in template that you can customize in [Templates](/guides/apps/emails/templates).
 
 For custom flows, trigger `sendEmail` from your server code:
 
 ```typescript
-import { stackServerApp } from '@stackframe/stack';
+import { stackServerApp } from '@hexclave/next';
 
 export async function inviteUser(userId: string) {
   const result = await stackServerApp.sendEmail({

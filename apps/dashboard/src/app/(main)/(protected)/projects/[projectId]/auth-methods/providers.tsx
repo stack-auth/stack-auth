@@ -247,7 +247,7 @@ function GithubNoteInline() {
 function DocsTextLink({ providerId }: { providerId: string }) {
   return (
     <Link
-      href={urlString`https://docs.stack-auth.com/docs/concepts/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
+      href={urlString`https://docs.hexclave.com/guides/apps/authentication/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
       target="_blank"
       className="inline-flex items-center gap-1 text-xs font-medium text-foreground/70 hover:text-foreground transition-colors"
     >

@@ -86,7 +86,14 @@ async function bundleAndExecute<T>(
 ): Promise<Result<T, string>> {
   const bundle = await bundleJavaScript(files, {
     keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
-    externalPackages: { '@stackframe/emails': stackframeEmailsPackage },
+    // Dual-resolve both module names to the same source (Hexclave rebrand,
+    // Tier 2): templates created before the rebrand import `@stackframe/emails`,
+    // new templates import `@hexclave/emails`. Both point at the same inlined
+    // virtual module so existing stored templates keep rendering.
+    externalPackages: {
+      '@stackframe/emails': stackframeEmailsPackage,
+      '@hexclave/emails': stackframeEmailsPackage,
+    },
     format: 'esm',
     sourcemap: false,
   });

@@ -4,7 +4,7 @@ import { join } from "path";
 export function defaultStackDevEnvStatePath(): string {
   if (process.platform === "win32") {
     const localAppData = process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local");
-    return join(localAppData, "Stack Auth", "dev-envs.json");
+    return join(localAppData, "Hexclave", "dev-envs.json");
   }
   return join(homedir(), ".stack", "dev-envs.json");
 }

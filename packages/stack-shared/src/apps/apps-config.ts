@@ -152,13 +152,13 @@ export const ALL_APPS = {
   },
   "vercel": {
     displayName: "Vercel Integration",
-    subtitle: "Deploy your Stack Auth project to Vercel",
+    subtitle: "Deploy your Hexclave project to Vercel",
     tags: ["integration", "developers"],
     stage: "stable",
   },
   "tanstack-start": {
     displayName: "TanStack Start",
-    subtitle: "Use Stack Auth in TanStack Start apps",
+    subtitle: "Use Hexclave in TanStack Start apps",
     tags: ["integration", "developers"],
     stage: "alpha",
   },

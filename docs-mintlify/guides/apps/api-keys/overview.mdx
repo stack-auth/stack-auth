@@ -4,23 +4,23 @@ description: "Create and manage API keys for users and teams"
 icon: "/images/app-icons/api-keys.svg"
 ---
 
-The API Keys app enables your users to generate and manage API keys for programmatic access to your backend services. API keys provide a secure way to authenticate requests, allowing developers to associate API calls with specific **users** or **teams**. Stack Auth provides prebuilt UI components so users and teams can manage their own keys.
+The API Keys app enables your users to generate and manage API keys for programmatic access to your backend services. API keys provide a secure way to authenticate requests, allowing developers to associate API calls with specific **users** or **teams**. Hexclave provides prebuilt UI components so users and teams can manage their own keys.
 
 ## Concepts
 
 ### The authentication flow
 
-A user or client sends an API request with an API key to your application server. Your server validates the API key with Stack Auth, which returns an authenticated `User` (or `Team`) object. Your server then processes the request and returns the response.
+A user or client sends an API request with an API key to your application server. Your server validates the API key with Hexclave, which returns an authenticated `User` (or `Team`) object. Your server then processes the request and returns the response.
 
 ### Two kinds of API keys
 
-Stack Auth supports two kinds of API keys:
+Hexclave supports two kinds of API keys:
 
 - **User API keys** — associated with an individual user; calls authenticated with this key act on behalf of that user.
 - **Team API keys** — associated with a team; calls authenticated with this key act on behalf of that team. Only users with the `$manage_api_keys` permission for the team can create or revoke them.
 
 <Note>
-  **Don't confuse API Keys with Project Keys.** The **API Keys app** documented here lets your end users issue keys for *their* accounts and teams. If you want to create or rotate the publishable / secret keys that *your* Stack Auth project uses to call the Stack API, that lives in **Project Settings → Project Keys** instead.
+  **Don't confuse API Keys with Project Keys.** The **API Keys app** documented here lets your end users issue keys for *their* accounts and teams. If you want to create or rotate the publishable / secret keys that *your* Hexclave project uses to call the Hexclave API, that lives in **Project Settings → Project Keys** instead.
 </Note>
 
 #### User API keys
@@ -31,7 +31,7 @@ User API keys are associated with individual users and allow them to authenticat
   <Tab title="Next.js Client">
     ```typescript title="app/components/create-api-key.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function CreateApiKey() {
       const user = useUser({ or: 'redirect' });
@@ -68,7 +68,7 @@ User API keys are associated with individual users and allow them to authenticat
   <Tab title="React">
     ```typescript title="components/CreateApiKey.tsx"
     "use client";
-    import { useUser } from "@stackframe/react";
+    import { useUser } from "@hexclave/react";
 
     export default function CreateApiKey() {
       const user = useUser({ or: 'redirect' });
@@ -97,7 +97,7 @@ User API keys are associated with individual users and allow them to authenticat
 
         # Create API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys',
+            'https://api.hexclave.com/api/v1/user-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -130,7 +130,7 @@ User API keys are associated with individual users and allow them to authenticat
 
         # Create API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys',
+            'https://api.hexclave.com/api/v1/user-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -164,7 +164,7 @@ User API keys are associated with individual users and allow them to authenticat
 
         # Create API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys',
+            'https://api.hexclave.com/api/v1/user-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -194,7 +194,7 @@ Team API keys are associated with teams and can be used to provide access to tea
   <Tab title="Next.js Client">
     ```typescript title="app/components/create-team-api-key.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function CreateTeamApiKey({ teamId }: { teamId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -238,7 +238,7 @@ Team API keys are associated with teams and can be used to provide access to tea
   <Tab title="React">
     ```typescript title="components/CreateTeamApiKey.tsx"
     "use client";
-    import { useUser } from "@stackframe/react";
+    import { useUser } from "@hexclave/react";
 
     export default function CreateTeamApiKey({ teamId }: { teamId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -271,7 +271,7 @@ Team API keys are associated with teams and can be used to provide access to tea
 
         # Create team API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/team-api-keys',
+            'https://api.hexclave.com/api/v1/team-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -304,7 +304,7 @@ Team API keys are associated with teams and can be used to provide access to tea
 
         # Create team API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/team-api-keys',
+            'https://api.hexclave.com/api/v1/team-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -338,7 +338,7 @@ Team API keys are associated with teams and can be used to provide access to tea
 
         # Create team API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/team-api-keys',
+            'https://api.hexclave.com/api/v1/team-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -362,9 +362,9 @@ Team API keys are associated with teams and can be used to provide access to tea
 
 ## Enabling the API Keys App
 
-To use API keys in your application, you must enable the **API Keys** app in your Stack Auth dashboard:
+To use API keys in your application, you must enable the **API Keys** app in your Hexclave dashboard:
 
-1. Open your Stack Auth dashboard
+1. Open your Hexclave dashboard
 2. Go to **Apps**
 3. Find and open **API Keys**
 4. Click **Enable**
@@ -388,7 +388,7 @@ Creating, listing, and revoking **team** API keys requires the [`$manage_api_key
 
 ## Prebuilt UI Components
 
-Stack Auth provides prebuilt UI components that let your users manage their own API keys without any additional code.
+Hexclave provides prebuilt UI components that let your users manage their own API keys without any additional code.
 
 ### User API Keys UI
 
@@ -404,7 +404,7 @@ The tab is only shown when `apiKeys.enabled.user` is on for your project.
 <Tabs>
   <Tab title="Next.js">
     ```typescript title="app/account/page.tsx"
-    import { AccountSettings } from '@stackframe/stack';
+    import { AccountSettings } from '@hexclave/next';
 
     export default function MyAccountPage() {
       return <AccountSettings fullPage />;
@@ -413,7 +413,7 @@ The tab is only shown when `apiKeys.enabled.user` is on for your project.
   </Tab>
   <Tab title="React">
     ```typescript title="src/account-page.tsx"
-    import { AccountSettings } from '@stackframe/react';
+    import { AccountSettings } from '@hexclave/react';
 
     export default function MyAccountPage() {
       return <AccountSettings fullPage />;
@@ -457,7 +457,7 @@ Both `user.listApiKeys()` and `team.listApiKeys()` return arrays of `ApiKey` obj
 
 ### `isPublic` keys
 
-When creating a key, pass `isPublic: true` to exempt it from Stack Auth's secret scanner. The secret scanner automatically revokes API keys it detects in public places (e.g. exposed in a GitHub repo). Use `isPublic` only for keys that are intentionally exposed to clients (e.g. anonymous-style access tokens).
+When creating a key, pass `isPublic: true` to exempt it from Hexclave's secret scanner. The secret scanner automatically revokes API keys it detects in public places (e.g. exposed in a GitHub repo). Use `isPublic` only for keys that are intentionally exposed to clients (e.g. anonymous-style access tokens).
 
 ## Working with API Keys
 
@@ -467,7 +467,7 @@ When creating a key, pass `isPublic: true` to exempt it from Stack Auth's secret
   <Tab title="Next.js Client">
     ```typescript title="app/components/create-api-key.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function CreateApiKey() {
       const user = useUser({ or: 'redirect' });
@@ -504,7 +504,7 @@ When creating a key, pass `isPublic: true` to exempt it from Stack Auth's secret
   <Tab title="React">
     ```typescript title="components/CreateApiKey.tsx"
     "use client";
-    import { useUser } from "@stackframe/react";
+    import { useUser } from "@hexclave/react";
 
     export default function CreateApiKey() {
       const user = useUser({ or: 'redirect' });
@@ -534,7 +534,7 @@ When creating a key, pass `isPublic: true` to exempt it from Stack Auth's secret
 
         # Create API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys',
+            'https://api.hexclave.com/api/v1/user-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -567,7 +567,7 @@ When creating a key, pass `isPublic: true` to exempt it from Stack Auth's secret
 
         # Create API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys',
+            'https://api.hexclave.com/api/v1/user-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -601,7 +601,7 @@ When creating a key, pass `isPublic: true` to exempt it from Stack Auth's secret
 
         # Create API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys',
+            'https://api.hexclave.com/api/v1/user-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -631,7 +631,7 @@ Requires the `$manage_api_keys` team permission.
   <Tab title="Next.js Client">
     ```typescript title="app/components/create-team-api-key.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function CreateTeamApiKey({ teamId }: { teamId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -672,7 +672,7 @@ Requires the `$manage_api_keys` team permission.
   <Tab title="React">
     ```typescript title="components/CreateTeamApiKey.tsx"
     "use client";
-    import { useUser } from "@stackframe/react";
+    import { useUser } from "@hexclave/react";
 
     export default function CreateTeamApiKey({ teamId }: { teamId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -705,7 +705,7 @@ Requires the `$manage_api_keys` team permission.
 
         # Create team API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/team-api-keys',
+            'https://api.hexclave.com/api/v1/team-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -738,7 +738,7 @@ Requires the `$manage_api_keys` team permission.
 
         # Create team API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/team-api-keys',
+            'https://api.hexclave.com/api/v1/team-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -772,7 +772,7 @@ Requires the `$manage_api_keys` team permission.
 
         # Create team API key via client API
         response = requests.post(
-            'https://api.stack-auth.com/api/v1/team-api-keys',
+            'https://api.hexclave.com/api/v1/team-api-keys',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -800,7 +800,7 @@ Requires the `$manage_api_keys` team permission.
   <Tab title="Next.js Client">
     ```typescript title="app/components/api-keys-list.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function ApiKeysList() {
       const user = useUser({ or: 'redirect' });
@@ -847,7 +847,7 @@ Requires the `$manage_api_keys` team permission.
   <Tab title="React">
     ```typescript title="components/ApiKeysList.tsx"
     "use client";
-    import { useUser } from "@stackframe/react";
+    import { useUser } from "@hexclave/react";
 
     export default function ApiKeysList() {
       const user = useUser({ or: 'redirect' });
@@ -879,7 +879,7 @@ Requires the `$manage_api_keys` team permission.
 
         # List user's API keys via client API
         response = requests.get(
-            'https://api.stack-auth.com/api/v1/user-api-keys?user_id=me',
+            'https://api.hexclave.com/api/v1/user-api-keys?user_id=me',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -906,7 +906,7 @@ Requires the `$manage_api_keys` team permission.
 
         # List user's API keys via client API
         response = requests.get(
-            'https://api.stack-auth.com/api/v1/user-api-keys?user_id=me',
+            'https://api.hexclave.com/api/v1/user-api-keys?user_id=me',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -934,7 +934,7 @@ Requires the `$manage_api_keys` team permission.
 
         # List user's API keys via client API
         response = requests.get(
-            'https://api.stack-auth.com/api/v1/user-api-keys?user_id=me',
+            'https://api.hexclave.com/api/v1/user-api-keys?user_id=me',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -955,7 +955,7 @@ The same pattern works for team API keys via `team.useApiKeys()` (client) or `te
 
 ### Validating an incoming API key on your server
 
-This is the core authentication flow: an incoming request includes an API key, and your server needs to know **which user or team** it represents. Pass the plaintext key directly to `stackServerApp.getUser({ apiKey })` or `stackServerApp.getTeam({ apiKey })` — Stack Auth validates it and returns the corresponding object, or `null` if the key is invalid, expired, or revoked.
+This is the core authentication flow: an incoming request includes an API key, and your server needs to know **which user or team** it represents. Pass the plaintext key directly to `stackServerApp.getUser({ apiKey })` or `stackServerApp.getTeam({ apiKey })` — Hexclave validates it and returns the corresponding object, or `null` if the key is invalid, expired, or revoked.
 
 <Tabs>
   <Tab title="Next.js Server">
@@ -1006,7 +1006,7 @@ This is the core authentication flow: an incoming request includes an API key, a
 
         # Check the API key via server API
         check = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys/check',
+            'https://api.hexclave.com/api/v1/user-api-keys/check',
             headers={
                 'x-stack-access-type': 'server',
                 'x-stack-project-id': stack_project_id,
@@ -1021,7 +1021,7 @@ This is the core authentication flow: an incoming request includes an API key, a
         api_key_obj = check.json()
         # Fetch the owning user
         user_resp = requests.get(
-            f'https://api.stack-auth.com/api/v1/users/{api_key_obj["user_id"]}',
+            f'https://api.hexclave.com/api/v1/users/{api_key_obj["user_id"]}',
             headers={
                 'x-stack-access-type': 'server',
                 'x-stack-project-id': stack_project_id,
@@ -1045,7 +1045,7 @@ This is the core authentication flow: an incoming request includes an API key, a
 
         # Check the API key via server API
         check = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys/check',
+            'https://api.hexclave.com/api/v1/user-api-keys/check',
             headers={
                 'x-stack-access-type': 'server',
                 'x-stack-project-id': stack_project_id,
@@ -1059,7 +1059,7 @@ This is the core authentication flow: an incoming request includes an API key, a
 
         api_key_obj = check.json()
         user_resp = requests.get(
-            f'https://api.stack-auth.com/api/v1/users/{api_key_obj["user_id"]}',
+            f'https://api.hexclave.com/api/v1/users/{api_key_obj["user_id"]}',
             headers={
                 'x-stack-access-type': 'server',
                 'x-stack-project-id': stack_project_id,
@@ -1084,7 +1084,7 @@ This is the core authentication flow: an incoming request includes an API key, a
 
         # Check the API key via server API
         check = requests.post(
-            'https://api.stack-auth.com/api/v1/user-api-keys/check',
+            'https://api.hexclave.com/api/v1/user-api-keys/check',
             headers={
                 'x-stack-access-type': 'server',
                 'x-stack-project-id': stack_project_id,
@@ -1098,7 +1098,7 @@ This is the core authentication flow: an incoming request includes an API key, a
 
         api_key_obj = check.json()
         user_resp = requests.get(
-            f'https://api.stack-auth.com/api/v1/users/{api_key_obj["user_id"]}',
+            f'https://api.hexclave.com/api/v1/users/{api_key_obj["user_id"]}',
             headers={
                 'x-stack-access-type': 'server',
                 'x-stack-project-id': stack_project_id,
@@ -1119,7 +1119,7 @@ When you already hold an `ApiKey` object (e.g. from `useApiKeys()`), use its syn
   <Tab title="Next.js Client">
     ```typescript title="app/components/check-api-key.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function CheckApiKeyValidity({ apiKeyId }: { apiKeyId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -1173,7 +1173,7 @@ When you already hold an `ApiKey` object (e.g. from `useApiKeys()`), use its syn
   <Tab title="React">
     ```typescript title="components/CheckApiKey.tsx"
     "use client";
-    import { useUser } from "@stackframe/react";
+    import { useUser } from "@hexclave/react";
 
     export default function CheckApiKeyValidity({ apiKeyId }: { apiKeyId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -1206,7 +1206,7 @@ When you already hold an `ApiKey` object (e.g. from `useApiKeys()`), use its syn
 
         # Get API key details via client API
         response = requests.get(
-            f'https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}',
+            f'https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -1251,7 +1251,7 @@ When you already hold an `ApiKey` object (e.g. from `useApiKeys()`), use its syn
 
         # Get API key details via client API
         response = requests.get(
-            f'https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}',
+            f'https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -1297,7 +1297,7 @@ When you already hold an `ApiKey` object (e.g. from `useApiKeys()`), use its syn
 
         # Get API key details via client API
         response = requests.get(
-            f'https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}',
+            f'https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -1339,7 +1339,7 @@ API keys can be revoked when they are no longer needed or if they have been comp
   <Tab title="Next.js Client">
     ```typescript title="app/components/revoke-api-key.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function RevokeApiKey({ apiKeyId }: { apiKeyId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -1378,7 +1378,7 @@ API keys can be revoked when they are no longer needed or if they have been comp
   <Tab title="React">
     ```typescript title="components/RevokeApiKey.tsx"
     "use client";
-    import { useUser } from "@stackframe/react";
+    import { useUser } from "@hexclave/react";
 
     export default function RevokeApiKey({ apiKeyId }: { apiKeyId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -1408,7 +1408,7 @@ API keys can be revoked when they are no longer needed or if they have been comp
 
         # Revoke API key via client API (update with revoked: true)
         response = requests.patch(
-            f'https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}',
+            f'https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -1438,7 +1438,7 @@ API keys can be revoked when they are no longer needed or if they have been comp
 
         # Revoke API key via client API (update with revoked: true)
         response = requests.patch(
-            f'https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}',
+            f'https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -1469,7 +1469,7 @@ API keys can be revoked when they are no longer needed or if they have been comp
 
         # Revoke API key via client API (update with revoked: true)
         response = requests.patch(
-            f'https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}',
+            f'https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}',
             headers={
                 'x-stack-access-type': 'client',
                 'x-stack-project-id': stack_project_id,
@@ -1496,4 +1496,4 @@ API keys can be revoked when they are no longer needed or if they have been comp
 3. **Don't share user keys across users.** A user API key acts as that exact user. If a service needs to act independently, prefer a team API key with a service-style role.
 4. **Use `$manage_api_keys` deliberately.** Only grant this team permission to roles you'd trust to lock or unlock the entire team's programmatic access.
 5. **Mark public keys with `isPublic: true`.** This opts them out of the secret scanner so your legitimately-public keys don't get auto-revoked.
-6. **Use `getUser({ apiKey })` / `getTeam({ apiKey })` for validation.** Never try to parse or compare the plaintext value yourself — Stack Auth handles hashing, expiration, and revocation.
+6. **Use `getUser({ apiKey })` / `getTeam({ apiKey })` for validation.** Never try to parse or compare the plaintext value yourself — Hexclave handles hashing, expiration, and revocation.

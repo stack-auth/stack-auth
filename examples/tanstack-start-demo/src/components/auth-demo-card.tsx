@@ -26,7 +26,7 @@ export function AuthDemoCard(props: AuthDemoCardProps) {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <UserAvatar user={props.user} size={64} />
               <div className="min-w-0">
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">Resolved Stack Auth user</p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">Resolved Hexclave user</p>
                 <p className="truncate text-xl font-semibold">{userLabel}</p>
                 <p className="mt-1 break-all font-mono text-sm text-zinc-500 dark:text-zinc-400">{props.user.id}</p>
               </div>
@@ -35,7 +35,7 @@ export function AuthDemoCard(props: AuthDemoCardProps) {
             <div>
               <p className="text-lg font-semibold">No signed-in user</p>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                This route rendered the signed-out branch from Stack Auth.
+                This route rendered the signed-out branch from Hexclave.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <button className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition-colors hover:transition-none dark:bg-white dark:text-zinc-950" onClick={() => runAsynchronouslyWithAlert(app.redirectToSignIn())}>

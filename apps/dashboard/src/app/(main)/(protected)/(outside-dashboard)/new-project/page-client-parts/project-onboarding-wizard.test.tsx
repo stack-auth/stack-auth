@@ -129,7 +129,7 @@ vi.mock("./components", () => ({
   ),
   WelcomeSlide: ({ onFinish }: { onFinish: () => void }) => (
     <div>
-      <h1>Welcome to Stack Auth</h1>
+      <h1>Welcome to Hexclave</h1>
       <button type="button" onClick={onFinish}>Get Started</button>
     </div>
   ),

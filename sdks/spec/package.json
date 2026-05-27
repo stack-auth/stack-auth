@@ -2,6 +2,6 @@
   "name": "@stackframe/sdk-spec",
   "version": "2.8.109",
   "private": true,
-  "description": "Stack Auth SDK specification files",
+  "description": "Hexclave SDK specification files",
   "scripts": {}
 }

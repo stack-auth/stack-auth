@@ -3,7 +3,7 @@ import { deindent } from "../../../utils/strings";
 export const convexSetupPrompt = deindent`
   ## Convex Setup
 
-  Follow these instructions to integrate Stack Auth with Convex.
+  Follow these instructions to integrate Hexclave with Convex.
 
   <Steps titleSize="h3">
     <Step title="Create or identify the Convex app">
@@ -13,7 +13,7 @@ export const convexSetupPrompt = deindent`
       npm create convex@latest
       \`\`\`
 
-      When prompted, choose **Next.js** and **No auth**. Stack Auth will provide auth.
+      When prompted, choose **Next.js** and **No auth**. Hexclave will provide auth.
 
       During development, run the Convex backend and the app dev server:
 
@@ -23,25 +23,25 @@ export const convexSetupPrompt = deindent`
       \`\`\`
     </Step>
 
-    <Step title="Install and configure Stack Auth">
-      Install Stack Auth in the app. If you have not already completed the SDK setup steps above, run the setup wizard:
+    <Step title="Install and configure Hexclave">
+      Install Hexclave in the app. If you have not already completed the SDK setup steps above, run the setup wizard:
 
       \`\`\`sh
-      npx @stackframe/stack-cli@latest init
+      npx @hexclave/cli@latest init
       \`\`\`
 
-      Create or select a Stack Auth project in the dashboard. Copy the Stack Auth environment variables into the app's \`.env.local\` file.
+      Create or select a Hexclave project in the dashboard. Copy the Hexclave environment variables into the app's \`.env.local\` file.
 
-      Also add the same Stack Auth environment variables to the Convex deployment environment in the Convex dashboard.
+      Also add the same Hexclave environment variables to the Convex deployment environment in the Convex dashboard.
     </Step>
 
     <Step title="Configure Convex auth providers">
       Create or update \`convex/auth.config.ts\`:
 
       \`\`\`ts convex/auth.config.ts
-      import { getConvexProvidersConfig } from "@stackframe/js";
-      // or: import { getConvexProvidersConfig } from "@stackframe/react";
-      // or: import { getConvexProvidersConfig } from "@stackframe/stack";
+      import { getConvexProvidersConfig } from "@hexclave/js";
+      // or: import { getConvexProvidersConfig } from "@hexclave/react";
+      // or: import { getConvexProvidersConfig } from "@hexclave/next";
 
       export default {
         providers: getConvexProvidersConfig({
@@ -51,38 +51,38 @@ export const convexSetupPrompt = deindent`
       \`\`\`
     </Step>
 
-    <Step title="Connect Convex clients to Stack Auth">
-      Update the Convex client setup so Convex receives Stack Auth tokens.
+    <Step title="Connect Convex clients to Hexclave">
+      Update the Convex client setup so Convex receives Hexclave tokens.
 
       In browser JavaScript:
 
       \`\`\`ts
-      convexClient.setAuth(stackClientApp.getConvexClientAuth({}));
+      convexClient.setAuth(hexclaveClientApp.getConvexClientAuth({}));
       \`\`\`
 
       In React:
 
       \`\`\`ts
-      convexReactClient.setAuth(stackClientApp.getConvexClientAuth({}));
+      convexReactClient.setAuth(hexclaveClientApp.getConvexClientAuth({}));
       \`\`\`
 
       For Convex HTTP clients on the server, pass a request-like token store:
 
       \`\`\`ts
-      convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));
+      convexHttpClient.setAuth(hexclaveClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));
       \`\`\`
     </Step>
 
-    <Step title="Use Stack Auth user data in Convex functions">
-      In Convex queries and mutations, use Stack Auth's Convex integration to read the current user.
+    <Step title="Use Hexclave user data in Convex functions">
+      In Convex queries and mutations, use Hexclave's Convex integration to read the current user.
 
       \`\`\`ts convex/myFunctions.ts
       import { query } from "./_generated/server";
-      import { stackServerApp } from "../src/stack/server";
+      import { hexclaveServerApp } from "../src/stack/server";
 
       export const myQuery = query({
         handler: async (ctx, args) => {
-          const user = await stackServerApp.getPartialUser({ from: "convex", ctx });
+          const user = await hexclaveServerApp.getPartialUser({ from: "convex", ctx });
           return user;
         },
       });
@@ -97,7 +97,7 @@ export const supabaseSetupPrompt = deindent`
   ## Supabase Setup
 
   <Note>
-    This setup covers Supabase Row Level Security (RLS) with Stack Auth JWTs. It does not sync user data between Supabase and Stack Auth. Use Stack Auth webhooks if you need data sync.
+    This setup covers Supabase Row Level Security (RLS) with Hexclave JWTs. It does not sync user data between Supabase and Hexclave. Use Hexclave webhooks if you need data sync.
   </Note>
 
   <Steps titleSize="h3">
@@ -131,13 +131,13 @@ export const supabaseSetupPrompt = deindent`
       \`\`\`
     </Step>
 
-    <Step title="Install Stack Auth and Supabase dependencies">
-      If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Stack Auth:
+    <Step title="Install Hexclave and Supabase dependencies">
+      If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Hexclave:
 
       \`\`\`sh
       npx create-next-app@latest -e with-supabase stack-supabase
       cd stack-supabase
-      npx @stackframe/stack-cli@latest init
+      npx @hexclave/cli@latest init
       \`\`\`
 
       Add the Supabase environment variables to \`.env.local\`:
@@ -148,10 +148,10 @@ export const supabaseSetupPrompt = deindent`
       SUPABASE_JWT_SECRET=<your-supabase-jwt-secret>
       \`\`\`
 
-      Also add the Stack Auth environment variables:
+      Also add the Hexclave environment variables:
 
       \`\`\`.env .env.local
-      # The project ID is the only client-exposed Stack Auth variable; in Next.js it must
+      # The project ID is the only client-exposed Hexclave variable; in Next.js it must
       # be prefixed with NEXT_PUBLIC_. STACK_SECRET_SERVER_KEY is server-only and must
       # NEVER be prefixed or exposed to the client.
       NEXT_PUBLIC_STACK_PROJECT_ID=<your-stack-project-id>
@@ -159,17 +159,17 @@ export const supabaseSetupPrompt = deindent`
       \`\`\`
     </Step>
 
-    <Step title="Mint Supabase JWTs from Stack Auth users">
-      Create a server action that signs a Supabase JWT using the current Stack Auth user ID:
+    <Step title="Mint Supabase JWTs from Hexclave users">
+      Create a server action that signs a Supabase JWT using the current Hexclave user ID:
 
       \`\`\`tsx utils/actions.ts
       'use server';
 
-      import { stackServerApp } from "@/stack/server";
+      import { hexclaveServerApp } from "@/stack/server";
       import * as jose from "jose";
 
       export const getSupabaseJwt = async () => {
-        const user = await stackServerApp.getUser();
+        const user = await hexclaveServerApp.getUser();
 
         if (!user) {
           return null;
@@ -189,7 +189,7 @@ export const supabaseSetupPrompt = deindent`
       \`\`\`
     </Step>
 
-    <Step title="Create a Supabase client that uses the Stack Auth JWT">
+    <Step title="Create a Supabase client that uses the Hexclave JWT">
       Create a helper that passes the server-generated JWT to Supabase:
 
       \`\`\`tsx utils/supabase-client.ts
@@ -207,18 +207,18 @@ export const supabaseSetupPrompt = deindent`
     </Step>
 
     <Step title="Fetch Supabase data">
-      Use the Supabase client from your UI. The RLS policies will decide which rows the user can read based on the Stack Auth user ID embedded in the Supabase JWT.
+      Use the Supabase client from your UI. The RLS policies will decide which rows the user can read based on the Hexclave user ID embedded in the Supabase JWT.
 
       \`\`\`tsx app/page.tsx
       'use client';
 
       import { createSupabaseClient } from "@/utils/supabase-client";
-      import { useStackApp, useUser } from "@stackframe/stack";
+      import { useHexclaveApp, useUser } from "@hexclave/next";
       import Link from "next/link";
       import { useEffect, useState } from "react";
 
       export default function Page() {
-        const app = useStackApp();
+        const app = useHexclaveApp();
         const user = useUser();
         const supabase = createSupabaseClient();
         const [data, setData] = useState<null | any[]>(null);
@@ -259,18 +259,18 @@ export const supabaseSetupPrompt = deindent`
 export const cliSetupPrompt = deindent`
   ## CLI Setup
 
-  Follow these instructions to authenticate users in a command line application with Stack Auth.
+  Follow these instructions to authenticate users in a command line application with Hexclave.
 
   <Steps titleSize="h3">
     <Step title="Add the CLI auth template">
-      Download the Stack Auth CLI authentication template and place it in your project. For Python apps, copy it as \`stack_auth_cli_template.py\`.
+      Download the Hexclave CLI authentication template and place it in your project. For Python apps, copy it as \`hexclave_cli_template.py\`.
 
       Example project layout:
 
       \`\`\`text
       my-python-app/
       ├─ main.py
-      └─ stack_auth_cli_template.py
+      └─ hexclave_cli_template.py
       \`\`\`
     </Step>
 
@@ -278,7 +278,7 @@ export const cliSetupPrompt = deindent`
       Import and call \`prompt_cli_login\`. It opens the browser, lets the user authenticate, and returns a refresh token.
 
       \`\`\`py main.py
-      from stack_auth_cli_template import prompt_cli_login
+      from hexclave_cli_template import prompt_cli_login
 
       refresh_token = prompt_cli_login(
         app_url="https://your-app-url.example.com",
@@ -295,15 +295,15 @@ export const cliSetupPrompt = deindent`
     </Step>
 
     <Step title="Exchange the refresh token for an access token">
-      Use the refresh token with Stack Auth's REST API to get an access token.
+      Use the refresh token with Hexclave's REST API to get an access token.
 
       \`\`\`py
       def get_access_token(refresh_token):
-        access_token_response = stack_auth_request(
+        access_token_response = hexclave_request(
           "post",
           "/api/v1/auth/sessions/current/refresh",
           headers={
-            "x-stack-refresh-token": refresh_token,
+            "x-hexclave-refresh-token": refresh_token,
           },
         )
 
@@ -312,15 +312,15 @@ export const cliSetupPrompt = deindent`
     </Step>
 
     <Step title="Fetch the current user">
-      Use the access token to call the Stack Auth REST API as the logged-in user.
+      Use the access token to call the Hexclave REST API as the logged-in user.
 
       \`\`\`py
       def get_user_object(access_token):
-        return stack_auth_request(
+        return hexclave_request(
           "get",
           "/api/v1/users/me",
           headers={
-            "x-stack-access-token": access_token,
+            "x-hexclave-access-token": access_token,
           },
         )
 
@@ -336,7 +336,7 @@ export const cliSetupPrompt = deindent`
 export const aiAgentConfigPreparationPrompt = deindent`
   ## AI Agent Configuration
 
-  Register the Stack Auth MCP server for the current coding agent, then update the project's agent instructions so future agents know how to fetch the Hexclave skill when they need deeper context.
+  Register the Hexclave MCP server for the current coding agent, then update the project's agent instructions so future agents know how to fetch the Hexclave skill when they need deeper context.
 
   ### Install the MCP server
 
@@ -344,19 +344,19 @@ export const aiAgentConfigPreparationPrompt = deindent`
 
   Pick the install scope using this rule: if the project root already contains an agent folder or project-scoped MCP config file (for example \`.claude/\`, \`.claude.json\`, \`.agents/\`, \`.cursor/\`, \`.cursor/mcp.json\`, \`.codex/\`, \`.codex/config.toml\`, \`.opencode/\`, \`.windsurf/\`, \`.roo/\`, \`.kilocode/\`, \`.augment/\`, \`.continue/\`, \`.crush/\`, or \`.vscode/mcp.json\`), install **per project**. Regardless of whether you've installed locally, you should ALSO install **globally** (see below).
 
-  Register an HTTP MCP server named \`stack-auth\` with URL \`https://mcp.stack-auth.com/mcp\`.
+  Register an HTTP MCP server named \`hexclave\` with URL \`https://mcp.hexclave.com/mcp\`.
 
   Common per-agent setup:
 
-  - Claude Code: run \`claude mcp add --transport http stack-auth https://mcp.stack-auth.com/mcp\`, or edit \`~/.claude.json\`.
-  - VS Code: run \`code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/mcp"}'\`.
+  - Claude Code: run \`claude mcp add --transport http hexclave https://mcp.hexclave.com/mcp\`, or edit \`~/.claude.json\`.
+  - VS Code: run \`code --add-mcp '{"type":"http","name":"hexclave","url":"https://mcp.hexclave.com/mcp"}'\`.
   - Cursor: edit \`~/.cursor/mcp.json\`, or project-scoped \`.cursor/mcp.json\`.
   - Codex CLI: edit \`~/.codex/config.toml\`.
   - opencode: edit \`~/.config/opencode/opencode.json\`.
 
   For any other agent, register the same HTTP MCP server using its standard MCP config file.
 
-  After installation, use the \`ask_stack_auth\` MCP tool for Stack Auth questions when available. If the MCP server is not available, fetch the latest docs from \`https://docs.stack-auth.com\`.
+  After installation, use the \`ask_hexclave\` MCP tool for Hexclave questions when available. If the MCP server is not available, fetch the latest docs from \`https://docs.hexclave.com\`.
 
   ### Update AGENTS.md
 
@@ -399,19 +399,19 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   }[mainType];
   const packageName = {
     "ai-prompt": "<the-sdk-from-above>",
-    nextjs: "@stackframe/stack",
-    react: "@stackframe/react",
-    js: "@stackframe/js",
-    "tanstack-start": "@stackframe/tanstack-start",
-    nodejs: "@stackframe/js",
-    bun: "@stackframe/js",
+    nextjs: "@hexclave/next",
+    react: "@hexclave/react",
+    js: "@hexclave/js",
+    "tanstack-start": "@hexclave/tanstack-start",
+    nodejs: "@hexclave/js",
+    bun: "@hexclave/js",
   }[mainType];
 
   return deindent`
     ## ${typeLabel ? `${typeLabel} SDK Setup Instructions` : "SDK Setup Instructions"}
 
-    Follow these instructions in order to set up and get started with the Stack Auth SDK ${typeLabel ? `for ${typeLabel} ` : "in various languages"}.
-    
+    Follow these instructions in order to set up and get started with the Hexclave SDK ${typeLabel ? `for ${typeLabel} ` : "in various languages"}.
+
     ${isAiPrompt ? "Not all steps are applicable to every type of application; for example, React apps have some extra steps that are not needed with other frameworks." : ""}
 
     ${isAiPrompt ? deindent`
@@ -426,18 +426,18 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     <Steps titleSize="h3">
       <Step title="Install dependencies">
         ${isAiPrompt ? deindent`
-          Stack Auth has SDKs for various languages, frameworks, and libraries. Use the most specific package each, so, for example, even though a Next.js project uses both Next.js and React, use the Next.js package. If a programming language is not supported entirely, you may have to use the REST API to interface with Stack Auth.
+          Hexclave has SDKs for various languages, frameworks, and libraries. Use the most specific package each, so, for example, even though a Next.js project uses both Next.js and React, use the Next.js package. If a programming language is not supported entirely, you may have to use the REST API to interface with Hexclave.
 
           #### JavaScript & TypeScript
 
           For JS & TS, the following packages are available:
 
-          - Next.js: \`@stackframe/stack\`
-          - React: \`@stackframe/react\`
-          - TanStack Start: \`@stackframe/tanstack-start\`
-          - Other & vanilla JS: \`@stackframe/js\`
+          - Next.js: \`@hexclave/next\`
+          - React: \`@hexclave/react\`
+          - TanStack Start: \`@hexclave/tanstack-start\`
+          - Other & vanilla JS: \`@hexclave/js\`
 
-          You can install the correct JavaScript Stack Auth SDK into your project by running the following command:
+          You can install the correct JavaScript Hexclave SDK into your project by running the following command:
         ` : deindent`
           First, install the \`${packageName}\` npm package with your preferred package manager:
         `}
@@ -449,17 +449,17 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           # or: bun add ${packageName}
           \`\`\`
       </Step>
-      
+
       <Step title="Initializing the Stack App">
-        Next, let us create the Stack App object for your project. This is the most important object in a Stack Auth project.
+        Next, let us create the Stack App object for your project. This is the most important object in a Hexclave project.
 
         ${isMaybeFrontend ? deindent`
-          In a frontend where you cannot keep a secret key safe, you would use the \`StackClientApp\` constructor:
+          In a frontend where you cannot keep a secret key safe, you would use the \`HexclaveClientApp\` constructor:
 
           \`\`\`ts src/stack/client.ts
-          import { StackClientApp } from "${packageName}";
+          import { HexclaveClientApp } from "${packageName}";
 
-          export const stackClientApp = new StackClientApp({
+          export const hexclaveClientApp = new HexclaveClientApp({
             tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
             urls: {
               default: {
@@ -471,13 +471,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         ` : ""}
 
         ${isMaybeBackend ? deindent`
-          In a backend where you can keep a secret key safe, you can use the \`StackServerApp\`, which provides access to more sensitive APIs compared to \`StackClientApp\`:
+          In a backend where you can keep a secret key safe, you can use the \`HexclaveServerApp\`, which provides access to more sensitive APIs compared to \`HexclaveClientApp\`:
 
           ${!isDefinitelyFrontend ? deindent`
             \`\`\`ts src/stack/server.ts
-            import { StackServerApp } from "${packageName}";
+            import { HexclaveServerApp } from "${packageName}";
 
-            export const stackServerApp = new StackServerApp({
+            export const hexclaveServerApp = new HexclaveServerApp({
               tokenStore: null,
               urls: {
                 default: {
@@ -489,53 +489,53 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isMaybeFrontend && !isDefinitelyFrontend ? deindent`
-            In frameworks that are both front- and backend, like Next.js, you can also create a \`StackServerApp\` from a \`StackClientApp\` object:
+            In frameworks that are both front- and backend, like Next.js, you can also create a \`HexclaveServerApp\` from a \`HexclaveClientApp\` object:
           ` : ""}
 
           ${isMaybeFrontend ? deindent`
             \`\`\`ts src/stack/server.ts
-            import { StackServerApp } from "${packageName}";
-            import { stackClientApp } from "./client";
+            import { HexclaveServerApp } from "${packageName}";
+            import { hexclaveClientApp } from "./client";
 
-            export const stackServerApp = new StackServerApp({
-              inheritsFrom: stackClientApp,
+            export const hexclaveServerApp = new HexclaveServerApp({
+              inheritsFrom: hexclaveClientApp,
             });
             \`\`\`
           ` : ""}
 
           ${isAiPrompt ? deindent`
-            Note that the secret server key should **never** be exposed to the client, as it can be used to read and write everything in your Stack Auth project. In web frontends or bundled applications, you should therefore always only ever create a \`StackClientApp\` object.
+            Note that the secret server key should **never** be exposed to the client, as it can be used to read and write everything in your Hexclave project. In web frontends or bundled applications, you should therefore always only ever create a \`HexclaveClientApp\` object.
           ` : ""}
         ` : ""}
       </Step>
 
       <Step title="Setting up the project">
-        It's now time to connect your code to a Stack Auth project.
+        It's now time to connect your code to a Hexclave project.
 
-        You can either run Stack Auth's dev environment locally, or connect to a production project hosted in the cloud.
+        You can either run Hexclave's dev environment locally, or connect to a production project hosted in the cloud.
 
         ${isAiPrompt ? deindent`
-          If you already use Stack Auth for your product, we recommend you re-use the same project to share your configuration between the two.
+          If you already use Hexclave for your product, we recommend you re-use the same project to share your configuration between the two.
         ` : ""}
 
         <AccordionGroup>
-          <Accordion title="Option 1: Running Stack Auth's dev environment (recommended)" defaultOpen>
+          <Accordion title="Option 1: Running Hexclave's dev environment (recommended)" defaultOpen>
             First, create a \`stack.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts stack.config.ts
-            import type { StackConfig } from "${packageName}";
+            import type { HexclaveConfig } from "${packageName}";
 
-            // default: show-onboarding, which shows the onboarding flow for this project when Stack Auth starts
-            export const config: StackConfig = "show-onboarding";
+            // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
+            export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
 
-            To run your application with Stack Auth, you can then start the dev environment and set environment variables expected by your application. Stack Auth's CLI has a \`dev\` command does both of these, so let's install it as a dev dependency and wrap your existing \`dev\` script in your package.json:
+            To run your application with Hexclave, you can then start the dev environment and set environment variables expected by your application. Hexclave's CLI has a \`dev\` command does both of these, so let's install it as a dev dependency and wrap your existing \`dev\` script in your package.json:
 
             \`\`\`sh
-            npm i -D @stackframe/stack-cli
-            # or: pnpm i -D @stackframe/stack-cli
-            # or: yarn add -D @stackframe/stack-cli
-            # or: bun add --dev @stackframe/stack-cli
+            npm i -D @hexclave/cli
+            # or: pnpm i -D @hexclave/cli
+            # or: yarn add -D @hexclave/cli
+            # or: bun add --dev @hexclave/cli
             \`\`\`
 
             \`\`\`json package.json
@@ -561,10 +561,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             #### Frontend
 
-            Go to your project's dashboard on [app.stack-auth.com](https://app.stack-auth.com) and get the project ID. You can find it in the URL after the \`/projects/\` part. Copy-paste it into your \`.env.local\` file (or wherever your environment variables are stored):
+            Go to your project's dashboard on [app.hexclave.com](https://app.hexclave.com) and get the project ID. You can find it in the URL after the \`/projects/\` part. Copy-paste it into your \`.env.local\` file (or wherever your environment variables are stored):
 
             ${isAiPrompt ? `${deindent`
-              Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Stack Auth on a client.
+              Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
             STACK_PROJECT_ID=<your-project-id>
             \`\`\`
@@ -572,7 +572,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             Alternatively, you can also just set the project ID in the \`stack/client.ts\` file:
 
             \`\`\`ts src/stack/client.ts
-            export const stackClientApp = new StackClientApp({
+            export const hexclaveClientApp = new HexclaveClientApp({
               // ...
               projectId: "your-project-id",
             });
@@ -581,40 +581,40 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             #### Backend (or both frontend and backend)
 
-            First, navigate to the [Project Keys](https://app.stack-auth.com/projects/-selector-/project-keys) page in the Stack Auth dashboard and generate a new set of keys.
+            First, navigate to the [Project Keys](https://app.hexclave.com/projects/-selector-/project-keys) page in the Hexclave dashboard and generate a new set of keys.
 
             Then, copy-paste them into your \`.env.local\` file (or wherever your environment variables are stored):
 
             ${isAiPrompt ? `${deindent`
-              If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Stack Auth on a server.
+              If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Hexclave on a server.
             `}\n\n` : ""}\`\`\`.env .env.local
             STACK_PROJECT_ID=<your-project-id>
             STACK_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 
-            They'll automatically be picked up by the \`StackServerApp\` constructor.
+            They'll automatically be picked up by the \`HexclaveServerApp\` constructor.
           </Accordion>
         </AccordionGroup>
       </Step>
 
       ${isMaybeReact ? deindent`
-        <Step title="${!isDefinitelyReact ? "React: " : ""}Creating a <StackProvider /> and <StackTheme />">
-          In React frameworks, Stack Auth provides \`StackProvider\` and \`StackTheme\` components that should wrap your entire app at the root level.
+        <Step title="${!isDefinitelyReact ? "React: " : ""}Creating a <HexclaveProvider /> and <HexclaveTheme />">
+          In React frameworks, Hexclave provides \`HexclaveProvider\` and \`HexclaveTheme\` components that should wrap your entire app at the root level.
 
           ${isMaybeVanillaReact && !isDefinitelyNextjs && !isDefinitelyTanstackStart ? deindent`
             For example, if you have an \`App.tsx\` file, update it as follows:
 
             \`\`\`tsx src/App.tsx
-            import { StackProvider, StackTheme } from "${packageName}";
-            import { stackClientApp } from "./stack/client";
+            import { HexclaveProvider, HexclaveTheme } from "${packageName}";
+            import { hexclaveClientApp } from "./stack/client";
 
             export default function App() {
               return (
-                <StackProvider app={stackClientApp}>
-                  <StackTheme>
+                <HexclaveProvider app={hexclaveClientApp}>
+                  <HexclaveTheme>
                     {/* your app content */}
-                  </StackTheme>
-                </StackProvider>
+                  </HexclaveTheme>
+                </HexclaveProvider>
               );
             }
             \`\`\`
@@ -625,16 +625,16 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             \`\`\`tsx src/app/layout.tsx
             import { Suspense } from "react";
-            import { StackProvider, StackTheme } from "${packageName}";
-            import { stackServerApp } from "@/stack/server";
+            import { HexclaveProvider, HexclaveTheme } from "${packageName}";
+            import { hexclaveServerApp } from "@/stack/server";
 
             export default function RootLayout({ children }: { children: React.ReactNode }) {
               return (
-                <StackProvider app={stackServerApp}>
-                  <StackTheme>
+                <HexclaveProvider app={hexclaveServerApp}>
+                  <HexclaveTheme>
                     {children}
-                  </StackTheme>
-                </StackProvider>
+                  </HexclaveTheme>
+                </HexclaveProvider>
               );
             }
             \`\`\`
@@ -644,10 +644,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${!isDefinitelyTanstackStart ? "For TanStack Start specifically: " : ""}TanStack Start uses file-based routes. The provider goes inside the root route's \`component\` (the inner React tree), while the document shell stays in \`shellComponent\`. Update \`src/routes/__root.tsx\`:
 
             \`\`\`tsx src/routes/__root.tsx
-            import { StackProvider, StackTheme } from "${isDefinitelyTanstackStart ? packageName : "@stackframe/tanstack-start"}";
+            import { HexclaveProvider, HexclaveTheme } from "${isDefinitelyTanstackStart ? packageName : "@hexclave/tanstack-start"}";
             import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
             import type { ReactNode } from "react";
-            import { stackClientApp } from "../stack/client";
+            import { hexclaveClientApp } from "../stack/client";
 
             export const Route = createRootRoute({
               shellComponent: RootDocument,
@@ -670,11 +670,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             function RootComponent() {
               return (
-                <StackProvider app={stackClientApp}>
-                  <StackTheme>
+                <HexclaveProvider app={hexclaveClientApp}>
+                  <HexclaveTheme>
                     <Outlet />
-                  </StackTheme>
-                </StackProvider>
+                  </HexclaveTheme>
+                </HexclaveProvider>
               );
             }
             \`\`\`
@@ -684,26 +684,26 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         </Step>
 
         <Step title="${!isDefinitelyReact ? "React: " : ""}Add Suspense boundary">
-          Stack Auth also provides additional \`useXyz\` React hooks for \`getXyz\`/\`listXyz\` functions. For example, \`useUser\` is like \`getUser\`, but as a suspending React hook.
+          Hexclave also provides additional \`useXyz\` React hooks for \`getXyz\`/\`listXyz\` functions. For example, \`useUser\` is like \`getUser\`, but as a suspending React hook.
 
           To support the suspension, you need to add a suspense boundary around your app.
-          
+
           ${isMaybeVanillaReact && !isDefinitelyNextjs && !isDefinitelyTanstackStart ? deindent`
             The easiest way to do this is to just wrap your entire app in a \`Suspense\` component:
 
             \`\`\`tsx src/App.tsx
             import { Suspense } from "react";
-            import { StackProvider, StackTheme } from "${packageName}";
-            import { stackClientApp } from "./stack/client";
+            import { HexclaveProvider, HexclaveTheme } from "${packageName}";
+            import { hexclaveClientApp } from "./stack/client";
 
             export default function App() {
               return (
                 <Suspense fallback={<div>Loading...</div>}>
-                  <StackProvider app={stackClientApp}>
-                    <StackTheme>
+                  <HexclaveProvider app={hexclaveClientApp}>
+                    <HexclaveTheme>
                       {/* your app content */}
-                    </StackTheme>
-                  </StackProvider>
+                    </HexclaveTheme>
+                  </HexclaveProvider>
                 </Suspense>
               );
             }
@@ -721,7 +721,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isMaybeTanstackStart ? deindent`
-            ${!isDefinitelyTanstackStart ? "In TanStack Start: " : ""}wrap the \`<Outlet />\` in your root route with a \`Suspense\` boundary so the document shell can stream while child routes wait on Stack Auth. Update \`RootComponent\` in \`src/routes/__root.tsx\`:
+            ${!isDefinitelyTanstackStart ? "In TanStack Start: " : ""}wrap the \`<Outlet />\` in your root route with a \`Suspense\` boundary so the document shell can stream while child routes wait on Hexclave. Update \`RootComponent\` in \`src/routes/__root.tsx\`:
 
             \`\`\`tsx src/routes/__root.tsx
             import { Suspense } from "react";
@@ -729,13 +729,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             function RootComponent() {
               return (
-                <StackProvider app={stackClientApp}>
-                  <StackTheme>
+                <HexclaveProvider app={hexclaveClientApp}>
+                  <HexclaveTheme>
                     <Suspense fallback={<div>Loading...</div>}>
                       <Outlet />
                     </Suspense>
-                  </StackTheme>
-                </StackProvider>
+                  </HexclaveTheme>
+                </HexclaveProvider>
               );
             }
             \`\`\`
@@ -748,10 +748,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
         ${isMaybeTanstackStart ? deindent`
           <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Stack handler route">
-            Stack Auth's auth flows (sign-in, sign-up, OAuth callbacks, password reset, etc.) are rendered by a single \`StackHandler\` component mounted at \`/handler/*\`. In TanStack Start, expose it as a splat file route at \`src/routes/handler/$.tsx\`:
+            Hexclave's auth flows (sign-in, sign-up, OAuth callbacks, password reset, etc.) are rendered by a single \`HexclaveHandler\` component mounted at \`/handler/*\`. In TanStack Start, expose it as a splat file route at \`src/routes/handler/$.tsx\`:
 
             \`\`\`tsx src/routes/handler/$.tsx
-            import { StackHandler } from "${isDefinitelyTanstackStart ? packageName : "@stackframe/tanstack-start"}";
+            import { HexclaveHandler } from "${isDefinitelyTanstackStart ? packageName : "@hexclave/tanstack-start"}";
             import { createFileRoute, useLocation } from "@tanstack/react-router";
 
             export const Route = createFileRoute("/handler/$")({
@@ -761,27 +761,27 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             function HandlerPage() {
               const { pathname } = useLocation();
-              return <StackHandler fullPage location={pathname} />;
+              return <HexclaveHandler fullPage location={pathname} />;
             }
             \`\`\`
 
             Two TanStack-specific notes:
 
             - The route is opted out of SSR with \`ssr: false\`. The handler runs browser-only auth flows (cookies, redirects, popups), so rendering it on the server provides no benefit and can fight with hydration. Other routes can opt into or out of SSR per-route the same way.
-            - Stack Auth resolves the current user during SSR by reading TanStack Start's request cookies through \`@stackframe/tanstack-start\`'s server context. No extra wiring is required — \`useUser()\` "just works" on both server and client routes as long as \`tokenStore: "cookie"\` is set on \`StackClientApp\`.
+            - Hexclave resolves the current user during SSR by reading TanStack Start's request cookies through \`@hexclave/tanstack-start\`'s server context. No extra wiring is required — \`useUser()\` "just works" on both server and client routes as long as \`tokenStore: "cookie"\` is set on \`HexclaveClientApp\`.
           </Step>
         ` : ""}
       ` : ""}
 
       ${isMaybeBackend && !isDefinitelyNextjs ? deindent`
         <Step title="${!isDefinitelyBackend ? "Backend: " : ""}Update callers with header & get user">
-          You are now ready to use the Stack Auth SDK. If you have any frontends calling your backend endpoints, you may want to pass along the Stack Auth tokens in a header such that you can access the same user object on your backend.
+          You are now ready to use the Hexclave SDK. If you have any frontends calling your backend endpoints, you may want to pass along the Hexclave tokens in a header such that you can access the same user object on your backend.
 
-          The most ergonomic way to do this is to pass the result of \`stackClientApp.getAuthorizationHeader()\` as the \`Authorization\` header into your backend endpoints when the user is signed in:
+          The most ergonomic way to do this is to pass the result of \`hexclaveClientApp.getAuthorizationHeader()\` as the \`Authorization\` header into your backend endpoints when the user is signed in:
 
           \`\`\`ts
           // NOTE: This is your frontend's code
-          const authorizationHeader = await stackClientApp.getAuthorizationHeader();
+          const authorizationHeader = await hexclaveClientApp.getAuthorizationHeader();
           const response = await fetch("/my-backend-endpoint", {
             headers: {
               ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
@@ -794,7 +794,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           \`\`\`ts
           // NOTE: This is your backend's code
-          const user = await stackServerApp.getUser({ tokenStore: request });
+          const user = await hexclaveServerApp.getUser({ tokenStore: request });
           return new Response("Hello, " + user.displayName, { headers: { "Cache-Control": "private, no-store" } });
           \`\`\`
 
@@ -810,12 +810,12 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           // Frontend:
           await rpcCall("my-rpc-endpoint", {
             data: {
-              auth: await stackClientApp.getAuthJson(),
+              auth: await hexclaveClientApp.getAuthJson(),
             },
           });
 
           // Backend:
-          const user = await stackServerApp.getUser({ tokenStore: data.auth });
+          const user = await hexclaveServerApp.getUser({ tokenStore: data.auth });
           return new RpcResponse("Hello, " + user.displayName);
           \`\`\`
         </Step>
@@ -827,11 +827,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 }
 
 export const aiSetupPrompt = deindent`
-  # Setting up Stack Auth
+  # Setting up Hexclave
 
-  This prompt explains how to set up Stack Auth in your project. This is the authoritative source of truth on how to set up Stack Auth, and you should follow these guidelines exactly.
+  This prompt explains how to set up Hexclave in your project. This is the authoritative source of truth on how to set up Hexclave, and you should follow these guidelines exactly.
 
-  To use it, you can use the sections below to set up Stack Auth in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
+  To use it, you can use the sections below to set up Hexclave in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
 
   ${getSdkSetupPrompt("ai-prompt")}
 

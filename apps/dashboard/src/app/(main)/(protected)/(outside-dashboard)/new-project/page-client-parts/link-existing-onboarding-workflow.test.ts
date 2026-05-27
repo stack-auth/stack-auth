@@ -20,7 +20,7 @@ describe("buildWorkflowYaml", () => {
     expect(workflowYaml).toContain(`          STACK_AUTH_CONFIG_PATH: ${JSON.stringify(configPath)}`);
     expect(workflowYaml).toContain(`          STACK_AUTH_SOURCE_REPO: \${{ github.repository }}`);
     expect(workflowYaml).toContain(`          STACK_AUTH_SOURCE_WORKFLOW_PATH: ${JSON.stringify(WORKFLOW_FILE_PATH)}`);
-    expect(workflowYaml).toContain("run: npx --yes @stackframe/stack-cli@latest config push --config-file \"$STACK_AUTH_CONFIG_PATH\" --source github --source-repo \"$STACK_AUTH_SOURCE_REPO\" --source-path \"$STACK_AUTH_CONFIG_PATH\" --source-workflow-path \"$STACK_AUTH_SOURCE_WORKFLOW_PATH\"");
+    expect(workflowYaml).toContain("run: npx --yes @hexclave/cli@latest config push --config-file \"$STACK_AUTH_CONFIG_PATH\" --source github --source-repo \"$STACK_AUTH_SOURCE_REPO\" --source-path \"$STACK_AUTH_CONFIG_PATH\" --source-workflow-path \"$STACK_AUTH_SOURCE_WORKFLOW_PATH\"");
     expect(workflowYaml).not.toContain(`--config-file "${configPath}"`);
   });
 

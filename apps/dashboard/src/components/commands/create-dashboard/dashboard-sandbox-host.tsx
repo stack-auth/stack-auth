@@ -466,7 +466,11 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           },
         });
 
+        // Expose under both names. AI-generated dashboards (post-PR2 prompt)
+        // reference hexclaveServerApp; pre-rebrand saved dashboards still
+        // reference stackServerApp. Both must resolve at runtime.
         window.stackServerApp = stackServerApp;
+        window.hexclaveServerApp = stackServerApp;
 
         return stackServerApp;
       }

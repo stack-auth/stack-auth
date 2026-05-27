@@ -2,10 +2,20 @@ export {
   HexclaveAdminApp,
   HexclaveClientApp,
   HexclaveServerApp,
-  StackAdminApp,
-  StackClientApp,
-  StackServerApp
 } from "./apps";
+
+// Legacy Stack* aliases — same runtime symbols, kept for backwards compatibility.
+// Prefer the Hexclave* equivalents in new code. See RENAME-TO-HEXCLAVE.md (Tier 1).
+/** @deprecated Use `HexclaveAdminApp` instead — same symbol, new brand name. */
+export { StackAdminApp } from "./apps";
+/** @deprecated Use `HexclaveClientApp` instead — same symbol, new brand name. */
+export { StackClientApp } from "./apps";
+/** @deprecated Use `HexclaveServerApp` instead — same symbol, new brand name. */
+export { StackServerApp } from "./apps";
+
+// HexclaveAdminApp / HexclaveClientApp / HexclaveServerApp are already exported above as values
+// (which TypeScript treats as both value and type). Only the constructor / options / JSON
+// helper types need separate type-only re-exports.
 export type {
   HexclaveAdminAppConstructor,
   HexclaveAdminAppConstructorOptions,
@@ -14,14 +24,22 @@ export type {
   HexclaveClientAppJson,
   HexclaveServerAppConstructor,
   HexclaveServerAppConstructorOptions,
-  StackAdminAppConstructor,
-  StackAdminAppConstructorOptions,
-  StackClientAppConstructor,
-  StackClientAppConstructorOptions,
-  StackClientAppJson,
-  StackServerAppConstructor,
-  StackServerAppConstructorOptions
 } from "./apps";
+
+/** @deprecated Use `HexclaveAdminAppConstructor` instead — same symbol, new brand name. */
+export type { StackAdminAppConstructor } from "./apps";
+/** @deprecated Use `HexclaveAdminAppConstructorOptions` instead — same symbol, new brand name. */
+export type { StackAdminAppConstructorOptions } from "./apps";
+/** @deprecated Use `HexclaveClientAppConstructor` instead — same symbol, new brand name. */
+export type { StackClientAppConstructor } from "./apps";
+/** @deprecated Use `HexclaveClientAppConstructorOptions` instead — same symbol, new brand name. */
+export type { StackClientAppConstructorOptions } from "./apps";
+/** @deprecated Use `HexclaveClientAppJson` instead — same symbol, new brand name. */
+export type { StackClientAppJson } from "./apps";
+/** @deprecated Use `HexclaveServerAppConstructor` instead — same symbol, new brand name. */
+export type { StackServerAppConstructor } from "./apps";
+/** @deprecated Use `HexclaveServerAppConstructorOptions` instead — same symbol, new brand name. */
+export type { StackServerAppConstructorOptions } from "./apps";
 
 export type {
   EmailOutboxListOptions,

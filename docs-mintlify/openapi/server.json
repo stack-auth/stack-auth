@@ -1,13 +1,14 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Stack REST API",
-    "version": "1.0.0"
+    "title": "Hexclave REST API",
+    "version": "1.0.0",
+    "description": "The Hexclave REST API. All request headers are documented as canonical `X-Hexclave-*`; the equivalent `X-Stack-*` aliases are accepted on every endpoint for backwards compatibility. Response headers `X-Hexclave-actual-status`, `X-Hexclave-known-error`, and `X-Hexclave-request-id` are emitted alongside their legacy `X-Stack-*` equivalents."
   },
   "servers": [
     {
-      "url": "https://api.stack-auth.com/api/v1",
-      "description": "Stack REST API"
+      "url": "https://api.hexclave.com/api/v1",
+      "description": "Hexclave REST API"
     }
   ],
   "paths": {
@@ -16,6 +17,83 @@
         "summary": "/api/v1",
         "description": "Returns a human-readable message with some useful information about the API.",
         "parameters": [
+          {
+            "name": "X-Hexclave-Project-Id",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "example": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+              "description": "The unique identifier of the project"
+            },
+            "description": "The unique identifier of the project",
+            "example": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+            "required": false
+          },
+          {
+            "name": "X-Hexclave-Branch-Id",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "example": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+              "description": "The unique identifier of the project"
+            },
+            "description": "The unique identifier of the project",
+            "example": "e0b52f4d-dece-408c-af49-d23061bb0f8d",
+            "required": false
+          },
+          {
+            "name": "X-Hexclave-Access-Type",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "client",
+                "server",
+                "admin"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "X-Hexclave-Access-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "X-Hexclave-Refresh-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "X-Hexclave-Publishable-Client-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "X-Hexclave-Secret-Server-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "X-Hexclave-Super-Secret-Admin-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
           {
             "name": "X-Stack-Project-Id",
             "in": "header",
@@ -95,7 +173,7 @@
           }
         ],
         "tags": [],
-        "x-full-url": "https://api.stack-auth.com/api/v1/",
+        "x-full-url": "https://api.hexclave.com/api/v1/",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -103,7 +181,7 @@
               "text/plain": {
                 "schema": {
                   "type": "string",
-                  "example": "Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com/\n\nAuthentication: None"
+                  "example": "Welcome to the Hexclave API endpoint! Please refer to the documentation at https://docs.hexclave.com/\n\nAuthentication: None"
                 }
               }
             }
@@ -119,7 +197,7 @@
         "tags": [
           "Anonymous"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/anonymous/sign-up",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/anonymous/sign-up",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -167,7 +245,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-api-keys",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -288,7 +366,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-api-keys",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -371,7 +449,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys/check",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-api-keys/check",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -452,7 +530,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys/{api_key_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-api-keys/{api_key_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -550,7 +628,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-api-keys/{api_key_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-api-keys/{api_key_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -631,7 +709,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/user-api-keys",
+        "x-full-url": "https://api.hexclave.com/api/v1/user-api-keys",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -758,7 +836,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/user-api-keys",
+        "x-full-url": "https://api.hexclave.com/api/v1/user-api-keys",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -843,7 +921,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/user-api-keys/check",
+        "x-full-url": "https://api.hexclave.com/api/v1/user-api-keys/check",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -926,7 +1004,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1026,7 +1104,7 @@
         "tags": [
           "API Keys"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/user-api-keys/{api_key_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/user-api-keys/{api_key_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1120,7 +1198,7 @@
         "tags": [
           "CLI Authentication"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/cli",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/cli",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1190,7 +1268,7 @@
         "tags": [
           "CLI Authentication"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/cli/complete",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/cli/complete",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1240,7 +1318,7 @@
         "tags": [
           "CLI Authentication"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/cli/poll",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/cli/poll",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1319,7 +1397,7 @@
         "tags": [
           "Connected Accounts"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/connected-accounts/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/connected-accounts/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1406,7 +1484,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1577,7 +1655,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels",
         "responses": {
           "201": {
             "description": "Successful response",
@@ -1672,7 +1750,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/verify",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/verify",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1728,7 +1806,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/verify/check-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/verify/check-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1801,7 +1879,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1913,7 +1991,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2033,7 +2111,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2151,7 +2229,7 @@
         "tags": [
           "Contact Channels"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/contact-channels/{user_id}/{contact_channel_id}/send-verification-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}/send-verification-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2212,7 +2290,7 @@
         "tags": [
           "DataVault"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/data-vault/stores/{id}/get",
+        "x-full-url": "https://api.hexclave.com/api/v1/data-vault/stores/{id}/get",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2275,7 +2353,7 @@
         "tags": [
           "DataVault"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/data-vault/stores/{id}/set",
+        "x-full-url": "https://api.hexclave.com/api/v1/data-vault/stores/{id}/set",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2308,7 +2386,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/capacity-boost",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/capacity-boost",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2339,7 +2417,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/delivery-info",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/delivery-info",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2493,7 +2571,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/notification-preference/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/notification-preference/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2597,7 +2675,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/notification-preference/{user_id}/{notification_category_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/notification-preference/{user_id}/{notification_category_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2677,7 +2755,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/outbox",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/outbox",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2747,7 +2825,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/outbox/{id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/outbox/{id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2830,7 +2908,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/outbox/{id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/outbox/{id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2851,7 +2929,7 @@
         "tags": [
           "Emails"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/emails/send-email",
+        "x-full-url": "https://api.hexclave.com/api/v1/emails/send-email",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2893,7 +2971,7 @@
         "tags": [
           "Internal"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/feature-requests",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/feature-requests",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3006,7 +3084,7 @@
         "tags": [
           "Internal"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/feature-requests",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/feature-requests",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3061,7 +3139,7 @@
         "tags": [
           "Internal"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/feature-requests/{featureRequestId}/upvote",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/feature-requests/{featureRequestId}/upvote",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3090,7 +3168,7 @@
     "/internal/feedback": {
       "post": {
         "summary": "Submit support feedback",
-        "description": "Send a support feedback message to the internal Stack Auth inbox. Auth is optional — works from both the dashboard (authenticated) and the dev tool (unauthenticated).",
+        "description": "Send a support feedback message to the internal Hexclave inbox. Auth is optional — works from both the dashboard (authenticated) and the dev tool (unauthenticated).",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -3128,7 +3206,7 @@
         "tags": [
           "Internal"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/feedback",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/feedback",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3171,7 +3249,7 @@
         "tags": [
           "Internal"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/preview/create-project",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/preview/create-project",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3391,7 +3469,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/authorize/{provider_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/oauth/authorize/{provider_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3486,7 +3564,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/cross-domain/authorize",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/oauth/cross-domain/authorize",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3546,7 +3624,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/oauth/token",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/oauth/token",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3576,7 +3654,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/oauth-providers",
+        "x-full-url": "https://api.hexclave.com/api/v1/oauth-providers",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3738,7 +3816,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/oauth-providers",
+        "x-full-url": "https://api.hexclave.com/api/v1/oauth-providers",
         "responses": {
           "201": {
             "description": "Successful response",
@@ -3846,7 +3924,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/oauth-providers/{user_id}/{provider_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/oauth-providers/{user_id}/{provider_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -3952,7 +4030,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/oauth-providers/{user_id}/{provider_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/oauth-providers/{user_id}/{provider_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4041,7 +4119,7 @@
         "tags": [
           "Oauth"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/oauth-providers/{user_id}/{provider_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/oauth-providers/{user_id}/{provider_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4138,7 +4216,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/ai-conversations",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/ai-conversations",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4236,7 +4314,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/ai-conversations",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/ai-conversations",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4280,7 +4358,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/ai-conversations/{conversationId}",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/ai-conversations/{conversationId}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4349,7 +4427,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/ai-conversations/{conversationId}",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/ai-conversations/{conversationId}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4399,7 +4477,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/ai-conversations/{conversationId}",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/ai-conversations/{conversationId}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4470,7 +4548,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/ai-conversations/{conversationId}/messages",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/ai-conversations/{conversationId}/messages",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4554,7 +4632,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/conversations",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4776,7 +4854,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/conversations",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -4827,7 +4905,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations/{conversationId}",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/conversations/{conversationId}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5145,7 +5223,7 @@
         "tags": [
           "Others"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/internal/conversations/{conversationId}",
+        "x-full-url": "https://api.hexclave.com/api/v1/internal/conversations/{conversationId}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5490,7 +5568,7 @@
         "tags": [
           "OTP"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/mfa/sign-in",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/mfa/sign-in",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5587,7 +5665,7 @@
         "tags": [
           "OTP"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/otp/send-sign-in-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/otp/send-sign-in-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5643,7 +5721,7 @@
         "tags": [
           "OTP"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/otp/sign-in",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/otp/sign-in",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5717,7 +5795,7 @@
         "tags": [
           "OTP"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/otp/sign-in/check-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/otp/sign-in/check-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5775,7 +5853,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/reset",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/password/reset",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5831,7 +5909,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/reset/check-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/password/reset/check-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5885,7 +5963,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/send-reset-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/password/send-reset-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5938,7 +6016,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/set",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/password/set",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -5994,7 +6072,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/sign-in",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/password/sign-in",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6082,7 +6160,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/sign-up",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/password/sign-up",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6153,7 +6231,7 @@
         "tags": [
           "Password"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/password/update",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/password/update",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6225,7 +6303,7 @@
         "tags": [
           "Payments"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/items/{customer_type}/{customer_id}/{item_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/payments/items/{customer_type}/{customer_id}/{item_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6359,7 +6437,7 @@
         "tags": [
           "Payments"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/items/{customer_type}/{customer_id}/{item_id}/update-quantity",
+        "x-full-url": "https://api.hexclave.com/api/v1/payments/items/{customer_type}/{customer_id}/{item_id}/update-quantity",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6499,7 +6577,7 @@
         "tags": [
           "Payments"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/purchases/create-purchase-url",
+        "x-full-url": "https://api.hexclave.com/api/v1/payments/purchases/create-purchase-url",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6568,7 +6646,7 @@
         "tags": [
           "Payments"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/purchases/purchase-session",
+        "x-full-url": "https://api.hexclave.com/api/v1/payments/purchases/purchase-session",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6627,7 +6705,7 @@
         "tags": [
           "Payments"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/payments/purchases/validate-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/payments/purchases/validate-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6802,7 +6880,7 @@
         "tags": [
           "Permissions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/project-permissions",
+        "x-full-url": "https://api.hexclave.com/api/v1/project-permissions",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -6898,7 +6976,7 @@
         "tags": [
           "Permissions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/project-permissions/{user_id}/{permission_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/project-permissions/{user_id}/{permission_id}",
         "responses": {
           "201": {
             "description": "Successful response",
@@ -6958,7 +7036,7 @@
         "tags": [
           "Permissions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/project-permissions/{user_id}/{permission_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/project-permissions/{user_id}/{permission_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7040,7 +7118,7 @@
         "tags": [
           "Permissions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-permissions",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-permissions",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7150,7 +7228,7 @@
         "tags": [
           "Permissions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-permissions/{team_id}/{user_id}/{permission_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-permissions/{team_id}/{user_id}/{permission_id}",
         "responses": {
           "201": {
             "description": "Successful response",
@@ -7224,7 +7302,7 @@
         "tags": [
           "Permissions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-permissions/{team_id}/{user_id}/{permission_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-permissions/{team_id}/{user_id}/{permission_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7257,7 +7335,7 @@
         "tags": [
           "Projects"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/projects/current",
+        "x-full-url": "https://api.hexclave.com/api/v1/projects/current",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7308,7 +7386,7 @@
         "tags": [
           "Sessions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/sessions",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/sessions",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7436,7 +7514,7 @@
         "tags": [
           "Sessions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/sessions",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/sessions",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7471,7 +7549,7 @@
         "tags": [
           "Sessions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/sessions/current",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/sessions/current",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7513,7 +7591,7 @@
         "tags": [
           "Sessions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/sessions/current/refresh",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/sessions/current/refresh",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7564,7 +7642,7 @@
         "tags": [
           "Sessions"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/auth/sessions/{id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/auth/sessions/{id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7618,7 +7696,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-invitations",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7712,7 +7790,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-invitations/accept",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7759,7 +7837,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept/check-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-invitations/accept/check-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7813,7 +7891,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/accept/details",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-invitations/accept/details",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7885,7 +7963,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/send-code",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-invitations/send-code",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7939,7 +8017,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/{id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-invitations/{id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7992,7 +8070,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-invitations/{id}/accept",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-invitations/{id}/accept",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -8033,7 +8111,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-member-profiles",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-member-profiles",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -8334,7 +8412,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-member-profiles/{team_id}/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-member-profiles/{team_id}/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -8637,7 +8715,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-member-profiles/{team_id}/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-member-profiles/{team_id}/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -8928,7 +9006,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-memberships/{team_id}/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-memberships/{team_id}/{user_id}",
         "responses": {
           "201": {
             "description": "Successful response",
@@ -8981,7 +9059,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/team-memberships/{team_id}/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/team-memberships/{team_id}/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -9085,7 +9163,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams",
+        "x-full-url": "https://api.hexclave.com/api/v1/teams",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -9241,7 +9319,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams",
+        "x-full-url": "https://api.hexclave.com/api/v1/teams",
         "responses": {
           "201": {
             "description": "Successful response",
@@ -9321,7 +9399,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/teams/{team_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -9399,7 +9477,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/teams/{team_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -9495,7 +9573,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/teams/{team_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/teams/{team_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -9677,7 +9755,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users",
+        "x-full-url": "https://api.hexclave.com/api/v1/users",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -10066,7 +10144,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users",
+        "x-full-url": "https://api.hexclave.com/api/v1/users",
         "responses": {
           "201": {
             "description": "Successful response",
@@ -10295,7 +10373,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users/me",
+        "x-full-url": "https://api.hexclave.com/api/v1/users/me",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -10522,7 +10600,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users/me",
+        "x-full-url": "https://api.hexclave.com/api/v1/users/me",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -10699,7 +10777,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users/me",
+        "x-full-url": "https://api.hexclave.com/api/v1/users/me",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -10940,7 +11018,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/users/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -11179,7 +11257,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/users/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -11368,7 +11446,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/users/{user_id}",
+        "x-full-url": "https://api.hexclave.com/api/v1/users/{user_id}",
         "responses": {
           "200": {
             "description": "Successful response",

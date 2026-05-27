@@ -1,6 +1,6 @@
-# Contributing to Stack Auth
+# Contributing to Hexclave
 
-Welcome to Stack Auth!
+Welcome to Hexclave!
 
 Due to the nature of authentication, this may not be the easiest project to contribute to, so if you are looking for projects to help gain programming experience, we may not be a great match. If you're looking for projects for beginners, check out [Awesome First PR Opportunities](https://github.com/MunGell/awesome-for-beginners).
 
@@ -19,18 +19,18 @@ Due to the nature of authentication, this may not be the easiest project to cont
 
 ## How to contribute
 
-If you think Stack Auth is a good fit for you, follow these steps:
+If you think Hexclave is a good fit for you, follow these steps:
 
-1. Join [our Discord](https://discord.stack-auth.com)
-2. [Use Stack Auth](https://docs.stack-auth.com/). The best way to understand the project is to use it. Build an application on top of Stack Auth, and post it on GitHub or write a blog post about how you built it. This also lets us assess your skills and understand where you could best help the project.
+1. Join [our Discord](https://discord.hexclave.com)
+2. [Use Hexclave](https://docs.hexclave.com/). The best way to understand the project is to use it. Build an application on top of Hexclave, and post it on GitHub or write a blog post about how you built it. This also lets us assess your skills and understand where you could best help the project.
 3. Give us feedback on Discord or GitHub; let us know where you got stuck, and which things you wish were easier. (We appreciate contributions most when they solve problems the authors encountered themselves in real usage.)
-4. Contribute to the [documentation](https://docs.stack-auth.com) and create examples & guides. This way, you can share your knowledge and expertise with everyone else who's just getting started.
+4. Contribute to the [documentation](https://docs.hexclave.com) and create examples & guides. This way, you can share your knowledge and expertise with everyone else who's just getting started.
 5. Only then, start [contributing to the codebase](README.md#-development--contribution). Coordinate with us on Discord beforehand to ensure we are not working on the same thing already, and to make sure a task is not more difficult than it seems.
 
 
 ## Security & bug bounties
 
-For any security-related concerns & bug bounties, please email us at [security@stack-auth.com](mailto:security@stack-auth.com).
+For any security-related concerns & bug bounties, please email us at [security@hexclave.com](mailto:security@hexclave.com).
 
 ## Vibecoding setup
 
@@ -47,7 +47,7 @@ For vibecoding, it can help to have multiple parallel copies of the codebase ope
   eval "$(/path/to/direnv hook <bash|zsh>)"
   eval "$(/path/to/direnv export <bash|zsh>)"
   ```
-3. Now, create a `.envrc` file in the root of Stack Auth's codebase with the following content:
+3. Now, create a `.envrc` file in the root of Hexclave's codebase with the following content:
   ```sh
   # .envrc
   # make sure to install direnv and add it to your shell rc file (e.g. ~/.bashrc or ~/.zshrc)

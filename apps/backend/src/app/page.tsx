@@ -4,11 +4,11 @@ import Link from "next/link";
 export default function Home() {
   return (
     <div>
-      Welcome to Stack Auth&apos;s API endpoint.<br />
+      Welcome to Hexclave&apos;s API endpoint.<br />
       <br />
-      Were you looking for <Link href="https://app.stack-auth.com">Stack&apos;s dashboard</Link> instead?<br />
+      Were you looking for <Link href="https://app.hexclave.com">Hexclave&apos;s dashboard</Link> instead?<br />
       <br />
-      You can also return to <Link href="https://stack-auth.com">https://stack-auth.com</Link>.<br />
+      You can also return to <Link href="https://hexclave.com">https://hexclave.com</Link>.<br />
       <br />
       <Link href="/api/v1">API v1</Link><br />
       {getNodeEnvironment() === "development" && (
