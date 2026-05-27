@@ -12,7 +12,7 @@ import {
   Plus,
 } from "@phosphor-icons/react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useStackApp, useUser } from "@stackframe/stack";
+import { Team, useStackApp, useUser } from "@stackframe/stack";
 import { SidebarLayout } from './sidebar-layout';
 import { ActiveSessionsPage } from "./active-sessions/active-sessions-page";
 import { ApiKeysPage } from "./api-keys/api-keys-page";
@@ -41,6 +41,8 @@ const Icon = ({ name }: { name: keyof typeof iconMap }) => {
   const PhosphorIcon = iconMap[name];
   return <PhosphorIcon className="h-4 w-4 shrink-0" />;
 };
+
+const emptyTeams: Team[] = [];
 
 export function DashboardAccountSettingsPage(props: {
   mockUser?: {
@@ -79,9 +81,8 @@ export function DashboardAccountSettingsPage(props: {
   const user = props.mockUser ? null : userFromHook;
   const project = props.mockProject || projectFromHook;
 
-  const teams = user?.useTeams() || [];
-  const teamsKey = useMemo(() => teams.map(team => team.id).join("|"), [teams]);
-  const teamsById = useMemo(() => teams, [teamsKey]);
+  const teams = user?.useTeams() ?? emptyTeams;
+  const teamsById = useMemo(() => teams, [teams]);
   const userRef = useRef(userFromHook ?? null);
   const userId = userFromHook?.id ?? null;
 
