@@ -45,6 +45,8 @@ type DashboardTeamSwitcherProps<AllowNull extends boolean = false> = {
   };
 };
 
+const emptyTeams: Team[] = [];
+
 export function DashboardTeamSwitcher<AllowNull extends boolean = false>(props: DashboardTeamSwitcherProps<AllowNull>) {
   return (
     <Suspense fallback={<Fallback />}>
@@ -62,7 +64,7 @@ function Inner<AllowNull extends boolean>(props: DashboardTeamSwitcherProps<Allo
   const navigate = app.useNavigate();
   const project = app.useProject();
 
-  const rawTeams = props.teams || [];
+  const rawTeams = props.teams ?? emptyTeams;
   const selectedTeam = props.team || rawTeams.find(team => team.id === props.teamId);
   const teams = useMemo(() => [...rawTeams].sort((a, b) => (b.id === selectedTeam?.id ? 1 : -1)), [rawTeams, selectedTeam]);
 

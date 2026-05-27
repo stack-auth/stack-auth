@@ -7,9 +7,12 @@ import { PageLayout } from "../page-layout";
 import { PaymentsPanel } from "./payments-panel";
 import { DashboardTeamSwitcher } from "../supporting/dashboard-team-switcher";
 
+const emptyTeams: Team[] = [];
+
 export function PaymentsPage(props: { mockMode?: boolean, availableTeams?: Team[], allowPersonal?: boolean }) {
   const user = useUser({ or: props.mockMode ? "return-null" : "redirect" });
-  const teams = props.availableTeams ?? user?.useTeams() ?? [];
+  const userTeams = user?.useTeams() ?? emptyTeams;
+  const teams = props.availableTeams ?? userTeams;
   const allowPersonal = props.allowPersonal ?? true;
   const hasTeams = teams.length > 0;
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
