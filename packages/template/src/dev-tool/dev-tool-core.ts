@@ -946,7 +946,9 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
         } else {
           avatar.textContent = initials;
         }
-        userName.textContent = currentUser.displayName || 'Anonymous';
+        userName.textContent = currentUser.isAnonymous
+          ? 'Anonymous'
+          : (currentUser.displayName || 'Welcome back');
         userEmail.textContent = currentUser.primaryEmail || 'No email';
         authIndicator.style.display = '';
       } else {
