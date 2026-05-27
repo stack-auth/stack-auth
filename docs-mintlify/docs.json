@@ -154,7 +154,7 @@
               {
                 "group": "Tutorials",
                 "pages": [
-                  "guides/other/tutorials/build-a-saas-with-stack-auth",
+                  "guides/other/tutorials/build-a-saas-with-hexclave",
                   "guides/other/tutorials/build-a-team-based-app",
                   "guides/other/tutorials/ship-production-ready-auth"
                 ]

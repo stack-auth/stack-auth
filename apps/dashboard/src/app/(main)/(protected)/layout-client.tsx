@@ -3,6 +3,7 @@
 import Loading from "@/app/loading";
 import { CursorBlastEffect } from "@hexclave/dashboard-ui-components";
 import { ConfigUpdateDialogProvider } from "@/lib/config-update";
+import { HexclaveRebrandModal } from "@/components/hexclave-rebrand-modal";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@hexclave/next";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
@@ -60,6 +61,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
     return (
       <ConfigUpdateDialogProvider>
         <CursorBlastEffect />
+        <HexclaveRebrandModal />
         {children}
       </ConfigUpdateDialogProvider>
     );

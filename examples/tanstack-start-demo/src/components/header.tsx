@@ -8,7 +8,7 @@ export function Header() {
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4">
           <nav className="flex items-center gap-4">
             <Link to="/" className="font-semibold tracking-tight">
-              Stack TanStack Demo
+              Hexclave TanStack Demo
             </Link>
             <Link to="/ssr" className="text-sm text-zinc-600 hover:text-zinc-950 hover:transition-none dark:text-zinc-300 dark:hover:text-white">
               SSR

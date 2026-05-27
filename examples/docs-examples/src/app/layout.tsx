@@ -8,8 +8,8 @@ import './global.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Stack Demo',
-  description: 'Example of using Stack as your authentication system.',
+  title: 'Hexclave Docs Example',
+  description: 'Example of using Hexclave as your authentication system.',
 };
 
 export default function RootLayout({

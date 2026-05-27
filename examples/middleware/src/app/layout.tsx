@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Hexclave Middleware Demo",
-  description: "A demo of Stack's middleware capabilities.",
+  description: "A demo of Hexclave's middleware capabilities.",
 };
 
 export default function RootLayout({
