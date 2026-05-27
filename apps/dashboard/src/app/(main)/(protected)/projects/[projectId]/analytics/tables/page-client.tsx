@@ -231,7 +231,7 @@ export default function PageClient() {
     <AppEnabledGuard appId="analytics">
       <PageLayout fillWidth noPadding>
         <AnalyticsEventLimitBanner />
-        <div className="flex min-w-0 items-start lg:-mx-2 [--analytics-tables-sticky-top:3.5rem] [--analytics-tables-sidebar-height:calc(100vh-3.5rem)] dark:[--analytics-tables-sticky-top:5rem] dark:[--analytics-tables-sidebar-height:calc(100vh-6rem)]">
+        <div className="flex w-full min-w-0 items-stretch lg:-ml-2 [--analytics-tables-sticky-top:3.5rem] [--analytics-tables-sidebar-height:calc(100vh-3.5rem)] dark:[--analytics-tables-sticky-top:5rem] dark:[--analytics-tables-sidebar-height:calc(100vh-6rem)]">
           {/* Left sidebar — hidden on mobile */}
           <div
             className="hidden lg:flex w-48 min-h-0 flex-shrink-0 self-start flex-col overflow-hidden border-r border-border/50 pl-2 sticky"
@@ -271,8 +271,19 @@ export default function PageClient() {
             </div>
           </div>
 
-          {/* Right content */}
-          <div className="flex min-w-0 flex-1 flex-col">
+          {/* Right content — flush to card edge; companion gap is on <main> in sidebar-layout */}
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-col",
+              "[&_[role=grid]]:rounded-r-none",
+              "[&_[role=grid]_.sticky]:rounded-t-none",
+              // Toolbar row only (first child of sticky chrome) — analytics layout
+              "[&_[role=grid]_.sticky>div:first-child>div]:pt-3",
+              "[&_[role=grid]_.sticky>div:first-child>div]:pb-2.5",
+              "[&_[role=grid]_.sticky>div:first-child>div]:pr-0",
+              "[&_[role=grid]_.sticky>div:first-child>div]:pl-2.5",
+            )}
+          >
             {selectedTable ? (
               <TableContent key={selectedTable} tableId={selectedTable} />
             ) : (
