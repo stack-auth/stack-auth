@@ -82,7 +82,10 @@ export function DashboardAccountSettingsPage(props: {
   const project = props.mockProject || projectFromHook;
 
   const teams = user?.useTeams() ?? emptyTeams;
-  const teamsById = useMemo(() => teams, [teams]);
+  const teamsKey = teams.map(team => team.id).join("|");
+  // useTeams() may return a fresh array on each render; key by IDs so product checks do not refire unnecessarily.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const teamsById = useMemo(() => teams, [teamsKey]);
   const userRef = useRef(userFromHook ?? null);
   const userId = userFromHook?.id ?? null;
 

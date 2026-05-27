@@ -68,7 +68,6 @@ export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: 
       props.onKeyCreated?.(key);
     } catch (error) {
       setSubmitError("Could not create the API key. Please try again.");
-      throw error;
     } finally {
       setLoading(false);
     }
