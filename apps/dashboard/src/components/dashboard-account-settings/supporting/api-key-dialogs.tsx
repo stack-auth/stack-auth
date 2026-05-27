@@ -2,9 +2,9 @@
 
 import { yupResolver } from "@hookform/resolvers/yup";
 import { yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { ActionDialog, Button, CopyField, Input, Label, Typography } from '@stackframe/stack-ui';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
+import { ActionDialog, Alert, AlertDescription, CopyField, Input, Label } from '@stackframe/stack-ui';
 import { useState } from "react";
 import { useForm } from 'react-hook-form';
 import * as yup from "yup";
@@ -21,6 +21,7 @@ export const expiresInOptions = {
   [1000 * 60 * 60 * 24 * 365]: "1 year",
   [neverInMs]: "Never",
 } as const;
+const expiresInOptionValues = Object.keys(expiresInOptions);
 
 /**
  * Dialog for creating a new API key
@@ -34,10 +35,11 @@ export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: 
 }) {
   const user = useUser({ or: props.mockMode ? 'return-null' : 'redirect' });
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const apiKeySchema = yupObject({
     description: yupString().defined().nonEmpty('Description is required'),
-    expiresIn: yupString().defined(),
+    expiresIn: yupString().oneOf(expiresInOptionValues, 'Select a valid expiration').defined(),
   });
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm({
@@ -50,8 +52,12 @@ export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: 
 
   const onSubmit = async (data: yup.InferType<typeof apiKeySchema>) => {
     setLoading(true);
+    setSubmitError(null);
     try {
-      const expirationMs = parseInt(data.expiresIn);
+      const expirationMs = Number.parseInt(data.expiresIn, 10);
+      if (Number.isNaN(expirationMs)) {
+        throwErr("API key expiration must be one of the predefined expiration options");
+      }
       const expiresAt = expirationMs === neverInMs ? undefined : new Date(Date.now() + expirationMs);
       const key = await props.createApiKey({
         description: data.description,
@@ -60,8 +66,9 @@ export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: 
       props.onOpenChange(false);
       reset();
       props.onKeyCreated?.(key);
-    } catch (e) {
-      captureError("api-key-create", { error: e });
+    } catch (error) {
+      setSubmitError("Could not create the API key. Please try again.");
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -77,19 +84,25 @@ export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: 
         label: "Create",
         props: { loading, disabled: !user },
         onClick: async () => {
-          await handleSubmit(onSubmit)();
+          runAsynchronouslyWithAlert(handleSubmit(onSubmit));
+          return "prevent-close";
         }
       }}
     >
       <form noValidate className='flex flex-col gap-4' onSubmit={(e) => {
         e.preventDefault();
-        runAsynchronously(handleSubmit(onSubmit));
+        runAsynchronouslyWithAlert(handleSubmit(onSubmit));
       }}>
         <div className='flex flex-col gap-1.5'>
           <Label htmlFor="description">Description</Label>
           <Input id="description" placeholder="My key description" {...register("description")} />
           {errors.description && <span className="text-red-500 text-xs font-medium mt-1">{errors.description.message}</span>}
         </div>
+        {submitError && (
+          <Alert variant="destructive">
+            <AlertDescription>{submitError}</AlertDescription>
+          </Alert>
+        )}
 
         <div className='flex flex-col gap-1.5'>
           <Label htmlFor="expiresIn">Expiration</Label>
@@ -104,6 +117,7 @@ export function CreateApiKeyDialog<Type extends ApiKeyType = ApiKeyType>(props: 
               </option>
             ))}
           </select>
+          {errors.expiresIn && <span className="text-red-500 text-xs font-medium mt-1">{errors.expiresIn.message}</span>}
         </div>
       </form>
     </ActionDialog>

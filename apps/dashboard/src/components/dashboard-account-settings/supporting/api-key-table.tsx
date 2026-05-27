@@ -1,5 +1,6 @@
 'use client';
 import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@stackframe/stack-ui";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import { ApiKey } from "./types";
@@ -7,6 +8,16 @@ import { ApiKey } from "./types";
 type ExtendedApiKey = ApiKey & {
   status: 'valid' | 'expired' | 'revoked',
 };
+
+const apiKeyStatusPriority = new Map<ExtendedApiKey["status"], number>([
+  ["valid", 0],
+  ["expired", 1],
+  ["revoked", 2],
+]);
+
+function getApiKeyStatusPriority(status: ExtendedApiKey["status"]) {
+  return apiKeyStatusPriority.get(status) ?? throwErr(`Missing sort priority for API key status ${status}`);
+}
 
 function toolbarRender<TData>(table: Table<TData>) {
   return (
@@ -100,19 +111,19 @@ const columns: ColumnDef<ExtendedApiKey>[] =  [
 export function ApiKeyTable(props: { apiKeys: ApiKey[] }) {
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => {
-      const map = { 'valid': 'valid', 'manually-revoked': 'revoked', 'expired': 'expired' } as const;
-      const why = apiKey.whyInvalid() || 'valid';
+      const why = apiKey.whyInvalid();
+      const status = why === null ? "valid" : why === "manually-revoked" ? "revoked" : why;
       return {
         ...apiKey,
-        status: map[why as keyof typeof map],
+        status,
       } satisfies ExtendedApiKey;
     });
     // first sort based on status, then by createdAt
     return keys.sort((a, b) => {
       if (a.status === b.status) {
-        return a.createdAt < b.createdAt ? 1 : -1;
+        return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0;
       }
-      return a.status === 'valid' ? -1 : 1;
+      return getApiKeyStatusPriority(a.status) - getApiKeyStatusPriority(b.status);
     });
   }, [props.apiKeys]);
 
