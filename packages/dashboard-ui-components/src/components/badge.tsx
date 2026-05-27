@@ -94,7 +94,7 @@ export function DesignBadge({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full font-medium",
+        "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full font-medium leading-none",
         colorClasses,
         sizeClasses
       )}
