@@ -11,6 +11,7 @@ export function PasskeySection(props?: {
   const isInMockMode = !!props?.mockMode;
   const user = useUser({ or: isInMockMode ? 'return-null' : "redirect" });
   const stackApp = useStackApp();
+  const project = stackApp.useProject();
 
   // In mock mode, show a placeholder message
   if (isInMockMode && !user) {
@@ -28,7 +29,6 @@ export function PasskeySection(props?: {
     return null;
   }
 
-  const project = stackApp.useProject();
   if (!project.config.passkeyEnabled) {
     return null;
   }

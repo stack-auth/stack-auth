@@ -44,8 +44,11 @@ function OtpSectionInner({ user }: { user: any }) {
   const hasValidEmail = contactChannels.filter((x: any) => (x.type as string) === 'email' && x.isVerified && x.usedForAuth).length > 0;
 
   const handleDisableOTP = async () => {
-    await user.update({ otpAuthEnabled: false });
-    setDisabling(false);
+    try {
+      await user.update({ otpAuthEnabled: false });
+    } finally {
+      setDisabling(false);
+    }
   };
 
   return (
