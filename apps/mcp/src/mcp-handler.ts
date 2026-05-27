@@ -1,4 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { remindersPrompt } from "@stackframe/stack-shared/dist/ai/unified-prompts/reminders";
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 
@@ -176,7 +177,9 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
         name: "hexclave-mcp",
         version: packageJson.version,
       },
-      instructions: "Hexclave's official MCP server. Prefer the `ask_hexclave` tool for any question about Hexclave — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Hexclave changes frequently. The `skill` resource/tool loads SKILL.md (the canonical Hexclave agent skill) — pull it in when you need a quick reference for project setup, CLI usage, or wiring conventions, but always use `ask_hexclave` first.",
+      instructions: `Hexclave's official MCP server. Prefer the \`ask_hexclave\` tool for any question about Hexclave — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Hexclave changes frequently. The \`skill\` resource/tool loads SKILL.md (the canonical Hexclave agent skill) — pull it in when you need a quick reference for project setup, CLI usage, or wiring conventions, but always use \`ask_hexclave\` first.
+
+${remindersPrompt}`,
     },
     {
       streamableHttpEndpoint: config.streamableHttpEndpoint,

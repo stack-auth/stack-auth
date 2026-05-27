@@ -1,4 +1,4 @@
-import docsJson from "../../../../../../docs-mintlify/docs.json";
+import docsJson from "./docs-json.generated";
 
 const DOCS_BASE = "https://docs.hexclave.com";
 
