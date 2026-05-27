@@ -95,26 +95,39 @@ export function errorToNiceString(error: unknown): string {
 
 
 const errorSinks = new Set<(location: string, error: unknown, ...extraArgs: unknown[]) => void>();
-export function registerErrorSink(sink: (location: string, error: unknown) => void): void {
+export function registerErrorSink(sink: (location: string, error: unknown, ...extraArgs: unknown[]) => void): void {
   if (errorSinks.has(sink)) {
     return;
   }
   errorSinks.add(sink);
 }
-registerErrorSink((location, error, ...extraArgs) => {
-  console.error(
-    `\x1b[41mCaptured error in ${location}:`,
+
+function getCaptureExtraArgs(error: unknown): unknown[] {
+  if (!error || (typeof error !== 'object' && typeof error !== 'function')) {
+    return [];
+  }
+  if (!("customCaptureExtraArgs" in error)) {
+    return [];
+  }
+  return Array.isArray(error.customCaptureExtraArgs) ? [...error.customCaptureExtraArgs] : [];
+}
+
+function captureToGlobalVar(location: string, error: unknown, extraArgs: unknown[]): void {
+  globalVar.stackCapturedErrors = globalVar.stackCapturedErrors ?? [];
+  globalVar.stackCapturedErrors.push({ location, error, extraArgs });
+}
+
+function logCapturedError(level: "error" | "warning", location: string, error: unknown, extraArgs: unknown[]): void {
+  const log = level === "error" ? console.error : console.warn;
+  log(
+    `${level === "error" ? "\x1b[41m" : "\x1b[43m"}Captured ${level} in ${location}:`,
     // HACK: Log a nicified version of the error to get around buggy Next.js pretty-printing
     // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
     errorToNiceString(error),
     ...extraArgs,
     "\x1b[0m",
   );
-});
-registerErrorSink((location, error, ...extraArgs) => {
-  globalVar.stackCapturedErrors = globalVar.stackCapturedErrors ?? [];
-  globalVar.stackCapturedErrors.push({ location, error, extraArgs });
-});
+}
 
 /**
  * Captures an error and sends it to the error sinks (most notably, Sentry). Errors caught with captureError are
@@ -126,11 +139,22 @@ registerErrorSink((location, error, ...extraArgs) => {
  * Errors that bubble up to the top of runAsynchronously or a route handler are already captured with captureError.
  */
 export function captureError(location: string, error: unknown): void {
+  captureToErrorSinks("error", location, error);
+}
+
+export function captureWarning(location: string, error: unknown): void {
+  captureToErrorSinks("warning", location, error);
+}
+
+function captureToErrorSinks(level: "error" | "warning", location: string, error: unknown): void {
+  const extraArgs = getCaptureExtraArgs(error);
+  logCapturedError(level, location, error, extraArgs);
+  captureToGlobalVar(location, error, extraArgs);
   for (const sink of errorSinks) {
     sink(
       location,
       error,
-      ...error && (typeof error === 'object' || typeof error === 'function') && "customCaptureExtraArgs" in error && Array.isArray(error.customCaptureExtraArgs) ? (error.customCaptureExtraArgs as any[]) : [],
+      ...extraArgs,
     );
   }
 }

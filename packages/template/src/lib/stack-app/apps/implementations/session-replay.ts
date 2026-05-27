@@ -1,4 +1,5 @@
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
+import { captureWarning } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
@@ -255,12 +256,15 @@ export class SessionRecorder {
       );
 
       if (res.status === "error") {
-        console.warn("SessionRecorder flush failed:", res.error);
+        captureWarning("session-recording-batch-flush-failed", res.error);
         return;
       }
 
       if (!res.data.ok) {
-        console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+        captureWarning("session-recording-batch-flush-failed", {
+          status: res.data.status,
+          body: await res.data.text(),
+        });
       }
     } finally {
       this._flushInProgress = false;
