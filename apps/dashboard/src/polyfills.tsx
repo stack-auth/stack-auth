@@ -10,8 +10,8 @@ function expandStackPortPrefix(value?: string | null) {
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix as string) : value;
 }
 
-const sentryErrorSink = (location: string, error: unknown) => {
-  Sentry.captureException(error, { extra: { location } });
+const sentryErrorSink = (location: string, error: unknown, level: "error" | "warning") => {
+  Sentry.captureException(error, { extra: { location }, level });
 };
 
 export function ensurePolyfilled() {

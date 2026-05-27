@@ -150,9 +150,11 @@ function RebrandIllustration() {
       className="flex justify-center items-center gap-4 pb-2"
       aria-hidden="true"
     >
-      {/* Stack Auth: served light & dark variants depending on theme */}
+      {/* Stack Auth: pre-rebrand mark, preserved under a dedicated filename
+          because /logo.svg now resolves to the Hexclave benzene mark post-
+          rebrand (PR #1481). Light & dark variants served per theme. */}
       <Image
-        src="/logo.svg"
+        src="/stack-auth-logo.svg"
         alt=""
         width={48}
         height={48}
@@ -160,7 +162,7 @@ function RebrandIllustration() {
         className="h-12 w-auto opacity-50 block dark:hidden"
       />
       <Image
-        src="/logo-bright.svg"
+        src="/stack-auth-logo-bright.svg"
         alt=""
         width={48}
         height={48}

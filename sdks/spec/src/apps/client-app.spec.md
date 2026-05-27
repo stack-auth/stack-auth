@@ -66,7 +66,7 @@ Note: Additional provider scopes are configured via oauthScopesOnSignIn construc
 
 Implementation:
 1. Construct full redirect URLs using a fixed callback scheme:
-   - Native apps: "stack-auth-mobile-oauth-url://success" and "stack-auth-mobile-oauth-url://error"
+   - Native apps: "hexclave-mobile-oauth-url://success" and "hexclave-mobile-oauth-url://error"
    - Browser: Use the configured OAuth callback handler URL as redirect_uri and window.location to construct absolute URLs
    - Browser: If options.returnTo is provided, pass it as afterCallbackRedirectUrl, not as redirect_uri
 
@@ -82,7 +82,7 @@ Implementation:
 
 4. Open the authorization URL:
    - Browser: perform redirect according to redirectMethod
-   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "stack-auth-mobile-oauth-url"
+   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "hexclave-mobile-oauth-url"
    - Android: Custom Tabs with callback URL registered as deep link
    - Desktop: Open system browser with registered URL scheme for callback
 
@@ -166,7 +166,7 @@ Returns: { url: string, state: string, codeVerifier: string, redirectUrl: string
   redirectUrl: The redirect URL (same as input, needed for token exchange - must match exactly)
 
 Note on URL schemes:
-- The "stack-auth-mobile-oauth-url://" scheme is automatically accepted by the backend without any configuration.
+- The "hexclave-mobile-oauth-url://" scheme is automatically accepted by the backend without any configuration.
 
 Implementation:
 1. Generate or use provided state and codeVerifier

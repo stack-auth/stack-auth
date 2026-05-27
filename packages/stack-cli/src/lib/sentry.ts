@@ -89,8 +89,8 @@ export function initSentry() {
     },
   });
 
-  registerErrorSink((location, error) => {
-    Sentry.captureException(error, { extra: { location } });
+  registerErrorSink((location, error, level) => {
+    Sentry.captureException(error, { extra: { location }, level });
     ignoreUnhandledRejection(Sentry.flush(2000));
   });
 }
