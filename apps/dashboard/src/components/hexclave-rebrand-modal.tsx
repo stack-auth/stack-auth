@@ -112,16 +112,22 @@ export function HexclaveRebrandModal() {
             >
               app.hexclave.com
             </a>
-            . For more info on how to update your project, read our{" "}
+            . To update your project, rename all{" "}
+            <code className="font-mono text-xs">@stackframe/*</code> imports to{" "}
+            <code className="font-mono text-xs">@hexclave/*</code> — the only
+            exception is{" "}
+            <code className="font-mono text-xs">@stackframe/stack</code>, which
+            becomes <code className="font-mono text-xs">@hexclave/next</code>.
+            See the{" "}
             <a
               href={MIGRATION_DOCS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium underline underline-offset-2 hover:text-foreground"
+              className="underline underline-offset-2 hover:text-foreground"
             >
               migration guide
-            </a>
-            .
+            </a>{" "}
+            for full details.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="sm:justify-center pt-6">
