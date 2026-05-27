@@ -270,7 +270,7 @@ export function DomainReputationCard() {
     <DesignCard
       gradient="default"
       glassmorphic
-      className="w-full lg:w-72"
+      className="w-full xl:w-72"
     >
       <div className="flex items-center gap-2 mb-3">
         <div className="p-1 rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.04]">
