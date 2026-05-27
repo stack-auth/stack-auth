@@ -94,7 +94,9 @@ export function errorToNiceString(error: unknown): string {
 }
 
 
-const errorSinks = new Set<(location: string, error: unknown, ...extraArgs: unknown[]) => void>();
+type ErrorOrWarningSink = (location: string, error: unknown, ...extraArgs: unknown[]) => void;
+
+const errorSinks = new Set<ErrorOrWarningSink>();
 export function registerErrorSink(sink: (location: string, error: unknown) => void): void {
   if (errorSinks.has(sink)) {
     return;
@@ -116,6 +118,30 @@ registerErrorSink((location, error, ...extraArgs) => {
   globalVar.stackCapturedErrors.push({ location, error, extraArgs });
 });
 
+const warningSinks = new Set<ErrorOrWarningSink>();
+export function registerWarningSink(sink: (location: string, error: unknown) => void): void {
+  if (warningSinks.has(sink)) {
+    return;
+  }
+  warningSinks.add(sink);
+}
+registerWarningSink((location, error, ...extraArgs) => {
+  console.warn(
+    `\x1b[43mCaptured warning in ${location}:`,
+    errorToNiceString(error),
+    ...extraArgs,
+    "\x1b[0m",
+  );
+});
+registerWarningSink((location, error, ...extraArgs) => {
+  globalVar.stackCapturedWarnings = globalVar.stackCapturedWarnings ?? [];
+  globalVar.stackCapturedWarnings.push({ location, error, extraArgs });
+});
+
+function getCustomCaptureExtraArgs(error: unknown): unknown[] {
+  return error && (typeof error === 'object' || typeof error === 'function') && "customCaptureExtraArgs" in error && Array.isArray(error.customCaptureExtraArgs) ? (error.customCaptureExtraArgs as unknown[]) : [];
+}
+
 /**
  * Captures an error and sends it to the error sinks (most notably, Sentry). Errors caught with captureError are
  * supposed to be seen by an engineer, so they should be actionable and important.
@@ -127,11 +153,19 @@ registerErrorSink((location, error, ...extraArgs) => {
  */
 export function captureError(location: string, error: unknown): void {
   for (const sink of errorSinks) {
-    sink(
-      location,
-      error,
-      ...error && (typeof error === 'object' || typeof error === 'function') && "customCaptureExtraArgs" in error && Array.isArray(error.customCaptureExtraArgs) ? (error.customCaptureExtraArgs as any[]) : [],
-    );
+    sink(location, error, ...getCustomCaptureExtraArgs(error));
+  }
+}
+
+/**
+ * Like captureError, but uses console.warn instead of console.error. Still reports to Sentry.
+ *
+ * Use this for issues that are worth tracking but are not hard errors — e.g. expected
+ * transient failures like network flush retries.
+ */
+export function captureWarning(location: string, error: unknown): void {
+  for (const sink of warningSinks) {
+    sink(location, error, ...getCustomCaptureExtraArgs(error));
   }
 }
 

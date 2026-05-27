@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
+import { registerErrorSink, registerWarningSink } from "@stackframe/stack-shared/dist/utils/errors";
 import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
@@ -89,8 +89,10 @@ export function initSentry() {
     },
   });
 
-  registerErrorSink((location, error) => {
+  const sentrySink = (location: string, error: unknown) => {
     Sentry.captureException(error, { extra: { location } });
     ignoreUnhandledRejection(Sentry.flush(2000));
-  });
+  };
+  registerErrorSink(sentrySink);
+  registerWarningSink(sentrySink);
 }

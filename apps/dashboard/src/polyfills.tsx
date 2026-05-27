@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, registerErrorSink, registerWarningSink } from "@stackframe/stack-shared/dist/utils/errors";
 import * as util from "util";
 import { getPublicEnvVar } from "./lib/env";
 
@@ -25,6 +25,7 @@ export function ensurePolyfilled() {
   }
 
   registerErrorSink(sentryErrorSink);
+  registerWarningSink(sentryErrorSink);
 
   if ("addEventListener" in globalThis) {
     globalThis.addEventListener("unhandledrejection", (event) => {

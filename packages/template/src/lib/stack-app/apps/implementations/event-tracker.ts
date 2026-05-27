@@ -1,4 +1,5 @@
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
+import { captureWarning } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { generateUuid } from "./session-replay";
@@ -284,12 +285,12 @@ export class EventTracker {
     );
 
     if (res.status === "error") {
-      console.warn("EventTracker flush failed:", res.error);
+      captureWarning("EventTracker.flush()", res.error);
       return;
     }
 
     if (!res.data.ok) {
-      console.warn("EventTracker flush failed:", res.data.status, await res.data.text());
+      captureWarning("EventTracker.flush()", new Error(`EventTracker flush failed: ${res.data.status} ${await res.data.text()}`));
     }
   }
 
