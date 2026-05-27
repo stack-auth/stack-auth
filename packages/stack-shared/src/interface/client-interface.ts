@@ -363,13 +363,13 @@ export class HexclaveClientInterface {
       }
     });
     const prodDashboard = await tryRequest(async () => {
-      const res = await fetch("https://app.stack-auth.com/health");
+      const res = await fetch("https://app.hexclave.com/health");
       if (!res.ok) {
         throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
       }
     });
     const prodBackend = await tryRequest(async () => {
-      const res = await fetch("https://api.stack-auth.com/health");
+      const res = await fetch("https://api.hexclave.com/health");
       if (!res.ok) {
         throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
       }
@@ -385,7 +385,7 @@ export class HexclaveClientInterface {
 
   protected async _createNetworkError(cause: Error, session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
     return new Error(deindent`
-      Stack Auth is unable to connect to the server. Please check your internet connection and try again.
+      Hexclave is unable to connect to the server. Please check your internet connection and try again.
 
       If the problem persists, please contact support and provide a screenshot of your entire browser console.
 
@@ -806,7 +806,7 @@ export class HexclaveClientInterface {
 
       if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {
         // Some Vercel deployments seem to have an odd infinite loop bug. In that case, retry.
-        // See: https://github.com/hexclave/stack-auth/issues/319
+        // See: https://github.com/hexclave/hexclave/issues/319
         return Result.error(errorObj);
       }
 

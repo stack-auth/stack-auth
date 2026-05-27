@@ -147,7 +147,7 @@ export const config: StackConfig = {
   it("refuses to mutate a show-onboarding placeholder file", () => {
     const current = `export const config = "show-onboarding";`;
     expect(() => buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true }))
-      .toThrowErrorMatchingInlineSnapshot(`[Error: The config file currently exports the onboarding placeholder. Finish setting up Stack Auth in your repo before pushing dashboard changes.]`);
+      .toThrowErrorMatchingInlineSnapshot(`[Error: The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes.]`);
   });
 
   it("throws when the file does not export a `config` binding", () => {

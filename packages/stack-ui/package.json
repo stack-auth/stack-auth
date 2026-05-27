@@ -1,7 +1,7 @@
 {
   "name": "@stackframe/stack-ui",
   "version": "2.8.109",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "repository": "https://github.com/hexclave/hexclave",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,

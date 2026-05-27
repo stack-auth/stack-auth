@@ -43,7 +43,7 @@ function getTabs(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: str
     {
       id: "cursor",
       label: "Cursor",
-      content: `<p>Configure Stack Auth MCP in Cursor IDE for enhanced code assistance.</p>
+      content: `<p>Configure Hexclave MCP in Cursor IDE for enhanced code assistance.</p>
         <p><a class="button" href="${escapeHtml(cursorInstallUrl)}"><span class="button-icon">C</span>Add to Cursor</a></p>
         <h2>Manual Installation</h2>
         <p>Add the following to your <code>mcp.json</code> file:</p>
@@ -58,7 +58,7 @@ function getTabs(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: str
     {
       id: "vscode",
       label: "VS Code",
-      content: `<p>Configure Stack Auth MCP in VS Code for enhanced code assistance.</p>
+      content: `<p>Configure Hexclave MCP in VS Code for enhanced code assistance.</p>
         <p><a class="button" href="${escapeHtml(vsCodeInstallUrl)}"><span class="button-icon">VS</span>Add to VS Code</a></p>
         <h2>Manual Installation</h2>
         <p>Open a terminal and run the following command:</p>
@@ -68,7 +68,7 @@ function getTabs(mcpUrl: string, cursorInstallUrl: string, vsCodeInstallUrl: str
     {
       id: "codex",
       label: "Codex",
-      content: `<p>Configure Stack Auth MCP in Codex CLI and the Codex IDE extension. The configuration is shared between both.</p>
+      content: `<p>Configure Hexclave MCP in Codex CLI and the Codex IDE extension. The configuration is shared between both.</p>
         <p>Open a terminal and run the following command:</p>
         ${codeBlock("Terminal", `codex mcp add stack-auth --url ${mcpUrl}`)}
         <p>Verify it is configured:</p>
@@ -272,8 +272,8 @@ export function renderSetupPageHtml(mcpUrl: string): string {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Stack Auth MCP Setup</title>
-    <meta name="description" content="Set up the Stack Auth MCP server in Cursor, VS Code, Codex, Claude Code, Claude Desktop, Windsurf, ChatGPT, and Gemini CLI." />
+    <title>Hexclave MCP Setup</title>
+    <meta name="description" content="Set up the Hexclave MCP server in Cursor, VS Code, Codex, Claude Code, Claude Desktop, Windsurf, ChatGPT, and Gemini CLI." />
     <style>
       :root {
         color-scheme: light dark;

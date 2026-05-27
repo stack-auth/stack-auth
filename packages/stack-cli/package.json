@@ -1,8 +1,8 @@
 {
   "name": "@stackframe/stack-cli",
   "version": "2.8.109",
-  "repository": "https://github.com/hexclave/stack-auth",
-  "description": "The CLI for Stack Auth. https://stack-auth.com",
+  "repository": "https://github.com/hexclave/hexclave",
+  "description": "The CLI for Hexclave. https://hexclave.com",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -22,7 +22,7 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "homepage": "https://stack-auth.com",
+  "homepage": "https://hexclave.com",
   "keywords": [],
   "author": "",
   "license": "MIT",

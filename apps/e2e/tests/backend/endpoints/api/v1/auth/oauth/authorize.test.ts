@@ -281,7 +281,7 @@ it("should fail if an untrusted after_callback_redirect_url is provided", async 
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
@@ -293,7 +293,7 @@ it("should fail if an untrusted after_callback_redirect_url is provided", async 
 
 // Regression: provider_scope against a shared provider must be rejected on
 // every authorize path — not only when a link token is present. A malicious
-// client would otherwise request elevated scopes under Stack Auth's shared
+// client would otherwise request elevated scopes under Hexclave's shared
 // OAuth app on a plain sign-in.
 it("should reject provider_scope on shared provider for plain sign-in (no link token)", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {

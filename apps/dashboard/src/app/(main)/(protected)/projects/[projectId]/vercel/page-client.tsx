@@ -126,7 +126,7 @@ export default function PageClient() {
     {
       id: "project",
       title: "Open your Vercel project",
-      subtitle: "Make sure the project exists before adding Stack Auth.",
+      subtitle: "Make sure the project exists before adding Hexclave.",
       status: isManuallyCompleted("project") ? "done" : "action",
       items: [
         {
@@ -143,7 +143,7 @@ export default function PageClient() {
     },
     {
       id: "keys",
-      title: "Generate Stack Auth keys",
+      title: "Generate Hexclave keys",
       subtitle: "Create environment variable values for your project.",
       status: (Boolean(keys) || isManuallyCompleted("keys")) ? "done" : "action",
       items: [
@@ -202,7 +202,7 @@ export default function PageClient() {
           done: isManuallyCompleted("deploy"),
           detail: (
             <p className="text-xs text-muted-foreground">
-              In Vercel → &lt;your-project&gt; → Deployments, redeploy both preview and production projects if they share the same Stack Auth project.
+              In Vercel → &lt;your-project&gt; → Deployments, redeploy both preview and production projects if they share the same Hexclave project.
             </p>
           ),
         },
@@ -323,7 +323,7 @@ export default function PageClient() {
     <AppEnabledGuard appId="vercel">
       <PageLayout
         title="Vercel Integration"
-        description="Follow these quick steps to connect Stack Auth with your Vercel project."
+        description="Follow these quick steps to connect Hexclave with your Vercel project."
         allowContentOverflow
       >
         <DesignCard

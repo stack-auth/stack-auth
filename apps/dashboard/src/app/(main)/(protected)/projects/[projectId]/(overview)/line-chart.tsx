@@ -22,7 +22,7 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type CustomDateRange = {
@@ -253,6 +253,7 @@ export function ActivityBarChart({
 }) {
   const id = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const chartMotion = useChartMotionProps();
 
   return (
     <ChartContainer
@@ -290,7 +291,7 @@ export function ActivityBarChart({
           dataKey="activity"
           fill="var(--color-activity)"
           radius={[4, 4, 0, 0]}
-          isAnimationActive={false}
+          {...chartMotion}
         >
           {datapoints.map((entry, index) => {
             const isWeekendDay = isWeekend(parseChartDate(entry.date));
@@ -327,196 +328,6 @@ export function ActivityBarChart({
             fontSize: compact ? 8 : 10,
           }}
           tickFormatter={(value) => formatChartXAxisTick(value)}
-        />
-      </BarChart>
-    </ChartContainer>
-  );
-}
-
-export function MiniActivityBarChart({
-  datapoints,
-  config,
-  height = 84,
-}: {
-  datapoints: DataPoint[],
-  config: LineChartDisplayConfig,
-  height?: number,
-}) {
-  const id = useId();
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-
-  return (
-    <ChartContainer
-      config={config.chart}
-      className="h-full w-full !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
-      maxHeight={height}
-    >
-      <BarChart
-        id={id}
-        accessibilityLayer
-        data={datapoints}
-        margin={{ top: 8, right: 4, left: -18, bottom: 0 }}
-        onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
-        onMouseLeave={() => setHoveredIndex(null)}
-      >
-        <CartesianGrid
-          horizontal
-          vertical={false}
-          strokeDasharray="3 3"
-          stroke="hsl(var(--border))"
-          opacity={0.22}
-        />
-        <ChartTooltip
-          content={<CustomTooltip />}
-          cursor={{
-            fill: "var(--color-activity)",
-            opacity: 0.18,
-            radius: 4,
-          }}
-          offset={16}
-          allowEscapeViewBox={{ x: true, y: true }}
-          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
-        />
-        <Bar
-          dataKey="activity"
-          fill="var(--color-activity)"
-          radius={[4, 4, 0, 0]}
-          isAnimationActive={false}
-        >
-          {datapoints.map((entry, index) => {
-            const isActiveBar = hoveredIndex === index;
-            return (
-              <Cell
-                key={`mini-cell-${index}`}
-                fill="var(--color-activity)"
-                opacity={getDimmedOpacity(0.82, index, hoveredIndex, 0.28)}
-                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
-                strokeWidth={isActiveBar ? 1 : 0}
-              />
-            );
-          })}
-        </Bar>
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          width={26}
-          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
-          allowDecimals={false}
-        />
-        <XAxis
-          dataKey="date"
-          tickLine={false}
-          tickMargin={4}
-          axisLine={false}
-          interval="equidistantPreserveStart"
-          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
-          tickFormatter={(value) => formatChartXAxisTick(value)}
-        />
-      </BarChart>
-    </ChartContainer>
-  );
-}
-
-export type MiniNamedBarChartPoint = {
-  name: string,
-  activity: number,
-  display: string,
-};
-
-function MiniNamedBarTooltip({ active, payload }: TooltipProps<number, string>) {
-  if (!active || !payload?.length) return null;
-
-  const row = payload[0]?.payload as MiniNamedBarChartPoint | undefined;
-  if (row == null) return null;
-
-  return (
-    <div className={`${tooltipSurfaceClass} px-3.5 py-2.5`} style={{ zIndex: 9999 }}>
-      <div className="flex items-center gap-6">
-        <span className="text-[11px] font-medium text-muted-foreground">{row.name}</span>
-        <span className="font-mono text-xs font-semibold tabular-nums text-foreground">{row.display}</span>
-      </div>
-    </div>
-  );
-}
-
-export function MiniNamedBarChart({
-  datapoints,
-  config,
-  height = 84,
-}: {
-  datapoints: MiniNamedBarChartPoint[],
-  config: LineChartDisplayConfig,
-  height?: number,
-}) {
-  const id = useId();
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-
-  return (
-    <ChartContainer
-      config={config.chart}
-      className="h-full w-full !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
-      maxHeight={height}
-    >
-      <BarChart
-        id={id}
-        accessibilityLayer
-        data={datapoints}
-        margin={{ top: 8, right: 4, left: -18, bottom: 0 }}
-        onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
-        onMouseLeave={() => setHoveredIndex(null)}
-      >
-        <CartesianGrid
-          horizontal
-          vertical={false}
-          strokeDasharray="3 3"
-          stroke="hsl(var(--border))"
-          opacity={0.22}
-        />
-        <ChartTooltip
-          content={<MiniNamedBarTooltip />}
-          cursor={{
-            fill: "var(--color-activity)",
-            opacity: 0.18,
-            radius: 4,
-          }}
-          offset={16}
-          allowEscapeViewBox={{ x: true, y: true }}
-          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
-        />
-        <Bar
-          dataKey="activity"
-          fill="var(--color-activity)"
-          radius={[4, 4, 0, 0]}
-          isAnimationActive={false}
-        >
-          {datapoints.map((entry, index) => {
-            const isActiveBar = hoveredIndex === index;
-            return (
-              <Cell
-                key={`mini-named-cell-${entry.name}`}
-                fill="var(--color-activity)"
-                opacity={getDimmedOpacity(0.82, index, hoveredIndex, 0.28)}
-                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
-                strokeWidth={isActiveBar ? 1 : 0}
-              />
-            );
-          })}
-        </Bar>
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          width={26}
-          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
-          allowDecimals={false}
-          domain={[0, 100]}
-        />
-        <XAxis
-          dataKey="name"
-          tickLine={false}
-          tickMargin={4}
-          axisLine={false}
-          interval={0}
-          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
         />
       </BarChart>
     </ChartContainer>
@@ -622,6 +433,7 @@ export function StackedBarChartDisplay({
 }) {
   const id = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const chartMotion = useChartMotionProps();
 
   const windowSize = Math.max(4, Math.round(datapoints.length / 2.5));
   const totals = datapoints.map(p => p.new + p.retained + p.reactivated);
@@ -675,7 +487,7 @@ export function StackedBarChartDisplay({
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
-        <Bar dataKey="retained" stackId="split" fill="var(--color-retained)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="retained" stackId="split" fill="var(--color-retained)" radius={[0, 0, 0, 0]} {...chartMotion}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
@@ -689,7 +501,7 @@ export function StackedBarChartDisplay({
             );
           })}
         </Bar>
-        <Bar dataKey="reactivated" stackId="split" fill="var(--color-reactivated)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="reactivated" stackId="split" fill="var(--color-reactivated)" radius={[0, 0, 0, 0]} {...chartMotion}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
@@ -703,7 +515,7 @@ export function StackedBarChartDisplay({
             );
           })}
         </Bar>
-        <Bar dataKey="new" stackId="split" fill="var(--color-new)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="new" stackId="split" fill="var(--color-new)" radius={[4, 4, 0, 0]} {...chartMotion}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
@@ -726,7 +538,7 @@ export function StackedBarChartDisplay({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={false}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />
@@ -739,7 +551,7 @@ export function StackedBarChartDisplay({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />
@@ -792,69 +604,50 @@ export type ComposedDataPoint = {
   _showRevenue?: boolean,
 };
 
-const OVERVIEW_CHART_ANIMATION_MS = 260;
+const OVERVIEW_CHART_ANIMATION_MS = 520;
 
-function interpolateNumber(from: number | undefined, to: number, progress: number): number {
-  return (from ?? 0) + (to - (from ?? 0)) * progress;
-}
+type ChartMotionProps = {
+  isAnimationActive: boolean,
+  animationBegin: number,
+  animationDuration: number,
+  animationEasing: "ease-out",
+};
 
-function easeOutCubic(progress: number): number {
-  return 1 - Math.pow(1 - progress, 3);
-}
+const enabledChartMotion: ChartMotionProps = {
+  isAnimationActive: true,
+  animationBegin: 0,
+  animationDuration: OVERVIEW_CHART_ANIMATION_MS,
+  animationEasing: "ease-out",
+};
 
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
+const disabledChartMotion: ChartMotionProps = {
+  isAnimationActive: false,
+  animationBegin: 0,
+  animationDuration: 0,
+  animationEasing: "ease-out",
+};
 
-function useAnimatedComposedDatapoints(datapoints: ComposedDataPoint[]): ComposedDataPoint[] {
-  const [animatedDatapoints, setAnimatedDatapoints] = useState(datapoints);
-  const previousDatapointsRef = useRef(datapoints);
+function usePrefersReducedMotion(): boolean {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   useEffect(() => {
-    if (prefersReducedMotion()) {
-      previousDatapointsRef.current = datapoints;
-      setAnimatedDatapoints(datapoints);
+    if (typeof window.matchMedia !== "function") {
       return;
     }
 
-    const previousByDate = new Map(previousDatapointsRef.current.map((point) => [point.date, point]));
-    const previousByIndex: Array<ComposedDataPoint | undefined> = previousDatapointsRef.current;
-    const startedAt = performance.now();
-    let frameId: number | null = null;
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePrefersReducedMotion = () => setPrefersReducedMotion(mediaQuery.matches);
 
-    const renderFrame = (now: number) => {
-      const linearProgress = Math.min(1, (now - startedAt) / OVERVIEW_CHART_ANIMATION_MS);
-      const progress = easeOutCubic(linearProgress);
-      setAnimatedDatapoints(datapoints.map((point, index) => {
-        const previous = previousByDate.get(point.date) ?? previousByIndex[index];
-        return {
-          ...point,
-          page_views: interpolateNumber(previous?.page_views, point.page_views, progress),
-          visitors: interpolateNumber(previous?.visitors, point.visitors, progress),
-          dau: interpolateNumber(previous?.dau, point.dau, progress),
-          new_cents: interpolateNumber(previous?.new_cents, point.new_cents, progress),
-          refund_cents: interpolateNumber(previous?.refund_cents, point.refund_cents, progress),
-        };
-      }));
+    updatePrefersReducedMotion();
+    mediaQuery.addEventListener("change", updatePrefersReducedMotion);
+    return () => mediaQuery.removeEventListener("change", updatePrefersReducedMotion);
+  }, []);
 
-      if (linearProgress < 1) {
-        frameId = requestAnimationFrame(renderFrame);
-        return;
-      }
+  return prefersReducedMotion;
+}
 
-      previousDatapointsRef.current = datapoints;
-      setAnimatedDatapoints(datapoints);
-    };
-
-    frameId = requestAnimationFrame(renderFrame);
-    return () => {
-      if (frameId != null) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [datapoints]);
-
-  return animatedDatapoints;
+function useChartMotionProps(): ChartMotionProps {
+  return usePrefersReducedMotion() ? disabledChartMotion : enabledChartMotion;
 }
 
 export type VisitorsHoverDataPoint = {
@@ -898,12 +691,6 @@ const composedChartConfig: ChartConfig = {
     label: "Revenue",
     theme: { light: "hsl(268, 82%, 66%)", dark: "hsl(268, 82%, 74%)" },
   },
-};
-
-const overviewChartAnimation = {
-  isAnimationActive: true,
-  animationDuration: OVERVIEW_CHART_ANIMATION_MS,
-  animationEasing: "ease-out" as const,
 };
 
 function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
@@ -1016,13 +803,13 @@ export function ComposedAnalyticsChart({
   const id = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [hoveredX, setHoveredX] = useState<number | null>(null);
-  const animatedDatapoints = useAnimatedComposedDatapoints(datapoints);
+  const chartMotion = useChartMotionProps();
   const taggedDatapoints = useMemo(
-    () => animatedDatapoints.map(d => ({ ...d, _showPageViews: showPageViews, _showVisitors: showVisitors, _showRevenue: showRevenue })),
-    [animatedDatapoints, showPageViews, showVisitors, showRevenue],
+    () => datapoints.map(d => ({ ...d, _showPageViews: showPageViews, _showVisitors: showVisitors, _showRevenue: showRevenue })),
+    [datapoints, showPageViews, showVisitors, showRevenue],
   );
-  const maxVisitors = Math.max(...animatedDatapoints.map(d => Math.max(showPageViews ? d.page_views : 0, showVisitors ? d.visitors : 0, d.dau)), 1);
-  const maxRevenueCents = Math.max(...animatedDatapoints.map(d => showRevenue ? d.new_cents : 0), 1);
+  const maxVisitors = Math.max(...datapoints.map(d => Math.max(showPageViews ? d.page_views : 0, showVisitors ? d.visitors : 0, d.dau)), 1);
+  const maxRevenueCents = Math.max(...datapoints.map(d => showRevenue ? d.new_cents : 0), 1);
   const visitorTicks = niceAxisTicks(Math.ceil(maxVisitors * 1.1), 5);
   const revenueTicks = niceAxisTicks(Math.ceil(maxRevenueCents * 1.15), 5);
   const visitorsMax = visitorTicks[visitorTicks.length - 1] ?? maxVisitors;
@@ -1039,7 +826,7 @@ export function ComposedAnalyticsChart({
         data={taggedDatapoints}
         margin={{ top: 10, right: 4, left: 4, bottom: 0 }}
         onMouseMove={(state) => {
-          updateHoveredIndexFromChartState(state, animatedDatapoints.length, setHoveredIndex);
+          updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex);
           setHoveredX(getActiveCoordinateX(state));
         }}
         onMouseLeave={() => {
@@ -1090,7 +877,7 @@ export function ComposedAnalyticsChart({
           fill="var(--color-page_views)"
           fillOpacity={showPageViews ? (hoveredIndex == null ? 0.18 : 0.08) : 0}
           radius={[4, 4, 0, 0]}
-          isAnimationActive={false}
+          {...chartMotion}
         />
         {showPageViews && hoveredIndex != null && hoveredX != null && (
           <Bar
@@ -1115,7 +902,7 @@ export function ComposedAnalyticsChart({
           strokeOpacity={showVisitors ? (hoveredIndex == null ? 1 : 0.22) : 0}
           dot={false}
           activeDot={showVisitors ? <HighlightedLineDot fill="var(--color-visitors)" /> : false}
-          {...overviewChartAnimation}
+          {...chartMotion}
         />
         {showVisitors && hoveredIndex != null && hoveredX != null && (
           <Line
@@ -1127,7 +914,7 @@ export function ComposedAnalyticsChart({
             strokeOpacity={1}
             dot={false}
             activeDot={<HighlightedLineDot fill="var(--color-visitors)" />}
-            {...overviewChartAnimation}
+            isAnimationActive={false}
             strokeLinecap="round"
             strokeLinejoin="round"
             style={{ clipPath: `url(#visitors-highlight-clip-${id})` }}
@@ -1143,7 +930,7 @@ export function ComposedAnalyticsChart({
           strokeOpacity={hoveredIndex == null ? 0.95 : 0.24}
           dot={false}
           activeDot={<HighlightedLineDot fill="var(--color-dau)" />}
-          {...overviewChartAnimation}
+          {...chartMotion}
         />
         {hoveredIndex != null && hoveredX != null && (
           <Line
@@ -1155,7 +942,7 @@ export function ComposedAnalyticsChart({
             strokeOpacity={1}
             dot={false}
             activeDot={<HighlightedLineDot fill="var(--color-dau)" />}
-            {...overviewChartAnimation}
+            isAnimationActive={false}
             strokeLinecap="round"
             strokeLinejoin="round"
             style={{ clipPath: `url(#dau-highlight-clip-${id})` }}
@@ -1172,7 +959,7 @@ export function ComposedAnalyticsChart({
           strokeDasharray="4 4"
           dot={false}
           activeDot={showRevenue ? <HighlightedLineDot fill="var(--color-revenue)" /> : false}
-          {...overviewChartAnimation}
+          {...chartMotion}
         />
         {showRevenue && hoveredIndex != null && hoveredX != null && (
           <Line
@@ -1185,7 +972,7 @@ export function ComposedAnalyticsChart({
             strokeDasharray="4 4"
             dot={false}
             activeDot={<HighlightedLineDot fill="var(--color-revenue)" />}
-            {...overviewChartAnimation}
+            isAnimationActive={false}
             strokeLinecap="round"
             strokeLinejoin="round"
             style={{ clipPath: `url(#revenue-highlight-clip-${id})` }}
@@ -1213,7 +1000,7 @@ export function ComposedAnalyticsChart({
           tickMargin={compact ? 4 : 6}
           axisLine={false}
           padding={{ left: 8, right: 8 }}
-          interval={animatedDatapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
+          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
           tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
           tickFormatter={(value) => formatChartXAxisTick(value)}
         />
@@ -2099,6 +1886,7 @@ export function CorrelationCard({
   const chartConfig: ChartConfig = Object.fromEntries(
     series.map(s => [s.key, { label: s.label, color: s.color }])
   );
+  const chartMotion = useChartMotionProps();
 
   return (
     <ChartCard gradientColor={gradientColor} className={cn("h-full", className)}>
@@ -2164,7 +1952,7 @@ export function CorrelationCard({
                   stroke={s.color}
                   strokeWidth={1.5}
                   dot={false}
-                  isAnimationActive={false}
+                  {...chartMotion}
                 />
               ))}
             </LineChart>
@@ -2274,8 +2062,8 @@ export function DonutChartDisplay({
   }), [chartState, chartSegments, chartSegmentSeries]);
 
   const pieSize = compact
-    ? { innerRadius: 32, outerRadius: 48, className: "h-[140px]" }
-    : { innerRadius: 48, outerRadius: 72, className: "h-[180px]" };
+    ? { innerRadius: 42, outerRadius: 56, className: "h-[140px]", showDateRange: false }
+    : { innerRadius: 62, outerRadius: 78, className: "h-[180px]", showDateRange: false };
 
   return (
     <ChartCard
@@ -2398,6 +2186,7 @@ export function EmailStackedBarChartDisplay({
 }) {
   const id = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const chartMotion = useChartMotionProps();
 
   const windowSize = Math.max(4, Math.round(datapoints.length / 2.5));
   const totals = datapoints.map(p => p.ok + p.error + p.in_progress);
@@ -2460,7 +2249,7 @@ export function EmailStackedBarChartDisplay({
           };
           const colorVar = dataKey === "ok" ? "ok" : dataKey === "in_progress" ? "in_progress" : "error";
           return (
-            <Bar key={dataKey} dataKey={dataKey} stackId="split" fill={`var(--color-${colorVar})`} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+            <Bar key={dataKey} dataKey={dataKey} stackId="split" fill={`var(--color-${colorVar})`} radius={[4, 4, 0, 0]} {...chartMotion}>
               {datapoints.map((entry, index) => {
                 const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
                 const isActiveBar = hoveredIndex === index;
@@ -2488,7 +2277,7 @@ export function EmailStackedBarChartDisplay({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={false}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />
@@ -2501,7 +2290,7 @@ export function EmailStackedBarChartDisplay({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />
@@ -2624,6 +2413,7 @@ export function VisitorsHoverChart({
   compact?: boolean,
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const chartMotion = useChartMotionProps();
   const windowSize = Math.max(4, Math.round(datapoints.length / 2.5));
   const totals = datapoints.map((p) => p.page_views);
   const avgValues = rollingAvg(totals, windowSize);
@@ -2669,7 +2459,7 @@ export function VisitorsHoverChart({
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
-        <Bar dataKey="page_views" stackId="visitors" fill="var(--color-page_views)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="page_views" stackId="visitors" fill="var(--color-page_views)" radius={[4, 4, 0, 0]} {...chartMotion}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
@@ -2692,7 +2482,7 @@ export function VisitorsHoverChart({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={false}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />
@@ -2705,7 +2495,7 @@ export function VisitorsHoverChart({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />
@@ -2749,7 +2539,7 @@ export function VisitorsHoverChart({
   );
 }
 
-// ── Revenue hover chart (new_cents + refund_cents stacked bar) ───────────────
+// ── Revenue hover chart (revenue bar + avg line) ────────────────────────────
 
 const revenueHoverChartConfig: ChartConfig = {
   new_cents: {
@@ -2791,14 +2581,14 @@ function RevenueHoverTooltip({ active, payload }: TooltipProps<number, string>) 
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(268, 82%, 66%)" }} />
+            <span className="h-2 w-2 rounded-full ring-2 ring-white/20" style={{ backgroundColor: "var(--color-new_cents)" }} />
             <span className="text-[11px] text-muted-foreground">Revenue</span>
             <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
               {formatUsdCompact(row.new_cents)}
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(355, 70%, 68%)" }} />
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-refund_cents)" }} />
             <span className="text-[11px] text-muted-foreground">Refunds</span>
             <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
               {formatUsdCompact(row.refund_cents)}
@@ -2834,6 +2624,7 @@ export function RevenueHoverChart({
   compact?: boolean,
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const chartMotion = useChartMotionProps();
   const windowSize = Math.max(4, Math.round(datapoints.length / 2.5));
   const totals = datapoints.map((p) => p.new_cents + p.refund_cents);
   const avgValues = rollingAvg(totals, windowSize);
@@ -2847,6 +2638,8 @@ export function RevenueHoverChart({
     const isHighlightedAvg = hoveredIndex != null && i <= hoveredIndex && i >= hoveredIndex - 6;
     return {
       ...p,
+      new_cents_square: p.refund_cents > 0 ? p.new_cents : 0,
+      new_cents_rounded: p.refund_cents > 0 ? 0 : p.new_cents,
       movingAvg,
       avg7d: sevenDayAvgs[i],
       highlightedAvg: isHighlightedAvg ? movingAvg : null,
@@ -2882,13 +2675,13 @@ export function RevenueHoverChart({
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
-        <Bar dataKey="new_cents" stackId="revenue" fill="var(--color-new_cents)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="new_cents_square" stackId="revenue" fill="var(--color-new_cents)" radius={[0, 0, 0, 0]} {...chartMotion}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
-                key={`nc-${index}`}
+                key={`ncs-${index}`}
                 opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
                 stroke={isActiveBar ? "hsl(var(--background))" : undefined}
                 strokeWidth={isActiveBar ? 1 : 0}
@@ -2896,7 +2689,21 @@ export function RevenueHoverChart({
             );
           })}
         </Bar>
-        <Bar dataKey="refund_cents" stackId="revenue" fill="var(--color-refund_cents)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="new_cents_rounded" stackId="revenue" fill="var(--color-new_cents)" radius={[4, 4, 0, 0]} {...chartMotion}>
+          {datapoints.map((entry, index) => {
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
+            const isActiveBar = hoveredIndex === index;
+            return (
+              <Cell
+                key={`ncr-${index}`}
+                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
+                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
+                strokeWidth={isActiveBar ? 1 : 0}
+              />
+            );
+          })}
+        </Bar>
+        <Bar dataKey="refund_cents" stackId="revenue" fill="var(--color-refund_cents)" radius={[4, 4, 0, 0]} {...chartMotion}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
@@ -2919,7 +2726,7 @@ export function RevenueHoverChart({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={false}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />
@@ -2932,7 +2739,7 @@ export function RevenueHoverChart({
           strokeDasharray="2.5 3.5"
           dot={false}
           activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
-          isAnimationActive={false}
+          {...chartMotion}
           connectNulls={false}
           legendType="none"
         />

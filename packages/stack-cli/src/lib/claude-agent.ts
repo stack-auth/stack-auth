@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
-const DEFAULT_PROXY_URL = "https://api.stack-auth.com/api/v1/integrations/ai-proxy";
+const DEFAULT_PROXY_URL = "https://api.hexclave.com/api/v1/integrations/ai-proxy";
 const ANTHROPIC_PROXY_BASE_URL: string = process.env.STACK_CLAUDE_PROXY_URL ?? DEFAULT_PROXY_URL;
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -152,7 +152,7 @@ export async function runClaudeAgent(options: {
   cwd: string,
   label?: string,
 }): Promise<boolean> {
-  const ui = new AgentProgressUI(options.label ?? "Setting up Stack Auth...");
+  const ui = new AgentProgressUI(options.label ?? "Setting up Hexclave...");
   ui.start();
 
   try {

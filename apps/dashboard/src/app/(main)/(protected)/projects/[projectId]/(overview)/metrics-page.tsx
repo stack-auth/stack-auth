@@ -42,6 +42,7 @@ import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { type ElementType, type ReactNode, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsEventLimitBanner } from "../analytics/shared";
@@ -114,9 +115,96 @@ function formatPagesPerVisitor(value: number): string {
 }
 
 const OVERVIEW_WIDGET_ANIMATION_MS = 260;
+const OVERVIEW_HEADER_COMPACT_SCROLL_TOP = 24;
+const OVERVIEW_HEADER_MORPH_MS = 520;
+const OVERVIEW_HEADER_TITLE_EXIT_MS = 150;
+const overviewHeaderLayoutTransition: Transition = {
+  duration: OVERVIEW_HEADER_MORPH_MS / 1000,
+  ease: [0.32, 0.72, 0, 1],
+};
+const reducedOverviewHeaderLayoutTransition: Transition = {
+  duration: 0,
+};
+
+const scrollableOverflowValues = new Set(["auto", "scroll", "overlay"]);
 
 function easeOutCubic(progress: number): number {
   return 1 - Math.pow(1 - progress, 3);
+}
+
+function findScrollContainer(element: HTMLElement): HTMLElement | null {
+  let current = element.parentElement;
+  while (current != null) {
+    const overflowY = window.getComputedStyle(current).overflowY;
+    if (scrollableOverflowValues.has(overflowY) && current.scrollHeight > current.clientHeight) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
+function useOverviewHeaderCompacted() {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [compacted, setCompacted] = useState(false);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (sentinel == null) return;
+
+    const scrollContainer = findScrollContainer(sentinel);
+
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      const nextCompacted = !entry.isIntersecting;
+      setCompacted((current) => current === nextCompacted ? current : nextCompacted);
+    }, {
+      root: scrollContainer,
+      rootMargin: `-${OVERVIEW_HEADER_COMPACT_SCROLL_TOP}px 0px 0px 0px`,
+      threshold: 0,
+    });
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  return { compacted, sentinelRef };
+}
+
+function useRenderWhileClosing(open: boolean, durationMs: number): boolean {
+  const [shouldRender, setShouldRender] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+      return;
+    }
+
+    const timeout = setTimeout(() => setShouldRender(false), durationMs);
+    return () => clearTimeout(timeout);
+  }, [durationMs, open]);
+
+  return open || shouldRender;
+}
+
+function useDelayedTrue(value: boolean, delayMs: number): boolean {
+  const [delayedValue, setDelayedValue] = useState(value);
+
+  useEffect(() => {
+    if (!value) {
+      setDelayedValue(false);
+      return;
+    }
+
+    const timeout = setTimeout(() => setDelayedValue(true), delayMs);
+    return () => clearTimeout(timeout);
+  }, [delayMs, value]);
+
+  return delayedValue;
 }
 
 function prefersReducedMotion(): boolean {
@@ -554,6 +642,86 @@ function ViewToggle({ view, onChange }: { view: "overview" | "globe", onChange: 
   );
 }
 
+function OverviewStickyHeader({ title, actions }: { title: string, actions: ReactNode }) {
+  const { compacted, sentinelRef } = useOverviewHeaderCompacted();
+  const renderTitle = useRenderWhileClosing(!compacted, OVERVIEW_HEADER_TITLE_EXIT_MS);
+  const shouldReduceMotion = useReducedMotion();
+  const delayedCompacted = useDelayedTrue(compacted, shouldReduceMotion ? 0 : OVERVIEW_HEADER_TITLE_EXIT_MS);
+  const layoutCompacted = shouldReduceMotion ? compacted : delayedCompacted;
+  const layoutTransition = shouldReduceMotion ? reducedOverviewHeaderLayoutTransition : overviewHeaderLayoutTransition;
+
+  return (
+    <>
+      <div ref={sentinelRef} aria-hidden className="-mb-[17px] h-px w-px" />
+      <div
+        className="sticky top-[4.25rem] z-30 mb-2 w-full pointer-events-none dark:top-[5.75rem]"
+      >
+        <LayoutGroup id="overview-sticky-header">
+          <motion.div
+            layout
+            transition={layoutTransition}
+            className={cn(
+              "pointer-events-auto relative w-full max-w-full",
+              layoutCompacted && "ml-auto w-fit",
+            )}
+          >
+            <motion.div
+              layout
+              transition={layoutTransition}
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] duration-[520ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
+                layoutCompacted && "rounded-xl border-black/[0.08] bg-white/[0.78] shadow-[0_14px_34px_rgba(15,23,42,0.14)] ring-1 ring-white/[0.55] dark:border-white/[0.08] dark:bg-background/[0.72] dark:shadow-[0_14px_34px_rgba(0,0,0,0.26)] dark:ring-white/[0.08] dark:backdrop-blur-xl",
+              )}
+            />
+            <div
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity duration-[520ms] motion-reduce:transition-none dark:via-white/20",
+                layoutCompacted && "opacity-100",
+              )}
+            />
+            <div
+              className={cn(
+                "relative z-10 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4 dark:px-0 dark:py-0 dark:sm:px-0 dark:sm:py-0",
+                layoutCompacted && "gap-0 sm:gap-0",
+                layoutCompacted && "px-3 py-2 sm:px-4 sm:py-2.5 dark:px-4 dark:py-2.5 dark:sm:px-4 dark:sm:py-2.5",
+              )}
+            >
+              {renderTitle && (
+                <div
+                  className={cn(
+                    "min-w-0 transition-[opacity,transform,filter] duration-[150ms] ease-out motion-reduce:transition-none sm:flex-1",
+                    compacted && "pointer-events-none opacity-0 blur-[1px]",
+                  )}
+                >
+                  <Typography
+                    type="h2"
+                    className="truncate text-xl font-semibold tracking-tight sm:text-2xl"
+                  >
+                    {title}
+                  </Typography>
+                </div>
+              )}
+              <motion.div
+                layout
+                transition={layoutTransition}
+                className={cn(
+                  "relative z-10 min-w-0 max-w-full flex-shrink-0 overflow-x-auto will-change-transform [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  "transition-opacity duration-[520ms] motion-reduce:transition-none",
+                  layoutCompacted && "opacity-95",
+                )}
+              >
+                {actions}
+              </motion.div>
+            </div>
+          </motion.div>
+        </LayoutGroup>
+      </div>
+    </>
+  );
+}
+
 function GlobeView({ includeAnonymous }: { includeAnonymous: boolean }) {
   return (
     <div className="relative h-[calc(100vh-12rem)] min-h-[480px] w-full overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-black/[0.06] backdrop-blur-xl dark:rounded-none dark:bg-transparent dark:shadow-none dark:ring-0 dark:backdrop-blur-none">
@@ -591,7 +759,7 @@ function AnalyticsInChartPill({
 }) {
   const tooltipByLabel = new Map([
     ["Daily Active Users", "Shows active users by day so you can see current product usage."],
-    ["Unique Visitors", "Shows unique visitors from analytics events for the selected period."],
+    ["Unique Visitors", "Counts distinct visitors from analytics events in the selected period."],
     ["Revenue", "Shows new revenue from payments for the selected period."],
   ]);
 
@@ -703,13 +871,6 @@ function AnalyticsChartWidget({
 }) {
   const [selectedMode, setSelectedMode] = useState<AnalyticsChartMode>('default');
   const [previewMode, setPreviewMode] = useState<AnalyticsChartMode | null>(null);
-  const [displayMode, setDisplayMode] = useState<AnalyticsChartMode>('default');
-  const [fadingOut, setFadingOut] = useState(false);
-  const [fadingIn, setFadingIn] = useState(false);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fadeInRaf1Ref = useRef<number | null>(null);
-  const fadeInRaf2Ref = useRef<number | null>(null);
-  const FADE_OUT_MS = 140;
 
   const tablistInstanceId = useId();
   const tabpanelId = `${tablistInstanceId}-panel`;
@@ -718,46 +879,7 @@ function AnalyticsChartWidget({
   const revenueTabId = `${tablistInstanceId}-tab-revenue`;
 
   const activeMode: AnalyticsChartMode = previewMode ?? selectedMode;
-
-  const switchToMode = (mode: AnalyticsChartMode) => {
-    if (mode === displayMode) return;
-    if (fadeTimerRef.current != null) {
-      clearTimeout(fadeTimerRef.current);
-    }
-    setFadingOut(true);
-    fadeTimerRef.current = setTimeout(() => {
-      setDisplayMode(mode);
-      setFadingOut(false);
-      setFadingIn(true);
-      fadeInRaf1Ref.current = requestAnimationFrame(() => {
-        fadeInRaf2Ref.current = requestAnimationFrame(() => {
-          setFadingIn(false);
-          fadeInRaf2Ref.current = null;
-        });
-        fadeInRaf1Ref.current = null;
-      });
-      fadeTimerRef.current = null;
-    }, FADE_OUT_MS);
-  };
-
-  useEffect(() => {
-    switchToMode(activeMode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- switchToMode closes over displayMode/fade state
-  }, [activeMode]);
-
-  useEffect(() => {
-    return () => {
-      if (fadeTimerRef.current != null) {
-        clearTimeout(fadeTimerRef.current);
-      }
-      if (fadeInRaf1Ref.current != null) {
-        cancelAnimationFrame(fadeInRaf1Ref.current);
-      }
-      if (fadeInRaf2Ref.current != null) {
-        cancelAnimationFrame(fadeInRaf2Ref.current);
-      }
-    };
-  }, []);
+  const displayMode: AnalyticsChartMode = activeMode;
 
   const handleHoverPreview = (mode: AnalyticsChartMetricMode) => {
     setPreviewMode(mode);
@@ -889,16 +1011,7 @@ function AnalyticsChartWidget({
             className="flex-1 min-h-0 relative"
             style={{ minHeight: chartViewportHeight }}
           >
-            <div
-              className={cn(
-                "h-full flex flex-col",
-                fadingOut
-                  ? "opacity-0 -translate-y-0.5 transition-[opacity,transform] duration-[140ms] ease-in"
-                  : fadingIn
-                    ? "opacity-0 translate-y-0.5"
-                    : "opacity-100 translate-y-0 transition-[opacity,transform] duration-[260ms] ease-out",
-              )}
-            >
+            <div className="h-full flex flex-col">
               {displayMode === 'default' && (
                 composedData.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
@@ -1284,31 +1397,31 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const markAnalyticsFiltersLoaded = useCallback(() => {
     setLoadedAnalyticsFilters(analyticsFilters);
   }, [analyticsFilters]);
+  const headerTitle = `Welcome back, ${truncatedName}!`;
+  const headerActions = (
+    <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+      {view === "overview" && (
+        <>
+          <FilterChipsBar filters={analyticsFilters} onClear={clearAnalyticsFilter} onClearAll={clearAllAnalyticsFilters} />
+          <FilterMenu filters={analyticsFilters} onToggle={toggleAnalyticsFilter} />
+          <TimeRangeToggle
+            timeRange={timeRange}
+            onTimeRangeChange={setTimeRange}
+            customDateRange={customDateRange}
+            onCustomDateRangeChange={setCustomDateRange}
+          />
+        </>
+      )}
+      <ViewToggle view={view} onChange={setView} />
+    </div>
+  );
 
   return (
     <PageLayout
-      title={`Welcome back, ${truncatedName}!`}
-      actions={
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {view === "overview" && (
-            <>
-              <FilterChipsBar filters={analyticsFilters} onClear={clearAnalyticsFilter} onClearAll={clearAllAnalyticsFilters} />
-              <FilterMenu filters={analyticsFilters} onToggle={toggleAnalyticsFilter} />
-              <TimeRangeToggle
-                timeRange={timeRange}
-                onTimeRangeChange={setTimeRange}
-                customDateRange={customDateRange}
-                onCustomDateRangeChange={setCustomDateRange}
-              />
-            </>
-          )}
-          <ViewToggle view={view} onChange={setView} />
-        </div>
-      }
       fillWidth
       fullBleed
-      wrapHeaderInCard
     >
+      <OverviewStickyHeader title={headerTitle} actions={headerActions} />
       {view === "overview" && <AnalyticsEventLimitBanner />}
       {view === "overview" && isUpdatingAnalyticsFilters && (
         <Suspense fallback={null}>
@@ -1701,7 +1814,7 @@ function MetricsContent({
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <UserPageMetricCard
           label="Pages / Visitor"
-          tooltip="Divides page views by unique visitors to show how deeply people browse."
+          tooltip="Page views divided by unique visitors for the selected period."
           value={analyticsEnabled ? formatPagesPerVisitor(analyticsPeriodTotals.pagesPerVisitor) : "—"}
           description="avg in period"
           gradient="blue"
@@ -1714,7 +1827,7 @@ function MetricsContent({
         />
         <UserPageMetricCard
           label="Monthly Active Users"
-          tooltip="Counts users active in the current month to show overall product reach."
+          tooltip="Unique users active during the current month."
           value={formatCompact(Math.min(auth.mau, data.total_users))}
           description="current"
           gradient="green"
@@ -1722,7 +1835,7 @@ function MetricsContent({
         />
         <UserPageMetricCard
           label="Total Emails Sent"
-          tooltip="Counts all emails sent by this project to show email volume."
+          tooltip="All emails sent by this project."
           value={formatCompact(email.emails_sent)}
           description="all time"
           gradient="orange"
@@ -1730,7 +1843,7 @@ function MetricsContent({
         />
         <UserPageMetricCard
           label="Avg. Session Time"
-          tooltip="Averages session duration from analytics events for the selected period."
+          tooltip="Average session duration from page views and clicks in the analytics window."
           value={analyticsEnabled ? formatSeconds(analytics.avg_session_seconds) : "—"}
           description="in period"
           gradient="purple"
@@ -1761,7 +1874,7 @@ function MetricsContent({
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-                <SimpleTooltip tooltip="Counts all users in this project and shows where they are distributed globally." inline className="pointer-events-auto w-fit">
+                <SimpleTooltip tooltip="All project users, grouped by their latest known location." inline className="pointer-events-auto w-fit">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Total Users
                   </span>
@@ -1821,7 +1934,7 @@ function MetricsContent({
             timeRange={timeRange}
             customDateRange={customDateRange}
             chartDataIsPreFiltered={timeRange === "1d"}
-            headerTooltip="Shows new sign-ups over time, with a recent user list for quick follow-up."
+            headerTooltip="New sign-ups over time, with recent users for quick follow-up."
           />
         </div>
         <div className="min-h-[340px] lg:min-h-0 lg:h-full">
@@ -1848,7 +1961,7 @@ function MetricsContent({
         />
         <ReferrersWithAnalyticsCard
           topReferrers={topReferrers}
-          headerTooltip="Lists the referrers that sent the most visitors to this project."
+          headerTooltip="Referrers that sent the most unique visitors to this project."
           analyticsEnabled={analyticsEnabled}
           projectId={projectId}
           onSelectReferrer={(referrer) => onToggleAnalyticsFilter("referrer", referrer)}
@@ -1859,13 +1972,13 @@ function MetricsContent({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
         <TopRegionsCard
           usersByCountry={topRegionsByCountry}
-          headerTooltip="Lists countries with the most tracked users or visitors."
+          headerTooltip="Unique page-view visitors grouped by latest known country."
           onSelectCountry={(code) => onToggleAnalyticsFilter("country_code", code)}
           selectedCountry={selectedAnalyticsFilters.country_code}
         />
         <TopNamedListCard
           title="Top Browsers"
-          headerTooltip="Lists browsers used most often by tracked visitors."
+          headerTooltip="Browsers used most often by unique visitors."
           items={analytics.top_browsers}
           gradient="green"
           barClassName="bg-emerald-500/10 dark:bg-emerald-400/10"
@@ -1877,7 +1990,7 @@ function MetricsContent({
         />
         <TopNamedListCard
           title="Operating Systems"
-          headerTooltip="Lists operating systems used most often by tracked visitors."
+          headerTooltip="Operating systems used most often by unique visitors."
           items={analytics.top_operating_systems}
           gradient="orange"
           barClassName="bg-amber-500/10 dark:bg-amber-400/10"
@@ -1889,7 +2002,7 @@ function MetricsContent({
         />
         <TopNamedListCard
           title="Devices"
-          headerTooltip="Lists device types used most often by tracked visitors."
+          headerTooltip="Device types used most often by unique visitors."
           items={analytics.top_devices}
           gradient="slate"
           barClassName="bg-slate-500/10 dark:bg-slate-400/10"

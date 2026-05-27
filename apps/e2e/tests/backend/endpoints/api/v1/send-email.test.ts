@@ -40,7 +40,7 @@ describe("invalid requests", () => {
               "admin",
             ],
           },
-          "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

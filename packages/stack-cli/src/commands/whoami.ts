@@ -5,7 +5,7 @@ import { resolveSessionAuth } from "../lib/auth.js";
 export function registerWhoamiCommand(program: Command) {
   program
     .command("whoami")
-    .description("Show the currently logged-in Stack Auth CLI user")
+    .description("Show the currently logged-in Hexclave CLI user")
     .action(async () => {
       const flags = program.opts();
       const auth = resolveSessionAuth();

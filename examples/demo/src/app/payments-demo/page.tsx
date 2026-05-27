@@ -224,7 +224,7 @@ export default function PaymentsDemoPage() {
           <div>
             <Typography type="h1">Payments Demo</Typography>
             <Typography className="max-w-3xl text-gray-600 dark:text-gray-400">
-              Manual test surface for Stack Auth internal team plans, Stripe checkout, subscription ending, and email quota deductions.
+              Manual test surface for Hexclave internal team plans, Stripe checkout, subscription ending, and email quota deductions.
             </Typography>
           </div>
           <Link className="text-sm font-medium underline" href={internalDashboardUrl}>

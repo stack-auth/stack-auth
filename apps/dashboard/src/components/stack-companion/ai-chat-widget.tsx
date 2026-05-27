@@ -544,7 +544,7 @@ function AskAiWelcome() {
           Ask AI
         </h2>
         <p className="text-xs text-muted-foreground text-center max-w-[260px] leading-relaxed">
-          Get AI-powered answers about Stack Auth, your project, and analytics.
+          Get AI-powered answers about Hexclave, your project, and analytics.
         </p>
       </div>
     </div>

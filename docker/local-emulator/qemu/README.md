@@ -1,6 +1,6 @@
 # QEMU Local Emulator
 
-The local emulator packages the entire Stack Auth backend (PostgreSQL, Redis, ClickHouse, MinIO, Inbucket, Svix, QStash, Dashboard, and Backend) into a single QEMU virtual machine image. Users run it via the `stack emulator` CLI commands.
+The local emulator packages the entire Hexclave backend (PostgreSQL, Redis, ClickHouse, MinIO, Inbucket, Svix, QStash, Dashboard, and Backend) into a single QEMU virtual machine image. Users run it via the `stack emulator` CLI commands.
 
 ## Architecture
 
@@ -23,8 +23,8 @@ Only four services are exposed to the host via port forwarding:
 
 | Service   | Host Port | Description              |
 |-----------|-----------|--------------------------|
-| Dashboard | 26700     | Stack Auth dashboard UI  |
-| Backend   | 26701     | Stack Auth API server    |
+| Dashboard | 26700     | Hexclave dashboard UI  |
+| Backend   | 26701     | Hexclave API server    |
 | MinIO     | 26702     | S3-compatible storage    |
 | Inbucket  | 26703     | Email testing interface  |
 

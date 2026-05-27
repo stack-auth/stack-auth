@@ -95,7 +95,7 @@ const resolveCustomTargetUrl = (options: {
       return options.target.url;
     }
 
-    throw new Error(`Unsupported custom page version ${options.target.version} for ${options.handlerName} page at ${options.target.url}. The latest supported version of this page is ${Math.max(0, ...Object.keys(customPagePrompt.versions).map(Number))}. Please upgrade your Stack Auth SDK to a version that supports this version.`);
+    throw new Error(`Unsupported custom page version ${options.target.version} for ${options.handlerName} page at ${options.target.url}. The latest supported version of this page is ${Math.max(0, ...Object.keys(customPagePrompt.versions).map(Number))}. Please upgrade your Hexclave SDK to a version that supports this version.`);
   } else {
     throw new Error(`URL target ${options.handlerName} cannot be a custom page. Please specify the URL as a string instead.`);
   }

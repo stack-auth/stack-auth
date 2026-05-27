@@ -151,7 +151,7 @@ it("rejects untrusted redirect URLs before issuing a code", async ({ expect }) =
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
@@ -172,7 +172,7 @@ it("rejects untrusted after-callback redirect URLs before issuing a code", async
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",

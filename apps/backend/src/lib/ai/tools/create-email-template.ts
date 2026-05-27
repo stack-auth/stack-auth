@@ -19,7 +19,7 @@ It must use react-email components.
 It must export two things:
 - variablesSchema: An arktype schema for the email template props
 - EmailTemplate: A function that renders the email template. You must set the PreviewVariables property to an object that satisfies the variablesSchema by doing EmailTemplate.PreviewVariables = { ...
-It must not import from any package besides "@react-email/components", "@stackframe/emails", and "arktype".
+It must not import from any package besides "@react-email/components", "@hexclave/emails", and "arktype".
 It uses tailwind classes for all styling.
 The user's current email template will be provided in the conversation messages.
 The email must include <Html>, <Head />, <Preview />, <Tailwind>, <Body>, and <Container> in the correct hierarchy.
@@ -30,7 +30,7 @@ Here is an example of a valid email template:
 \`\`\`tsx
 import { type } from "arktype"
 import { Container } from "@react-email/components";
-import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+import { Subject, NotificationCategory, Props } from "@hexclave/emails";
 
 export const variablesSchema = type({
   count: "number"

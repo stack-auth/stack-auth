@@ -689,7 +689,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     const controls = globeRef.current.controls();
     if (interactive) {
       controls.enableZoom = true;
-      controls.minDistance = 150;
+      controls.minDistance = cameraDistance;
       controls.maxDistance = 600;
     } else {
       controls.maxDistance = cameraDistance;
@@ -1065,7 +1065,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   }, []);
 
   return (
-    <div ref={rootRef} className='relative mx-auto' style={{ width: squareSize || '100%', height: squareSize || '100%' }}>
+    <div ref={rootRef} className='relative mx-auto overflow-hidden' style={{ width: squareSize || '100%', height: squareSize || '100%' }}>
       <div inert className='absolute inset-0 pointer-events-none'>
         <GlobeLoading
           devReason="not ready"
@@ -1086,7 +1086,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
 
         {/* Globe Container - Premium 3D */}
         {shouldShowGlobe && (
-          <div className='relative w-full h-full flex items-center justify-center'>
+          <div className='relative w-full h-full overflow-hidden flex items-center justify-center'>
             {/* Border container - same approach as globe */}
             <div inert className='absolute top-0 left-0 right-0 pointer-events-none flex items-center justify-center'>
               {/* Inner square div - contain behavior (square, fills either width or height) */}
@@ -1168,7 +1168,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                         controls.autoRotate = false;
                         controls.autoRotateSpeed = 0.5;
                         if (interactive) {
-                          controls.minDistance = 150;
+                          controls.minDistance = cameraDistance;
                           controls.maxDistance = 600;
                         } else {
                           controls.maxDistance = cameraDistance;

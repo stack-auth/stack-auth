@@ -150,7 +150,7 @@ export const DELETE = createSmartRouteHandler({
       await bulldozerWriteSubscription(prisma, updatedSub);
     }
 
-    // Regrant the free plan if a Stack Auth billing team just lost their
+    // Regrant the free plan if a Hexclave billing team just lost their
     // only plans-line sub. Scoped to the internal tenancy — customer
     // projects' own sub cancellations are for their own products.
     if (auth.tenancy.project.id === "internal" && params.customer_type === "team") {

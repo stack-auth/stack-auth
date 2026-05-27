@@ -57,7 +57,7 @@ describe("Native Apple Sign In", () => {
     expect(response.body).toMatchInlineSnapshot(`
       {
         "code": "APPLE_BUNDLE_ID_NOT_CONFIGURED",
-        "error": "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
+        "error": "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Hexclave dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
       }
     `);
   });

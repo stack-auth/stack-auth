@@ -3,8 +3,8 @@ import React from 'react';
 import '../polyfills';
 
 export const metadata: Metadata = {
-  title: 'Stack Auth API',
-  description: 'API endpoint of Stack Auth.',
+  title: 'Hexclave API',
+  description: 'API endpoint of Hexclave.',
 };
 
 export default function RootLayout({

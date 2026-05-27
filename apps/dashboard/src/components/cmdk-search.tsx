@@ -59,7 +59,7 @@ const FEATURE_HIGHLIGHTS = [
     iconBg: "bg-purple-500/10",
     iconColor: "text-purple-500",
     title: "Ask AI",
-    description: "Get answers from the Stack Auth documentation.",
+    description: "Get answers from the Hexclave documentation.",
     exampleQuery: "how do i set up password authentication?",
   },
   {

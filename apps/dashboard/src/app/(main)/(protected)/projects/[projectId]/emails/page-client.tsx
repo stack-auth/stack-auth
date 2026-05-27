@@ -140,11 +140,11 @@ function EmailServerCard({ emailConfig, isDevelopmentEnvironment }: { emailConfi
   const serverType = emailConfig.isShared
     ? 'Shared'
     : emailConfig.provider === 'managed'
-      ? 'Managed By Stack Auth'
+      ? 'Managed By Hexclave'
       : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
   const senderEmail = emailConfig.isShared
-    ? 'noreply@stackframe.co'
+    ? 'noreply@sent-with-hexclave.com'
     : emailConfig.provider === 'managed' && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
       ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
       : emailConfig.senderEmail;
@@ -729,7 +729,7 @@ function EditEmailServerDialog(props: {
 
   async function testEmailAndUpdateConfig(emailConfig: AdminEmailConfig & { type: "standard" | "resend" }) {
     const testResult = await stackAdminApp.sendTestEmail({
-      recipientEmail: 'test-email-recipient@stackframe.co',
+      recipientEmail: 'test-email-recipient@sent-with-hexclave.com',
       emailConfig,
     });
 
@@ -834,7 +834,7 @@ function EditEmailServerDialog(props: {
           name="type"
           control={form.control}
           options={[
-            { label: "Shared (noreply@stackframe.co)", value: 'shared' },
+            { label: "Shared (noreply@sent-with-hexclave.com)", value: 'shared' },
             { label: "Managed (via managed domain setup)", value: 'managed' },
             { label: "Resend (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },

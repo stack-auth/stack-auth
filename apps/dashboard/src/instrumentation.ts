@@ -9,7 +9,7 @@ export async function register() {
   // check inline so the Edge bundle does not follow this Node-only import.
   if (process.env.NEXT_RUNTIME === "nodejs") {
     if (getEnvBoolean("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT")) {
-      globalThis.process.title = `Stack Auth — Development Server (port ${getEnvVariable("PORT", "?")})`;
+      globalThis.process.title = `Hexclave — Development Server (port ${getEnvVariable("PORT", "?")})`;
 
       const { startRemoteDevelopmentEnvironmentLifecycle } = await import("./lib/remote-development-environment/manager");
       startRemoteDevelopmentEnvironmentLifecycle();
