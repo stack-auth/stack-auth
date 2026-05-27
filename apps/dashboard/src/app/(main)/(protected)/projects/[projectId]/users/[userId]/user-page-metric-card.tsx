@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import { DesignAnalyticsCard, type AnalyticsCardGradient } from "@/components/design-components";
+import { SimpleTooltip } from "@/components/ui";
 
 type UserPageMetricCardDelta = {
   current: number,
@@ -15,6 +16,7 @@ type UserPageMetricCardSpark = {
 
 type UserPageMetricCardProps = {
   label: string,
+  tooltip?: string,
   value: string | number,
   description: string,
   gradient: AnalyticsCardGradient,
@@ -95,6 +97,7 @@ function Sparkline({ values, color }: { values: number[], color: string }) {
 
 export function UserPageMetricCard({
   label,
+  tooltip,
   value,
   description,
   gradient,
@@ -104,6 +107,11 @@ export function UserPageMetricCard({
   const deltaInfo = delta ? formatDelta(delta) : null;
   const strokeColor = GRADIENT_STROKE[gradient];
   const showSpark = spark != null && spark.values.length >= 2;
+  const labelNode = (
+    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
+      {label}
+    </span>
+  );
 
   return (
     <DesignAnalyticsCard
@@ -112,9 +120,11 @@ export function UserPageMetricCard({
     >
       <div className="flex flex-col gap-2 px-4 py-3">
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
-            {label}
-          </span>
+          {tooltip == null ? labelNode : (
+            <SimpleTooltip tooltip={tooltip} inline className="w-fit">
+              {labelNode}
+            </SimpleTooltip>
+          )}
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="text-xl font-bold tabular-nums text-foreground leading-none">
               {value}

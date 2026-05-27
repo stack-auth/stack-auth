@@ -591,7 +591,7 @@ function AnalyticsInChartPill({
 }) {
   const tooltipByLabel = new Map([
     ["Daily Active Users", "Shows active users by day so you can see current product usage."],
-    ["Unique Visitors", "Shows unique visitors from analytics events for the selected period."],
+    ["Unique Visitors", "Counts distinct visitors from analytics events in the selected period."],
     ["Revenue", "Shows new revenue from payments for the selected period."],
   ]);
 
@@ -1701,7 +1701,7 @@ function MetricsContent({
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <UserPageMetricCard
           label="Pages / Visitor"
-          tooltip="Divides page views by unique visitors to show how deeply people browse."
+          tooltip="Page views divided by unique visitors for the selected period."
           value={analyticsEnabled ? formatPagesPerVisitor(analyticsPeriodTotals.pagesPerVisitor) : "—"}
           description="avg in period"
           gradient="blue"
@@ -1714,7 +1714,7 @@ function MetricsContent({
         />
         <UserPageMetricCard
           label="Monthly Active Users"
-          tooltip="Counts users active in the current month to show overall product reach."
+          tooltip="Unique users active during the current month."
           value={formatCompact(Math.min(auth.mau, data.total_users))}
           description="current"
           gradient="green"
@@ -1722,7 +1722,7 @@ function MetricsContent({
         />
         <UserPageMetricCard
           label="Total Emails Sent"
-          tooltip="Counts all emails sent by this project to show email volume."
+          tooltip="All emails sent by this project."
           value={formatCompact(email.emails_sent)}
           description="all time"
           gradient="orange"
@@ -1730,7 +1730,7 @@ function MetricsContent({
         />
         <UserPageMetricCard
           label="Avg. Session Time"
-          tooltip="Averages session duration from analytics events for the selected period."
+          tooltip="Average session duration from page views and clicks in the analytics window."
           value={analyticsEnabled ? formatSeconds(analytics.avg_session_seconds) : "—"}
           description="in period"
           gradient="purple"
@@ -1761,7 +1761,7 @@ function MetricsContent({
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-                <SimpleTooltip tooltip="Counts all users in this project and shows where they are distributed globally." inline className="pointer-events-auto w-fit">
+                <SimpleTooltip tooltip="All project users, grouped by their latest known location." inline className="pointer-events-auto w-fit">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Total Users
                   </span>
@@ -1821,7 +1821,7 @@ function MetricsContent({
             timeRange={timeRange}
             customDateRange={customDateRange}
             chartDataIsPreFiltered={timeRange === "1d"}
-            headerTooltip="Shows new sign-ups over time, with a recent user list for quick follow-up."
+            headerTooltip="New sign-ups over time, with recent users for quick follow-up."
           />
         </div>
         <div className="min-h-[340px] lg:min-h-0 lg:h-full">
@@ -1848,7 +1848,7 @@ function MetricsContent({
         />
         <ReferrersWithAnalyticsCard
           topReferrers={topReferrers}
-          headerTooltip="Lists the referrers that sent the most visitors to this project."
+          headerTooltip="Referrers that sent the most unique visitors to this project."
           analyticsEnabled={analyticsEnabled}
           projectId={projectId}
           onSelectReferrer={(referrer) => onToggleAnalyticsFilter("referrer", referrer)}
@@ -1859,13 +1859,13 @@ function MetricsContent({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
         <TopRegionsCard
           usersByCountry={topRegionsByCountry}
-          headerTooltip="Lists countries with the most tracked users or visitors."
+          headerTooltip="Unique page-view visitors grouped by latest known country."
           onSelectCountry={(code) => onToggleAnalyticsFilter("country_code", code)}
           selectedCountry={selectedAnalyticsFilters.country_code}
         />
         <TopNamedListCard
           title="Top Browsers"
-          headerTooltip="Lists browsers used most often by tracked visitors."
+          headerTooltip="Browsers used most often by unique visitors."
           items={analytics.top_browsers}
           gradient="green"
           barClassName="bg-emerald-500/10 dark:bg-emerald-400/10"
@@ -1877,7 +1877,7 @@ function MetricsContent({
         />
         <TopNamedListCard
           title="Operating Systems"
-          headerTooltip="Lists operating systems used most often by tracked visitors."
+          headerTooltip="Operating systems used most often by unique visitors."
           items={analytics.top_operating_systems}
           gradient="orange"
           barClassName="bg-amber-500/10 dark:bg-amber-400/10"
@@ -1889,7 +1889,7 @@ function MetricsContent({
         />
         <TopNamedListCard
           title="Devices"
-          headerTooltip="Lists device types used most often by tracked visitors."
+          headerTooltip="Device types used most often by unique visitors."
           items={analytics.top_devices}
           gradient="slate"
           barClassName="bg-slate-500/10 dark:bg-slate-400/10"
