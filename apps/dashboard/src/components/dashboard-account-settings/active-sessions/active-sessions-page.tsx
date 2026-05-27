@@ -2,7 +2,7 @@
 
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DotsThree, Monitor, DeviceMobile, Warning } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@stackframe/stack";
 import { ActiveSession } from "../supporting/types";
 import { PageLayout } from "../page-layout";
@@ -48,7 +48,7 @@ export function ActiveSessionsPage(props?: {
   const [showConfirmRevokeAll, setShowConfirmRevokeAll] = useState(false);
 
   // Use mock data if provided
-  const mockSessionsData = props?.mockSessions ? props.mockSessions.map(session => ({
+  const mockSessionsData = useMemo(() => props?.mockSessions ? props.mockSessions.map(session => ({
     id: session.id,
     isCurrentSession: session.isCurrentSession,
     isImpersonation: session.isImpersonation || false,
@@ -70,7 +70,7 @@ export function ActiveSessionsPage(props?: {
       lastUsedAt: new Date(Date.now() - 7200000).toISOString(),
       geoInfo: { ip: '10.0.0.1', cityName: 'New York' }
     }
-  ];
+  ], [props?.mockSessions]);
 
   useEffect(() => {
     if (props?.mockSessions) {
@@ -93,7 +93,7 @@ export function ActiveSessionsPage(props?: {
       setSessions(sessionsData);
       setIsLoading(false);
     });
-  }, [userFromHook, props?.mockSessions]);
+  }, [mockSessionsData, userFromHook, props?.mockMode, props?.mockSessions]);
 
   const handleRevokeSession = async (sessionId: string) => {
     if (props?.mockSessions) {
@@ -264,7 +264,7 @@ export function ActiveSessionsPage(props?: {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-[140px] rounded-xl border-black/[0.08] dark:border-white/[0.08] shadow-md">
                             <DropdownMenuItem
-                              onClick={() => handleRevokeSession(session.id)}
+                              onClick={() => runAsynchronouslyWithAlert(async () => { await handleRevokeSession(session.id); })}
                               disabled={session.isCurrentSession}
                               className={cn(
                                 "cursor-pointer rounded-lg text-red-500 hover:text-red-600 focus:text-red-500",
