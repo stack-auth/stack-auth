@@ -1970,8 +1970,8 @@ export function DonutChartDisplay({
   }), [chartState, chartSegments, chartSegmentSeries]);
 
   const pieSize = compact
-    ? { innerRadius: 32, outerRadius: 48, className: "h-[140px]" }
-    : { innerRadius: 48, outerRadius: 72, className: "h-[180px]" };
+    ? { innerRadius: 42, outerRadius: 56, className: "h-[140px]", showDateRange: false }
+    : { innerRadius: 62, outerRadius: 78, className: "h-[180px]", showDateRange: false };
 
   return (
     <ChartCard
@@ -2443,7 +2443,7 @@ export function VisitorsHoverChart({
   );
 }
 
-// ── Revenue hover chart (new_cents + refund_cents stacked bar) ───────────────
+// ── Revenue hover chart (revenue bar + avg line) ────────────────────────────
 
 const revenueHoverChartConfig: ChartConfig = {
   new_cents: {
@@ -2485,14 +2485,14 @@ function RevenueHoverTooltip({ active, payload }: TooltipProps<number, string>) 
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(268, 82%, 66%)" }} />
+            <span className="h-2 w-2 rounded-full ring-2 ring-white/20" style={{ backgroundColor: "var(--color-new_cents)" }} />
             <span className="text-[11px] text-muted-foreground">Revenue</span>
             <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
               {formatUsdCompact(row.new_cents)}
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(355, 70%, 68%)" }} />
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-refund_cents)" }} />
             <span className="text-[11px] text-muted-foreground">Refunds</span>
             <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
               {formatUsdCompact(row.refund_cents)}
@@ -2541,6 +2541,8 @@ export function RevenueHoverChart({
     const isHighlightedAvg = hoveredIndex != null && i <= hoveredIndex && i >= hoveredIndex - 6;
     return {
       ...p,
+      new_cents_square: p.refund_cents > 0 ? p.new_cents : 0,
+      new_cents_rounded: p.refund_cents > 0 ? 0 : p.new_cents,
       movingAvg,
       avg7d: sevenDayAvgs[i],
       highlightedAvg: isHighlightedAvg ? movingAvg : null,
@@ -2576,13 +2578,27 @@ export function RevenueHoverChart({
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
-        <Bar dataKey="new_cents" stackId="revenue" fill="var(--color-new_cents)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="new_cents_square" stackId="revenue" fill="var(--color-new_cents)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
-                key={`nc-${index}`}
+                key={`ncs-${index}`}
+                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
+                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
+                strokeWidth={isActiveBar ? 1 : 0}
+              />
+            );
+          })}
+        </Bar>
+        <Bar dataKey="new_cents_rounded" stackId="revenue" fill="var(--color-new_cents)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => {
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
+            const isActiveBar = hoveredIndex === index;
+            return (
+              <Cell
+                key={`ncr-${index}`}
                 opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
                 stroke={isActiveBar ? "hsl(var(--background))" : undefined}
                 strokeWidth={isActiveBar ? 1 : 0}

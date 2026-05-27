@@ -117,6 +117,7 @@ export function ProjectOnboardingWizard(props: {
   const [authSetupMobileTab, setAuthSetupMobileTab] = useState<"methods" | "preview">("methods");
   const [domainSetupAutoAdvanceError, setDomainSetupAutoAdvanceError] = useState<string | null>(null);
   const [domainSetupAutoAdvancing, setDomainSetupAutoAdvancing] = useState(false);
+  const [paymentsSetupAction, setPaymentsSetupAction] = useState<"defer" | "connect" | null>(null);
   const previousProjectId = useRef<string | null>(null);
   const paymentsAutoCompletingRef = useRef(false);
   const stripeAccountInfo = props.project.app.useStripeAccountInfo();
@@ -166,6 +167,7 @@ export function ProjectOnboardingWizard(props: {
     setAuthSetupMobileTab("methods");
     setDomainSetupAutoAdvanceError(null);
     setDomainSetupAutoAdvancing(false);
+    setPaymentsSetupAction(null);
     paymentsAutoCompletingRef.current = false;
   }, [completeConfig, deriveCurrentOnboardingState, project, project.id, status]);
 
@@ -374,6 +376,37 @@ export function ProjectOnboardingWizard(props: {
     setProjectOnboardingStatus,
     updateConfig,
   ]);
+
+  const deferPaymentsSetup = useCallback(async () => {
+    await runWithSaving(async () => {
+      setPaymentsSetupAction("defer");
+      try {
+        if (selectedPaymentsCountry === "US") {
+          await props.project.app.setupPayments();
+        }
+        await persistOnboardingState();
+        await setStatus("welcome");
+      } finally {
+        setPaymentsSetupAction(null);
+      }
+    });
+  }, [persistOnboardingState, props.project.app, runWithSaving, selectedPaymentsCountry, setStatus]);
+
+  const connectPaymentsSetup = useCallback(async () => {
+    await runWithSaving(async () => {
+      setPaymentsSetupAction("connect");
+      try {
+        const setup = await props.project.app.setupPayments();
+        const redirectUrl = new URL(setup.url);
+        if (redirectUrl.protocol !== "https:") {
+          throw new Error("Payments setup redirect URL must use HTTPS.");
+        }
+        window.location.href = redirectUrl.toString();
+      } finally {
+        setPaymentsSetupAction(null);
+      }
+    });
+  }, [props.project.app, runWithSaving]);
 
   useEffect(() => {
     if (status !== "payments_setup" || stripeAccountInfo?.details_submitted !== true || paymentsAutoCompletingRef.current) {
@@ -893,12 +926,9 @@ export function ProjectOnboardingWizard(props: {
         primaryAction={
           <DesignButton
             className="rounded-full px-6"
-            loading={saving}
-            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              await persistOnboardingState();
-              await props.setStatus("welcome");
-            }))}
-
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "defer"}
+            onClick={() => runAsynchronouslyWithAlert(deferPaymentsSetup)}
           >
             Do Later
           </DesignButton>
@@ -907,15 +937,9 @@ export function ProjectOnboardingWizard(props: {
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
-            loading={saving}
-            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              const setup = await props.project.app.setupPayments();
-              const redirectUrl = new URL(setup.url);
-              if (redirectUrl.protocol !== "https:") {
-                throw new Error("Payments setup redirect URL must use HTTPS.");
-              }
-              window.location.href = redirectUrl.toString();
-            }))}
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "connect"}
+            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
           >
             Connect
           </DesignButton>
