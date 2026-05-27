@@ -386,6 +386,7 @@ export abstract class OAuthBaseProvider {
     callbackParams: CallbackParamsType,
     codeVerifier: string,
     state: string,
+    extraScope?: string,
   }): Promise<{ userInfo: OAuthUserInfo, tokenSet: TokenSet }> {
     let tokenSet;
     const callbackParams = { ...options.callbackParams };
@@ -410,11 +411,17 @@ export abstract class OAuthBaseProvider {
       },
     ] as const;
 
+    const callbackExtras = {
+      exchangeBody: {
+        scope: mergeScopeStrings(this.scope, options.extraScope ?? ""),
+      },
+    };
+
     try {
       if (this.openid) {
-        tokenSet = await this.oauthClient.callback(...params);
+        tokenSet = await this.oauthClient.callback(...params, callbackExtras);
       } else {
-        tokenSet = await this.oauthClient.oauthCallback(...params);
+        tokenSet = await this.oauthClient.oauthCallback(...params, callbackExtras);
       }
     } catch (error: any) {
       if (error?.error === "invalid_grant" || error?.error?.error === "invalid_grant") {

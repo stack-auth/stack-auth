@@ -168,6 +168,7 @@ const handler = createSmartRouteHandler({
         callbackResult = await providerObj.getCallback({
           codeVerifier: innerCodeVerifier,
           state: innerState,
+          extraScope: providerScope,
           callbackParams: {
             ...query,
             ...body,
