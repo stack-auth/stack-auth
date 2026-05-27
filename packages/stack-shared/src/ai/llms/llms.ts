@@ -23,6 +23,10 @@ export const llmsTextHeaders = {
 } as const;
 
 export function createLlmsTextResponse(body: string): Response {
+  if (typeof body !== "string" || body === "") {
+    throw new TypeError("createLlmsTextResponse: body must be a non-empty string");
+  }
+
   return new Response(body, {
     headers: llmsTextHeaders,
   });
