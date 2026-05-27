@@ -1,196 +1,181 @@
-[![Stack Logo](/.github/assets/logo.png)](https://hexclave.com)
-
-<h3 align="center">
-  <a href="https://docs.hexclave.com">📘 Docs</a>
-  | <a href="https://hexclave.com/">☁️ Hosted Version</a>
-  | <a href="https://demo.hexclave.com/">✨ Demo</a>
-  | <a href="https://discord.hexclave.com">🎮 Discord</a>
-</h4>
-
-# Hexclave: The open-source auth platform
-
-Hexclave is a managed user authentication solution. It is developer-friendly and fully open-source (licensed under MIT and AGPL).
-
-Hexclave gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
-
-We support Next.js, React, and JavaScript frontends, along with any backend that can use our [REST API](https://docs.hexclave.com/api/overview). Check out our [setup guide](https://docs.hexclave.com/docs/next/getting-started/setup) to get started.
-
 <div align="center">
-<img alt="Hexclave Setup" src=".github/assets/create-project.gif" width="400" />
+
+<img src=".github/assets/hexclave-header.svg" alt="Hexclave" width="320"/>
+
+<br/>
+
+**The user infrastructure platform.**
+
+Hexclave handles everything around your users: authentication, teams,
+payments, emails, analytics, and much more. Start in minutes on the hosted
+cloud. Your data is always yours to export and self-host.
+
+[Website](https://hexclave.com) · [Docs](https://docs.hexclave.com) · [Dashboard](https://app.hexclave.com) · [Discord](https://discord.hexclave.com)
+
+![License](https://img.shields.io/badge/license-MIT%20%2F%20AGPLv3-blue)
+![SDKs](https://img.shields.io/badge/SDKs-Next.js%20%C2%B7%20React%20%C2%B7%20JS-black)
+![Deploy](https://img.shields.io/badge/deploy-Cloud%20or%20self--hosted-success)
+
 </div>
 
-## Table of contents
+---
 
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+<div align="center">
+  <img src=".github/assets/comparison.png" alt="Where Hexclave fits in the infrastructure stack" width="900"/>
+</div>
 
-- [How is this different from X?](#how-is-this-different-from-x)
-- [✨ Features](#-features)
-- [📦 Installation & Setup](#-installation--setup)
-- [🌱 Some community projects built with Hexclave](#-some-community-projects-built-with-hexclave)
-  - [Templates](#templates)
-  - [Examples](#examples)
-- [🏗 Development & Contribution](#-development--contribution)
-  - [Requirements](#requirements)
-  - [Setup](#setup)
-  - [Useful commands](#useful-commands)
-- [❤ Contributors](#-contributors)
+## Get started
 
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+Setting up Hexclave is one prompt. Paste this into your coding agent of choice:
 
-## How is this different from X?
-
-Ask yourself about `X`:
-
-- Is `X` open-source?
-- Is `X` developer-friendly, well-documented, and lets you get started in minutes?
-- Besides authentication, does `X` also do authorization and user management (see feature list below)?
-
-If you answered "no" to any of these questions, then that's how Hexclave is different from `X`.
-
-## ✨ Features
-
-To get notified first when we add new features, please subscribe to [our newsletter](https://stack-auth.beehiiv.com/subscribe).
-
-| | |
-|-|:-:|
-| <h3>`<SignIn/>` and `<SignUp/>`</h3> Authentication components that support OAuth, password credentials, and magic links, with shared development keys to make setup faster. All components support dark/light modes. | <img alt="Sign-in component" src=".github/assets/dark-light-mode.png" width="250px"> |
-| <h3>Idiomatic Next.js APIs</h3> We build on server components, React hooks, and route handlers. | ![Dark/light mode](.github/assets/components.png) |
-| <h3>User dashboard</h3> Dashboard to filter, analyze, and edit users. Replaces the first internal tool you would have to build. | ![User dashboard](.github/assets/dashboard.png) |
-| <h3>Account settings</h3> Lets users update their profile, verify their e-mail, or change their password. No setup required. | <img alt="Account settings component" src=".github/assets/account-settings.png" width="300px"> |
-| <h3>Multi-tenancy & teams</h3> Manage B2B customers with an organization structure that makes sense and scales to millions. | <img alt="Selected team switcher component" src=".github/assets/team-switcher.png" width="400px"> |
-| <h3>Role-based access control</h3> Define an arbitrary permission graph and assign it to users. Organizations can create org-specific roles. | <img alt="RBAC" src=".github/assets/permissions.png"  width="400px"> |
-| <h3>OAuth Connections</h3>Beyond login, Hexclave can also manage access tokens for third-party APIs, such as Outlook and Google Calendar. It handles refreshing tokens and controlling scope, making access tokens accessible via a single function call. | <img alt="OAuth tokens" src=".github/assets/connected-accounts.png"  width="250px"> |
-| <h3>Passkeys</h3> Support for passwordless authentication using passkeys, allowing users to sign in securely with biometrics or security keys across all their devices. | <img alt="OAuth tokens" src=".github/assets/passkeys.png"  width="400px"> |
-| <h3>Impersonation</h3> Impersonate users for debugging and support, logging into their account as if you were them. | <img alt="Webhooks" src=".github/assets/impersonate.png"  width="350px"> |
-| <h3>Webhooks</h3> Get notified when users use your product, built on Svix. | <img alt="Webhooks" src=".github/assets/stack-webhooks.png"  width="300px"> |
-| <h3>Automatic emails</h3> Send customizable emails on triggers such as sign-up, password reset, and email verification, editable with a WYSIWYG editor. | <img alt="Email templates" src=".github/assets/email-editor.png"  width="400px"> |
-| <h3>User session & JWT handling</h3> Hexclave manages refresh and access tokens, JWTs, and cookies, resulting in the best performance at no implementation cost. | <img alt="User button" src=".github/assets/user-button.png"  width="400px"> |
-| <h3>M2M authentication</h3> Use short-lived access tokens to authenticate your machines to other machines. | <img src=".github/assets/m2m-auth.png" alt="M2M authentication"  width="400px"> |
-
-
-## 📦 Installation & Setup
-
-To install Hexclave in your Next.js project (for React, JavaScript, or other frameworks, see our [complete documentation](https://docs.hexclave.com)):
-
-1. Run Hexclave's installation wizard with the following command:
-    ```bash
-    npx @hexclave/cli@latest init
-    ```
-
-2. Then, create an account on the [Hexclave dashboard](https://app.hexclave.com/projects), create a new project with an API key, and copy its environment variables into the .env.local file of your Next.js project:
-    ```
-    NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
-    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-    STACK_SECRET_SERVER_KEY=<your-secret-server-key>
-    ```
-3. That's it! You can run your app with `npm run dev` and go to [http://localhost:3000/handler/signup](http://localhost:3000/handler/signup) to see the sign-up page. You can also check out the account settings page at [http://localhost:3000/handler/account-settings](http://localhost:3000/handler/account-settings).
-
-Check out the [documentation](https://docs.hexclave.com/getting-started/setup) for a more detailed guide.
-
-## 🌱 Some community projects built with Hexclave
-
-Have your own? Happy to feature it if you create a PR or message us on [Discord](https://discord.hexclave.com).
-
-### Templates
-- [Hexclave Template by Hexclave Team](https://github.com/hexclave/hexclave-template)
-- [Next SaaSkit by wolfgunblood](https://github.com/wolfgunblood/nextjs-saaskit)
-- [SaaS Boilerplate by Robin Faraj](https://github.com/robinfaraj/saas-boilerplate)
-
-### Examples
-- [Hexclave Example by career-tokens](https://github.com/career-tokens/StackYCAuth)
-- [Hexclave Demo by the Hexclave team](https://github.com/hexclave/hexclave/tree/dev/examples/demo)
-- [Hexclave E-Commerce Example by the Hexclave team](https://github.com/hexclave/hexclave/tree/dev/examples/e-commerce)
-
-## 🏗 Development & Contribution
-
-This is for you if you want to contribute to the Hexclave project or run the Hexclave dashboard locally.
-
-**Important**: Please read the [contribution guidelines](CONTRIBUTING.md) carefully and join [our Discord](https://discord.hexclave.com) if you'd like to help.
-
-### Requirements
-
-- Node v20
-- pnpm v9
-- Docker
-
-### Setup
-
-Note: 24GB+ of RAM is recommended for a smooth development experience.
-
-In a new terminal:
-
-```sh
-pnpm install
-
-# Build the packages and generate code. We only need to do this once, as `pnpm dev` will do this from now on
-pnpm build:packages
-pnpm codegen
-
-# Start the dependencies (DB, Inbucket, etc.) as Docker containers, seeding the DB with the Prisma schema
-# Make sure you have Docker (or OrbStack) installed and running
-pnpm restart-deps
-
-# Start the dev server
-pnpm dev
-
-# In a different terminal, run tests in watch mode
-pnpm test # useful: --no-watch (disables watch mode) and --bail 1 (stops after the first failure) 
+```text
+Read skill.hexclave.com and help me setup hexclave in this project
 ```
 
-You can now open the dev launchpad at [http://localhost:8100](http://localhost:8100). From there, you can navigate to the dashboard at [http://localhost:8101](http://localhost:8101), API on port 8102, demo on port 8103, docs on port 8104, Inbucket (e-mails) on port 8105, and Prisma Studio on port 8106. See the dev launchpad for a list of all running services.
+## What's included
 
-Your IDE may show an error on all `@stackframe/XYZ` imports. To fix this, simply restart the TypeScript language server; for example, in VSCode you can open the command palette (Ctrl+Shift+P) and run `Developer: Reload Window` or `TypeScript: Restart TS server`.
+Hexclave ships as a catalog of apps you switch on as your product needs them.
+Each one is built on the same user model, and new apps land regularly.
 
-Pre-populated .env files for the setup below are available and used by default in `.env.development` in each of the packages. However, if you're creating a production build (eg. with `pnpm run build`), you must supply the environment variables manually (see below).
+<table><tr>
+<td width="50%" valign="middle">
 
-### Useful commands
+### <img src=".github/assets/logos/authentication.png" alt="" width="40" align="top"/> &nbsp; Authentication
 
-```sh
-# NOTE:
-# Please see the dev launchpad (default: http://localhost:8100) for a list of all running services.
+Authentication that just works with passkeys, OAuth, and CLI auth. Drop in one component and ship the whole flow; auth methods toggle from the dashboard with no code changes needed.
 
-# Installation commands
-pnpm install: Installs dependencies
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/authentication.png" width="520" alt="Authentication"/>
+</td>
+</tr></table>
 
-# Types & linting commands
-pnpm typecheck: Runs the TypeScript type checker. May require a build or dev server to run first.
-pnpm lint: Runs the ESLint linter. Optionally, pass `--fix` to fix some of the linting errors. May require a build or dev server to run first.
+<table><tr>
+<td width="50%" valign="middle">
 
-# Build commands
-pnpm build: Builds all projects, including apps, packages, examples, and docs. Also runs code-generation tasks. Before you can run this, you will have to copy all `.env.development` files in the folders to `.env.production.local` or set the environment variables manually.
-pnpm build:packages: Builds all the npm packages.
-pnpm codegen: Runs all the code-generation tasks, eg. Prisma client and OpenAPI docs generation.
+### <img src=".github/assets/logos/teams.png" alt="" width="40" align="top"/> &nbsp; Teams
 
-# Development commands
-pnpm dev: Runs the development servers of the main projects, excluding most examples. On the first run, requires the packages to be built and codegen to be run. After that, it will watch for file changes (including those in code-generation files). If you have to restart the development server for anything, that is a bug that you can report.
-pnpm dev:full: Runs the development servers for all projects, including examples.
-pnpm dev:basic: Runs the development servers only for the necessary services (backend and dashboard). Not recommended for most users, upgrade your machine instead.
+Build for teams, not just users, with workspaces, email invites, and roles that actually gate the work. The workspace switcher remembers selection, invites auto sign up new users, and permissions hold up under audit.
 
-# Environment commands
-pnpm start-deps: Starts the Docker dependencies (DB, Inbucket, etc.) as Docker containers, and initializes them with the seed script & migrations. Note: The started dependencies will be visible on the dev launchpad (port 8100 by default).
-pnpm stop-deps: Stops the Docker dependencies (DB, Inbucket, etc.) and deletes the data on them.
-pnpm restart-deps: Stops and starts the dependencies.
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/teams.png" width="520" alt="Teams"/>
+</td>
+</tr></table>
 
-# Database commands
-pnpm db:migration-gen: Currently not used. Please generate Prisma migrations manually (or with AI).
-pnpm db:reset: Resets the database to the initial state. Run automatically by `pnpm start-deps`.
-pnpm db:init: Initializes the database with the seed script & migrations. Run automatically by `pnpm db:reset`.
-pnpm db:seed: Re-seeds the database with the seed script. Run automatically by `pnpm db:init`.
-pnpm db:migrate: Runs the migrations. Run automatically by `pnpm db:init`.
+<table><tr>
+<td width="50%" valign="middle">
 
-# Testing commands
-pnpm test <file-filters>: Runs the tests. Pass `--bail 1` to make the test only run until the first failure. Pass `--no-watch` to run the tests once instead of in watch mode.
+### <img src=".github/assets/logos/rbac.png" alt="" width="40" align="top"/> &nbsp; RBAC
 
-# Various commands
-pnpm explain-query: Paste a SQL query to get an explanation of the query plan, helping you debug performance issues.
-pnpm verify-data-integrity: Verify the integrity of the data in the database by running a bunch of integrity checks. This should never fail at any point in time (unless you messed with the DB manually).
-```
+Permissions, sorted: roles that nest and one permission check that works the same on server or client. Define them in the dashboard, check them anywhere in your code.
 
-Note: When working with AI, you should keep a terminal tab with the dev server open so the AI can run queries against it.
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/rbac.png" width="520" alt="RBAC"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/api-keys.png" alt="" width="40" align="top"/> &nbsp; API Keys
+
+API keys without the footguns: leaked keys get auto-revoked, work for users and teams, and show the full secret only once. We never keep the plaintext after creation.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/api-keys.png" width="520" alt="API Keys"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/payments.png" alt="" width="40" align="top"/> &nbsp; Payments
+
+Payments without the plumbing for subscriptions, one-time charges, and usage metering with credits. Bill a person or a whole team with one model, no separate codepath.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/payments.png" width="520" alt="Payments"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/emails.png" alt="" width="40" align="top"/> &nbsp; Emails
+
+Email that delivers and tells you so, handling transactional and marketing sends from one API. Edit templates with an AI editor, theme once, and track every open and click.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/emails.png" width="520" alt="Emails"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/analytics.png" alt="" width="40" align="top"/> &nbsp; Analytics
+
+Know your users with no data stack required, with live active user counts and session replays out of the box. Ask in plain English to build dashboards or write SQL to save queries, all with one flag enabled.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/analytics.png" width="520" alt="Analytics"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/webhooks.png" alt="" width="40" align="top"/> &nbsp; Webhooks
+
+React to every user event in real time with signed, tamper-proof webhooks. Retries and backoff are handled for you; verify in five lines and manage endpoints from the dashboard.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/webhooks.png" width="520" alt="Webhooks"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/data-vault.png" alt="" width="40" align="top"/> &nbsp; Data Vault
+
+A safe for the secrets your users hand you, locked with your secret so we never see the plaintext. Store and retrieve tokens in two lines each, server-only by design.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/data-vault.png" width="520" alt="Data Vault"/>
+</td>
+</tr></table>
+
+<table><tr>
+<td width="50%" valign="middle">
+
+### <img src=".github/assets/logos/launch-checklist.png" alt="" width="40" align="top"/> &nbsp; Launch Checklist
+
+Run through the must-do checks before flipping to production: domain setup, callbacks locked, secrets rotated. The progress tracker keeps your team aligned so nothing critical slips through on launch day.
+
+</td>
+<td width="50%" valign="middle" align="center">
+<img src=".github/assets/app-shots/launch-checklist.png" width="520" alt="Launch Checklist"/>
+</td>
+</tr></table>
+
+## Contributing
+
+Hexclave is open source, and contributions are welcome. Read
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) to get started, and say hello in
+[Discord](https://discord.hexclave.com) before picking up anything large.
+Found a security issue? Email security@hexclave.com.
 
 ## ❤ Contributors
 
-<a href="https://github.com/hexclave/hexclave/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=stack-auth/stack&columns=9" width="100%" />
+<a href="https://github.com/hexclave/stack-auth/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=hexclave/stack-auth&columns=9" alt="Contributors" width="100%" />
 </a>

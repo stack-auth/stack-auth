@@ -2,7 +2,7 @@
 
 Welcome to Hexclave!
 
-Due to the nature of authentication, this may not be the easiest project to contribute to, so if you are looking for projects to help gain programming experience, we may not be a great match. If you're looking for projects for beginners, check out [Awesome First PR Opportunities](https://github.com/MunGell/awesome-for-beginners).
+Due to the nature of user infrastructure, this may not be the easiest project to contribute to, so if you are looking for projects to help gain programming experience, we may not be a great match. If you're looking for projects for beginners, check out [Awesome First PR Opportunities](https://github.com/MunGell/awesome-for-beginners).
 
 ## Table of contents
 
@@ -25,7 +25,7 @@ If you think Hexclave is a good fit for you, follow these steps:
 2. [Use Hexclave](https://docs.hexclave.com/). The best way to understand the project is to use it. Build an application on top of Hexclave, and post it on GitHub or write a blog post about how you built it. This also lets us assess your skills and understand where you could best help the project.
 3. Give us feedback on Discord or GitHub; let us know where you got stuck, and which things you wish were easier. (We appreciate contributions most when they solve problems the authors encountered themselves in real usage.)
 4. Contribute to the [documentation](https://docs.hexclave.com) and create examples & guides. This way, you can share your knowledge and expertise with everyone else who's just getting started.
-5. Only then, start [contributing to the codebase](README.md#-development--contribution). Coordinate with us on Discord beforehand to ensure we are not working on the same thing already, and to make sure a task is not more difficult than it seems.
+5. Only then, start [contributing to the codebase](README.md#contributing). Coordinate with us on Discord beforehand to ensure we are not working on the same thing already, and to make sure a task is not more difficult than it seems.
 
 
 ## Security & bug bounties
