@@ -1,8 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import { isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
+import { getOAuthRedirectUrisForTenancy, validateRedirectHostname, isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
 
 describe('validateRedirectUrl', () => {
+  const withHostedHandlerEnv = <T,>(
+    values: {
+      hostedHandlerUrlTemplate?: string,
+      hostedHandlerDomainSuffix?: string,
+      stackPortPrefix?: string,
+    },
+    callback: () => T,
+  ): T => {
+    const processEnv = Reflect.get(process, "env");
+    // Hexclave rebrand: getEnvVariable() in stack-shared/utils/env.tsx prefers the
+    // HEXCLAVE_*-prefixed sibling of each STACK_* var. CI sets only the HEXCLAVE_*
+    // variant (e.g. NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX), so writing only the STACK_*
+    // key here would be silently overridden. Mirror every STACK_* key to its
+    // HEXCLAVE_* sibling so both representations resolve to the same value.
+    const stackKeys = [
+      "NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE",
+      "NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX",
+      "NEXT_PUBLIC_STACK_PORT_PREFIX",
+    ] as const;
+    const hexclaveOf = (name: string) => name.replace("STACK_", "HEXCLAVE_");
+    const allKeys = [...stackKeys, ...stackKeys.map(hexclaveOf)];
+    const oldValues = Object.fromEntries(allKeys.map((k) => [k, Reflect.get(processEnv, k)]));
+    const newValues: Record<string, string | undefined> = {
+      NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
+      NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
+      NEXT_PUBLIC_STACK_PORT_PREFIX: values.stackPortPrefix,
+    };
+    for (const stackKey of stackKeys) {
+      newValues[hexclaveOf(stackKey)] = newValues[stackKey];
+    }
+    const applyValues = (entries: Record<string, string | undefined>) => {
+      for (const [key, value] of Object.entries(entries)) {
+        if (value == null) {
+          Reflect.deleteProperty(processEnv, key);
+        } else {
+          Reflect.set(processEnv, key, value);
+        }
+      }
+    };
+    try {
+      applyValues(newValues);
+      return callback();
+    } finally {
+      applyValues(oldValues);
+    }
+  };
+
   const createMockTenancy = (config: Partial<Tenancy['config']>): Tenancy => {
     return {
       config: {
@@ -13,10 +60,87 @@ describe('validateRedirectUrl', () => {
         },
         ...config,
       },
+      project: {
+        id: "12345678-1234-4234-8234-123456789abc",
+      },
     } as Tenancy;
   };
 
   describe('exact domain matching', () => {
+    it('should implicitly validate hosted handler domains for the project', () => {
+      withHostedHandlerEnv({
+        hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}",
+        stackPortPrefix: "92",
+      }, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {},
+          },
+        });
+
+        expect(validateRedirectUrl('http://12345678-1234-4234-8234-123456789abc.localhost:9209/anything', tenancy)).toBe(true);
+        expect(validateRedirectUrl('http://other-project.localhost:9209/anything', tenancy)).toBe(false);
+      });
+    });
+
+    it('should reject hosted handler URL templates that put the project ID in the path', () => {
+      withHostedHandlerEnv({
+        hostedHandlerUrlTemplate: "http://localhost:9209/{projectId}/{hostedPath}",
+      }, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {},
+          },
+        });
+
+        expect(() => validateRedirectUrl('http://localhost:9209/anything', tenancy))
+          .toThrowErrorMatchingInlineSnapshot(`
+            [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
+
+            This is likely an error in Hexclave. Please make sure you are running the newest version and report it.]
+          `);
+      });
+    });
+
+    it('should include the implicit hosted callback in OAuth redirect URIs', () => {
+      withHostedHandlerEnv({}, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {
+              '1': { baseUrl: 'https://example.com', handlerPath: '/handler' },
+            },
+          },
+        });
+
+        expect(getOAuthRedirectUrisForTenancy(tenancy)).toMatchInlineSnapshot(`
+          [
+            "https://example.com/handler",
+            "https://12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com/handler/oauth-callback",
+          ]
+        `);
+      });
+    });
+
+    it('should validate Turnstile hostnames through the same trusted domains', () => {
+      withHostedHandlerEnv({}, () => {
+        const tenancy = createMockTenancy({
+          domains: {
+            allowLocalhost: false,
+            trustedDomains: {
+              '1': { baseUrl: 'https://*.example.com', handlerPath: '/handler' },
+            },
+          },
+        });
+
+        expect(validateRedirectHostname('app.example.com', tenancy)).toBe(true);
+        expect(validateRedirectHostname('12345678-1234-4234-8234-123456789abc.built-with-stack-auth.com', tenancy)).toBe(true);
+        expect(validateRedirectHostname('evil.example.test', tenancy)).toBe(false);
+      });
+    });
+
     it('should validate exact domain matches', () => {
       const tenancy = createMockTenancy({
         domains: {

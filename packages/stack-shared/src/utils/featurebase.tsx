@@ -1,5 +1,5 @@
 import { getEnvVariable } from "./env";
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 
 export type FeaturebaseUser = {
   userId: string,
@@ -16,7 +16,7 @@ export type StackAuthUser = {
 };
 
 /**
- * Find a Featurebase user by their Stack Auth user ID
+ * Find a Featurebase user by their Hexclave user ID
  */
 async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string): Promise<FeaturebaseUser | null> {
   try {
@@ -32,14 +32,14 @@ async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string):
     }
 
     if (!response.ok) {
-      throw new StackAssertionError(`Failed to find Featurebase user by ID: ${response.statusText}`);
+      throw new HexclaveAssertionError(`Failed to find Featurebase user by ID: ${response.statusText}`);
     }
 
     const data = await response.json();
     const user = data.user;
 
     if (!user) {
-      throw new StackAssertionError(`Featurebase API returned success but no user data for ID: ${stackAuthUserId}`, { data });
+      throw new HexclaveAssertionError(`Featurebase API returned success but no user data for ID: ${stackAuthUserId}`, { data });
     }
 
     return {
@@ -49,10 +49,10 @@ async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string):
       profilePicture: user.profilePicture,
     };
   } catch (error) {
-    if (error instanceof StackAssertionError) {
+    if (error instanceof HexclaveAssertionError) {
       throw error;
     }
-    throw new StackAssertionError("Failed to find Featurebase user by ID", { cause: error });
+    throw new HexclaveAssertionError("Failed to find Featurebase user by ID", { cause: error });
   }
 }
 
@@ -73,14 +73,14 @@ async function findFeaturebaseUserByEmail(email: string, apiKey: string): Promis
     }
 
     if (!response.ok) {
-      throw new StackAssertionError(`Failed to find Featurebase user by email: ${response.statusText}`);
+      throw new HexclaveAssertionError(`Failed to find Featurebase user by email: ${response.statusText}`);
     }
 
     const data = await response.json();
     const user = data.user;
 
     if (!user) {
-      throw new StackAssertionError(`Featurebase API returned success but no user data for email: ${email}`, { data });
+      throw new HexclaveAssertionError(`Featurebase API returned success but no user data for email: ${email}`, { data });
     }
 
     return {
@@ -116,16 +116,16 @@ async function createFeaturebaseUser(user: FeaturebaseUser, apiKey: string): Pro
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new StackAssertionError(`Failed to create Featurebase user: ${errorData.error || response.statusText}`, { errorData });
+      throw new HexclaveAssertionError(`Failed to create Featurebase user: ${errorData.error || response.statusText}`, { errorData });
     }
 
     // The identifyUser endpoint just returns { "success": true }, so we return the input data
     return user;
   } catch (error) {
-    if (error instanceof StackAssertionError) {
+    if (error instanceof HexclaveAssertionError) {
       throw error;
     }
-    throw new StackAssertionError("Failed to create Featurebase user", { cause: error });
+    throw new HexclaveAssertionError("Failed to create Featurebase user", { cause: error });
 
   }
 }
@@ -146,7 +146,7 @@ async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<Featu
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new StackAssertionError(`Failed to update Featurebase user: ${errorData.error || response.statusText}`, { errorData });
+      throw new HexclaveAssertionError(`Failed to update Featurebase user: ${errorData.error || response.statusText}`, { errorData });
     }
 
     const data = await response.json();
@@ -157,18 +157,18 @@ async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<Featu
       profilePicture: data.profilePicture,
     };
   } catch (error) {
-    if (error instanceof StackAssertionError) {
+    if (error instanceof HexclaveAssertionError) {
       throw error;
     }
-    throw new StackAssertionError("Failed to update Featurebase user", { cause: error });
+    throw new HexclaveAssertionError("Failed to update Featurebase user", { cause: error });
   }
 }
 
 /**
- * Get or create a Featurebase user based on Stack Auth user data.
+ * Get or create a Featurebase user based on Hexclave user data.
  * This function ensures that:
  * 1. We never change a user's email address on Featurebase
- * 2. We use Stack Auth user ID as the primary identifier
+ * 2. We use Hexclave user ID as the primary identifier
  * 3. We handle email conflicts by using fallback emails
  * 4. We update profile information when needed
  */
@@ -179,7 +179,7 @@ export async function getOrCreateFeaturebaseUser(
   const apiKey = options?.apiKey || getEnvVariable("STACK_FEATUREBASE_API_KEY");
   const fallbackEmail = `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`;
 
-  // First, try to find existing user by Stack Auth user ID
+  // First, try to find existing user by Hexclave user ID
   const existingById = await findFeaturebaseUserById(stackAuthUser.id, apiKey);
   if (existingById) {
     // Ensure the user has an email on Featurebase.
@@ -195,7 +195,7 @@ export async function getOrCreateFeaturebaseUser(
         ensuredEmail = fallbackEmail;
       } catch (e) {
         // If setting fallback email failed, keep ensuredEmail as-is (undefined) and let callers handle
-        throw new StackAssertionError(`Failed to set fallback email for existing Featurebase user ${existingById.userId}`, { cause: e });
+        throw new HexclaveAssertionError(`Failed to set fallback email for existing Featurebase user ${existingById.userId}`, { cause: e });
       }
     }
 

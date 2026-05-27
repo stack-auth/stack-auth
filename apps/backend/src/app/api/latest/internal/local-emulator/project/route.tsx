@@ -25,7 +25,7 @@ import {
   yupString,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import fs from "fs/promises";
 import * as path from "path";
@@ -40,7 +40,10 @@ function isProjectOnboardingStatus(value: string): value is ProjectOnboardingSta
 
 function deriveDisplayLabel(absoluteFilePath: string): string {
   const base = path.basename(absoluteFilePath);
-  if (base.toLowerCase() === "stack.config.ts") {
+  // Hexclave rebrand: recognize both the new `hexclave.config.ts` filename and
+  // the legacy `stack.config.ts` so the directory name is used as the label.
+  const lowerBase = base.toLowerCase();
+  if (lowerBase === "hexclave.config.ts" || lowerBase === "stack.config.ts") {
     return path.basename(path.dirname(absoluteFilePath)) || base;
   }
   return base;
@@ -62,7 +65,7 @@ async function assertLocalEmulatorOwnerTeamReadiness() {
     },
   });
   if (!ownerTeam) {
-    throw new StackAssertionError("Local emulator owner team is missing. Run the seed script before requesting local emulator project credentials.");
+    throw new HexclaveAssertionError("Local emulator owner team is missing. Run the seed script before requesting local emulator project credentials.");
   }
 
   const ownerMembership = await internalPrisma.teamMember.findUnique({
@@ -78,12 +81,12 @@ async function assertLocalEmulatorOwnerTeamReadiness() {
     },
   });
   if (!ownerMembership) {
-    throw new StackAssertionError("Local emulator user is not a member of the local emulator owner team. Run the seed script before requesting local emulator project credentials.");
+    throw new HexclaveAssertionError("Local emulator user is not a member of the local emulator owner team. Run the seed script before requesting local emulator project credentials.");
   }
 }
 
 async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<{ projectId: string, created: boolean }> {
-  const existingRows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
+  const existingRows = await globalPrismaClient.$replica().$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
     SELECT "projectId"
     FROM "LocalEmulatorProject"
     WHERE "absoluteFilePath" = ${absoluteFilePath}
@@ -173,7 +176,7 @@ async function getOrCreateCredentials(projectId: string) {
   });
 
   if (!keySet.publishableClientKey || !keySet.secretServerKey || !keySet.superSecretAdminKey) {
-    throw new StackAssertionError("Local emulator key set is missing required keys.", {
+    throw new HexclaveAssertionError("Local emulator key set is missing required keys.", {
       projectId,
       keySetId: keySet.id,
     });
@@ -187,7 +190,7 @@ async function getOrCreateCredentials(projectId: string) {
 }
 
 async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboarding: boolean): Promise<ProjectOnboardingStatus> {
-  const onboardingStateColumnExistsRows = await globalPrismaClient.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+  const onboardingStateColumnExistsRows = await globalPrismaClient.$replica().$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
     SELECT EXISTS (
       SELECT 1
       FROM information_schema.columns
@@ -198,7 +201,7 @@ async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboardi
   `);
   const onboardingStateColumnExists = onboardingStateColumnExistsRows[0]?.exists === true;
 
-  const rows = await globalPrismaClient.$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
     SELECT "onboardingStatus"
     FROM "Project"
     WHERE "id" = ${projectId}
@@ -206,10 +209,10 @@ async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboardi
   `);
   const row = rows.length > 0 ? rows[0] : undefined;
   if (!row) {
-    throw new StackAssertionError("Local emulator project not found while syncing onboarding state.", { projectId });
+    throw new HexclaveAssertionError("Local emulator project not found while syncing onboarding state.", { projectId });
   }
   if (!isProjectOnboardingStatus(row.onboardingStatus)) {
-    throw new StackAssertionError("Project onboarding status in DB is invalid.", {
+    throw new HexclaveAssertionError("Project onboarding status in DB is invalid.", {
       projectId,
       onboardingStatus: row.onboardingStatus,
     });
@@ -301,9 +304,31 @@ export const POST = createSmartRouteHandler({
     }
 
     const looksLikeConfigFile = /\.(ts|js|mjs)$/i.test(inputPath);
-    const absoluteFilePath = (inputStat?.isDirectory() || (!inputStat && !looksLikeConfigFile))
-      ? path.join(inputPath, "stack.config.ts")
-      : inputPath;
+    let absoluteFilePath: string;
+    if (inputStat?.isDirectory() || (!inputStat && !looksLikeConfigFile)) {
+      // Hexclave rebrand: prefer the new `hexclave.config.ts` filename inside
+      // the directory; fall back to the legacy `stack.config.ts` when that one
+      // exists on disk so existing projects keep working without migration.
+      const hexclaveCandidate = path.join(inputPath, "hexclave.config.ts");
+      const legacyCandidate = path.join(inputPath, "stack.config.ts");
+      let hexclaveExists = false;
+      try {
+        await fs.access(resolveEmulatorPath(hexclaveCandidate));
+        hexclaveExists = true;
+      } catch {
+        hexclaveExists = false;
+      }
+      let legacyExists = false;
+      try {
+        await fs.access(resolveEmulatorPath(legacyCandidate));
+        legacyExists = true;
+      } catch {
+        legacyExists = false;
+      }
+      absoluteFilePath = (!hexclaveExists && legacyExists) ? legacyCandidate : hexclaveCandidate;
+    } else {
+      absoluteFilePath = inputPath;
+    }
 
     const resolvedFilePath = resolveEmulatorPath(absoluteFilePath);
     let fileExists: boolean;
@@ -385,7 +410,7 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
     }
 
-    const rows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
+    const rows = await globalPrismaClient.$replica().$queryRaw<LocalEmulatorProjectListRow[]>(Prisma.sql`
       SELECT "projectId", "absoluteFilePath", "updatedAt"
       FROM "LocalEmulatorProject"
       ORDER BY "updatedAt" DESC

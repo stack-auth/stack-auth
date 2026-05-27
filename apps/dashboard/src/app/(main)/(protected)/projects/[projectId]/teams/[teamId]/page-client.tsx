@@ -15,7 +15,7 @@ import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
 import { ServerTeam } from '@stackframe/stack';
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { strictEmailSchema, yupObject } from '@stackframe/stack-shared/dist/schema-fields';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { notFound, usePathname, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useMemo, useState } from 'react';
@@ -27,7 +27,7 @@ import { useAdminApp } from '../../use-admin-app';
 import { TeamAnalyticsSection } from './team-analytics';
 import { TeamPaymentsSection } from './team-payments';
 
-const teamMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/teams";
+const teamMetadataDocsUrl = "https://docs.hexclave.com/docs/concepts/teams";
 
 const inviteFormSchema = yupObject({
   email: strictEmailSchema("Please enter a valid email address").defined(),
@@ -237,7 +237,7 @@ function TeamPage({ team }: { team: ServerTeam }) {
             selectedCategory={activeTab}
             onSelect={(id) => {
               if (!isTeamPageTab(id)) {
-                throw new StackAssertionError(`Unknown team page tab selected: ${id}`);
+                throw new HexclaveAssertionError(`Unknown team page tab selected: ${id}`);
               }
               setSelectedTab(id);
             }}

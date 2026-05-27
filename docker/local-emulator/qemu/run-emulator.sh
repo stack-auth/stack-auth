@@ -10,7 +10,7 @@ RUN_DIR="${EMULATOR_RUN_DIR:-$HOME/.stack/emulator/run}"
 
 VM_RAM="${EMULATOR_RAM:-4096}"
 VM_CPUS="${EMULATOR_CPUS:-4}"
-PORT_PREFIX="${PORT_PREFIX:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}}"
+PORT_PREFIX="${PORT_PREFIX:-${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}}"
 READY_TIMEOUT="${EMULATOR_READY_TIMEOUT:-240}"
 # Shorter timeout when resuming from a snapshot: services are already running,
 # we only need to wait for rotate-secrets + Node restart (~3-10s).

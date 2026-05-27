@@ -792,6 +792,7 @@ export default function PageClient() {
             isLoadingMore={emailGridData.isLoadingMore}
             onLoadMore={emailGridData.loadMore}
             footer={false}
+            fillHeight={false}
             maxHeight={500}
             toolbar={(ctx) => <DataGridToolbar ctx={ctx} hideQuickSearch />}
             onRowClick={(row) => {

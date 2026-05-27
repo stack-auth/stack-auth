@@ -1,4 +1,4 @@
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 
 type QueryOptions<Type extends 'next' | 'prev', Cursor, Filter, OrderBy> =
   & {
@@ -118,7 +118,7 @@ export abstract class PaginatedList<
     // Assert that the result is sorted
     for (let i = 1; i < result.length; i++) {
       if (this._compare(options.orderBy, result[i].item, result[i - 1].item) < 0) {
-        throw new StackAssertionError("Paginated list result is not sorted; something is wrong with the implementation", {
+        throw new HexclaveAssertionError("Paginated list result is not sorted; something is wrong with the implementation", {
           i,
           options,
           result,
@@ -341,7 +341,7 @@ export abstract class PaginatedList<
       override _compare(orderBy: OrderBy, a: Item, b: Item): number {
         const listsResults = lists.map(list => list.compare(orderBy, a, b));
         if (!listsResults.every(result => result === listsResults[0])) {
-          throw new StackAssertionError("Lists have different compare results; make sure that they use the same compare function", { lists, listsResults, orderBy, a, b });
+          throw new HexclaveAssertionError("Lists have different compare results; make sure that they use the same compare function", { lists, listsResults, orderBy, a, b });
         }
         return listsResults[0];
       }

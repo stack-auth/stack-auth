@@ -28,7 +28,8 @@ async function completeCliAuthWithRefreshToken(app: StackClientApp, loginCode: s
   await ensureCliCompleteOk(result);
 }
 
-const CLI_AUTH_CONFIRMED_KEY = "stack-cli-auth-confirmed";
+// Hexclave rebrand: sessionStorage key — straight rename (per-tab, low TTL).
+const CLI_AUTH_CONFIRMED_KEY = "hexclave-cli-auth-confirmed";
 
 function markConfirmed(loginCode: string) {
   sessionStorage.setItem(CLI_AUTH_CONFIRMED_KEY, loginCode);

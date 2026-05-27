@@ -1418,6 +1418,7 @@ function CustomersSkeleton() {
           onChange={setGridState}
           toolbar={false}
           footer={false}
+          fillHeight={false}
         />
       </div>
     </div>
@@ -1573,6 +1574,7 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
             state={gridState}
             onChange={setGridState}
             toolbar={false}
+            fillHeight={false}
           />
         )}
       </div>

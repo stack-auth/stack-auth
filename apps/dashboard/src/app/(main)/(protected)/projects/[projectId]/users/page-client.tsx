@@ -109,7 +109,7 @@ export default function PageClient() {
       >
         {firstUserPage.length > 0 ? null : (
           <Alert variant='success'>
-            Congratulations on starting your project! Check the <StyledLink href="https://docs.stack-auth.com">documentation</StyledLink> to add your first users.
+            Congratulations on starting your project! Check the <StyledLink href="https://docs.hexclave.com">documentation</StyledLink> to add your first users.
           </Alert>
         )}
 

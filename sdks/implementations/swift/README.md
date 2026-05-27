@@ -1,6 +1,6 @@
-# Stack Auth Swift SDK
+# Hexclave Swift SDK
 
-Swift SDK for Stack Auth. Supports iOS, macOS, watchOS, tvOS, and visionOS.
+Swift SDK for Hexclave. Supports iOS, macOS, watchOS, tvOS, and visionOS.
 
 ## Requirements
 

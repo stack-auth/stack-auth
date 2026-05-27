@@ -10,9 +10,9 @@ export function getInternalProjectHeaders(options: {
 
   return {
     ...(options.contentType ? { "Content-Type": options.contentType } : {}),
-    "X-Stack-Project-Id": "internal",
-    "X-Stack-Access-Type": "client",
-    "X-Stack-Access-Token": accessToken,
-    "X-Stack-Publishable-Client-Key": publishableClientKey,
+    "X-Hexclave-Project-Id": "internal",
+    "X-Hexclave-Access-Type": "client",
+    "X-Hexclave-Access-Token": accessToken,
+    "X-Hexclave-Publishable-Client-Key": publishableClientKey,
   };
 }

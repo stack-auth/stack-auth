@@ -1,4 +1,4 @@
-import { StackAssertionError, captureError } from "./errors";
+import { HexclaveAssertionError, captureError } from "./errors";
 import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "./urls";
 
 type TrustedDomainConfig = {
@@ -6,7 +6,86 @@ type TrustedDomainConfig = {
   trustedDomains: readonly (string | null | undefined)[],
 };
 
+const defaultHostedHandlerDomainSuffix = ".built-with-stack-auth.com";
+const hostedHandlerProjectIdPlaceholder = "{projectId}";
+const hostedHandlerPathPlaceholder = "{hostedPath}";
 const defaultPorts = new Map<string, string>([['https:', '443'], ['http:', '80']]);
+const hostedHandlerTemplateProjectIdA = "00000000-0000-4000-8000-000000000000";
+const hostedHandlerTemplateProjectIdB = "11111111-1111-4111-8111-111111111111";
+
+function replaceStackPortPrefix(input: string | undefined, stackPortPrefix: string | undefined): string | undefined {
+  if (input == null) return undefined;
+  return stackPortPrefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, stackPortPrefix) : input;
+}
+
+function getHostedHandlerUrlFromTemplate(template: string, projectId: string, hostedPath: string): string {
+  return template
+    .replaceAll(hostedHandlerProjectIdPlaceholder, projectId)
+    .replaceAll(hostedHandlerPathPlaceholder, hostedPath);
+}
+
+function assertHostedHandlerTemplateHasProjectOrigin(template: string): void {
+  const projectUrlA = new URL(getHostedHandlerUrlFromTemplate(template, hostedHandlerTemplateProjectIdA, "handler"));
+  const projectUrlB = new URL(getHostedHandlerUrlFromTemplate(template, hostedHandlerTemplateProjectIdB, "handler"));
+  if (projectUrlA.origin === projectUrlB.origin || !projectUrlA.hostname.includes(hostedHandlerTemplateProjectIdA)) {
+    throw new HexclaveAssertionError("The hosted handler URL template must put {projectId} in the hostname.", {
+      hostedHandlerUrlTemplate: template,
+      hint: "Use a project-specific origin like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}', not a shared-origin path like 'https://example.com/{projectId}/{hostedPath}'.",
+    });
+  }
+}
+
+export function getHostedHandlerTrustedDomain(options: {
+  projectId: string,
+  hostedHandlerDomainSuffix?: string,
+  hostedHandlerUrlTemplate?: string,
+  stackPortPrefix?: string,
+}): string {
+  return new URL(getHostedHandlerUrlFromConfig({
+    ...options,
+    hostedPath: "handler",
+  })).origin;
+}
+
+export function getHostedHandlerUrlFromConfig(options: {
+  projectId: string,
+  hostedPath: string,
+  hostedHandlerDomainSuffix?: string,
+  hostedHandlerUrlTemplate?: string,
+  stackPortPrefix?: string,
+}): string {
+  const configuredTemplate = replaceStackPortPrefix(options.hostedHandlerUrlTemplate, options.stackPortPrefix);
+  return configuredTemplate == null
+    ? (() => {
+      const domainSuffix = replaceStackPortPrefix(options.hostedHandlerDomainSuffix, options.stackPortPrefix) ?? defaultHostedHandlerDomainSuffix;
+      if (!domainSuffix.startsWith(".")) {
+        throw new HexclaveAssertionError("The hosted handler domain suffix must start with a dot.", {
+          domainSuffix,
+          hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX to a value like '.built-with-stack-auth.com'.",
+        });
+      }
+      return `https://${options.projectId}${domainSuffix}/${options.hostedPath}`;
+    })()
+    : (() => {
+      if (!configuredTemplate.includes(hostedHandlerProjectIdPlaceholder) || !configuredTemplate.includes(hostedHandlerPathPlaceholder)) {
+        throw new HexclaveAssertionError("The hosted handler URL template must contain {projectId} and {hostedPath}.", {
+          hostedHandlerUrlTemplate: configuredTemplate,
+          hint: "Set NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE to a value like 'https://{projectId}.built-with-stack-auth.com/{hostedPath}'.",
+        });
+      }
+      assertHostedHandlerTemplateHasProjectOrigin(configuredTemplate);
+      return getHostedHandlerUrlFromTemplate(configuredTemplate, options.projectId, options.hostedPath);
+    })();
+}
+
+export function getImplicitlyTrustedDomainsForProject(options: {
+  projectId: string,
+  hostedHandlerDomainSuffix?: string,
+  hostedHandlerUrlTemplate?: string,
+  stackPortPrefix?: string,
+}): string[] {
+  return [getHostedHandlerTrustedDomain(options)];
+}
 
 function normalizePort(url: URL): string {
   const port = url.port || defaultPorts.get(url.protocol) || '';
@@ -63,7 +142,7 @@ function matchesTrustedDomain(testUrl: URL, pattern: string): boolean {
 
   const parsedPattern = parseWildcardUrlPattern(pattern);
   if (parsedPattern == null) {
-    captureError("invalid-redirect-domain", new StackAssertionError("Invalid domain pattern", { pattern }));
+    captureError("invalid-redirect-domain", new HexclaveAssertionError("Invalid domain pattern", { pattern }));
     return false;
   }
 
@@ -135,6 +214,37 @@ import.meta.vitest?.test("validateRedirectUrl matches exact and wildcard trusted
     allowLocalhost: false,
     trustedDomains: ["https://*.example.com"],
   })).toBe(false);
+});
+
+import.meta.vitest?.test("validateRedirectUrl trusts implicit hosted handler domains", ({ expect }) => {
+  const projectId = "12345678-1234-4234-8234-123456789abc";
+  expect(validateRedirectUrl(`https://${projectId}.built-with-stack-auth.com/anything`, {
+    allowLocalhost: false,
+    trustedDomains: getImplicitlyTrustedDomainsForProject({ projectId }),
+  })).toBe(true);
+  expect(validateRedirectUrl("https://other-project.built-with-stack-auth.com/anything", {
+    allowLocalhost: false,
+    trustedDomains: getImplicitlyTrustedDomainsForProject({ projectId }),
+  })).toBe(false);
+  expect(validateRedirectUrl(`http://${projectId}.localhost:9209/anything`, {
+    allowLocalhost: false,
+    trustedDomains: getImplicitlyTrustedDomainsForProject({
+      projectId,
+      hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}",
+      stackPortPrefix: "92",
+    }),
+  })).toBe(true);
+});
+
+import.meta.vitest?.test("getImplicitlyTrustedDomainsForProject rejects shared-origin hosted templates", ({ expect }) => {
+  expect(() => getImplicitlyTrustedDomainsForProject({
+    projectId: "12345678-1234-4234-8234-123456789abc",
+    hostedHandlerUrlTemplate: "https://host.example.com/{projectId}/{hostedPath}",
+  })).toThrowErrorMatchingInlineSnapshot(`
+    [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
+
+    This is likely an error in Hexclave. Please make sure you are running the newest version and report it.]
+  `);
 });
 
 import.meta.vitest?.test("validateRedirectUrl respects default and explicit ports", ({ expect }) => {

@@ -45,9 +45,40 @@ if [ -n "${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-}" ]; then
   export STACK_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}
 fi
 
+# ============= HEXCLAVE ↔ STACK URL ENV MIRROR =============
+# The dashboard bundle inlines BOTH process.env.NEXT_PUBLIC_HEXCLAVE_* and
+# process.env.NEXT_PUBLIC_STACK_* references as sentinels (dual-read). At
+# runtime the sentinel-replace loop only substitutes a sentinel when the
+# corresponding env var is set — but the dashboard's fallback chain
+# (`HEXCLAVE_X ?? STACK_X`) treats an unreplaced sentinel as truthy, so it
+# would pick the literal sentinel string instead of the real URL whenever
+# only one of the two env names is set by the self-host operator.
+# Mirror the URL trio HEXCLAVE → STACK and STACK → HEXCLAVE before the
+# sentinel-replace runs, so both sentinels resolve to the same real value
+# regardless of which name the operator chose.
+for _legacy in STACK_API_URL STACK_DASHBOARD_URL STACK_SVIX_SERVER_URL; do
+  _new=HEXCLAVE_${_legacy#STACK_}
+  _legacy_full=NEXT_PUBLIC_${_legacy}
+  _new_full=NEXT_PUBLIC_${_new}
+  _legacy_val=${!_legacy_full:-}
+  _new_val=${!_new_full:-}
+  if [ -n "$_new_val" ] && [ -z "$_legacy_val" ]; then
+    export "$_legacy_full=$_new_val"
+  elif [ -n "$_legacy_val" ] && [ -z "$_new_val" ]; then
+    export "$_new_full=$_legacy_val"
+  fi
+done
+
 export NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=${NEXT_PUBLIC_STACK_DASHBOARD_URL}
-export NEXT_PUBLIC_STACK_PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}
-PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX}
+# Hexclave rebrand: the port-prefix var was renamed outright to
+# NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX. The dashboard bundle's post-build sentinel
+# is STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX, and the sentinel
+# substitution loop below derives the env var name from the sentinel — so this
+# MUST export NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX or the sentinel never resolves.
+# Accept the legacy NEXT_PUBLIC_STACK_PORT_PREFIX as input for back-compat with
+# existing self-host configs.
+export NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}}
+PORT_PREFIX=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX}
 export NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL="http://localhost:${PORT_PREFIX}01"
 export NEXT_PUBLIC_BROWSER_STACK_API_URL=${NEXT_PUBLIC_STACK_API_URL}
 export NEXT_PUBLIC_SERVER_STACK_API_URL="http://localhost:${PORT_PREFIX}02"
@@ -152,11 +183,16 @@ if [ -f "$SENTINEL_MARKER" ]; then
   echo "Sentinels already replaced on a previous start; skipping scan."
 else
   # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
+  # Require at least one character after `STACK_ENV_VAR_SENTINEL_` — a bare
+  # `STACK_ENV_VAR_SENTINEL_` (trailing underscore but no suffix) makes env_var
+  # empty below, which would crash `${!env_var}` with "invalid variable name"
+  # under `set -e`. The dashboard bundle's sentinel-construction code embeds
+  # the prefix as a literal string, so this case occurs in practice.
   echo "Finding unhandled sentinels..."
   unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
     xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
-    grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
-    sort -u | grep -v "^STACK_ENV_VAR_SENTINEL$")
+    grep -oE "STACK_ENV_VAR_SENTINEL_[A-Z_]*[A-Z]+[A-Z_]*" | \
+    sort -u)
 
   # Choose an uncommon delimiter – here, we use the ASCII Unit Separator (0x1F)
   delimiter=$(printf '\037')
@@ -165,6 +201,13 @@ else
   for sentinel in $unhandled_sentinels; do
     # The sentinel is like "STACK_ENV_VAR_SENTINEL_MY_VAR", so extract the env var name.
     env_var=${sentinel#STACK_ENV_VAR_SENTINEL_}
+
+    # Defense in depth: skip if env_var name is empty. The regex above already
+    # excludes bare-prefix matches, but `${!env_var}` with an empty name aborts
+    # the whole script under `set -e`, so guard it explicitly.
+    if [ -z "$env_var" ]; then
+      continue
+    fi
 
     # Get the corresponding environment variable value.
     value="${!env_var}"
@@ -181,9 +224,18 @@ else
     # the chosen delimiter and the '&' (which has special meaning in sed replacements).
     escaped_value=$(printf '%s\n' "$value" | sed -e 's/\\/\\\\/g' -e "s/[${delimiter}&]/\\\\&/g")
 
-    # Now replace the sentinel with the (properly escaped) value in all files in the working directory.
-    find $WORK_DIR/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
+    # Hexclave rebrand: only sed files that actually contain the sentinel. The previous
+    # `find … -exec sed -i … {} +` ran sed across the ENTIRE standalone build for every
+    # sentinel (22 sentinels × thousands of files), and got unworkable once the dashboard
+    # bundle grew to include dual-literal _inlineEnvVars references. Restrict to matching
+    # files; also log per-sentinel so a hang at any specific sentinel is visible.
+    echo "  - Replacing $sentinel"
+    files=$(grep -rl "$sentinel" "$WORK_DIR/apps" 2>/dev/null || true)
+    if [ -n "$files" ]; then
+      echo "$files" | xargs sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g"
+    fi
   done
+  echo "Sentinel replacement complete."
   touch "$SENTINEL_MARKER"
 fi
 

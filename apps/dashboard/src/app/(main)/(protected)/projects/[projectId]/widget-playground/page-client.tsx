@@ -5,7 +5,7 @@ import { Button, ButtonProps, Dialog, DialogBody, DialogContent, DialogFooter, D
 import { DndContext, closestCenter, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import useResizeObserver from '@react-hook/resize-observer';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
-import { StackAssertionError, errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError, errorToNiceString, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { Json, isJsonSerializable } from '@stackframe/stack-shared/dist/utils/json';
 import { deepPlainEquals, filterUndefined, isNotNull } from '@stackframe/stack-shared/dist/utils/objects';
@@ -207,10 +207,10 @@ export function serializeWidgetInstance(widgetInstance: WidgetInstance<any, any>
 export function deserializeWidgetInstance(widgets: Widget<any, any>[], serialized: Json): WidgetInstance<any, any> {
   const serializedAny: any = serialized;
   if (typeof serializedAny !== "object" || serializedAny === null) {
-    throw new StackAssertionError(`Serialized widget instance is not an object!`, { serialized });
+    throw new HexclaveAssertionError(`Serialized widget instance is not an object!`, { serialized });
   }
   if (typeof serializedAny.id !== "string") {
-    throw new StackAssertionError(`Serialized widget instance id is not a string!`, { serialized });
+    throw new HexclaveAssertionError(`Serialized widget instance id is not a string!`, { serialized });
   }
   return {
     id: serializedAny.id,
@@ -253,42 +253,42 @@ class WidgetInstanceGrid {
     const allInstanceIds = new Set<string>();
     const checkInstance = (instance: WidgetInstance) => {
       if (allInstanceIds.has(instance.id)) {
-        throw new StackAssertionError(`Widget instance ${instance.id} is duplicated!`, { instance });
+        throw new HexclaveAssertionError(`Widget instance ${instance.id} is duplicated!`, { instance });
       }
       allInstanceIds.add(instance.id);
       const settings = getSettings(instance);
       const state = getState(instance);
       if (!isJsonSerializable(settings)) {
-        throw new StackAssertionError(`Settings must be JSON serializable`, { instance, settings });
+        throw new HexclaveAssertionError(`Settings must be JSON serializable`, { instance, settings });
       }
       if (!isJsonSerializable(state)) {
-        throw new StackAssertionError(`State must be JSON serializable`, { instance, state });
+        throw new HexclaveAssertionError(`State must be JSON serializable`, { instance, state });
       }
     };
     for (const element of this._nonEmptyElements) {
       if (element.instance === null) {
-        throw new StackAssertionError(`Non-empty element instance is null!`, { element });
+        throw new HexclaveAssertionError(`Non-empty element instance is null!`, { element });
       }
       if (element.width < WidgetInstanceGrid.MIN_ELEMENT_WIDTH) {
-        throw new StackAssertionError(`Width must be at least ${WidgetInstanceGrid.MIN_ELEMENT_WIDTH}`, { width: element.width, element });
+        throw new HexclaveAssertionError(`Width must be at least ${WidgetInstanceGrid.MIN_ELEMENT_WIDTH}`, { width: element.width, element });
       }
       if (element.height < WidgetInstanceGrid.MIN_ELEMENT_HEIGHT) {
-        throw new StackAssertionError(`Height must be at least ${WidgetInstanceGrid.MIN_ELEMENT_HEIGHT}`, { height: element.height, element });
+        throw new HexclaveAssertionError(`Height must be at least ${WidgetInstanceGrid.MIN_ELEMENT_HEIGHT}`, { height: element.height, element });
       }
       if (element.x + element.width > width) {
-        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.x + element.width} > ${width}`, { width, element });
+        throw new HexclaveAssertionError(`Element ${element.instance.id} is out of bounds: ${element.x + element.width} > ${width}`, { width, element });
       }
       if (this._fixedHeight !== "auto" && element.y + element.height > this._fixedHeight) {
-        throw new StackAssertionError(`Element ${element.instance.id} is out of bounds: ${element.y + element.height} > ${this._fixedHeight}`, { height: this._fixedHeight, element });
+        throw new HexclaveAssertionError(`Element ${element.instance.id} is out of bounds: ${element.y + element.height} > ${this._fixedHeight}`, { height: this._fixedHeight, element });
       }
       if (element.instance.widget.isHeightVariable) {
-        throw new StackAssertionError(`Element ${element.instance.id} is passed in as a grid element, but has a variable height!`, { element });
+        throw new HexclaveAssertionError(`Element ${element.instance.id} is passed in as a grid element, but has a variable height!`, { element });
       }
       checkInstance(element.instance);
     }
     for (const [y, instances] of this._varHeights) {
       if (instances.length === 0) {
-        throw new StackAssertionError(`No variable height widgets found at y = ${y}!`, { varHeights: this._varHeights });
+        throw new HexclaveAssertionError(`No variable height widgets found at y = ${y}!`, { varHeights: this._varHeights });
       }
       for (const instance of instances) {
         checkInstance(instance);
@@ -351,7 +351,7 @@ class WidgetInstanceGrid {
     // as a sanity check, let's serialize as JSON just to make sure it's JSON-serializable
     const afterJsonSerialization = JSON.parse(JSON.stringify(res));
     if (!deepPlainEquals(afterJsonSerialization, res)) {
-      throw new StackAssertionError(`WidgetInstanceGrid serialization is not JSON-serializable!`, {
+      throw new HexclaveAssertionError(`WidgetInstanceGrid serialization is not JSON-serializable!`, {
         beforeJsonSerialization: res,
         afterJsonSerialization,
       });
@@ -362,10 +362,10 @@ class WidgetInstanceGrid {
 
   public static fromSerialized(serialized: Json): WidgetInstanceGrid {
     if (typeof serialized !== "object" || serialized === null) {
-      throw new StackAssertionError(`WidgetInstanceGrid serialization is not an object or is null!`, { serialized });
+      throw new HexclaveAssertionError(`WidgetInstanceGrid serialization is not an object or is null!`, { serialized });
     }
     if (!("className" in serialized) || typeof serialized.className !== "string" || serialized.className !== "WidgetInstanceGrid") {
-      throw new StackAssertionError(`WidgetInstanceGrid serialization is not a WidgetInstanceGrid!`, { serialized });
+      throw new HexclaveAssertionError(`WidgetInstanceGrid serialization is not a WidgetInstanceGrid!`, { serialized });
     }
 
     const serializedAny = serialized as any;
@@ -382,7 +382,7 @@ class WidgetInstanceGrid {
         return new WidgetInstanceGrid(nonEmptyElements, varHeights, serializedAny.width, serializedAny.fixedHeight);
       }
       default: {
-        throw new StackAssertionError(`Unknown WidgetInstanceGrid version ${serializedAny.version}!`, {
+        throw new HexclaveAssertionError(`Unknown WidgetInstanceGrid version ${serializedAny.version}!`, {
           serialized,
         });
       }
@@ -454,7 +454,7 @@ class WidgetInstanceGrid {
     const array = new Array(this.width).fill(null).map(() => new Array(this.height).fill(null));
     [...this._nonEmptyElements].forEach(({ x, y, width, height, instance }) => {
       if (x + width > this.width) {
-        throw new StackAssertionError(`Widget instance ${instance?.id} is out of bounds: ${x + width} > ${this.width}`);
+        throw new HexclaveAssertionError(`Widget instance ${instance?.id} is out of bounds: ${x + width} > ${this.width}`);
       }
       for (let i = 0; i < width; i++) {
         for (let j = 0; j < height; j++) {
@@ -467,7 +467,7 @@ class WidgetInstanceGrid {
 
   public getElementAt(x: number, y: number): GridElement {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
-      throw new StackAssertionError(`Invalid coordinates for getElementAt: ${x}, ${y}`);
+      throw new HexclaveAssertionError(`Invalid coordinates for getElementAt: ${x}, ${y}`);
     }
     return [...this.elements()].find((element) => x >= element.x && x < element.x + element.width && y >= element.y && y < element.y + element.height) ?? throwErr(`No element found at ${x}, ${y}`);
   }
@@ -497,10 +497,10 @@ class WidgetInstanceGrid {
     }
     const minSize = this.getMinResizableSize();
     if (width < minSize.width) {
-      throw new StackAssertionError(`Width must be at least ${minSize.width}`, { width });
+      throw new HexclaveAssertionError(`Width must be at least ${minSize.width}`, { width });
     }
     if (height !== "auto" && height < minSize.height) {
-      throw new StackAssertionError(`Height must be at least ${minSize.height}`, { height });
+      throw new HexclaveAssertionError(`Height must be at least ${minSize.height}`, { height });
     }
     return new WidgetInstanceGrid(this._nonEmptyElements, this._varHeights, width, height);
   }
@@ -510,7 +510,7 @@ class WidgetInstanceGrid {
     if (element.instance?.widget.calculateMinSize) {
       const minSize = element.instance.widget.calculateMinSize({ settings: element.instance.settingsOrUndefined, state: element.instance.stateOrUndefined });
       if (minSize.widthInGridUnits > element.width || minSize.heightInGridUnits > element.height) {
-        throw new StackAssertionError(`Widget ${element.instance.widget.id} has a size of ${element.width}x${element.height}, but calculateMinSize returned a smaller value (${minSize.widthInGridUnits}x${minSize.heightInGridUnits}).`);
+        throw new HexclaveAssertionError(`Widget ${element.instance.widget.id} has a size of ${element.width}x${element.height}, but calculateMinSize returned a smaller value (${minSize.widthInGridUnits}x${minSize.heightInGridUnits}).`);
       }
       res.width = Math.max(res.width, minSize.widthInGridUnits);
       res.height = Math.max(res.height, minSize.heightInGridUnits);
@@ -541,7 +541,7 @@ class WidgetInstanceGrid {
 
   public withSwappedElements(x1: number, y1: number, x2: number, y2: number) {
     if (!this.canSwap(x1, y1, x2, y2)) {
-      throw new StackAssertionError(`Cannot swap elements at ${x1}, ${y1} and ${x2}, ${y2}`);
+      throw new HexclaveAssertionError(`Cannot swap elements at ${x1}, ${y1} and ${x2}, ${y2}`);
     }
 
     const elementsToSwap = [this.getElementAt(x1, y1), this.getElementAt(x2, y2)];
@@ -630,7 +630,7 @@ class WidgetInstanceGrid {
   public withResizedElement(x: number, y: number, edgesDelta: { top: number, left: number, bottom: number, right: number }) {
     const clamped = this.clampElementResize(x, y, edgesDelta);
     if (!deepPlainEquals(clamped, edgesDelta)) {
-      throw new StackAssertionError(`Resize is not allowed: ${JSON.stringify(edgesDelta)} requested, but only ${JSON.stringify(clamped)} allowed`);
+      throw new HexclaveAssertionError(`Resize is not allowed: ${JSON.stringify(edgesDelta)} requested, but only ${JSON.stringify(clamped)} allowed`);
     }
 
     // performance optimization: if there is no change, return the same grid
@@ -678,14 +678,14 @@ class WidgetInstanceGrid {
 
   public withUpdatedElementSettings(x: number, y: number, newSettings: any) {
     if (!isJsonSerializable(newSettings)) {
-      throw new StackAssertionError(`New settings are not JSON serializable: ${JSON.stringify(newSettings)}`, { newSettings });
+      throw new HexclaveAssertionError(`New settings are not JSON serializable: ${JSON.stringify(newSettings)}`, { newSettings });
     }
     return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, settingsOrUndefined: newSettings } : throwErr(`No widget instance at ${x}, ${y}`));
   }
 
   public withUpdatedElementState(x: number, y: number, newState: any) {
     if (!isJsonSerializable(newState)) {
-      throw new StackAssertionError(`New state are not JSON serializable: ${JSON.stringify(newState)}`, { newState });
+      throw new HexclaveAssertionError(`New state are not JSON serializable: ${JSON.stringify(newState)}`, { newState });
     }
     return this._withUpdatedElementInstance(x, y, (element) => element.instance ? { ...element.instance, stateOrUndefined: newState } : throwErr(`No widget instance at ${x}, ${y}`));
   }
@@ -745,7 +745,7 @@ class WidgetInstanceGrid {
 
   public withAddedVarHeightAtEndOf(y: number, instance: WidgetInstance) {
     if (!this.canAddVarHeight(y)) {
-      throw new StackAssertionError(`Cannot add var height instance at ${y}`, { y, instance });
+      throw new HexclaveAssertionError(`Cannot add var height instance at ${y}`, { y, instance });
     }
     const newVarHeights = new Map(this._varHeights);
     newVarHeights.set(y, [...(newVarHeights.get(y) ?? []), instance]);
@@ -1112,7 +1112,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
           }}>
             {[...(varHeights.get(y) ?? []), null].map((instance, i) => {
               if (instance !== null && !props.allowVariableHeight) {
-                throw new StackAssertionError("Variable height widgets are not allowed in this component", { instance });
+                throw new HexclaveAssertionError("Variable height widgets are not allowed in this component", { instance });
               }
               const location = instance ? ["before", instance.id] as const: ["end-of", y] as const;
               const isOverVarHeightSlot = deepPlainEquals(overVarHeightSlot, location);
@@ -1155,7 +1155,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
                           },
                         )}
                         onResize={(edges) => {
-                          throw new StackAssertionError("Cannot resize a var-height widget!");
+                          throw new HexclaveAssertionError("Cannot resize a var-height widget!");
                         }}
                         x={0}
                         y={y}
@@ -1207,7 +1207,7 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
           const widgetId = event.active.id;
           const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
           if (!widgetElement) {
-            throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
+            throw new HexclaveAssertionError(`Widget instance ${widgetId} not found in grid`);
           }
           if (event.over) {
             const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
@@ -1224,13 +1224,13 @@ function SwappableWidgetInstanceGrid(props: { gridRef: RefState<WidgetInstanceGr
           const widgetId = event.active.id;
           const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
           if (!widgetElement) {
-            throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
+            throw new HexclaveAssertionError(`Widget instance ${widgetId} not found in grid`);
           }
           if (event.over) {
             if (!event.active.rect.current.initial) {
               // not sure when this happens, if ever. let's ignore it in prod, throw in dev
               if (process.env.NODE_ENV === 'development') {
-                throw new StackAssertionError("Active element has no initial rect. Not sure when this happens, so please report it");
+                throw new HexclaveAssertionError("Active element has no initial rect. Not sure when this happens, so please report it");
               }
             } else {
               const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
@@ -1488,13 +1488,13 @@ function Draggable(props: {
       if (!settingsOpenAnimationDetails) {
         runAsynchronouslyWithAlert(async () => {
           // we want to wait asynchronously with starting the animations until the dialog is mounted, otherwise we can't sync up the animations
-          if (!draggableContainerRef.current) throw new StackAssertionError("Draggable container not found", { draggableContainerRef });
+          if (!draggableContainerRef.current) throw new HexclaveAssertionError("Draggable container not found", { draggableContainerRef });
           for (let i = 0; i < 100; i++) {
             if (cancelled) return;
             if (dialogRef.current) break;
             await wait(10 + 3 * i);
           }
-          if (!dialogRef.current) throw new StackAssertionError("Dialog ref not found even after waiting", { dialogRef });
+          if (!dialogRef.current) throw new HexclaveAssertionError("Dialog ref not found even after waiting", { dialogRef });
           if (cancelled) return;
 
           const draggableContainerRect = draggableContainerRef.current.getBoundingClientRect();
@@ -1833,7 +1833,7 @@ function ResizeHandle({ widgetInstance, x, y, ...props }: {
 }) {
   const dragBaseCoordinates = useRefState<[number, number] | null>(null);
   if (![ -1, 0, 1 ].includes(x) || ![ -1, 0, 1 ].includes(y)) {
-    throw new StackAssertionError(`Invalid resize handle coordinates, must be -1, 0, or 1: ${x}, ${y}`);
+    throw new HexclaveAssertionError(`Invalid resize handle coordinates, must be -1, 0, or 1: ${x}, ${y}`);
   }
 
   const isCorner = x !== 0 && y !== 0;

@@ -4,7 +4,7 @@ import { ProjectTransferConfirmView, type ProjectTransferConfirmUiState } from "
 import { useRouter } from "@/components/router";
 import { buildTransferSignUpUrl, getStackAppInternals } from "@/lib/transfer-utils";
 import { useStackApp, useUser } from "@stackframe/stack";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -67,7 +67,7 @@ export default function CustomIntegrationProjectTransferConfirmPageClient() {
           });
           const confirmResJson = await confirmRes.json();
           if (typeof confirmResJson?.project_id !== "string") {
-            throw new StackAssertionError("Project transfer confirm response is missing `project_id`", { confirmResJson });
+            throw new HexclaveAssertionError("Project transfer confirm response is missing `project_id`", { confirmResJson });
           }
           router.push(`/projects/${confirmResJson.project_id}`);
           await wait(3000);

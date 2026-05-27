@@ -1,7 +1,7 @@
 import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
 import { getProcessEnv, isBrowserLike } from './env';
-import { captureError, StackAssertionError, throwErr } from "./errors";
+import { captureError, HexclaveAssertionError, throwErr } from "./errors";
 import { createGlobalAsync } from './globals';
 import { ignoreUnhandledRejection, runAsynchronously } from './promises';
 import { Result } from "./results";
@@ -39,12 +39,12 @@ export function initializeEsbuild(): Promise<void> {
           const esbuildWasmModule = await createGlobalAsync('esbuildWasmModule', async () => {
             const esbuildWasmResponse = await fetch(esbuildWasmUrl);
             if (!esbuildWasmResponse.ok) {
-              throw new StackAssertionError(`Failed to fetch esbuild.wasm: ${esbuildWasmResponse.status} ${esbuildWasmResponse.statusText}: ${await esbuildWasmResponse.text()}`);
+              throw new HexclaveAssertionError(`Failed to fetch esbuild.wasm: ${esbuildWasmResponse.status} ${esbuildWasmResponse.statusText}: ${await esbuildWasmResponse.text()}`);
             }
             const esbuildWasm = await esbuildWasmResponse.arrayBuffer();
             const esbuildWasmArray = new Uint8Array(esbuildWasm);
             if (esbuildWasmArray[0] !== 0x00 || esbuildWasmArray[1] !== 0x61 || esbuildWasmArray[2] !== 0x73 || esbuildWasmArray[3] !== 0x6d) {
-              throw new StackAssertionError(`Invalid esbuild.wasm file: ${new TextDecoder().decode(esbuildWasmArray)}`);
+              throw new HexclaveAssertionError(`Invalid esbuild.wasm file: ${new TextDecoder().decode(esbuildWasmArray)}`);
             }
             return new WebAssembly.Module(esbuildWasm);
           });
@@ -64,7 +64,7 @@ export function initializeEsbuild(): Promise<void> {
         }
       } catch (e) {
         esbuildInitializePromise = null;
-        throw new StackAssertionError("Failed to initialize ESBuild", { cause: e });
+        throw new HexclaveAssertionError("Failed to initialize ESBuild", { cause: e });
       }
     })();
     ignoreUnhandledRejection(esbuildInitializePromise);
@@ -187,7 +187,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
 
             build.onLoad({ filter: /.*/, namespace: 'package-shim' }, (args) => {
               const contents = externalPackagesMap.get(args.path);
-              if (contents == null) throw new StackAssertionError(`esbuild requested file ${args.path} that is not in the virtual file system`);
+              if (contents == null) throw new HexclaveAssertionError(`esbuild requested file ${args.path} that is not in the virtual file system`);
 
               return { contents, loader: 'ts' };
             });
@@ -207,7 +207,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
             /* 2️⃣  Load the module from the map */
             build.onLoad({ filter: /.*/, namespace: 'virtual' }, args => {
               const contents = sourceFilesMap.get(args.path);
-              if (contents == null) throw new StackAssertionError(`esbuild requested file ${args.path} that is not in the virtual file system`);
+              if (contents == null) throw new HexclaveAssertionError(`esbuild requested file ${args.path} that is not in the virtual file system`);
 
               const ext = args.path.split('.').pop() ?? '';
               const loader = extToLoader.get(ext) ?? throwErr(`esbuild requested file ${args.path} with unknown extension ${ext}`);

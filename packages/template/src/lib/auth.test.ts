@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { StackClientInterface } from "@stackframe/stack-shared";
+import { HexclaveClientInterface } from "@stackframe/stack-shared";
 import { describe, expect, it, vi } from "vitest";
 import { getNewOAuthProviderOrScopeUrl } from "./auth";
 
@@ -19,7 +19,7 @@ describe("getNewOAuthProviderOrScopeUrl", () => {
   it("returns the OAuth URL without performing navigation", async () => {
     window.history.replaceState({}, "", "/account?after_auth_return_to=%2Fsettings");
 
-    const iface = new StackClientInterface({
+    const iface = new HexclaveClientInterface({
       clientVersion: "test",
       getBaseUrl: () => "https://api.example.com",
       getApiUrls: () => ["https://api.example.com"],

@@ -13,7 +13,7 @@ import {
   useFormContext,
 } from "react-hook-form";
 
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { cn } from "../../lib/utils";
 import { SpanLabel } from "./label";
 
@@ -47,7 +47,7 @@ const useFormField = () => {
   const { getFieldState, formState } = useFormContext();
 
   if (!fieldContext) {
-    throw new StackAssertionError("useFormField should be used within <FormField>");
+    throw new HexclaveAssertionError("useFormField should be used within <FormField>");
   }
 
   const fieldState = getFieldState(fieldContext.name, formState);

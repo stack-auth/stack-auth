@@ -1,4 +1,4 @@
-import { StackAssertionError, StatusError, throwErr } from "./utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "./utils/errors";
 import { identityArgs } from "./utils/functions";
 import { Json } from "./utils/json";
 import { deindent } from "./utils/strings";
@@ -49,7 +49,9 @@ export abstract class KnownError extends StatusError {
   public override getHeaders(): Record<string, string[]> {
     return {
       "Content-Type": ["application/json; charset=utf-8"],
+      // Hexclave rebrand: dual-emit both X-Hexclave-* and X-Stack-* so old and new SDKs can both read it.
       "X-Stack-Known-Error": [this.errorCode],
+      "X-Hexclave-Known-Error": [this.errorCode],
     };
   }
 
@@ -84,7 +86,7 @@ export abstract class KnownError extends StatusError {
       }
     }
 
-    throw new Error(`An error occurred. Please update your version of the Stack Auth SDK. ${json.code}: ${json.message}`);
+    throw new Error(`An error occurred. Please update your version of the Hexclave SDK. ${json.code}: ${json.message}`);
   }
 }
 
@@ -243,7 +245,7 @@ const ProjectKeyWithoutAccessType = createKnownErrorConstructor(
   "PROJECT_KEY_WITHOUT_ACCESS_TYPE",
   () => [
     400,
-    "Either an API key or an admin access token was provided, but the x-stack-access-type header is missing. Set it to 'client', 'server', or 'admin' as appropriate.",
+    "Either an API key or an admin access token was provided, but the x-hexclave-access-type header is missing. Set it to 'client', 'server', or 'admin' as appropriate. (The legacy x-stack-access-type header is also accepted.)",
   ] as const,
   () => [] as const,
 );
@@ -253,7 +255,7 @@ const InvalidAccessType = createKnownErrorConstructor(
   "INVALID_ACCESS_TYPE",
   (accessType: string) => [
     400,
-    `The x-stack-access-type header must be 'client', 'server', or 'admin', but was '${accessType}'.`,
+    `The x-hexclave-access-type header must be 'client', 'server', or 'admin', but was '${accessType}'. (The legacy x-stack-access-type header is also accepted.)`,
   ] as const,
   (json) => [
     (json as any)?.accessType ?? throwErr("accessType not found in InvalidAccessType details"),
@@ -266,9 +268,9 @@ const AccessTypeWithoutProjectId = createKnownErrorConstructor(
   (accessType: "client" | "server" | "admin") => [
     400,
     deindent`
-      The x-stack-access-type header was '${accessType}', but the x-stack-project-id header was not provided.
+      The x-hexclave-access-type header was '${accessType}', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
       
-      For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+      For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
     `,
     {
       request_type: accessType,
@@ -283,9 +285,9 @@ const AccessTypeRequired = createKnownErrorConstructor(
   () => [
     400,
     deindent`
-      You must specify an access level for this Stack project. Make sure project API keys are provided (eg. x-stack-publishable-client-key) and you set the x-stack-access-type header to 'client', 'server', or 'admin'.
+      You must specify an access level for this Hexclave project. Make sure project API keys are provided (eg. x-hexclave-publishable-client-key) and you set the x-hexclave-access-type header to 'client', 'server', or 'admin'. (The legacy x-stack-* equivalents are also accepted.)
       
-      For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+      For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
     `,
   ] as const,
   () => [] as const,
@@ -296,7 +298,7 @@ const InsufficientAccessType = createKnownErrorConstructor(
   "INSUFFICIENT_ACCESS_TYPE",
   (actualAccessType: "client" | "server" | "admin", allowedAccessTypes: ("client" | "server" | "admin")[]) => [
     401,
-    `The x-stack-access-type header must be ${allowedAccessTypes.map(s => `'${s}'`).join(" or ")}, but was '${actualAccessType}'.`,
+    `The x-hexclave-access-type header must be ${allowedAccessTypes.map(s => `'${s}'`).join(" or ")}, but was '${actualAccessType}'. (The legacy x-stack-access-type header is also accepted.)`,
     {
       actual_access_type: actualAccessType,
       allowed_access_types: allowedAccessTypes,
@@ -690,7 +692,7 @@ const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
   "PROJECT_NOT_FOUND",
   (projectId: string) => {
-    if (typeof projectId !== "string") throw new StackAssertionError("projectId of KnownErrors.ProjectNotFound must be a string");
+    if (typeof projectId !== "string") throw new HexclaveAssertionError("projectId of KnownErrors.ProjectNotFound must be a string");
     return [
       404,
       `Project ${projectId} not found or is not accessible with the current user.`,
@@ -707,7 +709,7 @@ const CurrentProjectNotFound = createKnownErrorConstructor(
   "CURRENT_PROJECT_NOT_FOUND",
   (projectId: string) => [
     400,
-    `The current project with ID ${projectId} was not found. Please check the value of the x-stack-project-id header.`,
+    `The current project with ID ${projectId} was not found. Please check the value of the x-hexclave-project-id header. (The legacy x-stack-project-id header is also accepted.)`,
     {
       project_id: projectId,
     },
@@ -858,7 +860,7 @@ const RedirectUrlNotWhitelisted = createKnownErrorConstructor(
   "REDIRECT_URL_NOT_WHITELISTED",
   () => [
     400,
-    "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+    "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
   ] as const,
   () => [] as const,
 );
@@ -1275,7 +1277,7 @@ const AppleBundleIdNotConfigured = createKnownErrorConstructor(
   "APPLE_BUNDLE_ID_NOT_CONFIGURED",
   () => [
     400,
-    "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
+    "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Hexclave dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
   ] as const,
   () => [] as const,
 );

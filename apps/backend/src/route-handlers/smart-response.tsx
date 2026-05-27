@@ -1,5 +1,5 @@
 import { yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -52,7 +52,7 @@ export async function validateSmartResponse<T>(req: NextRequest | null, smartReq
       currentUserId: smartReq.auth?.user?.id ?? null,
     });
   } catch (error) {
-    throw new StackAssertionError(`Error occurred during ${req ? `${req.method} ${req.url}` : "a custom endpoint invocation's"} response validation: ${error}`, { obj, schema, cause: error });
+    throw new HexclaveAssertionError(`Error occurred during ${req ? `${req.method} ${req.url}` : "a custom endpoint invocation's"} response validation: ${error}`, { obj, schema, cause: error });
   }
 }
 
@@ -92,7 +92,7 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
       }
       case "json": {
         if (obj.body === undefined || !deepPlainEquals(obj.body, JSON.parse(JSON.stringify(obj.body)), { ignoreUndefinedValues: true })) {
-          throw new StackAssertionError("Invalid JSON body is not JSON", { body: obj.body });
+          throw new HexclaveAssertionError("Invalid JSON body is not JSON", { body: obj.body });
         }
         headers.set("content-type", ["application/json; charset=utf-8"]);
         arrayBufferBody = new TextEncoder().encode(JSON.stringify(obj.body, null, jsonIndent));
@@ -133,7 +133,9 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
 
 
     // Add the request ID to the response headers
+    // Hexclave rebrand: dual-emit both x-hexclave-* and x-stack-* so old and new SDKs can both read it.
     headers.set("x-stack-request-id", [requestId]);
+    headers.set("x-hexclave-request-id", [requestId]);
 
 
     // Disable caching by default
@@ -143,7 +145,9 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
     // If the x-stack-override-error-status header is given, override 4xx statuses to 200.
     if (req?.headers.has("x-stack-override-error-status") && status >= 400 && status < 500) {
       status = 200;
+      // Hexclave rebrand: dual-emit both x-hexclave-* and x-stack-* so old and new SDKs can both read it.
       headers.set("x-stack-actual-status", [obj.statusCode.toString()]);
+      headers.set("x-hexclave-actual-status", [obj.statusCode.toString()]);
     }
 
     // set all headers from the smart response (considering case insensitivity)

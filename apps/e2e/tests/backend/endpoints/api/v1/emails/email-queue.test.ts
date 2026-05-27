@@ -1,4 +1,4 @@
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
@@ -1969,7 +1969,7 @@ async function getOutboxEmailById(emailId: string): Promise<OutboxEmailWithRetry
     accessType: "server",
   });
   if (response.status !== 200) {
-    throw new StackAssertionError(`Failed to get email ${emailId}: status ${response.status}`, { response });
+    throw new HexclaveAssertionError(`Failed to get email ${emailId}: status ${response.status}`, { response });
   }
   return response.body;
 }
@@ -1984,7 +1984,7 @@ async function waitForOutboxEmail(subject: string, timeoutMs = 30000): Promise<O
     }
     await wait(500);
   }
-  throw new StackAssertionError(
+  throw new HexclaveAssertionError(
     `Timeout waiting for email with subject "${subject}" to appear in outbox`,
     { subject }
   );
@@ -2006,7 +2006,7 @@ async function waitForAttemptCount(emailId: string, attemptCount: number, timeou
     await wait(500);
   }
   const finalEmail = await getOutboxEmailById(emailId);
-  throw new StackAssertionError(
+  throw new HexclaveAssertionError(
     `Timeout waiting for email ${emailId} to reach send_retries >= ${attemptCount}`,
     { emailId, attemptCount, finalState: { count: finalEmail.send_retries, status: finalEmail.status } }
   );

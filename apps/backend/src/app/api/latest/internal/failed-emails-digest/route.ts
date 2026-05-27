@@ -3,7 +3,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenanc
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 import { getFailedEmailsByTenancy } from "./crud";
 
@@ -45,8 +45,8 @@ export const POST = createSmartRouteHandler({
 
     const failedEmailsByTenancy = await getFailedEmailsByTenancy(new Date(Date.now() - 1000 * 60 * 60 * 24));
     const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
-    const emailConfig = await getSharedEmailConfig("Stack Auth");
-    const dashboardUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "https://app.stack-auth.com");
+    const emailConfig = await getSharedEmailConfig("Hexclave");
+    const dashboardUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "https://app.hexclave.com");
 
     let anyDigestsFailedToSend = false;
     for (const failedEmailsBatch of failedEmailsByTenancy.values()) {
@@ -54,11 +54,11 @@ export const POST = createSmartRouteHandler({
         continue;
       }
 
-      const viewInStackAuth = `<a href="${dashboardUrl}/projects/${encodeURIComponent(failedEmailsBatch.projectId)}/emails">View all email logs on the Dashboard</a>`;
+      const viewInHexclave = `<a href="${dashboardUrl}/projects/${encodeURIComponent(failedEmailsBatch.projectId)}/emails">View all email logs on the Dashboard</a>`;
       const emailHtml = `
-        <p>Thank you for using Stack Auth!</p>
+        <p>Thank you for using Hexclave!</p>
         <p>We detected that, on your project, there have been ${failedEmailsBatch.emails.length} emails that failed to deliver in the last 24 hours. Please check your email server configuration.</p>
-        <p>${viewInStackAuth}</p>
+        <p>${viewInHexclave}</p>
         <p>Last failing emails:</p>
         ${failedEmailsBatch.emails.slice(-10).map((failedEmail) => {
         const escapedSubject = escapeHtml(failedEmail.subject).replace(/\s+/g, ' ').slice(0, 50);
@@ -69,7 +69,7 @@ export const POST = createSmartRouteHandler({
       `;
       if (query.dry_run !== "true") {
         try {
-          throw new StackAssertionError("Failed emails digest is currently disabled!");
+          throw new HexclaveAssertionError("Failed emails digest is currently disabled!");
         } catch (error) {
           anyDigestsFailedToSend = true;
           captureError("send-failed-emails-digest", error);

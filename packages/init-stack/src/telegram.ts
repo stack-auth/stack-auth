@@ -16,7 +16,7 @@ export type TelegramCompletionPayload = {
 };
 
 const API_BASE_ENV = "STACK_INIT_API_BASE_URL";
-const DEFAULT_API_BASE_URL = "https://api.stack-auth.com";
+const DEFAULT_API_BASE_URL = "https://api.hexclave.com";
 const CALLBACK_ENDPOINT = "/api/latest/internal/init-script-callback";
 
 export async function invokeCallback(payload: TelegramCompletionPayload): Promise<void> {

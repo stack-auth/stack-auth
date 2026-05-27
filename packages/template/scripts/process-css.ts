@@ -1,4 +1,4 @@
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
 import { replaceAll } from '@stackframe/stack-shared/dist/utils/strings';
 import autoprefixer from 'autoprefixer';
@@ -42,7 +42,7 @@ async function main() {
 
   // double check that all sentinels were replaced
   if (content.includes('--stack-sentinel--')) {
-    throw new StackAssertionError('Sentinel not replaced', { content });
+    throw new HexclaveAssertionError('Sentinel not replaced', { content });
   }
 
   // output css file for debugging

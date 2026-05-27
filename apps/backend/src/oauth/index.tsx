@@ -2,7 +2,7 @@ import { DEFAULT_BRANCH_ID, Tenancy } from "@/lib/tenancies";
 import { DiscordProvider } from "@/oauth/providers/discord";
 import OAuth2Server from "@node-oauth/oauth2-server";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { OAuthModel } from "./model";
 import { AppleProvider } from "./providers/apple";
 import { OAuthBaseProvider } from "./providers/base";
@@ -63,7 +63,7 @@ export async function getProvider(provider: Tenancy['config']['auth']['oauth']['
     const clientSecret = _getEnvForProvider(providerType).clientSecret;
     if (clientId === "MOCK") {
       if (clientSecret !== "MOCK") {
-        throw new StackAssertionError("If OAuth provider client ID is set to MOCK, then client secret must also be set to MOCK");
+        throw new HexclaveAssertionError("If OAuth provider client ID is set to MOCK, then client secret must also be set to MOCK");
       }
       return await mockProvider.create(providerType);
     } else {

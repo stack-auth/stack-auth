@@ -194,15 +194,20 @@ function sourceToSdkSource(source: BranchConfigSourceApi):
 }
 
 // Resolve the path for `config pull` when `--config-file` was omitted. Falls
-// back to `./stack.config.ts` in cwd, and throws a CliError with a clear hint
+// back to a config file in cwd, and throws a CliError with a clear hint
 // if it isn't there. Exported for unit tests.
 export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd: string): string {
   if (opts.configFile != null && opts.configFile !== "") {
     return resolveConfigFilePathOption(opts.configFile);
   }
-  const candidate = path.join(cwd, "stack.config.ts");
+  // Hexclave rebrand: prefer the new `hexclave.config.ts` filename, fall back
+  // to the legacy `stack.config.ts` so existing projects keep working. If
+  // neither exists, default to the new filename for the error/directory hint.
+  const hexclaveCandidate = path.join(cwd, "hexclave.config.ts");
+  const legacyCandidate = path.join(cwd, "stack.config.ts");
+  const candidate = fs.existsSync(hexclaveCandidate) ? hexclaveCandidate : legacyCandidate;
   if (!fs.existsSync(candidate)) {
-    throw new CliError("No --config-file provided and no stack.config.ts found in the current directory. Pass --config-file <path> or run this command in a directory containing a stack.config.ts file.");
+    throw new CliError("No --config-file provided and no hexclave.config.ts (or stack.config.ts) found in the current directory. Pass --config-file <path> or run this command in a directory containing a config file.");
   }
   if (fs.statSync(candidate).isDirectory()) {
     throw new CliError(`Default config path points to a directory instead of a file: ${candidate}`);

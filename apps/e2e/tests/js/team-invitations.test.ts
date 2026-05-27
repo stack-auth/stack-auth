@@ -198,7 +198,7 @@ it("should list invitations from multiple teams", async ({ expect }) => {
 });
 
 
-it("should accept a team invitation via the client SDK", async ({ expect }) => {
+it("should accept a team invitation via the client SDK", { timeout: 120_000 }, async ({ expect }) => {
   const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create a team

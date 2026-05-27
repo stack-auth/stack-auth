@@ -12,9 +12,9 @@ it("should not have have access to the project", async ({ expect }) => {
         "code": "ACCESS_TYPE_WITHOUT_PROJECT_ID",
         "details": { "request_type": "client" },
         "error": deindent\`
-          The x-stack-access-type header was 'client', but the x-stack-project-id header was not provided.
+          The x-hexclave-access-type header was 'client', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
           
-          For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+          For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
         \`,
       },
       "headers": Headers {
@@ -751,7 +751,7 @@ it("lets user update logo_url to a valid image", async ({ expect }) => {
         "logo_dark_mode_url": null,
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
-        "logo_url": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
+        "logo_url": "http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },

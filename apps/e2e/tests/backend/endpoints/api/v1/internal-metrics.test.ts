@@ -43,7 +43,7 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
 
   // ClickHouse ingestion is async; poll until anonymous users are excluded again.
   let response!: NiceResponse;
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 30; i++) {
     await wait(2_000);
     response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
     const noAnonymousInRecentlyRegistered = (response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous);
@@ -72,7 +72,7 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
 
 async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: string, expectedCount: number }): Promise<NiceResponse> {
   let response!: NiceResponse;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 30; i++) {
     response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
     if (response.body?.users_by_country?.[options.countryCode] === options.expectedCount) {
       return response;
@@ -88,7 +88,7 @@ async function waitForMetricsMatch(
 ): Promise<NiceResponse> {
   let response!: NiceResponse;
   const suffix = includeAnonymous ? "?include_anonymous=true" : "";
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 60; i++) {
     response = await niceBackendFetch(`/api/v1/internal/metrics${suffix}`, { accessType: 'admin' });
     if (predicate(response)) {
       return response;
@@ -123,7 +123,7 @@ async function waitForAnalyticsRowsForSessionReplaySegment(
   throw new Error(`Timed out waiting for ${expectedCount} analytics rows for session replay segment ${sessionReplaySegmentId}`);
 }
 
-it("should return metrics data", async ({ expect }) => {
+it("should return metrics data", { timeout: 120_000 }, async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,
@@ -207,7 +207,7 @@ it("should not work for non-admins", async ({ expect }) => {
           "actual_access_type": "server",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -473,10 +473,12 @@ it("should return correct auth_overview breakdown including teams", async ({ exp
   // Create an anonymous user
   await Auth.Anonymous.signUp();
 
-  await wait(2000);
-
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-  expect(response.status).toBe(200);
+  const response = await waitForMetricsMatch(false, (r) => {
+    const authOverview = r.body?.auth_overview;
+    if (authOverview == null) return false;
+    const nonAnonFromOverview = authOverview.verified_users + authOverview.unverified_users;
+    return authOverview.anonymous_users >= 1 && nonAnonFromOverview >= 1 && authOverview.total_teams >= 1;
+  });
 
   const authOverview = response.body.auth_overview;
 

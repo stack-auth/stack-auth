@@ -3,8 +3,8 @@ import { readConfigValue } from "./config.js";
 import { emulatorBackendPort, emulatorDashboardPort, internalPckPath, pollInternalPck } from "./emulator-paths.js";
 import { AuthError, CliError } from "./errors.js";
 
-export const DEFAULT_API_URL = "https://api.stack-auth.com";
-export const DEFAULT_DASHBOARD_URL = "https://app.stack-auth.com";
+export const DEFAULT_API_URL = "https://api.hexclave.com";
+export const DEFAULT_DASHBOARD_URL = "https://app.hexclave.com";
 export const DEFAULT_PUBLISHABLE_CLIENT_KEY = process.env.STACK_CLI_PUBLISHABLE_CLIENT_KEY ?? "pck_9bbqvqsbh0gdb6smk11d71qg4ktc4rz8ya7cc69yndm7g";
 
 export type LoginConfig = {

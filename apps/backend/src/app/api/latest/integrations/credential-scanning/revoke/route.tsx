@@ -7,7 +7,7 @@ import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from 
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 
 export const POST = createSmartRouteHandler({
@@ -83,7 +83,7 @@ export const POST = createSmartRouteHandler({
       // For user API keys, notify the user
       const tenancy = await getTenancy(updatedApiKey.tenancyId);
       if (!tenancy) {
-        throw new StackAssertionError("Tenancy not found");
+        throw new HexclaveAssertionError("Tenancy not found");
       }
 
       const prisma = await getPrismaClientForTenancy(tenancy);
@@ -101,7 +101,7 @@ export const POST = createSmartRouteHandler({
 
       if (!projectUser) {
         // This should never happen
-        throw new StackAssertionError("Project user not found");
+        throw new HexclaveAssertionError("Project user not found");
       }
       // We might have other types besides email, so we disable this rule
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -113,14 +113,14 @@ export const POST = createSmartRouteHandler({
       // For team API keys, notify users with manage_api_keys permission
       const tenancy = await getTenancy(updatedApiKey.tenancyId);
       if (!tenancy) {
-        throw new StackAssertionError("Tenancy not found");
+        throw new HexclaveAssertionError("Tenancy not found");
       }
 
       const prisma = await getPrismaClientForTenancy(tenancy);
 
       const userIdsWithManageApiKeysPermission = await retryTransaction(prisma, async (tx) => {
         if (!updatedApiKey.teamId) {
-          throw new StackAssertionError("Team ID not specified in team API key");
+          throw new HexclaveAssertionError("Team ID not specified in team API key");
         }
 
         const permissions = await listPermissions(tx, {
@@ -159,7 +159,7 @@ export const POST = createSmartRouteHandler({
     const tenancy = await getTenancy(updatedApiKey.tenancyId);
 
     if (!tenancy) {
-      throw new StackAssertionError("Tenancy not found");
+      throw new HexclaveAssertionError("Tenancy not found");
     }
 
     // Create email content

@@ -32,7 +32,7 @@ import { AdminProject, AuthPage } from "@stackframe/stack";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -133,7 +133,7 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
       };
     }
     default: {
-      throw new StackAssertionError(`Unknown provider type: ${(provider as { type: unknown }).type}`);
+      throw new HexclaveAssertionError(`Unknown provider type: ${(provider as { type: unknown }).type}`);
     }
   }
 }
@@ -652,7 +652,7 @@ export default function PageClient() {
   };
   const onMergeStrategyChange = (value: string) => {
     if (value !== "link_method" && value !== "raise_error" && value !== "allow_duplicates") {
-      throw new StackAssertionError(`Unknown OAuth account merge strategy: ${value}`);
+      throw new HexclaveAssertionError(`Unknown OAuth account merge strategy: ${value}`);
     }
     const next: OAuthAccountMergeStrategy = value;
     setLocalMergeStrategy(next === config.auth.oauth.accountMergeStrategy ? undefined : next);
@@ -747,7 +747,7 @@ export default function PageClient() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-foreground truncate">Same-email social login policy</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user uses a new social login provider with an email that's already connected to an account</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Determines what happens when a user uses a new social login provider with an email that&apos;s already connected to an account</div>
                 </div>
                 <DesignSelectorDropdown
                   value={mergeStrategy}

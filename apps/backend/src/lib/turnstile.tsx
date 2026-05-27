@@ -1,7 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import {
   TurnstileAction,
@@ -10,8 +10,8 @@ import {
   turnstileDevelopmentKeys,
   turnstilePhaseValues,
 } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "@stackframe/stack-shared/dist/utils/urls";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
+import { validateRedirectHostname } from "./redirect-urls";
 import { Tenancy } from "./tenancies";
 
 
@@ -47,15 +47,7 @@ type SiteverifyResponse = {
 const FETCH_TIMEOUT_MS = 10_000;
 
 function isAllowedTurnstileHostname(hostname: string, tenancy: Tenancy): boolean {
-  if (tenancy.config.domains.allowLocalhost && isLocalhost(`http://${hostname}`)) {
-    return true;
-  }
-  return Object.values(tenancy.config.domains.trustedDomains).some(({ baseUrl }) => {
-    if (baseUrl == null) return false;
-    const pattern = createUrlIfValid(baseUrl)?.hostname
-      ?? baseUrl.match(/^[^:]+:\/\/([^/:]+)/)?.[1];
-    return pattern != null && matchHostnamePattern(pattern, hostname);
-  });
+  return validateRedirectHostname(hostname, tenancy);
 }
 
 function getSecretKey(override?: string): string {
@@ -111,7 +103,7 @@ async function fetchSiteverify(token: string, remoteIp: string | null, secretKey
   });
 
   if (!response.ok) {
-    throw new StackAssertionError("Turnstile siteverify request failed", {
+    throw new HexclaveAssertionError("Turnstile siteverify request failed", {
       status: response.status,
       statusText: response.statusText,
     });
@@ -119,7 +111,7 @@ async function fetchSiteverify(token: string, remoteIp: string | null, secretKey
 
   const json = await response.json();
   if (!isSiteverifyResponse(json)) {
-    throw new StackAssertionError("Turnstile siteverify response missing required fields", { json });
+    throw new HexclaveAssertionError("Turnstile siteverify response missing required fields", { json });
   }
 
   return json;
@@ -146,7 +138,7 @@ export async function verifyTurnstileToken(params: {
   );
 
   if (result.status === "error") {
-    captureError("turnstile-siteverify-error", new StackAssertionError("Turnstile siteverify request failed", {
+    captureError("turnstile-siteverify-error", new HexclaveAssertionError("Turnstile siteverify request failed", {
       cause: result.error,
       expectedAction: params.expectedAction,
     }));
@@ -157,7 +149,7 @@ export async function verifyTurnstileToken(params: {
 
   if (!data.success) {
     if (params.captureRejectedAsError ?? true) {
-      captureError("turnstile-siteverify-rejected", new StackAssertionError("Turnstile siteverify returned success=false", {
+      captureError("turnstile-siteverify-rejected", new HexclaveAssertionError("Turnstile siteverify returned success=false", {
         errorCodes: data["error-codes"],
         expectedAction: params.expectedAction,
         receivedAction: data.action,
@@ -168,7 +160,7 @@ export async function verifyTurnstileToken(params: {
   }
 
   if (data.hostname != null && params.isAllowedHostname != null && !params.isAllowedHostname(data.hostname)) {
-    captureError("turnstile-hostname-mismatch", new StackAssertionError("Turnstile hostname does not match any allowed domain", {
+    captureError("turnstile-hostname-mismatch", new HexclaveAssertionError("Turnstile hostname does not match any allowed domain", {
       receivedHostname: data.hostname,
     }));
     return { status: "invalid" };
@@ -197,7 +189,7 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   const phase = params.phase;
   if (params.challengeUnavailable) {
     if (params.token != null || phase != null) {
-      throw new StackAssertionError("challengeUnavailable cannot be combined with a bot challenge token or phase");
+      throw new HexclaveAssertionError("challengeUnavailable cannot be combined with a bot challenge token or phase");
     }
     return { status: "error", visibleChallengeResult: "error" };
   }
@@ -324,7 +316,7 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
     expect(captureErrorSpy).not.toHaveBeenCalled();
   });
 
-  const allowMyapp = (h: string) => h === "myapp.com" || matchHostnamePattern("*.myapp.com", h);
+  const allowMyapp = (h: string) => h === "myapp.com" || h.endsWith(".myapp.com");
 
   test("returns invalid when hostname does not match allowed hostnames", async ({ expect }) => {
     stubFetch({ success: true, action: "sign_up_with_credential", hostname: "evil.example.com" });

@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type ManagedEmailDomainStatus = "pending_dns" | "pending_verification" | "verified" | "applied" | "failed";
 
@@ -70,7 +70,7 @@ function statusToDbStatus(status: ManagedEmailDomainStatus): ManagedEmailDomainR
 
 function parseNameServerRecords(value: unknown): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new StackAssertionError("ManagedEmailDomain.nameServerRecords stored invalid JSON", {
+    throw new HexclaveAssertionError("ManagedEmailDomain.nameServerRecords stored invalid JSON", {
       nameServerRecords: value,
     });
   }
@@ -103,7 +103,7 @@ export async function getManagedEmailDomainByTenancyAndSubdomain(options: {
   tenancyId: string,
   subdomain: string,
 }): Promise<ManagedEmailDomain | null> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "tenancyId" = ${options.tenancyId}
@@ -117,7 +117,7 @@ export async function getManagedEmailDomainByTenancyAndSubdomain(options: {
 }
 
 export async function getManagedEmailDomainByResendDomainId(resendDomainId: string): Promise<ManagedEmailDomain | null> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "resendDomainId" = ${resendDomainId}
@@ -208,7 +208,7 @@ export async function markManagedEmailDomainApplied(id: string): Promise<Managed
     RETURNING *
   `);
   if (rows.length === 0) {
-    throw new StackAssertionError("Managed email domain row missing while applying", {
+    throw new HexclaveAssertionError("Managed email domain row missing while applying", {
       managedEmailDomainId: id,
     });
   }
@@ -216,11 +216,36 @@ export async function markManagedEmailDomainApplied(id: string): Promise<Managed
 }
 
 export async function listManagedEmailDomainsForTenancy(tenancyId: string): Promise<ManagedEmailDomain[]> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     SELECT *
     FROM "ManagedEmailDomain"
     WHERE "tenancyId" = ${tenancyId}
     ORDER BY "isActive" DESC, "updatedAt" DESC
   `);
   return rows.map(mapRow);
+}
+
+export async function deleteManagedEmailDomainById(id: string): Promise<ManagedEmailDomain | null> {
+  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
+    DELETE FROM "ManagedEmailDomain"
+    WHERE "id" = ${id}
+    RETURNING *
+  `);
+  if (rows.length === 0) {
+    return null;
+  }
+  return mapRow(rows[0]!);
+}
+
+export async function countManagedEmailDomainsBySubdomainExcludingId(options: {
+  subdomain: string,
+  excludeId: string,
+}): Promise<number> {
+  const rows = await globalPrismaClient.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS count
+    FROM "ManagedEmailDomain"
+    WHERE "subdomain" = ${options.subdomain}
+      AND "id" <> ${options.excludeId}
+  `);
+  return Number(rows[0]?.count ?? 0n);
 }

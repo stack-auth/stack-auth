@@ -1,13 +1,13 @@
 import { moneyAmountSchema } from "../schema-fields";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./currency-constants";
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 export function moneyAmountToStripeUnits(amount: MoneyAmount, currency: Currency): number {
   const validated = moneyAmountSchema(currency).defined().validateSync(amount);
   if (currency.stripeDecimals !== currency.decimals) {
-    throw new StackAssertionError("unimplemented: TODO support different decimal configurations");
+    throw new HexclaveAssertionError("unimplemented: TODO support different decimal configurations");
   }
   // `moneyAmountSchema` accepts strings with 0..currency.decimals fractional
   // digits, so we must right-pad the fractional part before stripping the dot.

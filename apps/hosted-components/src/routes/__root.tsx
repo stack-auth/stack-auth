@@ -12,7 +12,7 @@ import { Component, useEffect, useMemo, useState } from 'react';
 
 
 export function getProjectId(): string | null {
-  // Extract from subdomain: <projectId>.built-with-stack-auth.com
+  // Extract from subdomain: <projectId>.built-with-hexclave.com
   // Also works with <projectId>.localhost for local dev
   const hostname = window.location.hostname;
   const parts = hostname.split('.');

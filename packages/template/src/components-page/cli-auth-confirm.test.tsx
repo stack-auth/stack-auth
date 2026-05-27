@@ -171,7 +171,7 @@ describe("useCliAuthConfirmation", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token",
     });
-    expect(sessionStorage.getItem("stack-cli-auth-confirmed")).toBe("login-code");
+    expect(sessionStorage.getItem("hexclave-cli-auth-confirmed")).toBe("login-code");
     expect(sendRequest.mock.calls.map(call => JSON.parse(String(call[1].body)))).toMatchInlineSnapshot(`
       [
         {

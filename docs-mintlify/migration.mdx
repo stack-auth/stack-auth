@@ -1,0 +1,68 @@
+---
+title: Migrating from Stack Auth to Hexclave
+description: How to migrate your application from the legacy @stackframe/* packages to @hexclave/*.
+sidebarTitle: Migration
+---
+
+Stack Auth is now Hexclave. The SDKs, dashboard, and APIs are the same product — only the brand and import paths changed.
+
+If you saw a `[Hexclave] You are using the legacy @stackframe/* package` warning in your console, that's how you got here.
+
+## What you need to change
+
+Rename your imports from `@stackframe/*` to `@hexclave/*`. The public API surface is identical — same exports, same generics, same options.
+
+```ts title="Before"
+import { StackClientApp, StackProvider, useStackApp } from "@stackframe/stack";
+```
+
+```ts title="After"
+import { HexclaveClientApp, HexclaveProvider, useHexclaveApp } from "@hexclave/next";
+```
+
+The `Stack*` symbol names are still re-exported from `@hexclave/next` as `@deprecated` aliases of the new `Hexclave*` names, so you can do this in two steps if you prefer: rename the package first, then rename the symbols later. Both work indefinitely.
+
+## Package mapping
+
+| Old package | New package |
+| --- | --- |
+| `@stackframe/stack` | `@hexclave/next` |
+| `@stackframe/react` | `@hexclave/react` |
+| `@stackframe/js` | `@hexclave/js` |
+| `@stackframe/tanstack-start` | `@hexclave/tanstack-start` |
+| `@stackframe/stack-shared` | `@hexclave/shared` |
+| `@stackframe/stack-ui` | `@hexclave/ui` |
+| `@stackframe/stack-sc` | `@hexclave/sc` |
+| `@stackframe/stack-cli` | `@hexclave/cli` |
+| `@stackframe/dashboard-ui-components` | `@hexclave/dashboard-ui-components` |
+| `@stackframe/emails` *(virtual module in stored email templates)* | `@hexclave/emails` |
+
+Internal packages (`@stackframe/template`, `@stackframe/init-stack`) keep their existing names — they're not published as `@hexclave/*` mirrors.
+
+## What stays the same (legacy compat)
+
+Inbound traffic continues to accept the legacy names on every surface. You do not need to update any of these to upgrade.
+
+- **Request headers**: both `X-Hexclave-*` and `X-Stack-*` are accepted on every endpoint (`X-Stack-Project-Id`, `X-Stack-Access-Token`, `X-Stack-Secret-Server-Key`, etc.). The canonical form going forward is `X-Hexclave-*`; the legacy aliases are aliased at the proxy boundary.
+- **Environment variables**: SDK config reads `HEXCLAVE_*` and falls back to `STACK_*` (e.g. `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID` falls back to `NEXT_PUBLIC_STACK_PROJECT_ID`). Existing `.env` files keep working.
+- **JWT issuer**: tokens issued under `api.stack-auth.com` continue to validate against `api.hexclave.com` and vice versa during the cutover window.
+- **Bearer prefix**: existing `stackauth_*` access tokens remain valid; the SDK still emits them.
+- **API hostnames**: `api.stack-auth.com` and `api.hexclave.com` both reach the same backend.
+- **CLI binary**: both `stack` and `hexclave` bins ship with `@hexclave/cli`; existing scripts that call `stack login` keep working.
+- **MCP server config**: the MCP server name `stack-auth` in your agent's MCP config still resolves.
+- **Hosted-handler subdomain**: the `.built-with-stack-auth.com` suffix remains the default for projects that use the hosted handler — saved OAuth callback URLs continue to work.
+
+## Recommendations for new code
+
+When you're writing new code (or running `npx @hexclave/cli@latest init`), prefer the Hexclave-branded form everywhere:
+
+- Import from `@hexclave/*`.
+- Set `NEXT_PUBLIC_HEXCLAVE_*` / `HEXCLAVE_*` env vars.
+- Send `X-Hexclave-*` request headers.
+- Use the `ask_hexclave` MCP tool name in agent integrations.
+
+## Suppressing the deprecation warning
+
+The runtime warning fires once per process when the SDK is loaded from a `@stackframe/*` artifact. To silence it, finish the import-rename step above — the `@hexclave/*` packages do not emit the warning.
+
+Questions? [Discord](https://discord.hexclave.com) or [team@hexclave.com](mailto:team@hexclave.com).

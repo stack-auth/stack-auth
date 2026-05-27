@@ -1,11 +1,11 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.8.95",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "version": "2.8.109",
+  "repository": "https://github.com/hexclave/hexclave",
   "type": "module",
   "scripts": {
-    "dev": "vite --force --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}20",
+    "dev": "vite --force --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}20",
     "build": "tsc -b && vite build",
     "clean": "rimraf dist && rimraf node_modules",
     "typecheck": "tsc --noEmit",

@@ -2,7 +2,7 @@ import { globalPrismaClient, RawQuery, rawQuery } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { getRenderedOrganizationConfigQuery } from "./config";
 import { getProject, getProjectQuery } from "./projects";
@@ -24,10 +24,10 @@ export const DEFAULT_BRANCH_ID = "main";
  */
 async function tenancyPrismaToCrudUnused(prisma: Prisma.TenancyGetPayload<{}>) {
   if (prisma.hasNoOrganization && prisma.organizationId !== null) {
-    throw new StackAssertionError("Organization ID is not null for a tenancy with hasNoOrganization", { tenancyId: prisma.id, prisma });
+    throw new HexclaveAssertionError("Organization ID is not null for a tenancy with hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
   if (!prisma.hasNoOrganization && prisma.organizationId === null) {
-    throw new StackAssertionError("Organization ID is null for a tenancy without hasNoOrganization", { tenancyId: prisma.id, prisma });
+    throw new HexclaveAssertionError("Organization ID is null for a tenancy without hasNoOrganization", { tenancyId: prisma.id, prisma });
   }
 
   const projectCrud = await getProject(prisma.projectId) ?? throwErr("Project in tenancy not found");
@@ -66,7 +66,7 @@ export async function getSoleTenancyFromProjectBranch(projectOrId: Omit<Projects
   const res = await rawQuery(globalPrismaClient, getSoleTenancyFromProjectBranchQuery(projectOrId, branchId, true));
   if (!res) {
     if (returnNullIfNotFound) return null;
-    throw new StackAssertionError(`No tenancy found for project ${typeof projectOrId === 'string' ? projectOrId : projectOrId.id}`, { projectOrId });
+    throw new HexclaveAssertionError(`No tenancy found for project ${typeof projectOrId === 'string' ? projectOrId : projectOrId.id}`, { projectOrId });
   }
   return res;
 }
@@ -81,7 +81,7 @@ export function getSoleTenancyFromProjectBranchQuery(project: Omit<ProjectsCrud[
 
 export async function getTenancy(tenancyId: string) {
   if (tenancyId === "internal") {
-    throw new StackAssertionError("Tried to get tenancy with ID `internal`. This is a mistake because `internal` is only a valid identifier for projects.");
+    throw new HexclaveAssertionError("Tried to get tenancy with ID `internal`. This is a mistake because `internal` is only a valid identifier for projects.");
   }
   const prisma = await globalPrismaClient.tenancy.findUnique({
     where: { id: tenancyId },
@@ -113,7 +113,7 @@ function getTenancyFromProjectQuery(projectId: string, branchId: string, organiz
             `,
         postProcess: (queryResult) => {
           if (queryResult.length > 1) {
-            throw new StackAssertionError(
+            throw new HexclaveAssertionError(
               `Expected 0 or 1 tenancies for project ${projectId}, branch ${branchId}, organization ${organizationId}, got ${queryResult.length}`,
               { queryResult }
             );
@@ -142,18 +142,18 @@ function getTenancyFromProjectQuery(projectId: string, branchId: string, organiz
       ]);
 
       if (!projectResult) {
-        throw new StackAssertionError("Project in tenancy not found", { projectId, tenancyId: tenancyResult.id });
+        throw new HexclaveAssertionError("Project in tenancy not found", { projectId, tenancyId: tenancyResult.id });
       }
 
       // Validate tenancy consistency
       if (tenancyResult.hasNoOrganization && tenancyResult.organizationId !== null) {
-        throw new StackAssertionError("Organization ID is not null for a tenancy with hasNoOrganization", {
+        throw new HexclaveAssertionError("Organization ID is not null for a tenancy with hasNoOrganization", {
           tenancyId: tenancyResult.id,
           tenancy: tenancyResult
         });
       }
       if (!tenancyResult.hasNoOrganization && tenancyResult.organizationId === null) {
-        throw new StackAssertionError("Organization ID is null for a tenancy without hasNoOrganization", {
+        throw new HexclaveAssertionError("Organization ID is null for a tenancy without hasNoOrganization", {
           tenancyId: tenancyResult.id,
           tenancy: tenancyResult
         });
@@ -207,7 +207,7 @@ export async function getTenancyFromProject(projectId: string, branchId: string,
 
     // Compare the two results
     if (!deepPlainEquals(result, oldResult)) {
-      throw new StackAssertionError("getTenancyFromProject: new implementation does not match old implementation", {
+      throw new HexclaveAssertionError("getTenancyFromProject: new implementation does not match old implementation", {
         projectId,
         branchId,
         organizationId,

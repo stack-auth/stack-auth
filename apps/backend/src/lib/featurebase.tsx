@@ -1,6 +1,6 @@
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrCreateFeaturebaseUser as getOrCreateFeaturebaseUserShared, StackAuthUser } from "@stackframe/stack-shared/dist/utils/featurebase";
 
 export function getFeaturebaseApiKey(): string {
@@ -10,7 +10,7 @@ export function getFeaturebaseApiKey(): string {
 export function requireFeaturebaseApiKey(): string {
   const key = getFeaturebaseApiKey();
   if (!key) {
-    throw new StackAssertionError("STACK_FEATUREBASE_API_KEY environment variable is not set");
+    throw new HexclaveAssertionError("STACK_FEATUREBASE_API_KEY environment variable is not set");
   }
   return key;
 }

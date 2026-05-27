@@ -1,13 +1,13 @@
 import Foundation
 
-/// Base protocol for all Stack Auth errors
+/// Base protocol for all Hexclave errors
 public protocol StackAuthErrorProtocol: Error, CustomStringConvertible {
     var code: String { get }
     var message: String { get }
     var details: [String: Any]? { get }
 }
 
-/// Standard Stack Auth API error
+/// Standard Hexclave API error
 public struct StackAuthError: StackAuthErrorProtocol {
     public let code: String
     public let message: String

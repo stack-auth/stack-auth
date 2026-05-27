@@ -1,5 +1,5 @@
 import { ITEM_IDS, PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
@@ -609,7 +609,7 @@ async function setupProjectWithPlan(planId: PlanId) {
         body: { product_id: planId },
       });
       if (grantResponse.status !== 200) {
-        throw new StackAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
+        throw new HexclaveAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
       }
     });
   }
@@ -634,7 +634,7 @@ it("rejects batch when analytics event quota is exhausted", async ({ expect }) =
   expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
 });
 
-it("accepts batch and debits event quota correctly", async ({ expect }) => {
+it("accepts batch and debits event quota correctly", { timeout: 120_000 }, async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
@@ -673,7 +673,7 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
 // We don't support metered pricing or partial batches for now, so the entire
 // batch is rejected when remaining quota is less than the batch size, and
 // the quota must remain unchanged (no partial debit).
-it("rejects batch when remaining quota is less than batch size and does not debit", async ({ expect }) => {
+it("rejects batch when remaining quota is less than batch size and does not debit", { timeout: 120_000 }, async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 

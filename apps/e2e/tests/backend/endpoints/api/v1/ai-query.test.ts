@@ -506,8 +506,8 @@ describeWithAi("AI Query Endpoint - Message Formats", () => {
         tools: [],
         systemPrompt: "command-center-ask-ai",
         messages: [
-          { role: "user", content: "What is Stack Auth?" },
-          { role: "assistant", content: "Stack Auth is an authentication platform." },
+          { role: "user", content: "What is Hexclave?" },
+          { role: "assistant", content: "Hexclave is an authentication platform." },
           { role: "user", content: "How do I get started?" },
         ],
       },

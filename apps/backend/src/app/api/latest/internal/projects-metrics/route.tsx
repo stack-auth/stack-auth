@@ -5,7 +5,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { MetricsDataPointsSchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const SIGNUPS_WINDOW_DAYS = 30;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -168,7 +168,7 @@ export const GET = createSmartRouteHandler({
         signupResult.json<{ projectId: string, day: string, signups: string | number }>(),
       ]);
     } catch (cause) {
-      throw new StackAssertionError("Failed to load project metrics.", {
+      throw new HexclaveAssertionError("Failed to load project metrics.", {
         cause,
         userId: req.auth.user.id,
         projectIds,

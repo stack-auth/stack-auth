@@ -4,7 +4,7 @@ description: "Explore events, session replays, and SQL queries in your project's
 icon: "/images/app-icons/analytics.svg"
 ---
 
-The Analytics app gives you direct access to your project's analytics dataset in Stack Auth. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
+The Analytics app gives you direct access to your project's analytics dataset in Hexclave. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
 
 ## Overview
 
@@ -31,15 +31,15 @@ Stack collects both client-side and server-side analytics events:
 
 To use analytics in your project:
 
-1. Open your Stack Auth dashboard
+1. Open your Hexclave dashboard
 2. Go to **Apps**
 3. Open **Analytics**
 4. Click **Enable**
 
 ## Quick Start
 
-1. Enable Analytics in your Stack Auth dashboard (**Apps -> Analytics**)
-2. Initialize Stack Auth on your frontend with `StackClientApp`/`StackProvider`
+1. Enable Analytics in your Hexclave dashboard (**Apps -> Analytics**)
+2. Initialize Hexclave on your frontend with `HexclaveClientApp`/`HexclaveProvider`
 3. Sign in with a real user session
 4. Open the app and navigate/click around
 5. Check **Analytics -> Tables** to confirm events are arriving
@@ -86,9 +86,9 @@ Use replays when metrics alone are not enough to explain user behavior.
 Session replay recording is disabled by default. To enable it, pass `analytics.replays.enabled: true` when creating your client app.
 
 ```ts
-import { StackClientApp } from "@stackframe/stack";
+import { HexclaveClientApp } from "@hexclave/next";
 
-export const stackClientApp = new StackClientApp({
+export const stackClientApp = new HexclaveClientApp({
   projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
   publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
   tokenStore: "nextjs-cookie",

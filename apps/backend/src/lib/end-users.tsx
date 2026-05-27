@@ -1,13 +1,13 @@
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/utils/country-codes";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { headers } from "next/headers";
 
 // An end user is a person sitting behind a computer screen.
 //
-// For example, if my-stack-app.com is using Stack Auth, and person A is on my-stack-app.com and sends a server action
+// For example, if my-stack-app.com is using Hexclave, and person A is on my-stack-app.com and sends a server action
 // to server B of my-stack-app.com, then the end user is person A, not server B.
 //
 // An end user is not the same as a ProjectUser. For example, if person A is not logged into
@@ -179,7 +179,7 @@ export async function getEndUserInfo(): Promise<
     // STACK_TRUSTED_PROXY should be set to "vercel", "cloudflare", "cloudrun", or left empty/unset for no proxy trust.
     const trustedProxy = getEnvVariable("STACK_TRUSTED_PROXY", "").toLowerCase().trim();
     if (trustedProxy !== "" && trustedProxy !== "vercel" && trustedProxy !== "cloudflare" && trustedProxy !== "cloudrun") {
-      throw new StackAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", "cloudrun", or empty/unset, but got: "${trustedProxy}"`);
+      throw new HexclaveAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", "cloudrun", or empty/unset, but got: "${trustedProxy}"`);
     }
     return getBrowserEndUserInfo(allHeaders, trustedProxy);
   }
@@ -198,7 +198,7 @@ export async function getEndUserInfo(): Promise<
     // this is never set to true
     // we should fix that, by storing IP information in X-Stack-Requester in the StackApp interface on servers, and then
     // reading that information
-    throw new StackAssertionError("getEndUserIp() is unimplemented for trusted servers");
+    throw new HexclaveAssertionError("getEndUserIp() is unimplemented for trusted servers");
   }
 
   // we don't know anything about this request

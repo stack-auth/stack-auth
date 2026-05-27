@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../../../backend-helpers";
@@ -25,7 +25,7 @@ it("cannot create sessions from the client", async ({ expect }) => {
             "admin",
           ],
         },
-        "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+        "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -101,7 +101,7 @@ it("creates sessions that expire", async ({ expect }) => {
   } finally {
     const timeSinceBeginDate = new Date().getTime() - beginDate.getTime();
     if (timeSinceBeginDate > 11_000) {
-      throw new StackAssertionError(`Timeout error: Requests were too slow (${timeSinceBeginDate}ms > 11000ms); try again or try to understand why they were slow.`);
+      throw new HexclaveAssertionError(`Timeout error: Requests were too slow (${timeSinceBeginDate}ms > 11000ms); try again or try to understand why they were slow.`);
     }
   }
   await waitPromise;

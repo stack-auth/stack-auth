@@ -4,7 +4,7 @@ import Loading from "@/app/loading";
 import { useRouter } from "@/components/router";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp, useUser } from "@stackframe/stack";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -41,7 +41,7 @@ export default function PreviewProjectRedirect() {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new StackAssertionError(`Failed to create preview project: ${response.status} ${text}`);
+        throw new HexclaveAssertionError(`Failed to create preview project: ${response.status} ${text}`);
       }
 
       const body = await response.json();

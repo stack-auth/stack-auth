@@ -1,7 +1,7 @@
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
 export const MODEL_SPEEDS = ["slow", "fast"] as const;
@@ -28,11 +28,11 @@ const MODEL_SELECTION_MATRIX: Record<
   },
   smart: {
     slow: {
-      authenticated: { modelId: "moonshotai/kimi-k2.6:nitro" },
+      authenticated: { modelId: "x-ai/grok-build-0.1" },
       unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
     },
     fast: {
-      authenticated: { modelId: "moonshotai/kimi-k2.6:nitro" },
+      authenticated: { modelId: "x-ai/grok-build-0.1" },
       unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
     },
   },
@@ -61,7 +61,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 export function createOpenRouterProvider() {
   const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
-    : "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1";
+    : "https://api.hexclave.com/api/latest/integrations/ai-proxy/v1";
   return createOpenRouter({
     apiKey: "forwarded",
     baseURL,
@@ -78,8 +78,8 @@ export function selectModel(
   isAuthenticated: boolean,
   directApiKey?: string,
 ) {
-  if (!MODEL_QUALITIES.includes(quality)) throw new StackAssertionError("Invalid quality");
-  if (!MODEL_SPEEDS.includes(speed)) throw new StackAssertionError("Invalid speed");
+  if (!MODEL_QUALITIES.includes(quality)) throw new HexclaveAssertionError("Invalid quality");
+  if (!MODEL_SPEEDS.includes(speed)) throw new HexclaveAssertionError("Invalid speed");
 
   const config =
     MODEL_SELECTION_MATRIX[quality][speed][isAuthenticated ? "authenticated" : "unauthenticated"];

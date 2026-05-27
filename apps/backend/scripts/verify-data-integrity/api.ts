@@ -1,6 +1,6 @@
 import fs from "fs";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals, filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
@@ -76,19 +76,19 @@ export function createApiHelpers(options: {
     if (targetOutputData) {
       const targetEndpointOutputs = targetOutputData.get(endpoint);
       if (!targetEndpointOutputs) {
-        throw new StackAssertionError(deindent`
+        throw new HexclaveAssertionError(deindent`
           Output data mismatch for endpoint ${endpoint}:
             Expected ${endpoint} to be in targetOutputData, but it is not.
         `, { endpoint });
       }
       if (targetEndpointOutputs.length < count) {
-        throw new StackAssertionError(deindent`
+        throw new HexclaveAssertionError(deindent`
           Output data mismatch for endpoint ${endpoint}:
             Expected ${targetEndpointOutputs.length} outputs but got at least ${count}.
         `, { endpoint });
       }
       if (!(deepPlainEquals(targetEndpointOutputs[count - 1], output))) {
-        throw new StackAssertionError(deindent`
+        throw new HexclaveAssertionError(deindent`
           Output data mismatch for endpoint ${endpoint}:
             Expected output[${JSON.stringify(endpoint)}][${count - 1}] to be:
               ${JSON.stringify(targetEndpointOutputs[count - 1], null, 2)}
@@ -108,7 +108,7 @@ export function createApiHelpers(options: {
     for (const [endpoint, expectedOutputs] of targetOutputData) {
       const actualCount = outputCountByEndpoint.get(endpoint) ?? 0;
       if (actualCount !== expectedOutputs.length) {
-        throw new StackAssertionError(deindent`
+        throw new HexclaveAssertionError(deindent`
           Output data mismatch for endpoint ${endpoint}:
             Expected ${expectedOutputs.length} outputs but got ${actualCount}.
         `, { endpoint, expectedCount: expectedOutputs.length, actualCount });
@@ -136,7 +136,7 @@ export function createApiHelpers(options: {
     const responseText = await response.text();
 
     if (response.status !== expectedStatusCode) {
-      throw new StackAssertionError(deindent`
+      throw new HexclaveAssertionError(deindent`
         Expected status code ${expectedStatusCode} but got ${response.status} for ${endpoint}:
 
             ${responseText}

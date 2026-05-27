@@ -6,7 +6,8 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
-const OVERRIDE_KEY = '__stack-dev-tool-override';
+// Hexclave rebrand: UI-only local pref — straight rename (one-time reset is harmless)
+const OVERRIDE_KEY = '__hexclave-dev-tool-override';
 
 function hasAppendChild(value: unknown): value is { appendChild(node: Node): void } {
   return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'appendChild') === 'function';
@@ -78,7 +79,7 @@ function tryMount() {
 }
 
 /**
- * Mounts the Stack Auth dev tool on the page.
+ * Mounts the Hexclave dev tool on the page.
  *
  * - Only renders on localhost (or when overridden via console)
  * - Lazily loads the dev tool UI via dynamic import
@@ -109,7 +110,8 @@ export function mountDevTool(app: StackClientApp<true>): () => void {
 
 // Expose console commands: StackDevTool.enable() / .disable() / .reset()
 if (typeof window !== 'undefined') {
-  (window as any).StackDevTool = {
+  // Hexclave rebrand: expose under both the legacy and new global names.
+  (window as any).HexclaveDevTool = (window as any).StackDevTool = {
     enable() {
       try {
         localStorage.setItem(OVERRIDE_KEY, 'true');

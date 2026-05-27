@@ -17,7 +17,7 @@ describe('renderEmailsForTenancyBatched', () => {
   `;
 
   const createTemplateWithSubject = (subject: string, content: string) => `
-    import { Subject } from "@stackframe/emails";
+    import { Subject } from "@hexclave/emails";
     export const variablesSchema = (v: any) => v;
     export function EmailTemplate({ variables, user, project }: any) {
       return (
@@ -31,7 +31,7 @@ describe('renderEmailsForTenancyBatched', () => {
   `;
 
   const createTemplateWithNotificationCategory = (category: string, content: string) => `
-    import { NotificationCategory } from "@stackframe/emails";
+    import { NotificationCategory } from "@hexclave/emails";
     export const variablesSchema = (v: any) => v;
     export function EmailTemplate({ variables, user, project }: any) {
       return (

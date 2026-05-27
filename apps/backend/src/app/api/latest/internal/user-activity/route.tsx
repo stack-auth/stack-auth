@@ -3,7 +3,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { ClickHouseError } from "@clickhouse/client";
 import { UserActivityResponseBodySchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 
 // Per-user activity heatmap window. Sized to match the 22×16 dashboard grid
 // so every cell maps to exactly one day and we never truncate or pad awkwardly
@@ -75,7 +75,7 @@ export const GET = createSmartRouteHandler({
       if (!(error instanceof ClickHouseError)) {
         throw error;
       }
-      captureError("internal-user-activity-clickhouse-fallback", new StackAssertionError(
+      captureError("internal-user-activity-clickhouse-fallback", new HexclaveAssertionError(
         "Failed to load user activity due to ClickHouse query failure.",
         {
           cause: error,

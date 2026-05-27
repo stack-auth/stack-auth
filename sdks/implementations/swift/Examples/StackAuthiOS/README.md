@@ -1,12 +1,12 @@
-# Stack Auth iOS Example
+# Hexclave iOS Example
 
-An interactive iOS application for testing all Stack Auth Swift SDK functions.
+An interactive iOS application for testing all Hexclave Swift SDK functions.
 
 ## Prerequisites
 
 - Xcode 15.0 or later
 - iOS 17.0+ Simulator or device
-- Running Stack Auth backend (default: `http://localhost:8102`)
+- Running Hexclave backend (default: `http://localhost:8102`)
 
 ## Running the Example
 
@@ -94,7 +94,7 @@ For iOS Simulator to connect to your local backend:
 ## Troubleshooting
 
 ### "Could not connect to server"
-- Ensure your Stack Auth backend is running
+- Ensure your Hexclave backend is running
 - Check the Base URL in Settings tab
 - For real devices, use your computer's IP instead of localhost
 

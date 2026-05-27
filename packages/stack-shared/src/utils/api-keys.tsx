@@ -1,7 +1,7 @@
 import crc32 from 'crc/crc32';
 import { getBase32CharacterFromIndex } from "./bytes";
 import { generateSecureRandomString } from "./crypto";
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 
 
 const STACK_AUTH_MARKER = "574ck4u7h";
@@ -71,7 +71,7 @@ function parseApiKeyParts(secret: string) {
 
   const match = secret.match(regex);
   if (!match) {
-    throw new StackAssertionError("Invalid API key format");
+    throw new HexclaveAssertionError("Invalid API key format");
   }
 
   const [, prefix, secretPart, idPart, type, scannerFlag, marker, checksum] = match;
@@ -83,7 +83,7 @@ function parseApiKeyParts(secret: string) {
   const restored_id = idPart.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
 
   if (!["user", "team"].includes(type)) {
-    throw new StackAssertionError("Invalid type");
+    throw new HexclaveAssertionError("Invalid type");
   }
 
   return { checksummablePart, checksum, id: restored_id, isCloudVersion, isPublic, prefix, type: type as "user" | "team" };
@@ -106,7 +106,7 @@ export function parseProjectApiKey(secret: string): ProjectApiKey {
   const calculated_checksum = createChecksumSync(checksummablePart);
 
   if (calculated_checksum !== checksum) {
-    throw new StackAssertionError("Checksum mismatch");
+    throw new HexclaveAssertionError("Checksum mismatch");
   }
 
   return {

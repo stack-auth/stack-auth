@@ -8,12 +8,12 @@ const PLACEHOLDER = "REPLACE_ME";
 function envOrDevDefault(value: string | undefined, devDefault: string): string {
   if (!value || value === PLACEHOLDER) {
     if (IS_DEV) return devDefault;
-    throw new Error("Stack Auth env var is not configured. Set the NEXT_PUBLIC_STACK_* vars in .env.local or hosting platform env.");
+    throw new Error("Hexclave env var is not configured. Set the NEXT_PUBLIC_STACK_* vars in .env.local or hosting platform env.");
   }
   return value;
 }
 
-const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
 
 const projectId = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_PROJECT_ID, "internal");
 const publishableClientKey = envOrDevDefault(

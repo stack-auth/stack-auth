@@ -21,7 +21,7 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   inheritsFrom?: StackClientApp<any, any>,
 
   /**
-   * Whether to show the Stack Auth dev tool indicator in browser-like development environments.
+   * Whether to show the Hexclave dev tool indicator in browser-like development environments.
    *
    * Defaults to true.
    */
@@ -56,7 +56,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     readonly projectId: ProjectId,
 
     /**
-     * The version of the Stack Auth SDK.
+     * The version of the Hexclave SDK.
      */
     readonly version: string,
 
@@ -127,6 +127,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
       getRedirectMethod(): RedirectMethod,
       redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
+      redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
     },
   }
@@ -166,4 +167,9 @@ export type StackClientAppConstructor = {
     ): StackClientApp<HasTokenStore, ProjectId>,
   },
 };
-export const StackClientApp: StackClientAppConstructor = _StackClientAppImpl;
+export type HexclaveClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId>;
+export type HexclaveClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppJson<HasTokenStore, ProjectId>;
+export type HexclaveClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackClientApp<HasTokenStore, ProjectId>;
+export type HexclaveClientAppConstructor = StackClientAppConstructor;
+export const HexclaveClientApp: HexclaveClientAppConstructor = _StackClientAppImpl;
+export const StackClientApp: StackClientAppConstructor = HexclaveClientApp;

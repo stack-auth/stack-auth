@@ -1,5 +1,5 @@
 import { findLastIndex, unique } from "./arrays";
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 import { filterUndefined } from "./objects";
 
 export type Join<T extends string[], Separator extends string> =
@@ -13,7 +13,7 @@ export function typedJoin<T extends string[], Separator extends string>(strings:
 }
 
 export function typedToLowercase<S extends string>(s: S): Lowercase<S> {
-  if (typeof s !== "string") throw new StackAssertionError("Expected a string for typedToLowercase", { s });
+  if (typeof s !== "string") throw new HexclaveAssertionError("Expected a string for typedToLowercase", { s });
   return s.toLowerCase() as Lowercase<S>;
 }
 import.meta.vitest?.test("typedToLowercase", ({ expect }) => {
@@ -28,7 +28,7 @@ import.meta.vitest?.test("typedToLowercase", ({ expect }) => {
 });
 
 export function typedToUppercase<S extends string>(s: S): Uppercase<S> {
-  if (typeof s !== "string") throw new StackAssertionError("Expected a string for typedToUppercase", { s });
+  if (typeof s !== "string") throw new HexclaveAssertionError("Expected a string for typedToUppercase", { s });
   return s.toUpperCase() as Uppercase<S>;
 }
 import.meta.vitest?.test("typedToUppercase", ({ expect }) => {
@@ -59,7 +59,7 @@ import.meta.vitest?.test("typedCapitalize", ({ expect }) => {
  * Compares two strings in a way that is not dependent on the current locale.
  */
 export function stringCompare(a: string, b: string): number {
-  if (typeof a !== "string" || typeof b !== "string") throw new StackAssertionError(`Expected two strings for stringCompare, found ${typeof a} and ${typeof b}`, { a, b });
+  if (typeof a !== "string" || typeof b !== "string") throw new HexclaveAssertionError(`Expected two strings for stringCompare, found ${typeof a} and ${typeof b}`, { a, b });
   const cmp = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
   return cmp(a.toUpperCase(), b.toUpperCase()) || cmp(b, a);
 }
@@ -208,7 +208,7 @@ import.meta.vitest?.test("trimLines", ({ expect }) => {
  * Useful for implementing your own template literal tags.
  */
 export function templateIdentity(strings: TemplateStringsArray | readonly string[], ...values: string[]): string {
-  if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", { strings, values });
+  if (values.length !== strings.length - 1) throw new HexclaveAssertionError("Invalid number of values; must be one less than strings", { strings, values });
 
   return strings.reduce((result, str, i) => result + str + (values[i] ?? ''), '');
 }
@@ -238,7 +238,7 @@ export function deindent(strings: string | readonly string[], ...values: any[]):
 }
 
 export function deindentTemplate(strings: TemplateStringsArray | readonly string[], ...values: any[]): [string[], ...string[]] {
-  if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", { strings, values });
+  if (values.length !== strings.length - 1) throw new HexclaveAssertionError("Invalid number of values; must be one less than strings", { strings, values });
 
   const trimmedStrings = [...strings];
   trimmedStrings[0] = trimEmptyLinesStart(trimmedStrings[0] + "+").slice(0, -1);
@@ -561,7 +561,7 @@ export function nicify(
         if (maxDepth <= 0) return `[...]`;
         const resValues = value.map((v, i) => nestedNicify(v, `${path}[${i}]`, i));
         resValues.push(...extraLines);
-        if (resValues.length !== resValueLength) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
+        if (resValues.length !== resValueLength) throw new HexclaveAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
         const shouldIndent = resValues.length > 4 || resValues.some(x => (resValues.length > 1 && x.length > 4) || x.includes("\n"));
         if (shouldIndent) {
           return `[${nl}${resValues.map(x => `${lineIndent}${x},${nl}`).join("")}]`;
@@ -619,7 +619,7 @@ export function nicify(
         }
       });
       resValues.push(...extraLines);
-      if (resValues.length !== resValueLength) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
+      if (resValues.length !== resValueLength) throw new HexclaveAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
       const shouldIndent = resValues.length > 1 || resValues.some(x => x.includes("\n"));
 
       if (resValues.length === 0) return `${constructorString}{}`;
@@ -636,7 +636,7 @@ export function nicify(
 }
 
 export function replaceAll(input: string, searchValue: string, replaceValue: string): string {
-  if (searchValue === "") throw new StackAssertionError("replaceAll: searchValue is empty");
+  if (searchValue === "") throw new HexclaveAssertionError("replaceAll: searchValue is empty");
   return input.split(searchValue).join(replaceValue);
 }
 import.meta.vitest?.test("replaceAll", ({ expect }) => {

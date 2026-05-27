@@ -67,8 +67,8 @@ export default function PageClient() {
             </CardContent>
             <CardFooter>
               <div className='flex gap-2'>
-                <Link href="https://app.stack-auth.com" className={buttonVariants()}>
-                  Visit Stack Auth
+                <Link href="https://app.hexclave.com" className={buttonVariants()}>
+                  Visit Hexclave
                 </Link>
                 <Button variant='destructive' onClick={async () => await app.redirectToSignOut()}>
                   Sign Out

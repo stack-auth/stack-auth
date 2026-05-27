@@ -22,9 +22,9 @@ describe("without project access", () => {
         "body": {
           "code": "ACCESS_TYPE_REQUIRED",
           "error": deindent\`
-            You must specify an access level for this Stack project. Make sure project API keys are provided (eg. x-stack-publishable-client-key) and you set the x-stack-access-type header to 'client', 'server', or 'admin'.
+            You must specify an access level for this Hexclave project. Make sure project API keys are provided (eg. x-hexclave-publishable-client-key) and you set the x-hexclave-access-type header to 'client', 'server', or 'admin'. (The legacy x-stack-* equivalents are also accepted.)
             
-            For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+            For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
           \`,
         },
         "headers": Headers {
@@ -44,9 +44,9 @@ describe("without project access", () => {
         "body": {
           "code": "ACCESS_TYPE_REQUIRED",
           "error": deindent\`
-            You must specify an access level for this Stack project. Make sure project API keys are provided (eg. x-stack-publishable-client-key) and you set the x-stack-access-type header to 'client', 'server', or 'admin'.
+            You must specify an access level for this Hexclave project. Make sure project API keys are provided (eg. x-hexclave-publishable-client-key) and you set the x-hexclave-access-type header to 'client', 'server', or 'admin'. (The legacy x-stack-* equivalents are also accepted.)
             
-            For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+            For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
           \`,
         },
         "headers": Headers {
@@ -443,7 +443,7 @@ describe("with client access", () => {
               "admin",
             ],
           },
-          "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -604,7 +604,7 @@ describe("with client access", () => {
               "admin",
             ],
           },
-          "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -634,7 +634,7 @@ describe("with client access", () => {
               "admin",
             ],
           },
-          "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -750,7 +750,7 @@ describe("with client access", () => {
         profile_image_url: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
       },
     });
-    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>21/stack-storage/user-profile-images/<stripped UUID>.gif"`);
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>21/stack-storage/user-profile-images/<stripped UUID>.gif"`);
   });
 
   it("should not be able to update profile image url with invalid base64", async ({ expect }) => {
@@ -2237,7 +2237,7 @@ describe("with server access", () => {
         profile_image_url: localhostUrl("01", "/open-graph-image.png"),
       },
     });
-    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>01/open-graph-image.png"`);
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>01/open-graph-image.png"`);
   });
 
   it("should be able to update primary email", async ({ expect }) => {

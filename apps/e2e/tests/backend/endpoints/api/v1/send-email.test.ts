@@ -40,7 +40,7 @@ describe("invalid requests", () => {
               "admin",
             ],
           },
-          "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -279,8 +279,8 @@ it("should return 200 and send email successfully", async ({ expect }) => {
       MailboxMessage {
         "attachments": [],
         "body": {
-          "html": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
-          "text": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "html": "http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
+          "text": "http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>02/api/v1/emails/unsubscribe-link?code=%3Cstripped+query+param%3E",
         },
         "from": "Test Project <test@example.com>",
         "subject": "Custom Test Email Subject",

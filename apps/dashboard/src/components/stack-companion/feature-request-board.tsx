@@ -6,7 +6,7 @@ import { getInternalProjectHeaders } from '@/lib/internal-project-headers';
 import { cn } from '@/lib/utils';
 import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import { useUser } from '@stackframe/stack';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
 import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { useCallback, useEffect, useState } from 'react';
@@ -96,7 +96,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
         });
         setUserUpvotes(upvotedPosts);
       } else {
-        throw new StackAssertionError('Fetch response is not OK', {
+        throw new HexclaveAssertionError('Fetch response is not OK', {
           details: {
             response: response,
             responseText: await response.text(),
@@ -159,7 +159,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
         return;
       }
 
-      throw new StackAssertionError('Failed to upvote feature request', {
+      throw new HexclaveAssertionError('Failed to upvote feature request', {
         status: response.status,
         responseText: await response.text(),
       });
@@ -243,7 +243,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
   // Handle clicking on a feature request card to view it on Featurebase
   const handleFeatureRequestClick = (requestId: string) => {
     // Construct the Featurebase post URL using the post ID
-    const featureRequestUrl = `https://feedback.stack-auth.com/p/${requestId}`;
+    const featureRequestUrl = `https://feedback.hexclave.com/p/${requestId}`;
     const redirectTo = `/integrations/featurebase/sso?return_to=${encodeURIComponent(featureRequestUrl)}`;
 
     // Open in new tab to maintain the current Stack Companion session
@@ -259,7 +259,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
             Feature request submitted successfully!
           </p>
           <p className="text-xs text-green-600 dark:text-green-300 mt-1">
-            Thank you for helping us improve Stack Auth!
+            Thank you for helping us improve Hexclave!
           </p>
         </div>
       ) : showSubmitForm ? (

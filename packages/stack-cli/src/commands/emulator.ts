@@ -230,7 +230,7 @@ function emulatorSpawnEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
 function prepareRuntimeConfigIso(): void {
   const vmDir = join(emulatorRunDir(), "vm");
   mkdirSync(vmDir, { recursive: true });
-  const portPrefix = process.env.PORT_PREFIX ?? process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? DEFAULT_PORT_PREFIX;
+  const portPrefix = process.env.PORT_PREFIX ?? process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? DEFAULT_PORT_PREFIX;
   const dashboardPort = emulatorDashboardPort();
   const backendPort = emulatorBackendPort();
   const minioPort = emulatorMinioPort();
@@ -407,9 +407,9 @@ function printEmulatorWelcome(): void {
   const inbucketPort = emulatorInbucketPort();
 
   console.log("\nEmulator is up.\n");
-  console.log("The Stack Auth emulator runs a full local Stack Auth stack (backend, dashboard,");
+  console.log("The Hexclave emulator runs a full local Hexclave stack (backend, dashboard,");
   console.log("Postgres, Redis, MinIO, and a test mail server) inside a VM on your machine.");
-  console.log("It gives you an offline, disposable Stack Auth you can develop against — no");
+  console.log("It gives you an offline, disposable Hexclave you can develop against — no");
   console.log("cloud account needed, and you can reset it any time.\n");
   console.log("Services:");
   console.log(`  • Local dashboard  http://localhost:${dashboardPort}`);

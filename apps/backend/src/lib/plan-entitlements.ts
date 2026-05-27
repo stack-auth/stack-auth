@@ -2,11 +2,11 @@ import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "./tenancies";
 
 /**
- * Whether Stack Auth's own plan-limit enforcement (quotas like `analytics_events`,
+ * Whether Hexclave's own plan-limit enforcement (quotas like `analytics_events`,
  * `session_replays`, `emails_per_month`, the `auth_users` soft cap, and the
  * `dashboard_admins` seat check) should be enforced for billing teams in the
  * internal tenancy.
@@ -62,7 +62,7 @@ export function getBillingTeamId(project: { id: string, ownerTeamId?: string | n
 async function getInternalBillingTenancy(): Promise<Tenancy> {
   const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
   if (tenancy == null) {
-    throw new StackAssertionError("Internal billing tenancy not found", {
+    throw new HexclaveAssertionError("Internal billing tenancy not found", {
       billingProjectId: "internal",
       branchId: DEFAULT_BRANCH_ID,
     });
@@ -136,9 +136,9 @@ async function getTeamWideItemCapacity(
     ),
   },
 ): Promise<number> {
-  // Capacity metric: entitlement from Stack Auth payments for a specific item.
+  // Capacity metric: entitlement from Hexclave payments for a specific item.
   if (!TEAM_WIDE_CAPACITY_ITEM_IDS.has(itemId)) {
-    throw new StackAssertionError("Unsupported team-wide capacity item id", { itemId });
+    throw new HexclaveAssertionError("Unsupported team-wide capacity item id", { itemId });
   }
   const internalBillingTenancy = await getInternalBillingTenancy();
   const billingPrisma = await readers.getPrismaForTenancy(internalBillingTenancy);
@@ -176,7 +176,7 @@ export async function getTeamWideAuthUsersCapacityForProjectTenancy(
 ): Promise<number> {
   const billingTeamId = getBillingTeamId(projectTenancy.project);
   if (billingTeamId == null) {
-    throw new StackAssertionError("Project owner team missing; cannot resolve billing team", {
+    throw new HexclaveAssertionError("Project owner team missing; cannot resolve billing team", {
       projectId: projectTenancy.project.id,
     });
   }

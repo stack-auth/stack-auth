@@ -31,7 +31,7 @@ You should ALWAYS add new E2E tests when you change the API or SDK interface. Ge
 
 ## Architecture Overview
 
-Stack Auth is a monorepo using Turbo for build orchestration. The main components are:
+Hexclave is a monorepo using Turbo for build orchestration. The main components are:
 
 ### Apps (`/apps`)
 - **backend** (`/apps/backend`): Next.js API backend running on port `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02` (defaults to 8102)
@@ -82,7 +82,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Whenever you make backwards-incompatible changes to the config schema, you must update the migration functions in `packages/stack-shared/src/config/schema.ts`!
 - NEVER try-catch-all, NEVER void a promise, and NEVER .catch(console.error) (or similar). In most cases you don't actually need to be asynchronous, especially when UI is involved (instead, use a loading indicator! eg. our <Button> component already takes an async callback for onClick and sets its loading state accordingly — if whatever component doesn't do that, update the component instead). If you really do need things to be asynchronous, use `runAsynchronously` or `runAsynchronouslyWithAlert` instead as it deals with error logging.
 - WHENEVER you create hover transitions, avoid hover-enter transitions, and just use hover-exit transitions. For example, `transition-colors hover:transition-none`.
-- Any environment variables you create should be prefixed with `STACK_` (or NEXT_PUBLIC_STACK_ if they are public). This ensures that their changes are picked up by Turborepo (and helps readability).
+- Any environment variables you create should be prefixed with `HEXCLAVE_` (or `NEXT_PUBLIC_HEXCLAVE_` if they are public) for new customer-facing or framework-internal vars. This ensures that their changes are picked up by Turborepo (and helps readability). Self-host operator vars (e.g. `STACK_DATABASE_CONNECTION_STRING`) and build/dev/test vars (e.g. `NEXT_PUBLIC_STACK_API_URL` in dev fixtures) stay `STACK_`-prefixed for now — the dual-read shim accepts both. The Hexclave SDK reads both prefixes; new names take precedence when both are set.
 - NEVER just silently use fallback values or whatever when you don't know how to fix type errors. If there is a state that should never happen because of higher-level logic, and the type system doesn't represent that, either update the types or throw an error. Stuff like `?? 0` or `?? ""` is often code smell when `?? throwErr("this should never happen because XYZ")` would be better.
 - Code defensively. Prefer `?? throwErr(...)` over non-null assertions, with good error messages explicitly stating the assumption that must've been violated for the error to be thrown.
 - Try to avoid the `any` type. Whenever you need to use `any`, leave a comment explaining why you're using it (optimally it explains why the type system fails here, and how you can be certain that any errors in that code path would still be flagged at compile-, test-, or runtime).
@@ -92,7 +92,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - IMPORTANT: Any assumption you make should either be validated through type system (preferred), assertions, or tests. Optimally, two out of three.
 - If there is an external browser tool connected, use it to test changes you make to the frontend when possible.
 - Whenever you update an SDK implementation in `sdks/implementations`, make sure to update the specs accordingly in `sdks/specs` such that if you reimplemented the entire SDK from the specs again, you would get the same implementation. (For example, if the specs are not precise enough to describe a change you made, make the specs more precise.)
-- When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
+- When building internal tools for Hexclave developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Hexclave developers.
 - The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
 - When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
 - NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT! if its already staged and you didnt do it then dont unstage it.
@@ -116,6 +116,9 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - NEVER INSTALL A NEW PACKAGE (or anything else) WITHOUT EXPLICIT APPROVAL FROM THE USER.
 - A "development environment" is either an RDE (remote development environment; = local dashboard + prod backend) or a local emulator (local dashboard + local backend). When communicating to the user, we always say "development environment" instead of RDE or local emulator (the distinction to the user is minor, even though the implementation is quite different).
 - NEVER EVER return a server error with an internal server error that may contain information that the user shouldn't see. For example, never return the error message on a public API from an upstream provider without properly filtering it first. Most of the time, for internal server errors, you should just use StackAssertionError (which won't pass the message to the user), not StatusError (you almost never want to instantiate a StatusError with status 5xx).
+- When adding code to the `private` part of the backend, put the actual implementation into `implementation` (if the submodule is checked out), and implement a simple fallback in `implementation-fallback` for self-hosters. `implementation.generated.ts` will automatically be generated, which you can then import from `index.ts`. (See the existing code as an example.) If the submodule isn't checked out, but you need to add code to the `private` part of the backend, let the user know.
+- Security-sensitive code on the backend that shouldn't be public should be in the `private` part of the backend.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
+- **Read replicas for raw Prisma queries**: When writing raw SQL queries (`$queryRaw`, `$queryRawUnsafe`), always use `$replica()` for read-only queries (e.g. `globalPrismaClient.$replica().$queryRaw\`SELECT ...\``). This routes reads to the database replica and reduces load on the primary. Do NOT use `$replica()` for queries inside transactions or queries containing writes (INSERT/UPDATE/DELETE, even in CTEs).

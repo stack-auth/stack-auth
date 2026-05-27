@@ -9,7 +9,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import Stripe from "stripe";
@@ -230,7 +230,7 @@ export const POST = createSmartRouteHandler({
     if (existingSub?.stripeSubscriptionId) {
       const existingStripeSub = await stripe.subscriptions.retrieve(existingSub.stripeSubscriptionId);
       if (existingStripeSub.items.data.length === 0) {
-        throw new StackAssertionError("Stripe subscription has no items", { subscriptionId: existingSub.id });
+        throw new HexclaveAssertionError("Stripe subscription has no items", { subscriptionId: existingSub.id });
       }
       const existingItem = existingStripeSub.items.data[0];
       // Intentional: switching an existing (possibly pre-platform-fee)
@@ -322,7 +322,7 @@ export const POST = createSmartRouteHandler({
       });
       const createdSubscription = created as Stripe.Subscription;
       if (createdSubscription.items.data.length === 0) {
-        throw new StackAssertionError("Stripe subscription has no items", { stripeSubscriptionId: createdSubscription.id });
+        throw new HexclaveAssertionError("Stripe subscription has no items", { stripeSubscriptionId: createdSubscription.id });
       }
       const createdItem = createdSubscription.items.data[0];
       const sanitizedCreateDates = sanitizeStripePeriodDates(

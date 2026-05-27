@@ -44,7 +44,10 @@ function markLatestVersionSeen(entries: ApiChangelogEntry[]) {
   // Find the first released version (skip unreleased to avoid breaking version comparison)
   const latestReleasedEntry = entries.find(entry => !entry.isUnreleased);
   if (latestReleasedEntry) {
-    document.cookie = `stack-last-seen-changelog-version=${encodeURIComponent(latestReleasedEntry.version)}; path=/; max-age=31536000`;
+    // Hexclave rebrand: dual-write the changelog cookie under both names.
+    const encodedVersion = encodeURIComponent(latestReleasedEntry.version);
+    document.cookie = `hexclave-last-seen-changelog-version=${encodedVersion}; path=/; max-age=31536000`;
+    document.cookie = `stack-last-seen-changelog-version=${encodedVersion}; path=/; max-age=31536000`;
   }
 }
 
@@ -217,7 +220,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
         <div className="bg-muted/30 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold">Stack Auth releases</h3>
+              <h3 className="text-sm font-semibold">Hexclave releases</h3>
             </div>
           </div>
           {error && (

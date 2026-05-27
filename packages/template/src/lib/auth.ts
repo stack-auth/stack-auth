@@ -1,12 +1,12 @@
-import { KnownError, StackClientInterface } from "@stackframe/stack-shared";
+import { KnownError, HexclaveClientInterface } from "@stackframe/stack-shared";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { constructRedirectUrl } from "../utils/url";
 import { consumeVerifierAndStateCookie, saveVerifierAndState } from "./cookie";
 export async function getNewOAuthProviderOrScopeUrl(
-  iface: StackClientInterface,
+  iface: HexclaveClientInterface,
   options: {
     provider: string,
     redirectUrl: string,
@@ -61,7 +61,7 @@ function consumeOAuthCallbackQueryParams(options?: {
       try {
         detailsJson = JSON.parse(details);
       } catch (error) {
-        throw new StackAssertionError("OAuth callback returned malformed known-error details", {
+        throw new HexclaveAssertionError("OAuth callback returned malformed known-error details", {
           details,
           cause: error,
         });
@@ -137,7 +137,7 @@ function consumeOAuthCallbackQueryParams(options?: {
 }
 
 export async function callOAuthCallback(
-  iface: StackClientInterface,
+  iface: HexclaveClientInterface,
   redirectUrl: string,
   options?: {
     dontWarnAboutMissingQueryParams?: boolean,
@@ -166,6 +166,6 @@ export async function callOAuthCallback(
     if (KnownError.isKnownError(e)) {
       throw e;
     }
-    throw new StackAssertionError("Error signing in during OAuth callback. Please try again.", { cause: e });
+    throw new HexclaveAssertionError("Error signing in during OAuth callback. Please try again.", { cause: e });
   }
 }

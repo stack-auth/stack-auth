@@ -1,7 +1,7 @@
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import './polyfills';
 
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
@@ -34,11 +34,21 @@ const corsAllowedResponseHeaders = [
   'x-stack-known-error',
 ];
 
+// Hexclave rebrand: every `x-stack-*` header is dual-accepted under its `x-hexclave-*` equivalent.
+// Derive the alias names so the CORS allowlists never drift. See RENAME-TO-HEXCLAVE.md (Tier 0).
+function withHexclaveHeaderAliases(headers: string[]): string[] {
+  return headers.flatMap((header) => header.startsWith('x-stack-')
+    ? [header, `x-hexclave-${header.slice('x-stack-'.length)}`]
+    : [header]);
+}
+const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedRequestHeaders);
+const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
+
 export async function proxy(request: NextRequest) {
   const delay = Number.parseInt(getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0'));
   if (delay) {
     if (getNodeEnvironment().includes('production')) {
-      throw new StackAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS is only allowed in development');
+      throw new HexclaveAssertionError('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS is only allowed in development');
     }
     if (!request.headers.get('x-stack-disable-artificial-development-delay')) {
       await wait(delay);
@@ -48,15 +58,28 @@ export async function proxy(request: NextRequest) {
   const url = new URL(request.url);
   const isApiRequest = url.pathname.startsWith('/api/');
 
+  // Hexclave rebrand: dual-accept request headers — copy each `x-hexclave-*` onto its `x-stack-*`
+  // equivalent so downstream API routes that read `x-stack-*` keep working unchanged. The new form
+  // wins when both are present. See RENAME-TO-HEXCLAVE.md (Tier 0, HTTP request headers).
+  const newRequestHeaders = new Headers(request.headers);
+  for (const [name, value] of request.headers) {
+    if (name.startsWith('x-hexclave-')) {
+      newRequestHeaders.set(`x-stack-${name.slice('x-hexclave-'.length)}`, value);
+    }
+  }
+
   // default headers
-  const responseInit: ResponseInit = {
+  const responseInit = {
+    request: {
+      headers: newRequestHeaders,
+    },
     headers: {
       // CORS headers
       ...(!isApiRequest ? {} : {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
-        "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
+        "Access-Control-Allow-Headers": corsAllowedRequestHeadersWithAliases.join(', '),
+        "Access-Control-Expose-Headers": corsAllowedResponseHeadersWithAliases.join(', '),
       }),
     },
   };

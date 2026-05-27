@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
@@ -68,7 +68,7 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
+  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
 }
 
 async function waitForClickhouseUserDeletion(email: string) {
@@ -96,7 +96,7 @@ async function waitForClickhouseUserDeletion(email: string) {
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`, { response });
+  throw new HexclaveAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`, { response });
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
@@ -1751,7 +1751,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       }
       await wait(intervalMs);
     }
-    throw new StackAssertionError(`Timed out waiting for ClickHouse refresh token to sync.`, { response });
+    throw new HexclaveAssertionError(`Timed out waiting for ClickHouse refresh token to sync.`, { response });
   }, TEST_TIMEOUT);
 
   /**
@@ -1811,7 +1811,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       }
       await wait(intervalMs);
     }
-    throw new StackAssertionError(`Timed out waiting for ClickHouse connected account to sync.`, { response });
+    throw new HexclaveAssertionError(`Timed out waiting for ClickHouse connected account to sync.`, { response });
   }, TEST_TIMEOUT);
 
 });

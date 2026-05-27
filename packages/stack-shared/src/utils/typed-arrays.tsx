@@ -1,4 +1,4 @@
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 
 /**
  * Ensures a Uint8Array is backed by a regular ArrayBuffer (not SharedArrayBuffer).
@@ -11,7 +11,7 @@ import { StackAssertionError } from "./errors";
  */
 export function toArrayBufferBacked(arr: Uint8Array): Uint8Array<ArrayBuffer> {
   if (arr.buffer instanceof SharedArrayBuffer) {
-    throw new StackAssertionError("SharedArrayBuffer-backed Uint8Arrays are not supported in this context");
+    throw new HexclaveAssertionError("SharedArrayBuffer-backed Uint8Arrays are not supported in this context");
   }
   return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
 }

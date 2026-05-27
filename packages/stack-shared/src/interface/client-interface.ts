@@ -5,7 +5,7 @@ import { KnownError, KnownErrors } from '../known-errors';
 import { inlineProductSchema } from '../schema-fields';
 import { AccessToken, InternalSession, RefreshToken } from '../sessions';
 import { generateSecureRandomString } from '../utils/crypto';
-import { StackAssertionError, throwErr } from '../utils/errors';
+import { HexclaveAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
 import { ReadonlyJson } from '../utils/json';
@@ -87,7 +87,7 @@ function isBotChallengeKnownError(error: unknown): error is KnownErrors["BotChal
 function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefined, context: string) {
   if (botChallenge?.unavailable) {
     if (botChallenge.token != null || botChallenge.phase != null) {
-      throw new StackAssertionError(`${context} bot challenge unavailability cannot be combined with a token or phase.`);
+      throw new HexclaveAssertionError(`${context} bot challenge unavailability cannot be combined with a token or phase.`);
     }
 
     return {
@@ -112,7 +112,7 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 
   if (challengeToken == null) {
     if (botChallenge?.phase != null) {
-      throw new StackAssertionError(`${context} bot challenge phase options require a token.`);
+      throw new HexclaveAssertionError(`${context} bot challenge phase options require a token.`);
     }
 
     return {};
@@ -156,8 +156,8 @@ async function encodeAnalyticsBody(
   }
 }
 
-export class StackClientInterface {
-  private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
+export class HexclaveClientInterface {
+  private pendingNetworkDiagnostics?: ReturnType<HexclaveClientInterface["_runNetworkDiagnosticsInner"]>;
   private _requestListeners = new Set<RequestListener>();
 
   /**
@@ -219,8 +219,8 @@ export class StackClientInterface {
    *   - Sticky URL fails → exit sticky mode, do a full iteration.
    *
    * In both modes, a full iteration tries every URL once per pass for 2
-   * passes before giving up. KnownErrors are never retried (they're
-   * application-level, not network-level).
+   * passes before giving up. KnownErrors and 4xx API responses (except 429)
+   * are never retried (they're application-level, not network-level).
    *
    * Single-URL lists skip all of this and use 5-retry behavior directly.
    */
@@ -243,6 +243,27 @@ export class StackClientInterface {
     return await this._iterateUrls(apiUrls, cb);
   }
 
+  private _shouldSkipFallback(error: unknown) {
+    return error instanceof KnownError || this._isNonRetryableApiResponseError(error);
+  }
+
+  private _isNonRetryableApiResponseError(error: unknown) {
+    const response = this._getApiResponseFromError(error);
+    return response != null && response.status >= 400 && response.status < 500;
+  }
+
+  private _getApiResponseFromError(error: unknown, seenErrors = new Set<Error>()): Response | null {
+    if (error instanceof Response) {
+      return error;
+    }
+    if (!(error instanceof Error) || seenErrors.has(error)) {
+      return null;
+    }
+
+    seenErrors.add(error);
+    return this._getApiResponseFromError(error.cause, seenErrors);
+  }
+
   /**
    * Attempts the sticky URL, optionally probing primary first.
    * Returns the result on success, or `undefined` if we should fall through to full iteration.
@@ -260,7 +281,7 @@ export class StackClientInterface {
         this._sticky = null;
         return result;
       } catch (e) {
-        if (e instanceof KnownError) throw e;
+        if (this._shouldSkipFallback(e)) throw e;
         sticky.probeRate = Math.max(sticky.probeRate * 0.5, 0.01);
       }
     }
@@ -269,7 +290,7 @@ export class StackClientInterface {
     try {
       return await cb(apiUrls[sticky.index], { maxAttempts: 1, skipDiagnostics: true });
     } catch (e) {
-      if (e instanceof KnownError) throw e;
+      if (this._shouldSkipFallback(e)) throw e;
       this._sticky = null;
       return undefined;
     }
@@ -294,7 +315,7 @@ export class StackClientInterface {
           }
           return result;
         } catch (e) {
-          if (e instanceof KnownError) throw e;
+          if (this._shouldSkipFallback(e)) throw e;
           lastError = e instanceof Error ? e : new Error(String(e));
         }
       }
@@ -342,13 +363,13 @@ export class StackClientInterface {
       }
     });
     const prodDashboard = await tryRequest(async () => {
-      const res = await fetch("https://app.stack-auth.com/health");
+      const res = await fetch("https://app.hexclave.com/health");
       if (!res.ok) {
         throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
       }
     });
     const prodBackend = await tryRequest(async () => {
-      const res = await fetch("https://api.stack-auth.com/health");
+      const res = await fetch("https://api.hexclave.com/health");
       if (!res.ok) {
         throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
       }
@@ -364,7 +385,7 @@ export class StackClientInterface {
 
   protected async _createNetworkError(cause: Error, session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
     return new Error(deindent`
-      Stack Auth is unable to connect to the server. Please check your internet connection and try again.
+      Hexclave is unable to connect to the server. Please check your internet connection and try again.
 
       If the problem persists, please contact support and provide a screenshot of your entire browser console.
 
@@ -457,7 +478,7 @@ export class StackClientInterface {
 
       if (!response.data.ok) {
         const body = await response.data.text();
-        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`);
+        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`, { cause: response.data });
       }
 
       return response.data;
@@ -469,17 +490,17 @@ export class StackClientInterface {
       result = await oauth.processRefreshTokenResponse(as, client, response);
     } catch (e){
       if (e instanceof oauth.ResponseBodyError) {
-        throw new StackAssertionError("ResponseBodyError when processing refresh token response", {
+        throw new HexclaveAssertionError("ResponseBodyError when processing refresh token response", {
           cause: e.cause,
           code: e.code,
           error: e.error,
         });
       }
-      throw new StackAssertionError("Unexpected error when processing refresh token response", { cause: e });
+      throw new HexclaveAssertionError("Unexpected error when processing refresh token response", { cause: e });
     }
 
     if (!result.access_token) {
-      throw new StackAssertionError("Access token not found in token endpoint response, this is weird!");
+      throw new HexclaveAssertionError("Access token not found in token endpoint response, this is weird!");
     }
 
     return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
@@ -662,22 +683,23 @@ export class StackClientInterface {
       }),
       ...options,
       headers: {
-        "X-Stack-Override-Error-Status": "true",
-        "X-Stack-Project-Id": this.projectId,
-        "X-Stack-Access-Type": requestType,
-        "X-Stack-Client-Version": this.options.clientVersion,
+        // Hexclave rebrand: emit x-hexclave-* request headers; the backend proxy dual-accepts both x-hexclave-* and x-stack-*.
+        "X-Hexclave-Override-Error-Status": "true",
+        "X-Hexclave-Project-Id": this.projectId,
+        "X-Hexclave-Access-Type": requestType,
+        "X-Hexclave-Client-Version": this.options.clientVersion,
         ...(tokenObj ? {
-          "X-Stack-Access-Token": tokenObj.accessToken.token,
+          "X-Hexclave-Access-Token": tokenObj.accessToken.token,
         } : {}),
         ...(tokenObj?.refreshToken ? {
-          "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
+          "X-Hexclave-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
-        "X-Stack-Allow-Anonymous-User": "true",
+        "X-Hexclave-Allow-Anonymous-User": "true",
         ...("publishableClientKey" in this.options && this.options.publishableClientKey ? {
-          "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
+          "X-Hexclave-Publishable-Client-Key": this.options.publishableClientKey,
         } : {}),
         ...(adminTokenObj ? {
-          "X-Stack-Admin-Access-Token": adminTokenObj.accessToken.token,
+          "X-Hexclave-Admin-Access-Token": adminTokenObj.accessToken.token,
         } : {}),
         /**
          * Next.js until v15 would cache fetch requests by default, and forcefully disabling it was nearly impossible.
@@ -687,7 +709,7 @@ export class StackClientInterface {
          * When we drop support for Next.js <15, we may be able to remove this header, but please make sure that this is
          * the case (I haven't actually tested.)
          */
-        "X-Stack-Random-Nonce": generateSecureRandomString(),
+        "X-Hexclave-Random-Nonce": generateSecureRandomString(),
         // don't show a warning when proxying the API through ngrok (only relevant if the API url is an ngrok site)
         'ngrok-skip-browser-warning': 'true',
         ...this.options.extraRequestHeaders,
@@ -736,7 +758,7 @@ export class StackClientInterface {
       // If the access token is invalid, reset it and retry
       if (KnownErrors.InvalidAccessToken.isInstance(processedRes.error)) {
         if (!tokenObj) {
-          throw new StackAssertionError("Received invalid access token, but session is not logged in", { tokenObj, processedRes });
+          throw new HexclaveAssertionError("Received invalid access token, but session is not logged in", { tokenObj, processedRes });
         }
         session.markAccessTokenExpired(tokenObj.accessToken);
         return Result.error(processedRes.error);
@@ -746,7 +768,7 @@ export class StackClientInterface {
       // TODO HACK: Some of the backend hasn't been ported to use the new error codes, so if we have project owner tokens we need to check for ApiKeyNotFound too. Once the migration to smartRouteHandlers is complete, we can check for InvalidAdminAccessToken only.
       if (adminSession && (KnownErrors.InvalidAdminAccessToken.isInstance(processedRes.error) || KnownErrors.ApiKeyNotFound.isInstance(processedRes.error))) {
         if (!adminTokenObj) {
-          throw new StackAssertionError("Received invalid admin access token, but admin session is not logged in", { adminTokenObj, processedRes });
+          throw new HexclaveAssertionError("Received invalid admin access token, but admin session is not logged in", { adminTokenObj, processedRes });
         }
         adminSession.markAccessTokenExpired(adminTokenObj.accessToken);
         return Result.error(processedRes.error);
@@ -776,11 +798,15 @@ export class StackClientInterface {
     } else {
       const error = await res.text();
 
-      const errorObj = new StackAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path });
+      // Do not retry, throw error instead of returning one
+      if (res.status >= 400 && res.status < 500) {
+        throw new Error(`Failed to send request to ${url}: ${res.status} ${error}`, { cause: res });
+      }
+      const errorObj = new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path });
 
       if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {
         // Some Vercel deployments seem to have an odd infinite loop bug. In that case, retry.
-        // See: https://github.com/hexclave/stack-auth/issues/319
+        // See: https://github.com/hexclave/hexclave/issues/319
         return Result.error(errorObj);
       }
 
@@ -791,8 +817,9 @@ export class StackClientInterface {
 
   private async _preprocessResponse(rawRes: Response): Promise<Response> {
     let res = rawRes;
-    if (rawRes.headers.has("x-stack-actual-status")) {
-      const actualStatus = Number(rawRes.headers.get("x-stack-actual-status"));
+    // Hexclave rebrand: prefer the x-hexclave-* response header, fall back to the legacy x-stack-* name.
+    if (rawRes.headers.has("x-hexclave-actual-status") || rawRes.headers.has("x-stack-actual-status")) {
+      const actualStatus = Number(rawRes.headers.get("x-hexclave-actual-status") ?? rawRes.headers.get("x-stack-actual-status"));
       res = new Response(rawRes.body, {
         status: actualStatus,
         statusText: rawRes.statusText,
@@ -804,10 +831,12 @@ export class StackClientInterface {
 
   private async _processResponse(res: Response): Promise<Result<Response, KnownError>> {
     // Handle known errors
-    if (res.headers.has("x-stack-known-error")) {
+    // Hexclave rebrand: prefer the x-hexclave-* response header, fall back to the legacy x-stack-* name.
+    if (res.headers.has("x-hexclave-known-error") || res.headers.has("x-stack-known-error")) {
       const errorJson = await res.json();
-      if (res.headers.get("x-stack-known-error") !== errorJson.code) {
-        throw new StackAssertionError("Mismatch between x-stack-known-error header and error code in body; the server's response is invalid");
+      const knownErrorHeader = res.headers.get("x-hexclave-known-error") ?? res.headers.get("x-stack-known-error");
+      if (knownErrorHeader !== errorJson.code) {
+        throw new HexclaveAssertionError("Mismatch between x-hexclave-known-error/x-stack-known-error header and error code in body; the server's response is invalid");
       }
       const error = KnownError.fromJson(errorJson);
       return Result.error(error);
@@ -825,7 +854,7 @@ export class StackClientInterface {
       body: JSON.stringify(options),
     }, null);
 
-    throw new StackAssertionError(await res.text());
+    throw new HexclaveAssertionError(await res.text());
   }
 
   async sendForgotPasswordEmail(
@@ -1410,12 +1439,17 @@ export class StackClientInterface {
     session: InternalSession,
   }): Promise<Result<string, KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     if (typeof window === "undefined") {
-      throw new StackAssertionError("authorizeOAuth can currently only be called in a browser environment");
+      throw new HexclaveAssertionError("authorizeOAuth can currently only be called in a browser environment");
     }
 
     await this.options.prepareRequest?.();
 
     const url = new URL(await this.getOAuthUrl(options));
+    // Hexclave rebrand: dual-emit both query param names. The current backend accepts either, but
+    // a new SDK calling an OLDER backend (during deploy ordering, or a self-hoster on a stale
+    // image) only recognizes `stack_response_mode` — without it the route silently falls back to
+    // redirect mode and the SDK gets HTML where it expected JSON. Emit both to keep that working.
+    url.searchParams.set("hexclave_response_mode", "json");
     url.searchParams.set("stack_response_mode", "json");
 
     let rawRes;
@@ -1439,17 +1473,17 @@ export class StackClientInterface {
     }
 
     if (processedResponse.data.status !== 200) {
-      throw new StackAssertionError(`OAuth authorize returned an unexpected status: ${processedResponse.data.status}`);
+      throw new HexclaveAssertionError(`OAuth authorize returned an unexpected status: ${processedResponse.data.status}`);
     }
 
     const body = await processedResponse.data.json();
     if (body == null || typeof body !== "object" || Array.isArray(body)) {
-      throw new StackAssertionError("OAuth authorize response body must be an object", { body });
+      throw new HexclaveAssertionError("OAuth authorize response body must be an object", { body });
     }
 
     const location = body.location;
     if (typeof location !== "string") {
-      throw new StackAssertionError("OAuth authorize response is missing a redirect location", { body });
+      throw new HexclaveAssertionError("OAuth authorize response is missing a redirect location", { body });
     }
 
     return Result.ok(location);
@@ -1498,14 +1532,14 @@ export class StackClientInterface {
       params = oauth.validateAuthResponse(as, client, options.oauthParams, options.state);
     } catch (e) {
       if (e instanceof oauth.AuthorizationResponseError) {
-        throw new StackAssertionError("Authorization response error when validating outer OAuth response", {
+        throw new HexclaveAssertionError("Authorization response error when validating outer OAuth response", {
           //cause is a URLSearchParams object for this error, so we need to serialize it better
           cause: Object.fromEntries(e.cause),
           code: e.code,
           error: e.error,
         });
       }
-      throw new StackAssertionError("Unexpected error when validating outer OAuth response", { cause: e });
+      throw new HexclaveAssertionError("Unexpected error when validating outer OAuth response", { cause: e });
     }
     const response = await oauth.authorizationCodeGrantRequest(
       as,
@@ -1526,13 +1560,13 @@ export class StackClientInterface {
           throw new KnownErrors.MultiFactorAuthenticationRequired((e.cause as any).details.attempt_code);
         }
         // TODO Handle OAuth 2.0 response body error
-        throw new StackAssertionError("Outer OAuth error during authorization code response", {
+        throw new HexclaveAssertionError("Outer OAuth error during authorization code response", {
           cause: e.cause,
           code: e.code,
           error: e.error,
         });
       }
-      throw new StackAssertionError("Unexpected error when processing authorization code response", { cause: e });
+      throw new HexclaveAssertionError("Unexpected error when processing authorization code response", { cause: e });
     }
     return {
       newUser: result.is_new_user as boolean,
@@ -1562,7 +1596,7 @@ export class StackClientInterface {
           // refresh token was already invalid, just continue like nothing happened
         } else {
           // this should never happen
-          throw new StackAssertionError("Unexpected error", { cause: resOrError.error });
+          throw new HexclaveAssertionError("Unexpected error", { cause: resOrError.error });
         }
       } else {
         // user was signed out successfully, all good
@@ -1582,12 +1616,12 @@ export class StackClientInterface {
       if (KnownErrors.CannotGetOwnUserWithoutUser.isInstance(responseOrError.error)) {
         return null;
       } else {
-        throw new StackAssertionError("Unexpected uncaught error", { cause: responseOrError.error });
+        throw new HexclaveAssertionError("Unexpected uncaught error", { cause: responseOrError.error });
       }
     }
     const response = responseOrError.data;
     const user: CurrentUserCrud["Client"]["Read"] = await response.json();
-    if (!(user as any)) throw new StackAssertionError("User endpoint returned null; this should never happen");
+    if (!(user as any)) throw new HexclaveAssertionError("User endpoint returned null; this should never happen");
     return user;
   }
 
@@ -2073,7 +2107,7 @@ export class StackClientInterface {
 
   private async _getApiKeyRequestInfo(options: { user_id: string | null } | { team_id: string }) {
     if ("user_id" in options && "team_id" in options) {
-      throw new StackAssertionError("Cannot specify both user_id and team_id in _getApiKeyRequestInfo");
+      throw new HexclaveAssertionError("Cannot specify both user_id and team_id in _getApiKeyRequestInfo");
     }
 
     return {
@@ -2327,7 +2361,7 @@ export class StackClientInterface {
       customerType = "custom";
       customerId = options.customCustomerId;
     } else {
-      throw new StackAssertionError("getItem requires one of userId, teamId, or customCustomerId");
+      throw new HexclaveAssertionError("getItem requires one of userId, teamId, or customCustomerId");
     }
 
     const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
@@ -2532,7 +2566,7 @@ export class StackClientInterface {
 
   async transferProject(internalProjectSession: InternalSession, projectIdToTransfer: string, newTeamId: string): Promise<void> {
     if (this.options.projectId !== "internal") {
-      throw new StackAssertionError("StackClientInterface.transferProject() is only available for internal projects (please specify the project ID in the constructor)");
+      throw new HexclaveAssertionError("HexclaveClientInterface.transferProject() is only available for internal projects (please specify the project ID in the constructor)");
     }
     await this.sendClientRequest(
       "/internal/projects/transfer",

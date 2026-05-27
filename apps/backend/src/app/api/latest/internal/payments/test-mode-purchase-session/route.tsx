@@ -6,7 +6,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -29,7 +29,7 @@ export const POST = createSmartRouteHandler({
 
     const tenancy = await getTenancy(data.tenancyId);
     if (!tenancy) {
-      throw new StackAssertionError("Tenancy not found for test mode purchase session");
+      throw new HexclaveAssertionError("Tenancy not found for test mode purchase session");
     }
     if (tenancy.config.payments.blockNewPurchases) {
       throw new KnownErrors.NewPurchasesBlocked();

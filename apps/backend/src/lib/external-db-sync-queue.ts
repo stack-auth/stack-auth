@@ -1,11 +1,11 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function assertUuid(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.trim().length === 0 || !UUID_REGEX.test(value)) {
-    throw new StackAssertionError(`${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
+    throw new HexclaveAssertionError(`${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
   }
 }
 

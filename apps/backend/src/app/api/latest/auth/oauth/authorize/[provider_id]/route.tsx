@@ -39,7 +39,14 @@ export const GET = createSmartRouteHandler({
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
       after_callback_redirect_url: urlSchema.optional(),
-      stack_response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
+      // Hexclave rebrand: the SDK now emits `hexclave_response_mode`; the legacy
+      // `stack_response_mode` name is still accepted. Neither carries a yup default
+      // so the handler can tell "neither set" apart from an explicit value and only
+      // then fall back to "redirect" (resolved manually at the use site). The
+      // `.meta({ openapiField: { description } })` documents the runtime default
+      // for the generated OpenAPI docs.
+      stack_response_mode: yupString().oneOf(["json", "redirect"]).optional().meta({ openapiField: { description: "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided." } }),
+      hexclave_response_mode: yupString().oneOf(["json", "redirect"]).optional().meta({ openapiField: { description: "Response mode for the OAuth authorize endpoint. Defaults to 'redirect' if not provided." } }),
       ...botChallengeFlowRequestSchemaFields,
 
       // oauth parameters
@@ -56,7 +63,7 @@ export const GET = createSmartRouteHandler({
   }),
   response: yupUnion(
     yupObject({
-      // The SDK uses stack_response_mode=json so it can intercept bot challenges before navigating.
+      // The SDK uses hexclave_response_mode=json (legacy: stack_response_mode=json) so it can intercept bot challenges before navigating.
       // The redirect path (default) is the legacy browser-direct flow.
       statusCode: yupNumber().oneOf([200]).defined(),
       bodyType: yupString().oneOf(["json"]).defined(),
@@ -129,6 +136,9 @@ export const GET = createSmartRouteHandler({
 
     const innerCodeVerifier = generators.codeVerifier();
     const innerState = generators.state();
+    // Hexclave rebrand: prefer the new query param name, accept the legacy one,
+    // and only fall back to "redirect" when neither was provided.
+    const responseMode = query.hexclave_response_mode ?? query.stack_response_mode ?? "redirect";
     const providerObj = await getProvider(provider);
     const oauthUrl = providerObj.getAuthorizationUrl({
       codeVerifier: innerCodeVerifier,
@@ -157,13 +167,13 @@ export const GET = createSmartRouteHandler({
           afterCallbackRedirectUrl: query.after_callback_redirect_url,
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
-          responseMode: query.stack_response_mode,
+          responseMode,
         } satisfies InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },
     });
 
-    if (query.stack_response_mode === "json") {
+    if (responseMode === "json") {
       // In JSON mode the client controls the flow programmatically and PKCE
       // already prevents CSRF, so we skip the cookie (which would require
       // credentials: "include" and a non-wildcard CORS origin).
@@ -177,15 +187,15 @@ export const GET = createSmartRouteHandler({
     }
 
     // For browser-redirect mode, set a CSRF cookie that the callback route checks.
-    (await cookies()).set(
-      "stack-oauth-inner-" + innerState,
-      "true",
-      {
-        httpOnly: true,
-        secure: getNodeEnvironment() !== "development",
-        maxAge: 60 * outerOAuthFlowExpirationInMinutes,
-      }
-    );
+    // Hexclave rebrand: dual-write under both names; the callback route reads either.
+    const innerOAuthCookieOptions = {
+      httpOnly: true,
+      secure: getNodeEnvironment() !== "development",
+      maxAge: 60 * outerOAuthFlowExpirationInMinutes,
+    };
+    const innerOAuthCookieStore = await cookies();
+    innerOAuthCookieStore.set("hexclave-oauth-inner-" + innerState, "true", innerOAuthCookieOptions);
+    innerOAuthCookieStore.set("stack-oauth-inner-" + innerState, "true", innerOAuthCookieOptions);
 
     redirect(oauthUrl);
   },

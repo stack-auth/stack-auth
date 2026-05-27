@@ -128,7 +128,7 @@ public struct TokenPair: Sendable {
     public let accessToken: String?
 }
 
-/// Internal API client for making HTTP requests to Stack Auth
+/// Internal API client for making HTTP requests to Hexclave
 actor APIClient {
     let baseUrl: String
     let projectId: String

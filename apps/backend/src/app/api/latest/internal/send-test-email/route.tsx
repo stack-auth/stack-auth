@@ -6,7 +6,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { timeout } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
@@ -72,8 +72,8 @@ export const POST = createSmartRouteHandler({
         secure: isSecureEmailPort(body.email_config.port),
       },
       to: body.recipient_email,
-      subject: "Test Email from Stack Auth",
-      text: "This is a test email from Stack Auth. If you successfully received this email, your email server configuration is working correctly.",
+      subject: "Test Email from Hexclave",
+      text: "This is a test email from Hexclave. If you successfully received this email, your email server configuration is working correctly.",
     }), 10000);
 
 
@@ -91,7 +91,7 @@ export const POST = createSmartRouteHandler({
       } else if (result.error.rawError.code === "EMESSAGE") {
         errorMessage = "Email server rejected the email: " + result.error.rawError.message;
       } else {
-        captureError("send-test-email", new StackAssertionError("Unknown error while sending test email. We should add a better error description for the user.", {
+        captureError("send-test-email", new HexclaveAssertionError("Unknown error while sending test email. We should add a better error description for the user.", {
           cause: result.error,
           recipient_email: body.recipient_email,
           email_config: body.email_config,

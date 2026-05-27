@@ -119,6 +119,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     checkManagedEmailStatus(options: { domainId: string, subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderStatus>,
     listManagedEmailDomains(): Promise<ManagedEmailProviderListItem[]>,
     applyManagedEmailProvider(options: { domainId: string }): Promise<{ status: "applied" }>,
+    deleteManagedEmailDomain(options: { resendDomainId: string }): Promise<{ status: "deleted" }>,
 
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
@@ -176,4 +177,8 @@ export type StackAdminAppConstructor = {
   >(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>): StackAdminApp<HasTokenStore, ProjectId>,
   new(options: StackAdminAppConstructorOptions<boolean, string>): StackAdminApp<boolean, string>,
 };
-export const StackAdminApp: StackAdminAppConstructor = _StackAdminAppImpl;
+export type HexclaveAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackAdminAppConstructorOptions<HasTokenStore, ProjectId>;
+export type HexclaveAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackAdminApp<HasTokenStore, ProjectId>;
+export type HexclaveAdminAppConstructor = StackAdminAppConstructor;
+export const HexclaveAdminApp: HexclaveAdminAppConstructor = _StackAdminAppImpl;
+export const StackAdminApp: StackAdminAppConstructor = HexclaveAdminApp;

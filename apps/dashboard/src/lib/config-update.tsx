@@ -6,7 +6,7 @@ import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -115,7 +115,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
             open={dialogState.isOpen}
             onClose={() => settleDialog(false)}
             title="Configuration Managed by CLI"
-            description="This project's configuration was pushed via the Stack Auth CLI."
+            description="This project's configuration was pushed via the Hexclave CLI."
             okButton={{
               label: "Go to Project Settings",
               onClick: async () => {
@@ -135,7 +135,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
                 To make changes, you can either:
               </p>
               <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Push updates through the Stack Auth CLI</li>
+                <li>Push updates through the Hexclave CLI</li>
                 <li>Unlink the CLI in Project Settings to edit directly on this dashboard</li>
               </ul>
             </div>
@@ -181,7 +181,7 @@ type GithubPushDialogProps = {
  * repo/branch via the Contents API.
  *
  * On success, `onSettle(true)` is called so the surrounding
- * `ConfigUpdateDialogProvider` then mirrors the change into Stack Auth's
+ * `ConfigUpdateDialogProvider` then mirrors the change into Hexclave's
  * cloud config for immediate UI feedback. Eventually the GitHub Actions
  * workflow will re-push the canonical config from the freshly-committed file.
  */
@@ -338,7 +338,7 @@ function GithubPushBody({
   const [commitMessage, setCommitMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const placeholderCommitMessage = "Update Stack Auth configuration";
+  const placeholderCommitMessage = "Update Hexclave configuration";
 
   // Sync our local status string up to the dialog shell so it can pick the
   // right button label / description without itself needing to suspend.
@@ -566,7 +566,7 @@ export function useUpdateConfig() {
 
     if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true") {
       if (!pushable) {
-        throw new StackAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
+        throw new HexclaveAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
       }
 
       const project = await adminApp.getProject();

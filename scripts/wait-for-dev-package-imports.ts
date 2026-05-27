@@ -26,6 +26,12 @@ import { setTimeout as sleep } from "timers/promises";
 // This probe waits only for the package imports that the backend-side generator
 // needs. It does not hide real runtime errors: we retry missing-module failures
 // while package builds warm up, and fail immediately for other import failures.
+//
+// In addition to workspace packages, the probe checks that the generated Prisma
+// client exists. When `turbo run dev` starts the backend, `codegen-prisma:watch`
+// (`prisma generate --watch`) performs an initial generation that briefly removes
+// and recreates `src/generated/prisma/`. If `codegen-docs` runs during that
+// window it fails with ERR_MODULE_NOT_FOUND for `@/generated/prisma/client`.
 const repoRoot = path.resolve(__dirname, "..");
 const backendDir = path.join(repoRoot, "apps/backend");
 const timeoutMs = 60_000;
@@ -35,6 +41,13 @@ const probeScript = `
 (async () => {
   await import('@stackframe/stack');
   await import('@stackframe/stack-shared/dist/utils/env');
+  const { existsSync, readdirSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const generatedDir = join(process.cwd(), 'src', 'generated', 'prisma');
+  if (!existsSync(generatedDir) || readdirSync(generatedDir).length === 0) {
+    const err = new Error('ERR_MODULE_NOT_FOUND: Generated Prisma client not yet available at ' + generatedDir);
+    throw err;
+  }
 })().then(
   () => undefined,
   (error) => {

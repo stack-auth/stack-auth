@@ -197,6 +197,15 @@ import.meta.vitest?.test("matchHostnamePattern", ({ expect }) => {
 });
 
 export function getHardcodedFallbackUrls(primaryBaseUrl: string): string[] {
+  if (primaryBaseUrl === "https://api.hexclave.com") {
+    return ["https://api1.hexclave.com", "https://api2.hexclave.com"];
+  }
+  if (primaryBaseUrl === "https://api.dev.hexclave.com") {
+    return ["https://api1.dev.hexclave.com", "https://api2.dev.hexclave.com"];
+  }
+  // Backward-compat: customers with explicit `baseUrl: "https://api.stack-auth.com"`
+  // (the pre-rebrand canonical) keep the same fallbacks they had before. Both
+  // hostnames resolve to the same backend during the deprecation window.
   if (primaryBaseUrl === "https://api.stack-auth.com") {
     return ["https://api1.stack-auth.com", "https://api2.stack-auth.com"];
   }
@@ -219,6 +228,7 @@ export function isLocalhost(urlOrString: string | URL) {
   if (!url) return false;
   if (url.hostname === "localhost" || url.hostname.endsWith(".localhost")) return true;
   if (url.hostname.match(/^127\.\d+\.\d+\.\d+$/)) return true;
+  if (url.hostname === "[::1]" || url.hostname === "::1") return true;
   return false;
 }
 import.meta.vitest?.test("isLocalhost", ({ expect }) => {
@@ -228,6 +238,7 @@ import.meta.vitest?.test("isLocalhost", ({ expect }) => {
   expect(isLocalhost("http://sub.localhost")).toBe(true);
   expect(isLocalhost("http://127.0.0.1")).toBe(true);
   expect(isLocalhost("http://127.1.2.3")).toBe(true);
+  expect(isLocalhost("http://[::1]")).toBe(true);
 
   // Test with non-localhost URLs
   expect(isLocalhost("https://example.com")).toBe(false);

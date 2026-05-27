@@ -2,7 +2,7 @@ import { globalPrismaClient, retryTransaction } from '@/prisma-client';
 import { Prisma } from '@/generated/prisma/client';
 import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/dist/utils/bytes';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { sha512 } from '@stackframe/stack-shared/dist/utils/hashes';
 import { getPrivateJwks, getPublicJwkSet } from '@stackframe/stack-shared/dist/utils/jwt';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
@@ -40,7 +40,7 @@ function createAdapter(options: {
     constructor(model: string) {
       this.model = model;
       if (!model) {
-        throw new StackAssertionError(deindent`
+        throw new HexclaveAssertionError(deindent`
           model must be non-empty.
           
           oidc-provider should never call the constructor with an empty string. However, it relies on 'constructor.name' in some locations, causing it to fail when class name minification is enabled. Make sure that server-side class names are not minified, for example by disabling serverMinification in next.config.mjs.
@@ -50,9 +50,9 @@ function createAdapter(options: {
 
     async upsert(id: string, payload: AdapterPayload, expiresInSeconds: number): Promise<void> {
       // if one of these assertions is triggered, make sure you're not minifying class names (see the constructor)
-      if (expiresInSeconds < 0) throw new StackAssertionError(`expiresInSeconds of ${this.model}:${id} must be non-negative, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
-      if (expiresInSeconds > 60 * 60 * 24 * 365 * 100) throw new StackAssertionError(`expiresInSeconds of ${this.model}:${id} must be less than 100 years, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
-      if (!Number.isFinite(expiresInSeconds)) throw new StackAssertionError(`expiresInSeconds of ${this.model}:${id} must be a finite number, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
+      if (expiresInSeconds < 0) throw new HexclaveAssertionError(`expiresInSeconds of ${this.model}:${id} must be non-negative, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
+      if (expiresInSeconds > 60 * 60 * 24 * 365 * 100) throw new HexclaveAssertionError(`expiresInSeconds of ${this.model}:${id} must be less than 100 years, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
+      if (!Number.isFinite(expiresInSeconds)) throw new HexclaveAssertionError(`expiresInSeconds of ${this.model}:${id} must be a finite number, got ${expiresInSeconds}`, { expiresInSeconds, model: this.model, id, payload });
 
       await niceUpdate(this.model, id, () => ({ payload, expiresAt: new Date(Date.now() + expiresInSeconds * 1000) }));
     }
@@ -163,6 +163,13 @@ function createPrismaAdapter(idpId: string) {
 }
 
 export async function createOidcProvider(options: { id: string, baseUrl: string, clientInteractionUrl: string }) {
+  // NOTE: this `audience` string is an OPAQUE key-derivation salt mixed into the
+  // SHA-256 that produces the per-audience signing secret + kid in
+  // `getPrivateJwks` (see packages/stack-shared/src/utils/jwt.tsx:114-115). It is
+  // never exposed to OIDC clients (the actual OIDC `aud` claim is set elsewhere).
+  // Changing this string rotates ALL outstanding JWT signing keys and invalidates
+  // every cached client JWKS — so it is intentionally pinned to the pre-rebrand
+  // domain. Carve-out per RENAME-TO-HEXCLAVE.md ("internal opaque identifiers").
   const privateJwks = await getPrivateJwks({
     audience: `https://idp-jwk-audience.stack-auth.com/${encodeURIComponent(options.id)}`,
   });
@@ -259,7 +266,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
           ctx.body = `
             <html>
               <head>
-                <title>Redirecting... — Stack Auth</title>
+                <title>Redirecting... — Hexclave</title>
                 <style id="gradient-style">
                   body {
                     color: white;

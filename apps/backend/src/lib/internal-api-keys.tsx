@@ -7,7 +7,7 @@ import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { KnownError, KnownErrors } from '@stackframe/stack-shared/dist/known-errors';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { publishableClientKeyNotNecessarySentinel } from '@stackframe/stack-shared/dist/utils/oauth';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
@@ -78,18 +78,18 @@ type KeyType =
 
 function validateKeyType(obj: any): KeyType {
   if (typeof obj !== 'object' || obj === null) {
-    throw new StackAssertionError('Invalid key type', { obj });
+    throw new HexclaveAssertionError('Invalid key type', { obj });
   }
   const entries = Object.entries(obj);
   if (entries.length !== 1) {
-    throw new StackAssertionError('Invalid key type; must have exactly one entry', { obj });
+    throw new HexclaveAssertionError('Invalid key type; must have exactly one entry', { obj });
   }
   const [key, value] = entries[0];
   if (!typedIncludes(['publishableClientKey', 'secretServerKey', 'superSecretAdminKey'], key)) {
-    throw new StackAssertionError('Invalid key type; field must be one of the three key types', { obj });
+    throw new HexclaveAssertionError('Invalid key type; field must be one of the three key types', { obj });
   }
   if (typeof value !== 'string') {
-    throw new StackAssertionError('Invalid key type; field must be a string', { obj });
+    throw new HexclaveAssertionError('Invalid key type; field must be a string', { obj });
   }
   return {
     [key]: value,

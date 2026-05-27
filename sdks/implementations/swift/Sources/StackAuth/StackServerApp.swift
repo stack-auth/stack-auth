@@ -1,6 +1,6 @@
 import Foundation
 
-/// Server-side Stack Auth client with elevated privileges
+/// Server-side Hexclave client with elevated privileges
 public actor StackServerApp {
     public let projectId: String
     
@@ -10,7 +10,7 @@ public actor StackServerApp {
         projectId: String,
         publishableClientKey: String,
         secretServerKey: String,
-        baseUrl: String = "https://api.stack-auth.com"
+        baseUrl: String = "https://api.hexclave.com"
     ) {
         self.projectId = projectId
         

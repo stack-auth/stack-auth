@@ -28,7 +28,7 @@ const program = new Command();
 
 program
   .name("stack")
-  .description("Stack Auth CLI")
+  .description("Hexclave CLI")
   .version(pkg.version)
   .option("--json", "Output in JSON format");
 

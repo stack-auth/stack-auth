@@ -1,5 +1,5 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
@@ -37,7 +37,7 @@ custom.setHttpOptionsDefaults({
 export type TokenSet = {
   accessToken: string,
   refreshToken?: string,
-  accessTokenExpiredAt: Date,
+  accessTokenExpiredAt: Date | null,
   idToken?: string,
 };
 
@@ -217,29 +217,75 @@ export function getOAuthAccessTokenRefreshError(error: unknown, options: {
   return { type: "unexpected", cause: error, ...metadata };
 }
 
-function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: number): TokenSet {
-  if (!tokenSet.access_token) {
-    throw new StackAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
+type DefaultAccessTokenExpiresInMillis = number | null | ((tokenSet: OIDCTokenSet) => number | null | undefined);
+
+function getFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function dateFromMillis(millis: number, context: string): Date {
+  const date = new Date(millis);
+  if (!Number.isFinite(date.getTime())) {
+    throw new HexclaveAssertionError(`Invalid OAuth access token expiry computed from ${context}`, { millis });
+  }
+  return date;
+}
+
+export function resolveOAuthAccessTokenExpiredAt(options: {
+  expiresInSeconds: unknown,
+  expiresAtSeconds: unknown,
+  defaultExpiresInMillis: number | null | undefined,
+  nowMillis: number,
+}): Date | null {
+  const expiresInSeconds = getFiniteNumber(options.expiresInSeconds);
+  if (expiresInSeconds !== undefined) {
+    return dateFromMillis(options.nowMillis + expiresInSeconds * 1000, "expires_in");
   }
 
-  // if expires_in or expires_at provided, use that
-  // otherwise, if defaultAccessTokenExpiresInMillis provided, use that
-  // otherwise, use 1h, and log an error
+  const expiresAtSeconds = getFiniteNumber(options.expiresAtSeconds);
+  if (expiresAtSeconds !== undefined) {
+    return dateFromMillis(expiresAtSeconds * 1000, "expires_at");
+  }
 
-  if (!tokenSet.expires_in && !tokenSet.expires_at && !defaultAccessTokenExpiresInMillis) {
-    captureError("processTokenSet", new StackAssertionError(`No expires_in or expires_at received from OAuth provider ${providerName}. Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
+  if (options.defaultExpiresInMillis === null) {
+    return null;
+  }
+
+  if (options.defaultExpiresInMillis !== undefined) {
+    if (!Number.isFinite(options.defaultExpiresInMillis)) {
+      throw new HexclaveAssertionError("Invalid default OAuth access token expiry", { defaultExpiresInMillis: options.defaultExpiresInMillis });
+    }
+    return dateFromMillis(options.nowMillis + options.defaultExpiresInMillis, "provider default");
+  }
+
+  return dateFromMillis(options.nowMillis + 3600 * 1000, "generic fallback");
+}
+
+function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis): TokenSet {
+  if (!tokenSet.access_token) {
+    throw new HexclaveAssertionError(`No access token received from ${providerName}.`, { tokenSet, providerName });
+  }
+
+  // Use provider-supplied expiry first. If the provider omits expiry, a provider
+  // can supply a fallback duration, return null to explicitly model
+  // "non-expiring/unknown expiry", or leave it undefined to use the generic
+  // one-hour fallback and capture telemetry.
+  const defaultExpiresInMillis = typeof defaultAccessTokenExpiresInMillis === "function" ? defaultAccessTokenExpiresInMillis(tokenSet) : defaultAccessTokenExpiresInMillis;
+
+  if (getFiniteNumber(tokenSet.expires_in) === undefined && getFiniteNumber(tokenSet.expires_at) === undefined && defaultExpiresInMillis === undefined) {
+    captureError("processTokenSet", new HexclaveAssertionError(`No valid expires_in or expires_at received from OAuth provider ${providerName}. This provider might not support expires_at, so please add a fallback for this provider based on the information from its documentation (eg. GitHub does not return JWT access tokens so we can't know the actual expiry of the token). Falling back to 1h`, { tokenSetKeys: Object.keys(tokenSet) }));
   }
 
   return {
     idToken: tokenSet.id_token,
     accessToken: tokenSet.access_token,
     refreshToken: tokenSet.refresh_token,
-    accessTokenExpiredAt: tokenSet.expires_in ?
-      new Date(Date.now() + tokenSet.expires_in * 1000) :
-      tokenSet.expires_at ? new Date(tokenSet.expires_at * 1000) :
-        defaultAccessTokenExpiresInMillis ?
-          new Date(Date.now() + defaultAccessTokenExpiresInMillis) :
-          new Date(Date.now() + 3600 * 1000),
+    accessTokenExpiredAt: resolveOAuthAccessTokenExpiredAt({
+      expiresInSeconds: tokenSet.expires_in,
+      expiresAtSeconds: tokenSet.expires_at,
+      defaultExpiresInMillis,
+      nowMillis: Date.now(),
+    }),
   };
 }
 
@@ -249,7 +295,7 @@ export abstract class OAuthBaseProvider {
     public readonly scope: string,
     public readonly redirectUri: string,
     public readonly authorizationExtraParams?: Record<string, string>,
-    public readonly defaultAccessTokenExpiresInMillis?: number,
+    public readonly defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis,
     public readonly noPKCE?: boolean,
     public readonly openid?: boolean,
     public readonly alternativeIssuers?: string[],
@@ -262,7 +308,7 @@ export abstract class OAuthBaseProvider {
       redirectUri: string,
       baseScope: string,
       authorizationExtraParams?: Record<string, string>,
-      defaultAccessTokenExpiresInMillis?: number,
+      defaultAccessTokenExpiresInMillis?: DefaultAccessTokenExpiresInMillis,
       tokenEndpointAuthMethod?: "client_secret_post" | "client_secret_basic",
       noPKCE?: boolean,
       alternativeIssuers?: string[],
@@ -383,10 +429,10 @@ export abstract class OAuthBaseProvider {
         throw new KnownErrors.OAuthProviderAccessDenied();
       }
       if (error?.error === 'invalid_client') {
-        throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Stack Auth dashboard is correct.`);
+        throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Hexclave dashboard is correct.`);
       }
       if (isRetryableOAuthUserInfoError(error)) {
-        captureError("inner-oauth-callback-retryable-error", new StackAssertionError("Transient OAuth provider failure during callback exchange.", {
+        captureError("inner-oauth-callback-retryable-error", new HexclaveAssertionError("Transient OAuth provider failure during callback exchange.", {
           provider: this.constructor.name,
           params,
           cause: error,
@@ -398,11 +444,11 @@ export abstract class OAuthBaseProvider {
         const missingScope = scopeMatch ? scopeMatch[1] : null;
         throw new StatusError(400, `The OAuth provider does not allow the requested scope${missingScope ? ` "${missingScope}"` : ""}. Please ensure the scope is configured correctly in the provider's dashboard.`);
       }
-      throw new StackAssertionError(`Inner OAuth callback failed due to error: ${error}`, { params, cause: error });
+      throw new HexclaveAssertionError(`Inner OAuth callback failed due to error: ${error}`, { params, cause: error });
     }
 
     if ('error' in tokenSet) {
-      throw new StackAssertionError(`Inner OAuth callback failed due to error: ${tokenSet.error}, ${tokenSet.error_description}`, { params, tokenSet });
+      throw new HexclaveAssertionError(`Inner OAuth callback failed due to error: ${tokenSet.error}, ${tokenSet.error_description}`, { params, tokenSet });
     }
     tokenSet = processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis);
 
@@ -420,7 +466,7 @@ export abstract class OAuthBaseProvider {
     });
 
     if (userInfoResult.status === "error") {
-      captureError("oauth-userinfo-retry-exhausted", new StackAssertionError("Failed to fetch OAuth user info after retries.", {
+      captureError("oauth-userinfo-retry-exhausted", new HexclaveAssertionError("Failed to fetch OAuth user info after retries.", {
         attempts: userInfoResult.attempts,
         provider: this.constructor.name,
         cause: userInfoResult.error,
@@ -475,7 +521,7 @@ export abstract class OAuthBaseProvider {
       }
     }
 
-    throw new StackAssertionError("OAuth access token refresh finished without a result. This should never happen because the refresh loop either returns a result or throws.");
+    throw new HexclaveAssertionError("OAuth access token refresh finished without a result. This should never happen because the refresh loop either returns a result or throws.");
   }
 
   // If the token can be revoked before it expires, override this method to make an API call to the provider to check if the token is valid

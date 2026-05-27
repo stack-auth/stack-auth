@@ -15,7 +15,21 @@ export function sha256String(value: string): string {
 export function resolveConfigFilePath(inputPath: string): string {
   const resolved = path.resolve(inputPath);
   const looksLikeConfigFile = /\.(ts|js|mjs|cjs)$/i.test(resolved);
-  return looksLikeConfigFile ? resolved : path.join(resolved, "stack.config.ts");
+  if (looksLikeConfigFile) {
+    return resolved;
+  }
+  // Hexclave rebrand: prefer the new `hexclave.config.ts` filename inside the
+  // directory, falling back to the legacy `stack.config.ts` for existing
+  // projects. If neither exists, default to the new filename.
+  const hexclaveCandidate = path.join(resolved, "hexclave.config.ts");
+  const legacyCandidate = path.join(resolved, "stack.config.ts");
+  if (existsSync(hexclaveCandidate)) {
+    return hexclaveCandidate;
+  }
+  if (existsSync(legacyCandidate)) {
+    return legacyCandidate;
+  }
+  return hexclaveCandidate;
 }
 
 export function ensureConfigFileExists(configFilePath: string): void {

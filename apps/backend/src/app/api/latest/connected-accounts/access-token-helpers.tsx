@@ -3,7 +3,7 @@ import type { OAuthAccessTokenRefreshError } from "@/oauth/providers/base";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 
 function captureOAuthAccessTokenRefreshIssue(options: {
@@ -15,7 +15,7 @@ function captureOAuthAccessTokenRefreshIssue(options: {
 }) {
   const providerId = typeof options.errorContext.providerId === "string" ? options.errorContext.providerId : "unknown";
   const providerClass = options.providerInstance.constructor.name;
-  captureError(options.location, new StackAssertionError(
+  captureError(options.location, new HexclaveAssertionError(
     `${options.message} (providerId: ${providerId}, providerClass: ${providerClass}, attempts: ${options.refreshError.attempts}, retries: ${options.refreshError.retryCount})`,
     {
       cause: options.refreshError.cause,
@@ -32,8 +32,8 @@ function captureOAuthAccessTokenRefreshIssue(options: {
 }
 
 /**
- * Access tokens minted under Stack Auth's shared OAuth apps must not be handed
- * to clients — they carry Stack Auth's brand at the provider. Only allowed when
+ * Access tokens minted under Hexclave's shared OAuth apps must not be handed
+ * to clients — they carry Hexclave's brand at the provider. Only allowed when
  * the deployer explicitly opts in via STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS.
  * NOT gated on NODE_ENV — the env-var opt-in is the only escape hatch.
  */
@@ -94,24 +94,30 @@ import.meta.vitest?.describe("isSharedAccessTokenBlocked", () => {
 export async function retrieveOrRefreshAccessToken(options: {
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   providerInstance: OAuthBaseProvider,
+  providerId: string,
   tenancyId: string,
   oauthAccountIds: string[],
   scope: string | undefined,
   errorContext: Record<string, unknown>,
 }): Promise<{ access_token: string }> {
-  const { prisma, providerInstance, tenancyId, oauthAccountIds, scope, errorContext } = options;
+  const { prisma, providerInstance, providerId, tenancyId, oauthAccountIds, scope, errorContext } = options;
   const accountIdFilter = oauthAccountIds.length === 1
     ? { oauthAccountId: oauthAccountIds[0] }
     : { oauthAccountId: { in: oauthAccountIds } };
+  const reauthorizeDetails = "The stored OAuth refresh token is missing, expired, revoked, or no longer accepted by the OAuth provider. The user needs to re-authorize this connected account.";
+  const requiredScopeDetails = scope
+    ? `The OAuth connection does not have a usable refresh token with the required scope (${scope}). The user needs to re-authorize this connected account with the requested scope.`
+    : "The OAuth connection does not have a usable refresh token for this connected account. The user needs to re-authorize this connected account.";
 
   // ====================== retrieve access token if it exists ======================
   const accessTokens = await prisma.oAuthAccessToken.findMany({
     where: {
       tenancyId,
       ...accountIdFilter,
-      expiresAt: {
-        gt: new Date(Date.now() + 5 * 60 * 1000),
-      },
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date(Date.now() + 5 * 60 * 1000) } },
+      ],
       isValid: true,
     },
   });
@@ -142,10 +148,15 @@ export async function retrieveOrRefreshAccessToken(options: {
     return extractScopes(scope || "").every((s) => t.scopes.includes(s));
   });
 
-  if (filteredRefreshTokens.length === 0) {
-    throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
+  if (refreshTokens.length === 0) {
+    throw new KnownErrors.OAuthAccessTokenNotAvailable(providerId, reauthorizeDetails);
   }
 
+  if (filteredRefreshTokens.length === 0) {
+    throw new KnownErrors.OAuthAccessTokenNotAvailable(providerId, requiredScopeDetails);
+  }
+
+  let invalidatedRefreshTokenDuringAttempt = false;
   for (const token of filteredRefreshTokens) {
     const tokenSetResult = await providerInstance.getAccessToken({
       refreshToken: token.refreshToken,
@@ -162,6 +173,7 @@ export async function retrieveOrRefreshAccessToken(options: {
             where: { id: token.id },
             data: { isValid: false },
           });
+          invalidatedRefreshTokenDuringAttempt = true;
           continue;
         }
         case "temporarily-unavailable": {
@@ -185,7 +197,7 @@ export async function retrieveOrRefreshAccessToken(options: {
             errorContext,
             refreshError: tokenSetResult.error,
           });
-          throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Stack Auth dashboard is correct.`);
+          throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Hexclave dashboard is correct.`);
         }
         case "unexpected": {
           captureOAuthAccessTokenRefreshIssue({
@@ -195,7 +207,7 @@ export async function retrieveOrRefreshAccessToken(options: {
             errorContext,
             refreshError: tokenSetResult.error,
           });
-          const assertionError = new StackAssertionError('Unexpected error refreshing access token — this may indicate a bug or misconfiguration', {
+          const assertionError = new HexclaveAssertionError('Unexpected error refreshing access token — this may indicate a bug or misconfiguration', {
             cause: tokenSetResult.error.cause,
             providerClass: providerInstance.constructor.name,
             refreshErrorType: tokenSetResult.error.type,
@@ -209,7 +221,7 @@ export async function retrieveOrRefreshAccessToken(options: {
         }
         default: {
           const _: never = tokenSetResult.error;
-          throw new StackAssertionError("Unhandled OAuth access token refresh error", { cause: _ });
+          throw new HexclaveAssertionError("Unhandled OAuth access token refresh error", { cause: _ });
         }
       }
     }
@@ -243,9 +255,12 @@ export async function retrieveOrRefreshAccessToken(options: {
 
       return { access_token: tokenSet.accessToken };
     } else {
-      throw new StackAssertionError("No access token returned");
+      throw new HexclaveAssertionError("No access token returned");
     }
   }
 
-  throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
+  throw new KnownErrors.OAuthAccessTokenNotAvailable(
+    providerId,
+    invalidatedRefreshTokenDuringAttempt ? reauthorizeDetails : requiredScopeDetails,
+  );
 }

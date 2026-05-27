@@ -1,13 +1,27 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import { HandlerUrls } from "../../common";
 
 export const crossDomainAuthQueryParams = {
-  marker: "stack_cross_domain_auth",
-  state: "stack_cross_domain_state",
-  codeChallenge: "stack_cross_domain_code_challenge",
-  afterCallbackRedirectUrl: "stack_cross_domain_after_callback_redirect_url",
+  marker: "hexclave_cross_domain_auth",
+  state: "hexclave_cross_domain_state",
+  codeChallenge: "hexclave_cross_domain_code_challenge",
+  afterCallbackRedirectUrl: "hexclave_cross_domain_after_callback_redirect_url",
 } as const;
+
+type CrossDomainAuthQueryParamKey = keyof typeof crossDomainAuthQueryParams;
+
+function getCrossDomainParam(params: URLSearchParams, key: CrossDomainAuthQueryParamKey): string | null {
+  return params.get(crossDomainAuthQueryParams[key]);
+}
+
+function hasCrossDomainParam(params: URLSearchParams, key: CrossDomainAuthQueryParamKey): boolean {
+  return params.has(crossDomainAuthQueryParams[key]);
+}
+
+function setCrossDomainParam(params: URLSearchParams, key: CrossDomainAuthQueryParamKey, value: string): void {
+  params.set(crossDomainAuthQueryParams[key], value);
+}
 
 export type CrossDomainHandoffParams = {
   state: string,
@@ -15,8 +29,8 @@ export type CrossDomainHandoffParams = {
 };
 
 export function getCrossDomainHandoffParamsFromCurrentUrl(currentUrl: URL): CrossDomainHandoffParams | null {
-  const state = currentUrl.searchParams.get(crossDomainAuthQueryParams.state);
-  const codeChallenge = currentUrl.searchParams.get(crossDomainAuthQueryParams.codeChallenge);
+  const state = getCrossDomainParam(currentUrl.searchParams, "state");
+  const codeChallenge = getCrossDomainParam(currentUrl.searchParams, "codeChallenge");
   if (state == null || codeChallenge == null) {
     return null;
   }
@@ -41,9 +55,9 @@ function isRedirectBackAwareHandlerName(handlerName: keyof HandlerUrls): handler
 
 function hasCrossDomainHandoffParams(url: URL): boolean {
   return (
-    url.searchParams.has(crossDomainAuthQueryParams.state)
-    && url.searchParams.has(crossDomainAuthQueryParams.codeChallenge)
-    && url.searchParams.has(crossDomainAuthQueryParams.afterCallbackRedirectUrl)
+    hasCrossDomainParam(url.searchParams, "state")
+    && hasCrossDomainParam(url.searchParams, "codeChallenge")
+    && hasCrossDomainParam(url.searchParams, "afterCallbackRedirectUrl")
   );
 }
 
@@ -56,20 +70,20 @@ function buildCrossDomainAuthCallbackUrl(options: {
 }): URL {
   const localOAuthCallbackUrl = new URL(options.localOAuthCallbackUrl, options.currentUrl);
   if (localOAuthCallbackUrl.origin !== options.currentUrl.origin) {
-    throw new StackAssertionError("Cross-domain auth callback URL must stay on the current origin", {
+    throw new HexclaveAssertionError("Cross-domain auth callback URL must stay on the current origin", {
       localOAuthCallbackUrl: localOAuthCallbackUrl.toString(),
       currentUrl: options.currentUrl.toString(),
     });
   }
-  localOAuthCallbackUrl.searchParams.set(crossDomainAuthQueryParams.marker, "1");
+  setCrossDomainParam(localOAuthCallbackUrl.searchParams, "marker", "1");
   if (options.state != null) {
-    localOAuthCallbackUrl.searchParams.set(crossDomainAuthQueryParams.state, options.state);
+    setCrossDomainParam(localOAuthCallbackUrl.searchParams, "state", options.state);
   }
   if (options.codeChallenge != null) {
-    localOAuthCallbackUrl.searchParams.set(crossDomainAuthQueryParams.codeChallenge, options.codeChallenge);
+    setCrossDomainParam(localOAuthCallbackUrl.searchParams, "codeChallenge", options.codeChallenge);
   }
   if (options.afterCallbackRedirectUrl != null) {
-    localOAuthCallbackUrl.searchParams.set(crossDomainAuthQueryParams.afterCallbackRedirectUrl, options.afterCallbackRedirectUrl);
+    setCrossDomainParam(localOAuthCallbackUrl.searchParams, "afterCallbackRedirectUrl", options.afterCallbackRedirectUrl);
   }
   return localOAuthCallbackUrl;
 }
@@ -82,15 +96,15 @@ function buildRedirectBackAwareHandlerUrl(options: {
   localOAuthCallbackUrl: string,
 }): string {
   const nextUrl = new URL(options.rawHandlerUrl, options.currentUrl);
-  for (const preservedParam of [
-    "after_auth_return_to",
-    crossDomainAuthQueryParams.state,
-    crossDomainAuthQueryParams.codeChallenge,
-    crossDomainAuthQueryParams.afterCallbackRedirectUrl,
-  ]) {
-    const currentValue = options.currentUrl.searchParams.get(preservedParam);
-    if (currentValue != null && !nextUrl.searchParams.has(preservedParam)) {
-      nextUrl.searchParams.set(preservedParam, currentValue);
+  // Preserve after_auth_return_to verbatim (not a rebranded param).
+  const currentAfterAuthReturnTo = options.currentUrl.searchParams.get("after_auth_return_to");
+  if (currentAfterAuthReturnTo != null && !nextUrl.searchParams.has("after_auth_return_to")) {
+    nextUrl.searchParams.set("after_auth_return_to", currentAfterAuthReturnTo);
+  }
+  for (const preservedParam of ["state", "codeChallenge", "afterCallbackRedirectUrl"] as const) {
+    const currentValue = getCrossDomainParam(options.currentUrl.searchParams, preservedParam);
+    if (currentValue != null && !hasCrossDomainParam(nextUrl.searchParams, preservedParam)) {
+      setCrossDomainParam(nextUrl.searchParams, preservedParam, currentValue);
     }
   }
 
@@ -121,10 +135,10 @@ function buildRedirectBackAwareHandlerUrl(options: {
       });
 
       nextUrl.searchParams.set("after_auth_return_to", callbackUrl.toString());
-      nextUrl.searchParams.set(crossDomainAuthQueryParams.afterCallbackRedirectUrl, afterCallbackRedirectUrl);
+      setCrossDomainParam(nextUrl.searchParams, "afterCallbackRedirectUrl", afterCallbackRedirectUrl);
       if (options.crossDomainHandoffParams != null) {
-        nextUrl.searchParams.set(crossDomainAuthQueryParams.state, options.crossDomainHandoffParams.state);
-        nextUrl.searchParams.set(crossDomainAuthQueryParams.codeChallenge, options.crossDomainHandoffParams.codeChallenge);
+        setCrossDomainParam(nextUrl.searchParams, "state", options.crossDomainHandoffParams.state);
+        setCrossDomainParam(nextUrl.searchParams, "codeChallenge", options.crossDomainHandoffParams.codeChallenge);
       }
     }
   } else if (options.currentUrl.protocol === nextUrl.protocol && options.currentUrl.host === nextUrl.host && !nextUrl.searchParams.has("after_auth_return_to")) {
@@ -243,7 +257,7 @@ export async function planRedirectToHandler(options: {
     && options.handlerName !== "onboarding"
     && options.handlerName !== "signOut"
   ) {
-    throw new StackAssertionError("Unexpected redirect-back-aware handler policy mismatch", {
+    throw new HexclaveAssertionError("Unexpected redirect-back-aware handler policy mismatch", {
       handlerName: options.handlerName,
       policy,
     });
@@ -262,12 +276,13 @@ export async function planRedirectToHandler(options: {
 }
 
 function readCrossDomainHandoffParams(currentUrl: URL, redirectBackTarget: URL): CrossDomainHandoffParamsMaybeMissing {
-  const state = currentUrl.searchParams.get(crossDomainAuthQueryParams.state)
-    ?? redirectBackTarget.searchParams.get(crossDomainAuthQueryParams.state);
-  const codeChallenge = currentUrl.searchParams.get(crossDomainAuthQueryParams.codeChallenge)
-    ?? redirectBackTarget.searchParams.get(crossDomainAuthQueryParams.codeChallenge);
-  const afterCallbackRedirectUrl = currentUrl.searchParams.get(crossDomainAuthQueryParams.afterCallbackRedirectUrl)
-    ?? redirectBackTarget.searchParams.get(crossDomainAuthQueryParams.afterCallbackRedirectUrl);
+  // Hexclave rebrand: accept either param name from both URLs.
+  const state = getCrossDomainParam(currentUrl.searchParams, "state")
+    ?? getCrossDomainParam(redirectBackTarget.searchParams, "state");
+  const codeChallenge = getCrossDomainParam(currentUrl.searchParams, "codeChallenge")
+    ?? getCrossDomainParam(redirectBackTarget.searchParams, "codeChallenge");
+  const afterCallbackRedirectUrl = getCrossDomainParam(currentUrl.searchParams, "afterCallbackRedirectUrl")
+    ?? getCrossDomainParam(redirectBackTarget.searchParams, "afterCallbackRedirectUrl");
   return {
     state,
     codeChallenge,

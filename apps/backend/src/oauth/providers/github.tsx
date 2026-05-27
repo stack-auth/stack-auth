@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getJwtInfo } from "@stackframe/stack-shared/dist/utils/jwt";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
@@ -23,10 +23,17 @@ export class GithubProvider extends OAuthBaseProvider {
       userinfoEndpoint: "https://api.github.com/user",
       redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/github",
       baseScope: "user:email",
-      // GitHub token does not expire except for lack of use in a year
-      // We set a default of 1 year
+      // GitHub can return either non-expiring OAuth-App-style access tokens, or
+      // expiring user tokens with refresh tokens. If GitHub gives us expires_in,
+      // the base provider uses that real value. This fallback is only for older
+      // responses without explicit expiry: refresh-token responses should be
+      // treated as short-lived. Access-token-only responses are effectively
+      // non-expiring OAuth App tokens, so store NULL to mean "the provider did
+      // not supply an expiry"; they are still checked against /user before
+      // being returned.
+      // https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens
       // https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation#user-token-expired-due-to-github-app-configuration
-      defaultAccessTokenExpiresInMillis: 1000 * 60 * 60 * 8, // 8 hours
+      defaultAccessTokenExpiresInMillis: (tokenSet) => tokenSet.refresh_token ? 1000 * 60 * 60 * 8 : null,
       ...options,
     }));
   }
@@ -39,7 +46,7 @@ export class GithubProvider extends OAuthBaseProvider {
       },
     });
     if (!rawUserInfoRes.ok) {
-      throw new StackAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
+      throw new HexclaveAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
         rawUserInfoRes,
         rawUserInfoResText: await rawUserInfoRes.text(),
         hasAccessToken: !!tokenSet.accessToken,
@@ -62,14 +69,14 @@ export class GithubProvider extends OAuthBaseProvider {
       if (emailsRes.status === 403) {
         throw new StatusError(StatusError.BadRequest, `GitHub returned a 403 error when fetching user emails. \nDeveloper information: This is likely due to not having the correct permission "Email addresses" in your GitHub app. Please check your GitHub app settings and try again.`);
       }
-      throw new StackAssertionError("Error fetching user emails from GitHub: Status code " + emailsRes.status, {
+      throw new HexclaveAssertionError("Error fetching user emails from GitHub: Status code " + emailsRes.status, {
         emailsRes,
         rawUserInfo,
       });
     }
     const emails = await emailsRes.json();
     if (!Array.isArray(emails)) {
-      throw new StackAssertionError("Error fetching user emails from GitHub: Invalid response", {
+      throw new HexclaveAssertionError("Error fetching user emails from GitHub: Invalid response", {
         emails,
         emailsRes,
         rawUserInfo,

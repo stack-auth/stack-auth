@@ -1,14 +1,14 @@
 {
   "name": "@stackframe/example-tanstack-start-demo",
-  "version": "2.8.95",
-  "repository": "https://github.com/hexclave/stack-auth",
-  "description": "TanStack Start demo app for Stack Auth",
+  "version": "2.8.109",
+  "repository": "https://github.com/hexclave/hexclave",
+  "description": "TanStack Start demo app for Hexclave",
   "private": true,
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .output && rimraf node_modules",
-    "dev": "vite dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}43",
+    "dev": "vite dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}43",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "lint": "eslint --ext .ts,.tsx ."

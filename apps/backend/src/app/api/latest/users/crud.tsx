@@ -22,7 +22,7 @@ import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/s
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
@@ -143,7 +143,7 @@ export const userPrismaToCrud = (
   const lastActiveAtMillis = prisma.lastActiveAt.getTime();
   const selectedTeamMembers = prisma.teamMembers;
   if (selectedTeamMembers.length > 1) {
-    throw new StackAssertionError("User cannot have more than one selected team; this should never happen");
+    throw new HexclaveAssertionError("User cannot have more than one selected team; this should never happen");
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -242,7 +242,7 @@ async function checkAuthData(
   if (!data.primaryEmailAuthEnabled) return;
   if (!data.oldPrimaryEmail || data.oldPrimaryEmail !== data.primaryEmail) {
     if (!data.primaryEmail) {
-      throw new StackAssertionError("primary_email_auth_enabled cannot be true without primary_email");
+      throw new HexclaveAssertionError("primary_email_auth_enabled cannot be true without primary_email");
     }
     const existingChannelUsedForAuth = await tx.contactChannel.findFirst({
       where: {
@@ -278,7 +278,7 @@ async function checkAuthUsersSoftLimit(tenancy: Tenancy) {
   const usage = await getTeamWideNonAnonymousUserCount(billingTeamId);
   const capacity = await getTeamWideAuthUsersCapacity(billingTeamId);
   if (usage > capacity) {
-    captureError("auth-users-plan-soft-limit-exceeded", new StackAssertionError(
+    captureError("auth-users-plan-soft-limit-exceeded", new HexclaveAssertionError(
       "Auth users soft limit exceeded for billing team",
       { ownerTeamId: billingTeamId, usage, capacity, projectId: tenancy.project.id },
     ));
@@ -377,7 +377,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
     `,
     postProcess: (queryResult) => {
       if (queryResult.length !== 1) {
-        throw new StackAssertionError(`Expected 1 user with id ${userId} in project ${projectId}, got ${queryResult.length}`, { queryResult });
+        throw new HexclaveAssertionError(`Expected 1 user with id ${userId} in project ${projectId}, got ${queryResult.length}`, { queryResult });
       }
 
       const row = queryResult[0].row_data_json;
@@ -392,7 +392,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
 
       if (row.SelectedTeamMember && !row.SelectedTeamMember.Team) {
         // This seems to happen in production much more often than it should, so let's log some information for debugging
-        captureError("selected-team-member-and-team-consistency", new StackAssertionError("Selected team member has no team? Ignoring it", { row }));
+        captureError("selected-team-member-and-team-consistency", new HexclaveAssertionError("Selected team member has no team? Ignoring it", { row }));
         row.SelectedTeamMember = null;
       }
 
@@ -817,7 +817,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       if (!user) {
-        throw new StackAssertionError("User was created but not found", newUser);
+        throw new HexclaveAssertionError("User was created but not found", newUser);
       }
 
       return userPrismaToCrud(user, auth.tenancy.config);
@@ -886,7 +886,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
                 projectUserId: params.user_id,
               }
             });
-            throw new StackAssertionError("Failed to update team member", {
+            throw new HexclaveAssertionError("Failed to update team member", {
               cause: e,
               tenancy_id: auth.tenancy.id,
               user_id: params.user_id,
@@ -908,7 +908,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       if (!oldUser) {
-        throw new StackAssertionError("User not found");
+        throw new HexclaveAssertionError("User not found");
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -1134,7 +1134,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             });
 
             if (!primaryEmailChannel) {
-              throw new StackAssertionError("password is set but primary_email is not set");
+              throw new HexclaveAssertionError("password is set but primary_email is not set");
             }
 
             if (!config.auth.password.allowSignIn) {

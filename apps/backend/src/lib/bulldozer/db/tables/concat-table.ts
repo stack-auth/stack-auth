@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import type { Table } from "..";
 import { getBulldozerExecutionContext } from "../execution-context";
@@ -29,13 +29,13 @@ export function declareConcatTable<
 }): Table<GK, null, RD> {
   const tables = [...options.tables];
   const firstTable = tables[0] ?? (() => {
-    throw new StackAssertionError("declareConcatTable requires at least one input table", { tableId: options.tableId });
+    throw new HexclaveAssertionError("declareConcatTable requires at least one input table", { tableId: options.tableId });
   })();
   const referenceCompareGroupKeysSql = firstTable.compareGroupKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
   for (const table of tables) {
     const compareGroupKeysSql = table.compareGroupKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
     if (compareGroupKeysSql !== referenceCompareGroupKeysSql) {
-      throw new StackAssertionError("declareConcatTable requires group-comparator-compatible input tables", {
+      throw new HexclaveAssertionError("declareConcatTable requires group-comparator-compatible input tables", {
         tableId: options.tableId,
         tableDebugId: tableIdToDebugString(table.tableId),
       });
@@ -87,7 +87,7 @@ export function declareConcatTable<
         `;
       }
       const groupKey = queryOptions.groupKey ?? (() => {
-        throw new StackAssertionError("declareConcatTable specific-group query requires a group key");
+        throw new HexclaveAssertionError("declareConcatTable specific-group query requires a group key");
       })();
       return deindent`
         SELECT

@@ -1,11 +1,10 @@
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createGlobal, getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
+import { ReactPromise, runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
@@ -17,13 +16,13 @@ import { resolveHandlerUrls } from "../../url-targets";
 
 export const clientVersion = "STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL";
 if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
-  throw new StackAssertionError("Client version was not replaced. Something went wrong during build!");
+  throw new HexclaveAssertionError("Client version was not replaced. Something went wrong during build!");
 }
 
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
-  const prefix = envVars.NEXT_PUBLIC_STACK_PORT_PREFIX;
-  return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
+  const prefix = envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX;
+  return prefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) as T : input;
 };
 
 
@@ -63,7 +62,7 @@ export function getUrls(partial: HandlerUrlOptions, options: { projectId: string
 }
 
 export function getDefaultProjectId() {
-  return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a project ID. Please create a project on the Stack dashboard at https://app.stack-auth.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
+  return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || throwErr(new Error("Welcome to Hexclave! It seems that you haven't provided a project ID. Please create a project on the Hexclave dashboard at https://app.hexclave.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
 }
 
 export function getDefaultPublishableClientKey() {
@@ -71,11 +70,11 @@ export function getDefaultPublishableClientKey() {
 }
 
 export function getDefaultSecretServerKey() {
-  return envVars.STACK_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Stack dashboard and put it in the STACK_SECRET_SERVER_KEY environment variable."));
+  return envVars.STACK_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Hexclave dashboard and put it in the STACK_SECRET_SERVER_KEY environment variable."));
 }
 
 export function getDefaultSuperSecretAdminKey() {
-  return envVars.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Stack dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
+  return envVars.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Hexclave dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
 }
 
 export function getDefaultExtraRequestHeaders() {
@@ -124,11 +123,16 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
 
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
-export const defaultBaseUrl = "https://api.stack-auth.com";
-export const defaultAnalyticsBaseUrl = "https://r.stack-auth.com";
+export const defaultBaseUrl = "https://api.hexclave.com";
+export const defaultAnalyticsBaseUrl = "https://r.hexclave.com";
+
+const analyticsBaseUrlsByApiBaseUrl = new Map<string, string>([
+  [defaultBaseUrl, defaultAnalyticsBaseUrl],
+  ["https://api.stack-auth.com", "https://r.stack-auth.com"], // for legacy compatibility
+]);
 
 export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
-  return regularBaseUrl === defaultBaseUrl ? defaultAnalyticsBaseUrl : regularBaseUrl;
+  return analyticsBaseUrlsByApiBaseUrl.get(regularBaseUrl) ?? regularBaseUrl;
 }
 
 

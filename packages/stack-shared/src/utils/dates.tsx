@@ -1,5 +1,5 @@
 import { intervalSchema } from "../schema-fields";
-import { StackAssertionError } from "./errors";
+import { HexclaveAssertionError } from "./errors";
 import { remainder } from "./math";
 
 export function isWeekend(date: Date): boolean {
@@ -147,7 +147,7 @@ export type DayInterval = [number, 'day' | 'week' | 'month' | 'year'];
 
 function applyInterval(date: Date, times: number, interval: Interval): Date {
   if (!intervalSchema.isValidSync(interval)) {
-    throw new StackAssertionError(`Invalid interval`, { interval });
+    throw new HexclaveAssertionError(`Invalid interval`, { interval });
   }
   const [amount, unit] = interval;
   switch (unit) {
@@ -184,7 +184,7 @@ function applyInterval(date: Date, times: number, interval: Interval): Date {
       break;
     }
     default: {
-      throw new StackAssertionError(`Invalid interval despite schema validation`, { interval });
+      throw new HexclaveAssertionError(`Invalid interval despite schema validation`, { interval });
     }
   }
   return date;
