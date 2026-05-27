@@ -32,7 +32,12 @@ export function ensurePolyfilled() {
   }
 
   registerErrorSink(sentryErrorSink);
-  registerWarningSink(sentryErrorSink);
+  registerWarningSink((location, error) => {
+    Sentry.withScope((scope) => {
+      scope.setLevel("warning");
+      sentryErrorSink(location, error);
+    });
+  });
 
   if ("addEventListener" in globalThis) {
     globalThis.addEventListener("unhandledrejection", (event) => {

@@ -94,5 +94,10 @@ export function initSentry() {
     ignoreUnhandledRejection(Sentry.flush(2000));
   };
   registerErrorSink(sentrySink);
-  registerWarningSink(sentrySink);
+  registerWarningSink((location, error) => {
+    Sentry.withScope((scope) => {
+      scope.setLevel("warning");
+      sentrySink(location, error);
+    });
+  });
 }
