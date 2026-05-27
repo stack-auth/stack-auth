@@ -814,7 +814,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async setupPayments(): Promise<{ url: string }> {
-    return await this._interface.setupPayments();
+    const result = await this._interface.setupPayments();
+    await this._stripeAccountInfoCache.refresh([]);
+    return result;
   }
 
   async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {

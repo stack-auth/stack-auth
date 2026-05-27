@@ -531,7 +531,12 @@ function PageClientInner() {
         setOnboardingState={(nextState) => setSelectedProjectOnboardingState(selectedProject, nextState)}
         clearOnboardingState={() => setSelectedProjectOnboardingState(selectedProject, null)}
         onComplete={() => {
-          router.push(`/projects/${encodeURIComponent(selectedProject.id)}`);
+          const projectUrl = `/projects/${encodeURIComponent(selectedProject.id)}`;
+          if (mode === "link-existing") {
+            window.location.href = projectUrl;
+            return;
+          }
+          router.push(projectUrl);
         }}
       />
     </div>
