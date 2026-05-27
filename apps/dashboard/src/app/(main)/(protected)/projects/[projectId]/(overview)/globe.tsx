@@ -367,7 +367,7 @@ type SatelliteHandle = {
   lastCountryCheckAt: number,
 };
 
-export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, children?: React.ReactNode}) {
+export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, children?: React.ReactNode}) {
   const hasWaitedForIdle = useWaitForIdle(1000, 5000);
   if (!hasWaitedForIdle) {
     return <GlobeLoading devReason="waiting for cpu" />;
@@ -379,6 +379,7 @@ export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, sa
         totalUsers={totalUsers}
         activeUsersByCountry={activeUsersByCountry ?? {}}
         satelliteCount={satelliteCount ?? 2}
+        interactive={interactive ?? false}
       />
     </Suspense>
   );
@@ -473,7 +474,7 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   );
 }
 
-function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, children?: React.ReactNode}) {
+function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
   const projectId = useProjectId();
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
@@ -686,15 +687,21 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     if (!globeRef.current || !shouldShowGlobe) return;
 
     const controls = globeRef.current.controls();
-    controls.maxDistance = cameraDistance;
-    controls.minDistance = cameraDistance;
+    if (interactive) {
+      controls.enableZoom = true;
+      controls.minDistance = 150;
+      controls.maxDistance = 600;
+    } else {
+      controls.maxDistance = cameraDistance;
+      controls.minDistance = cameraDistance;
+    }
     globeRef.current.camera().position.z = cameraDistance;
 
     // Update border size and trigger re-render when size changes
     const visualDiameter = calculateGlobeVisualDiameter(globeRef);
     setBorderSizeFromGlobe(visualDiameter);
     resumeRender();
-  }, [cameraDistance, shouldShowGlobe, globeSize]);
+  }, [cameraDistance, shouldShowGlobe, globeSize, interactive]);
 
 
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
@@ -1160,10 +1167,15 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                         const controls = current.controls();
                         controls.autoRotate = false;
                         controls.autoRotateSpeed = 0.5;
-                        controls.maxDistance = cameraDistance;
-                        controls.minDistance = cameraDistance;
+                        if (interactive) {
+                          controls.minDistance = 150;
+                          controls.maxDistance = 600;
+                        } else {
+                          controls.maxDistance = cameraDistance;
+                          controls.minDistance = cameraDistance;
+                        }
                         controls.dampingFactor = 0.15;
-                        controls.enableZoom = false;
+                        controls.enableZoom = interactive;
                         controls.enableRotate = true;
                         current.camera().position.z = cameraDistance;
                         // Little Saint James Island, U.S. Virgin Islands

@@ -100,8 +100,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
   });
-  private readonly _metricsCache = createCache(async ([includeAnonymous]: [boolean]) => {
-    return await this._interface.getMetrics(includeAnonymous);
+  // Cache key serializes filters via JSON so DependenciesMap (identity-keyed
+  // per array slot) treats two equal filter objects as the same entry.
+  private readonly _metricsCache = createCache(async ([includeAnonymous, filtersKey]: [boolean, string]) => {
+    const filters = filtersKey ? JSON.parse(filtersKey) : undefined;
+    return await this._interface.getMetrics(includeAnonymous, filters);
   });
   private readonly _userActivityCache = createCache(async ([userId]: [string]) => {
     return await this._interface.getUserActivity(userId);
@@ -568,8 +571,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   protected override async _refreshUsers() {
     await Promise.all([
       super._refreshUsers(),
-      this._metricsCache.refresh([false]),
-      this._metricsCache.refresh([true]),
+      this._metricsCache.refresh([false, ""]),
+      this._metricsCache.refresh([true, ""]),
       this._metricsUserCountsCache.refresh([]),
     ]);
   }
@@ -578,8 +581,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return {
       ...super[stackAppInternalsSymbol],
       // IF_PLATFORM react-like
-      useMetrics: (includeAnonymous: boolean = false): MetricsResponse => {
-        return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "adminApp.useMetrics()") as MetricsResponse;
+      useMetrics: (
+        includeAnonymous: boolean = false,
+        filters?: { country_code?: string, referrer?: string, browser?: string, os?: string, device?: string },
+      ): MetricsResponse => {
+        const hasFilter = filters && Object.values(filters).some((v) => !!v);
+        const filtersKey = hasFilter ? JSON.stringify(filters) : "";
+        return useAsyncCache(this._metricsCache, [includeAnonymous, filtersKey] as const, "adminApp.useMetrics()") as MetricsResponse;
       },
       useUserActivity: (userId: string): UserActivityResponse => {
         return useAsyncCache(this._userActivityCache, [userId] as const, "adminApp.useUserActivity()") as UserActivityResponse;

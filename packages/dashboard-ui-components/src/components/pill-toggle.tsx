@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { cn, Spinner, Tooltip, TooltipContent, TooltipTrigger } from "@stackframe/stack-ui";
-import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { useEffect, useRef, useState } from "react";
+import { cn, Spinner, Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from "@stackframe/stack-ui";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
 
@@ -29,13 +28,21 @@ export type DesignPillToggleProps = {
 
 type SizeClass = {
   button: string,
+  iconOnlyButton: string,
   icon: string,
 };
 
+type SliderMetrics = {
+  left: number,
+  width: number,
+};
+
+const sliderTransition = "transform 200ms ease-out, width 200ms ease-out";
+
 const sizeClasses = new Map<DesignPillToggleSize, SizeClass>([
-  ["sm", { button: "px-3 py-1.5 text-xs", icon: "h-3.5 w-3.5" }],
-  ["md", { button: "px-4 py-2 text-sm", icon: "h-4 w-4" }],
-  ["lg", { button: "px-5 py-2.5 text-sm", icon: "h-4 w-4" }],
+  ["sm", { button: "px-3 py-1.5 text-xs", iconOnlyButton: "h-7 w-7 text-xs", icon: "h-3.5 w-3.5" }],
+  ["md", { button: "px-4 py-2 text-sm", iconOnlyButton: "h-9 w-9 text-sm", icon: "h-4 w-4" }],
+  ["lg", { button: "px-5 py-2.5 text-sm", iconOnlyButton: "h-10 w-10 text-sm", icon: "h-4 w-4" }],
 ]);
 
 const gradientClasses = new Map<DesignPillToggleGradient, string>([
@@ -70,6 +77,10 @@ export function DesignPillToggle({
   const activeRingClass = getMapValueOrThrow(gradientClasses, gradient, "gradientClasses");
 
   const [loadingOptionId, setLoadingOptionId] = useState<string | null>(null);
+  const [sliderMetrics, setSliderMetrics] = useState<SliderMetrics | null>(null);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const toggleRef = useRef<HTMLDivElement | null>(null);
+  const optionRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const handleClick = (optionId: string) => {
     const result = onSelect(optionId);
@@ -81,16 +92,67 @@ export function DesignPillToggle({
     }
   };
 
-  return (
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePrefersReducedMotion = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePrefersReducedMotion();
+    mediaQuery.addEventListener("change", updatePrefersReducedMotion);
+
+    return () => mediaQuery.removeEventListener("change", updatePrefersReducedMotion);
+  }, []);
+
+  useEffect(() => {
+    const toggle = toggleRef.current;
+    const selectedButton = optionRefs.current.get(selected);
+
+    if (!toggle || !selectedButton) {
+      setSliderMetrics(null);
+      return;
+    }
+
+    const updateSliderMetrics = () => {
+      setSliderMetrics({
+        left: selectedButton.offsetLeft,
+        width: selectedButton.offsetWidth,
+      });
+    };
+
+    updateSliderMetrics();
+
+    const resizeObserver = new ResizeObserver(updateSliderMetrics);
+    resizeObserver.observe(toggle);
+    resizeObserver.observe(selectedButton);
+
+    return () => resizeObserver.disconnect();
+  }, [options, selected]);
+
+  const body = (
     <div
+      ref={toggleRef}
       className={cn(
-        "inline-flex items-center gap-1 p-1 rounded-xl",
+        "relative inline-flex items-center gap-1 p-1 rounded-xl",
         glassmorphic
           ? "bg-foreground/[0.04] backdrop-blur-sm"
           : "bg-black/[0.08] dark:bg-white/[0.04]",
         className
       )}
     >
+      {sliderMetrics != null && (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-y-1 left-0 z-0 rounded-lg bg-background shadow-sm ring-1",
+            glassmorphic
+              ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:ring-[hsl(240,71%,70%)]/20"
+              : activeRingClass
+          )}
+          style={{
+            transition: prefersReducedMotion ? undefined : sliderTransition,
+            transform: `translateX(${sliderMetrics.left}px)`,
+            width: sliderMetrics.width,
+          }}
+        />
+      )}
       {options.map((option) => {
         const isActive = selected === option.id;
         const Icon = option.icon;
@@ -98,18 +160,22 @@ export function DesignPillToggle({
         const pill = (
           <button
             key={option.id}
+            ref={(element) => {
+              if (element) {
+                optionRefs.current.set(option.id, element);
+              } else {
+                optionRefs.current.delete(option.id);
+              }
+            }}
             onClick={() => handleClick(option.id)}
             disabled={loadingOptionId !== null}
+            aria-label={showLabels ? undefined : option.label}
             className={cn(
-              "relative flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
-              sizeClass.button,
+              "relative z-10 flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
+              showLabels ? sizeClass.button : sizeClass.iconOnlyButton,
+              !showLabels && "justify-center p-0",
               isActive
-                ? cn(
-                  "bg-background text-foreground shadow-sm ring-1",
-                  glassmorphic
-                    ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:text-[hsl(240,71%,90%)] dark:ring-[hsl(240,71%,70%)]/20"
-                    : activeRingClass
-                )
+                ? cn("text-foreground", glassmorphic && "dark:text-[hsl(240,71%,90%)]")
                 : cn(
                   "text-muted-foreground hover:text-foreground",
                   glassmorphic
@@ -153,4 +219,8 @@ export function DesignPillToggle({
       })}
     </div>
   );
+
+  // Tooltips require a TooltipProvider in scope. Wrap defensively so callers
+  // outside an existing provider (e.g. inside a PageLayout actions slot) work.
+  return showLabels ? body : <TooltipProvider>{body}</TooltipProvider>;
 }

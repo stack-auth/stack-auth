@@ -124,6 +124,7 @@ export class EventTracker {
         viewport_height: window.innerHeight,
         screen_width: screenObject.width,
         screen_height: screenObject.height,
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
       },
     });
   }

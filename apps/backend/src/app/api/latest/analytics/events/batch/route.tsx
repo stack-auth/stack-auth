@@ -101,7 +101,7 @@ export const POST = createSmartRouteHandler({
       inserted: yupNumber().defined(),
     }).defined(),
   }),
-  async handler({ auth, body }) {
+  async handler({ auth, body }, fullReq) {
     if (!auth.tenancy.config.apps.installed["analytics"]?.enabled) {
       throw new KnownErrors.AnalyticsNotEnabled();
     }
@@ -134,18 +134,36 @@ export const POST = createSmartRouteHandler({
 
     const clickhouseClient = getClickhouseAdminClient();
 
-    const rows = body.events.map((event) => ({
-      event_type: event.event_type,
-      event_at: new Date(event.event_at_ms),
-      data: stripLoneSurrogates(event.data),
-      project_id: projectId,
-      branch_id: branchId,
-      user_id: userId,
-      team_id: null,
-      refresh_token_id: refreshTokenId,
-      session_replay_id: recentSession?.id ?? null,
-      session_replay_segment_id: body.session_replay_segment_id,
-    }));
+    // Server-side fallback: stamp the request's User-Agent into the event data
+    // blob when the client didn't already include one. This lets the analytics
+    // overview aggregate device/browser/OS breakdowns even for older clients.
+    const headerUserAgent = (() => {
+      const raw = fullReq.headers["user-agent"];
+      if (Array.isArray(raw)) return raw[0] ?? null;
+      return (raw as string | undefined) ?? null;
+    })();
+
+    const rows = body.events.map((event) => {
+      const baseData = (typeof event.data === "object" && !Array.isArray(event.data))
+        ? (event.data as Record<string, unknown>)
+        : {};
+      const existingUa = baseData.user_agent;
+      const mergedData = (existingUa == null || existingUa === "")
+        ? { ...baseData, user_agent: headerUserAgent }
+        : baseData;
+      return ({
+        event_type: event.event_type,
+        event_at: new Date(event.event_at_ms),
+        data: stripLoneSurrogates(mergedData),
+        project_id: projectId,
+        branch_id: branchId,
+        user_id: userId,
+        team_id: null,
+        refresh_token_id: refreshTokenId,
+        session_replay_id: recentSession?.id ?? null,
+        session_replay_segment_id: body.session_replay_segment_id,
+      });
+    });
 
     await clickhouseClient.insert({
       table: "analytics_internal.events",

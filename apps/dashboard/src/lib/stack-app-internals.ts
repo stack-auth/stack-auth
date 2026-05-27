@@ -18,9 +18,11 @@ export type {
   MetricsDataPoint,
   MetricsEmailOverview,
   MetricsLoginMethodEntry,
+  MetricsNamedCount,
   MetricsPaymentsOverview,
   MetricsRecentEmail,
   MetricsResponse,
+  MetricsTopCountry,
   MetricsTopReferrer,
   MetricsTopRegion,
   MetricsUserCounts,
@@ -35,7 +37,19 @@ export type {
  * Returns the typed `MetricsResponse` shape derived from the same yup schemas
  * the backend route uses, so dashboard call sites do not need `as ...` casts.
  */
-export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): MetricsResponse {
+export type AnalyticsOverviewFilters = {
+  country_code?: string,
+  referrer?: string,
+  browser?: string,
+  os?: string,
+  device?: string,
+};
+
+export function useMetricsOrThrow(
+  adminApp: object,
+  includeAnonymous: boolean,
+  filters?: AnalyticsOverviewFilters,
+): MetricsResponse {
   const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !("useMetrics" in internals)) {
     throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetrics");
@@ -46,7 +60,7 @@ export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): 
     throw new HexclaveAssertionError("Admin app internals are unavailable: useMetrics is not callable");
   }
 
-  return useMetrics(includeAnonymous) as MetricsResponse;
+  return useMetrics(includeAnonymous, filters) as MetricsResponse;
 }
 
 /**

@@ -361,11 +361,25 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
-  async getMetrics(includeAnonymous: boolean = false): Promise<MetricsResponse> {
+  async getMetrics(
+    includeAnonymous: boolean = false,
+    filters?: {
+      country_code?: string,
+      referrer?: string,
+      browser?: string,
+      os?: string,
+      device?: string,
+    },
+  ): Promise<MetricsResponse> {
     const params = new URLSearchParams();
     if (includeAnonymous) {
       params.append('include_anonymous', 'true');
     }
+    if (filters?.country_code) params.append('filter_country_code', filters.country_code);
+    if (filters?.referrer) params.append('filter_referrer', filters.referrer);
+    if (filters?.browser) params.append('filter_browser', filters.browser);
+    if (filters?.os) params.append('filter_os', filters.os);
+    if (filters?.device) params.append('filter_device', filters.device);
     const queryString = params.toString();
     const response = await this.sendAdminRequest(
       `/internal/metrics${queryString ? `?${queryString}` : ''}`,
