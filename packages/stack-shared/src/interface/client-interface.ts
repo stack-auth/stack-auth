@@ -219,8 +219,8 @@ export class HexclaveClientInterface {
    *   - Sticky URL fails → exit sticky mode, do a full iteration.
    *
    * In both modes, a full iteration tries every URL once per pass for 2
-   * passes before giving up. KnownErrors are never retried (they're
-   * application-level, not network-level).
+   * passes before giving up. KnownErrors and 4xx API responses (except 429)
+   * are never retried (they're application-level, not network-level).
    *
    * Single-URL lists skip all of this and use 5-retry behavior directly.
    */
@@ -243,6 +243,27 @@ export class HexclaveClientInterface {
     return await this._iterateUrls(apiUrls, cb);
   }
 
+  private _shouldSkipFallback(error: unknown) {
+    return error instanceof KnownError || this._isNonRetryableApiResponseError(error);
+  }
+
+  private _isNonRetryableApiResponseError(error: unknown) {
+    const response = this._getApiResponseFromError(error);
+    return response != null && response.status >= 400 && response.status < 500;
+  }
+
+  private _getApiResponseFromError(error: unknown, seenErrors = new Set<Error>()): Response | null {
+    if (error instanceof Response) {
+      return error;
+    }
+    if (!(error instanceof Error) || seenErrors.has(error)) {
+      return null;
+    }
+
+    seenErrors.add(error);
+    return this._getApiResponseFromError(error.cause, seenErrors);
+  }
+
   /**
    * Attempts the sticky URL, optionally probing primary first.
    * Returns the result on success, or `undefined` if we should fall through to full iteration.
@@ -260,7 +281,7 @@ export class HexclaveClientInterface {
         this._sticky = null;
         return result;
       } catch (e) {
-        if (e instanceof KnownError) throw e;
+        if (this._shouldSkipFallback(e)) throw e;
         sticky.probeRate = Math.max(sticky.probeRate * 0.5, 0.01);
       }
     }
@@ -269,7 +290,7 @@ export class HexclaveClientInterface {
     try {
       return await cb(apiUrls[sticky.index], { maxAttempts: 1, skipDiagnostics: true });
     } catch (e) {
-      if (e instanceof KnownError) throw e;
+      if (this._shouldSkipFallback(e)) throw e;
       this._sticky = null;
       return undefined;
     }
@@ -294,7 +315,7 @@ export class HexclaveClientInterface {
           }
           return result;
         } catch (e) {
-          if (e instanceof KnownError) throw e;
+          if (this._shouldSkipFallback(e)) throw e;
           lastError = e instanceof Error ? e : new Error(String(e));
         }
       }
@@ -457,7 +478,7 @@ export class HexclaveClientInterface {
 
       if (!response.data.ok) {
         const body = await response.data.text();
-        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`);
+        throw new Error(`Failed to send refresh token request: ${response.status} ${body}`, { cause: response.data });
       }
 
       return response.data;
@@ -777,6 +798,10 @@ export class HexclaveClientInterface {
     } else {
       const error = await res.text();
 
+      // Do not retry, throw error instead of returning one
+      if (res.status >= 400 && res.status < 500) {
+        throw new Error(`Failed to send request to ${url}: ${res.status} ${error}`, { cause: res });
+      }
       const errorObj = new HexclaveAssertionError(`Failed to send request to ${url}: ${res.status} ${error}`, { request: params, res, path });
 
       if (res.status === 508 && error.includes("INFINITE_LOOP_DETECTED")) {

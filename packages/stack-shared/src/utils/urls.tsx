@@ -219,6 +219,7 @@ export function isLocalhost(urlOrString: string | URL) {
   if (!url) return false;
   if (url.hostname === "localhost" || url.hostname.endsWith(".localhost")) return true;
   if (url.hostname.match(/^127\.\d+\.\d+\.\d+$/)) return true;
+  if (url.hostname === "[::1]" || url.hostname === "::1") return true;
   return false;
 }
 import.meta.vitest?.test("isLocalhost", ({ expect }) => {
@@ -228,6 +229,7 @@ import.meta.vitest?.test("isLocalhost", ({ expect }) => {
   expect(isLocalhost("http://sub.localhost")).toBe(true);
   expect(isLocalhost("http://127.0.0.1")).toBe(true);
   expect(isLocalhost("http://127.1.2.3")).toBe(true);
+  expect(isLocalhost("http://[::1]")).toBe(true);
 
   // Test with non-localhost URLs
   expect(isLocalhost("https://example.com")).toBe(false);

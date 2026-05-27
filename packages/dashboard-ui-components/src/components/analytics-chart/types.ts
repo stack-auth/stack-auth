@@ -189,6 +189,7 @@ export type AnalyticsChartPieProps = {
   compareInnerRadius?: number,
   compareOuterRadius?: number,
   className?: string,
+  showDateRange?: boolean,
 };
 
 export type AnalyticsChartSegmentRamp =

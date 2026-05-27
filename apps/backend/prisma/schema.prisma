@@ -621,7 +621,7 @@ model OAuthAccessToken {
 
   accessToken String
   scopes      String[]
-  expiresAt   DateTime
+  expiresAt   DateTime?
   isValid     Boolean  @default(true)
 }
 

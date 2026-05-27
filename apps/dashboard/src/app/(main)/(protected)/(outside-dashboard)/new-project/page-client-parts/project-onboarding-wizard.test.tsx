@@ -24,11 +24,11 @@ vi.mock("@/components/design-components/button", () => ({
   DesignButton: ({
     children,
     type,
-    loading: _loading,
+    loading,
     variant: _variant,
     ...props
   }: ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean, variant?: string }) => (
-    <button type={type ?? "button"} {...props}>{children}</button>
+    <button type={type ?? "button"} data-loading={loading ? "true" : "false"} {...props}>{children}</button>
   ),
 }));
 
@@ -229,6 +229,236 @@ describe("ProjectOnboardingWizard", () => {
       expect(setStatus).toHaveBeenCalledWith("welcome");
     });
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("creates a deferred Stripe account when payments setup is deferred for a US project", async () => {
+    const setStatus = vi.fn(async () => {});
+    const setOnboardingState = vi.fn(async () => {});
+    const setupPayments = vi.fn(async () => ({ url: "https://example.com" }));
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments,
+            useEmailThemes: () => [],
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="payments_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        setStatus={setStatus}
+        setOnboardingState={setOnboardingState}
+        clearOnboardingState={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Do Later"));
+
+    await waitFor(() => {
+      expect(setupPayments).toHaveBeenCalledOnce();
+    });
+    expect(setOnboardingState).toHaveBeenCalledOnce();
+    expect(setStatus).toHaveBeenCalledWith("welcome");
+  });
+
+  it("does not create a Stripe account when payments setup is deferred for an unsupported country", async () => {
+    const setStatus = vi.fn(async () => {});
+    const setupPayments = vi.fn(async () => ({ url: "https://example.com" }));
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments,
+            useEmailThemes: () => [],
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="payments_setup"
+        onboardingState={{
+          selected_config_choice: "create-new",
+          selected_apps: ["authentication", "emails", "payments"],
+          selected_sign_in_methods: ["credential"],
+          selected_email_theme_id: "default",
+          selected_payments_country: "OTHER",
+        }}
+        mode={null}
+        setMode={vi.fn()}
+        setStatus={setStatus}
+        setOnboardingState={vi.fn(async () => {})}
+        clearOnboardingState={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Do Later"));
+
+    await waitFor(() => {
+      expect(setStatus).toHaveBeenCalledWith("welcome");
+    });
+    expect(setupPayments).not.toHaveBeenCalled();
+  });
+
+  it("only shows a loading indicator on the deferred payments action while disabling connect", async () => {
+    const setupPayments = vi.fn(() => new Promise<{ url: string }>(() => {}));
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments,
+            useEmailThemes: () => [],
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="payments_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        setStatus={vi.fn(async () => {})}
+        setOnboardingState={vi.fn(async () => {})}
+        clearOnboardingState={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Do Later" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Do Later" }).getAttribute("data-loading")).toBe("true");
+    });
+    expect(screen.getByRole("button", { name: "Do Later" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Connect" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Connect" }).getAttribute("data-loading")).toBe("false");
+  });
+
+  it("only shows a loading indicator on the connect payments action while disabling defer", async () => {
+    const setupPayments = vi.fn(() => new Promise<{ url: string }>(() => {}));
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments,
+            useEmailThemes: () => [],
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="payments_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        setStatus={vi.fn(async () => {})}
+        setOnboardingState={vi.fn(async () => {})}
+        clearOnboardingState={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Connect" }).getAttribute("data-loading")).toBe("true");
+    });
+    expect(screen.getByRole("button", { name: "Connect" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Do Later" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Do Later" }).getAttribute("data-loading")).toBe("false");
   });
 
   it("persists shared OAuth providers selected during onboarding before completing", async () => {
