@@ -4,25 +4,27 @@ description: How to migrate your application from the legacy @stackframe/* packa
 sidebarTitle: Migration
 ---
 
-Stack Auth is now Hexclave. The SDKs, dashboard, and APIs are the same product — only the brand and import paths changed.
+Stack Auth is now Hexclave. The dashboard, APIs, and your data are unchanged — only the brand and the package names changed. Both backends (`api.stack-auth.com` and `api.hexclave.com`) point at the same service, so each `@stackframe/*` package continues to work; staying on the legacy SDK requires no action.
 
-If you saw a `[Hexclave] You are using the legacy @stackframe/* package` warning in your console, that's how you got here.
+This guide is for projects that want to migrate to `@hexclave/*` packages.
 
-## What you need to change
+<Warning>
+  Migrating to `@hexclave/*` changes two host-visible things in your app:
+  the JWT `iss` claim on access tokens flips from `api.stack-auth.com` to
+  `api.hexclave.com`, and the OAuth `redirect_uri` Hexclave sends to your
+  identity providers flips host the same way. **You must update your manual
+  JWT verification code and your registered OAuth callback URLs before
+  switching the import path**, or sign-in will break.
+</Warning>
 
-Rename your imports from `@stackframe/*` to `@hexclave/*`. The public API surface is identical — same exports, same generics, same options.
+## 1. Install the new packages
 
-```ts title="Before"
-import { StackClientApp, StackProvider, useStackApp } from "@stackframe/stack";
+Replace each `@stackframe/*` dependency with its `@hexclave/*` equivalent:
+
+```bash
+npm uninstall @stackframe/stack
+npm install @hexclave/next
 ```
-
-```ts title="After"
-import { HexclaveClientApp, HexclaveProvider, useHexclaveApp } from "@hexclave/next";
-```
-
-The `Stack*` symbol names are still re-exported from `@hexclave/next` as `@deprecated` aliases of the new `Hexclave*` names, so you can do this in two steps if you prefer: rename the package first, then rename the symbols later. Both work indefinitely.
-
-## Package mapping
 
 | Old package | New package |
 | --- | --- |
@@ -35,31 +37,84 @@ The `Stack*` symbol names are still re-exported from `@hexclave/next` as `@depre
 | `@stackframe/stack-sc` | `@hexclave/sc` |
 | `@stackframe/stack-cli` | `@hexclave/cli` |
 | `@stackframe/dashboard-ui-components` | `@hexclave/dashboard-ui-components` |
-| `@stackframe/emails` *(virtual module in stored email templates)* | `@hexclave/emails` |
 
-Internal packages (`@stackframe/template`, `@stackframe/init-stack`) keep their existing names — they're not published as `@hexclave/*` mirrors.
+Rename your imports from `@stackframe/*` to `@hexclave/*`. The public API surface is identical:
 
-## What stays the same (legacy compat)
+```ts title="Before"
+import { StackClientApp, StackProvider, useStackApp } from "@stackframe/stack";
+```
 
-Inbound traffic continues to accept the legacy names on every surface. You do not need to update any of these to upgrade.
+```ts title="After"
+import { HexclaveClientApp, HexclaveProvider, useHexclaveApp } from "@hexclave/next";
+```
 
-- **Request headers**: both `X-Hexclave-*` and `X-Stack-*` are accepted on every endpoint (`X-Stack-Project-Id`, `X-Stack-Access-Token`, `X-Stack-Secret-Server-Key`, etc.). The canonical form going forward is `X-Hexclave-*`; the legacy aliases are aliased at the proxy boundary.
-- **Environment variables**: SDK config reads `HEXCLAVE_*` and falls back to `STACK_*` (e.g. `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID` falls back to `NEXT_PUBLIC_STACK_PROJECT_ID`). Existing `.env` files keep working.
-- **JWT issuer**: tokens issued under `api.stack-auth.com` continue to validate against `api.hexclave.com` and vice versa during the cutover window.
-- **Bearer prefix**: existing `stackauth_*` access tokens remain valid; the SDK still emits them.
-- **API hostnames**: `api.stack-auth.com` and `api.hexclave.com` both reach the same backend.
-- **CLI binary**: both `stack` and `hexclave` bins ship with `@hexclave/cli`; existing scripts that call `stack login` keep working.
+The `Stack*` symbol names are still re-exported from `@hexclave/next` as `@deprecated` aliases of the new `Hexclave*` names, so you can do this in two steps if you prefer: rename the package first, then rename the symbols later.
+
+## 2. Update manual JWT verification
+
+If your backend verifies Hexclave-issued JWTs directly (for example with `jose.jwtVerify`), the `iss` claim it must accept changes when you switch SDKs. The validator at Hexclave's side accepts tokens issued under either hostname, so the safest pattern is to list both:
+
+```ts title="Before"
+const { payload } = await jose.jwtVerify(token, jwks, {
+  issuer: 'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
+  audience: 'YOUR_PROJECT_ID',
+});
+```
+
+```ts title="After"
+const { payload } = await jose.jwtVerify(token, jwks, {
+  issuer: [
+    'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
+    'https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID',
+  ],
+  audience: 'YOUR_PROJECT_ID',
+});
+```
+
+The same pattern applies to the anonymous (`/api/v1/projects-anonymous-users/...`) and restricted (`/api/v1/projects-restricted-users/...`) issuer variants — list both hostnames for each.
+
+## 3. Update your OAuth callback URLs
+
+After migrating, Hexclave will send providers (Google, GitHub, Microsoft, Apple, Facebook, Discord, LinkedIn, GitLab, Bitbucket, Spotify, Twitch, X) a `redirect_uri` on `api.hexclave.com` instead of `api.stack-auth.com`. Each provider compares this byte-for-byte against the URIs you registered in their developer console, so you must update each one before switching SDKs.
+
+Update each enabled provider's OAuth app:
+
+| Provider | Before | After |
+| --- | --- | --- |
+| Google, GitHub, Microsoft, …all others | `https://api.stack-auth.com/api/v1/auth/oauth/callback/<provider>` | `https://api.hexclave.com/api/v1/auth/oauth/callback/<provider>` |
+
+For 11 of the 12 providers, you can register **both** URLs at the same time and migrate without an outage:
+
+1. Add the new `https://api.hexclave.com/...` URL alongside the existing `https://api.stack-auth.com/...` URL in the provider's console.
+2. Deploy the new SDK.
+3. Optionally remove the old URL later, once no traffic uses it.
+
+<Warning>
+  **GitHub OAuth Apps allow only one callback URL.** You must replace it
+  (not add) — there will be a brief window between updating GitHub's
+  setting and deploying the new SDK where in-flight GitHub OAuth flows can
+  fail. Plan this switch for a low-traffic window. (GitHub Apps — distinct
+  from OAuth Apps — do support up to 10 callback URLs.)
+</Warning>
+
+## 4. Update hardcoded references
+
+Sweep your codebase and replace:
+
+- `https://api.stack-auth.com` → `https://api.hexclave.com`
+- `https://r.stack-auth.com` → `https://r.hexclave.com`
+- `https://app.stack-auth.com` → `https://app.hexclave.com`
+
+## What still works without action
+
+Inbound traffic continues to accept the legacy names on every surface. You do not need to touch any of these:
+
+- **Request headers**: both `X-Hexclave-*` and `X-Stack-*` are accepted on every endpoint.
+- **Environment variables**: SDK config reads `HEXCLAVE_*` and falls back to `STACK_*`.
+- **Bearer prefix**: existing `stackauth_*` access tokens remain valid.
+- **CLI binary**: both `stack` and `hexclave` bins ship with `@hexclave/cli`.
 - **MCP server config**: the MCP server name `stack-auth` in your agent's MCP config still resolves.
-- **Hosted-handler subdomain**: the `.built-with-stack-auth.com` suffix remains the default for projects that use the hosted handler — saved OAuth callback URLs continue to work.
-
-## Recommendations for new code
-
-When you're writing new code (or running `npx @hexclave/cli@latest init`), prefer the Hexclave-branded form everywhere:
-
-- Import from `@hexclave/*`.
-- Set `NEXT_PUBLIC_HEXCLAVE_*` / `HEXCLAVE_*` env vars.
-- Send `X-Hexclave-*` request headers.
-- Use the `ask_hexclave` MCP tool name in agent integrations.
+- **Hosted-handler subdomain**: `.built-with-stack-auth.com` remains the default suffix for projects using the hosted handler.
 
 ## Suppressing the deprecation warning
 

@@ -37,7 +37,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
   async send() {
     throw new HexclaveAssertionError("send() called on a Passkey sign in verification code handler");
   },
-  async handler(tenancy, _, { challenge }, { authentication_response }) {
+  async handler(tenancy, _, { challenge }, { authentication_response }, _user, apiUrl) {
 
     if (!tenancy.config.auth.passkey.allowSignIn) {
       throw new KnownErrors.PasskeyAuthenticationNotEnabled();
@@ -122,6 +122,7 @@ export const passkeySignInVerificationCodeHandler = createVerificationCodeHandle
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: user.projectUserId,
+      apiUrl,
     });
 
     return {

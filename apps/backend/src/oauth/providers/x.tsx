@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
@@ -10,15 +9,16 @@ export class XProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(options: { clientId: string, clientSecret: string }) {
+  static async create(options: { clientId: string, clientSecret: string, apiUrl: string }) {
+    const { apiUrl, ...rest } = options;
     return new XProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
         issuer: "https://twitter.com",
         authorizationEndpoint: "https://twitter.com/i/oauth2/authorize",
         tokenEndpoint: "https://api.x.com/2/oauth2/token",
-        redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/x",
+        redirectUri: apiUrl + "/api/v1/auth/oauth/callback/x",
         baseScope: "users.read offline.access tweet.read",
-        ...options,
+        ...rest,
       }))
     );
   }

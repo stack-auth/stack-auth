@@ -1,3 +1,4 @@
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { createAuthTokens } from "@/lib/tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -25,7 +26,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { project, type, tenancy } }) {
+  async handler({ auth: { project, type, tenancy } }, fullReq) {
     const createdUser = await usersCrudHandlers.adminCreate({
       tenancy,
       data: {
@@ -37,6 +38,7 @@ export const POST = createSmartRouteHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: createdUser.id,
+      apiUrl: getApiUrlForRequest(fullReq),
     });
 
     return {

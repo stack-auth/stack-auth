@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { decodeJwt } from 'jose';
 import { OAuthUserInfo, validateUserInfo } from "../utils";
@@ -11,19 +10,20 @@ export class AppleProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(options: { clientId: string, clientSecret: string }) {
+  static async create(options: { clientId: string, clientSecret: string, apiUrl: string }) {
+    const { apiUrl, ...rest } = options;
     return new AppleProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
         issuer: "https://appleid.apple.com",
         authorizationEndpoint: "https://appleid.apple.com/auth/authorize",
         tokenEndpoint: "https://appleid.apple.com/auth/token",
-        redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/apple",
+        redirectUri: apiUrl + "/api/v1/auth/oauth/callback/apple",
         jwksUri: "https://appleid.apple.com/auth/keys",
         baseScope: "name email",
         authorizationExtraParams: { "response_mode": "form_post" },
         tokenEndpointAuthMethod: "client_secret_post",
         openid: true,
-        ...options,
+        ...rest,
       }))
     );
   }

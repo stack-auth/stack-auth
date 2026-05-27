@@ -1,8 +1,9 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { Tenancy } from "@/lib/tenancies";
 import { isRefreshTokenValid } from "@/lib/tokens";
-import { oauthServer } from "@/oauth";
+import { createOAuthServer } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -24,8 +25,9 @@ export async function createCrossDomainAuthorizeRedirect(options: {
   user: { id: string, refreshTokenId: string } | null,
   publishableClientKey: string,
   body: CrossDomainAuthorizeBody,
+  apiUrl: string,
 }): Promise<string> {
-  const { tenancy, user, body } = options;
+  const { tenancy, user, body, apiUrl } = options;
   if (!user) {
     throw new KnownErrors.UserAuthenticationRequired();
   }
@@ -59,6 +61,7 @@ export async function createCrossDomainAuthorizeRedirect(options: {
     },
   });
   const oauthResponse = new OAuthResponse();
+  const oauthServer = createOAuthServer({ apiUrl });
   try {
     await oauthServer.authorize(
       oauthRequest,
@@ -125,7 +128,7 @@ export const POST = createSmartRouteHandler({
       redirect_url: urlSchema.defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy, user, refreshTokenId }, headers, body }) {
+  async handler({ auth: { tenancy, user, refreshTokenId }, headers, body }, fullReq) {
     let userWithSession: { id: string, refreshTokenId: string } | null = null;
     if (!user) {
       throw new KnownErrors.UserAuthenticationRequired();
@@ -171,6 +174,7 @@ export const POST = createSmartRouteHandler({
       user: userWithSession,
       publishableClientKey,
       body,
+      apiUrl: getApiUrlForRequest(fullReq),
     });
 
     return {
