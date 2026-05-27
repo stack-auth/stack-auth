@@ -562,3 +562,6 @@ A: Project config overrides only support the hosted `sourceOfTruth` shape. Legac
 
 ## Q: How should managed email onboarding e2e tests wait for mock verification?
 A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path flips the domain to `verified` asynchronously through `runAsynchronously`, so tests should poll the managed-onboarding check endpoint until the expected status appears.
+
+## Q: How should Microsoft inner OAuth callback token exchanges include scopes?
+A: Microsoft can reject the authorization-code token exchange with `AADSTS70011` if no `scope` parameter is sent. Keep this provider-specific by threading `providerScope` from `OAuthOuterInfo` into `OAuthBaseProvider.getCallback`, and opt Microsoft into adding the merged base and provider scope through `CallbackExtras.exchangeBody.scope`; do not add token-exchange scope globally for every provider.

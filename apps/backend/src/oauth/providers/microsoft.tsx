@@ -25,6 +25,7 @@ export class MicrosoftProvider extends OAuthBaseProvider {
       baseScope: "User.Read openid",
       openid: true,
       jwksUri: `https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`,
+      includeScopeInCallbackTokenRequest: true,
       ...options,
     }));
   }

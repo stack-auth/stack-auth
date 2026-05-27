@@ -3,7 +3,8 @@ import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/s
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { CallbackParamsType, Client, Issuer, TokenSet as OIDCTokenSet, custom, generators } from "openid-client";
+import type { CallbackExtras, CallbackParamsType, Client, TokenSet as OIDCTokenSet } from "openid-client";
+import { Issuer, custom, generators } from "openid-client";
 import { OAuthUserInfo } from "../utils";
 
 const OAUTH_USERINFO_TOTAL_ATTEMPTS = 3;
@@ -289,6 +290,22 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
   };
 }
 
+export function getOAuthCallbackExtras(options: {
+  baseScope: string,
+  extraScope?: string,
+  includeScopeInCallbackTokenRequest?: boolean,
+}): CallbackExtras | undefined {
+  if (options.includeScopeInCallbackTokenRequest !== true) {
+    return undefined;
+  }
+
+  return {
+    exchangeBody: {
+      scope: mergeScopeStrings(options.baseScope, options.extraScope || ""),
+    },
+  };
+}
+
 export abstract class OAuthBaseProvider {
   constructor(
     public readonly oauthClient: Client,
@@ -299,6 +316,7 @@ export abstract class OAuthBaseProvider {
     public readonly noPKCE?: boolean,
     public readonly openid?: boolean,
     public readonly alternativeIssuers?: string[],
+    public readonly includeScopeInCallbackTokenRequest?: boolean,
   ) {}
 
   protected static async createConstructorArgs(options:
@@ -312,6 +330,7 @@ export abstract class OAuthBaseProvider {
       tokenEndpointAuthMethod?: "client_secret_post" | "client_secret_basic",
       noPKCE?: boolean,
       alternativeIssuers?: string[],
+      includeScopeInCallbackTokenRequest?: boolean,
     }
     & (
       | ({
@@ -360,6 +379,7 @@ export abstract class OAuthBaseProvider {
       options.noPKCE,
       options.openid,
       options.alternativeIssuers,
+      options.includeScopeInCallbackTokenRequest,
     ] as const;
   }
 
@@ -386,6 +406,7 @@ export abstract class OAuthBaseProvider {
     callbackParams: CallbackParamsType,
     codeVerifier: string,
     state: string,
+    extraScope?: string,
   }): Promise<{ userInfo: OAuthUserInfo, tokenSet: TokenSet }> {
     let tokenSet;
     const callbackParams = { ...options.callbackParams };
@@ -408,6 +429,11 @@ export abstract class OAuthBaseProvider {
         code_verifier: this.noPKCE ? undefined : options.codeVerifier,
         state: options.state,
       },
+      getOAuthCallbackExtras({
+        baseScope: this.scope,
+        extraScope: options.extraScope,
+        includeScopeInCallbackTokenRequest: this.includeScopeInCallbackTokenRequest,
+      }),
     ] as const;
 
     try {
