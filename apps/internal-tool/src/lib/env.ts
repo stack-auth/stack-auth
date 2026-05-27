@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const PLACEHOLDER = "REPLACE_ME";
@@ -12,7 +12,7 @@ const PLACEHOLDER = "REPLACE_ME";
 export function envOrDevDefault(value: string | undefined, devDefault: string, name: string): string {
   if (!value || value === PLACEHOLDER) {
     if (IS_DEV) return devDefault;
-    throw new StackAssertionError(`${name} is not configured. Set the NEXT_PUBLIC_STACK_* vars in .env.local or the hosting platform env.`);
+    throw new HexclaveAssertionError(`${name} is not configured. Set the NEXT_PUBLIC_STACK_* vars in .env.local or the hosting platform env.`);
   }
   return value;
 }
