@@ -75,7 +75,7 @@ function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
                   <TableCell className="py-3 px-4 text-right">
                     {removeMemberPermission && (
                       <Button
-                        onClick={async () => await invitation.revoke()}
+                        onClick={async () => { await invitation.revoke(); }}
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors"
@@ -107,6 +107,7 @@ function MemberInvitationSectionInner(props: { team: Team }) {
   });
   const [loading, setLoading] = useState(false);
   const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
+  const watchedEmail = watch('email');
 
   const onSubmit = async (data: yup.InferType<typeof invitationSchema>) => {
     setLoading(true);
@@ -121,7 +122,7 @@ function MemberInvitationSectionInner(props: { team: Team }) {
 
   useEffect(() => {
     setInvitedEmail(null);
-  }, [watch('email')]);
+  }, [watchedEmail]);
 
   return (
     <>

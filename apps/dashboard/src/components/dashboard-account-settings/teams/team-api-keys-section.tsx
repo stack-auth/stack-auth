@@ -13,13 +13,13 @@ export function TeamApiKeysSection(props: { team: Team }) {
   const team = user.useTeam(props.team.id);
   const stackApp = useStackApp();
   const project = stackApp.useProject();
+  const manageApiKeysPermission = user.usePermission(props.team, '$manage_api_keys');
 
   if (!team) {
     throw new HexclaveAssertionError("Team not found");
   }
 
   const teamApiKeysEnabled = project.config.allowTeamApiKeys;
-  const manageApiKeysPermission = user.usePermission(props.team, '$manage_api_keys');
   if (!manageApiKeysPermission || !teamApiKeysEnabled) {
     return null;
   }
