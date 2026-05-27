@@ -68,7 +68,7 @@ export function concatStacktraces(first: Error, ...errors: Error[]): void {
 
 export class HexclaveAssertionError extends Error {
   constructor(message: string, public readonly extraData?: Record<string, any> & ErrorOptions) {
-    const disclaimer = `\n\nThis is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.`;
+    const disclaimer = `\n\nThis is likely an error in Hexclave. Please make sure you are running the newest version and report it.`;
     super(`${message}${message.endsWith(disclaimer) ? "" : disclaimer}`, pick(extraData ?? {}, ["cause"]));
 
     Object.defineProperty(this, "customCaptureExtraArgs", {

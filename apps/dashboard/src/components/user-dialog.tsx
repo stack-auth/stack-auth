@@ -10,7 +10,7 @@ import { DateField, InputField, SwitchField, TextAreaField } from "./form-fields
 import { StyledLink } from "./link";
 import { validateRiskScore } from "@/lib/risk-score-utils";
 
-const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
+const metadataDocsUrl = "https://docs.hexclave.com/docs/concepts/custom-user-data";
 
 export function UserDialog(props: {
   open?: boolean,

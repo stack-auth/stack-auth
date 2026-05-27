@@ -7,8 +7,8 @@ it("should send a sign-in code per e-mail", async ({ expect }) => {
   expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Sign in to Stack Dashboard: Your code is <stripped code>",
+        "from": "Hexclave Dashboard <noreply@example.com>",
+        "subject": "Sign in to Hexclave Dashboard: Your code is <stripped code>",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
@@ -31,7 +31,7 @@ it('should refuse to send a sign-in code if the redirect URL is invalid', async 
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",

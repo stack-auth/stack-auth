@@ -119,7 +119,7 @@ describe("Stack CLI", () => {
   it("shows help output", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(["--help"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Stack Auth CLI");
+    expect(stdout).toContain("Hexclave CLI");
   });
 
   it("shows version output", async ({ expect }) => {
@@ -246,7 +246,7 @@ describe("Stack CLI", () => {
   it("exec help mentions docs URL", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(["exec", "--help"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("https://docs.stack-auth.com/docs/sdk");
+    expect(stdout).toContain("https://docs.hexclave.com/docs/sdk");
   });
 
   it("exec help mentions --cloud-project-id and --config-file", async ({ expect }) => {
@@ -408,7 +408,7 @@ describe("Stack CLI", () => {
   });
 
   // Positive happy-path: only runs when the backend is in local-emulator mode
-  // (the password sign-in for local-emulator@stack-auth.com only succeeds
+  // (the password sign-in for local-emulator@hexclave.com only succeeds
   // there). Mints a project against the local-emulator backend keyed by an
   // absolute config-file path, then runs `stack exec --config-file <path>`
   // and expects it to resolve the same project.
@@ -621,10 +621,10 @@ describe("Stack CLI", () => {
       "init", "--mode", "link-cloud", "--select-project-id", createdProjectId, "--output-dir", initDir,
     ]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Created .env with Stack Auth keys");
+    expect(stdout).toContain("Created .env with Hexclave keys");
 
     const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
-    expect(envContent).toContain("# Stack Auth");
+    expect(envContent).toContain("# Hexclave");
     expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
     expect(envContent).toContain("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=");
     expect(envContent).toContain("STACK_SECRET_SERVER_KEY=");
@@ -641,11 +641,11 @@ describe("Stack CLI", () => {
       "init", "--mode", "link-cloud", "--select-project-id", createdProjectId, "--output-dir", initDir,
     ]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Appended Stack Auth keys to .env");
+    expect(stdout).toContain("Appended Hexclave keys to .env");
 
     const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
     expect(envContent).toContain("EXISTING_VAR=hello");
-    expect(envContent).toContain("# Stack Auth");
+    expect(envContent).toContain("# Hexclave");
     expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
   });
 
@@ -1137,7 +1137,7 @@ describe("Stack CLI — Doctor", () => {
     const dir = makeProject("human", nextHappyFiles());
     const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Stack Auth doctor");
+    expect(stdout).toContain("Hexclave doctor");
     expect(stdout).toMatch(/\d+ passed, \d+ failed/);
   });
 

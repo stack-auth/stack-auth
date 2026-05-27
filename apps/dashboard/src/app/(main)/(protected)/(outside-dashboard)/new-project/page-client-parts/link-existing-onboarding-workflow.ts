@@ -29,7 +29,7 @@ export function buildWorkflowYaml(branch: string, configPath: string): string {
   // (repo-relative) is also the local path on disk — that's why the same env var is
   // safe to use for both `--config-file` and `--source-path`. If a future workflow
   // checks out with `with: path: <subdir>`, these would diverge.
-  return `name: Stack Auth Config Sync
+  return `name: Hexclave Config Sync
 
 on:
   workflow_dispatch:
@@ -52,13 +52,13 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "20"
-      - name: Push Stack Auth config
+      - name: Push Hexclave config
         env:
           STACK_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
           STACK_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
           STACK_AUTH_CONFIG_PATH: ${encodedConfigPath}
           STACK_AUTH_SOURCE_REPO: \${{ github.repository }}
           STACK_AUTH_SOURCE_WORKFLOW_PATH: ${encodedWorkflowPath}
-        run: npx --yes @stackframe/stack-cli@latest config push --config-file "$STACK_AUTH_CONFIG_PATH" --source github --source-repo "$STACK_AUTH_SOURCE_REPO" --source-path "$STACK_AUTH_CONFIG_PATH" --source-workflow-path "$STACK_AUTH_SOURCE_WORKFLOW_PATH"
+        run: npx --yes @hexclave/cli@latest config push --config-file "$STACK_AUTH_CONFIG_PATH" --source github --source-repo "$STACK_AUTH_SOURCE_REPO" --source-path "$STACK_AUTH_CONFIG_PATH" --source-workflow-path "$STACK_AUTH_SOURCE_WORKFLOW_PATH"
 `;
 }

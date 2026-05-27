@@ -26,39 +26,39 @@ const commandClasses = "text-red-600 dark:text-red-400";
 const nameClasses = "text-green-600 dark:text-green-500";
 
 const INSTALL_COMMAND_BY_FRAMEWORK = {
-  nextjs: 'npx @stackframe/stack-cli@latest init',
-  tanstackStart: 'npm install @stackframe/tanstack-start',
-  react: 'npm install @stackframe/react',
-  javascript: 'npm install @stackframe/js',
+  nextjs: 'npx @hexclave/cli@latest init',
+  tanstackStart: 'npm install @hexclave/tanstack-start',
+  react: 'npm install @hexclave/react',
+  javascript: 'npm install @hexclave/js',
   python: 'pip install requests',
 } as const;
 
 type SetupFramework = keyof typeof INSTALL_COMMAND_BY_FRAMEWORK;
 
 const TANSTACK_START_SETUP_PROMPT = deindent`
-  Please set up Stack Auth in my TanStack Start app.
+  Please set up Hexclave in my TanStack Start app.
 
   1. Install the alpha TanStack Start package:
 
-  npm install @stackframe/tanstack-start
+  npm install @hexclave/tanstack-start
 
   2. Configure the app with these environment variables:
 
-  VITE_STACK_PROJECT_ID=<project-id>
-  STACK_SECRET_SERVER_KEY=<secret-server-key>
+  VITE_HEXCLAVE_PROJECT_ID=<project-id>
+  HEXCLAVE_SECRET_SERVER_KEY=<secret-server-key>
 
-  3. Create a StackClientApp using @stackframe/tanstack-start with:
-  - projectId: import.meta.env.VITE_STACK_PROJECT_ID
+  3. Create a HexclaveClientApp using @hexclave/tanstack-start with:
+  - projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID
   - tokenStore: "cookie"
   - redirectMethod: "window"
 
-  4. Wrap the TanStack Start root route with StackProvider and StackTheme.
+  4. Wrap the TanStack Start root route with HexclaveProvider and HexclaveTheme.
 
-  5. Add a /handler/$ route using StackHandler. The handler route must set ssr: false and pass location={pathname} from useLocation().
+  5. Add a /handler/$ route using HexclaveHandler. The handler route must set ssr: false and pass location={pathname} from useLocation().
 
   Use only the environment variables listed above.
 
-  After it finishes, verify that the Stack Auth MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.stack-auth.com/\`. If it is not registered, please add it manually so you have live access to Stack Auth docs and APIs.
+  After it finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`hexclave\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/\`. If it is not registered, please add it manually so you have live access to Hexclave docs and APIs.
 `;
 
 const buildInstallPrompt = (framework: SetupFramework) => {
@@ -72,7 +72,7 @@ const buildInstallPrompt = (framework: SetupFramework) => {
 
   ${command}
 
-  After it finishes, verify that the Stack Auth MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.stack-auth.com/mcp\`. The command above should handle this automatically; if for any reason it didn't, please add the MCP server manually so you have live access to Stack Auth docs and APIs.
+  After it finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/mcp\`. The command above should handle this automatically; if for any reason it didn't, please add the MCP server manually so you have live access to Hexclave docs and APIs.
 `;
 };
 
@@ -86,7 +86,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const optionalPublishableClientKeyProp = (indent: string) =>
     requirePublishableClientKey ? `\n${indent}publishableClientKey: "${publishableClientKeyValue}",` : "";
   const optionalPublishableClientKeyHeader = (indent: string) =>
-    requirePublishableClientKey ? `\n${indent}'x-stack-publishable-client-key': "${publishableClientKeyValue}",` : "";
+    requirePublishableClientKey ? `\n${indent}'x-hexclave-publishable-client-key': "${publishableClientKeyValue}",` : "";
 
   const onGenerateKeys = async () => {
     const newKey = await adminApp.createInternalApiKey({
@@ -107,17 +107,17 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const nextJsSteps = [
     {
       step: 2,
-      title: "Install Stack Auth",
+      title: "Install Hexclave",
       content: <>
         <Typography>
-          In a new or existing Next.js project, install Stack Auth as a dependency into your project:
+          In a new or existing Next.js project, install Hexclave as a dependency into your project:
         </Typography>
         <CodeBlock
           language="bash"
-          content={`npx @stackframe/stack-cli@latest init`}
+          content={`npx @hexclave/cli@latest init`}
           customRender={
             <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>pnpx</span> <span className={nameClasses}>@stackframe/stack-cli@latest</span> init
+              <span className={commandClasses}>pnpx</span> <span className={nameClasses}>@hexclave/cli@latest</span> init
             </div>
           }
           title="Terminal"
@@ -132,7 +132,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <Typography>
           Put these keys in the <InlineCode>.env.local</InlineCode> file.
         </Typography>
-        <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="next" />
+        <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type="next" />
       </>
     },
     {
@@ -149,17 +149,17 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const reactSteps = [
     {
       step: 2,
-      title: "Install Stack Auth",
+      title: "Install Hexclave",
       content: <>
         <Typography>
-          In a new or existing React project, install Stack Auth&apos;s dependencies:
+          In a new or existing React project, install Hexclave&apos;s dependencies:
         </Typography>
         <CodeBlock
           language="bash"
-          content={`npm install @stackframe/react`}
+          content={`npm install @hexclave/react`}
           customRender={
             <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/react</span>
+              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@hexclave/react</span>
             </div>
           }
           title="Terminal"
@@ -170,7 +170,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
+      content: <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
@@ -182,10 +182,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <CodeBlock
           language="tsx"
           content={deindent`
-            import { StackClientApp } from "@stackframe/react";
+            import { HexclaveClientApp } from "@hexclave/react";
             import { useNavigate } from "react-router-dom";
             
-            export const stackClientApp = new StackClientApp({
+            export const hexclaveClientApp = new HexclaveClientApp({
               // You should store these in environment variables
               projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
               tokenStore: "cookie",
@@ -204,22 +204,22 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Update App.tsx",
       content: <>
         <Typography>
-          Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow.
+          Update your App.tsx file to wrap the entire app with a <InlineCode>HexclaveProvider</InlineCode> and <InlineCode>HexclaveTheme</InlineCode> and add a <InlineCode>HexclaveHandler</InlineCode> component to handle the authentication flow.
         </Typography>
         <CodeBlock
           language="tsx"
           maxHeight={300}
           content={deindent`
-            import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+            import { HexclaveHandler, HexclaveProvider, HexclaveTheme } from "@hexclave/react";
             import { Suspense } from "react";
             import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-            import { stackClientApp } from "./stack/client";
+            import { hexclaveClientApp } from "./stack/client";
 
             function HandlerRoutes() {
               const location = useLocation();
               
               return (
-                <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+                <HexclaveHandler app={hexclaveClientApp} location={location.pathname} fullPage />
               );
             }
 
@@ -227,14 +227,14 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               return (
                 <Suspense fallback={"Loading..."}>
                   <BrowserRouter>
-                    <StackProvider app={stackClientApp}>
-                      <StackTheme>
+                    <HexclaveProvider app={hexclaveClientApp}>
+                      <HexclaveTheme>
                         <Routes>
                           <Route path="/handler/*" element={<HandlerRoutes />} />
                           <Route path="/" element={<div>hello world</div>} />
                         </Routes>
-                      </StackTheme>
-                    </StackProvider>
+                      </HexclaveTheme>
+                    </HexclaveProvider>
                   </BrowserRouter>
                 </Suspense>
               );
@@ -259,17 +259,17 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const tanstackStartSteps = [
     {
       step: 2,
-      title: "Install Stack Auth",
+      title: "Install Hexclave",
       content: <>
         <Typography>
-          In a new or existing TanStack Start project, install the alpha Stack Auth package:
+          In a new or existing TanStack Start project, install the alpha Hexclave package:
         </Typography>
         <CodeBlock
           language="bash"
-          content={`npm install @stackframe/tanstack-start`}
+          content={`npm install @hexclave/tanstack-start`}
           customRender={
             <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/tanstack-start</span>
+              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@hexclave/tanstack-start</span>
             </div>
           }
           title="Terminal"
@@ -284,7 +284,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <Typography>
           Put these keys in your TanStack Start environment file.
         </Typography>
-        <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="vite" />
+        <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type="vite" />
       </>
     },
     {
@@ -292,15 +292,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Create stack/client.ts file",
       content: <>
         <Typography>
-          Create a new file called <InlineCode>src/stack/client.ts</InlineCode> and initialize Stack Auth with cookie storage.
+          Create a new file called <InlineCode>src/stack/client.ts</InlineCode> and initialize Hexclave with cookie storage.
         </Typography>
         <CodeBlock
           language="tsx"
           content={deindent`
-            import { StackClientApp } from "@stackframe/tanstack-start";
+            import { HexclaveClientApp } from "@hexclave/tanstack-start";
 
-            export const stackClientApp = new StackClientApp({
-              projectId: import.meta.env.VITE_STACK_PROJECT_ID,
+            export const hexclaveClientApp = new HexclaveClientApp({
+              projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID,
               tokenStore: "cookie",
               redirectMethod: "window",
             });
@@ -315,15 +315,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Update the root route",
       content: <>
         <Typography>
-          Wrap your TanStack Start root route with <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode>.
+          Wrap your TanStack Start root route with <InlineCode>HexclaveProvider</InlineCode> and <InlineCode>HexclaveTheme</InlineCode>.
         </Typography>
         <CodeBlock
           language="tsx"
           maxHeight={300}
           content={deindent`
-            import { StackProvider, StackTheme } from "@stackframe/tanstack-start";
+            import { HexclaveProvider, HexclaveTheme } from "@hexclave/tanstack-start";
             import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
-            import { stackClientApp } from "../stack/client";
+            import { hexclaveClientApp } from "../stack/client";
 
             export const Route = createRootRoute({
               component: RootComponent,
@@ -332,11 +332,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
             function RootComponent() {
               return (
-                <StackProvider app={stackClientApp}>
-                  <StackTheme>
+                <HexclaveProvider app={hexclaveClientApp}>
+                  <HexclaveTheme>
                     <Outlet />
-                  </StackTheme>
-                </StackProvider>
+                  </HexclaveTheme>
+                </HexclaveProvider>
               );
             }
 
@@ -364,12 +364,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Add the handler route",
       content: <>
         <Typography>
-          Create a splat route for Stack Auth&apos;s built-in auth pages.
+          Create a splat route for Hexclave&apos;s built-in auth pages.
         </Typography>
         <CodeBlock
           language="tsx"
           content={deindent`
-            import { StackHandler } from "@stackframe/tanstack-start";
+            import { HexclaveHandler } from "@hexclave/tanstack-start";
             import { createFileRoute, useLocation } from "@tanstack/react-router";
 
             export const Route = createFileRoute("/handler/$")({
@@ -379,7 +379,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
             function HandlerPage() {
               const { pathname } = useLocation();
-              return <StackHandler fullPage location={pathname} />;
+              return <HexclaveHandler fullPage location={pathname} />;
             }
           `}
           title="src/routes/handler/$.tsx"
@@ -395,17 +395,17 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const javascriptSteps = [
     {
       step: 2,
-      title: "Install Stack Auth",
+      title: "Install Hexclave",
       content: <>
         <Typography>
-          Install Stack Auth using npm:
+          Install Hexclave using npm:
         </Typography>
         <CodeBlock
           language="bash"
-          content={`npm install @stackframe/js`}
+          content={`npm install @hexclave/js`}
           customRender={
             <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/js</span>
+              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@hexclave/js</span>
             </div>
           }
           title="Terminal"
@@ -416,7 +416,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
+      content: <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
@@ -434,9 +434,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             <CodeBlock
               language="typescript"
               content={deindent`
-                import { StackServerApp } from "@stackframe/js";
+                import { HexclaveServerApp } from "@hexclave/js";
 
-                const stackServerApp = new StackServerApp({
+                const hexclaveServerApp = new HexclaveServerApp({
                   // You should store these in environment variables based on your project setup
                   projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
                   secretServerKey: "${keys?.secretServerKey ?? "..."}",
@@ -451,9 +451,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             <CodeBlock
               language="typescript"
               content={deindent`
-                import { StackClientApp } from "@stackframe/js";
+                import { HexclaveClientApp } from "@hexclave/js";
 
-                const stackClientApp = new StackClientApp({
+                const hexclaveClientApp = new HexclaveClientApp({
                   // You should store these in environment variables
                   projectId: "your-project-id",${optionalPublishableClientKeyProp("  ")}
                   tokenStore: "cookie",
@@ -479,15 +479,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             <CodeBlock
               language="typescript"
               content={deindent`
-                import { stackServerApp } from "@/stack/server";
+                import { hexclaveServerApp } from "@/stack/server";
 
-                const user = await stackServerApp.getUser("user_id");
+                const user = await hexclaveServerApp.getUser("user_id");
 
                 await user.update({
                   displayName: "New Display Name",
                 });
 
-                const team = await stackServerApp.createTeam({
+                const team = await hexclaveServerApp.createTeam({
                   name: "New Team",
                 });
 
@@ -501,14 +501,14 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             <CodeBlock
               language="typescript"
               content={deindent`
-                import { stackClientApp } from "@/stack/client";
+                import { hexclaveClientApp } from "@/stack/client";
 
-                await stackClientApp.signInWithCredential({
+                await hexclaveClientApp.signInWithCredential({
                   email: "test@example.com",
                   password: "password123",
                 });
 
-                const user = await stackClientApp.getUser();
+                const user = await hexclaveClientApp.getUser();
 
                 await user.update({
                   displayName: "New Display Name",
@@ -531,7 +531,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Install requests",
       content: <>
         <Typography>
-          Install the requests library to make HTTP requests to the Stack Auth API:
+          Install the requests library to make HTTP requests to the Hexclave API:
         </Typography>
         <CodeBlock
           language="bash"
@@ -549,14 +549,14 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     {
       step: 3,
       title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
+      content: <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
     },
     {
       step: 4,
       title: "Create helper function",
       content: <>
         <Typography>
-          Create a helper function to make requests to the Stack Auth API:
+          Create a helper function to make requests to the Hexclave API:
         </Typography>
         <CodeBlock
           language="python"
@@ -566,18 +566,18 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             def stack_auth_request(method, endpoint, **kwargs):
               res = requests.request(
                 method,
-                f'https://api.stack-auth.com/{endpoint}',
+                f'https://api.hexclave.com/{endpoint}',
                 headers={
-                  'x-stack-access-type': 'server',
+                  'x-hexclave-access-type': 'server',
                   # You should store these in environment variables
-                  'x-stack-project-id': "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyHeader("  ")}
-                  'x-stack-secret-server-key': "${keys?.secretServerKey ?? "..."}",
+                  'x-hexclave-project-id': "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyHeader("  ")}
+                  'x-hexclave-secret-server-key': "${keys?.secretServerKey ?? "..."}",
                   **kwargs.pop('headers', {}),
                 },
                 **kwargs,
               )
               if res.status_code >= 400:
-                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+                raise Exception(f"Hexclave API request failed with {res.status_code}: {res.text}")
               return res.json()
           `}
           title="stack_auth.py"
@@ -590,7 +590,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Make requests",
       content: <>
         <Typography>
-          You can now make requests to the Stack Auth API:
+          You can now make requests to the Hexclave API:
         </Typography>
         <CodeBlock
           language="python"
@@ -600,7 +600,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
             # Get user info with access token
             print(stack_auth_request('GET', '/api/v1/users/me', headers={
-              'x-stack-access-token': access_token,
+              'x-hexclave-access-token': access_token,
             }))
           `}
           title="example.py"
@@ -629,7 +629,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               Waiting for your first user...
             </div>
             <Typography type="h2">
-              Setup Stack Auth in your codebase
+              Setup Hexclave in your codebase
             </Typography>
           </div>
 
@@ -638,7 +638,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               variant='outline'
               size='sm'
               onClick={() => {
-                window.open('https://docs.stack-auth.com/', '_blank');
+                window.open('https://docs.hexclave.com/', '_blank');
               }}
             >
               <BookIcon className="w-4 h-4 mr-2" />
@@ -813,7 +813,7 @@ function GlobeIllustrationInner() {
   );
 }
 
-function StackAuthKeys(props: {
+function HexclaveKeys(props: {
   keys: { projectId: string, publishableClientKey?: string, secretServerKey: string } | null,
   onGenerateKeys: () => Promise<void>,
   type: 'next' | 'vite' | 'raw',

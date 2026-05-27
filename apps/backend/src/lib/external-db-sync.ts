@@ -1462,7 +1462,7 @@ async function syncDatabase(
       await externalClient.connect();
 
       // Always use DEFAULT_DB_SYNC_MAPPINGS - users cannot customize mappings
-      // because internalDbFetchQuery runs against Stack Auth's internal DB
+      // because internalDbFetchQuery runs against Hexclave's internal DB
       for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
         const mappingThrottled = await syncPostgresMapping(
           externalClient,

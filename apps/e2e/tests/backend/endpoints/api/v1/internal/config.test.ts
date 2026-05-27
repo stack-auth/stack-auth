@@ -28,7 +28,7 @@ describe("access control", () => {
             "actual_access_type": "client",
             "allowed_access_types": ["admin"],
           },
-          "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -50,7 +50,7 @@ describe("access control", () => {
             "actual_access_type": "server",
             "allowed_access_types": ["admin"],
           },
-          "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+          "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -1671,7 +1671,7 @@ describe("branch config source", () => {
               "actual_access_type": "client",
               "allowed_access_types": ["admin"],
             },
-            "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+            "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
           },
           "headers": Headers {
             "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -1698,7 +1698,7 @@ describe("branch config source", () => {
               "actual_access_type": "server",
               "allowed_access_types": ["admin"],
             },
-            "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+            "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
           },
           "headers": Headers {
             "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

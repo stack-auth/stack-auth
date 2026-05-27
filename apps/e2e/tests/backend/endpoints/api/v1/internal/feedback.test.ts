@@ -10,7 +10,7 @@ describe("POST /api/v1/internal/feedback", () => {
   it.runIf(!isLocalEmulator)("should send feedback from an authenticated user", async ({ expect }) => {
     const senderEmail = backendContext.value.mailbox.emailAddress;
     const signInResult = await Auth.Otp.signIn();
-    const recipientMailbox = createMailbox("team@stack-auth.com");
+    const recipientMailbox = createMailbox("team@hexclave.com");
     const subject = `[Support] ${senderEmail}`;
 
     const response = await niceBackendFetch("/api/v1/internal/feedback", {
@@ -35,7 +35,7 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(emails).toHaveLength(1);
     expect(emails[0].to).toMatchObject({
       type: "custom-emails",
-      emails: ["team@stack-auth.com"],
+      emails: ["team@hexclave.com"],
     });
 
     const messages = await recipientMailbox.waitForMessagesWithSubject(subject);
@@ -59,7 +59,7 @@ describe("POST /api/v1/internal/feedback", () => {
   });
 
   it.runIf(!isLocalEmulator)("should send feedback without authentication (dev tool)", async ({ expect }) => {
-    const recipientMailbox = createMailbox("team@stack-auth.com");
+    const recipientMailbox = createMailbox("team@hexclave.com");
     const senderEmail = `devtool-user-${randomUUID()}@example.com`;
     const subject = `[Support] ${senderEmail}`;
 
@@ -85,7 +85,7 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(emails).toHaveLength(1);
     expect(emails[0].to).toMatchObject({
       type: "custom-emails",
-      emails: ["team@stack-auth.com"],
+      emails: ["team@hexclave.com"],
     });
 
     const messages = await recipientMailbox.waitForMessagesWithSubject(subject);
@@ -96,7 +96,7 @@ describe("POST /api/v1/internal/feedback", () => {
   });
 
   it.runIf(!isLocalEmulator)("should send bug reports with correct label", async ({ expect }) => {
-    const recipientMailbox = createMailbox("team@stack-auth.com");
+    const recipientMailbox = createMailbox("team@hexclave.com");
     const reporterEmail = `bug-${randomUUID()}@example.com`;
     const subject = `[Bug Report] ${reporterEmail}`;
 
@@ -121,7 +121,7 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(emails).toHaveLength(1);
     expect(emails[0].to).toMatchObject({
       type: "custom-emails",
-      emails: ["team@stack-auth.com"],
+      emails: ["team@hexclave.com"],
     });
 
     const messages = await recipientMailbox.waitForMessagesWithSubject(subject);

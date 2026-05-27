@@ -35,7 +35,7 @@ const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
 const SENTINEL_PREFIX = "STACK_ENV_VAR_SENTINEL_";
 const USE_INLINE_ENV_VARS_SENTINEL = "STACK_ENV_VAR_SENTINEL_USE_INLINE_ENV_VARS";
 const SENTINEL_REGEX = /STACK_ENV_VAR_SENTINEL(?:_[A-Z0-9_]+)?/g;
-const LOG_PREFIX = "[Stack Auth] ";
+const LOG_PREFIX = "[Hexclave] ";
 const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   "NEXT_PUBLIC_STACK_API_URL",
   "NEXT_PUBLIC_BROWSER_STACK_API_URL",
@@ -240,11 +240,11 @@ async function isDashboardReachable(url: string): Promise<boolean> {
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string }): Promise<void> {
   const url = dashboardUrl();
   if (await isDashboardReachable(url)) {
-    logDev(`Using existing Stack Auth dashboard on ${url}.`);
+    logDev(`Using existing Hexclave dashboard on ${url}.`);
     return;
   }
 
-  const progress = startProgressLog(`Stack Auth dashboard not found on port ${DASHBOARD_PORT}. Starting now`);
+  const progress = startProgressLog(`Hexclave dashboard not found on port ${DASHBOARD_PORT}. Starting now`);
   const dashboardEnv = {
     ...process.env,
     NODE_ENV: "production",
@@ -269,7 +269,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     mkdirSync(dirname(logPath), { recursive: true });
     const logFd = openSync(logPath, "a", 0o600);
     chmodSync(logPath, 0o600);
-    writeSync(logFd, `\n[${new Date().toISOString()}] Starting Stack Auth development-environment dashboard on ${url}\n`);
+    writeSync(logFd, `\n[${new Date().toISOString()}] Starting Hexclave development-environment dashboard on ${url}\n`);
     const child = (() => {
       try {
         return spawn(process.execPath, [dashboardServerPath], {
@@ -291,7 +291,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
       if (await isDashboardReachable(url)) {
-        progress.stop(`Started Stack Auth dashboard`);
+        progress.stop(`Started Hexclave dashboard`);
         return;
       }
       await wait(500);
@@ -315,7 +315,7 @@ async function dashboardRequest(path: string, options: RequestInit, secret: stri
       },
     });
   } catch (error) {
-    throw new CliError(`Failed to reach local Stack Auth dashboard at ${url}: ${errorMessage(error)}`);
+    throw new CliError(`Failed to reach local Hexclave dashboard at ${url}: ${errorMessage(error)}`);
   }
 }
 
@@ -400,10 +400,10 @@ async function restartDashboardForHeartbeat(options: {
 }): Promise<SessionResponse> {
   const dashboardUptimeMs = performance.now() - options.dashboardReachableSinceMs;
   if (dashboardUptimeMs < DASHBOARD_RESTART_MIN_UPTIME_MS) {
-    throw new CliError(`Local Stack Auth dashboard stopped before it had been running for ${DASHBOARD_RESTART_MIN_UPTIME_MS / 1000} seconds. Not restarting to avoid a restart loop.`);
+    throw new CliError(`Local Hexclave dashboard stopped before it had been running for ${DASHBOARD_RESTART_MIN_UPTIME_MS / 1000} seconds. Not restarting to avoid a restart loop.`);
   }
 
-  logDev("Local Stack Auth dashboard stopped. Restarting...");
+  logDev("Local Hexclave dashboard stopped. Restarting...");
   await startDashboardIfNeeded({ apiBaseUrl: options.apiBaseUrl, secret: options.secret });
   return await createRemoteDevelopmentEnvironmentSession({
     apiBaseUrl: options.apiBaseUrl,
@@ -452,7 +452,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
         secret: options.secret,
       });
       sessionState.dashboardReachableSinceMs = performance.now();
-      logDev(`Stack Auth dashboard running at ${dashboardUrl()}`);
+      logDev(`Hexclave dashboard running at ${dashboardUrl()}`);
       continue;
     } finally {
       clearInterval(abortOnStop);
@@ -467,7 +467,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
         secret: options.secret,
       });
       sessionState.dashboardReachableSinceMs = performance.now();
-      logDev(`Stack Auth dashboard running at ${dashboardUrl()}`);
+      logDev(`Hexclave dashboard running at ${dashboardUrl()}`);
     }
   }
 }
@@ -491,7 +491,7 @@ export function registerDevCommand(program: Command) {
   program
     .command("dev")
     .usage("--config-file <path> -- <command> [args...]")
-    .description("Run a command with Stack Auth development-environment credentials")
+    .description("Run a command with Hexclave development-environment credentials")
     .requiredOption("--config-file <path>", "Path to stack.config.ts")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
@@ -514,7 +514,7 @@ export function registerDevCommand(program: Command) {
         }),
         dashboardReachableSinceMs: performance.now(),
       };
-      logDev(`Stack Auth dashboard running at ${localDashboardUrl}`);
+      logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
       maybeOpenOnboardingPage(sessionState.session);
 
       let stopped = false;

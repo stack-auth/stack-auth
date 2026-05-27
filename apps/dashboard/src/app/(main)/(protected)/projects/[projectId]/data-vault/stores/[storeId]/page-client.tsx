@@ -189,11 +189,11 @@ export default function PageClient({ storeId }: PageClientProps) {
           variant="info"
           title="How Data Vault Works"
           description={<>
-            A store securely saves key-value pairs with Stack Auth. Plaintext keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
+            A store securely saves key-value pairs with Hexclave. Plaintext keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
             <br /><br />
-            To use the store, you&apos;ll need a random, unguessable secret. It can be any format, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. <strong className="text-foreground/90">Even Stack Auth</strong> can&apos;t access your data if you lose it, so keep it safe.
+            To use the store, you&apos;ll need a random, unguessable secret. It can be any format, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. <strong className="text-foreground/90">Even Hexclave</strong> can&apos;t access your data if you lose it, so keep it safe.
             <br /><br />
-            Stack Auth only stores hashes of your keys, so you can&apos;t list all keys in a store. Each value is encrypted with its key, the provided secret, and an additional encryption secret that is kept safe by Stack Auth.
+            Hexclave only stores hashes of your keys, so you can&apos;t list all keys in a store. Each value is encrypted with its key, the provided secret, and an additional encryption secret that is kept safe by Hexclave.
           </>}
         />
 

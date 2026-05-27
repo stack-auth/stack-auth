@@ -1,6 +1,6 @@
-# Stack Auth Development Container
+# Hexclave Development Container
 
-This development container provides a standardized development environment for working on Stack Auth.
+This development container provides a standardized development environment for working on Hexclave.
 
 ## Getting Started
 

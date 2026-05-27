@@ -1,16 +1,16 @@
-# Stack Auth macOS Example
+# Hexclave macOS Example
 
-A comprehensive macOS SwiftUI application for testing all Stack Auth SDK functions interactively.
+A comprehensive macOS SwiftUI application for testing all Hexclave SDK functions interactively.
 
 ## Prerequisites
 
 - macOS 14.0+
 - Swift 5.9+
-- A running Stack Auth backend (default: `http://localhost:8102`)
+- A running Hexclave backend (default: `http://localhost:8102`)
 
 ## Running the Example
 
-1. Start the Stack Auth backend:
+1. Start the Hexclave backend:
    ```bash
    cd /path/to/stack-2
    pnpm run dev

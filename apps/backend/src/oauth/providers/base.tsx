@@ -429,7 +429,7 @@ export abstract class OAuthBaseProvider {
         throw new KnownErrors.OAuthProviderAccessDenied();
       }
       if (error?.error === 'invalid_client') {
-        throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Stack Auth dashboard is correct.`);
+        throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Hexclave dashboard is correct.`);
       }
       if (isRetryableOAuthUserInfoError(error)) {
         captureError("inner-oauth-callback-retryable-error", new HexclaveAssertionError("Transient OAuth provider failure during callback exchange.", {

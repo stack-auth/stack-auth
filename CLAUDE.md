@@ -1,4 +1,4 @@
-# Stack Auth
+# Hexclave
 
 ## Commands
 - **Lint**: `pnpm lint`

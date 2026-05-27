@@ -284,7 +284,7 @@ export default function PageClient() {
     { id: "em_01", recipient: "jordan@stack.dev", subject: "Reset your password", sentAt: 1726516800000, status: "sent" },
     { id: "em_02", recipient: "ops@stack.dev", subject: "Weekly usage summary", sentAt: 1726257600000, status: "scheduled" },
     { id: "em_03", recipient: "pat@stack.dev", subject: "Verify your email", sentAt: 1725998400000, status: "failed" },
-    { id: "em_04", recipient: "team@stack.dev", subject: "Invite to Stack Auth", sentAt: 1725739200000, status: "sent" },
+    { id: "em_04", recipient: "team@stack.dev", subject: "Invite to Hexclave", sentAt: 1725739200000, status: "sent" },
   ];
 
   const demoTableColumns = useMemo<DataGridColumnDef<DemoEmailRow>[]>(() => [

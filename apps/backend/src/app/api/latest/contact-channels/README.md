@@ -4,7 +4,7 @@ This document explains the relationship between `primary_email` on user objects 
 
 ## Overview
 
-In Stack Auth, users can have multiple **contact channels** (currently only email type is supported). One of these can be designated as the **primary email**, which is the main email address associated with the user account.
+In Hexclave, users can have multiple **contact channels** (currently only email type is supported). One of these can be designated as the **primary email**, which is the main email address associated with the user account.
 
 ### Key Concepts
 

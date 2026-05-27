@@ -1,16 +1,16 @@
 ---
 title: CLI App Authentication
-description: How to authenticate users in your own command-line application using Stack Auth
+description: How to authenticate users in your own command-line application using Hexclave
 sidebarTitle: CLI App Authentication
 ---
 
-If you're building your own command-line application, you can use Stack Auth to let users log in from a terminal.
+If you're building your own command-line application, you can use Hexclave to let users log in from a terminal.
 
 <Info>
   This page is about adding authentication to your own CLI app. For the official `stack` command, see the [Stack CLI guide](/guides/going-further/cli).
 </Info>
 
-To do so, we provide a Python template that you can use as a starting point. [Download it here](https://github.com/hexclave/stack-auth/tree/main/docs/public/stack-auth-cli-template.py) and copy it into your project, for example:
+To do so, we provide a Python template that you can use as a starting point. [Download it here](https://github.com/hexclave/hexclave/tree/main/docs/public/stack-auth-cli-template.py) and copy it into your project, for example:
 
 ```
 └─ my-python-app
@@ -38,8 +38,8 @@ if refresh_token is None:
 
 # you can now use the REST API with the refresh token
 def stack_auth_request(method, endpoint, **kwargs):
-  # ... see the REST API overview for required Stack Auth headers
-  # https://docs.stack-auth.com/api/overview
+  # ... see the REST API overview for required Hexclave headers
+  # https://docs.hexclave.com/api/overview
 
 def get_access_token(refresh_token):
   access_token_response = stack_auth_request(

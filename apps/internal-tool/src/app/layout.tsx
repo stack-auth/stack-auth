@@ -10,7 +10,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <title>Stack Auth — MCP Review Tool</title>
+        <title>Hexclave — MCP Review Tool</title>
       </head>
       <body>
         <StackProvider app={stackClientApp}>

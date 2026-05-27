@@ -21,8 +21,8 @@ it("should sign up new users", async ({ expect }) => {
   expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Verify your email at Stack Dashboard",
+        "from": "Hexclave Dashboard <noreply@example.com>",
+        "subject": "Verify your email at Hexclave Dashboard",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
@@ -114,7 +114,7 @@ it("should not sign up new users if verification callback url is not valid", asy
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",

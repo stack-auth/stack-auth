@@ -14,10 +14,9 @@ export default function Header() {
           <Link href="/" className="font-semibold flex items-center gap-2">
             <Image
               src="/logo.svg"
-              alt="Stack Auth Logo"
+              alt="Hexclave Logo"
               width={64}
               height={64}
-              className="dark:invert"
             />
             Demo
           </Link>

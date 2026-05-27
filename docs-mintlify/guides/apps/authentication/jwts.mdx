@@ -1,11 +1,11 @@
 ---
 title: "JWT Tokens"
-description: "Understand how Stack Auth uses JSON Web Tokens for authentication"
+description: "Understand how Hexclave uses JSON Web Tokens for authentication"
 ---
 
-JSON Web Tokens (JWT) are a compact, URL-safe means of representing claims to be transferred between two parties. Stack Auth uses JWTs for secure authentication and authorization.
+JSON Web Tokens (JWT) are a compact, URL-safe means of representing claims to be transferred between two parties. Hexclave uses JWTs for secure authentication and authorization.
 
-You don't need to worry about JWTs if you're using Stack Auth. However, if you are an expert user and want the full flexibility to manually verify JWTs for performance or other reasons, this page is for you.
+You don't need to worry about JWTs if you're using Hexclave. However, if you are an expert user and want the full flexibility to manually verify JWTs for performance or other reasons, this page is for you.
 
 ## What is a JWT?
 
@@ -18,9 +18,9 @@ A JWT is a string that consists of three parts separated by dots (`.`):
 The structure looks like this: `header.payload.signature`
 
 
-## Stack Auth JWT Structure
+## Hexclave JWT Structure
 
-Stack Auth JWTs contain standardized headers and claims that power authentication throughout the platform.
+Hexclave JWTs contain standardized headers and claims that power authentication throughout the platform.
 
 ### Header
 
@@ -29,15 +29,15 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 
 ### Standard Claims
 
-* **`iss` (Issuer)**: `https://api.stack-auth.com/api/v1/projects/<project-id>` for regular users, or `https://api.stack-auth.com/api/v1/projects-anonymous-users/<project-id>` for anonymous sessions
+* **`iss` (Issuer)**: `https://api.hexclave.com/api/v1/projects/<project-id>` for regular users, or `https://api.hexclave.com/api/v1/projects-anonymous-users/<project-id>` for anonymous sessions
 * **`sub` (Subject)**: The user ID this token represents
 * **`aud` (Audience)**: The intended recipient of the token — `<project-id>` for regular sessions, `<project-id>:anon` for anonymous sessions
 * **`exp` (Expiration)**: When the token expires (Unix timestamp)
 * **`iat` (Issued At)**: When the token was issued (Unix timestamp)
 
-### Stack Auth Specific Claims
+### Hexclave Specific Claims
 
-* **`project_id`**: Your Stack Auth project ID
+* **`project_id`**: Your Hexclave project ID
 * **`branch_id`**: The project branch (currently always `main`)
 * **`refresh_token_id`**: ID of the associated refresh token
 * **`role`**: Always set to `authenticated` for valid users
@@ -51,11 +51,11 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 
 ## Example JWT Payload
 
-Here's what a typical Stack Auth JWT payload looks like:
+Here's what a typical Hexclave JWT payload looks like:
 
 ```json
 {
-  "iss": "https://api.stack-auth.com/api/v1/projects/project_abcdef",
+  "iss": "https://api.hexclave.com/api/v1/projects/project_abcdef",
   "sub": "user_123456",
   "aud": "project_abcdef",
   "exp": 1735689600,
@@ -77,7 +77,7 @@ Here's what a typical Stack Auth JWT payload looks like:
 
 Anonymous user tokens have the same shape, but:
 
-* `iss` becomes `https://api.stack-auth.com/api/v1/projects-anonymous-users/<project-id>`
+* `iss` becomes `https://api.hexclave.com/api/v1/projects-anonymous-users/<project-id>`
 * `aud` becomes `<project-id>:anon`
 * `is_anonymous` is `true`
 * `is_restricted` is `true`
@@ -85,14 +85,14 @@ Anonymous user tokens have the same shape, but:
 
 Restricted user tokens (e.g., users who haven't verified their email when verification is required) have:
 
-* `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
+* `iss` becomes `https://api.hexclave.com/api/v1/projects-restricted-users/<project-id>`
 * `aud` becomes `<project-id>:restricted`
 * `is_restricted` is `true`
 * `restricted_reason` is `{ "type": "email_not_verified" }`
 
 Users restricted by an administrator (e.g., via [sign-up rules](/guides/apps/authentication/sign-up-rules)) have the same structure:
 
-* `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
+* `iss` becomes `https://api.hexclave.com/api/v1/projects-restricted-users/<project-id>`
 * `aud` becomes `<project-id>:restricted`
 * `is_restricted` is `true`
 * `restricted_reason` is `{ "type": "restricted_by_administrator" }`
@@ -101,12 +101,12 @@ Users restricted by an administrator (e.g., via [sign-up rules](/guides/apps/aut
 
 ### Client-Side Usage
 
-Stack Auth automatically handles JWT tokens for you. When you use hooks like `useUser()`, the JWT is automatically included in API requests:
+Hexclave automatically handles JWT tokens for you. When you use hooks like `useUser()`, the JWT is automatically included in API requests:
 
 **Next.js:**
 
 ```tsx
-import { useUser } from '@stackframe/stack';
+import { useUser } from '@hexclave/next';
 
 export function UserProfile() {
   const user = useUser();
@@ -122,7 +122,7 @@ export function UserProfile() {
 **React:**
 
 ```tsx
-import { useUser } from '@stackframe/react';
+import { useUser } from '@hexclave/react';
 
 export function UserProfile() {
   const user = useUser();
@@ -137,7 +137,7 @@ export function UserProfile() {
 
 ### Server-Side Usage
 
-On the server side, you can access the JWT and its claims through the Stack Auth API:
+On the server side, you can access the JWT and its claims through the Hexclave API:
 
 ```typescript
 import { stackServerApp } from '@/stack';
@@ -162,20 +162,20 @@ export async function GET() {
 
 ### Manual JWT Verification
 
-If you need to manually verify a JWT (for example, in a different service), fetch the public keys from Stack Auth's JWKS endpoint. Keys are derived per audience so the `kid` in the JWT header always matches one of the published keys.
+If you need to manually verify a JWT (for example, in a different service), fetch the public keys from Hexclave's JWKS endpoint. Keys are derived per audience so the `kid` in the JWT header always matches one of the published keys.
 
 ```typescript
 import * as jose from 'jose';
 
-// Get the public key set from Stack Auth
+// Get the public key set from Hexclave
 const jwks = jose.createRemoteJWKSet(
-  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json')
+  new URL('https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json')
 );
 
 // Verify a regular (non-anonymous) access token
 try {
   const { payload } = await jose.jwtVerify(token, jwks, {
-    issuer: 'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
+    issuer: 'https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID',
     audience: 'YOUR_PROJECT_ID',
   });
 
@@ -191,13 +191,13 @@ To support anonymous sessions, include those keys and allow both issuers and aud
 import * as jose from 'jose';
 
 const jwks = jose.createRemoteJWKSet(
-  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true')
+  new URL('https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true')
 );
 
 const { payload } = await jose.jwtVerify(token, jwks, {
   issuer: [
-    'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
-    'https://api.stack-auth.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
+    'https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID',
+    'https://api.hexclave.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
   ],
   audience: ['YOUR_PROJECT_ID', 'YOUR_PROJECT_ID:anon'],
 });
@@ -209,15 +209,15 @@ To support restricted users (e.g., users who haven't verified their email), add 
 import * as jose from 'jose';
 
 const jwks = jose.createRemoteJWKSet(
-  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true&include_restricted=true')
+  new URL('https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true&include_restricted=true')
 );
 
 // All three user types have different issuers
 const { payload } = await jose.jwtVerify(token, jwks, {
   issuer: [
-    'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
-    'https://api.stack-auth.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
-    'https://api.stack-auth.com/api/v1/projects-restricted-users/YOUR_PROJECT_ID',
+    'https://api.hexclave.com/api/v1/projects/YOUR_PROJECT_ID',
+    'https://api.hexclave.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
+    'https://api.hexclave.com/api/v1/projects-restricted-users/YOUR_PROJECT_ID',
   ],
   audience: ['YOUR_PROJECT_ID', 'YOUR_PROJECT_ID:anon', 'YOUR_PROJECT_ID:restricted'],
 });
@@ -235,25 +235,25 @@ const { payload } = await jose.jwtVerify(token, jwks, {
 
 * **Never store JWTs in localStorage** for sensitive applications
 * Use secure, httpOnly cookies when possible
-* Stack Auth handles secure token storage automatically
+* Hexclave handles secure token storage automatically
 
 ### Token Expiration
 
 * JWTs have a limited lifetime (default is 10 minutes via `STACK_ACCESS_TOKEN_EXPIRATION_TIME`)
-* Stack Auth automatically refreshes tokens before they expire
+* Hexclave automatically refreshes tokens before they expire
 * Always check the `exp` claim when manually handling JWTs
 
 ### Signature Verification
 
 * Always verify JWT signatures using the public key
 * Never trust the contents of a JWT without verification
-* Stack Auth SDKs handle verification automatically
+* Hexclave SDKs handle verification automatically
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"JWT is expired"**: The token has passed its expiration time. Stack Auth will automatically refresh it.
+1. **"JWT is expired"**: The token has passed its expiration time. Hexclave will automatically refresh it.
 
 2. **"Invalid signature"**: The token was tampered with or signed with a different key.
 
@@ -269,7 +269,7 @@ Use a JWT viewer such as [jwt.io](https://jwt.io/) to inspect tokens and verify 
 
 ## Best Practices
 
-1. **Let Stack Auth handle tokens**: Use the provided SDKs instead of manual JWT handling
+1. **Let Hexclave handle tokens**: Use the provided SDKs instead of manual JWT handling
 2. **Validate on the server**: Always verify JWTs on your backend
 3. **Check expiration**: Ensure tokens haven't expired before using them
 4. **Use HTTPS**: Always transmit JWTs over secure connections

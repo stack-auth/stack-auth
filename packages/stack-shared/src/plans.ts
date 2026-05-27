@@ -1,5 +1,5 @@
 /**
- * Plan configuration for Stack Auth pricing tiers.
+ * Plan configuration for Hexclave pricing tiers.
  *
  * This file defines the limits for each plan and the item IDs used to track them.
  * Import these constants in seed.ts and backend code for limit enforcement.

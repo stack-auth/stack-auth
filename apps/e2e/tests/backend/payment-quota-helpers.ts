@@ -4,7 +4,7 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { niceBackendFetch, withInternalProject } from "./backend-helpers";
 
 // Helpers for reading and waiting on payment-item quantities held by an
-// owner team in the internal project (the "billing team" of a Stack Auth
+// owner team in the internal project (the "billing team" of a Hexclave
 // customer's project). Used by tests that need to assert against post-grant
 // quota state without sleeping for arbitrarily-large fixed durations.
 

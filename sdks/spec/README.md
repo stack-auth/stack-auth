@@ -1,6 +1,6 @@
-# Stack Auth SDK Specification
+# Hexclave SDK Specification
 
-This folder contains the specification for Stack Auth's SDKs.
+This folder contains the specification for Hexclave's SDKs.
 
 When writing this specification, try to write imperative pseudocode as much as possible (be explicit about what things are named, etc.).
 
@@ -31,7 +31,7 @@ The languages should adapt:
 - **Error handling**: Exceptions vs Result types (language preference)
 - **Parameter conventions**: Objects vs. kwargs, etc.
 - **Framework hooks**: Eg. for React, add `use*` equivalents to `get*`/`list*` methods
-- **Everything else, wherever it makes sense**: Every language is unique and the patterns will differ. If you have to decide between what's idiomatic in a language vs. what was done in the Stack Auth SDK for other languages, use the idiomatic pattern.
+- **Everything else, wherever it makes sense**: Every language is unique and the patterns will differ. If you have to decide between what's idiomatic in a language vs. what was done in the Hexclave SDK for other languages, use the idiomatic pattern.
 
 ## Implementation Notes
 

@@ -1,17 +1,17 @@
 ---
 title: "Stack CLI"
-description: "Use the Stack Auth CLI to initialize projects, manage config, run admin scripts, and start the local emulator"
+description: "Use the Hexclave CLI to initialize projects, manage config, run admin scripts, and start the local emulator"
 sidebarTitle: "Stack CLI"
 ---
 
-The Stack Auth CLI is published as `@stackframe/stack-cli` and exposes the `stack` command. Use it for project setup, branch config workflows, quick admin scripts, and the [local emulator](/guides/going-further/local-emulator).
+The Hexclave CLI is published as `@hexclave/cli` and exposes the `stack` command. Use it for project setup, branch config workflows, quick admin scripts, and the [local emulator](/guides/going-further/local-emulator).
 
 ## Install
 
 Install the CLI globally to use the `stack` command from any project:
 
 ```sh title="Terminal"
-npm install -g @stackframe/stack-cli@latest
+npm install -g @hexclave/cli@latest
 ```
 
 Then check that it is available:
@@ -20,10 +20,10 @@ Then check that it is available:
 stack --help
 ```
 
-You can also run any command without installing globally by prefixing it with `npx @stackframe/stack-cli@latest`, for example:
+You can also run any command without installing globally by prefixing it with `npx @hexclave/cli@latest`, for example:
 
 ```sh title="Terminal"
-npx @stackframe/stack-cli@latest init
+npx @hexclave/cli@latest init
 ```
 
 ## Global options
@@ -36,7 +36,7 @@ These options can be used before a subcommand:
 | `--json` | Print JSON output for commands that support it, such as `project list` and `project create`. |
 | `--version` | Print the CLI version. |
 
-The CLI reads Stack Auth endpoints from `STACK_API_URL` and `STACK_DASHBOARD_URL`. If unset, it uses Stack Auth Cloud.
+The CLI reads Hexclave endpoints from `STACK_API_URL` and `STACK_DASHBOARD_URL`. If unset, it uses Hexclave Cloud.
 
 ## Authentication
 
@@ -77,7 +77,7 @@ Use `--mode` to skip prompts:
 | Command | What it does |
 | --- | --- |
 | `stack init --mode create --apps authentication,teams` | Create `stack.config.ts` for local config-driven development. |
-| `stack init --mode create-cloud` | Create a new Stack Auth Cloud project and write keys to `.env`. |
+| `stack init --mode create-cloud` | Create a new Hexclave Cloud project and write keys to `.env`. |
 | `stack init --mode link-config --config-file ./stack.config.ts` | Link setup instructions to an existing local config file. |
 | `stack init --mode link-cloud --select-project-id <id>` | Write keys for an existing cloud project to `.env`. |
 
@@ -133,7 +133,7 @@ When running in GitHub Actions, `config push` records `GITHUB_REPOSITORY`, `GITH
 
 ## Execute admin JavaScript
 
-`stack exec` runs JavaScript with a preconfigured `StackServerApp` available as `stackServerApp`.
+`stack exec` runs JavaScript with a preconfigured `HexclaveServerApp` available as `stackServerApp`.
 
 ```sh title="Terminal"
 stack --project-id <project-id> exec "return await stackServerApp.listUsers()"

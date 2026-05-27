@@ -118,7 +118,7 @@ export const ALL_APPS_FRONTEND = {
     screenshots: getScreenshots('auth', 6),
     storeDescription: (
       <>
-        <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
+        <p>Authentication centralizes everything you need to operate your Hexclave user directory.</p>
         <p>Tune sign-up behavior and configure auth methods without leaving the dashboard.</p>
         <p>When it is time to harden production, you can pair these controls with project-level guardrails.</p>
       </>
@@ -365,24 +365,24 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Setup", href: "." },
     ],
     screenshots: getScreenshots('vercel', 2),
-    storeDescription: <>Deploy your Stack Auth project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Stack Auth integration.</>,
+    storeDescription: <>Deploy your Hexclave project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Hexclave integration.</>,
   },
   "tanstack-start": {
     icon: CodeIcon,
     logo: () => <Image src={TanStackStartLogo} alt="TanStack Start logo" />,
     href: "tanstack-start",
-    documentationHref: "https://docs.stack-auth.com/guides/integrations/tanstack-start/overview",
+    documentationHref: "https://docs.hexclave.com/guides/integrations/tanstack-start/overview",
     navigationItems: [
       {
         displayName: "Docs",
-        href: "https://docs.stack-auth.com/guides/integrations/tanstack-start/overview",
+        href: "https://docs.hexclave.com/guides/integrations/tanstack-start/overview",
         external: true,
       },
     ],
     screenshots: [],
     storeDescription: (
       <>
-        <p>TanStack Start integration adds Stack Auth to full-stack React apps built with TanStack Router and Vite.</p>
+        <p>TanStack Start integration adds Hexclave to full-stack React apps built with TanStack Router and Vite.</p>
         <p>Install the alpha `@stackframe/tanstack-start` package, wire the Stack provider into your root route, and mount the built-in auth handler pages under your app origin.</p>
         <p>The dashboard sidebar entry opens the integration docs so your team can jump back to setup instructions from the project.</p>
       </>

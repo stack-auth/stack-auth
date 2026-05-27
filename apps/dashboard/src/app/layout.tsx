@@ -18,18 +18,18 @@ const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
 export const metadata: Metadata = {
   ...apiUrl ? { metadataBase: new URL(apiUrl) } : {},
   title: {
-    default: 'Stack Auth Dashboard',
-    template: '%s | Stack Auth',
+    default: 'Hexclave Dashboard',
+    template: '%s | Hexclave',
   },
-  description: 'Stack Auth is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',
+  description: 'Hexclave is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',
   openGraph: {
-    title: 'Stack Auth Dashboard',
-    description: 'Stack Auth is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',
+    title: 'Hexclave Dashboard',
+    description: 'Hexclave is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',
     ...apiUrl ? { images: [`${apiUrl}/open-graph-image.png`] } : {},
   },
   twitter: {
-    title: 'Stack Auth Dashboard',
-    description: 'Stack Auth is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',
+    title: 'Hexclave Dashboard',
+    description: 'Hexclave is the open-source Auth0 alternative, and the fastest way to add authentication to your web app.',
     ...apiUrl ? { images: [`${apiUrl}/open-graph-image.png`] } : {},
   },
 };

@@ -149,12 +149,12 @@ it("should throw a helpful error when destructuring user", async ({ expect }) =>
 
   const currentUser = await clientApp.getUser({ or: "throw" });
   const accessClientUser = () => (currentUser as any).user;
-  expect(accessClientUser).toThrowError("Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.");
+  expect(accessClientUser).toThrowError("Hexclave: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.");
 
   const serverUser = await serverApp.getUser(currentUser.id);
   if (!serverUser) {
     throw new Error("Expected server user to exist for destructure guard test");
   }
   const accessServerUser = () => (serverUser as any).user;
-  expect(accessServerUser).toThrowError("Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.");
+  expect(accessServerUser).toThrowError("Hexclave: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.");
 });

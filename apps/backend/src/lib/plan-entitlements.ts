@@ -6,7 +6,7 @@ import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/erro
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "./tenancies";
 
 /**
- * Whether Stack Auth's own plan-limit enforcement (quotas like `analytics_events`,
+ * Whether Hexclave's own plan-limit enforcement (quotas like `analytics_events`,
  * `session_replays`, `emails_per_month`, the `auth_users` soft cap, and the
  * `dashboard_admins` seat check) should be enforced for billing teams in the
  * internal tenancy.
@@ -136,7 +136,7 @@ async function getTeamWideItemCapacity(
     ),
   },
 ): Promise<number> {
-  // Capacity metric: entitlement from Stack Auth payments for a specific item.
+  // Capacity metric: entitlement from Hexclave payments for a specific item.
   if (!TEAM_WIDE_CAPACITY_ITEM_IDS.has(itemId)) {
     throw new HexclaveAssertionError("Unsupported team-wide capacity item id", { itemId });
   }
