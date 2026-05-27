@@ -290,7 +290,8 @@ export class EventTracker {
     }
 
     if (!res.data.ok) {
-      captureWarning("EventTracker.flush()", new Error(`EventTracker flush failed: ${res.data.status} ${await res.data.text()}`));
+      const body = await res.data.text().catch(() => "<unable to read response body>");
+      captureWarning("EventTracker.flush()", new Error(`EventTracker flush failed: ${res.data.status} ${body}`));
     }
   }
 

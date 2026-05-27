@@ -261,7 +261,8 @@ export class SessionRecorder {
       }
 
       if (!res.data.ok) {
-        captureWarning("SessionRecorder.flush()", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
+        const body = await res.data.text().catch(() => "<unable to read response body>");
+        captureWarning("SessionRecorder.flush()", new Error(`SessionRecorder flush failed: ${res.data.status} ${body}`));
       }
     } finally {
       this._flushInProgress = false;
