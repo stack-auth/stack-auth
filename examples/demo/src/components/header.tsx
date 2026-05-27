@@ -17,7 +17,6 @@ export default function Header() {
               alt="Hexclave Logo"
               width={64}
               height={64}
-              className="dark:invert"
             />
             Demo
           </Link>
