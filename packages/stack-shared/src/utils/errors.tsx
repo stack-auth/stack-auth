@@ -94,16 +94,23 @@ export function errorToNiceString(error: unknown): string {
 }
 
 
-const errorSinks = new Set<(location: string, error: unknown, ...extraArgs: unknown[]) => void>();
-export function registerErrorSink(sink: (location: string, error: unknown) => void): void {
+export type CaptureLevel = "error" | "warning";
+
+type ErrorSink = (location: string, error: unknown, level: CaptureLevel, ...extraArgs: unknown[]) => void;
+
+const errorSinks = new Set<ErrorSink>();
+export function registerErrorSink(sink: ErrorSink): void {
   if (errorSinks.has(sink)) {
     return;
   }
   errorSinks.add(sink);
 }
-registerErrorSink((location, error, ...extraArgs) => {
-  console.error(
-    `\x1b[41mCaptured error in ${location}:`,
+registerErrorSink((location, error, level, ...extraArgs) => {
+  const logger = level === "warning" ? console.warn : console.error;
+  const colorCode = level === "warning" ? "\x1b[43m" : "\x1b[41m";
+  const label = level === "warning" ? "warning" : "error";
+  logger(
+    `${colorCode}Captured ${label} in ${location}:`,
     // HACK: Log a nicified version of the error to get around buggy Next.js pretty-printing
     // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
     errorToNiceString(error),
@@ -111,10 +118,21 @@ registerErrorSink((location, error, ...extraArgs) => {
     "\x1b[0m",
   );
 });
-registerErrorSink((location, error, ...extraArgs) => {
+registerErrorSink((location, error, level, ...extraArgs) => {
   globalVar.stackCapturedErrors = globalVar.stackCapturedErrors ?? [];
-  globalVar.stackCapturedErrors.push({ location, error, extraArgs });
+  globalVar.stackCapturedErrors.push({ location, error, level, extraArgs });
 });
+
+function dispatchToSinks(location: string, error: unknown, level: CaptureLevel): void {
+  for (const sink of errorSinks) {
+    sink(
+      location,
+      error,
+      level,
+      ...error && (typeof error === 'object' || typeof error === 'function') && "customCaptureExtraArgs" in error && Array.isArray(error.customCaptureExtraArgs) ? (error.customCaptureExtraArgs as any[]) : [],
+    );
+  }
+}
 
 /**
  * Captures an error and sends it to the error sinks (most notably, Sentry). Errors caught with captureError are
@@ -126,13 +144,15 @@ registerErrorSink((location, error, ...extraArgs) => {
  * Errors that bubble up to the top of runAsynchronously or a route handler are already captured with captureError.
  */
 export function captureError(location: string, error: unknown): void {
-  for (const sink of errorSinks) {
-    sink(
-      location,
-      error,
-      ...error && (typeof error === 'object' || typeof error === 'function') && "customCaptureExtraArgs" in error && Array.isArray(error.customCaptureExtraArgs) ? (error.customCaptureExtraArgs as any[]) : [],
-    );
-  }
+  dispatchToSinks(location, error, "error");
+}
+
+/**
+ * Like captureError, but logs at warning level. Use for issues that an engineer should know about but that aren't
+ * severe enough to be treated as an error (e.g. recoverable failures in background tasks).
+ */
+export function captureWarning(location: string, error: unknown): void {
+  dispatchToSinks(location, error, "warning");
 }
 
 
