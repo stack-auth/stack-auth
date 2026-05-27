@@ -1,7 +1,17 @@
 import { StyledLink } from "@/components/link";
 import { StackHandler } from "@stackframe/stack";
+import { DashboardAccountSettingsPage } from "@/components/dashboard-account-settings/dashboard-account-settings-page";
 
-export default function Handler(props: unknown) {
+export default async function Handler(props: {
+  params: Promise<{ stack?: string[] }>,
+}) {
+  const params = await props.params;
+  const stack = params.stack || [];
+
+  if (stack.join("/") === "account-settings") {
+    return <DashboardAccountSettingsPage />;
+  }
+
   const extraInfo = <>
     <p className="text-xs">By signing in, you agree to the</p>
     <p className="text-xs"><StyledLink href="https://www.iubenda.com/privacy-policy/19290387/cookie-policy">Terms of Service</StyledLink> and <StyledLink href="https://www.iubenda.com/privacy-policy/19290387">Privacy Policy</StyledLink></p>
@@ -17,7 +27,10 @@ export default function Handler(props: unknown) {
     <div data-stack-handler-page className="min-h-screen">
       <StackHandler
         fullPage
-        componentProps={{ SignIn: { extraInfo }, SignUp: { extraInfo } }}
+        componentProps={{
+          SignIn: { extraInfo },
+          SignUp: { extraInfo },
+        }}
       />
     </div>
   );
