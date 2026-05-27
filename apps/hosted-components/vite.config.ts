@@ -88,7 +88,7 @@ export default defineConfig({
     nitro({
       config: {
         scanDirs: [
-          'server',
+          'src/server',
         ],
       },
     }),

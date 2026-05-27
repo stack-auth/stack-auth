@@ -8,11 +8,7 @@ export const llmsTxt = deindent`
   ${remindersPrompt}
 `;
 
-export const llmsFullTxt = deindent`
-  # Hexclave
-
-  ${skillSitePrompt}
-`;
+export const llmsFullTxt = skillSitePrompt;
 
 export const llmsTextHeaders = {
   "Cache-Control": "public, max-age=3600, s-maxage=3600",

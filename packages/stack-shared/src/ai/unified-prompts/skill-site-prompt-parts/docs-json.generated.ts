@@ -2,7 +2,7 @@
 
 const docsJson = {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "Stack Auth Documentation",
+  "name": "Hexclave Documentation",
   "theme": "mint",
   "logo": {
     "dark": "/images/logo-dark.svg",
@@ -19,6 +19,24 @@ const docsJson = {
       "dark": "#09090b"
     }
   },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "assistant",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "grok",
+      "aistudio",
+      "devin",
+      "windsurf",
+      "mcp",
+      "cursor",
+      "vscode",
+      "devin-mcp"
+    ]
+  },
   "fonts": {
     "heading": {
       "family": "Geist",
@@ -33,13 +51,13 @@ const docsJson = {
     "links": [
       {
         "type": "github",
-        "href": "https://github.com/hexclave/stack-auth"
+        "href": "https://github.com/hexclave/hexclave"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Dashboard",
-      "href": "https://app.stack-auth.com"
+      "href": "https://app.hexclave.com"
     }
   },
   "navigation": {
@@ -134,10 +152,11 @@ const docsJson = {
             "pages": [
               "guides/other/self-host",
               "guides/other/known-errors",
+              "migration",
               {
                 "group": "Tutorials",
                 "pages": [
-                  "guides/other/tutorials/build-a-saas-with-stack-auth",
+                  "guides/other/tutorials/build-a-saas-with-hexclave",
                   "guides/other/tutorials/build-a-team-based-app",
                   "guides/other/tutorials/ship-production-ready-auth"
                 ]
@@ -223,7 +242,7 @@ const docsJson = {
     "socials": {
       "x": "https://x.com/stack_auth",
       "github": "https://github.com/hexclave/stack",
-      "discord": "https://discord.stack-auth.com"
+      "discord": "https://discord.hexclave.com"
     }
   },
   "seo": {
@@ -237,7 +256,52 @@ const docsJson = {
       "/code-language-labels.js"
     ]
   },
-  "redirects": []
+  "redirects": [
+    {
+      "source": "/rest-api/overview",
+      "destination": "/api/overview"
+    },
+    {
+      "source": "/getting-started/setup",
+      "destination": "/guides/getting-started/setup"
+    },
+    {
+      "source": "/docs/getting-started/setup",
+      "destination": "/guides/getting-started/setup"
+    },
+    {
+      "source": "/docs/next/getting-started/setup",
+      "destination": "/guides/getting-started/setup"
+    },
+    {
+      "source": "/docs/sdk",
+      "destination": "/sdk/overview"
+    },
+    {
+      "source": "/docs/apps/analytics",
+      "destination": "/guides/apps/analytics/overview"
+    },
+    {
+      "source": "/docs/apps/api-keys",
+      "destination": "/guides/apps/api-keys/overview"
+    },
+    {
+      "source": "/docs/others/convex",
+      "destination": "/guides/integrations/convex/overview"
+    },
+    {
+      "source": "/docs/concepts/teams",
+      "destination": "/guides/apps/teams/overview"
+    },
+    {
+      "source": "/docs/concepts/custom-user-data",
+      "destination": "/guides/going-further/user-metadata"
+    },
+    {
+      "source": "/others/js-client",
+      "destination": "/guides/going-further/stack-app"
+    }
+  ]
 } as const;
 
 export default docsJson;
