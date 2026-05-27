@@ -388,6 +388,9 @@ importers:
       '@monaco-editor/react':
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@oslojs/otp':
+        specifier: ^1.1.0
+        version: 1.1.0
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -493,6 +496,9 @@ importers:
       '@stackframe/stack-shared':
         specifier: workspace:*
         version: link:../../packages/stack-shared
+      '@stackframe/stack-ui':
+        specifier: workspace:*
+        version: link:../../packages/stack-ui
       '@stripe/connect-js':
         specifier: ^3.3.27
         version: 3.3.27
@@ -568,6 +574,9 @@ importers:
       posthog-js:
         specifier: ^1.336.1
         version: 1.336.1
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -577,6 +586,9 @@ importers:
       react-dom:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
+      react-easy-crop:
+        specifier: ^5.5.6
+        version: 5.5.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react-globe.gl:
         specifier: ^2.28.2
         version: 2.28.2(react@19.2.3)
@@ -638,6 +650,9 @@ importers:
       '@types/node':
         specifier: 20.17.6
         version: 20.17.6
+      '@types/qrcode':
+        specifier: ^1.5.5
+        version: 1.5.5
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
