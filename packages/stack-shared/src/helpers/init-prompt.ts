@@ -3,30 +3,30 @@ import { aiSetupPrompt } from "../ai/unified-prompts/skill-site-prompt-parts/ai-
 function getCliProjectSetupContext(configPath?: string): string {
   if (configPath != null) {
     return `
-The Stack Auth CLI already created or linked this project to a local Stack Auth development environment config file:
+The Hexclave CLI already created or linked this project to a local Hexclave development environment config file:
 
 \`\`\`text
 ${configPath}
 \`\`\`
 
-Do not create or link another Stack Auth project. When the SDK setup instructions mention creating \`stack.config.ts\` or wrapping the dev script with \`stack dev --config-file\`, use the config file path above.
+Do not create or link another Hexclave project. When the SDK setup instructions mention creating \`stack.config.ts\` or wrapping the dev script with \`stack dev --config-file\`, use the config file path above.
 `;
   }
 
   return `
-The Stack Auth CLI already created or linked this project to a hosted Stack Auth cloud project and wrote or printed the Stack Auth environment variables.
+The Hexclave CLI already created or linked this project to a hosted Hexclave cloud project and wrote or printed the Hexclave environment variables.
 
-Do not create or link another Stack Auth project. Use the existing environment variables in this workspace. If the variables were printed instead of written because the user declined to append them to an env file, tell the user exactly which variables still need to be added.
+Do not create or link another Hexclave project. Use the existing environment variables in this workspace. If the variables were printed instead of written because the user declined to append them to an env file, tell the user exactly which variables still need to be added.
 `;
 }
 
 export const createInitPrompt = (web: boolean, configPath?: string) => `=============================
-STACK AUTH SETUP INSTRUCTIONS
+HEXCLAVE SETUP INSTRUCTIONS
 =============================
 
-These instructions describe how to set up Stack Auth.
+These instructions describe how to set up Hexclave.
 ${web ? `
-First of all, if you have access to a terminal, it is better to use \`npx @stackframe/stack-cli init\`.
+First of all, if you have access to a terminal, it is better to use \`npx @hexclave/cli init\`.
 ` : ""}
 
 ${getCliProjectSetupContext(configPath)}

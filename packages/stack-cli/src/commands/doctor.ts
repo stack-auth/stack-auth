@@ -51,7 +51,7 @@ type Report = {
 export function registerDoctorCommand(program: Command) {
   program
     .command("doctor")
-    .description("Check that Stack Auth is correctly wired up in your project")
+    .description("Check that Hexclave is correctly wired up in your project")
     .option("--output-dir <dir>", "Project root to inspect (defaults to cwd)")
     .option("--framework <fw>", "Override framework detection (next | react | js)")
     .option("--json", "Emit a machine-readable JSON report")
@@ -177,7 +177,7 @@ function resolveFramework(
     if (!hasAppRouter) {
       return {
         kind: "unsupported",
-        reason: "Detected Next.js but no app router (app/ or src/app/). The pages router is not yet supported by Stack Auth doctor.",
+        reason: "Detected Next.js but no app router (app/ or src/app/). The pages router is not yet supported by Hexclave doctor.",
       };
     }
     return { kind: "ok", value: "next" };
@@ -534,7 +534,7 @@ function renderHuman(report: Report) {
       report.framework === "react" ? "React" :
         "JS / Node";
 
-  console.log(`\nStack Auth doctor — ${frameworkName} project at ${report.projectDir}\n`);
+  console.log(`\nHexclave doctor — ${frameworkName} project at ${report.projectDir}\n`);
 
   for (const r of report.checks) {
     const icon =

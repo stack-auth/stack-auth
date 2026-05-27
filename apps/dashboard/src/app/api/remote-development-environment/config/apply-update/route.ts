@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "session_id or project_id, and config_update object are required." }, { status: 400 });
   }
   if (!isValidConfig(body.config_update)) {
-    return NextResponse.json({ error: "config_update must be a valid Stack Auth config object." }, { status: 400 });
+    return NextResponse.json({ error: "config_update must be a valid Hexclave config object." }, { status: 400 });
   }
 
   await applyRemoteDevelopmentEnvironmentConfigUpdate({

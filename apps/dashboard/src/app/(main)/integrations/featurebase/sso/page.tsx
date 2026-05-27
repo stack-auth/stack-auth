@@ -41,7 +41,7 @@ export default async function FeaturebaseSSO({
   const jwt = await new jose.SignJWT({
     userId: featurebaseUser.userId,
     email: featurebaseUser.email,
-    name: user.displayName || 'Stack Auth User',
+    name: user.displayName || 'Hexclave User',
     profilePicture: user.profileImageUrl || undefined,
   })
     .setProtectedHeader({ alg: "HS256" })
@@ -50,7 +50,7 @@ export default async function FeaturebaseSSO({
     .sign(secret);
 
   // Redirect to Featurebase with JWT and return_to
-  const featurebaseUrl = new URL("https://feedback.stack-auth.com/api/v1/auth/access/jwt");
+  const featurebaseUrl = new URL("https://feedback.hexclave.com/api/v1/auth/access/jwt");
   featurebaseUrl.searchParams.set("jwt", jwt);
   featurebaseUrl.searchParams.set("return_to", returnTo);
 

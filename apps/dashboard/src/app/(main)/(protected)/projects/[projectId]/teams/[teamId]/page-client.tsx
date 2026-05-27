@@ -27,7 +27,7 @@ import { useAdminApp } from '../../use-admin-app';
 import { TeamAnalyticsSection } from './team-analytics';
 import { TeamPaymentsSection } from './team-payments';
 
-const teamMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/teams";
+const teamMetadataDocsUrl = "https://docs.hexclave.com/docs/concepts/teams";
 
 const inviteFormSchema = yupObject({
   email: strictEmailSchema("Please enter a valid email address").defined(),

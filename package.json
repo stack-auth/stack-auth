@@ -2,7 +2,7 @@
   "name": "@stackframe/monorepo",
   "version": "0.0.0",
   "private": true,
-  "repository": "https://github.com/hexclave/stack-auth",
+  "repository": "https://github.com/hexclave/hexclave",
   "scripts": {
     "pre-no-codegen": "pnpm exec only-allow pnpm",
     "pre-preinstall": "pnpx only-allow@1.2.2 pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('pnpm exec tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",

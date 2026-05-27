@@ -29,8 +29,8 @@ function ClientAuthDemoPage() {
   return (
     <AuthDemoCard
       eyebrow="Client-only route"
-      title="Stack Auth user fetched in the browser"
-      description="This route opts out of SSR with ssr: false. The UI is rendered on the client, and Stack Auth resolves the current user from the browser token store."
+      title="Hexclave user fetched in the browser"
+      description="This route opts out of SSR with ssr: false. The UI is rendered on the client, and Hexclave resolves the current user from the browser token store."
       user={user}
       code={clientSnippet}
     />

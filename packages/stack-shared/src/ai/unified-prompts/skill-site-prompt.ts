@@ -22,23 +22,23 @@ export const skillSitePrompt = deindent`
 
   ${docsIndexPrompt}
 
-  The MCP server lives at https://mcp.stack-auth.com. If you need to answer a specific Stack Auth question and the MCP server is registered for this agent, prefer the \`ask_stack_auth\` tool — it searches the docs with citations.
+  The MCP server lives at https://mcp.hexclave.com. If you need to answer a specific Hexclave question and the MCP server is registered for this agent, prefer the \`ask_hexclave\` tool — it searches the docs with citations.
 
-  ## Using the Stack Auth CLI
+  ## Using the Hexclave CLI
 
-  The CLI (\`stack-cli\`) is the fastest path for anything project-level. It is installed on demand via \`npx\` — no global install required. Every command below can be invoked as \`npx @stackframe/stack-cli@latest <command>\`.
+  The CLI (\`hexclave\`) is the fastest path for anything project-level. It is installed on demand via \`npx\` — no global install required. Every command below can be invoked as \`npx @hexclave/cli@latest <command>\`.
 
   ${cliHelpPrompt}
 
-  ## Using the Stack Auth dashboard
+  ## Using the Hexclave dashboard
 
   ${dashboardInstructionsPrompt}
 
-  ## The Stack Auth config format
+  ## The Hexclave config format
 
   ${configDocsPrompt}
 
-  ## Using Stack Auth's SDKs
+  ## Using Hexclave's SDKs
 
   ${sdkInterfaceSourcePrompt}
 
@@ -46,13 +46,13 @@ export const skillSitePrompt = deindent`
 
   ${customComponentsInstructionsPrompt}
 
-  ## All Stack Auth concepts
+  ## All Hexclave concepts
 
   ${brainPrompt}
 
-  ## Setting up Stack Auth
-  
-  Below is the document that is used to guide you to set up Stack Auth in your project. If you are not setting up Stack Auth in your project, you can ignore this section.
+  ## Setting up Hexclave
+
+  Below is the document that is used to guide you to set up Hexclave in your project. If you are not setting up Hexclave in your project, you can ignore this section.
 
   <hexclave-setup-section>
   ${aiSetupPrompt}

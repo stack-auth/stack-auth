@@ -449,7 +449,7 @@ Notes:
 | Old (kept) | New (mirrored) |
 |---|---|
 | `@stackframe/react` | `@hexclave/react` |
-| `@stackframe/stack` | `@hexclave/stack` |
+| `@stackframe/stack` | `@hexclave/next` |
 | `@stackframe/js` | `@hexclave/js` |
 | `@stackframe/stack-shared` | `@hexclave/shared` |
 | `@stackframe/stack-ui` | `@hexclave/ui` |
@@ -950,7 +950,7 @@ Compatibility-sensitive enough to be part of the implementation plan, not implic
 
 ### Packages
 - [ ] `npm install @stackframe/stack` → imports `StackClientApp` AND `HexclaveClientApp`
-- [ ] `npm install @hexclave/stack` → same, both aliases available
+- [ ] `npm install @hexclave/next` → same, both aliases available
 - [ ] Generated `.d.ts` exposes both names
 - [ ] Source maps resolve
 - [ ] Both packages can be installed side-by-side without conflicts

@@ -10,8 +10,8 @@ import { getDefaultApiUrls } from "@stackframe/stack-shared/dist/utils/urls";
  *
  * Example:
  * {
- *   "0.7": ["https://api.stack-auth.com", "https://api2.stack-auth.com"],
- *   "0.3": ["https://api2.stack-auth.com", "https://api.stack-auth.com"]
+ *   "0.7": ["https://api.hexclave.com", "https://api2.hexclave.com"],
+ *   "0.3": ["https://api2.hexclave.com", "https://api.hexclave.com"]
  * }
  */
 

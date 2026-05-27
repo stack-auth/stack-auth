@@ -8,7 +8,7 @@ function getEnvFileContent(props: {
   superSecretAdminKey?: string,
 }) {
   const envFileContent = Object.entries({
-    NEXT_PUBLIC_STACK_API_URL: getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL'),
+    NEXT_PUBLIC_STACK_API_URL: getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.hexclave.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL'),
     NEXT_PUBLIC_STACK_PROJECT_ID: props.projectId,
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: props.publishableClientKey,
     STACK_SECRET_SERVER_KEY: props.secretServerKey,
@@ -133,9 +133,9 @@ export function ViteEnvKeys(props: {
   secretServerKey?: string,
 }) {
   const envFileContent = Object.entries({
-    VITE_STACK_API_URL: getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL'),
-    VITE_STACK_PROJECT_ID: props.projectId,
-    STACK_SECRET_SERVER_KEY: props.secretServerKey,
+    VITE_HEXCLAVE_API_URL: getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.hexclave.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL'),
+    VITE_HEXCLAVE_PROJECT_ID: props.projectId,
+    HEXCLAVE_SECRET_SERVER_KEY: props.secretServerKey,
   })
     .filter(([, value]) => value != null)
     .map(([key, value]) => `${key}=${value}`)

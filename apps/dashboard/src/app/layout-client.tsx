@@ -124,7 +124,7 @@ function DevEnvironmentStoppedScreen(props: { restartCommand: string }) {
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">The dev environment is not currently running</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Your Stack Auth changes have been saved. The local Stack Auth development environment just is not active right now, so the dashboard has paused instead of showing stale project data.
+          Your Hexclave changes have been saved. The local Hexclave development environment just is not active right now, so the dashboard has paused instead of showing stale project data.
         </p>
         <p className="mt-4 text-sm leading-6 text-muted-foreground">
           Restart it from your terminal with:

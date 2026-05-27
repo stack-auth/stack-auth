@@ -25,7 +25,7 @@ describe("dev env state", () => {
   it("uses the Windows local app data directory by default on Windows", () => {
     vi.spyOn(process, "platform", "get").mockReturnValue("win32");
     process.env.LOCALAPPDATA = "C:\\Users\\Test\\AppData\\Local";
-    expect(devEnvStatePath()).toBe(join("C:\\Users\\Test\\AppData\\Local", "Stack Auth", "dev-envs.json"));
+    expect(devEnvStatePath()).toBe(join("C:\\Users\\Test\\AppData\\Local", "Hexclave", "dev-envs.json"));
   });
 
   it("returns an empty v1 state when no file exists", () => {

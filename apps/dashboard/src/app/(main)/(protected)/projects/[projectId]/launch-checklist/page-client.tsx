@@ -37,7 +37,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       docsUrl:
         "https://developers.google.com/identity/protocols/oauth2#1.-obtain-oauth-2.0-credentials-from-the-dynamic_data.setvar.console_name-.",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/google",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/google",
     },
   ],
   [
@@ -47,7 +47,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       docsUrl:
         "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/github",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/github",
     },
   ],
   [
@@ -57,7 +57,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       docsUrl:
         "https://developers.facebook.com/docs/development/create-an-app/facebook-login-use-case",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/facebook",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/facebook",
     },
   ],
   [
@@ -67,7 +67,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       docsUrl:
         "https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/microsoft",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/microsoft",
     },
   ],
   [
@@ -77,7 +77,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       docsUrl:
         "https://developer.spotify.com/documentation/general/guides/app-settings/",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/spotify",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/spotify",
     },
   ],
   [
@@ -86,7 +86,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       label: "GitLab",
       docsUrl: "https://docs.gitlab.com/ee/integration/oauth_provider.html",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/gitlab",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/gitlab",
     },
   ],
   [
@@ -96,7 +96,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       docsUrl:
         "https://support.atlassian.com/bitbucket-cloud/docs/use-oauth-on-bitbucket-cloud",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/bitbucket",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/bitbucket",
     },
   ],
   [
@@ -106,7 +106,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       docsUrl:
         "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow?context=linkedin%2Fcontext&tabs=HTTPS1",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/linkedin",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/linkedin",
     },
   ],
   [
@@ -115,7 +115,7 @@ const PROVIDER_GUIDES: ReadonlyMap<string, ProviderGuide> = new Map([
       label: "X",
       docsUrl: "https://developer.x.com/en/docs/apps/overview",
       callbackUrl:
-        "https://api.stack-auth.com/api/v1/auth/oauth/callback/x",
+        "https://api.hexclave.com/api/v1/auth/oauth/callback/x",
     },
   ],
 ]);

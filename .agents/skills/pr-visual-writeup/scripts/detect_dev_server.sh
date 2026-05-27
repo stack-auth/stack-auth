@@ -4,8 +4,8 @@
 #
 # Output (one per line):  <port>\t<title>\t<url>
 # Example:
-#   8101    Stack Auth Dashboard    http://localhost:8101
-#   8102    Stack Auth API          http://localhost:8102
+#   8101    Hexclave Dashboard    http://localhost:8101
+#   8102    Hexclave API          http://localhost:8102
 #
 # Use the output to pick the right port for screenshotting. A common convention
 # is that the "dashboard" / "app" is the one you want; the API/docs/OAuth servers

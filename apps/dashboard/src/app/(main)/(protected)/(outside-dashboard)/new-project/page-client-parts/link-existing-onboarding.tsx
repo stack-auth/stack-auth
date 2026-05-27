@@ -482,8 +482,8 @@ export function LinkExistingOnboarding(props: Props) {
   const [gitTreeTruncated, setGitTreeTruncated] = useState(false);
   const [loadingConfigPathSuggestions, setLoadingConfigPathSuggestions] = useState(false);
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("chore(stack-auth): add Stack Auth config sync workflow");
-  const [commitDescription, setCommitDescription] = useState("Add a GitHub Actions workflow that pushes stack.config to Stack Auth whenever it changes.");
+  const [commitMessage, setCommitMessage] = useState("chore(stack-auth): add Hexclave config sync workflow");
+  const [commitDescription, setCommitDescription] = useState("Add a GitHub Actions workflow that pushes stack.config to Hexclave whenever it changes.");
   const [isSettingUpGithubWorkflow, setIsSettingUpGithubWorkflow] = useState(false);
   const [isCheckingSource, setIsCheckingSource] = useState(false);
   const [isAwaitingLocalPush, setIsAwaitingLocalPush] = useState(false);
@@ -1093,7 +1093,7 @@ export function LinkExistingOnboarding(props: Props) {
           hasSuperSecretAdminKey: false,
         });
         if (createdApiKey.secretServerKey == null) {
-          throw new Error("Stack Auth did not return a secret server key.");
+          throw new Error("Hexclave did not return a secret server key.");
         }
         secretServerKey = createdApiKey.secretServerKey;
         setGeneratedSecretServerKey(secretServerKey);
@@ -1109,7 +1109,7 @@ export function LinkExistingOnboarding(props: Props) {
       appendLog(`Setting ${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} secret...`);
       await upsertGitHubSecret(owner, repo, GITHUB_SECRET_SERVER_KEY_SECRET_NAME, secretServerKey, publicKey);
 
-      appendLog("Creating Stack Auth sync workflow commit...");
+      appendLog("Creating Hexclave sync workflow commit...");
       const workflowYaml = buildWorkflowYaml(selectedBranch, configPathInput.trim());
       await createGithubWorkflowCommit(
         owner,
@@ -1127,7 +1127,7 @@ export function LinkExistingOnboarding(props: Props) {
       try {
         appendLog("Dispatching workflow run...");
         await triggerGithubWorkflow(owner, repo, selectedBranch);
-        appendLog("Workflow dispatched. Waiting for Stack Auth push...");
+        appendLog("Workflow dispatched. Waiting for Hexclave push...");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         appendLog(
@@ -1225,8 +1225,8 @@ export function LinkExistingOnboarding(props: Props) {
 
   const canContinue = pushedConfigSource != null && pushedConfigSource.type !== "unlinked";
 
-  const loginCommand = `${packageRunner} @stackframe/stack-cli@latest login`;
-  const configPushCommand = `${packageRunner} @stackframe/stack-cli@latest config push --cloud-project-id ${JSON.stringify(project.id)} --config-file <path-to-your-config-file>`;
+  const loginCommand = `${packageRunner} @hexclave/cli@latest login`;
+  const configPushCommand = `${packageRunner} @hexclave/cli@latest config push --cloud-project-id ${JSON.stringify(project.id)} --config-file <path-to-your-config-file>`;
 
   // Also covers landing back on this step after the connect-account OAuth
   // redirect or a page reload, since the effect runs whenever the account
@@ -1443,7 +1443,7 @@ export function LinkExistingOnboarding(props: Props) {
 
             <div className="space-y-1.5">
               <Typography variant="secondary" className="text-xs font-medium">
-                1. Sign in to Stack Auth
+                1. Sign in to Hexclave
               </Typography>
               <CodeBlock
                 title="Sign in"
@@ -1693,7 +1693,7 @@ export function LinkExistingOnboarding(props: Props) {
     );
   } else if (step === "github-config-path") {
     title = "Select config file";
-    subtitle = "Choose the path to the config file of your Stack Auth project";
+    subtitle = "Choose the path to the config file of your Hexclave project";
 
     content = (
       <div className="space-y-4">
@@ -1945,7 +1945,7 @@ export function LinkExistingOnboarding(props: Props) {
         onClose={() => setIsCommitDialogOpen(false)}
         preventClose={isSettingUpGithubWorkflow}
         title="Create workflow commit"
-        description="Review the commit content used to add the Stack Auth sync workflow."
+        description="Review the commit content used to add the Hexclave sync workflow."
         okButton={{
           label: "Commit and run workflow",
           onClick: async () => {
@@ -1960,7 +1960,7 @@ export function LinkExistingOnboarding(props: Props) {
             <DesignInput
               value={commitMessage}
               onChange={(event) => setCommitMessage(event.target.value)}
-              placeholder="chore(stack-auth): add Stack Auth config sync workflow"
+              placeholder="chore(stack-auth): add Hexclave config sync workflow"
             />
           </div>
           <div className="space-y-2">
@@ -1969,7 +1969,7 @@ export function LinkExistingOnboarding(props: Props) {
               value={commitDescription}
               onChange={(event) => setCommitDescription(event.target.value)}
               className="min-h-[88px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none ring-offset-background transition-colors duration-150 placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring hover:transition-none"
-              placeholder="Add workflow and actions secrets for Stack Auth config push."
+              placeholder="Add workflow and actions secrets for Hexclave config push."
             />
           </div>
           <Typography variant="secondary" className="text-xs">

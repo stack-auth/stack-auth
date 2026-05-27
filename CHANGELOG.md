@@ -1,4 +1,4 @@
-# Stack Auth Changelog
+# Hexclave Changelog
 
 ---
 

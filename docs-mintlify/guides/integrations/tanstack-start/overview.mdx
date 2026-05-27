@@ -1,13 +1,13 @@
 ---
 title: TanStack Start
-description: Add Stack Auth to a TanStack Start app.
+description: Add Hexclave to a TanStack Start app.
 ---
 
 <Info>
-  The `@stackframe/tanstack-start` package is currently alpha. Pin exact package versions before shipping production apps.
+  The `@hexclave/tanstack-start` package is currently alpha. Pin exact package versions before shipping production apps.
 </Info>
 
-TanStack Start is a full-stack React framework built on TanStack Router and Vite. Stack Auth's TanStack Start package provides the same auth components and hooks as the React SDK, with cookie handling wired for TanStack Start.
+TanStack Start is a full-stack React framework built on TanStack Router and Vite. Hexclave's TanStack Start package provides the same auth components and hooks as the React SDK, with cookie handling wired for TanStack Start.
 
 ## Setup
 
@@ -22,16 +22,16 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     TanStack also publishes official examples if you prefer to start from a working project.
   </Step>
 
-  <Step title="Install Stack Auth">
+  <Step title="Install Hexclave">
     Install the alpha TanStack Start package:
 
     ```bash title="Terminal"
-    npm install @stackframe/tanstack-start
+    npm install @hexclave/tanstack-start
     ```
   </Step>
 
-  <Step title="Create Stack Auth keys">
-    In the [Stack Auth dashboard](https://app.stack-auth.com/projects), create a project and add these variables to your TanStack Start environment:
+  <Step title="Create Hexclave keys">
+    In the [Hexclave dashboard](https://app.hexclave.com/projects), create a project and add these variables to your TanStack Start environment:
 
     ```bash title=".env"
     VITE_STACK_PROJECT_ID=<your-project-id>
@@ -45,9 +45,9 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     Create a Stack client app with cookie storage:
 
     ```ts title="src/stack/client.ts"
-    import { StackClientApp } from "@stackframe/tanstack-start";
+    import { HexclaveClientApp } from "@hexclave/tanstack-start";
 
-    export const stackClientApp = new StackClientApp({
+    export const stackClientApp = new HexclaveClientApp({
       projectId: import.meta.env.VITE_STACK_PROJECT_ID,
       tokenStore: "cookie",
       redirectMethod: "window",
@@ -56,10 +56,10 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
   </Step>
 
   <Step title="Wrap the root route">
-    Add `StackProvider` and `StackTheme` around your route outlet:
+    Add `HexclaveProvider` and `HexclaveTheme` around your route outlet:
 
     ```tsx title="src/routes/__root.tsx"
-    import { StackProvider, StackTheme } from "@stackframe/tanstack-start";
+    import { HexclaveProvider, HexclaveTheme } from "@hexclave/tanstack-start";
     import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
     import { stackClientApp } from "../stack/client";
 
@@ -70,11 +70,11 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
 
     function RootComponent() {
       return (
-        <StackProvider app={stackClientApp}>
-          <StackTheme>
+        <HexclaveProvider app={stackClientApp}>
+          <HexclaveTheme>
             <Outlet />
-          </StackTheme>
-        </StackProvider>
+          </HexclaveTheme>
+        </HexclaveProvider>
       );
     }
 
@@ -95,10 +95,10 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
   </Step>
 
   <Step title="Add the auth handler route">
-    Create a splat route at `/handler/*` for Stack Auth's built-in pages:
+    Create a splat route at `/handler/*` for Hexclave's built-in pages:
 
     ```tsx title="src/routes/handler/$.tsx"
-    import { StackHandler } from "@stackframe/tanstack-start";
+    import { HexclaveHandler } from "@hexclave/tanstack-start";
     import { createFileRoute, useLocation } from "@tanstack/react-router";
 
     export const Route = createFileRoute("/handler/$")({
@@ -108,7 +108,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
 
     function HandlerPage() {
       const { pathname } = useLocation();
-      return <StackHandler fullPage location={pathname} />;
+      return <HexclaveHandler fullPage location={pathname} />;
     }
     ```
   </Step>
@@ -117,7 +117,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     Use Stack hooks from inside components rendered under the provider:
 
     ```tsx title="src/routes/index.tsx"
-    import { useUser } from "@stackframe/tanstack-start";
+    import { useUser } from "@hexclave/tanstack-start";
     import { createFileRoute, Link } from "@tanstack/react-router";
 
     export const Route = createFileRoute("/")({
@@ -138,7 +138,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     Routes that use browser redirects should render on the client:
 
     ```tsx title="src/routes/protected.tsx"
-    import { useUser } from "@stackframe/tanstack-start";
+    import { useUser } from "@hexclave/tanstack-start";
     import { createFileRoute } from "@tanstack/react-router";
 
     export const Route = createFileRoute("/protected")({
@@ -160,7 +160,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
 - Render the handler route on the client (`ssr: false`) because built-in auth pages read browser location state.
 - Render routes that rely on `useUser({ or: "redirect" })` on the client (`ssr: false`) when using `redirectMethod: "window"`.
 - Use `redirectMethod: "window"` unless you explicitly wire a TanStack Router navigation adapter.
-- If you change auth routes, configure the matching `urls` on `StackClientApp`.
+- If you change auth routes, configure the matching `urls` on `HexclaveClientApp`.
 - For server-only logic, use TanStack Start server functions and keep `STACK_SECRET_SERVER_KEY` out of client modules.
 
 For TanStack Start framework details, see the [TanStack Start quick start](https://tanstack.com/start/latest/docs/framework/react/quick-start) and [server functions guide](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions).

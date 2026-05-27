@@ -1,6 +1,6 @@
 ---
 title: "StackApp"
-description: "Reference documentation for StackClientApp and StackServerApp objects."
+description: "Reference documentation for HexclaveClientApp and HexclaveServerApp objects."
 sidebarTitle: "StackApp"
 mode: "wide"
 ---
@@ -18,22 +18,22 @@ This is a detailed reference for the `StackApp` object. If you're looking for a 
 
 ## Overview
 
-- [StackClientApp](#stackclientapp) - Client-level permissions for frontend code
-- [StackServerApp](#stackserverapp) - Server-level permissions with full access
+- [HexclaveClientApp](#stackclientapp) - Client-level permissions for frontend code
+- [HexclaveServerApp](#stackserverapp) - Server-level permissions with full access
 
 ---
 
-# StackClientApp
+# HexclaveClientApp
 
 A `StackApp` with client-level permissions. It contains most of the useful methods and hooks for your client-side code.
 
-Most commonly you get an instance of `StackClientApp` by calling [`useStackApp()`](/sdk/hooks/use-stack-app) in a Client Component.
+Most commonly you get an instance of `HexclaveClientApp` by calling [`useHexclaveApp()`](/sdk/hooks/use-stack-app) in a Client Component.
 
 ## Table of Contents
 
 ```typescript
-type StackClientApp = {
-  new(options): StackClientApp;
+type HexclaveClientApp = {
+  new(options): HexclaveClientApp;
 
   getUser([options]): Promise<User>;
   useUser([options]): User;
@@ -50,16 +50,16 @@ type StackClientApp = {
 
 ## Constructor
 
-Creates a new `StackClientApp` instance.
+Creates a new `HexclaveClientApp` instance.
 
-Because each app creates a new connection to Stack Auth's backend, you should re-use existing instances wherever possible.
+Because each app creates a new connection to Hexclave's backend, you should re-use existing instances wherever possible.
 
 <Info>
-This object is not usually constructed directly. More commonly, you would construct a [`StackServerApp`](#stackserverapp) instead, pass it into your app setup (see the [setup guide](/guides/getting-started/setup)), and then use the `useStackApp()` hook to obtain a `StackClientApp`.
+This object is not usually constructed directly. More commonly, you would construct a [`HexclaveServerApp`](#stackserverapp) instead, pass it into your app setup (see the [setup guide](/guides/getting-started/setup)), and then use the `useHexclaveApp()` hook to obtain a `HexclaveClientApp`.
 
-The [setup wizard](/guides/getting-started/setup) does these steps for you, so you don't need to worry about it unless you are manually setting up Stack Auth.
+The [setup wizard](/guides/getting-started/setup) does these steps for you, so you don't need to worry about it unless you are manually setting up Hexclave.
 
-If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you can construct a `StackClientApp` directly.
+If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you can construct a `HexclaveClientApp` directly.
 
 </Info>
 
@@ -71,7 +71,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
       </ParamField>
 
       <ParamField body="baseUrl" type="string">
-        Base URL for the Stack Auth API.
+        Base URL for the Hexclave API.
       </ParamField>
 
       <ParamField body="projectId" type="string">
@@ -96,7 +96,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
   <MethodAside>
     <AsideSection title="Signature">
       ```typescript
-      declare class StackClientApp {
+      declare class HexclaveClientApp {
         constructor(options: {
           tokenStore: "nextjs-cookie" | "cookie" | {
             accessToken: string;
@@ -114,9 +114,9 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const stackClientApp = new StackClientApp({
+      const stackClientApp = new HexclaveClientApp({
         tokenStore: "nextjs-cookie",
-        baseUrl: "https://api.stack-auth.com",
+        baseUrl: "https://api.hexclave.com",
         projectId: "123",
         publishableClientKey: "123",
         urls: {
@@ -129,7 +129,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
       "use client";
 
       function MyReactComponent() {
-        const stackClientApp = useStackApp();
+        const stackClientApp = useHexclaveApp();
       }
       ```
     </AsideSection>
@@ -181,7 +181,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
 <MethodLayout>
   <MethodContent>
-    React hook version of `getUser()`. Equivalent to the [`useUser()`](/sdk/hooks/use-user) standalone hook, which is an alias for `useStackApp().useUser()`.
+    React hook version of `getUser()`. Equivalent to the [`useUser()`](/sdk/hooks/use-user) standalone hook, which is an alias for `useHexclaveApp().useUser()`.
 
     <ContentSection title="Parameters">
       <ParamField body="options.or" type='"return-null" | "redirect" | "throw"'>
@@ -494,14 +494,14 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
 ---
 
-# StackServerApp
+# HexclaveServerApp
 
-Like `StackClientApp`, but with [server permissions](/guides/going-further/stack-app#client-vs-server). Has full read and write access to all users.
+Like `HexclaveClientApp`, but with [server permissions](/guides/going-further/stack-app#client-vs-server). Has full read and write access to all users.
 
 <Warning>
   Since this functionality should only be available in environments you trust
   (ie. your own server), it requires a `SECRET_SERVER_KEY`. In some cases, you
-  may want to use a `StackServerApp` on the client; an example for this is an
+  may want to use a `HexclaveServerApp` on the client; an example for this is an
   internal dashboard that only your own employees have access to. We generally
   recommend against doing this unless you are aware of and protected against the
   (potentially severe) security implications of exposing `SECRET_SERVER_KEY` on
@@ -511,11 +511,11 @@ Like `StackClientApp`, but with [server permissions](/guides/going-further/stack
 ## Table of Contents
 
 ```typescript
-type StackServerApp =
-  // Inherits all functionality from StackClientApp
-  & StackClientApp
+type HexclaveServerApp =
+  // Inherits all functionality from HexclaveClientApp
+  & HexclaveClientApp
   & {
-    new(options): StackServerApp;
+    new(options): HexclaveServerApp;
 
     getUser([id][, options]): Promise<ServerUser | null>;
     useUser([id][, options]): ServerUser;
@@ -536,7 +536,7 @@ type StackServerApp =
 
 ## Constructor
 
-Creates a new `StackServerApp` instance.
+Creates a new `HexclaveServerApp` instance.
 
 <MethodLayout>
   <MethodContent>
@@ -546,7 +546,7 @@ Creates a new `StackServerApp` instance.
       </ParamField>
 
       <ParamField body="baseUrl" type="string">
-        Base URL for the Stack Auth API.
+        Base URL for the Hexclave API.
       </ParamField>
 
       <ParamField body="projectId" type="string">
@@ -575,7 +575,7 @@ Creates a new `StackServerApp` instance.
   <MethodAside>
     <AsideSection title="Signature">
       ```typescript
-      declare class StackServerApp {
+      declare class HexclaveServerApp {
         constructor(options: {
           tokenStore: "nextjs-cookie" | "cookie" | {
             accessToken: string;
@@ -594,7 +594,7 @@ Creates a new `StackServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const stackServerApp = new StackServerApp({
+      const stackServerApp = new HexclaveServerApp({
         tokenStore: "nextjs-cookie",
         urls: {
           signIn: "/my-custom-sign-in-page",
@@ -612,7 +612,7 @@ Creates a new `StackServerApp` instance.
 
 <MethodLayout>
   <MethodContent>
-    Enhanced version of `StackClientApp.getUser()` with server permissions.
+    Enhanced version of `HexclaveClientApp.getUser()` with server permissions.
 
     **Overloads:**
 

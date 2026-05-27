@@ -1,13 +1,13 @@
 ---
-title: Build a SaaS with Stack Auth
+title: Build a SaaS with Hexclave
 description: Bootstrap auth, resolve the signed-in user, protect your app, and ship-with optional pointers to teams, RBAC, and billing.
 ---
 
-This tutorial is a **generic SaaS path** on Stack Auth: install and configure the SDK, wire sign-in, read the current user on the client and server, and gate your product. It does **not** assume teams, workspaces, or a particular permission model-those live in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the linked guides below.
+This tutorial is a **generic SaaS path** on Hexclave: install and configure the SDK, wire sign-in, read the current user on the client and server, and gate your product. It does **not** assume teams, workspaces, or a particular permission model-those live in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the linked guides below.
 
 ## What you will have at the end
 
-- A working sign-in and account flow using Stack Auth's handler routes (Next.js) or your framework’s equivalent.
+- A working sign-in and account flow using Hexclave's handler routes (Next.js) or your framework’s equivalent.
 - A clear pattern for **who** is signed in across server components, client components, server actions, and route handlers.
 - **Protected** areas of your app (for example middleware on `/app/*` or `getUser({ or: "redirect" })` on key routes).
 - A short map for **where** multi-tenant and authorization work fits when you need it, plus a mindset for **production** domains, OAuth, and email.
@@ -15,20 +15,20 @@ This tutorial is a **generic SaaS path** on Stack Auth: install and configure th
 ## Prerequisites
 
 - A **Next.js** project using the **App Router** (Stack’s first-class path for hosted UI and handlers), or another stack supported in [Setup](/guides/getting-started/setup) (React, Express, or REST from any backend).
-- A Stack Auth account and a **project** in the [dashboard](https://app.stack-auth.com/projects).
+- A Hexclave account and a **project** in the [dashboard](https://app.hexclave.com/projects).
 
 <Note>
   Stack does not officially support the Next.js Pages Router. If you are on Pages Router, consider the React or JavaScript SDKs per the [FAQ](/guides/faq).
 </Note>
 
-The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks-swap in `StackClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
+The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks-swap in `HexclaveClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
 
 ## 1. Install Stack and wire environment variables
 
 The fastest path for JavaScript and TypeScript is the **setup wizard**:
 
 ```bash title="Terminal"
-npx @stackframe/stack-cli@latest init
+npx @hexclave/cli@latest init
 ```
 
 Then create or open a project in the dashboard and copy **project ID**, **publishable client key** (if your project uses one), and **secret server key** into your app configuration. For Next.js, that usually means `.env.local`:
@@ -44,7 +44,7 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>
 After `init`, you should see files similar to:
 
 - `app/handler/[...stack]/page.tsx` - hosted sign-in, sign-up, account settings, and more
-- `app/layout.tsx` - wraps the app with `StackProvider` and `StackTheme`
+- `app/layout.tsx` - wraps the app with `HexclaveProvider` and `HexclaveTheme`
 - `app/loading.tsx` - Suspense boundary for Stack’s async hooks
 - `stack/server.ts` - `stackServerApp` for server components, actions, and route handlers
 - `stack/client.ts` - `stackClientApp` when you need the client app object explicitly
@@ -55,44 +55,44 @@ If you ever need to align manually with the wizard output, the core pieces look 
   <Tab title="stack/server.ts">
     ```typescript title="stack/server.ts"
     import "server-only";
-    import { StackServerApp } from "@stackframe/stack";
+    import { HexclaveServerApp } from "@hexclave/next";
 
-    export const stackServerApp = new StackServerApp({
+    export const stackServerApp = new HexclaveServerApp({
       tokenStore: "nextjs-cookie",
     });
     ```
   </Tab>
   <Tab title="stack/client.ts">
     ```typescript title="stack/client.ts"
-    import { StackClientApp } from "@stackframe/stack";
+    import { HexclaveClientApp } from "@hexclave/next";
 
-    export const stackClientApp = new StackClientApp({
+    export const stackClientApp = new HexclaveClientApp({
       // Reads NEXT_PUBLIC_STACK_* from the environment by default
     });
     ```
   </Tab>
   <Tab title="app/handler/[...stack]/page.tsx">
     ```tsx title="app/handler/[...stack]/page.tsx"
-    import { StackHandler } from "@stackframe/stack";
+    import { HexclaveHandler } from "@hexclave/next";
     import { stackServerApp } from "@/stack/server";
 
     export default function Handler(props: unknown) {
-      return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
+      return <HexclaveHandler fullPage app={stackServerApp} routeProps={props} />;
     }
     ```
   </Tab>
   <Tab title="app/layout.tsx">
     ```tsx title="app/layout.tsx"
-    import { StackProvider, StackTheme } from "@stackframe/stack";
+    import { HexclaveProvider, HexclaveTheme } from "@hexclave/next";
     import { stackServerApp } from "@/stack/server";
 
     export default function RootLayout({ children }: { children: React.ReactNode }) {
       return (
         <html lang="en">
           <body>
-            <StackProvider app={stackServerApp}>
-              <StackTheme>{children}</StackTheme>
-            </StackProvider>
+            <HexclaveProvider app={stackServerApp}>
+              <HexclaveTheme>{children}</HexclaveTheme>
+            </HexclaveProvider>
           </body>
         </html>
       );
@@ -114,16 +114,16 @@ After setup, open the hosted auth UI (for example `/handler/sign-up`), create a 
 
 ### Marketing header: sign in / sign out
 
-Use `useStackApp()` so you do not hard-code handler URLs (they can be customized in the project):
+Use `useHexclaveApp()` so you do not hard-code handler URLs (they can be customized in the project):
 
 ```tsx title="components/auth-header.tsx"
 "use client";
 
 import Link from "next/link";
-import { useStackApp, useUser } from "@stackframe/stack";
+import { useHexclaveApp, useUser } from "@hexclave/next";
 
 export function AuthHeader() {
-  const app = useStackApp();
+  const app = useHexclaveApp();
   const user = useUser();
 
   return (
@@ -179,7 +179,7 @@ Almost every SaaS screen starts from the **current user**: profile, preferences,
     ```tsx title="components/greeting.tsx"
     "use client";
 
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export function Greeting() {
       const user = useUser();
@@ -196,7 +196,7 @@ Almost every SaaS screen starts from the **current user**: profile, preferences,
     ```tsx title="components/greeting.tsx"
     "use client";
 
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export function Greeting() {
       const user = useUser({ or: "redirect" });

@@ -164,7 +164,7 @@ it("should error for no connected stripe account", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.",
+        "body": "Payments are not set up in this Hexclave project. Please go to the Hexclave dashboard and complete the Payments onboarding.",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -565,7 +565,7 @@ it("should error for untrusted return_url", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
