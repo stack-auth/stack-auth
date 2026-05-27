@@ -1,8 +1,18 @@
-import { generatedLlmsFullTxt, generatedLlmsTxt } from "./llms-content.generated";
+import { deindent } from "../../utils/strings";
+import { remindersPrompt } from "../unified-prompts/reminders";
+import { skillSitePrompt } from "../unified-prompts/skill-site-prompt";
 
-export const llmsTxt = generatedLlmsTxt;
+export const llmsTxt = deindent`
+  # Hexclave
 
-export const llmsFullTxt = generatedLlmsFullTxt;
+  ${remindersPrompt}
+`;
+
+export const llmsFullTxt = deindent`
+  # Hexclave
+
+  ${skillSitePrompt}
+`;
 
 export const llmsTextHeaders = {
   "Cache-Control": "public, max-age=3600, s-maxage=3600",
