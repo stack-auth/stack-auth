@@ -63,7 +63,7 @@ export function AiQueryBar({
           "border border-black/[0.08] dark:border-white/[0.06]",
           "bg-white dark:bg-background shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06] transition-shadow hover:transition-none",
           isActive
-            ? "ring-purple-500/30 focus-within:ring-purple-500/50"
+            ? "ring-purple-500/30 focus-within:ring-purple-500/50 dark:ring-purple-400/30 dark:focus-within:ring-purple-400/50"
             : "hover:ring-black/[0.12] dark:hover:ring-white/[0.1] focus-within:ring-foreground/[0.18]",
         )}
       >
