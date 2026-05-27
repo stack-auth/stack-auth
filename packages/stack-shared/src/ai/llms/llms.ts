@@ -1,6 +1,7 @@
 import { deindent } from "../../utils/strings";
 import { remindersPrompt } from "../unified-prompts/reminders";
-import { skillSitePrompt } from "../unified-prompts/skill-site-prompt";
+import { buildDocsIndexPrompt } from "../unified-prompts/skill-site-prompt-parts/docs-index";
+import { buildSkillSitePrompt, skillSitePrompt } from "../unified-prompts/skill-site-prompt";
 
 export const llmsTxt = deindent`
   # Hexclave
@@ -9,6 +10,12 @@ export const llmsTxt = deindent`
 `;
 
 export const llmsFullTxt = skillSitePrompt;
+
+export function buildLlmsFullTxt(docsJson?: Parameters<typeof buildDocsIndexPrompt>[0]): string {
+  return docsJson === undefined
+    ? skillSitePrompt
+    : buildSkillSitePrompt(buildDocsIndexPrompt(docsJson));
+}
 
 export const llmsTextHeaders = {
   "Cache-Control": "public, max-age=3600, s-maxage=3600",
