@@ -5,6 +5,7 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/connected-accounts";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { isSharedAccessTokenBlocked, retrieveOrRefreshAccessToken } from "../../../../access-token-helpers";
@@ -41,7 +42,11 @@ export const connectedAccountAccessTokenByAccountCrudHandlers = createLazyProxy(
       throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
-    const providerInstance = await getProvider(provider);
+    // See sibling `[provider_id]/access-token/crud.tsx` — `redirect_uri` is
+    // unused for refresh/check paths, so the apiUrl value passed here is safe
+    // to pin to the deployment default even when the request came in on the
+    // other branded host.
+    const providerInstance = await getProvider(provider, { apiUrl: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") });
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     const oauthAccount = await prisma.projectUserOAuthAccount.findFirst({

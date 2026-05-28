@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -11,19 +10,20 @@ export class LinkedInProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(options: { clientId: string, clientSecret: string }) {
+  static async create(options: { clientId: string, clientSecret: string, apiUrl: string }) {
+    const { apiUrl, ...rest } = options;
     return new LinkedInProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
         issuer: "https://www.linkedin.com/oauth",
         authorizationEndpoint: "https://www.linkedin.com/oauth/v2/authorization",
         tokenEndpoint: "https://www.linkedin.com/oauth/v2/accessToken",
-        redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/linkedin",
+        redirectUri: apiUrl + "/api/v1/auth/oauth/callback/linkedin",
         baseScope: "openid profile email",
         openid: true,
         jwksUri: "https://www.linkedin.com/oauth/openid/jwks",
         tokenEndpointAuthMethod: "client_secret_post",
         noPKCE: true,
-        ...options,
+        ...rest,
       }))
     );
   }

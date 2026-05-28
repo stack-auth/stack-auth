@@ -612,6 +612,9 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://success', tenancy)).toBe(false);
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://error', tenancy)).toBe(false);
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://success', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://error', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
     });
 
     it('should not accept other custom schemes without trusted domain config', () => {
@@ -631,15 +634,23 @@ describe('validateRedirectUrl', () => {
 });
 
 describe('isAcceptedNativeAppUrl', () => {
-  it('should accept the native app OAuth URL scheme', () => {
+  it('should accept the legacy native app OAuth URL scheme', () => {
     expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://success')).toBe(true);
     expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://error')).toBe(true);
+  });
+
+  it('should accept the canonical Hexclave native app OAuth URL scheme', () => {
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://success')).toBe(true);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://error')).toBe(true);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://oauth-callback')).toBe(true);
   });
 
   it('should reject other custom schemes', () => {
     expect(isAcceptedNativeAppUrl('myapp://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('stackauth-myapp://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('stack-auth://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('hexclave://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url-extra://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('https://example.com/callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('http://localhost:3000/callback')).toBe(false);
   });

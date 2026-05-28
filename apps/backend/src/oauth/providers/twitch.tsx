@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -12,15 +11,17 @@ export class TwitchProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
+    apiUrl: string,
   }) {
+    const { apiUrl, ...rest } = options;
     return new TwitchProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://id.twitch.tv",
       authorizationEndpoint: "https://id.twitch.tv/oauth2/authorize",
       tokenEndpoint: "https://id.twitch.tv/oauth2/token",
       tokenEndpointAuthMethod: "client_secret_post",
-      redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/twitch",
+      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/twitch",
       baseScope: "user:read:email",
-      ...options,
+      ...rest,
     }));
   }
 

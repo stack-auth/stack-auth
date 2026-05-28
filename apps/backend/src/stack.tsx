@@ -3,7 +3,7 @@ import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 
 export function getStackServerApp() {
   // Fail fast if the backend self-URL env var is missing — without it the SDK
-  // would silently inherit `defaultBaseUrl` (https://api.hexclave.com), which
+  // would silently inherit `defaultBaseUrl` (https://api.stack-auth.com), which
   // is almost never what we want for backend self-calls.
   //
   // We deliberately do NOT pass it as an explicit `baseUrl` to the SDK: doing

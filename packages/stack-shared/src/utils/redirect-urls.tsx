@@ -160,7 +160,9 @@ export function isAcceptedNativeAppUrl(urlOrString: string): boolean {
   const url = createUrlIfValid(urlOrString);
   if (!url) return false;
 
-  return url.protocol === 'stack-auth-mobile-oauth-url:';
+  // Legacy scheme accepted indefinitely; baked into already-shipped Swift SDK binaries.
+  return url.protocol === 'stack-auth-mobile-oauth-url:'
+    || url.protocol === 'hexclave-mobile-oauth-url:';
 }
 
 export function validateRedirectUrl(

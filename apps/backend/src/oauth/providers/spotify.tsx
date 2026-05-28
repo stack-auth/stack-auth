@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -12,14 +11,16 @@ export class SpotifyProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
+    apiUrl: string,
   }) {
+    const { apiUrl, ...rest } = options;
     return new SpotifyProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://accounts.spotify.com",
       authorizationEndpoint: "https://accounts.spotify.com/authorize",
       tokenEndpoint: "https://accounts.spotify.com/api/token",
-      redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/spotify",
+      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/spotify",
       baseScope: "user-read-email user-read-private",
-      ...options,
+      ...rest,
     }));
   }
 
