@@ -1134,54 +1134,6 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
   };
 }
 
-
-/**
- * Cross-field config-override checks that `getConfigOverrideErrors` cannot
- * express. That function rebuilds a per-field "restricted" schema from
- * `schema.describe()`, which carries only static `oneOf`/`notOneOf` and drops
- * `.when(...)` conditionals — so cross-property rules (e.g. an OAuth provider's
- * `customCallbackUrl` being forbidden when `isShared` is true) are not enforced
- * there. We walk the override and reject the known violations explicitly.
- *
- * Shape-agnostic on purpose: a provider object can arrive under a dotted key
- * (`auth.oauth.providers.google`), inside a record value, or fully nested, so we
- * recurse and flag any object carrying both `isShared: true` and a
- * `customCallbackUrl` value. Those two keys only co-occur on OAuth providers, so
- * there are no false positives.
- */
-export function getCrossFieldConfigOverrideError(configOverride: unknown): string | null {
-  let error: string | null = null;
-  const walk = (node: unknown): void => {
-    if (error !== null || !isObjectLike(node)) return;
-    if (!Array.isArray(node)) {
-      const obj = node as Record<string, unknown>;
-      if (obj.isShared === true && obj.customCallbackUrl !== undefined && obj.customCallbackUrl !== null) {
-        error = "customCallbackUrl cannot be set for shared OAuth providers";
-        return;
-      }
-    }
-    for (const value of Object.values(node as Record<string, unknown>)) {
-      walk(value);
-    }
-  };
-  walk(configOverride);
-  return error;
-}
-
-import.meta.vitest?.test("getCrossFieldConfigOverrideError flags shared providers with a customCallbackUrl", ({ expect }) => {
-  const url = "https://api.hexclave.com/api/v1/auth/oauth/callback/google";
-  // dotted-key form (dashboard / e2e)
-  expect(getCrossFieldConfigOverrideError({ 'auth.oauth.providers.google': { isShared: true, customCallbackUrl: url } })).toContain("customCallbackUrl");
-  // nested record form (legacy/neon write whole map)
-  expect(getCrossFieldConfigOverrideError({ 'auth.oauth.providers': { google: { isShared: true, customCallbackUrl: url } } })).toContain("customCallbackUrl");
-  // allowed: shared without a customCallbackUrl
-  expect(getCrossFieldConfigOverrideError({ 'auth.oauth.providers.google': { isShared: true } })).toBeNull();
-  // allowed: custom provider with a customCallbackUrl
-  expect(getCrossFieldConfigOverrideError({ 'auth.oauth.providers.google': { isShared: false, customCallbackUrl: url } })).toBeNull();
-  // allowed: shared with an explicit null (clearing) customCallbackUrl
-  expect(getCrossFieldConfigOverrideError({ 'auth.oauth.providers.google': { isShared: true, customCallbackUrl: null } })).toBeNull();
-});
-
 /**
  * Does not require a base config, and hence solely relies on the override itself to validate the config. If it returns
  * no error, you know that the
