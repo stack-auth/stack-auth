@@ -5,7 +5,6 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { connectedAccountAccessTokenCrud } from "@hexclave/shared/dist/interface/crud/connected-accounts";
 import { userIdOrMeSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 import { isSharedAccessTokenBlocked, retrieveOrRefreshAccessToken } from "../../../../access-token-helpers";
@@ -42,11 +41,7 @@ export const connectedAccountAccessTokenByAccountCrudHandlers = createLazyProxy(
       throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
-    // See sibling `[provider_id]/access-token/crud.tsx` — `redirect_uri` is
-    // unused for refresh/check paths, so the apiUrl value passed here is safe
-    // to pin to the deployment default even when the request came in on the
-    // other branded host.
-    const providerInstance = await getProvider(provider, { apiUrl: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") });
+    const providerInstance = await getProvider(provider);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     const oauthAccount = await prisma.projectUserOAuthAccount.findFirst({

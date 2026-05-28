@@ -13,16 +13,16 @@ export class GithubProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
-    apiUrl: string,
+    redirectUri: string,
   }) {
-    const { apiUrl, ...rest } = options;
+    const { redirectUri, ...rest } = options;
     return new GithubProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://github.com",
       alternativeIssuers: ["https://github.com/login/oauth"],
       authorizationEndpoint: "https://github.com/login/oauth/authorize",
       tokenEndpoint: "https://github.com/login/oauth/access_token",
       userinfoEndpoint: "https://api.github.com/user",
-      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/github",
+      redirectUri,
       baseScope: "user:email",
       // GitHub can return either non-expiring OAuth-App-style access tokens, or
       // expiring user tokens with refresh tokens. If GitHub gives us expires_in,

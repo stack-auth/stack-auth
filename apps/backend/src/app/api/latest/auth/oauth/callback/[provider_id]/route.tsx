@@ -115,9 +115,19 @@ const handler = createSmartRouteHandler({
       throw new HexclaveAssertionError("Invalid outer info");
     }
 
+    // The inner CSRF cookie is host-scoped to the host that served /authorize.
+    // The OAuth redirect_uri (and thus this callback's host) is config-derived
+    // and can be a sibling brand (e.g. authorize on api.hexclave.com, callback
+    // on api.stack-auth.com for a legacy/shared provider). Cookies can't span
+    // those hosts, so when the landing host legitimately differs from the
+    // authorize host we skip the cookie check and rely on the single-use,
+    // server-side outer info plus the outer flow's PKCE — the same protection
+    // JSON mode already uses.
+    const isCrossHostCallback = !!outerInfo.authorizeApiUrl && outerInfo.authorizeApiUrl !== apiUrl;
+
     // JSON-mode requests use PKCE for CSRF protection and don't set a cookie.
-    // Only check the CSRF cookie for browser-redirect mode requests.
-    if (outerInfo.responseMode !== 'json') {
+    // Only check the CSRF cookie for same-host browser-redirect mode requests.
+    if (outerInfo.responseMode !== 'json' && !isCrossHostCallback) {
       // Hexclave rebrand: read whichever inner-OAuth cookie name is present (prefer the new name), and delete both.
       const cookieStore = await cookies();
       const cookieInfo = cookieStore.get("hexclave-oauth-inner-" + innerState)
@@ -164,7 +174,7 @@ const handler = createSmartRouteHandler({
         throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidPublishableClientKey(tenancy.project.id));
       }
 
-      const providerObj = await getProvider(provider as any, { apiUrl });
+      const providerObj = await getProvider(provider as any);
       let callbackResult: Awaited<ReturnType<typeof providerObj.getCallback>>;
       try {
         callbackResult = await providerObj.getCallback({

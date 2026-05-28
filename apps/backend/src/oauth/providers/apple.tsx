@@ -10,14 +10,14 @@ export class AppleProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(options: { clientId: string, clientSecret: string, apiUrl: string }) {
-    const { apiUrl, ...rest } = options;
+  static async create(options: { clientId: string, clientSecret: string, redirectUri: string }) {
+    const { redirectUri, ...rest } = options;
     return new AppleProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
         issuer: "https://appleid.apple.com",
         authorizationEndpoint: "https://appleid.apple.com/auth/authorize",
         tokenEndpoint: "https://appleid.apple.com/auth/token",
-        redirectUri: apiUrl + "/api/v1/auth/oauth/callback/apple",
+        redirectUri,
         jwksUri: "https://appleid.apple.com/auth/keys",
         baseScope: "name email",
         authorizationExtraParams: { "response_mode": "form_post" },
