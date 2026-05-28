@@ -1,12 +1,14 @@
 import { getPublicEnvVar } from "@/lib/env";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getHexclaveApiBaseUrl, getStackAuthApiBaseUrl } from "@stackframe/stack-shared/dist/utils/cloud-hosts";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 
 type ConfigOAuthProvider = CompleteConfig['auth']['oauth']['providers'][string];
 
 function apiUrlEnv(): string {
-  return getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? '';
+  return getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL')
+    ?? throwErr("NEXT_PUBLIC_STACK_API_URL is required to build OAuth callback URLs");
 }
 
 function callbackPath(providerId: string): string {

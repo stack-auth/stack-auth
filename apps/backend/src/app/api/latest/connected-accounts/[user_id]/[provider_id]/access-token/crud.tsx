@@ -38,9 +38,8 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
 
     // The connected-accounts access-token flow only uses the OAuth provider's
     // refresh and access-token-validity methods; neither uses `redirect_uri`.
-    // The CRUD handler interface does not surface the inbound request to this
-    // callback, so we pass the deployment default API URL instead of the
-    // request's host-derived one. Safe because the value is unused downstream.
+    // `getProvider` resolves the callback URL from the provider's own config, so
+    // this flow doesn't need to supply one.
     const providerInstance = await getProvider(provider);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 

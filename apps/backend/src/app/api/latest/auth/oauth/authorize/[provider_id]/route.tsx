@@ -1,5 +1,6 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { botChallengeFlowRequestSchemaFields, getRequestContextAndBotChallengeAssessment } from "@/lib/turnstile";
@@ -80,7 +81,7 @@ export const GET = createSmartRouteHandler({
       body: yupString().defined(),
     }).defined(),
   ) as unknown as Schema<SmartResponse>,
-  async handler({ params, query }) {
+  async handler({ params, query }, fullReq) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
@@ -168,6 +169,11 @@ export const GET = createSmartRouteHandler({
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
           responseMode,
+          // Record the host that received /authorize so the callback can detect a
+          // legitimate cross-host landing (the redirect_uri/callback host is
+          // config-derived and may be a sibling brand) and not fail the
+          // host-scoped CSRF cookie check.
+          authorizeApiUrl: getApiUrlForRequest(fullReq),
         } satisfies InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },
