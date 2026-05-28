@@ -64,6 +64,19 @@ export const POST = createSmartRouteHandler({
     if (tenancy.config.payments.blockNewPurchases) {
       throw new KnownErrors.NewPurchasesBlocked();
     }
+    if (!data.stripeAccountId || !data.stripeCustomerId) {
+      throw new HexclaveAssertionError(
+        "Live purchase-session called with a purchase code that has no Stripe identifiers. " +
+        "Test-mode codes should be routed to /internal/payments/test-mode-purchase-session instead.",
+        {
+          tenancyId: tenancy.id,
+          testMode: tenancy.config.payments.testMode === true,
+          customerId: data.customerId,
+          hasStripeAccountId: !!data.stripeAccountId,
+          hasStripeCustomerId: !!data.stripeCustomerId,
+        },
+      );
+    }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
     const { selectedPrice, conflictingSubscriptions } = await validatePurchaseSession({
