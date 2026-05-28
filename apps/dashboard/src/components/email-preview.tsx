@@ -791,7 +791,7 @@ export default function EmailPreview({
         </div>
       </div>
     }>
-      <EmailPreviewErrorBoundary key={`${debouncedTemplateTsxSource ?? ""}${debouncedThemeTsxSource ?? ""}${editMode}`}>
+      <EmailPreviewErrorBoundary key={[themeId, templateId, debouncedThemeTsxSource, debouncedTemplateTsxSource, editableSource, editMode].map((value) => JSON.stringify(value ?? null)).join("\u0000")}>
         {editMode ? (
           <EmailPreviewEditableContent
             themeId={themeId}
