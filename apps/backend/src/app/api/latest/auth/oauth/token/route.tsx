@@ -1,6 +1,7 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { getProjectBranchFromClientId, oauthServer } from "@/oauth";
+import { createOAuthServer, getProjectBranchFromClientId } from "@/oauth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as OAuthRequest, Response as OAuthResponse, ServerError } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -59,6 +60,7 @@ export const POST = createSmartRouteHandler({
 
 
     const oauthResponse = new OAuthResponse();
+    const oauthServer = createOAuthServer({ apiUrl: getApiUrlForRequest(fullReq) });
     try {
       await oauthServer.token(
         oauthRequest,

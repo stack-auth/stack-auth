@@ -1,4 +1,5 @@
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -71,6 +72,7 @@ export const POST = createSmartRouteHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: contactChannel.projectUser.projectUserId,
+      apiUrl: getApiUrlForRequest(fullReq),
     });
 
     return {

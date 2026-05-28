@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
@@ -14,19 +13,21 @@ export class FacebookProvider extends OAuthBaseProvider {
     clientId: string,
     clientSecret: string,
     facebookConfigId?: string,
+    apiUrl: string,
   }) {
+    const { apiUrl, ...rest } = options;
     return new FacebookProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://www.facebook.com",
       authorizationEndpoint: "https://facebook.com/v20.0/dialog/oauth/",
       tokenEndpoint: "https://graph.facebook.com/v20.0/oauth/access_token",
-      redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/facebook",
+      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/facebook",
       baseScope: "openid public_profile email",
       openid: true,
       jwksUri: "https://www.facebook.com/.well-known/oauth/openid/jwks",
       authorizationExtraParams: options.facebookConfigId ? {
         config_id: options.facebookConfigId,
       } : undefined,
-      ...options,
+      ...rest,
     }));
   }
 

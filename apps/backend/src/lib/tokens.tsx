@@ -16,6 +16,7 @@ import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
 import { getBillingTeamId } from './plan-entitlements';
+import { CLOUD_HOST_PAIRS } from './request-api-url';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
@@ -55,26 +56,37 @@ export const oauthCookieSchema = yupObject({
 
 type UserType = 'normal' | 'restricted' | 'anonymous';
 
-const getIssuer = (projectId: string, userType: UserType) => {
+// `apiUrl` is the host-derived API URL for the request that triggered token
+// signing — see `getApiUrlForRequest` in `request-api-url.ts`. The resulting
+// `iss` claim matches the host the customer's SDK targeted, so a customer on
+// `api.stack-auth.com` keeps seeing `iss: https://api.stack-auth.com/...`
+// tokens forever (until they explicitly migrate their SDK to a host that
+// resolves to `api.hexclave.com`).
+const getIssuer = (projectId: string, userType: UserType, apiUrl: string) => {
   const suffix = userType === 'anonymous' ? '-anonymous-users' : userType === 'restricted' ? '-restricted-users' : '';
-  const url = new URL(`/api/v1/projects${suffix}/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+  const url = new URL(`/api/v1/projects${suffix}/${projectId}`, apiUrl);
   return url.toString();
 };
 // Hexclave rebrand: api.stack-auth.com ↔ api.hexclave.com. During the domain transition a
 // backend served from one host must keep validating tokens issued under the other, so the
-// validator accepts the issuer under both hosts. Signing always uses getIssuer() (the
-// configured host), so new tokens follow the deployment. See RENAME-TO-HEXCLAVE.md (Tier 0, JWT).
-// Use a Map (not a plain object) for the dynamic host lookup — avoids any chance of a
-// prototype-key collision when the input host comes from an attacker-controlled JWT.
-const issuerHostAliases = new Map<string, string>([
-  ["api.stack-auth.com", "api.hexclave.com"],
-  ["api.hexclave.com", "api.stack-auth.com"],
-  // Staging / preview deployments straddle both dev hosts during the cutover.
-  ["api.dev.stack-auth.com", "api.dev.hexclave.com"],
-  ["api.dev.hexclave.com", "api.dev.stack-auth.com"],
-]);
+// validator accepts the issuer under both hosts. Signing picks the issuer host per request
+// from `getApiUrlForRequest`, so a token's `iss` follows the SDK's configured host. See
+// RENAME-TO-HEXCLAVE.md (Tier 0, JWT) and the `CLOUD_HOST_PAIRS` source-of-truth in
+// `request-api-url.ts` for the canonical list of paired hosts. Use a Map (not a plain
+// object) for the dynamic host lookup — avoids any chance of a prototype-key collision
+// when the input host comes from an attacker-controlled JWT.
+const issuerHostAliases = new Map<string, string>(
+  CLOUD_HOST_PAIRS.flatMap(([stackAuthHost, hexclaveHost]) => [
+    [stackAuthHost, hexclaveHost],
+    [hexclaveHost, stackAuthHost],
+  ]),
+);
+// Validation accepts both the primary issuer (derived from the deployment's
+// `NEXT_PUBLIC_STACK_API_URL` so existing single-host self-hosters keep working)
+// and its alias host, so a token minted under one cloud brand validates against
+// either backend host.
 const getAllowedIssuers = (projectId: string, userType: UserType): string[] => {
-  const issuer = getIssuer(projectId, userType);
+  const issuer = getIssuer(projectId, userType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   const aliasHost = issuerHostAliases.get(new URL(issuer).host);
   if (!aliasHost) return [issuer];
   const aliasedUrl = new URL(issuer);
@@ -208,6 +220,15 @@ type RefreshTokenOptions = {
   },
 };
 
+type GenerateAccessTokenOptions = RefreshTokenOptions & {
+  // Host-derived API URL — gets baked into the new access token's `iss` claim
+  // so the issuer host matches the SDK's configured host. Callers from a route
+  // handler should pass `getApiUrlForRequest(fullReq)`; callers from a non-
+  // request context (background jobs, etc.) should fall back to the
+  // deployment's `NEXT_PUBLIC_STACK_API_URL`.
+  apiUrl: string,
+};
+
 /**
  * Validates a refresh token and returns the user if valid.
  * This function has NO side effects - it doesn't log events or update timestamps.
@@ -257,7 +278,7 @@ export async function isRefreshTokenValid(options: RefreshTokenOptions) {
  *
  * @returns The access token string if valid, null otherwise.
  */
-export async function generateAccessTokenFromRefreshTokenIfValid(options: RefreshTokenOptions) {
+export async function generateAccessTokenFromRefreshTokenIfValid(options: GenerateAccessTokenOptions) {
   const user = await validateRefreshTokenAndGetUser(options);
   if (!user || !options.refreshTokenObj) {
     return null;
@@ -371,7 +392,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
 
   const userType = getUserType(user.is_anonymous, user.is_restricted);
   return await signJWT({
-    issuer: getIssuer(options.tenancy.project.id, userType),
+    issuer: getIssuer(options.tenancy.project.id, userType, options.apiUrl),
     audience: getAudience(options.tenancy.project.id, userType),
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
     payload,
@@ -384,6 +405,12 @@ type CreateRefreshTokenOptions = {
   expiresAt?: Date,
   isImpersonation?: boolean,
 }
+
+type CreateAuthTokensOptions = CreateRefreshTokenOptions & {
+  // See `apiUrl` on GenerateAccessTokenOptions — flows through to the signed
+  // access token's `iss` claim.
+  apiUrl: string,
+};
 
 export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) {
   options.expiresAt ??= new Date(Date.now() + 1000 * 60 * 60 * 24 * 365);
@@ -404,12 +431,13 @@ export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) 
   return refreshTokenObj;
 }
 
-export async function createAuthTokens(options: CreateRefreshTokenOptions) {
+export async function createAuthTokens(options: CreateAuthTokensOptions) {
   const refreshTokenObj = await createRefreshTokenObj(options);
 
   const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
     tenancy: options.tenancy,
     refreshTokenObj: refreshTokenObj,
+    apiUrl: options.apiUrl,
   }) ?? throwErr("Newly generated refresh token is not valid; this should never happen!", { refreshTokenObj });
 
   return { refreshToken: refreshTokenObj.refreshToken, accessToken };

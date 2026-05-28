@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -12,14 +11,16 @@ export class DiscordProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
+    apiUrl: string,
   }) {
+    const { apiUrl, ...rest } = options;
     return new DiscordProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://discord.com",
       authorizationEndpoint: "https://discord.com/oauth2/authorize",
       tokenEndpoint: "https://discord.com/api/oauth2/token",
-      redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/discord",
+      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/discord",
       baseScope: "identify email",
-      ...options,
+      ...rest,
     }));
   }
 
