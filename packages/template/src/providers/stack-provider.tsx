@@ -90,10 +90,20 @@ function ReactStackProvider({
 }
 // END_PLATFORM
 
+// Pick the platform-appropriate provider implementation. Only the active branch's
+// line is preserved by the platform-stripping script when generating per-platform SDKs.
+// The /* ... */ block hides the inactive branches from the template's TypeScript compiler.
 // IF_PLATFORM next
-export default NextStackProvider;
+const ActiveProvider = NextStackProvider;
 /* ELSE_IF_PLATFORM tanstack-start
-export default TanStackStartStackProvider;
+const ActiveProvider = TanStackStartStackProvider;
 ELSE_PLATFORM
-export default ReactStackProvider;
+const ActiveProvider = ReactStackProvider;
 END_PLATFORM */
+
+// Named exports live outside the platform conditional so the @deprecated JSDoc can
+// use a /** ... */ block without colliding with the outer comment terminator.
+export const HexclaveProvider = ActiveProvider;
+/** @deprecated Use `HexclaveProvider` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
+export const StackProvider = ActiveProvider;
+export default ActiveProvider;
