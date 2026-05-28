@@ -92,6 +92,15 @@ function parseCoordinate(raw: string | null | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function decodeVercelGeoHeader(raw: string | null | undefined): string | undefined {
+  if (raw == null || raw === "") return undefined;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   | { maybeSpoofed: true, spoofedInfo: EndUserInfoInner }
   | { maybeSpoofed: false, exactInfo: EndUserInfoInner }
@@ -133,7 +142,7 @@ function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   const geoLocation: EndUserLocation = {
     countryCode: rawCountryCode ? normalizeCountryCode(rawCountryCode) : undefined,
     regionCode: (isVercelTrusted ? allHeaders.get("x-vercel-ip-country-region") : undefined) || undefined,
-    cityName: (isVercelTrusted ? allHeaders.get("x-vercel-ip-city") : undefined) || undefined,
+    cityName: decodeVercelGeoHeader(isVercelTrusted ? allHeaders.get("x-vercel-ip-city") : undefined),
     latitude: parseCoordinate(isVercelTrusted ? allHeaders.get("x-vercel-ip-latitude") : null),
     longitude: parseCoordinate(isVercelTrusted ? allHeaders.get("x-vercel-ip-longitude") : null),
     tzIdentifier: (isVercelTrusted ? allHeaders.get("x-vercel-ip-timezone") : undefined) || undefined,
@@ -144,7 +153,7 @@ function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   const spoofedGeoLocation: EndUserLocation = trustedProxy === "" ? {
     countryCode: rawSpoofedCountryCode ? normalizeCountryCode(rawSpoofedCountryCode) : undefined,
     regionCode: allHeaders.get("x-vercel-ip-country-region") || undefined,
-    cityName: allHeaders.get("x-vercel-ip-city") || undefined,
+    cityName: decodeVercelGeoHeader(allHeaders.get("x-vercel-ip-city")),
     latitude: parseCoordinate(allHeaders.get("x-vercel-ip-latitude")),
     longitude: parseCoordinate(allHeaders.get("x-vercel-ip-longitude")),
     tzIdentifier: allHeaders.get("x-vercel-ip-timezone") || undefined,
@@ -312,6 +321,50 @@ import.meta.vitest?.describe("getBrowserEndUserInfo(...)", () => {
         latitude: 52.52,
         longitude: 13.4,
         tzIdentifier: "Europe/Berlin",
+      },
+    });
+  });
+
+  test("decodes URL-encoded city names from Vercel geo headers", () => {
+    // Vercel percent-encodes city names, so a multi-word city arrives as "San%20Francisco".
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-vercel-forwarded-for": "203.0.113.10",
+      "x-vercel-ip-country": "US",
+      "x-vercel-ip-country-region": "CA",
+      "x-vercel-ip-city": "San%20Francisco",
+      "x-vercel-ip-latitude": "37.77",
+      "x-vercel-ip-longitude": "-122.41",
+      "x-vercel-ip-timezone": "America/Los_Angeles",
+    }), "vercel");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "203.0.113.10",
+        countryCode: "US",
+        regionCode: "CA",
+        cityName: "San Francisco",
+        latitude: 37.77,
+        longitude: -122.41,
+        tzIdentifier: "America/Los_Angeles",
+      },
+    });
+  });
+
+  test("falls back to the raw city name when it is not valid percent-encoding", () => {
+    // A lone "%" is invalid percent-encoding; decoding must not throw, just pass it through.
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-vercel-forwarded-for": "203.0.113.10",
+      "x-vercel-ip-city": "100% Real City",
+    }), "vercel");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "203.0.113.10",
+        cityName: "100% Real City",
       },
     });
   });
