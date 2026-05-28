@@ -10,7 +10,6 @@ import {
   DesignInput,
   DesignPillToggle,
 } from "@stackframe/dashboard-ui-components";
-import { getPublicEnvVar } from '@/lib/env';
 import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -20,6 +19,8 @@ import { useState, type ReactNode } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import * as yup from "yup";
+import { useAdminApp } from "../use-admin-app";
+import { resolveProviderCallbackUrl } from "./oauth-callback-url";
 
 export function ProviderIcon(props: { id: string, size?: "sm" | "md" | "lg" }) {
   const size = props.size ?? "md";
@@ -139,11 +140,13 @@ function PillToggleControl({
 }
 
 function RedirectInline({ providerId }: { providerId: string }) {
+  const config = useAdminApp().useProject().useConfig();
+  const redirectUrl = resolveProviderCallbackUrl(providerId, config.auth.oauth.providers[providerId]);
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
       <Typography type="footnote" className="break-all">
-        <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? ''}${urlString`/api/v1/auth/oauth/callback/${providerId}`}`}</InlineCode>
+        <InlineCode>{redirectUrl}</InlineCode>
       </Typography>
     </div>
   );

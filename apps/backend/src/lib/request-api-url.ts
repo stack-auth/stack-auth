@@ -1,25 +1,15 @@
+import { CLOUD_HOST_PAIRS } from "@stackframe/stack-shared/dist/utils/cloud-hosts";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 /**
- * Single source of truth for the stack-auth ↔ hexclave host pairs that this
- * backend treats as equivalent siblings. Each `[stackAuthHost, hexclaveHost]`
- * pair is used in two places:
- *
- * 1. `CLOUD_API_HOST_BY_REQUEST_HOST` below — the allowlist of hosts we are
- *    willing to resolve into a JWT `iss` claim or an OAuth `redirect_uri`.
- * 2. `issuerHostAliases` in `tokens.tsx` — the bidirectional validator alias
- *    map, so a token issued under either host validates against the other.
- *
- * Deriving both lists from this single list prevents drift (a host can sign
- * but no sibling can validate, or vice versa) — that bug ate us once on the
- * staging pair before this consolidation.
+ * The stack-auth ↔ hexclave cloud host pairs live in stack-shared
+ * (`utils/cloud-hosts.ts`) so the dashboard and OAuth callback logic can share
+ * them. Re-exported here because `tokens.tsx` imports it from this module to
+ * build `issuerHostAliases` (and the source-of-truth comment lives with the
+ * pairs themselves).
  */
-export const CLOUD_HOST_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ["api.stack-auth.com", "api.hexclave.com"],
-  ["api.dev.stack-auth.com", "api.dev.hexclave.com"],
-  ["api.staging.stack-auth.com", "api.staging.hexclave.com"],
-];
+export { CLOUD_HOST_PAIRS };
 
 /**
  * Cloud hosts where this backend serves customer SDK traffic. Each request

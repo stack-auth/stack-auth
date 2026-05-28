@@ -52,6 +52,13 @@ export const oauthCookieSchema = yupObject({
   turnstileResult: yupString().oneOf(turnstileResultValues).optional(),
   turnstileVisibleChallengeResult: yupString().oneOf(turnstileResultValues).optional(),
   responseMode: yupString().oneOf(['json', 'redirect']).optional(),
+  // The host-derived API URL of the request that started /authorize. The
+  // browser-redirect CSRF cookie is host-scoped to that host, but the OAuth
+  // `redirect_uri` (and thus the callback host) is now config-derived and can be
+  // a sibling brand. The callback uses this to detect a legitimate cross-host
+  // landing and skip the cookie check (server-side state + outer PKCE still
+  // apply). Optional for in-flight flows started before this field existed.
+  authorizeApiUrl: yupString().optional(),
 });
 
 type UserType = 'normal' | 'restricted' | 'anonymous';

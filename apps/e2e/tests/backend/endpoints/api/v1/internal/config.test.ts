@@ -426,6 +426,38 @@ describe("oauth config", () => {
       }
     `);
   });
+
+  it("accepts customCallbackUrl on a standard oauth provider", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    const setResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google': {
+            type: 'google',
+            isShared: false,
+            clientId: 'google-client-id',
+            clientSecret: 'google-client-secret',
+            customCallbackUrl: 'https://api.hexclave.com/api/v1/auth/oauth/callback/google',
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          },
+        }),
+      },
+    });
+    expect(setResponse.status).toBe(200);
+
+    const configResponse = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const config = JSON.parse(configResponse.body.config_string);
+    expect(config.auth.oauth.providers.google.customCallbackUrl).toBe('https://api.hexclave.com/api/v1/auth/oauth/callback/google');
+  });
 });
 
 

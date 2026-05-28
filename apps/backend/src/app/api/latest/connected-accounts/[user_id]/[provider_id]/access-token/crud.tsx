@@ -5,7 +5,6 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/connected-accounts";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { isSharedAccessTokenBlocked, retrieveOrRefreshAccessToken } from "../../../access-token-helpers";
@@ -39,10 +38,9 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
 
     // The connected-accounts access-token flow only uses the OAuth provider's
     // refresh and access-token-validity methods; neither uses `redirect_uri`.
-    // The CRUD handler interface does not surface the inbound request to this
-    // callback, so we pass the deployment default API URL instead of the
-    // request's host-derived one. Safe because the value is unused downstream.
-    const providerInstance = await getProvider(provider, { apiUrl: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") });
+    // `getProvider` resolves the callback URL from the provider's own config, so
+    // this flow doesn't need to supply one.
+    const providerInstance = await getProvider(provider);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     // Legacy endpoint: search tokens across ALL accounts for this provider and user

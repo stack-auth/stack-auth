@@ -13,14 +13,14 @@ export class FacebookProvider extends OAuthBaseProvider {
     clientId: string,
     clientSecret: string,
     facebookConfigId?: string,
-    apiUrl: string,
+    redirectUri: string,
   }) {
-    const { apiUrl, ...rest } = options;
+    const { redirectUri, ...rest } = options;
     return new FacebookProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://www.facebook.com",
       authorizationEndpoint: "https://facebook.com/v20.0/dialog/oauth/",
       tokenEndpoint: "https://graph.facebook.com/v20.0/oauth/access_token",
-      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/facebook",
+      redirectUri,
       baseScope: "openid public_profile email",
       openid: true,
       jwksUri: "https://www.facebook.com/.well-known/oauth/openid/jwks",

@@ -140,7 +140,7 @@ export const GET = createSmartRouteHandler({
     // Hexclave rebrand: prefer the new query param name, accept the legacy one,
     // and only fall back to "redirect" when neither was provided.
     const responseMode = query.hexclave_response_mode ?? query.stack_response_mode ?? "redirect";
-    const providerObj = await getProvider(provider, { apiUrl: getApiUrlForRequest(fullReq) });
+    const providerObj = await getProvider(provider);
     const oauthUrl = providerObj.getAuthorizationUrl({
       codeVerifier: innerCodeVerifier,
       state: innerState,
@@ -169,6 +169,11 @@ export const GET = createSmartRouteHandler({
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
           responseMode,
+          // Record the host that received /authorize so the callback can detect a
+          // legitimate cross-host landing (the redirect_uri/callback host is
+          // config-derived and may be a sibling brand) and not fail the
+          // host-scoped CSRF cookie check.
+          authorizeApiUrl: getApiUrlForRequest(fullReq),
         } satisfies InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },

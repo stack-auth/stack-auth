@@ -235,6 +235,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
             isShared: provider.type === "shared",
             clientId: provider.client_id,
             clientSecret: provider.client_secret,
+            // Injecting the hexclave-branded callback for new providers is the
+            // dashboard's job; this legacy path leaves it unset so providers fall
+            // back to the stack-auth callback.
+            customCallbackUrl: undefined,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
             appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,

@@ -8,15 +8,15 @@ export class GitlabProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(options: { clientId: string, clientSecret: string, apiUrl: string }) {
-    const { apiUrl, ...rest } = options;
+  static async create(options: { clientId: string, clientSecret: string, redirectUri: string }) {
+    const { redirectUri, ...rest } = options;
     return new GitlabProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
         issuer: "https://gitlab.com",
         authorizationEndpoint: "https://gitlab.com/oauth/authorize",
         tokenEndpoint: "https://gitlab.com/oauth/token",
         userinfoEndpoint: "https://gitlab.com/api/v4/user",
-        redirectUri: apiUrl + "/api/v1/auth/oauth/callback/gitlab",
+        redirectUri,
         baseScope: "read_user",
         ...rest,
       }))
