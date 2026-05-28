@@ -35,16 +35,16 @@ export function getDefaultProviderCallbackUrl(providerId: string): string {
 }
 
 /**
- * The redirect URL a customer should register with the provider. Mirrors the
- * backend's `getProvider()` resolution so the dashboard always displays exactly
- * what we send to the provider.
+ * The redirect URL to register with the provider, shown in the (standard-mode)
+ * provider dialog. Mirrors what the standard write path persists and what the
+ * backend then sends as `redirect_uri`:
+ *   - already standard -> its customCallbackUrl, or the stack-auth fallback for
+ *     legacy providers that never had one
+ *   - brand-new, or converting shared -> standard -> the new (hexclave) callback
  */
 export function resolveProviderCallbackUrl(providerId: string, existing: ConfigOAuthProvider | undefined): string {
-  if (existing && !existing.isShared && existing.customCallbackUrl) {
-    return existing.customCallbackUrl;
-  }
-  if (existing) {
-    return getDefaultProviderCallbackUrl(providerId);
+  if (existing && !existing.isShared) {
+    return existing.customCallbackUrl ?? getDefaultProviderCallbackUrl(providerId);
   }
   return getNewProviderCallbackUrl(providerId);
 }

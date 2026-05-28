@@ -130,11 +130,13 @@ function adminProviderToConfigProvider(
         isShared: false,
         clientId: provider.clientId,
         clientSecret: provider.clientSecret,
-        // Brand-new custom providers get the hexclave-branded callback URL.
-        // Existing providers keep whatever they had (legacy providers without one
-        // keep falling back to the stack-auth callback) so edits never silently
-        // change a registered redirect URL.
-        customCallbackUrl: existing ? existing.customCallbackUrl : getNewProviderCallbackUrl(provider.id),
+        // Setting up a standard provider (brand-new, or converting shared ->
+        // standard) means registering a fresh OAuth app, so it gets the
+        // hexclave-branded callback URL. A provider that was already standard
+        // keeps whatever it had — legacy ones without a customCallbackUrl keep
+        // falling back to the stack-auth callback so edits never silently change
+        // an already-registered redirect URL.
+        customCallbackUrl: (existing && !existing.isShared) ? existing.customCallbackUrl : getNewProviderCallbackUrl(provider.id),
         facebookConfigId: provider.facebookConfigId,
         microsoftTenantId: provider.microsoftTenantId,
         appleBundles: provider.appleBundleIds?.length
