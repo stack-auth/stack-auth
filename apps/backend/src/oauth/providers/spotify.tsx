@@ -11,14 +11,14 @@ export class SpotifyProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
-    apiUrl: string,
+    redirectUri: string,
   }) {
-    const { apiUrl, ...rest } = options;
+    const { redirectUri, ...rest } = options;
     return new SpotifyProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://accounts.spotify.com",
       authorizationEndpoint: "https://accounts.spotify.com/authorize",
       tokenEndpoint: "https://accounts.spotify.com/api/token",
-      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/spotify",
+      redirectUri,
       baseScope: "user-read-email user-read-private",
       ...rest,
     }));

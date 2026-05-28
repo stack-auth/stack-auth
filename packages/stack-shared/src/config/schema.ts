@@ -382,6 +382,11 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           isShared: yupBoolean(),
           clientId: schemaFields.oauthClientIdSchema.optional(),
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
+          customCallbackUrl: schemaFields.oauthCustomCallbackUrlSchema.optional().when('isShared', {
+            is: true,
+            then: (schema) => schema.oneOf([undefined], 'customCallbackUrl cannot be set for shared OAuth providers'),
+            otherwise: (schema) => schema,
+          }),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
           appleBundles: yupRecord(
@@ -758,6 +763,7 @@ const organizationConfigDefaults = {
         allowConnectedAccounts: false,
         clientId: undefined,
         clientSecret: undefined,
+        customCallbackUrl: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
         appleBundles: undefined,

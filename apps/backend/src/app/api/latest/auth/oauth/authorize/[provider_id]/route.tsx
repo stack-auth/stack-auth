@@ -1,6 +1,5 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
-import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { botChallengeFlowRequestSchemaFields, getRequestContextAndBotChallengeAssessment } from "@/lib/turnstile";
@@ -81,7 +80,7 @@ export const GET = createSmartRouteHandler({
       body: yupString().defined(),
     }).defined(),
   ) as unknown as Schema<SmartResponse>,
-  async handler({ params, query }, fullReq) {
+  async handler({ params, query }) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
@@ -140,7 +139,7 @@ export const GET = createSmartRouteHandler({
     // Hexclave rebrand: prefer the new query param name, accept the legacy one,
     // and only fall back to "redirect" when neither was provided.
     const responseMode = query.hexclave_response_mode ?? query.stack_response_mode ?? "redirect";
-    const providerObj = await getProvider(provider, { apiUrl: getApiUrlForRequest(fullReq) });
+    const providerObj = await getProvider(provider);
     const oauthUrl = providerObj.getAuthorizationUrl({
       codeVerifier: innerCodeVerifier,
       state: innerState,
