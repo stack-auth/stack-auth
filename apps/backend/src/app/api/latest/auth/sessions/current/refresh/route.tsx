@@ -1,3 +1,4 @@
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { generateAccessTokenFromRefreshTokenIfValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -40,6 +41,7 @@ export const POST = createSmartRouteHandler({
     const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
       tenancy,
       refreshTokenObj: sessionObj,
+      apiUrl: getApiUrlForRequest(fullReq),
     });
 
     if (!accessToken) {

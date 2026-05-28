@@ -55,10 +55,11 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
       throw new KnownErrors.InvalidTotpCode();
     }
   },
-  async handler(tenancy, {}, data, body) {
+  async handler(tenancy, {}, data, body, _user, apiUrl) {
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: data.user_id,
+      apiUrl,
     });
 
     return {

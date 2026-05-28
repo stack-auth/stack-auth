@@ -106,7 +106,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       nonce: codeObj.code.slice(6),
     };
   },
-  async handler(tenancy, { email }, data, requestBody, currentUser) {
+  async handler(tenancy, { email }, data, requestBody, currentUser, apiUrl) {
     let user = await ensureUserForEmailAllowsOtp(tenancy, email);
     let isNewUser = false;
 
@@ -148,6 +148,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: user.id,
+      apiUrl,
     });
 
     return {

@@ -1,5 +1,6 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { botChallengeFlowRequestSchemaFields, getRequestContextAndBotChallengeAssessment } from "@/lib/turnstile";
@@ -139,7 +140,7 @@ export const GET = createSmartRouteHandler({
     // Hexclave rebrand: prefer the new query param name, accept the legacy one,
     // and only fall back to "redirect" when neither was provided.
     const responseMode = query.hexclave_response_mode ?? query.stack_response_mode ?? "redirect";
-    const providerObj = await getProvider(provider);
+    const providerObj = await getProvider(provider, { apiUrl: getApiUrlForRequest(fullReq) });
     const oauthUrl = providerObj.getAuthorizationUrl({
       codeVerifier: innerCodeVerifier,
       state: innerState,

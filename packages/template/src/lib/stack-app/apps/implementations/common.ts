@@ -123,12 +123,20 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
 
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
-export const defaultBaseUrl = "https://api.hexclave.com";
-export const defaultAnalyticsBaseUrl = "https://r.hexclave.com";
+// Hexclave rebrand: the last published `@stackframe/*` package version stays
+// pointed at `api.stack-auth.com` so that customers who upgrade their legacy
+// SDK without explicitly migrating to `@hexclave/*` keep receiving JWTs with
+// the stack-auth issuer and continue using their existing OAuth callback URL
+// registrations. The `@hexclave/*` mirror packages are republished from this
+// same source with these literals rewritten by
+// `scripts/rewrite-packages-to-hexclave.ts` (wiring lands in a follow-up PR),
+// so the new-brand SDK defaults to `api.hexclave.com` end-to-end.
+export const defaultBaseUrl = "https://api.stack-auth.com";
+export const defaultAnalyticsBaseUrl = "https://r.stack-auth.com";
 
 const analyticsBaseUrlsByApiBaseUrl = new Map<string, string>([
   [defaultBaseUrl, defaultAnalyticsBaseUrl],
-  ["https://api.stack-auth.com", "https://r.stack-auth.com"], // for legacy compatibility
+  ["https://api.hexclave.com", "https://r.hexclave.com"], // hexclave-branded host (forward compat)
 ]);
 
 export function getAnalyticsBaseUrl(regularBaseUrl: string): string {

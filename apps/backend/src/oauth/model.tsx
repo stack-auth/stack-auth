@@ -42,6 +42,13 @@ function checkScope(scope: string | string[] | undefined) {
 }
 
 export class OAuthModel implements AuthorizationCodeModel {
+  // Host-derived API URL — threaded into `generateAccessToken` so the access
+  // token's `iss` claim follows the host the customer's SDK targeted (see
+  // `request-api-url.ts`). The OAuthServer that wraps this model is built
+  // per-request in `createOAuthServer()` so each request flows through its own
+  // model instance with its own apiUrl.
+  constructor(private readonly apiUrl: string) {}
+
   async getClient(clientId: string, clientSecret: string): Promise<Client | Falsey> {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(clientId), true);
     if (!tenancy) {
@@ -104,6 +111,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
       tenancy,
       refreshTokenObj,
+      apiUrl: this.apiUrl,
     });
     if (!accessToken) {
       // Either the refresh token became invalid between _getOrCreateRefreshTokenObj and now
