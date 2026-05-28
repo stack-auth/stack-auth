@@ -132,7 +132,7 @@ function WalkthroughEngine() {
     if (!isRunning) return;
 
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && e.isTrusted) {
         e.preventDefault();
         stop();
       }
