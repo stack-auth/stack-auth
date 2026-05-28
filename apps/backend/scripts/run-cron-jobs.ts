@@ -14,6 +14,7 @@ const PREVIEW_FILL_POOL_ACTIVE_INTERVAL_MS = 5_000;
 const PREVIEW_FILL_POOL_IDLE_INTERVAL_MS = 60_000;
 const PREVIEW_FILL_POOL_ERROR_INTERVAL_MS = 10_000;
 const BACKEND_HEALTH_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_BACKEND_HEALTH_MAX_WAIT_MS = 30_000;
 
 type PreviewFillPoolResult = {
   ready_count_before: number,
@@ -22,14 +23,36 @@ type PreviewFillPoolResult = {
   deleted_expired_count: number,
 };
 
+function getBackendHealthMaxWaitMs(): number {
+  const raw = getEnvVariable("STACK_CRON_BACKEND_READY_MAX_WAIT_MS", "");
+  if (raw === "") return DEFAULT_BACKEND_HEALTH_MAX_WAIT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("STACK_CRON_BACKEND_READY_MAX_WAIT_MS must be a positive integer");
+  }
+  return parsed;
+}
+
 async function waitUntilBackendReady(baseUrl: string): Promise<void> {
-  while (true) {
+  const maxWaitMs = getBackendHealthMaxWaitMs();
+  const deadline = performance.now() + maxWaitMs;
+  let lastFailure: string | undefined;
+
+  while (performance.now() < deadline) {
     const healthResult = await Result.fromPromise(fetch(`${baseUrl}/health`));
     if (healthResult.status === "ok" && healthResult.data.ok) {
       return;
     }
+    lastFailure = healthResult.status === "error"
+      ? String(healthResult.error)
+      : `HTTP ${healthResult.data.status}`;
     await wait(BACKEND_HEALTH_POLL_INTERVAL_MS);
   }
+
+  throw new HexclaveAssertionError(
+    `Backend at ${baseUrl} did not become healthy within ${maxWaitMs}ms (last failure: ${lastFailure ?? "unknown"})`,
+    { baseUrl, maxWaitMs, lastFailure },
+  );
 }
 
 function getPreviewFillPoolPollIntervalMs(result: PreviewFillPoolResult): number {
