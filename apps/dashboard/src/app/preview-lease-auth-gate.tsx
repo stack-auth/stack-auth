@@ -5,6 +5,7 @@ import { useRouter } from "@/components/router";
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp, useUser, type CurrentInternalUser } from "@stackframe/stack";
+import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -89,7 +90,10 @@ async function claimPreviewLease(app: unknown): Promise<PreviewLeaseResponse> {
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to claim preview lease: ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`);
+    throw new HexclaveAssertionError(
+      `Failed to claim preview lease: ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`,
+      { status: response.status, statusText: response.statusText },
+    );
   }
 
   return parsePreviewLeaseResponse(await response.json());
@@ -111,6 +115,10 @@ function PreviewLeaseClaimGate() {
         refreshToken: lease.refreshToken,
       });
       await internals.refreshOwnedProjects();
+    }, {
+      onError: () => {
+        claimStarted.current = false;
+      },
     });
   }, [app]);
 
