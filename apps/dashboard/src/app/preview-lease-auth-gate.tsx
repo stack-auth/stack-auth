@@ -89,7 +89,7 @@ async function claimPreviewLease(app: unknown): Promise<PreviewLeaseResponse> {
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to claim preview lease: ${response.status} ${await response.text()}`);
+    throw new Error(`Failed to claim preview lease: ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`);
   }
 
   return parsePreviewLeaseResponse(await response.json());
