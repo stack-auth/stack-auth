@@ -9,9 +9,9 @@ export { getConvexProvidersConfig } from "./integrations/convex";
 // Hexclave aliases — same symbols under the new brand name (see RENAME-TO-HEXCLAVE.md, Tier 1)
 export type { StackConfig as HexclaveConfig } from "@stackframe/stack-shared/config";
 export { defineStackConfig as defineHexclaveConfig } from "@stackframe/stack-shared/config";
-/** @deprecated Use `HexclaveConfig` instead — same symbol, new brand name. */
+/** @deprecated Use `HexclaveConfig` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type { StackConfig } from "@stackframe/stack-shared/config";
-/** @deprecated Use `defineHexclaveConfig` instead — same symbol, new brand name. */
+/** @deprecated Use `defineHexclaveConfig` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export { defineStackConfig } from "@stackframe/stack-shared/config";
 
 // IF_PLATFORM react-like
@@ -21,14 +21,14 @@ export { default as HexclaveHandler } from "./components-page/stack-handler";
 export { useStackApp as useHexclaveApp } from "./lib/hooks";
 export { default as HexclaveProvider } from "./providers/stack-provider";
 export { StackTheme as HexclaveTheme } from './providers/theme-provider';
-/** @deprecated Use `HexclaveHandler` instead — same symbol, new brand name. */
+/** @deprecated Use `HexclaveHandler` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export { default as StackHandler } from "./components-page/stack-handler";
-/** @deprecated Use `useHexclaveApp` instead — same symbol, new brand name. */
+/** @deprecated Use `useHexclaveApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export { useStackApp } from "./lib/hooks";
 export { useUser } from "./lib/hooks";
-/** @deprecated Use `HexclaveProvider` instead — same symbol, new brand name. */
+/** @deprecated Use `HexclaveProvider` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export { default as StackProvider } from "./providers/stack-provider";
-/** @deprecated Use `HexclaveTheme` instead — same symbol, new brand name. */
+/** @deprecated Use `HexclaveTheme` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export { StackTheme } from './providers/theme-provider';
 
 export { AccountSettings } from "./components-page/account-settings";
