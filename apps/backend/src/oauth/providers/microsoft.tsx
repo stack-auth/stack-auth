@@ -26,6 +26,11 @@ export class MicrosoftProvider extends OAuthBaseProvider {
       baseScope: "User.Read openid",
       openid: true,
       jwksUri: `https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`,
+      // Microsoft treats the token-request scope as a resource selector during
+      // authorization-code redemption. Plain sign-in can work without restating
+      // it, but connected-account flows with extra provider_scope values have
+      // returned AADSTS70011 unless we include the originally requested scopes.
+      includeScopeInCallbackTokenExchange: true,
       ...rest,
     }));
   }
