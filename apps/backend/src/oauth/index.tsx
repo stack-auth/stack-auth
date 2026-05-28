@@ -68,23 +68,46 @@ export function getProjectBranchFromClientId(clientId: string): [projectId: stri
 //                                       providers registered before this field
 //                                       are unaffected
 //
-// The stack-auth brand is derived from this deployment's
-// `NEXT_PUBLIC_STACK_API_URL` (mapping cloud siblings), falling back to that env
-// var unchanged for self-hosted / localhost. This intentionally no longer
-// depends on the request host header.
-function getRedirectUri(provider: Tenancy['config']['auth']['oauth']['providers'][string], providerType: string): string {
+// `deploymentApiUrl` is this deployment's `NEXT_PUBLIC_STACK_API_URL`. The
+// stack-auth brand is derived from it (mapping cloud siblings), falling back to
+// it unchanged for self-hosted / localhost. This intentionally no longer depends
+// on the request host header.
+function getRedirectUri(
+  provider: Tenancy['config']['auth']['oauth']['providers'][string],
+  providerType: string,
+  deploymentApiUrl: string,
+): string {
   if (!provider.isShared && provider.customCallbackUrl) {
     return provider.customCallbackUrl;
   }
-  const stackAuthBaseUrl = getStackAuthApiBaseUrl(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+  const stackAuthBaseUrl = getStackAuthApiBaseUrl(deploymentApiUrl);
   return `${stackAuthBaseUrl}/api/v1/auth/oauth/callback/${providerType}`;
 }
+
+import.meta.vitest?.test("getRedirectUri keeps existing customers on the stack-auth callback", ({ expect }) => {
+  const legacyCustom = { type: "github", isShared: false, customCallbackUrl: undefined } as any;
+  const sharedProvider = { type: "github", isShared: true } as any;
+  const newCustom = { type: "github", isShared: false, customCallbackUrl: "https://api.hexclave.com/api/v1/auth/oauth/callback/github" } as any;
+
+  // On a hexclave-branded deployment, existing customers (legacy custom + shared)
+  // still get the stack-auth callback they registered — unchanged by the rebrand.
+  expect(getRedirectUri(legacyCustom, "github", "https://api.hexclave.com")).toBe("https://api.stack-auth.com/api/v1/auth/oauth/callback/github");
+  expect(getRedirectUri(sharedProvider, "github", "https://api.hexclave.com")).toBe("https://api.stack-auth.com/api/v1/auth/oauth/callback/github");
+  // Only providers that explicitly set customCallbackUrl get the new brand.
+  expect(getRedirectUri(newCustom, "github", "https://api.hexclave.com")).toBe("https://api.hexclave.com/api/v1/auth/oauth/callback/github");
+
+  // On a stack-auth-branded deployment, unchanged too.
+  expect(getRedirectUri(legacyCustom, "github", "https://api.stack-auth.com")).toBe("https://api.stack-auth.com/api/v1/auth/oauth/callback/github");
+
+  // Self-host / localhost (not a cloud sibling): falls back to the deployment URL.
+  expect(getRedirectUri(legacyCustom, "github", "http://localhost:8102")).toBe("http://localhost:8102/api/v1/auth/oauth/callback/github");
+});
 
 export async function getProvider(
   provider: Tenancy['config']['auth']['oauth']['providers'][string],
 ): Promise<OAuthBaseProvider> {
   const providerType = provider.type || throwErr("Provider type is required for shared providers");
-  const redirectUri = getRedirectUri(provider, providerType);
+  const redirectUri = getRedirectUri(provider, providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   if (provider.isShared) {
     const clientId = _getEnvForProvider(providerType).clientId;
     const clientSecret = _getEnvForProvider(providerType).clientSecret;
