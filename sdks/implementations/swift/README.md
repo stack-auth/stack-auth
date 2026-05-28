@@ -188,7 +188,7 @@ Tests use Swift Testing framework against a running backend.
    swift test
    ```
 
-The tests connect to `http://localhost:8102` (or `${NEXT_PUBLIC_STACK_PORT_PREFIX}02`).
+The tests connect to `http://localhost:8102` (or `${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX}02`).
 
 ## API Reference
 

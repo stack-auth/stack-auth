@@ -36,7 +36,7 @@ For any security-related concerns & bug bounties, please email us at [security@h
 
 NOTE: Every line of code should be reviewed by a human BEFORE you submit a PR. DO NOT waste our time by creating and submitting an AI-generated PR.
 
-For vibecoding, it can help to have multiple parallel copies of the codebase open in different windows. For this, you can set the environment variable `NEXT_PUBLIC_STACK_PORT_PREFIX` to a different value (default 81). To do this consistently across all coding agents (Claude Code/Cursor Agent/Codex),we recommend you use `direnv` with a `.envrc` file:
+For vibecoding, it can help to have multiple parallel copies of the codebase open in different windows. For this, you can set the environment variable `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX` to a different value (default 81). To do this consistently across all coding agents (Claude Code/Cursor Agent/Codex),we recommend you use `direnv` with a `.envrc` file:
 
 1. Install `direnv` if you haven't already. On Mac, the easiest way is to install it with Homebrew: `brew install direnv`.
 2. Update ALL your shell configs to append the following lines. On most Mac setups, this is `~/.bash_profile`, `~/.bashrc`, `~/.zprofile`, `~/.zshrc`, and `~/.zshenv`.
@@ -51,13 +51,13 @@ For vibecoding, it can help to have multiple parallel copies of the codebase ope
   ```sh
   # .envrc
   # make sure to install direnv and add it to your shell rc file (e.g. ~/.bashrc or ~/.zshrc)
-  export NEXT_PUBLIC_STACK_PORT_PREFIX=181
+  export NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=181
 
   # with this many processes running, it can be useful to add a custom title to all Node.js processes
   # export NODE_OPTIONS="--require=<path-to-the-workspace-folder>/scripts/set-process-title.js $NODE_OPTIONS"
   ```
 
-When you do this, it is recommended that you give all workspaces a port prefix other than 81, to prevent accidental conflicts when you forgot to make a feature support the $NEXT_PUBLIC_STACK_PORT_PREFIX environment variable. (for example: first workspace at 181, second workspace at 182, etc.)
+When you do this, it is recommended that you give all workspaces a port prefix other than 81, to prevent accidental conflicts when you forgot to make a feature support the $NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX environment variable. (for example: first workspace at 181, second workspace at 182, etc.)
 
 Also, the cookies on different ports may conflict with each other. To prevent this, open `a.localhost:18101` and `b.localhost:18201` instead or normal localhost, so the cookies are scoped differently.
 

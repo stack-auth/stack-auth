@@ -9,7 +9,7 @@ export function getHostedHandlerTrustedDomain(projectId: string): string {
     projectId,
     hostedHandlerDomainSuffix: getProcessEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX"),
     hostedHandlerUrlTemplate: getProcessEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE"),
-    stackPortPrefix: getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81"),
+    stackPortPrefix: getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81"),
   });
 }
 
