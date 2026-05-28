@@ -4,9 +4,11 @@ import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MockCursor } from './mock-cursor';
-import { type SpotlightRect, type WalkthroughStep } from './walkthrough-steps';
+import { type SpotlightRect, type WalkthroughPhase, type WalkthroughStep } from './walkthrough-steps';
 
-export type WalkthroughPhase = 'navigating' | 'dwelling' | 'finishing';
+export type { WalkthroughPhase };
+
+const SPOTLIGHT_BORDER = 'rgb(59 130 246)'; // blue-500
 
 export function WalkthroughOverlay({
   step,
@@ -61,7 +63,7 @@ export function WalkthroughOverlay({
     : null;
 
   const padding = step?.spotlightPadding ?? 8;
-  const overlayOpacity = showSpotlight ? (animatedIn ? 0.55 : 0) : 0;
+  const overlayOpacity = showSpotlight ? (animatedIn ? 0.62 : 0) : 0;
 
   return createPortal(
     <>
@@ -70,15 +72,18 @@ export function WalkthroughOverlay({
         {showSpotlight && displayRect && step && (
           <>
             <div
-              className="fixed pointer-events-none rounded-xl"
+              className="fixed pointer-events-none"
               style={{
                 top: displayRect.top - padding,
                 left: displayRect.left - padding,
                 width: displayRect.width + padding * 2,
                 height: displayRect.height + padding * 2,
-                boxShadow: `0 0 0 9999px rgba(0, 0, 0, ${overlayOpacity})`,
+                borderRadius: animatedIn ? '14px' : '0px',
+                border: animatedIn ? `2px solid ${SPOTLIGHT_BORDER}` : '0px solid transparent',
+                boxShadow: animatedIn
+                  ? `0 0 0 9999px rgba(0, 0, 0, ${overlayOpacity}), 0 0 14px 2px rgba(59, 130, 246, 0.35), 0 0 28px 6px rgba(59, 130, 246, 0.12)`
+                  : `0 0 0 9999px rgba(0, 0, 0, ${overlayOpacity})`,
                 transition: 'all 400ms cubic-bezier(0.22, 1, 0.36, 1)',
-                borderRadius: animatedIn ? undefined : '0px',
               }}
             />
 
@@ -89,6 +94,7 @@ export function WalkthroughOverlay({
                 totalSteps={totalSteps}
                 phase={phase}
                 spotlightRect={spotlightRect!}
+                padding={padding}
               />
             )}
           </>
@@ -103,10 +109,9 @@ export function WalkthroughOverlay({
           transition: 'transform 500ms cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
-        <MockCursor />
+        <MockCursor phase={phase} />
       </div>
 
-      {/* Floating tour progress card — bottom-center, bold and unmissable */}
       {step && (
         <TourProgressCard
           stepIndex={stepIndex}
@@ -116,12 +121,12 @@ export function WalkthroughOverlay({
         />
       )}
 
-      {/* "Click to take control" hover overlay — above everything including CmdK */}
+      {/* "Click to take control" hover overlay */}
       <div
         className={cn(
           "fixed inset-0 z-[60] flex items-center justify-center cursor-pointer",
           "bg-black/50 backdrop-blur-[2px]",
-          "transition-opacity duration-200",
+          "transition-opacity duration-150",
           isHovering ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
         onClick={(e) => {
@@ -135,7 +140,7 @@ export function WalkthroughOverlay({
         </p>
       </div>
 
-      {/* Invisible click catcher (active only when not hovering) — anywhere = stop */}
+      {/* Invisible click catcher (active only when not hovering) */}
       {!isHovering && (
         <div
           className="fixed inset-0 z-40"
@@ -162,8 +167,6 @@ function TourProgressCard({
   phase: WalkthroughPhase,
   dwellMs: number,
 }) {
-  // Animate the bar's scaleX. During 'dwelling', grow from i/N to (i+1)/N over
-  // `dwellMs`. During 'navigating', hold at i/N. During 'finishing', show 100%.
   const [progress, setProgress] = useState(stepIndex / totalSteps);
   const [transitionMs, setTransitionMs] = useState(0);
 
@@ -175,7 +178,6 @@ function TourProgressCard({
       setTransitionMs(300);
       setProgress(1);
     } else if (phase === 'dwelling') {
-      // Snap to start with no transition, then next frame kick off the long animation.
       setTransitionMs(0);
       setProgress(stepIndex / totalSteps);
       raf1 = requestAnimationFrame(() => {
@@ -185,8 +187,6 @@ function TourProgressCard({
         });
       });
     } else {
-      // 'navigating' — hold at start of step with a short transition so loop
-      // resets ease in rather than snap.
       setTransitionMs(250);
       setProgress(stepIndex / totalSteps);
     }
@@ -220,8 +220,7 @@ function TourProgressCard({
               className={cn(
                 "inline-flex items-center px-2 py-0.5 rounded-full",
                 "text-[10px] font-bold uppercase tracking-wider",
-                "bg-gradient-to-r from-blue-500 to-indigo-500 text-white",
-                "shadow-[0_0_12px_rgba(59,130,246,0.6)]",
+                "bg-blue-500 text-white",
               )}
             >
               Tour
@@ -240,7 +239,6 @@ function TourProgressCard({
           </span>
         </div>
 
-        {/* The big bar */}
         <div className="px-5 pb-4">
           <div
             className={cn(
@@ -250,11 +248,7 @@ function TourProgressCard({
             )}
           >
             <div
-              className={cn(
-                "absolute inset-y-0 left-0 origin-left rounded-full",
-                "bg-gradient-to-r from-blue-500 via-blue-500 to-indigo-500",
-                "shadow-[0_0_18px_rgba(59,130,246,0.85),0_0_6px_rgba(99,102,241,1)]",
-              )}
+              className="absolute inset-y-0 left-0 origin-left rounded-full bg-blue-500"
               style={{
                 width: '100%',
                 transform: `scaleX(${progress})`,
@@ -262,12 +256,7 @@ function TourProgressCard({
                   ? `transform ${transitionMs}ms linear`
                   : 'none',
               }}
-            >
-              {/* Bright leading edge highlight */}
-              <div
-                className="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-white/80 to-transparent pointer-events-none"
-              />
-            </div>
+            />
           </div>
         </div>
       </div>
@@ -281,53 +270,53 @@ function SpotlightTooltip({
   totalSteps,
   phase,
   spotlightRect,
+  padding,
 }: {
   step: WalkthroughStep,
   stepIndex: number,
   totalSteps: number,
   phase: WalkthroughPhase,
   spotlightRect: SpotlightRect,
+  padding: number,
 }) {
-  const tooltipWidth = 300;
-  const tooltipHeight = 96;
-  const tooltipGap = 16;
-  // Reserve room for the bottom progress card (~88px tall including margin).
+  const tooltipWidth = 280;
+  const tooltipGap = 14;
   const viewportMarginTop = 16;
   const viewportMarginBottom = 112;
   const viewportMarginX = 16;
-  const padding = step.spotlightPadding ?? 8;
 
   const spotlightTop = spotlightRect.top - padding;
   const spotlightBottom = spotlightRect.top + spotlightRect.height + padding;
   const spotlightCenterX = spotlightRect.left + spotlightRect.width / 2;
 
-  // Default: below the spotlight.
+  let placement: 'below' | 'above' = 'below';
   let top = spotlightBottom + tooltipGap;
-  let left = spotlightCenterX - tooltipWidth / 2;
 
-  // If that would collide with the bottom progress card, flip to above the spotlight.
-  if (top + tooltipHeight > window.innerHeight - viewportMarginBottom) {
-    top = spotlightTop - tooltipGap - tooltipHeight;
+  const estimatedHeight = 96;
+  if (top + estimatedHeight > window.innerHeight - viewportMarginBottom) {
+    placement = 'above';
+    top = spotlightTop - tooltipGap - estimatedHeight;
   }
 
   top = Math.max(
     viewportMarginTop,
-    Math.min(top, window.innerHeight - tooltipHeight - viewportMarginBottom),
+    Math.min(top, window.innerHeight - estimatedHeight - viewportMarginBottom),
   );
+
+  let left = spotlightCenterX - tooltipWidth / 2;
   left = Math.max(
     viewportMarginX,
     Math.min(left, window.innerWidth - tooltipWidth - viewportMarginX),
   );
 
+  const pointerLeft = Math.max(
+    20,
+    Math.min(spotlightCenterX - left, tooltipWidth - 20),
+  );
+
   return (
     <div
-      className={cn(
-        "fixed pointer-events-none px-4 py-3 rounded-xl",
-        "bg-white/95 dark:bg-zinc-900/90",
-        "backdrop-blur-xl",
-        "shadow-2xl shadow-black/25",
-        "ring-1 ring-black/10 dark:ring-white/10",
-      )}
+      className="fixed pointer-events-none"
       style={{
         top,
         left,
@@ -335,16 +324,52 @@ function SpotlightTooltip({
         transition: 'top 400ms cubic-bezier(0.22, 1, 0.36, 1), left 400ms cubic-bezier(0.22, 1, 0.36, 1)',
       }}
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{step.title}</span>
-        <span className="text-[11px] tabular-nums font-medium text-zinc-500 dark:text-zinc-400">
-          {stepIndex + 1} / {totalSteps}
-        </span>
+      {/* Speech bubble pointer */}
+      <div
+        className={cn(
+          "absolute w-3 h-3",
+          "bg-white/95 dark:bg-zinc-900/90",
+          "border-black/10 dark:border-white/10",
+        )}
+        style={{
+          left: pointerLeft - 6,
+          ...(placement === 'below'
+            ? {
+              top: -6,
+              borderTopWidth: '1px',
+              borderLeftWidth: '1px',
+              transform: 'rotate(45deg)',
+            }
+            : {
+              bottom: -6,
+              borderBottomWidth: '1px',
+              borderRightWidth: '1px',
+              transform: 'rotate(45deg)',
+            }),
+        }}
+      />
+
+      <div
+        className={cn(
+          "relative rounded-xl px-4 py-3",
+          "bg-white/95 dark:bg-zinc-900/90",
+          "backdrop-blur-xl",
+          "shadow-2xl shadow-black/25",
+          "ring-1 ring-black/10 dark:ring-white/10",
+        )}
+      >
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{step.title}</span>
+          <span className="text-[11px] tabular-nums font-medium text-zinc-500 dark:text-zinc-400">
+            {stepIndex + 1} / {totalSteps}
+          </span>
+        </div>
+        <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">{step.description}</p>
+        {phase === 'navigating' && (
+          <p className="mt-1.5 text-[11px] text-zinc-400 dark:text-zinc-500 italic">navigating…</p>
+        )}
       </div>
-      <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">{step.description}</p>
-      {phase === 'navigating' && (
-        <p className="mt-1.5 text-[11px] text-zinc-400 dark:text-zinc-500 italic">navigating…</p>
-      )}
     </div>
   );
 }
+
