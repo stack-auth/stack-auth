@@ -17,6 +17,22 @@ const DEFAULT_READY_POOL_SIZE = 3;
 const DEFAULT_LEASE_DURATION_MS = 30 * 60 * 1000;
 const DEFAULT_CLEANUP_MAX_DELETE_PER_RUN = 1;
 
+let previewPoolFillMutexTail: Promise<void> = Promise.resolve();
+
+async function withPreviewPoolFillMutex<T>(callback: () => Promise<T>): Promise<T> {
+  const previousTail = previewPoolFillMutexTail;
+  let releaseMutex!: () => void;
+  previewPoolFillMutexTail = new Promise<void>((resolve) => {
+    releaseMutex = resolve;
+  });
+  await previousTail;
+  try {
+    return await callback();
+  } finally {
+    releaseMutex();
+  }
+}
+
 type PreviewPoolState = "ready" | "leased";
 
 type PreviewPoolMetadata = {
@@ -546,20 +562,22 @@ export async function fillPreviewPool(options?: { maxCreate?: number }): Promise
 }> {
   assertPreviewModeEnabled();
 
-  const targetReadyCount = getReadyPoolSize();
-  const readyCountBefore = await countReadyPreviewPoolProjects();
-  const requestedMaxCreate = options?.maxCreate ?? 1;
-  const createCount = Math.max(0, Math.min(requestedMaxCreate, targetReadyCount - readyCountBefore));
+  return await withPreviewPoolFillMutex(async () => {
+    const targetReadyCount = getReadyPoolSize();
+    const readyCountBefore = await countReadyPreviewPoolProjects();
+    const requestedMaxCreate = options?.maxCreate ?? 1;
+    const createCount = Math.max(0, Math.min(requestedMaxCreate, targetReadyCount - readyCountBefore));
 
-  for (let i = 0; i < createCount; i++) {
-    await createPreviewPoolProject("ready");
-  }
+    for (let i = 0; i < createCount; i++) {
+      await createPreviewPoolProject("ready");
+    }
 
-  return {
-    readyCountBefore,
-    createdCount: createCount,
-    targetReadyCount,
-  };
+    return {
+      readyCountBefore,
+      createdCount: createCount,
+      targetReadyCount,
+    };
+  });
 }
 
 export async function claimPreviewPoolLease(options: { apiUrl: string }): Promise<PreviewPoolLease> {
