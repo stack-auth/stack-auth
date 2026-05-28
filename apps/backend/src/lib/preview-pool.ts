@@ -9,7 +9,7 @@ import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient, isPrismaError, sqlQuoteIdent, type PrismaClientTransaction } from "@/prisma-client";
 import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 const PREVIEW_POOL_METADATA_KEY = "stackPreviewPool";
@@ -586,12 +586,20 @@ export async function claimPreviewPoolLease(options: { apiUrl: string }): Promis
   const claimed = await claimReadyPreviewPoolProject() ?? await createPreviewPoolProject("leased");
   const internalTenancy = await getInternalTenancy();
 
-  await refreshDummyProjectLiveTokenRefreshEvents(claimed.projectId, getClickhouseAdminClient());
   const { accessToken, refreshToken } = await createAuthTokens({
     tenancy: internalTenancy,
     projectUserId: claimed.userId,
     apiUrl: options.apiUrl,
   });
+
+  try {
+    await refreshDummyProjectLiveTokenRefreshEvents(claimed.projectId, getClickhouseAdminClient());
+  } catch (error) {
+    captureError(
+      "preview-pool-live-token-refresh",
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
 
   return {
     projectId: claimed.projectId,
