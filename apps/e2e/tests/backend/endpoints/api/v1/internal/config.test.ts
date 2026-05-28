@@ -427,30 +427,6 @@ describe("oauth config", () => {
     `);
   });
 
-  it("rejects customCallbackUrl on a shared oauth provider", async ({ expect }) => {
-    const { adminAccessToken } = await Project.createAndSwitch();
-
-    const response = await niceBackendFetch("/api/v1/internal/config/override/environment", {
-      method: "PATCH",
-      accessType: "admin",
-      headers: adminHeaders(adminAccessToken),
-      body: {
-        config_override_string: JSON.stringify({
-          'auth.oauth.providers.google': {
-            type: 'google',
-            isShared: true,
-            customCallbackUrl: 'https://api.hexclave.com/api/v1/auth/oauth/callback/google',
-            allowSignIn: true,
-            allowConnectedAccounts: true,
-          },
-        }),
-      },
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toContain("customCallbackUrl");
-  });
-
   it("accepts customCallbackUrl on a standard oauth provider", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 

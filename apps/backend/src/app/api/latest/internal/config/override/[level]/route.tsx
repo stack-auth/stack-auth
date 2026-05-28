@@ -16,7 +16,7 @@ import { assertConfigOverrideWriteAllowed } from "@/lib/development-environment"
 import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getCrossFieldConfigOverrideError, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
@@ -225,13 +225,6 @@ async function parseAndValidateConfig(
   const overrideError = await getConfigOverrideErrors(levelConfig.schema, migratedConfig);
   if (overrideError.status === "error") {
     throw new StatusError(StatusError.BadRequest, overrideError.error);
-  }
-
-  // Cross-field constraints can't be expressed in the per-field override schema
-  // (see getCrossFieldConfigOverrideError), so enforce them explicitly here.
-  const crossFieldError = getCrossFieldConfigOverrideError(migratedConfig);
-  if (crossFieldError !== null) {
-    throw new StatusError(StatusError.BadRequest, crossFieldError);
   }
 
   return migratedConfig;
