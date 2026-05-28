@@ -26,7 +26,7 @@ From the repository root:
 pnpm -C docs-mintlify run dev
 ```
 
-This starts Mintlify in `docs-mintlify` on `http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04` (for example, `http://localhost:8104` with the default prefix).
+This starts Mintlify in `docs-mintlify` on `http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}04` (for example, `http://localhost:8104` with the default prefix).
 
 From inside `docs-mintlify`, you can also run:
 

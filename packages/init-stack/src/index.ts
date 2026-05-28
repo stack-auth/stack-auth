@@ -78,7 +78,7 @@ function resolveOnQuestionMode(opt: string): OnQuestionMode {
 const program = new Command();
 program
   .name(packageJson.name)
-  .description("Stack Auth Initialization Tool")
+  .description("Hexclave Initialization Tool")
   .version(packageJson.version)
   .argument("[project-path]", "Path to your project")
   .usage(`[project-path] [options]`)
@@ -99,7 +99,7 @@ program
   .option("--on-question <mode>", "How to handle interactive questions: ask | guess | error | default", "default")
   .option("--no-warn-uncommitted-changes", "Don't warn about uncommitted changes in the Git repository")
   .addHelpText('after', `
-For more information, please visit https://docs.stack-auth.com/getting-started/setup`);
+For more information, please visit https://docs.hexclave.com/getting-started/setup`);
 
 program.parse();
 
@@ -168,7 +168,7 @@ const packagesToInstall: string[] = [];
 const writeFileHandlers: Array<() => Promise<void>> = [];
 const deferredCommandHandlers: Array<() => Promise<void>> = [];
 const nextSteps: string[] = [
-  `Create an account and Stack Auth API key for your project on https://app.stack-auth.com`,
+  `Create an account and Hexclave API key for your project on https://app.hexclave.com`,
 ];
 
 
@@ -263,7 +263,7 @@ async function main(): Promise<void> {
     recordFileChange,
     runScheduledCommand,
   });
-  nextSteps.push("Restart your MCP-enabled editors so they pick up the Stack Auth MCP.");
+  nextSteps.push("Restart your MCP-enabled editors so they pick up the Hexclave MCP.");
   logVerbose("MCP configuration scheduled", {
     writeHandlers: writeFileHandlers.length,
     deferredCommands: deferredCommandHandlers.length,
@@ -333,7 +333,7 @@ async function main(): Promise<void> {
     }
     nextSteps.push(
       `Copy the environment variables from the new API key into your own environment and reference them in ${appFiles.join(" and ")}`,
-      `Follow the instructions on how to use Stack Auth's vanilla SDK at http://docs.stack-auth.com/others/js-client`,
+      `Follow the instructions on how to use Hexclave's vanilla SDK at https://docs.hexclave.com/guides/going-further/stack-app`,
     );
   }
   logVerbose("Primary integration steps completed", { type, nextStepsCount: nextSteps.length });
@@ -397,7 +397,7 @@ async function main(): Promise<void> {
   }
   console.log();
   console.log("MCP servers installed:");
-  console.log(`  ${colorize.green`https://mcp.stack-auth.com/mcp`}`);
+  console.log(`  ${colorize.green`https://mcp.hexclave.com/mcp`}`);
   console.log();
   console.log("Files written:");
   for (const file of filesModified) {
@@ -440,17 +440,17 @@ ${colorize.green`Successfully installed Stack! 🚀🚀🚀`}
 ${colorize.bold`Next steps:`}
 
 1. ${noBrowser ?
-      `Create a project at https://app.stack-auth.com and get your API keys` :
+      `Create a project at https://app.hexclave.com and get your API keys` :
       `Complete the setup in your browser to get your API keys`}
 2. Add the API keys to your .env.local file
 3. Import the Stack components in your app
 4. Add authentication to your app
 
-For more information, please visit https://docs.stack-auth.com/getting-started/setup
+For more information, please visit https://docs.hexclave.com/getting-started/setup
   `.trim());
   if (!noBrowser) {
     // Hexclave rebrand: emit the new query param name (hyphen delimiter preserved).
-    await open(`https://app.stack-auth.com/wizard-congrats?hexclave-init-id=${encodeURIComponent(distinctId)}`);
+    await open(`https://app.hexclave.com/wizard-congrats?hexclave-init-id=${encodeURIComponent(distinctId)}`);
   }
   await ph_client.shutdown();
 }
@@ -479,7 +479,7 @@ main().catch(async (err) => {
   console.log(colorize.red`===============================================`);
   console.error();
   console.error(
-    "If you need assistance, please try installing Stack manually as described in https://docs.stack-auth.com/getting-started/setup or join our Discord where we're happy to help: https://discord.stack-auth.com"
+    "If you need assistance, please try installing Stack manually as described in https://docs.hexclave.com/getting-started/setup or join our Discord where we're happy to help: https://discord.hexclave.com"
   );
   if (!(err instanceof UserError)) {
     console.error("");
@@ -632,9 +632,9 @@ const Steps = {
 
   async getStackPackageName(type: "js" | "next" | "react", install = false): Promise<string> {
     const mapping = {
-      js: (install && process.env.STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/js",
-      next: (install && process.env.STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/stack",
-      react: (install && process.env.STACK_REACT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@stackframe/react",
+      js: (install && process.env.STACK_JS_INSTALL_PACKAGE_NAME_OVERRIDE) || "@hexclave/js",
+      next: (install && process.env.STACK_NEXT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@hexclave/next",
+      react: (install && process.env.STACK_REACT_INSTALL_PACKAGE_NAME_OVERRIDE) || "@hexclave/react",
     } as const;
     const packageName = mapping[type];
     logVerbose("Steps.getStackPackageName resolved", { type, install, packageName });
@@ -730,16 +730,16 @@ const Steps = {
     ];
     if (potentialEnvLocations.every((p) => !fs.existsSync(p))) {
       const envContent = noBrowser
-        ? "# Stack Auth keys\n" +
+        ? "# Hexclave keys\n" +
         "# To get these variables:\n" +
-        "# 1. Go to https://app.stack-auth.com\n" +
+        "# 1. Go to https://app.hexclave.com\n" +
         "# 2. Create a new project\n" +
         "# 3. Copy the keys below\n" +
         `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
         `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
         "STACK_SECRET_SERVER_KEY=\n"
-        : "# Stack Auth keys\n" +
-        "# Get these variables by creating a project on https://app.stack-auth.com.\n" +
+        : "# Hexclave keys\n" +
+        "# Get these variables by creating a project on https://app.hexclave.com.\n" +
         `NEXT_PUBLIC_STACK_PROJECT_ID="${projectIdFromArgs ?? ""}"\n` +
         `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${publishableClientKeyFromArgs ?? ""}"\n` +
         "STACK_SECRET_SERVER_KEY=\n";
@@ -774,7 +774,7 @@ const Steps = {
     const authConfigPath = path.join(convexDir, "auth.config.ts");
     const desiredAuthConfig = createConvexAuthConfigContent({ stackPackageName, type });
     const existingAuthConfig = await readFile(authConfigPath);
-    if (!existingAuthConfig || (!existingAuthConfig.includes("getConvexProvidersConfig") && !existingAuthConfig.includes("@stackframe/"))) {
+    if (!existingAuthConfig || (!existingAuthConfig.includes("getConvexProvidersConfig") && !existingAuthConfig.includes("@stackframe/") && !existingAuthConfig.includes("@hexclave/"))) {
       laterWriteFile(authConfigPath, desiredAuthConfig);
       logVerbose("Steps.maybeInstallConvexIntegration scheduled auth.config.ts update", { authConfigPath });
     }
@@ -810,13 +810,13 @@ const Steps = {
 
     const convexClientUpdateResult = await updateConvexClients({ projectPath, type });
     if (convexClientUpdateResult.skippedFiles.length > 0) {
-      instructions.push("Review your Convex client setup and call stackClientApp.getConvexClientAuth({}) or stackServerApp.getConvexClientAuth({}) manually where needed.");
+      instructions.push("Review your Convex client setup and call hexclaveClientApp.getConvexClientAuth({}) or hexclaveServerApp.getConvexClientAuth({}) manually where needed.");
     }
     logVerbose("Steps.maybeInstallConvexIntegration client update summary", convexClientUpdateResult);
 
     instructions.push(
-      "Set the Stack Auth environment variables in Convex (Deployment → Settings → Environment Variables).",
-      "Verify your Convex clients call stackClientApp.getConvexClientAuth({}) or stackServerApp.getConvexClientAuth({}) so they share authentication with Stack Auth."
+      "Set the Hexclave environment variables in Convex (Deployment → Settings → Environment Variables).",
+      "Verify your Convex clients call hexclaveClientApp.getConvexClientAuth({}) or hexclaveServerApp.getConvexClientAuth({}) so they share authentication with Hexclave."
     );
 
     logVerbose("Steps.maybeInstallConvexIntegration completed", { instructions });
@@ -883,7 +883,7 @@ const Steps = {
     const stackAppContent = await readFile(stackAppPath);
     if (stackAppContent) {
       logVerbose("Steps.writeStackAppFile found existing file", { stackAppPath });
-      if (!stackAppContent.includes("@stackframe/")) {
+      if (!stackAppContent.includes("@stackframe/") && !stackAppContent.includes("@hexclave/")) {
         throw new UserError(
           `A file at the path ${stackAppPath} already exists. Stack uses the stack/${clientOrServer}.ts file to initialize the Stack SDK. Please remove the existing file and try again.`
         );
@@ -898,7 +898,7 @@ const Steps = {
       ? `process.env.STACK_PUBLISHABLE_CLIENT_KEY ${publishableClientKeyFromArgs ? `|| ${JSON.stringify(publishableClientKeyFromArgs)}` : ""}`
       : `'${publishableClientKeyFromArgs ?? 'INSERT_YOUR_PUBLISHABLE_CLIENT_KEY_HERE'}'`;
     const jsOptions = type === "js" ? [
-      `\n\n${indentation}// get your Stack Auth API keys from https://app.stack-auth.com${clientOrServer === "client" ? ` and store them in a safe place (e.g. environment variables)` : ""}`,
+      `\n\n${indentation}// get your Hexclave API keys from https://app.hexclave.com${clientOrServer === "client" ? ` and store them in a safe place (e.g. environment variables)` : ""}`,
       `${projectIdFromArgs ? `${indentation}projectId: ${JSON.stringify(projectIdFromArgs)},` : ""}`,
       `${indentation}publishableClientKey: ${publishableClientKeyWrite},`,
       `${clientOrServer === "server" ? `${indentation}secretServerKey: process.env.STACK_SECRET_SERVER_KEY,` : ""}`,
@@ -919,9 +919,9 @@ const Steps = {
     laterWriteFileIfNotExists(
       stackAppPath,
       `
-${type === "next" && clientOrServer === "server" ? `import "server-only";\n\n` : ""}import { Stack${clientOrServerCap}App } from ${JSON.stringify(packageName)};
-${shouldInheritFromClient ? `import { stackClientApp } from "./client";\n\n` : "\n"}export const stack${clientOrServerCap}App = new Stack${clientOrServerCap}App({
-${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}`}
+${type === "next" && clientOrServer === "server" ? `import "server-only";\n\n` : ""}import { Hexclave${clientOrServerCap}App } from ${JSON.stringify(packageName)};
+${shouldInheritFromClient ? `import { hexclaveClientApp } from "./client";\n\n` : "\n"}export const hexclave${clientOrServerCap}App = new Hexclave${clientOrServerCap}App({
+${shouldInheritFromClient ? `${indentation}inheritsFrom: hexclaveClientApp,` : `${indentation}tokenStore: ${tokenStore},${jsOptions}${nextClientOptions}`}
 });
       `.trim() + "\n"
     );
@@ -939,7 +939,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
     const stackAppContent = await readFile(stackAppPath);
     if (stackAppContent) {
       logVerbose("Steps.writeReactClientFile found existing file", { stackAppPath });
-      if (!stackAppContent.includes("@stackframe/")) {
+      if (!stackAppContent.includes("@stackframe/") && !stackAppContent.includes("@hexclave/")) {
         throw new UserError(`A file at the path ${stackAppPath} already exists. Stack uses the stack/client.ts file to initialize the Stack SDK. Please remove the existing file and try again.`);
       }
       throw new UserError(`It seems that you already installed Stack in this project.`);
@@ -949,8 +949,8 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
     const projectIdWrite = `'${projectIdFromArgs ?? 'INSERT_PROJECT_ID'}'`;
 
     const imports = hasReactRouterDom
-      ? `import { StackClientApp } from ${JSON.stringify(packageName)};\nimport { useNavigate } from "react-router-dom";\n\n`
-      : `import { StackClientApp } from ${JSON.stringify(packageName)};\n\n`;
+      ? `import { HexclaveClientApp } from ${JSON.stringify(packageName)};\nimport { useNavigate } from "react-router-dom";\n\n`
+      : `import { HexclaveClientApp } from ${JSON.stringify(packageName)};\n\n`;
 
     const redirectMethod = hasReactRouterDom
       ? `,\n${indentation}redirectMethod: {\n${indentation}${indentation}useNavigate,\n${indentation}}`
@@ -958,7 +958,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
 
     laterWriteFileIfNotExists(
       stackAppPath,
-      `${imports}export const stackClientApp = new StackClientApp({ \n${indentation}tokenStore: "cookie", \n${indentation}projectId: ${projectIdWrite}, \n${indentation}publishableClientKey: ${publishableClientKeyWrite}${redirectMethod}, \n}); \n`
+      `${imports}export const hexclaveClientApp = new HexclaveClientApp({ \n${indentation}tokenStore: "cookie", \n${indentation}projectId: ${projectIdWrite}, \n${indentation}publishableClientKey: ${publishableClientKeyWrite}${redirectMethod}, \n}); \n`
     );
     logVerbose("Steps.writeReactClientFile scheduled creation", { stackAppPath });
     return { fileName: stackAppPath };
@@ -974,7 +974,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
       (await findJsExtension(handlerPathWithoutExtension)) ?? projectInfo.defaultExtension;
     const handlerPath = handlerPathWithoutExtension + "." + handlerFileExtension;
     const handlerContent = await readFile(handlerPath);
-    if (handlerContent && !handlerContent.includes("@stackframe/")) {
+    if (handlerContent && !handlerContent.includes("@stackframe/") && !handlerContent.includes("@hexclave/")) {
       logVerbose("Steps.writeNextHandlerFile found conflicting file", { handlerPath });
       throw new UserError(
         `A file at the path ${handlerPath} already exists.Stack uses the / handler path to handle incoming requests.Please remove the existing file and try again.`
@@ -982,7 +982,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
     }
     laterWriteFileIfNotExists(
       handlerPath,
-      `import { StackHandler } from "@stackframe/stack";\n\nexport default function Handler() {\n${projectInfo.indentation}return <StackHandler fullPage />;\n}\n`
+      `import { HexclaveHandler } from "@hexclave/next";\n\nexport default function Handler() {\n${projectInfo.indentation}return <HexclaveHandler fullPage />;\n}\n`
     );
   },
 
@@ -1034,7 +1034,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
       {
         type: "confirm",
         name: "ready",
-        message: `Found a ${typeString} project at ${projectPath} — ready to install Stack Auth?`,
+        message: `Found a ${typeString} project at ${projectPath} — ready to install Hexclave?`,
         default: true,
       },
     ])).ready;
@@ -1070,7 +1070,7 @@ ${shouldInheritFromClient ? `${indentation}inheritsFrom: stackClientApp,` : `${i
     const selection = (await inquirer.prompt([{
       type: "list",
       name: "type",
-      message: "Do you want to use Stack Auth on the server, or on the client?",
+      message: "Do you want to use Hexclave on the server, or on the client?",
       choices: [
         { name: "Client (e.g. Vite, HTML)", value: ["client"] },
         { name: "Server (e.g. Node.js)", value: ["server"] },
@@ -1127,7 +1127,7 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
   const importInsertLocationM1 =
     firstImportLocationM1 ?? (hasStringAsFirstLine ? layout.indexOf("\n") : -1);
   const importInsertLocation = importInsertLocationM1 + 1;
-  const importStatement = `import { StackProvider, StackTheme } from "@stackframe/stack";\nimport { stackClientApp } from "../stack/client";\n`;
+  const importStatement = `import { HexclaveProvider, HexclaveTheme } from "@hexclave/next";\nimport { hexclaveClientApp } from "../stack/client";\n`;
   layout =
     layout.slice(0, importInsertLocation) +
     importStatement +
@@ -1156,8 +1156,8 @@ async function getUpdatedLayout(originalLayout: string): Promise<LayoutResult | 
     bodyCloseStartIndex
   );
 
-  const insertOpen = "<StackProvider app={stackClientApp}><StackTheme>";
-  const insertClose = "</StackTheme></StackProvider>";
+  const insertOpen = "<HexclaveProvider app={hexclaveClientApp}><HexclaveTheme>";
+  const insertClose = "</HexclaveTheme></HexclaveProvider>";
 
   layout =
     layout.slice(0, bodyCloseStartIndex) +
@@ -1311,7 +1311,7 @@ async function ensureGitWorkspaceIsReady(projectPath: string): Promise<void> {
   if (changedFiles.length > filesToShow.length) {
     console.log(`  - ...and ${changedFiles.length - filesToShow.length} more`);
   }
-  console.log(colorize.yellow`You may want to stage and commit these changes before installing Stack Auth, so you can review the changes afterwards.`);
+  console.log(colorize.yellow`You may want to stage and commit these changes before installing Hexclave, so you can review the changes afterwards.`);
   console.log();
 
   if (onQuestionMode === "guess") {
@@ -1779,7 +1779,7 @@ type StackAppKind = "client" | "server";
 
 async function ensureStackAppImport(content: string, filePath: string, kind: StackAppKind): Promise<string> {
   logVerbose("ensureStackAppImport invoked", { filePath, kind });
-  const identifier = kind === "client" ? "stackClientApp" : "stackServerApp";
+  const identifier = kind === "client" ? "hexclaveClientApp" : "hexclaveServerApp";
   if (new RegExp(`import\\s+[^;]*\\b${identifier}\\b`).test(content)) {
     logVerbose("ensureStackAppImport found existing import", { filePath, identifier });
     return content;
@@ -1868,7 +1868,7 @@ function addSetAuthToConvexClients(content: string, type: "js" | "next" | "react
     const indentation = fullMatch.match(/^[\t ]*/)?.[0] ?? "";
     const authCall = determineAuthCallExpression({ type, className, content });
 
-    if (authCall.identifier === "stackClientApp") {
+    if (authCall.identifier === "hexclaveClientApp") {
       usedClientApp = true;
     } else {
       usedServerApp = true;
@@ -1913,36 +1913,36 @@ function addSetAuthToConvexClients(content: string, type: "js" | "next" | "react
   };
 }
 
-function determineAuthCallExpression({ type, className, content }: { type: "js" | "next" | "react", className: string, content: string }): { expression: string, identifier: "stackClientApp" | "stackServerApp" } {
-  const hasClientAppReference = /\bstackClientApp\b/.test(content);
-  const hasServerAppReference = /\bstackServerApp\b/.test(content);
+function determineAuthCallExpression({ type, className, content }: { type: "js" | "next" | "react", className: string, content: string }): { expression: string, identifier: "hexclaveClientApp" | "hexclaveServerApp" } {
+  const hasClientAppReference = /\bhexclaveClientApp\b/.test(content);
+  const hasServerAppReference = /\bhexclaveServerApp\b/.test(content);
   logVerbose("determineAuthCallExpression context", { type, className, hasClientAppReference, hasServerAppReference });
 
   if (type === "js") {
-    const result = { expression: "stackServerApp.getConvexClientAuth({})", identifier: "stackServerApp" as const };
+    const result = { expression: "hexclaveServerApp.getConvexClientAuth({})", identifier: "hexclaveServerApp" as const };
     logVerbose("determineAuthCallExpression returning for JS", result);
     return result;
   }
 
   if (hasClientAppReference) {
-    const result = { expression: getClientAuthCall(type), identifier: "stackClientApp" as const };
+    const result = { expression: getClientAuthCall(type), identifier: "hexclaveClientApp" as const };
     logVerbose("determineAuthCallExpression using client reference", result);
     return result;
   }
   if (hasServerAppReference && className !== "ConvexReactClient") {
-    const result = { expression: "stackServerApp.getConvexClientAuth({})", identifier: "stackServerApp" as const };
+    const result = { expression: "hexclaveServerApp.getConvexClientAuth({})", identifier: "hexclaveServerApp" as const };
     logVerbose("determineAuthCallExpression using server reference", result);
     return result;
   }
 
-  const fallback = { expression: getClientAuthCall(type), identifier: "stackClientApp" as const };
+  const fallback = { expression: getClientAuthCall(type), identifier: "hexclaveClientApp" as const };
   logVerbose("determineAuthCallExpression fallback", fallback);
   return fallback;
 }
 
 function getClientAuthCall(type: "js" | "next" | "react"): string {
   logVerbose("getClientAuthCall invoked", { type });
-  return "stackClientApp.getConvexClientAuth({})";
+  return "hexclaveClientApp.getConvexClientAuth({})";
 }
 
 function collectConvexClientCandidateFiles(projectPath: string): string[] {

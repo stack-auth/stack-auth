@@ -3,7 +3,7 @@ import { getPublicEnvVar } from "@/lib/env";
 export type CurrentUser = { getAccessToken: () => Promise<string | null> };
 
 /**
- * Builds Stack Auth API headers with authentication when available.
+ * Builds Hexclave API headers with authentication when available.
  * Automatically includes access token if user is provided.
  */
 export async function buildStackAuthHeaders(

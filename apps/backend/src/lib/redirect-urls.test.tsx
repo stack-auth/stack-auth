@@ -12,34 +12,41 @@ describe('validateRedirectUrl', () => {
     callback: () => T,
   ): T => {
     const processEnv = Reflect.get(process, "env");
-    const oldHostedHandlerUrlTemplate = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE");
-    const oldHostedHandlerDomainSuffix = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX");
-    const oldStackPortPrefix = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_PORT_PREFIX");
-    try {
-      for (const [key, value] of Object.entries({
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
-        NEXT_PUBLIC_STACK_PORT_PREFIX: values.stackPortPrefix,
-      })) {
+    // Hexclave rebrand: getEnvVariable() in stack-shared/utils/env.tsx prefers the
+    // HEXCLAVE_*-prefixed sibling of each STACK_* var. CI sets only the HEXCLAVE_*
+    // variant (e.g. NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX), so writing only the STACK_*
+    // key here would be silently overridden. Mirror every STACK_* key to its
+    // HEXCLAVE_* sibling so both representations resolve to the same value.
+    const stackKeys = [
+      "NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE",
+      "NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX",
+      "NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX",
+    ] as const;
+    const hexclaveOf = (name: string) => name.replace("STACK_", "HEXCLAVE_");
+    const allKeys = [...stackKeys, ...stackKeys.map(hexclaveOf)];
+    const oldValues = Object.fromEntries(allKeys.map((k) => [k, Reflect.get(processEnv, k)]));
+    const newValues: Record<string, string | undefined> = {
+      NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
+      NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
+      NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX: values.stackPortPrefix,
+    };
+    for (const stackKey of stackKeys) {
+      newValues[hexclaveOf(stackKey)] = newValues[stackKey];
+    }
+    const applyValues = (entries: Record<string, string | undefined>) => {
+      for (const [key, value] of Object.entries(entries)) {
         if (value == null) {
           Reflect.deleteProperty(processEnv, key);
         } else {
           Reflect.set(processEnv, key, value);
         }
       }
+    };
+    try {
+      applyValues(newValues);
       return callback();
     } finally {
-      for (const [key, value] of Object.entries({
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: oldHostedHandlerUrlTemplate,
-        NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: oldHostedHandlerDomainSuffix,
-        NEXT_PUBLIC_STACK_PORT_PREFIX: oldStackPortPrefix,
-      })) {
-        if (value == null) {
-          Reflect.deleteProperty(processEnv, key);
-        } else {
-          Reflect.set(processEnv, key, value);
-        }
-      }
+      applyValues(oldValues);
     }
   };
 
@@ -62,7 +69,7 @@ describe('validateRedirectUrl', () => {
   describe('exact domain matching', () => {
     it('should implicitly validate hosted handler domains for the project', () => {
       withHostedHandlerEnv({
-        hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}",
+        hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}",
         stackPortPrefix: "92",
       }, () => {
         const tenancy = createMockTenancy({
@@ -92,7 +99,7 @@ describe('validateRedirectUrl', () => {
           .toThrowErrorMatchingInlineSnapshot(`
             [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
 
-            This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
+            This is likely an error in Hexclave. Please make sure you are running the newest version and report it.]
           `);
       });
     });
@@ -605,6 +612,9 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://success', tenancy)).toBe(false);
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://error', tenancy)).toBe(false);
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://success', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://error', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
     });
 
     it('should not accept other custom schemes without trusted domain config', () => {
@@ -624,15 +634,23 @@ describe('validateRedirectUrl', () => {
 });
 
 describe('isAcceptedNativeAppUrl', () => {
-  it('should accept the native app OAuth URL scheme', () => {
+  it('should accept the legacy native app OAuth URL scheme', () => {
     expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://success')).toBe(true);
     expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://error')).toBe(true);
+  });
+
+  it('should accept the canonical Hexclave native app OAuth URL scheme', () => {
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://success')).toBe(true);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://error')).toBe(true);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://oauth-callback')).toBe(true);
   });
 
   it('should reject other custom schemes', () => {
     expect(isAcceptedNativeAppUrl('myapp://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('stackauth-myapp://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('stack-auth://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('hexclave://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url-extra://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('https://example.com/callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('http://localhost:3000/callback')).toBe(false);
   });

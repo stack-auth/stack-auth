@@ -1,4 +1,5 @@
-// see https://github.com/hexclave/info/blob/main/eng-handbook/random-thoughts/config-json-format.md
+// Format spec lives in the eng-handbook (random-thoughts/config-json-format.md).
+// (Previously linked to a public repo that doesn't exist — internal handbook only.)
 
 import { HexclaveAssertionError, throwErr } from "../utils/errors";
 import { deleteKey, filterUndefined, get, hasAndNotUndefined, set } from "../utils/objects";

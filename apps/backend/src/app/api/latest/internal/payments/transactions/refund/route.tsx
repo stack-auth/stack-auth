@@ -808,7 +808,7 @@ async function handleSubscriptionRefund(options: {
     await bulldozerWriteSubscription(prisma, updatedSub);
   }
 
-  // Regrant the free plan if a Stack Auth billing team just lost its only
+  // Regrant the free plan if a Hexclave billing team just lost its only
   // plans-line subscription to this refund. Scoped to the internal tenancy
   // (which hosts the free/team/growth plans) and team customers, mirroring
   // the DELETE cancel route and the Stripe webhook sync. Idempotent — no-ops

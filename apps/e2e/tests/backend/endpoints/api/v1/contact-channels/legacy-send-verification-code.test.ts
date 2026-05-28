@@ -53,14 +53,14 @@ it("should send a verification code per e-mail", async ({ expect }) => {
   expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Verify your email at Stack Dashboard",
+        "from": "Hexclave Dashboard <noreply@example.com>",
+        "subject": "Verify your email at Hexclave Dashboard",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },
       MailboxMessage {
-        "from": "Stack Dashboard <noreply@example.com>",
-        "subject": "Verify your email at Stack Dashboard",
+        "from": "Hexclave Dashboard <noreply@example.com>",
+        "subject": "Verify your email at Hexclave Dashboard",
         "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
         <some fields may have been hidden>,
       },

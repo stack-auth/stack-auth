@@ -10,13 +10,13 @@ function expandStackPortPrefix(value?: string | null) {
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 
-const sentryErrorSink = (location: string, error: unknown) => {
+const sentryErrorSink = (location: string, error: unknown, level: "error" | "warning") => {
   if (!("captureException" in Sentry)) {
     // this happens if somehow this is called outside of a Next.js script (eg. in the Prisma seed.ts), just log and ignore
     console.log("Attempted to capture Sentry error outside of Next.js script, ignoring");
     return;
   }
-  Sentry.captureException(error, { extra: { location } });
+  Sentry.captureException(error, { extra: { location }, level });
   runAsynchronouslyAndWaitUntil(Sentry.flush());
 };
 

@@ -79,7 +79,7 @@ function tryMount() {
 }
 
 /**
- * Mounts the Stack Auth dev tool on the page.
+ * Mounts the Hexclave dev tool on the page.
  *
  * - Only renders on localhost (or when overridden via console)
  * - Lazily loads the dev tool UI via dynamic import

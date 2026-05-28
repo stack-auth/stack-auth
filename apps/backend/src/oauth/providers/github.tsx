@@ -1,4 +1,3 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getJwtInfo } from "@stackframe/stack-shared/dist/utils/jwt";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
@@ -14,14 +13,16 @@ export class GithubProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
+    apiUrl: string,
   }) {
+    const { apiUrl, ...rest } = options;
     return new GithubProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://github.com",
       alternativeIssuers: ["https://github.com/login/oauth"],
       authorizationEndpoint: "https://github.com/login/oauth/authorize",
       tokenEndpoint: "https://github.com/login/oauth/access_token",
       userinfoEndpoint: "https://api.github.com/user",
-      redirectUri: getEnvVariable("NEXT_PUBLIC_STACK_API_URL") + "/api/v1/auth/oauth/callback/github",
+      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/github",
       baseScope: "user:email",
       // GitHub can return either non-expiring OAuth-App-style access tokens, or
       // expiring user tokens with refresh tokens. If GitHub gives us expires_in,
@@ -34,7 +35,7 @@ export class GithubProvider extends OAuthBaseProvider {
       // https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens
       // https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation#user-token-expired-due-to-github-app-configuration
       defaultAccessTokenExpiresInMillis: (tokenSet) => tokenSet.refresh_token ? 1000 * 60 * 60 * 8 : null,
-      ...options,
+      ...rest,
     }));
   }
 

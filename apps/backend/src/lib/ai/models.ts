@@ -61,7 +61,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 export function createOpenRouterProvider() {
   const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
-    : "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1";
+    : "https://api.hexclave.com/api/latest/integrations/ai-proxy/v1";
   return createOpenRouter({
     apiKey: "forwarded",
     baseURL,

@@ -14,14 +14,14 @@ import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
  * included in the email. When unauthenticated (dev tool), feedback is sent
  * without user context.
  *
- * In the local emulator, feedback is forwarded to production Stack Auth (same
+ * In the local emulator, feedback is forwarded to production Hexclave (same
  * pattern as the AI query endpoint). Set STACK_FEEDBACK_MODE=FORWARD_TO_PRODUCTION
  * in .env.development to enable this.
  */
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Submit support feedback",
-    description: "Send a support feedback message to the internal Stack Auth inbox. Auth is optional — works from both the dashboard (authenticated) and the dev tool (unauthenticated).",
+    description: "Send a support feedback message to the internal Hexclave inbox. Auth is optional — works from both the dashboard (authenticated) and the dev tool (unauthenticated).",
     tags: ["Internal"],
   },
   request: yupObject({
@@ -48,7 +48,7 @@ export const POST = createSmartRouteHandler({
     // Forward to production in local emulator (same pattern as AI query endpoint)
     const feedbackMode = getEnvVariable("STACK_FEEDBACK_MODE", "email");
     if (feedbackMode === "FORWARD_TO_PRODUCTION" && isLocalEmulatorEnabled()) {
-      const prodResponse = await fetch("https://api.stack-auth.com/api/latest/internal/feedback", {
+      const prodResponse = await fetch("https://api.hexclave.com/api/latest/internal/feedback", {
         method: "POST",
         headers: { "content-type": "application/json", "accept-encoding": "identity" },
         body: JSON.stringify(body),

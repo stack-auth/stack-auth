@@ -46,7 +46,7 @@ async function readStdin(): Promise<string> {
 export function registerFixCommand(program: Command) {
   program
     .command("fix")
-    .description("Use an AI agent to fix a Stack Auth error in your project")
+    .description("Use an AI agent to fix a Hexclave error in your project")
     .option("--error <text>", "The error message to fix (also accepts stdin)")
     .option("-y, --yes", "Skip the confirmation prompt")
     .action(async (opts: FixOptions) => {
@@ -67,7 +67,7 @@ async function runFix(opts: FixOptions) {
       throw new CliError("No error provided. Pass --error \"...\" or pipe the error to stdin.");
     }
     errorText = (await abortablePrompt(input({
-      message: "Paste the Stack Auth error you want fixed:",
+      message: "Paste the Hexclave error you want fixed:",
       validate: (v) => v.trim().length > 0 || "Error text is required",
     }))).trim();
   }
@@ -99,7 +99,7 @@ async function runFix(opts: FixOptions) {
   const success = await runClaudeAgent({
     prompt,
     cwd: outputDir,
-    label: "Fixing Stack Auth error...",
+    label: "Fixing Hexclave error...",
   });
 
   if (!success) {
@@ -112,18 +112,18 @@ function buildFixPrompt(errorText: string): string {
   const startDelim = `<<<ERROR_START_${nonce}>>>`;
   const endDelim = `<<<ERROR_END_${nonce}>>>`;
   return [
-    "You are fixing a Stack Auth (https://stack-auth.com, package `@stackframe/*`) integration error in the user's project.",
+    "You are fixing a Hexclave (https://hexclave.com, package `@stackframe/*`) integration error in the user's project.",
     "",
     "YOUR JOB: actually apply the fix to the files on disk using the Edit/Write tools. Do not just diagnose and stop. Do not just describe what to do. Make the edits.",
     "",
     "Workflow (do all of these — do not skip steps):",
     "1. Read the files needed to understand the error: package.json, stack.config.ts if present, .env / .env.local, the file(s) referenced in the stack trace, app/layout.* or pages/_app.*, and any handler route (e.g. app/handler/[...stack]/page.tsx).",
-    "2. Diagnose the Stack Auth root cause (e.g. missing StackProvider wrapping, missing env vars, wrong handler route path, incorrect stack.config.ts, wrong import from @stackframe/*, missing API keys, missing `stackServerApp` instance, etc.).",
+    "2. Diagnose the Hexclave root cause (e.g. missing StackProvider wrapping, missing env vars, wrong handler route path, incorrect stack.config.ts, wrong import from @stackframe/*, missing API keys, missing `stackServerApp` instance, etc.).",
     "3. Apply the minimal fix using Edit/Write. Actually modify the files. If env vars are missing, instruct the user clearly (do not invent secret values).",
     "4. After editing, verify your change by re-reading the affected file(s).",
     "",
     "GUARDRAILS:",
-    "- If, after reading the relevant files, the error is clearly NOT caused by Stack Auth, stop and explain why instead of editing.",
+    "- If, after reading the relevant files, the error is clearly NOT caused by Hexclave, stop and explain why instead of editing.",
     "- No unrelated refactors, formatting changes, dependency upgrades, or cleanup.",
     "- No destructive shell commands (`rm -rf`, `git reset --hard`, force pushes, deleting branches, anything outside the project directory).",
     "- Never print secret values (STACK_SECRET_SERVER_KEY, etc.) — refer to env vars by name only.",

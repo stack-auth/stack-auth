@@ -2,11 +2,17 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: What are the local development ports for the MCP and Skills apps?
+A: The MCP app runs on port suffix `44` from `apps/mcp/package.json`, so with `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=91` it is at `http://localhost:9144/mcp`. The Skills app runs on suffix `45` from `apps/skills/package.json`, so with the same prefix it is at `http://localhost:9145`. The dev launchpad app list in `apps/dev-launchpad/public/index.html` should use these suffixes.
+
+## Q: Where does the Stack CLI init agent prompt come from?
+A: `packages/stack-cli/src/lib/init-prompt.ts` re-exports `createInitPrompt` from `packages/stack-shared/src/helpers/init-prompt.ts`. The CLI calls it from `packages/stack-cli/src/commands/init.ts` after project creation/linking, then sends the result to Claude. The shared helper embeds `aiSetupPrompt` from `packages/stack-shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts`, with CLI-specific context that project/env setup has already happened. The CLI wrapper tells the agent to apply only relevant setup sections so optional Convex/Supabase/CLI-app sections are not forced onto every project.
+
 ## Q: How are connected-account OAuth tokens stored and refreshed?
 A: Connected accounts live in `ProjectUserOAuthAccount`. Stored refresh tokens are in `OAuthToken` (`oauthAccountId`, `scopes`, `isValid`), and cached access tokens are in `OAuthAccessToken` (`expiresAt`, `scopes`, `isValid`). A null `OAuthAccessToken.expiresAt` means the OAuth provider did not supply an access-token expiry; `retrieveOrRefreshAccessToken` treats null-expiry tokens as candidates and still calls the provider-specific validity check before returning them. If no usable access token exists, it looks for valid refresh tokens with matching scopes and invalidates only those that the provider explicitly rejects.
 
 ## Q: Which Hexclave rename compatibility layers should be avoided in PR #1475 follow-ups?
-A: Do not keep backwards compatibility for the MCP tool name, cross-domain auth query parameter names, `NEXT_PUBLIC_STACK_PORT_PREFIX`, or a parallel `hexclaveAppInternalsSymbol`. For refresh/access cookies, read both legacy Stack and new Hexclave cookie names, but only write the canonical Hexclave cookies.
+A: Do not keep backwards compatibility for the MCP tool name, cross-domain auth query parameter names, `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`, or a parallel `hexclaveAppInternalsSymbol`. For refresh/access cookies, read both legacy Stack and new Hexclave cookie names, but only write the canonical Hexclave cookies.
 
 ## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
 A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
@@ -387,7 +393,7 @@ A: Use `getAuthorizationHeader()`, which returns `Bearer stackauth_<base64(getAu
 A: `RequestLike` accepts both `{ headers: { get(name): string | null } }` and `{ headers: Record<string, string | null> }`. Header lookup is case-insensitive for record-style headers, and supports `authorization`, `x-stack-auth`, and `cookie`.
 
 ### Q: Which env var should emulator onboarding URLs use for dashboard port?
-A: Use `EMULATOR_DASHBOARD_PORT` (default `26700`) or explicit `STACK_LOCAL_EMULATOR_DASHBOARD_URL`. Do not derive emulator URLs from `NEXT_PUBLIC_STACK_PORT_PREFIX`, because that points to the host dev environment ports (e.g. `92xx`) rather than the emulator host-forwarded ports.
+A: Use `EMULATOR_DASHBOARD_PORT` (default `26700`) or explicit `STACK_LOCAL_EMULATOR_DASHBOARD_URL`. Do not derive emulator URLs from `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`, because that points to the host dev environment ports (e.g. `92xx`) rather than the emulator host-forwarded ports.
 
 ### Q: Why does `PATCH /api/v1/internal/projects/current` fail in local emulator when updating only `onboarding_state`?
 A: `createOrUpdateProjectWithLegacyConfig` always called `overrideEnvironmentConfigOverride`, even when there were zero config override keys to apply. In local emulator mode, environment config overrides are intentionally blocked, so this threw `Environment configuration overrides cannot be changed in the local emulator` and returned 500. The fix is to skip `overrideEnvironmentConfigOverride` unless `configOverrideOverride` has at least one key.
@@ -558,4 +564,7 @@ A: Project config overrides only support the hosted `sourceOfTruth` shape. Legac
 A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path flips the domain to `verified` asynchronously through `runAsynchronously`, so tests should poll the managed-onboarding check endpoint until the expected status appears.
 
 ## Q: How does dashboard preview mode currently bootstrap the iframe demo?
-A: In preview mode, the dashboard uses memory tokens and the protected layout client signs in or signs up a fresh `preview-*@preview.stack-auth.com` internal user. The `/projects` page renders `PreviewProjectRedirect`, POSTs `/internal/preview/create-project`, waits for `seedDummyProject`, refreshes the owned-projects cache, then navigates to `/projects/{project_id}`. The seeding endpoint creates a real isolated project owned by the preview user's auto-created team, warms/reuses ClickHouse, seeds project config/users/teams/emails/session activity/session replays/analytics mirrors synchronously, and starts payments seeding in the background.
+A: In preview mode, the dashboard uses memory tokens and the protected layout client signs in or signs up a fresh `preview-*@preview.hexclave.com` internal user. The `/projects` page renders `PreviewProjectRedirect`, POSTs `/internal/preview/create-project`, waits for `seedDummyProject`, refreshes the owned-projects cache, then navigates to `/projects/{project_id}`. The seeding endpoint creates a real isolated project owned by the preview user's auto-created team, warms/reuses ClickHouse, seeds project config/users/teams/emails/session activity/session replays/analytics mirrors synchronously, and starts payments seeding in the background.
+
+## Q: How should Microsoft OAuth callback token exchange include scopes?
+A: Microsoft Entra ID's v2 token endpoint can reject authorization-code exchanges with `AADSTS70011` if the token request omits `scope`. Keep scope emission opt-in at the provider layer (`includeScopeInCallbackTokenExchange`) and pass the same merged base/provider scopes to `openid-client` via the callback `extras.exchangeBody.scope` parameter. The callback route must forward stored `providerScope` from the outer OAuth info so custom Microsoft provider scopes are included in the token exchange.

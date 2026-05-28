@@ -51,7 +51,7 @@ export const GET = createSmartRouteHandler({
 
 const defaultDraftSource = deindent`
   import { Container } from "@react-email/components";
-  import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+  import { Subject, NotificationCategory, Props } from "@hexclave/emails";
 
   export function EmailTemplate({ user, project }: Props) {
     return (

@@ -346,7 +346,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
             if (!open) resetAndClose();
           }}
           title="Payments is available in your country!"
-          description="You will be redirected to Stripe, our partner for payment processing, to connect your bank account. Or, you can do this later, and test Stack Auth Payments without setting up Stripe, but you will be limited to test transactions."
+          description="You will be redirected to Stripe, our partner for payment processing, to connect your bank account. Or, you can do this later, and test Hexclave Payments without setting up Stripe, but you will be limited to test transactions."
           cancelButton={false}
           okButton={false}
         >
@@ -388,8 +388,8 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
         okButton={false}
       >
         <div className="mb-4">
-          Stack Auth Payments is currently only available in the US. If you&apos;d like to be notified when we expand to other countries, please reach out to us on our{" "}
-          <Link href="https://feedback.stack-auth.com" target="_blank" className="underline">
+          Hexclave Payments is currently only available in the US. If you&apos;d like to be notified when we expand to other countries, please reach out to us on our{" "}
+          <Link href="https://feedback.hexclave.com" target="_blank" className="underline">
             Feedback platform
           </Link>
           .

@@ -6,10 +6,10 @@ import FoundationNetworking
 
 /// Shared test configuration
 /// Set environment variables to customize test behavior:
-/// - NEXT_PUBLIC_STACK_PORT_PREFIX: Port prefix for backend (default: "81")
+/// - NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX: Port prefix for backend (default: "81")
 /// - STACK_SKIP_E2E_TESTS: Set to "true" to skip E2E tests
 struct TestConfig {
-    static let portPrefix = ProcessInfo.processInfo.environment["NEXT_PUBLIC_STACK_PORT_PREFIX"] ?? "81"
+    static let portPrefix = ProcessInfo.processInfo.environment["NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX"] ?? "81"
     static let baseUrl = "http://localhost:\(portPrefix)02"
     static let skipE2E = ProcessInfo.processInfo.environment["STACK_SKIP_E2E_TESTS"] == "true"
     

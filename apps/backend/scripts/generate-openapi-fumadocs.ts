@@ -61,8 +61,8 @@ async function main() {
 
     // Update server URL for Fumadocs
     openApiSchemaObject.servers = [{
-      url: 'https://api.stack-auth.com/api/v1',
-      description: 'Stack REST API',
+      url: 'https://api.hexclave.com/api/v1',
+      description: 'Hexclave REST API',
     }];
 
     console.log(`Generated ${Object.keys(openApiSchemaObject.paths || {}).length} endpoints for ${audience} audience`);

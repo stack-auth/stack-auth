@@ -457,7 +457,7 @@ function ProjectsListPage() {
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Open your Stack Auth project</DialogTitle>
+            <DialogTitle>Open your Hexclave project</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">

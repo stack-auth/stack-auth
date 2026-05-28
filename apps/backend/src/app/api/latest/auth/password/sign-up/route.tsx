@@ -1,4 +1,5 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
 import { createAuthTokens } from "@/lib/tokens";
 import { getRequestContextAndBotChallengeAssessment, botChallengeFlowRequestSchemaFields } from "@/lib/turnstile";
@@ -39,7 +40,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, ...botChallenge } }) {
+  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, ...botChallenge } }, fullReq) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
@@ -107,6 +108,7 @@ export const POST = createSmartRouteHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: createdUser.id,
+      apiUrl: getApiUrlForRequest(fullReq),
     });
 
     return {

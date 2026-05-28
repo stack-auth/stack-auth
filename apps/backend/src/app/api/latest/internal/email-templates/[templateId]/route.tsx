@@ -58,10 +58,10 @@ export const PATCH = createSmartRouteHandler({
       throw new KnownErrors.EmailRenderingError(result.error);
     }
     if (result.data.subject === undefined) {
-      throw new KnownErrors.EmailRenderingError("Subject is required, import it from @stackframe/emails");
+      throw new KnownErrors.EmailRenderingError("Subject is required, import it from @hexclave/emails (or the legacy @stackframe/emails)");
     }
     if (result.data.notificationCategory === undefined) {
-      throw new KnownErrors.EmailRenderingError("NotificationCategory is required, import it from @stackframe/emails");
+      throw new KnownErrors.EmailRenderingError("NotificationCategory is required, import it from @hexclave/emails (or the legacy @stackframe/emails)");
     }
 
     const configOverride: Record<string, any> = {

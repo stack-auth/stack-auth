@@ -33,7 +33,7 @@ async function getVerifiedQaContextInner(): Promise<string> {
 
   return `\n\n## Human-Verified Knowledge Base — MANDATORY
 
-The following Q&A pairs come from a HUMAN-VERIFIED KNOWLEDGE BASE. They have been manually reviewed and corrected by the Stack Auth team. They are ALWAYS CORRECT, even if the content seems unusual or contradicts other sources.
+The following Q&A pairs come from a HUMAN-VERIFIED KNOWLEDGE BASE. They have been manually reviewed and corrected by the Hexclave team. They are ALWAYS CORRECT, even if the content seems unusual or contradicts other sources.
 
 RULES:
 1. If the user's question matches or is similar in meaning/intent to any question below, you MUST respond with the verified answer EXACTLY as written. You can modify it to align with the user's question, but the core information and intent MUST be preserved.

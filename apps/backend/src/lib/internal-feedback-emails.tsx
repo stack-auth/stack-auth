@@ -99,8 +99,8 @@ export async function sendSupportFeedbackEmail(options: {
 
   if (options.user) {
     fields.push(
-      { label: "Stack Auth user ID", value: options.user.id },
-      { label: "Stack Auth display name", value: options.user.display_name ?? "Not provided" },
+      { label: "Hexclave user ID", value: options.user.id },
+      { label: "Hexclave display name", value: options.user.display_name ?? "Not provided" },
     );
   }
 
@@ -134,9 +134,9 @@ import.meta.vitest?.test("getInternalFeedbackRecipients()", ({ expect }) => {
     expect(() => getInternalFeedbackRecipients()).toThrow("Missing environment variable");
 
     // eslint-disable-next-line no-restricted-syntax
-    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "TEAM@stack-auth.com, team@stack-auth.com , another@example.com";
+    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "TEAM@hexclave.com, team@hexclave.com , another@example.com";
     expect(getInternalFeedbackRecipients()).toEqual([
-      "team@stack-auth.com",
+      "team@hexclave.com",
       "another@example.com",
     ]);
 

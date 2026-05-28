@@ -4,16 +4,17 @@ import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/si
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
-import { getProvider, oauthServer } from "@/oauth";
+import { createOAuthServer, getProvider } from "@/oauth";
 import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent, extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, extractScopes, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
@@ -94,6 +95,7 @@ const handler = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   async handler({ params, query, body }, fullReq) {
+    const apiUrl = getApiUrlForRequest(fullReq);
     const innerState = query.state ?? (body as any)?.state ?? "";
 
     const outerInfoDB = await globalPrismaClient.oAuthOuterInfo.findUnique({
@@ -162,12 +164,13 @@ const handler = createSmartRouteHandler({
         throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidPublishableClientKey(tenancy.project.id));
       }
 
-      const providerObj = await getProvider(provider as any);
+      const providerObj = await getProvider(provider as any, { apiUrl });
       let callbackResult: Awaited<ReturnType<typeof providerObj.getCallback>>;
       try {
         callbackResult = await providerObj.getCallback({
           codeVerifier: innerCodeVerifier,
           state: innerState,
+          extraScope: providerScope,
           callbackParams: {
             ...query,
             ...body,
@@ -224,12 +227,13 @@ const handler = createSmartRouteHandler({
       });
 
       const storeTokens = async (oauthAccountId: string) => {
+        const tokenScopes = extractScopes(mergeScopeStrings(providerObj.scope, providerScope ?? ""));
         if (tokenSet.refreshToken) {
           await prisma.oAuthToken.create({
             data: {
               tenancyId: outerInfo.tenancyId,
               refreshToken: tokenSet.refreshToken,
-              scopes: extractScopes(providerObj.scope + " " + providerScope),
+              scopes: tokenScopes,
               oauthAccountId,
             }
           });
@@ -239,7 +243,7 @@ const handler = createSmartRouteHandler({
           data: {
             tenancyId: outerInfo.tenancyId,
             accessToken: tokenSet.accessToken,
-            scopes: extractScopes(providerObj.scope + " " + providerScope),
+            scopes: tokenScopes,
             expiresAt: tokenSet.accessTokenExpiredAt,
             oauthAccountId,
           }
@@ -247,6 +251,7 @@ const handler = createSmartRouteHandler({
       };
 
       const oauthResponse = new OAuthResponse();
+      const oauthServer = createOAuthServer({ apiUrl });
       try {
         await oauthServer.authorize(
           oauthRequest,

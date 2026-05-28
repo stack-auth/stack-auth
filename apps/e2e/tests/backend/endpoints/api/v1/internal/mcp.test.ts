@@ -128,7 +128,7 @@ it("public MCP endpoint should expose prompts and resources without method-not-f
     result: {
       resources: [
         {
-          uri: "https://skill.stack-auth.com",
+          uri: "https://skill.hexclave.com",
           name: "skill",
         },
       ],
@@ -174,7 +174,7 @@ it("MCP setup page should show client installation instructions", async ({ expec
 
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toContain("text/html");
-  expect(response.body).toContain("Stack Auth MCP Setup");
+  expect(response.body).toContain("Hexclave MCP Setup");
   expect(response.body).toContain("Cursor");
   expect(response.body).toContain("Codex");
   expect(response.body).toContain("Claude Code");

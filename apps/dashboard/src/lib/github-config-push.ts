@@ -47,11 +47,11 @@ export function buildUpdatedConfigFileContent(
   const parsed = parseStackConfigFileContent(currentFileContent, "stack.config.ts");
   if (parsed === showOnboardingStackConfigValue) {
     throw new Error(
-      "The config file currently exports the onboarding placeholder. Finish setting up Stack Auth in your repo before pushing dashboard changes."
+      "The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes."
     );
   }
   if (!isValidConfig(parsed)) {
-    throw new Error("Existing GitHub config file does not parse as a valid Stack Auth config object.");
+    throw new Error("Existing GitHub config file does not parse as a valid Hexclave config object.");
   }
   const merged = override(parsed, configUpdate);
   const importPackage = detectImportPackage(currentFileContent);
@@ -69,7 +69,7 @@ export type PushConfigUpdateOptions = {
  * Pushes a config update to GitHub by editing the user's `stack.config.ts`
  * file in place via the Contents API. The accompanying GitHub Actions workflow
  * (added in onboarding) will pick up the commit and re-push the canonical
- * config back to Stack Auth.
+ * config back to Hexclave.
  *
  * Commits the updated config file when needed; returns once GitHub accepts the
  * write.

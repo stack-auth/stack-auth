@@ -90,33 +90,40 @@ export default function CodeEditor({
         }
       `,
     );
+    // Same declaration emitted for both module names: AI-generated templates
+    // import from `@hexclave/emails`, but existing seeded templates still
+    // import from the legacy `@stackframe/emails` (both resolve to the same
+    // virtual module at runtime via email-rendering.tsx). Both must show
+    // typed completions in the Monaco editor.
+    const emailsModuleBody = deindent`
+      const Subject: React.FC<{value: string}>;
+      const NotificationCategory: React.FC<{value: "Transactional" | "Marketing"}>;
+      type Props<T = never> = {
+        variables: T;
+        project: {
+          displayName: string;
+        };
+        user: {
+          displayName: string | null;
+        };
+      };
+      type ThemeProps = {
+        children: React.ReactNode;
+        unsubscribeLink?: string;
+        projectLogos: {
+          logoUrl?: string;
+          logoFullUrl?: string;
+          logoDarkModeUrl?: string;
+          logoFullDarkModeUrl?: string;
+        };
+      };
+      const ProjectLogo: React.FC<{data: ThemeProps['projectLogos'], mode: 'light' | 'dark'}>;
+    `;
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      deindent`
-        declare module "@stackframe/emails" {
-          const Subject: React.FC<{value: string}>;
-          const NotificationCategory: React.FC<{value: "Transactional" | "Marketing"}>;
-          type Props<T = never> = {
-            variables: T;
-            project: {
-              displayName: string;
-            };
-            user: {
-              displayName: string | null;
-            };
-          };
-          type ThemeProps = {
-            children: React.ReactNode;
-            unsubscribeLink?: string;
-            projectLogos: {
-              logoUrl?: string;
-              logoFullUrl?: string;
-              logoDarkModeUrl?: string;
-              logoFullDarkModeUrl?: string;
-            };
-          };
-          const ProjectLogo: React.FC<{data: ThemeProps['projectLogos'], mode: 'light' | 'dark'}>;
-        }
-      `,
+      `declare module "@stackframe/emails" {\n${emailsModuleBody}\n}`,
+    );
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      `declare module "@hexclave/emails" {\n${emailsModuleBody}\n}`,
     );
     monaco.languages.typescript.typescriptDefaults.addExtraLib(dtsBundles.arkType);
     monaco.languages.typescript.typescriptDefaults.addExtraLib(dtsBundles.arkUtil);

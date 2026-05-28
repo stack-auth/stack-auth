@@ -67,7 +67,7 @@ export const POST = createSmartRouteHandler({
     });
     const stripeAccountId = project?.stripeAccountId;
     if (!stripeAccountId) {
-      throw new StatusError(400, "Payments are not set up in this Stack Auth project.");
+      throw new StatusError(400, "Payments are not set up in this Hexclave project.");
     }
 
     return {
