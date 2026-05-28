@@ -14,7 +14,7 @@
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/hexclave",
+  "repository": "https://github.com/hexclave/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
