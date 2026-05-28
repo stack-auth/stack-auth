@@ -14,6 +14,7 @@ import { BackgroundShine } from "./background-shine";
 import { ClientPolyfill } from "./client-polyfill";
 import { DevelopmentPortDisplay } from "./development-port-display";
 import Loading from "./loading";
+import { PreviewLeaseAuthGate } from "./preview-lease-auth-gate";
 import { UserIdentity } from "./providers";
 import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-environment-auth-gate";
 
@@ -172,11 +173,15 @@ export function LayoutClient(props: {
           <DevEnvironmentHealthGate>
             <RemoteDevelopmentEnvironmentAuthGate>
               <RouterProvider>
-                <UserIdentity />
-                <VersionAlerter />
-                <BackgroundShine />
-                {props.children}
-                <DevelopmentPortDisplay />
+                <React.Suspense fallback={<Loading />}>
+                  <PreviewLeaseAuthGate>
+                    <UserIdentity />
+                    <VersionAlerter />
+                    <BackgroundShine />
+                    {props.children}
+                    <DevelopmentPortDisplay />
+                  </PreviewLeaseAuthGate>
+                </React.Suspense>
               </RouterProvider>
             </RemoteDevelopmentEnvironmentAuthGate>
           </DevEnvironmentHealthGate>

@@ -8,17 +8,48 @@ const endpoints = [
   "/api/latest/internal/external-db-sync/poller",
 ];
 
+const previewEndpoints = [
+  "/api/latest/internal/preview/fill-pool",
+];
+
 async function main() {
+  const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX', '81')}02`;
+
   if (getEnvVariable("NEXT_PUBLIC_STACK_IS_PREVIEW", "") === "true") {
-    console.log("Preview mode is enabled, skipping cron jobs.");
-    // Keep alive — concurrently uses -k and would kill all other processes if this exits
-    setInterval(() => {}, 1 << 30);
+    console.log("Preview mode is enabled, running preview-only cron jobs.");
+    const cronSecret = getEnvVariable('CRON_SECRET', '');
+    if (!cronSecret) {
+      console.log("CRON_SECRET is not set; preview pool filling is disabled.");
+      // Keep alive — concurrently uses -k and would kill all other processes if this exits
+      setInterval(() => {}, 1 << 30);
+      return;
+    }
+
+    const run = async (endpoint: string) => {
+      console.log(`Running ${endpoint}...`);
+      const res = await fetch(`${baseUrl}${endpoint}`, {
+        headers: { 'Authorization': `Bearer ${cronSecret}` },
+      });
+      if (!res.ok) throw new HexclaveAssertionError(`Failed to call ${endpoint}: ${res.status} ${res.statusText}\n${await res.text()}`, { res });
+      console.log(`${endpoint} completed.`);
+    };
+
+    for (const endpoint of previewEndpoints) {
+      runAsynchronously(async () => {
+        await wait(30_000); // Wait 30 seconds to make sure the server is fully started
+        while (true) {
+          const runResult = await Result.fromPromise(run(endpoint));
+          if (runResult.status === "error") {
+            captureError("run-cron-jobs-preview", runResult.error);
+          }
+          await wait(5000);
+        }
+      });
+    }
     return;
   }
   console.log("Starting cron jobs...");
   const cronSecret = getEnvVariable('CRON_SECRET');
-
-  const baseUrl = `http://localhost:${getEnvVariable('NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX', '81')}02`;
 
   const run = async (endpoint: string) => {
     console.log(`Running ${endpoint}...`);
