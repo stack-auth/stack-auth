@@ -239,37 +239,49 @@ async function createPreviewPoolProject(state: PreviewPoolState): Promise<{ proj
     user,
   });
 
-  const clickhouseClient = getClickhouseAdminClient();
-  const projectId = await seedDummyProject({
-    ownerTeamId: teamId,
-    oauthProviderIds: ['github', 'google', 'microsoft', 'spotify'],
-    excludeAlphaApps: true,
-    skipGithubConfigSource: true,
-    clickhouseClient,
-  });
+  let projectId: string | undefined;
+  try {
+    const clickhouseClient = getClickhouseAdminClient();
+    projectId = await seedDummyProject({
+      ownerTeamId: teamId,
+      oauthProviderIds: ['github', 'google', 'microsoft', 'spotify'],
+      excludeAlphaApps: true,
+      skipGithubConfigSource: true,
+      clickhouseClient,
+    });
 
-  const now = new Date().getTime();
-  const metadata: PreviewPoolMetadata = {
-    version: 1,
-    state,
-    projectId,
-    userId: user.id,
-    createdAtMillis: now,
-    leasedAtMillis: state === "leased" ? now : null,
-    leaseExpiresAtMillis: state === "leased" ? now + getLeaseDurationMs() : null,
-  };
+    const now = new Date().getTime();
+    const metadata: PreviewPoolMetadata = {
+      version: 1,
+      state,
+      projectId,
+      userId: user.id,
+      createdAtMillis: now,
+      leasedAtMillis: state === "leased" ? now : null,
+      leaseExpiresAtMillis: state === "leased" ? now + getLeaseDurationMs() : null,
+    };
 
-  await internalPrisma.team.update({
-    where: {
-      tenancyId_teamId: {
-        tenancyId: internalTenancy.id,
-        teamId,
+    await internalPrisma.team.update({
+      where: {
+        tenancyId_teamId: {
+          tenancyId: internalTenancy.id,
+          teamId,
+        },
       },
-    },
-    data: {
-      serverMetadata: previewTeamServerMetadataToJson(metadata),
-    },
-  });
+      data: {
+        serverMetadata: previewTeamServerMetadataToJson(metadata),
+      },
+    });
+  } catch (error) {
+    await rollbackFailedPreviewPoolProjectCreation({
+      internalTenancy,
+      internalPrisma,
+      teamId,
+      userId: user.id,
+      projectId,
+    });
+    throw error;
+  }
 
   return { projectId, userId: user.id, teamId };
 }
@@ -450,6 +462,24 @@ async function deletePreviewInternalLeaseIdentity(options: {
       tenancyId: options.internalTenancy.id,
       projectUserId: options.userId,
     },
+  });
+}
+
+async function rollbackFailedPreviewPoolProjectCreation(options: {
+  internalTenancy: Tenancy,
+  internalPrisma: PrismaClientTransaction,
+  teamId: string,
+  userId: string,
+  projectId?: string,
+}) {
+  if (options.projectId != null) {
+    await deletePreviewProjectData(options.projectId);
+  }
+  await deletePreviewInternalLeaseIdentity({
+    internalTenancy: options.internalTenancy,
+    internalPrisma: options.internalPrisma,
+    teamId: options.teamId,
+    userId: options.userId,
   });
 }
 
