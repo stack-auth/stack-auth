@@ -599,13 +599,11 @@ export async function claimPreviewPoolLease(options: { apiUrl: string }): Promis
     apiUrl: options.apiUrl,
   });
 
-  try {
-    await refreshDummyProjectLiveTokenRefreshEvents(claimed.projectId, getClickhouseAdminClient());
-  } catch (error) {
-    captureError(
-      "preview-pool-live-token-refresh",
-      error instanceof Error ? error : new Error(String(error)),
-    );
+  const liveTokenRefreshResult = await Result.fromPromise(
+    refreshDummyProjectLiveTokenRefreshEvents(claimed.projectId, getClickhouseAdminClient()),
+  );
+  if (liveTokenRefreshResult.status === "error") {
+    captureError("preview-pool-live-token-refresh", liveTokenRefreshResult.error);
   }
 
   return {
