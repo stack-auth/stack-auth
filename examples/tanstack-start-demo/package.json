@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/example-tanstack-start-demo",
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/hexclave",
+  "repository": "https://github.com/hexclave/stack-auth",
   "description": "TanStack Start demo app for Hexclave",
   "private": true,
   "type": "module",

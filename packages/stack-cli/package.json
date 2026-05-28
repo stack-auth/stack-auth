@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/cli",
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/hexclave",
+  "repository": "https://github.com/hexclave/stack-auth",
   "description": "The CLI for Hexclave. https://hexclave.com",
   "main": "dist/index.js",
   "type": "module",

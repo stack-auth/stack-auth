@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/example-supabase",
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/hexclave",
+  "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "scripts": {
     "dev": "next dev --turbo --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}15",

@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/skills",
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/hexclave",
+  "repository": "https://github.com/hexclave/stack-auth",
   "private": true,
   "type": "module",
   "scripts": {

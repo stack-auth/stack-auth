@@ -2,7 +2,7 @@
   "name": "react-example",
   "private": true,
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/hexclave",
+  "repository": "https://github.com/hexclave/stack-auth",
   "type": "module",
   "scripts": {
     "dev": "vite --force --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}20",

@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/sc",
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/hexclave",
+  "repository": "https://github.com/hexclave/stack-auth",
   "exports": {
     "./force-react-server": {
       "types": "./dist/index.react-server.d.ts",
