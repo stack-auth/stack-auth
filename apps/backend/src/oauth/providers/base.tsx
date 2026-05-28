@@ -219,6 +219,22 @@ export function getOAuthAccessTokenRefreshError(error: unknown, options: {
 
 type DefaultAccessTokenExpiresInMillis = number | null | ((tokenSet: OIDCTokenSet) => number | null | undefined);
 
+export function getOAuthCallbackExtraParams(options: {
+  includeScopeInTokenExchange: boolean | undefined,
+  baseScope: string,
+  extraScope: string | undefined,
+}) {
+  if (!options.includeScopeInTokenExchange) {
+    return undefined;
+  }
+
+  return {
+    exchangeBody: {
+      scope: mergeScopeStrings(options.baseScope, options.extraScope ?? ""),
+    },
+  };
+}
+
 function getFiniteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -299,6 +315,7 @@ export abstract class OAuthBaseProvider {
     public readonly noPKCE?: boolean,
     public readonly openid?: boolean,
     public readonly alternativeIssuers?: string[],
+    public readonly includeScopeInCallbackTokenExchange?: boolean,
   ) {}
 
   protected static async createConstructorArgs(options:
@@ -312,6 +329,7 @@ export abstract class OAuthBaseProvider {
       tokenEndpointAuthMethod?: "client_secret_post" | "client_secret_basic",
       noPKCE?: boolean,
       alternativeIssuers?: string[],
+      includeScopeInCallbackTokenExchange?: boolean,
     }
     & (
       | ({
@@ -360,6 +378,7 @@ export abstract class OAuthBaseProvider {
       options.noPKCE,
       options.openid,
       options.alternativeIssuers,
+      options.includeScopeInCallbackTokenExchange,
     ] as const;
   }
 
@@ -386,6 +405,7 @@ export abstract class OAuthBaseProvider {
     callbackParams: CallbackParamsType,
     codeVerifier: string,
     state: string,
+    extraScope?: string,
   }): Promise<{ userInfo: OAuthUserInfo, tokenSet: TokenSet }> {
     let tokenSet;
     const callbackParams = { ...options.callbackParams };
@@ -408,6 +428,11 @@ export abstract class OAuthBaseProvider {
         code_verifier: this.noPKCE ? undefined : options.codeVerifier,
         state: options.state,
       },
+      getOAuthCallbackExtraParams({
+        includeScopeInTokenExchange: this.includeScopeInCallbackTokenExchange,
+        baseScope: this.scope,
+        extraScope: options.extraScope,
+      }),
     ] as const;
 
     try {
