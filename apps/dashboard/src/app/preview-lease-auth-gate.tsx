@@ -7,8 +7,9 @@ import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp, useUser, type CurrentInternalUser } from "@stackframe/stack";
 import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Button } from "@/components/ui";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getPreviewTargetPath } from "./preview-lease-path";
 
 type PreviewLeaseResponse = {
@@ -102,10 +103,13 @@ async function claimPreviewLease(app: unknown): Promise<PreviewLeaseResponse> {
 function PreviewLeaseClaimGate() {
   const app = useStackApp();
   const claimStarted = useRef(false);
+  const [claimAttempt, setClaimAttempt] = useState(0);
+  const [claimFailed, setClaimFailed] = useState(false);
 
   useEffect(() => {
     if (claimStarted.current) return;
     claimStarted.current = true;
+    setClaimFailed(false);
 
     runAsynchronouslyWithAlert(async () => {
       const lease = await claimPreviewLease(app);
@@ -118,9 +122,30 @@ function PreviewLeaseClaimGate() {
     }, {
       onError: () => {
         claimStarted.current = false;
+        setClaimFailed(true);
       },
     });
-  }, [app]);
+  }, [app, claimAttempt]);
+
+  if (claimFailed) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 px-4 text-center">
+        <p className="text-lg font-medium">Couldn&apos;t start preview session</p>
+        <p className="text-sm text-muted-foreground">
+          Something went wrong while claiming a preview project. Please try again.
+        </p>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            setClaimAttempt((attempt) => attempt + 1);
+          }}
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  }
 
   return <Loading />;
 }
