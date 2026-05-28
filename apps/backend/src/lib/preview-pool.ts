@@ -3,13 +3,14 @@ import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
-import { seedDummyProject, refreshDummyProjectLiveTokenRefreshEvents } from "@/lib/seed-dummy-data";
+import { refreshDummyProjectLiveTokenRefreshEvents, seedDummyProject } from "@/lib/seed-dummy-data";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient, isPrismaError, sqlQuoteIdent, type PrismaClientTransaction } from "@/prisma-client";
 import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 const PREVIEW_POOL_METADATA_KEY = "stackPreviewPool";
@@ -542,14 +543,20 @@ export async function cleanupExpiredPreviewPoolLeases(options?: { maxDelete?: nu
       continue;
     }
 
-    await deletePreviewProjectData(metadata.projectId);
-    await deletePreviewInternalLeaseIdentity({
-      internalTenancy,
-      internalPrisma,
-      teamId: team.teamId,
-      userId: metadata.userId,
-    });
-    deletedCount++;
+    const cleanupResult = await Result.fromPromise((async () => {
+      await deletePreviewProjectData(metadata.projectId);
+      await deletePreviewInternalLeaseIdentity({
+        internalTenancy,
+        internalPrisma,
+        teamId: team.teamId,
+        userId: metadata.userId,
+      });
+    })());
+    if (cleanupResult.status === "ok") {
+      deletedCount++;
+    } else {
+      captureError("preview-pool-cleanup-expired-lease", cleanupResult.error);
+    }
   }
 
   return { deletedCount };
