@@ -562,9 +562,3 @@ A: Project config overrides only support the hosted `sourceOfTruth` shape. Legac
 
 ## Q: How should managed email onboarding e2e tests wait for mock verification?
 A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path flips the domain to `verified` asynchronously through `runAsynchronously`, so tests should poll the managed-onboarding check endpoint until the expected status appears.
-
-## Q: How does dashboard preview mode currently bootstrap the iframe demo?
-A: In preview mode, the dashboard uses memory tokens and the protected layout client signs in or signs up a fresh `preview-*@preview.hexclave.com` internal user. The `/projects` page renders `PreviewProjectRedirect`, POSTs `/internal/preview/create-project`, waits for `seedDummyProject`, refreshes the owned-projects cache, then navigates to `/projects/{project_id}`. The seeding endpoint creates a real isolated project owned by the preview user's auto-created team, warms/reuses ClickHouse, seeds project config/users/teams/emails/session activity/session replays/analytics mirrors synchronously, and starts payments seeding in the background.
-
-## Q: How should Microsoft OAuth callback token exchange include scopes?
-A: Microsoft Entra ID's v2 token endpoint can reject authorization-code exchanges with `AADSTS70011` if the token request omits `scope`. Keep scope emission opt-in at the provider layer (`includeScopeInCallbackTokenExchange`) and pass the same merged base/provider scopes to `openid-client` via the callback `extras.exchangeBody.scope` parameter. The callback route must forward stored `providerScope` from the outer OAuth info so custom Microsoft provider scopes are included in the token exchange.
