@@ -9,6 +9,7 @@ import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../u
 import { _StackClientAppImpl } from "../implementations";
 import { AnalyticsOptions } from "../implementations/session-replay";
 
+/** @deprecated Use `HexclaveClientAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
   baseUrl?: string | { browser: string, server: string },
   extraRequestHeaders?: Record<string, string>,
@@ -46,11 +47,13 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
 );
 
 
+/** @deprecated Use `HexclaveClientAppJson` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined } & {
   uniqueIdentifier: string,
   // note: if you add more fields here, make sure to ensure the checkString in the constructor has/doesn't have them
 };
 
+/** @deprecated Use `HexclaveClientApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & {
     readonly projectId: ProjectId,
@@ -153,6 +156,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
   & { [K in `redirectTo${Capitalize<keyof Omit<HandlerUrls, 'handler' | 'oauthCallback'>>}`]: (options?: RedirectToOptions) => Promise<void> }
   & AuthLike<HasTokenStore extends false ? { tokenStore: TokenStoreInit } : { tokenStore?: TokenStoreInit }>
 );
+/** @deprecated Use `HexclaveClientAppConstructor` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackClientAppConstructor = {
   new <
     TokenStoreType extends string,
@@ -172,4 +176,5 @@ export type HexclaveClientAppJson<HasTokenStore extends boolean, ProjectId exten
 export type HexclaveClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackClientApp<HasTokenStore, ProjectId>;
 export type HexclaveClientAppConstructor = StackClientAppConstructor;
 export const HexclaveClientApp: HexclaveClientAppConstructor = _StackClientAppImpl;
+/** @deprecated Use `HexclaveClientApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export const StackClientApp: StackClientAppConstructor = HexclaveClientApp;

@@ -11,10 +11,12 @@ import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 
+/** @deprecated Use `HexclaveServerAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
   secretServerKey?: string,
 };
 
+/** @deprecated Use `HexclaveServerApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & {
     createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam>,
@@ -116,6 +118,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
   >
   & StackClientApp<HasTokenStore, ProjectId>
 );
+/** @deprecated Use `HexclaveServerAppConstructor` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackServerAppConstructor = {
   new <
     TokenStoreType extends string,
@@ -128,4 +131,5 @@ export type HexclaveServerAppConstructorOptions<HasTokenStore extends boolean, P
 export type HexclaveServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackServerApp<HasTokenStore, ProjectId>;
 export type HexclaveServerAppConstructor = StackServerAppConstructor;
 export const HexclaveServerApp: HexclaveServerAppConstructor = _StackServerAppImpl;
+/** @deprecated Use `HexclaveServerApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export const StackServerApp: StackServerAppConstructor = HexclaveServerApp;

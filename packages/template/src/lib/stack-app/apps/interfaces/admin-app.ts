@@ -56,6 +56,7 @@ import type { AdminSessionReplay, ListSessionReplayChunksOptions, ListSessionRep
 export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
 
 
+/** @deprecated Use `HexclaveAdminAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
   & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
   & {
@@ -65,6 +66,7 @@ export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, Proje
 );
 
 
+/** @deprecated Use `HexclaveAdminApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & AsyncStoreProperty<"project", [], AdminProject, false>
   & AsyncStoreProperty<"internalApiKeys", [], InternalApiKey[], true>
@@ -170,6 +172,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   }
   & StackServerApp<HasTokenStore, ProjectId>
 );
+/** @deprecated Use `HexclaveAdminAppConstructor` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackAdminAppConstructor = {
   new <
     HasTokenStore extends boolean,
@@ -181,4 +184,5 @@ export type HexclaveAdminAppConstructorOptions<HasTokenStore extends boolean, Pr
 export type HexclaveAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackAdminApp<HasTokenStore, ProjectId>;
 export type HexclaveAdminAppConstructor = StackAdminAppConstructor;
 export const HexclaveAdminApp: HexclaveAdminAppConstructor = _StackAdminAppImpl;
+/** @deprecated Use `HexclaveAdminApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export const StackAdminApp: StackAdminAppConstructor = HexclaveAdminApp;

@@ -6,30 +6,21 @@ import "./internal/deprecation-warning";
 
 export * from './lib/stack-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
-// Hexclave aliases — same symbols under the new brand name
-export type { StackConfig as HexclaveConfig } from "@hexclave/shared/config";
-export { defineStackConfig as defineHexclaveConfig } from "@hexclave/shared/config";
-/** @deprecated Use `HexclaveConfig` instead — same symbol, new brand name. */
-export type { StackConfig } from "@hexclave/shared/config";
-/** @deprecated Use `defineHexclaveConfig` instead — same symbol, new brand name. */
-export { defineStackConfig } from "@hexclave/shared/config";
+// Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the original
+// declarations in @hexclave/shared/config so it survives dts bundling
+// (per-specifier JSDoc on re-exports does not).
+export type { HexclaveConfig, StackConfig } from "@hexclave/shared/config";
+export { defineHexclaveConfig, defineStackConfig } from "@hexclave/shared/config";
 
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";
-// Hexclave aliases — same symbols under the new brand name
-export { default as HexclaveHandler } from "./components-page/stack-handler";
-export { useStackApp as useHexclaveApp } from "./lib/hooks";
-export { default as HexclaveProvider } from "./providers/stack-provider";
-export { StackTheme as HexclaveTheme } from './providers/theme-provider';
-/** @deprecated Use `HexclaveHandler` instead — same symbol, new brand name. */
-export { default as StackHandler } from "./components-page/stack-handler";
-/** @deprecated Use `useHexclaveApp` instead — same symbol, new brand name. */
-export { useStackApp } from "./lib/hooks";
+// Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the original
+// declarations in the source files (so it survives dts bundling).
+export { HexclaveHandler, StackHandler } from "./components-page/stack-handler";
+export { useHexclaveApp, useStackApp } from "./lib/hooks";
+export { HexclaveProvider, StackProvider } from "./providers/stack-provider";
+export { HexclaveTheme, StackTheme } from './providers/theme-provider';
 export { useUser } from "./lib/hooks";
-/** @deprecated Use `HexclaveProvider` instead — same symbol, new brand name. */
-export { default as StackProvider } from "./providers/stack-provider";
-/** @deprecated Use `HexclaveTheme` instead — same symbol, new brand name. */
-export { StackTheme } from './providers/theme-provider';
 
 export { AccountSettings } from "./components-page/account-settings";
 export { AuthPage } from "./components-page/auth-page";
