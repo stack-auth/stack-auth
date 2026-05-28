@@ -742,7 +742,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isAiPrompt ? deindent`
-            Note: Keep the loading indicator simple. Avoid copy like "Getting Stack Auth ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Use broad loading boundaries sparingly; don't add loading indicators aggressively across the app unless they cover real async work.
+            Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Use broad loading boundaries sparingly; don't add loading indicators aggressively across the app unless they cover real async work.
           ` : ""}
         </Step>
 
