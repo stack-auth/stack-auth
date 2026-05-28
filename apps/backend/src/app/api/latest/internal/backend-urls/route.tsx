@@ -1,8 +1,8 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { getDefaultApiUrls } from "@stackframe/stack-shared/dist/utils/urls";
 
 /**
  * Env var format: JSON object mapping probability (as string number) to URL arrays.
@@ -44,22 +44,45 @@ export function parseAndValidateConfig(raw: unknown): Array<{ probability: numbe
 }
 
 let cachedEntries: ReturnType<typeof parseAndValidateConfig> | undefined;
-function getCachedConfig() {
+function getConfiguredEntries() {
   if (!cachedEntries) {
     const rawEnv = getEnvVariable("STACK_BACKEND_URLS_CONFIG", "");
-    if (rawEnv) {
-      let parsed;
-      try {
-        parsed = JSON.parse(rawEnv);
-      } catch (e) {
-        throw new HexclaveAssertionError(`STACK_BACKEND_URLS_CONFIG is not valid JSON: ${e}`);
-      }
-      cachedEntries = parseAndValidateConfig(parsed);
-    } else {
-      cachedEntries = [{ probability: 1, urls: getDefaultApiUrls(getEnvVariable("NEXT_PUBLIC_STACK_API_URL")) }];
+    if (!rawEnv) {
+      return undefined;
     }
+    let parsed;
+    try {
+      parsed = JSON.parse(rawEnv);
+    } catch (e) {
+      throw new HexclaveAssertionError(`STACK_BACKEND_URLS_CONFIG is not valid JSON: ${e}`);
+    }
+    cachedEntries = parseAndValidateConfig(parsed);
   }
   return cachedEntries;
+}
+
+function getDefaultBackendUrls(primaryBaseUrl: string): string[] {
+  if (primaryBaseUrl === "https://api.stack-auth.com") {
+    return ["https://api.stack-auth.com", "https://api1.stack-auth.com", "https://api2.stack-auth.com"];
+  }
+  if (primaryBaseUrl === "https://api.dev.stack-auth.com") {
+    return ["https://api.dev.stack-auth.com", "https://api1.dev.stack-auth.com", "https://api2.dev.stack-auth.com"];
+  }
+  if (primaryBaseUrl === "https://api.hexclave.com") {
+    return ["https://api.hexclave.com", "https://api1.hexclave.com", "https://api2.hexclave.com"];
+  }
+  if (primaryBaseUrl === "https://api.dev.hexclave.com") {
+    return ["https://api.dev.hexclave.com", "https://api1.dev.hexclave.com", "https://api2.dev.hexclave.com"];
+  }
+  const localhostMatch = primaryBaseUrl.match(/^http:\/\/localhost:(\d+)02$/);
+  if (localhostMatch) {
+    return [primaryBaseUrl, `http://localhost:${localhostMatch[1]}10`];
+  }
+  return [primaryBaseUrl];
+}
+
+export function getDefaultEntriesForRequest(req: { headers: Record<string, string[] | undefined> }): ReturnType<typeof parseAndValidateConfig> {
+  return [{ probability: 1, urls: getDefaultBackendUrls(getApiUrlForRequest(req)) }];
 }
 
 export const GET = createSmartRouteHandler({
@@ -79,8 +102,8 @@ export const GET = createSmartRouteHandler({
       urls: yupArray(yupString().defined()).defined(),
     }).defined(),
   }),
-  handler: async () => {
-    const entries = getCachedConfig();
+  handler: async (_req, fullReq) => {
+    const entries = getConfiguredEntries() ?? getDefaultEntriesForRequest(fullReq);
 
     const roll = Math.random();
     let cumulative = 0;
