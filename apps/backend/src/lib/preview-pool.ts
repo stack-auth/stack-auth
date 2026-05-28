@@ -532,7 +532,7 @@ export async function fillPreviewPool(options?: { maxCreate?: number }): Promise
   };
 }
 
-export async function claimPreviewPoolLease(): Promise<PreviewPoolLease> {
+export async function claimPreviewPoolLease(options: { apiUrl: string }): Promise<PreviewPoolLease> {
   assertPreviewModeEnabled();
 
   const claimed = await claimReadyPreviewPoolProject() ?? await createPreviewPoolProject("leased");
@@ -542,6 +542,7 @@ export async function claimPreviewPoolLease(): Promise<PreviewPoolLease> {
   const { accessToken, refreshToken } = await createAuthTokens({
     tenancy: internalTenancy,
     projectUserId: claimed.userId,
+    apiUrl: options.apiUrl,
   });
 
   return {

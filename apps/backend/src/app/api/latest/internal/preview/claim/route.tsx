@@ -1,4 +1,5 @@
 import { claimPreviewPoolLease, fillPreviewPool } from "@/lib/preview-pool";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -25,8 +26,8 @@ export const POST = createSmartRouteHandler({
       refresh_token: yupString().defined(),
     }).defined(),
   }),
-  async handler() {
-    const lease = await claimPreviewPoolLease();
+  async handler(_req, fullReq) {
+    const lease = await claimPreviewPoolLease({ apiUrl: getApiUrlForRequest(fullReq) });
     runAsynchronouslyAndWaitUntil(fillPreviewPool({ maxCreate: 1 }));
 
     return {
