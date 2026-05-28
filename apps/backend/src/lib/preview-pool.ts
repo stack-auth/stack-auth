@@ -631,5 +631,12 @@ export async function getPreviewPoolProjectForUser(userId: string): Promise<stri
   });
 
   const metadata = parsePreviewPoolMetadata(membership?.team.serverMetadata);
-  return metadata?.projectId ?? null;
+  if (metadata == null) {
+    return null;
+  }
+  const now = new Date().getTime();
+  if (metadata.leaseExpiresAtMillis == null || metadata.leaseExpiresAtMillis <= now) {
+    return null;
+  }
+  return metadata.projectId;
 }
