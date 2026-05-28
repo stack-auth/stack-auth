@@ -1131,7 +1131,7 @@ export default function PageClient() {
                   </Button>
                 ) : undefined}
               >
-                <div className="flex flex-col gap-4 px-5 pb-4">
+                <div className="flex flex-col gap-4 px-5 pt-4 pb-4">
                   <DesignInput
                     value={searchInput}
                     onChange={(event) => setSearchInput(event.target.value)}

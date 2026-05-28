@@ -301,56 +301,58 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
     <div className="flex flex-col gap-6">
       {props.title && <h3 className="text-lg font-semibold text-foreground">{props.title}</h3>}
 
-      <Section
-        title="Payment method"
-        description="Manage the default payment method used for subscriptions and invoices."
-      >
-        <div className="flex items-center gap-3 w-full md:w-[350px]">
-          <div className="bg-zinc-100 dark:bg-zinc-900 p-2 rounded-xl border border-black/[0.04] dark:border-white/[0.04] text-foreground shrink-0">
-            <CreditCard className="h-5 w-5" />
-          </div>
-          <span className="text-sm font-semibold text-foreground flex-1">
-            {defaultPaymentMethod ? formatPaymentMethod(defaultPaymentMethod) : "No payment method on file"}
-          </span>
-          <Button
-            onClick={openPaymentDialog}
-            variant="outline"
-            className="border-black/[0.08] dark:border-white/[0.08] hover:bg-zinc-50 dark:hover:bg-zinc-900 rounded-xl text-xs font-semibold px-4 py-2 shrink-0"
-          >
-            {defaultPaymentMethod ? "Update" : "Add card"}
-          </Button>
-        </div>
-
-        <ActionDialog
-          open={paymentDialogOpen}
-          onOpenChange={(open) => {
-            if (!open) closePaymentDialog();
-          }}
-          title="Update payment method"
+      {defaultPaymentMethod && (
+        <Section
+          title="Payment method"
+          description="Manage the default payment method used for subscriptions and invoices."
         >
-          {!setupIntentClientSecret || !setupIntentStripeAccountId || !stripePromise ? (
-            <div className="space-y-2 p-1">
-              <Skeleton className="h-10 w-full rounded-xl" />
-              <Skeleton className="h-[120px] w-full rounded-xl" />
+          <div className="flex items-center gap-3 w-full md:w-[350px]">
+            <div className="bg-zinc-100 dark:bg-zinc-900 p-2 rounded-xl border border-black/[0.04] dark:border-white/[0.04] text-foreground shrink-0">
+              <CreditCard className="h-5 w-5" />
             </div>
-          ) : (
-            <Elements
-              stripe={stripePromise}
-              options={{
-                clientSecret: setupIntentClientSecret,
-              }}
+            <span className="text-sm font-semibold text-foreground flex-1">
+              {formatPaymentMethod(defaultPaymentMethod)}
+            </span>
+            <Button
+              onClick={openPaymentDialog}
+              variant="outline"
+              className="border-black/[0.08] dark:border-white/[0.08] hover:bg-zinc-50 dark:hover:bg-zinc-900 rounded-xl text-xs font-semibold px-4 py-2 shrink-0"
             >
-              <SetDefaultPaymentMethodForm
-                clientSecret={setupIntentClientSecret}
-                onSetupIntentSucceeded={async (setupIntentId) => {
-                  await props.customer.setDefaultPaymentMethodFromSetupIntent(setupIntentId);
-                  closePaymentDialog();
+              Update
+            </Button>
+          </div>
+
+          <ActionDialog
+            open={paymentDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) closePaymentDialog();
+            }}
+            title="Update payment method"
+          >
+            {!setupIntentClientSecret || !setupIntentStripeAccountId || !stripePromise ? (
+              <div className="space-y-2 p-1">
+                <Skeleton className="h-10 w-full rounded-xl" />
+                <Skeleton className="h-[120px] w-full rounded-xl" />
+              </div>
+            ) : (
+              <Elements
+                stripe={stripePromise}
+                options={{
+                  clientSecret: setupIntentClientSecret,
                 }}
-              />
-            </Elements>
-          )}
-        </ActionDialog>
-      </Section>
+              >
+                <SetDefaultPaymentMethodForm
+                  clientSecret={setupIntentClientSecret}
+                  onSetupIntentSucceeded={async (setupIntentId) => {
+                    await props.customer.setDefaultPaymentMethodFromSetupIntent(setupIntentId);
+                    closePaymentDialog();
+                  }}
+                />
+              </Elements>
+            )}
+          </ActionDialog>
+        </Section>
+      )}
 
       {productsForCustomerType.length > 0 && (
         <Section
