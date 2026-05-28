@@ -97,6 +97,7 @@ export function DesignPillToggle({
 
         const pill = (
           <button
+            type="button"
             key={option.id}
             onClick={() => handleClick(option.id)}
             disabled={loadingOptionId !== null}
