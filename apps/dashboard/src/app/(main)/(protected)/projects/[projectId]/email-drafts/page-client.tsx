@@ -127,7 +127,7 @@ function DraftCard({
         onOpenChange={setShowRenameDialog}
         title="Rename Draft"
         formSchema={yup.object({
-          name: yup.string().required().label("Draft name"),
+          name: yup.string().defined().nonEmpty().label("Draft name"),
         })}
         defaultValues={{ name: draft.displayName }}
         okButton={{ label: "Rename" }}
@@ -255,7 +255,7 @@ function HistoryDraftCard({
         onOpenChange={setShowRenameDialog}
         title="Rename Draft"
         formSchema={yup.object({
-          name: yup.string().required().label("Draft name"),
+          name: yup.string().defined().nonEmpty().label("Draft name"),
         })}
         defaultValues={{ name: draft.displayName }}
         okButton={{ label: "Rename" }}
