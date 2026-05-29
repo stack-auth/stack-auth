@@ -5,16 +5,14 @@ import {
   clampClickmapSampling,
   getClickmapOriginFilter,
   getClickmapOriginParams,
-  getClickmapReplayFilter,
   getClickmapRouteFilter,
   getClickmapSystemElementFilter,
   getClickmapUserAndReplayFilter,
-  getClickmapUserFilter,
   getClickmapViewportFilter,
   getDeviceViewportBucket,
-} from "./route";
+} from "./analytics-clickmap-query";
 
-describe("analytics heatmap helpers", () => {
+describe("analytics clickmap query helpers", () => {
   it("pads sparse hour-of-week rows into a complete 7x24 grid", () => {
     const cells = buildHourOfWeekHeatmapCells([
       { weekday: "1", hour: "0", value: "3" },
@@ -106,13 +104,10 @@ describe("analytics heatmap helpers", () => {
   });
 
   it("binds clickmap user/replay filters as nullable to match the MV schema", () => {
-    expect(getClickmapUserFilter("user-123")).toMatchInlineSnapshot(`"AND user_id = {userId:Nullable(String)}"`);
-    expect(getClickmapUserFilter(undefined)).toMatchInlineSnapshot(`""`);
-    expect(getClickmapReplayFilter("replay-123")).toMatchInlineSnapshot(`"AND session_replay_id = {replayId:Nullable(String)}"`);
-    expect(getClickmapReplayFilter(undefined)).toMatchInlineSnapshot(`""`);
     expect(getClickmapUserAndReplayFilter("user-123", "replay-123")).toMatchInlineSnapshot(`"AND user_id = {userId:Nullable(String)} AND session_replay_id = {replayId:Nullable(String)}"`);
     expect(getClickmapUserAndReplayFilter("user-123", undefined)).toMatchInlineSnapshot(`"AND user_id = {userId:Nullable(String)}"`);
     expect(getClickmapUserAndReplayFilter(undefined, "replay-123")).toMatchInlineSnapshot(`"AND session_replay_id = {replayId:Nullable(String)}"`);
+    expect(getClickmapUserAndReplayFilter(undefined, undefined)).toMatchInlineSnapshot(`""`);
   });
 
   it("scopes public clickmap queries to the exact token origin", () => {

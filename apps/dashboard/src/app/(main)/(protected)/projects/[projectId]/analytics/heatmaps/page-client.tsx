@@ -32,6 +32,14 @@ import {
   type DataGridColumnDef,
 } from "@stackframe/dashboard-ui-components";
 import type { AnalyticsHeatmapDevice, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import {
+  getProjectHeatmapOriginStorageKey,
+  getProjectHeatmapTokenStorageKey,
+  HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY,
+  HEATMAP_OVERLAY_PROJECT_STORAGE_KEY,
+  HEATMAP_OVERLAY_TOKEN_STORAGE_KEY,
+  HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT,
+} from "@stackframe/stack-shared/dist/utils/analytics-heatmap-overlay";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ArrowRight, GlobeHemisphereWest } from "@phosphor-icons/react";
@@ -286,26 +294,14 @@ function normalizeOrigin(baseUrl: string): string | null {
   }
 }
 
-const HEATMAP_TOKEN_STORAGE_KEY = "hexclave-heatmap-overlay-token";
-const HEATMAP_ORIGIN_STORAGE_KEY = "hexclave-heatmap-overlay-origin";
-const HEATMAP_PROJECT_STORAGE_KEY = "hexclave-heatmap-overlay-project-id";
-
-function getProjectHeatmapTokenStorageKey(projectId: string): string {
-  return `${HEATMAP_TOKEN_STORAGE_KEY}:${projectId}`;
-}
-
-function getProjectHeatmapOriginStorageKey(projectId: string): string {
-  return `${HEATMAP_ORIGIN_STORAGE_KEY}:${projectId}`;
-}
-
 function createConsoleSnippet(token: string, origin: string, projectId: string): string {
   return [
-    `sessionStorage.setItem(${JSON.stringify(HEATMAP_PROJECT_STORAGE_KEY)}, ${JSON.stringify(projectId)});`,
+    `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY)}, ${JSON.stringify(projectId)});`,
     `sessionStorage.setItem(${JSON.stringify(getProjectHeatmapOriginStorageKey(projectId))}, ${JSON.stringify(origin)});`,
     `sessionStorage.setItem(${JSON.stringify(getProjectHeatmapTokenStorageKey(projectId))}, ${JSON.stringify(token)});`,
-    `sessionStorage.setItem(${JSON.stringify(HEATMAP_ORIGIN_STORAGE_KEY)}, ${JSON.stringify(origin)});`,
-    `sessionStorage.setItem(${JSON.stringify(HEATMAP_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,
-    `window.dispatchEvent(new Event("hexclave:heatmap-token-updated"));`,
+    `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY)}, ${JSON.stringify(origin)});`,
+    `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,
+    `window.dispatchEvent(new Event(${JSON.stringify(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT)}));`,
     `console.info("Hexclave heatmap toolbar enabled for this tab.");`,
   ].join("\n");
 }
@@ -315,12 +311,12 @@ function installHeatmapTokenForCurrentOrigin(token: AnalyticsHeatmapTokenRespons
     return false;
   }
   try {
-    window.sessionStorage.setItem(HEATMAP_PROJECT_STORAGE_KEY, projectId);
+    window.sessionStorage.setItem(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY, projectId);
     window.sessionStorage.setItem(getProjectHeatmapOriginStorageKey(projectId), token.origin);
     window.sessionStorage.setItem(getProjectHeatmapTokenStorageKey(projectId), token.token);
-    window.sessionStorage.setItem(HEATMAP_ORIGIN_STORAGE_KEY, token.origin);
-    window.sessionStorage.setItem(HEATMAP_TOKEN_STORAGE_KEY, token.token);
-    window.dispatchEvent(new Event("hexclave:heatmap-token-updated"));
+    window.sessionStorage.setItem(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY, token.origin);
+    window.sessionStorage.setItem(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY, token.token);
+    window.dispatchEvent(new Event(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT));
     return true;
   } catch {
     window.alert("Could not enable the heatmap toolbar in this tab. Copy the snippet and paste it in the console instead.");

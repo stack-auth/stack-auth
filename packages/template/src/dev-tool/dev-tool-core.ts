@@ -1,6 +1,19 @@
 // IF_PLATFORM js-like
 
 import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
+import {
+  getProjectHeatmapOriginStorageKey,
+  getProjectHeatmapTokenStorageKey,
+  HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY,
+  HEATMAP_OVERLAY_PROJECT_STORAGE_KEY,
+  HEATMAP_OVERLAY_RESUME_STORAGE_KEY,
+  HEATMAP_OVERLAY_TOKEN_STORAGE_KEY,
+  HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT,
+} from "@stackframe/stack-shared/dist/utils/analytics-heatmap-overlay";
+import { DEV_TOOL_ROOT_ID } from "@stackframe/stack-shared/dist/utils/dev-tool";
+import { cssEscapeIdent } from "@stackframe/stack-shared/dist/utils/dom";
+import { AnalyticsHeatmapResponseBodySchema, type AnalyticsHeatmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import { parseElementsChain, type ElementsChainSegment } from "@stackframe/stack-shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -53,7 +66,7 @@ type DevToolState = {
 // Hexclave rebrand: UI-only local prefs — straight rename (one-time reset is harmless)
 const STORAGE_KEY = '__hexclave-dev-tool-state';
 const TRIGGER_POS_KEY = 'hexclave-devtool-trigger-position';
-const ROOT_ID = '__hexclave-dev-tool-root';
+const ROOT_ID = DEV_TOOL_ROOT_ID;
 const GLOBAL_INSTANCE_KEY = '__hexclave-dev-tool-instance';
 const MAX_LOG_ENTRIES = 500;
 const CONSOLE_LOG_BATCH_SIZE = 100;
@@ -1798,10 +1811,6 @@ type HeatmapGroupOverlayElement = {
   outline: HTMLElement;
 };
 
-const HEATMAP_TOOL_ROOT_ID = '__hexclave-dev-tool-root';
-const HEATMAP_TOKEN_STORAGE_KEY = 'hexclave-heatmap-overlay-token';
-const HEATMAP_ORIGIN_STORAGE_KEY = 'hexclave-heatmap-overlay-origin';
-const HEATMAP_PROJECT_STORAGE_KEY = 'hexclave-heatmap-overlay-project-id';
 const HEATMAP_FILTERS_STORAGE_KEY = 'hexclave-heatmap-overlay-filters';
 
 type HeatmapRangeKey = '24h' | '7d' | '30d';
@@ -1861,200 +1870,6 @@ type DevToolServerHeatmap = {
   elements: DevToolServerHeatmapElement[];
 };
 
-type ElementsChainSegment = {
-  tag: string;
-  classes: string[];
-  attrs: Record<string, string>;
-  text: string | null;
-  nthChild: number | null;
-  nthOfType: number | null;
-  href: string | null;
-};
-
-function parseElementsChain(chain: string): ElementsChainSegment[] {
-  // Split top-level by ';' respecting quoted strings.
-  const segments: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < chain.length; i++) {
-    const ch = chain[i];
-    if (ch === '\\' && i + 1 < chain.length) {
-      current += ch + chain[i + 1];
-      i += 1;
-      continue;
-    }
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-      current += ch;
-      continue;
-    }
-    if (ch === ';' && !inQuotes) {
-      segments.push(current);
-      current = '';
-      continue;
-    }
-    current += ch;
-  }
-  if (current.length > 0) {
-    segments.push(current);
-  }
-  return segments.map(parseElementsChainSegment).filter((segment): segment is ElementsChainSegment => segment != null);
-}
-
-// Split a string on unescaped occurrences of `.`, unescaping `\.`, `\:` and `\\`
-// back to their literal characters. Used to recover class tokens from the
-// dot-joined segment prefix, which the event tracker escapes during serialization.
-function splitEscapedDots(input: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === '\\' && i + 1 < input.length) {
-      cur += input[i + 1];
-      i += 1;
-      continue;
-    }
-    if (ch === '.') {
-      out.push(cur);
-      cur = '';
-      continue;
-    }
-    cur += ch;
-  }
-  out.push(cur);
-  return out;
-}
-
-function parseElementsChainSegment(segment: string): ElementsChainSegment | null {
-  const trimmed = segment.trim();
-  if (trimmed === '') return null;
-
-  // Find first ':' at top level — separates tag/classes prefix from attribute pairs.
-  let prefixEnd = trimmed.length;
-  let inQuotes = false;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === '\\' && i + 1 < trimmed.length) {
-      i += 1;
-      continue;
-    }
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (ch === ':' && !inQuotes) {
-      prefixEnd = i;
-      break;
-    }
-  }
-
-  const prefix = trimmed.slice(0, prefixEnd);
-  const rest = trimmed.slice(prefixEnd);
-  const prefixParts = splitEscapedDots(prefix);
-  const tag = prefixParts[0].trim().toLowerCase();
-  if (tag === '') return null;
-  const classes = prefixParts.slice(1).map((c) => c.trim()).filter((c) => c !== '');
-
-  const attrs: Record<string, string> = {};
-  let nthChild: number | null = null;
-  let nthOfType: number | null = null;
-  let text: string | null = null;
-  let href: string | null = null;
-
-  // Parse :key="value" pairs from rest.
-  let i = 0;
-  while (i < rest.length) {
-    if (rest[i] !== ':') {
-      i += 1;
-      continue;
-    }
-    i += 1; // skip ':'
-    // read key up to '='
-    let keyEnd = i;
-    while (keyEnd < rest.length && rest[keyEnd] !== '=' && rest[keyEnd] !== ':') keyEnd += 1;
-    const key = rest.slice(i, keyEnd).trim();
-    if (keyEnd >= rest.length || rest[keyEnd] !== '=') {
-      i = keyEnd;
-      continue;
-    }
-    let valStart = keyEnd + 1;
-    if (rest[valStart] !== '"') {
-      // unquoted — read until next ':' at top level
-      let end = valStart;
-      while (end < rest.length && rest[end] !== ':') end += 1;
-      const value = rest.slice(valStart, end);
-      const result = applyElementsChainAttr(key, value);
-      if (result.nthChild != null) nthChild = result.nthChild;
-      if (result.nthOfType != null) nthOfType = result.nthOfType;
-      if (result.text != null) text = result.text;
-      if (result.href != null) href = result.href;
-      if (result.attrKey != null) attrs[result.attrKey] = result.attrValue ?? '';
-      i = end;
-      continue;
-    }
-    // quoted value — find unescaped closing quote
-    valStart += 1;
-    let end = valStart;
-    let value = '';
-    while (end < rest.length) {
-      const ch = rest[end];
-      if (ch === '\\' && end + 1 < rest.length) {
-        const next = rest[end + 1];
-        if (next === '"' || next === '\\') {
-          value += next;
-          end += 2;
-          continue;
-        }
-        value += ch;
-        end += 1;
-        continue;
-      }
-      if (ch === '"') break;
-      value += ch;
-      end += 1;
-    }
-    const result = applyElementsChainAttr(key, value);
-    if (result.nthChild != null) nthChild = result.nthChild;
-    if (result.nthOfType != null) nthOfType = result.nthOfType;
-    if (result.text != null) text = result.text;
-    if (result.href != null) href = result.href;
-    if (result.attrKey != null) attrs[result.attrKey] = result.attrValue ?? '';
-    i = end + 1; // skip closing quote
-  }
-
-  return { tag, classes, attrs, text, nthChild, nthOfType, href };
-}
-
-type ElementsChainAttrResult = {
-  nthChild?: number,
-  nthOfType?: number,
-  text?: string,
-  href?: string,
-  attrKey?: string,
-  attrValue?: string,
-};
-
-function applyElementsChainAttr(key: string, value: string): ElementsChainAttrResult {
-  if (key === 'nth-child') {
-    const n = Number.parseInt(value, 10);
-    return Number.isFinite(n) ? { nthChild: n } : {};
-  }
-  if (key === 'nth-of-type') {
-    const n = Number.parseInt(value, 10);
-    return Number.isFinite(n) ? { nthOfType: n } : {};
-  }
-  if (key === 'text') {
-    return { text: value };
-  }
-  if (key === 'href') {
-    return { href: value, attrKey: key, attrValue: value };
-  }
-  if (key.startsWith('attr__')) {
-    return { attrKey: key.slice('attr__'.length), attrValue: value };
-  }
-  return { attrKey: key, attrValue: value };
-}
-
 function cssEscapeAttrValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
@@ -2063,13 +1878,6 @@ function readChainAttr(segment: ElementsChainSegment, attr: string): string {
   if (!Object.prototype.hasOwnProperty.call(segment.attrs, attr)) return '';
   const value = segment.attrs[attr];
   return typeof value === 'string' ? value : '';
-}
-
-function cssEscapeIdent(value: string): string {
-  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
-    return CSS.escape(value);
-  }
-  return value.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
 }
 
 function formatHeatmapCount(value: number): string {
@@ -2092,14 +1900,14 @@ function getHeatmapHue(count: number, maxCount: number): number {
 function isInsideDevToolEvent(event: Event): boolean {
   const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
   for (const node of path) {
-    if (node instanceof Element && node.id === HEATMAP_TOOL_ROOT_ID) {
+    if (node instanceof Element && node.id === ROOT_ID) {
       return true;
     }
   }
   // Fallback for environments without composedPath: best-effort ancestor walk.
   const target = event.target;
   if (target instanceof Element) {
-    return target.closest(`#${HEATMAP_TOOL_ROOT_ID}`) != null;
+    return target.closest(`#${ROOT_ID}`) != null;
   }
   return false;
 }
@@ -2145,7 +1953,7 @@ function maybeNavigateFromHeatmapModifierClick(event: Event): boolean {
   // private history-state marker, so a generic pushState+popstate doesn't
   // re-render the tree), so we hard-nav and rehydrate the panel on load.
   try {
-    sessionStorage.setItem('hexclave-heatmap-overlay-resume', '1');
+    sessionStorage.setItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY, '1');
   } catch {
     // ignore (private mode, etc.)
   }
@@ -2170,7 +1978,7 @@ function getReadableElementLabel(element: Element): string {
 }
 
 function isElementVisibleForHeatmap(element: Element): boolean {
-  if (element.closest(`#${HEATMAP_TOOL_ROOT_ID}`) != null) {
+  if (element.closest(`#${ROOT_ID}`) != null) {
     return false;
   }
   if (element.closest('[hidden], [aria-hidden="true"], [inert]') != null) {
@@ -2196,14 +2004,6 @@ function getElementFromSelector(selector: string): Element | null {
   }
 }
 
-function getProjectHeatmapTokenStorageKey(projectId: string): string {
-  return `${HEATMAP_TOKEN_STORAGE_KEY}:${projectId}`;
-}
-
-function getProjectHeatmapOriginStorageKey(projectId: string): string {
-  return `${HEATMAP_ORIGIN_STORAGE_KEY}:${projectId}`;
-}
-
 function getSessionStorageString(key: string): string | null {
   try {
     const value = sessionStorage.getItem(key);
@@ -2214,7 +2014,7 @@ function getSessionStorageString(key: string): string | null {
 }
 
 function getActiveHeatmapProjectId(fallbackProjectId: string): string {
-  return getSessionStorageString(HEATMAP_PROJECT_STORAGE_KEY) ?? fallbackProjectId;
+  return getSessionStorageString(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY) ?? fallbackProjectId;
 }
 
 function removeSessionStorageItem(key: string): void {
@@ -2252,7 +2052,7 @@ function getHeatmapTokenFromStorage(projectId: string): string | null {
   if (projectToken != null) {
     return projectToken;
   }
-  const legacyToken = getSessionStorageString(HEATMAP_TOKEN_STORAGE_KEY);
+  const legacyToken = getSessionStorageString(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY);
   if (legacyToken == null) {
     return null;
   }
@@ -2262,78 +2062,46 @@ function getHeatmapTokenFromStorage(projectId: string): string | null {
 
 function getHeatmapOriginFromStorage(projectId: string): string | null {
   const activeProjectId = getActiveHeatmapProjectId(projectId);
-  return getSessionStorageString(getProjectHeatmapOriginStorageKey(activeProjectId)) ?? getSessionStorageString(HEATMAP_ORIGIN_STORAGE_KEY);
+  return getSessionStorageString(getProjectHeatmapOriginStorageKey(activeProjectId)) ?? getSessionStorageString(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY);
 }
 
 function clearHeatmapTokenStorage(projectId: string): void {
   const activeProjectId = getActiveHeatmapProjectId(projectId);
   removeSessionStorageItem(getProjectHeatmapTokenStorageKey(activeProjectId));
   removeSessionStorageItem(getProjectHeatmapOriginStorageKey(activeProjectId));
-  removeSessionStorageItem(HEATMAP_PROJECT_STORAGE_KEY);
-  const legacyToken = getSessionStorageString(HEATMAP_TOKEN_STORAGE_KEY);
+  removeSessionStorageItem(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY);
+  const legacyToken = getSessionStorageString(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY);
   const legacyProjectId = legacyToken == null ? null : getJwtPayloadProjectId(legacyToken);
   if (legacyProjectId == null || legacyProjectId === activeProjectId) {
-    removeSessionStorageItem(HEATMAP_TOKEN_STORAGE_KEY);
-    removeSessionStorageItem(HEATMAP_ORIGIN_STORAGE_KEY);
+    removeSessionStorageItem(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY);
+    removeSessionStorageItem(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY);
   }
-}
-
-function readNumberProperty(value: unknown, key: string): number | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  const property = Reflect.get(value, key);
-  return typeof property === 'number' && Number.isFinite(property) ? property : null;
-}
-
-function readStringProperty(value: unknown, key: string): string | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  const property = Reflect.get(value, key);
-  return typeof property === 'string' && property !== '' ? property : null;
 }
 
 function parseServerHeatmapResponse(value: unknown, path: string): DevToolServerHeatmap {
-  const selectorsValue = typeof value === 'object' && value !== null ? Reflect.get(value, 'selectors') : undefined;
-  const selectors: DevToolServerHeatmapSelector[] = [];
-  if (Array.isArray(selectorsValue)) {
-    for (const selectorValue of selectorsValue) {
-      const selector = readStringProperty(selectorValue, 'selector');
-      const clicks = readNumberProperty(selectorValue, 'clicks');
-      if (selector != null && clicks != null) {
-        selectors.push({ selector, clicks });
-      }
-    }
+  let parsed: AnalyticsHeatmapResponse;
+  try {
+    // Validate against the canonical response contract instead of hand-walking
+    // `unknown`. Anything that doesn't match is treated as "no data" so the
+    // overlay stays alive rather than crashing on shape drift.
+    parsed = AnalyticsHeatmapResponseBodySchema.validateSync(value);
+  } catch {
+    return { path, totalClicks: 0, selectors: [], elements: [] };
   }
-
-  const elementsValue = typeof value === 'object' && value !== null ? Reflect.get(value, 'elements') : undefined;
-  const elements: DevToolServerHeatmapElement[] = [];
-  if (Array.isArray(elementsValue)) {
-    for (const elementValue of elementsValue) {
-      const elementsChain = readStringProperty(elementValue, 'elements_chain');
-      const clicks = readNumberProperty(elementValue, 'clicks');
-      if (elementsChain == null || clicks == null) continue;
-      elements.push({
-        elementsChain,
-        elementsText: readStringProperty(elementValue, 'elements_text') ?? '',
-        tagName: readStringProperty(elementValue, 'tag_name') ?? '',
-        href: readStringProperty(elementValue, 'href'),
-        clicks,
-      });
-    }
-  }
-
-  const routesValue = typeof value === 'object' && value !== null ? Reflect.get(value, 'routes') : undefined;
-  let totalClicks = 0;
-  if (Array.isArray(routesValue)) {
-    for (const routeValue of routesValue) {
-      const clicks = readNumberProperty(routeValue, 'clicks');
-      if (clicks != null) totalClicks += clicks;
-    }
-  }
-
-  return { path, totalClicks, selectors, elements };
+  return {
+    path,
+    // True aggregate across every matching route, independent of what the
+    // current DOM can render.
+    totalClicks: parsed.routes.reduce((sum, route) => sum + route.clicks, 0),
+    selectors: parsed.selectors.map((selector) => ({ selector: selector.selector, clicks: selector.clicks })),
+    elements: parsed.elements.map((element) => ({
+      elementsChain: element.elements_chain,
+      elementsText: element.elements_text,
+      tagName: element.tag_name,
+      href: element.href,
+      clicks: element.clicks,
+    })),
+  };
 }
 
 // Heuristic: does this path segment look like an opaque per-entity id (a UUID,
@@ -3101,7 +2869,20 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     runAsynchronously(loadServerHeatmap());
   };
   const routePollInterval = window.setInterval(scheduleRender, 500);
-  const mutationObserver = new MutationObserver(() => {
+  // Mutations the overlay/dev-tool cause themselves must not drive a re-render:
+  // `renderOverlay` rewrites marker/outline inline styles into `overlayRoot` on
+  // every paint, so observing them would re-arm scheduleRender → paint → mutate
+  // → … a permanent render loop while the tab is open. Ignore records whose
+  // targets all sit inside our own overlay root or dev-tool root.
+  const isSelfMutationTarget = (target: Node | null): boolean => {
+    const element = target instanceof Element ? target : target?.parentElement ?? null;
+    if (element == null) return false;
+    return overlayRoot.contains(element) || element.closest(`#${cssEscapeIdent(ROOT_ID)}`) != null;
+  };
+  const mutationObserver = new MutationObserver((mutations) => {
+    if (mutations.every((mutation) => isSelfMutationTarget(mutation.target))) {
+      return;
+    }
     scheduleDomIndexInvalidation();
     scheduleRender();
   });
@@ -3124,7 +2905,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   window.addEventListener('resize', onWindowResize);
   visualViewport?.addEventListener('resize', scheduleRender);
   visualViewport?.addEventListener('scroll', scheduleRender);
-  window.addEventListener('hexclave:heatmap-token-updated', onTokenUpdated);
+  window.addEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, onTokenUpdated);
   render();
   runAsynchronously(loadServerHeatmap());
 
@@ -3150,7 +2931,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
       window.removeEventListener('resize', onWindowResize);
       visualViewport?.removeEventListener('resize', scheduleRender);
       visualViewport?.removeEventListener('scroll', scheduleRender);
-      window.removeEventListener('hexclave:heatmap-token-updated', onTokenUpdated);
+      window.removeEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, onTokenUpdated);
       overlayRoot.remove();
     },
   };
@@ -3870,9 +3651,9 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   // panel so the user picks up where they left off.
   let shouldResumeHeatmap = false;
   try {
-    if (sessionStorage.getItem('hexclave-heatmap-overlay-resume') === '1') {
+    if (sessionStorage.getItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY) === '1') {
       shouldResumeHeatmap = true;
-      sessionStorage.removeItem('hexclave-heatmap-overlay-resume');
+      sessionStorage.removeItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY);
     }
   } catch {
     // ignore
@@ -3885,7 +3666,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     openPanel();
   }
 
-  window.addEventListener('hexclave:heatmap-token-updated', openHeatmapPanel);
+  window.addEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, openHeatmapPanel);
 
   const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
     const timestamp = Date.now();
@@ -3914,7 +3695,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
         setGlobalDevToolInstance(null);
       }
       trigger.cleanup();
-      window.removeEventListener('hexclave:heatmap-token-updated', openHeatmapPanel);
+      window.removeEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, openHeatmapPanel);
       removeRequestListener();
       panel?.cleanup();
       if (root.parentNode) {

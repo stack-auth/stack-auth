@@ -309,3 +309,22 @@ export type AnalyticsHeatmapDevice = yup.InferType<typeof AnalyticsHeatmapDevice
 export type AnalyticsHeatmapCell = yup.InferType<typeof AnalyticsHeatmapCellSchema>;
 export type AnalyticsHeatmapResponse = yup.InferType<typeof AnalyticsHeatmapResponseBodySchema>;
 export type AnalyticsHeatmapTokenResponse = yup.InferType<typeof AnalyticsHeatmapTokenResponseBodySchema>;
+
+// Single (camelCase) options shape for the heatmap SDK surface — shared by the
+// StackAdminApp interface and its implementation so the two can't drift. The
+// HexclaveAdminInterface transport layer maps these to the snake_case request body.
+export type AnalyticsHeatmapOptions = {
+  kind: AnalyticsHeatmapKind,
+  memberUserIds?: string[],
+  routePath?: string,
+  routeRegex?: string,
+  urlPattern?: string,
+  userId?: string,
+  replayId?: string,
+  device?: AnalyticsHeatmapDevice,
+  viewportWidthMin?: number,
+  viewportWidthMax?: number,
+  sampling?: number,
+  since: string,
+  until: string,
+};

@@ -1,3 +1,6 @@
+import { DEV_TOOL_ROOT_ID } from "@stackframe/stack-shared/dist/utils/dev-tool";
+import { cssEscapeIdent } from "@stackframe/stack-shared/dist/utils/dom";
+import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@stackframe/stack-shared/dist/utils/elements-chain";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -27,120 +30,9 @@ function hasHistoryMethods(value: unknown): value is { pushState: History["pushS
   return typeof value.pushState === "function" && typeof value.replaceState === "function";
 }
 
-function cssEscapeIdent(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
-}
-
 // Pixel quantization factor for x/y/viewport in stored click events. Matches the
 // SCALE_FACTOR used by the ClickHouse clickmap_events MV — keep them in sync.
 const CLICKMAP_SCALE_FACTOR = 16;
-const ELEMENTS_CHAIN_MAX_DEPTH = 8;
-const ELEMENTS_CHAIN_TEXT_MAX = 80;
-const ELEMENTS_CHAIN_ATTR_MAX = 200;
-const HEXCLAVE_DEV_TOOL_ROOT_ID = "__hexclave-dev-tool-root";
-// Attributes we serialise into elements_chain. Mirrors the set PostHog persists:
-// stable identifiers (id, data-testid), semantics (role, type, name, aria-label),
-// and a few we expect downstream tooling to want to match against.
-const ELEMENTS_CHAIN_ATTRS = [
-  "id",
-  "data-testid",
-  "data-test-id",
-  "data-hexclave-id",
-  "name",
-  "type",
-  "role",
-  "aria-label",
-  "placeholder",
-  "title",
-] as const;
-
-function escapeElementsChainValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-// Class tokens are written into the unquoted, dot-joined prefix of a segment, so
-// any "." or ":" inside a class (e.g. Tailwind variants like `md:hover:bg-blue-500`
-// or arbitrary values like `w-[1.5rem]`) must be escaped to round-trip through the
-// overlay parser, which splits the prefix on unescaped "." and the segment on
-// unescaped ":".
-function escapeElementsChainClass(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\./g, "\\.").replace(/:/g, "\\:");
-}
-
-function getElementClasses(element: Element): string[] {
-  const className = (element as HTMLElement).className;
-  if (typeof className !== "string" || className.trim() === "") {
-    return [];
-  }
-  return className.trim().split(/\s+/).filter(Boolean).slice(0, 4);
-}
-
-function getNthChildIndex(element: Element): number | null {
-  const parent = element.parentElement;
-  if (parent == null) return null;
-  const index = Array.prototype.indexOf.call(parent.children, element);
-  return index >= 0 ? index + 1 : null;
-}
-
-function getNthOfTypeIndex(element: Element): number | null {
-  const parent = element.parentElement;
-  if (parent == null) return null;
-  const tagName = element.tagName;
-  const siblings = Array.from(parent.children).filter((child) => child.tagName === tagName);
-  if (siblings.length <= 1) return null;
-  const index = siblings.indexOf(element);
-  return index >= 0 ? index + 1 : null;
-}
-
-// Serialise one DOM element into a PostHog-compatible elements_chain segment.
-//   tag.class1.class2:nth-child="2":nth-of-type="1":text="Save":attr__id="save-btn":href="..."
-// Segments are joined with ";" from leaf to root so downstream matchers can
-// LIKE against any ancestor cheaply.
-function serializeElementsChainSegment(element: Element): string {
-  const parts: string[] = [];
-  parts.push(element.tagName.toLowerCase());
-  const classes = getElementClasses(element);
-  if (classes.length > 0) {
-    parts.push(`.${classes.map(escapeElementsChainClass).join(".")}`);
-  }
-  const text = element.textContent.trim().replace(/\s+/g, " ").slice(0, ELEMENTS_CHAIN_TEXT_MAX);
-  const nthChild = getNthChildIndex(element);
-  const nthOfType = getNthOfTypeIndex(element);
-  const attrPairs: string[] = [];
-  if (nthChild != null) attrPairs.push(`nth-child="${nthChild}"`);
-  if (nthOfType != null) attrPairs.push(`nth-of-type="${nthOfType}"`);
-  if (text !== "") attrPairs.push(`text="${escapeElementsChainValue(text)}"`);
-  for (const attrName of ELEMENTS_CHAIN_ATTRS) {
-    const value = element.getAttribute(attrName);
-    if (value == null || value === "") continue;
-    attrPairs.push(`attr__${attrName}="${escapeElementsChainValue(value.slice(0, ELEMENTS_CHAIN_ATTR_MAX))}"`);
-  }
-  if (element.tagName === "A") {
-    const href = element.getAttribute("href");
-    if (href != null && href !== "") {
-      attrPairs.push(`href="${escapeElementsChainValue(href.slice(0, ELEMENTS_CHAIN_ATTR_MAX))}"`);
-    }
-  }
-  if (attrPairs.length > 0) {
-    parts.push(`:${attrPairs.join(":")}`);
-  }
-  return parts.join("");
-}
-
-function buildElementsChain(element: Element): string {
-  const segments: string[] = [];
-  let current: Element | null = element;
-  let depth = 0;
-  while (current != null && depth < ELEMENTS_CHAIN_MAX_DEPTH && current !== document.documentElement) {
-    segments.push(serializeElementsChainSegment(current));
-    current = current.parentElement;
-    depth += 1;
-  }
-  return segments.join(";");
-}
 
 function isPointerTargetFixed(element: Element): boolean {
   let current: Element | null = element;
@@ -157,7 +49,7 @@ function isPointerTargetFixed(element: Element): boolean {
 }
 
 function isInsideHexclaveDevTool(element: Element): boolean {
-  return element.closest(`#${cssEscapeIdent(HEXCLAVE_DEV_TOOL_ROOT_ID)}`) != null;
+  return element.closest(`#${cssEscapeIdent(DEV_TOOL_ROOT_ID)}`) != null;
 }
 
 export type EventTrackerDeps = {
