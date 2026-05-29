@@ -40,6 +40,20 @@ export function devEnvStatePath(): string {
   return stackDevEnvStatePath();
 }
 
+// Validate the on-disk cache shape: a hand-edited or cross-version state file
+// could carry a wrong-typed entry, and a non-string latestVersion would later
+// throw in version parsing. Treat anything malformed as "no cache".
+function isCliUpdateCheckCache(value: unknown): value is CliUpdateCheckCache {
+  if (value == null || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.packageName === "string" &&
+    typeof candidate.latestVersion === "string" &&
+    typeof candidate.checkedAtMillis === "number" &&
+    Number.isFinite(candidate.checkedAtMillis)
+  );
+}
+
 export function readDevEnvState(): DevEnvState {
   const path = devEnvStatePath();
   if (!existsSync(path)) {
@@ -57,7 +71,7 @@ export function readDevEnvState(): DevEnvState {
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
     localDashboard: parsed.localDashboard,
-    cliUpdateCheck: parsed.cliUpdateCheck,
+    cliUpdateCheck: isCliUpdateCheckCache(parsed.cliUpdateCheck) ? parsed.cliUpdateCheck : undefined,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }

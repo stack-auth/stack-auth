@@ -263,8 +263,8 @@ export function processExists(pid: number): boolean {
 }
 
 // Terminate the background dashboard recorded in dev-env state and wait until
-// both the process is gone AND the port stops answering, so a fresh (newer)
-// dashboard can rebind without EADDRINUSE.
+// the port stops answering, so a fresh (newer) dashboard can rebind without
+// EADDRINUSE.
 export async function killLocalDashboard(url: string): Promise<void> {
   const pid = readDevEnvState().localDashboard?.pid;
   if (pid == null || pid <= 0) return;
@@ -280,16 +280,22 @@ export async function killLocalDashboard(url: string): Promise<void> {
     throw error;
   }
 
-  // Wait for graceful shutdown: the listening socket isn't released until the
-  // process actually exits, so gate on the pid being gone, not just on /health.
+  // Wait for the port to be released — that's the property that actually lets
+  // the replacement bind. Don't gate on the pid: once the dashboard exits its
+  // pid can be recycled onto an unrelated same-user process, which a pid probe
+  // would misreport as "still alive" (spinning the full timeout and then
+  // mis-targeting the SIGKILL below). Our /health route only ever returns 200
+  // or refuses the connection, so an unreachable port reliably means the
+  // listener is gone.
   const startedAt = performance.now();
   while (performance.now() - startedAt < DASHBOARD_STOP_TIMEOUT_MS) {
-    if (!processExists(pid) && !(await isDashboardReachable(url))) return;
+    if (!(await isDashboardReachable(url))) return;
     await wait(200);
   }
 
-  // Still up after SIGTERM — force it down, then wait for the kernel to release
-  // the socket so the replacement can bind it.
+  // Still listening after the grace period — the process is genuinely hung and
+  // still holding the port, so the recorded pid is necessarily still valid;
+  // force it down, then wait for the socket to be released.
   try {
     process.kill(pid, "SIGKILL");
   } catch {
@@ -297,7 +303,7 @@ export async function killLocalDashboard(url: string): Promise<void> {
   }
   const killDeadline = performance.now() + DASHBOARD_FORCE_STOP_TIMEOUT_MS;
   while (performance.now() < killDeadline) {
-    if (!processExists(pid) && !(await isDashboardReachable(url))) return;
+    if (!(await isDashboardReachable(url))) return;
     await wait(200);
   }
 }

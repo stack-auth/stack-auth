@@ -88,4 +88,24 @@ describe("killLocalDashboard", () => {
     const sigkillCalls = killSpy.mock.calls.filter(([, sig]) => sig === "SIGKILL");
     expect(sigkillCalls).toHaveLength(0);
   });
+
+  it("returns once the port is free without SIGKILL, even if the pid still resolves (recycled pid)", async () => {
+    recordLocalDashboardProcess(26700, "s", 4242, "/tmp/x.log", "2.8.110");
+    // Every process.kill (including the `0` probe) succeeds, so processExists
+    // always reports the pid as alive — simulating a pid recycled onto another
+    // live same-user process after our dashboard exited.
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    // Port is already free (connection refused), so the dashboard is gone.
+    const fetchMock = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await killLocalDashboard("http://127.0.0.1:26700");
+
+    // SIGTERM is sent once; we must return as soon as the port frees up and
+    // never escalate to SIGKILL against the (possibly recycled) pid.
+    const sigterm = killSpy.mock.calls.filter(([, sig]) => sig === "SIGTERM");
+    const sigkill = killSpy.mock.calls.filter(([, sig]) => sig === "SIGKILL");
+    expect(sigterm).toHaveLength(1);
+    expect(sigkill).toHaveLength(0);
+  });
 });

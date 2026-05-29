@@ -227,23 +227,29 @@ function runReexec(invocation: NpxInvocation): Promise<ReexecResult> {
 // reinstalling, then exits with the child's code. Best-effort: any failure
 // (offline, no npx, opted out) silently falls through to the installed CLI.
 export async function maybeReexecToLatest(opts: { forwardArgs: string[] }): Promise<void> {
-  // Fast-path: don't even hit the registry when auto-update is off.
-  if (!shouldAutoUpdate(process.env)) return;
+  try {
+    // Fast-path: don't even hit the registry when auto-update is off.
+    if (!shouldAutoUpdate(process.env)) return;
 
-  const pkg = getOwnPackage();
-  if (pkg == null) return;
+    const pkg = getOwnPackage();
+    if (pkg == null) return;
 
-  const latest = await resolveLatestVersion(pkg.name, {
-    timeoutMs: updateCheckTimeoutMs(),
-    ttlMs: updateCheckTtlMs(),
-  });
+    const latest = await resolveLatestVersion(pkg.name, {
+      timeoutMs: updateCheckTimeoutMs(),
+      ttlMs: updateCheckTtlMs(),
+    });
 
-  const decision = decideReexec({ env: process.env, pkg, latest, forwardArgs: opts.forwardArgs });
-  if (!decision.reexec) return;
+    const decision = decideReexec({ env: process.env, pkg, latest, forwardArgs: opts.forwardArgs });
+    if (!decision.reexec) return;
 
-  const result = await runReexec(decision.invocation);
-  if (result.exited) {
-    process.exit(result.code);
+    const result = await runReexec(decision.invocation);
+    if (result.exited) {
+      process.exit(result.code);
+    }
+    logUpdate(`Could not run npx (${result.error}); continuing with the installed CLI.`);
+  } catch {
+    // Fail open: a corrupt/unreadable state file, a disk-full cache write, or
+    // any other unexpected error must not block the installed CLI from running.
+    // A genuine state-file problem resurfaces later in the normal dev flow.
   }
-  logUpdate(`Could not run npx (${result.error}); continuing with the installed CLI.`);
 }

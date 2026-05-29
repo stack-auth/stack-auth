@@ -82,6 +82,37 @@ describe("dev env state", () => {
     expect(readCliUpdateCheckCache()).toEqual({ packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 123 });
   });
 
+  it("drops a malformed cliUpdateCheck entry on read", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    // Wrong-typed fields (e.g. hand-edited or cross-version): latestVersion is a
+    // number and checkedAtMillis is a string — must be treated as "no cache" so
+    // version parsing never sees a non-string.
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      cliUpdateCheck: { packageName: "@hexclave/cli", latestVersion: 2, checkedAtMillis: "soon" },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    expect(readCliUpdateCheckCache()).toBeUndefined();
+  });
+
+  it("keeps a well-formed cliUpdateCheck entry on read", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      cliUpdateCheck: { packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 123 },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    expect(readCliUpdateCheckCache()).toEqual({ packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 123 });
+  });
+
   it("does not clobber the dashboard record when writing the update-check cache", () => {
     useTempStateFile();
     const secret = ensureLocalDashboardSecret(26700);

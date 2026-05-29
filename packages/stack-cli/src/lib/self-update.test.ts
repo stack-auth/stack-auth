@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import {
   DISABLE_AUTO_UPDATE_ENV,
   isEnvFlagEnabled,
   isVersionNewer,
+  maybeReexecToLatest,
   resolveLatestVersion,
   shouldAutoUpdate,
   SKIP_AUTO_UPDATE_ENV,
@@ -338,5 +339,45 @@ describe("resolveLatestVersion", () => {
       if (prev == null) delete process.env.npm_config_registry;
       else process.env.npm_config_registry = prev;
     }
+  });
+});
+
+describe("maybeReexecToLatest", () => {
+  let tempDir: string;
+  const optOutKeys = ["CI", SKIP_AUTO_UPDATE_ENV, DISABLE_AUTO_UPDATE_ENV];
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "reexec-"));
+    process.env.STACK_DEV_ENVS_PATH = join(tempDir, "dev-envs.json");
+    // Auto-update must be eligible for the throwing path to be reached.
+    for (const key of optOutKeys) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    delete process.env.STACK_DEV_ENVS_PATH;
+    for (const key of optOutKeys) {
+      if (savedEnv[key] == null) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+    rmSync(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("fails open (does not throw) when reading dev-env state throws", async () => {
+    // A corrupt state file makes readDevEnvState throw while resolving the
+    // cached latest version. The contract is to fall through to the installed
+    // CLI, not crash `stack dev`.
+    writeFileSync(process.env.STACK_DEV_ENVS_PATH as string, "{ not json", { mode: 0o600 });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(maybeReexecToLatest({ forwardArgs: ["dev"] })).resolves.toBeUndefined();
+    // It bails on the state-read error before reaching the network.
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
