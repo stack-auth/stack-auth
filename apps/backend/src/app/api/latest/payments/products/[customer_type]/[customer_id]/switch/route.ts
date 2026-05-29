@@ -151,7 +151,7 @@ export const POST = createSmartRouteHandler({
     // Server-granted subscriptions (no stripeSubscriptionId) are immutable via this endpoint
     // in live mode; they must be cancelled through admin tooling before the customer switches plans.
     // In test mode they're swapped via the DB-only short-circuit below.
-    if (existingSub && !existingSub.stripeSubscriptionId && !testMode) {
+    if (existingSub != null && existingSub.stripeSubscriptionId == null && !testMode) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
     // Free-plan fallthrough: if the customer claims to be switching "from" a free product
@@ -194,7 +194,7 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "This product is not stackable; quantity must be 1");
     }
 
-    if (testMode && (!existingSub || !existingSub.stripeSubscriptionId)) {
+    if (testMode && (existingSub == null || existingSub.stripeSubscriptionId == null)) {
       await grantProductToCustomer({
         prisma,
         tenancy: auth.tenancy,
@@ -210,7 +210,7 @@ export const POST = createSmartRouteHandler({
     }
 
     // For now, we don't allow switching out of a Stripe-backed subscription while the project is in test mode.
-    if (testMode && existingSub && existingSub.stripeSubscriptionId) {
+    if (testMode && existingSub != null && existingSub.stripeSubscriptionId != null) {
       throw new StatusError(
         400,
         "Cannot switch a live subscription while the project is in test mode. " +
