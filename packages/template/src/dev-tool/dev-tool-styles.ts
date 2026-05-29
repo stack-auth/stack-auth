@@ -2827,6 +2827,13 @@ export const devToolCSS = `
     color: white;
   }
 
+  .stack-devtool .sdt-hm-btn-primary:hover {
+    background: var(--sdt-accent);
+    border-color: var(--sdt-accent);
+    color: white;
+    transition: none;
+  }
+
   .stack-devtool .sdt-hm-stats {
     flex: 1;
     min-width: 0;

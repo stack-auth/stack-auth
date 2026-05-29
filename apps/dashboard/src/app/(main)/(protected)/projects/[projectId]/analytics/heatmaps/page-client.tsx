@@ -33,6 +33,7 @@ import {
 } from "@stackframe/dashboard-ui-components";
 import type { AnalyticsHeatmapDevice, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ArrowRight, GlobeHemisphereWest } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
@@ -163,7 +164,8 @@ function TopElementsPreview(props: {
         })
         .catch((err: unknown) => {
           if (cancelled) return;
-          setError(err instanceof Error ? err.message : "Failed to load top elements.");
+          // Avoid surfacing raw error messages to users; show a safe generic message.
+          setError("Failed to load top elements.");
           setData(null);
         })
         .finally(() => {
@@ -406,7 +408,17 @@ export default function PageClient() {
     setSelectedOrigin(origin);
     setToken(null);
     setDialogOpen(true);
-    const created = await adminApp.createAnalyticsHeatmapToken({ origin: origin.origin });
+    let created: AnalyticsHeatmapTokenResponse;
+    try {
+      created = await adminApp.createAnalyticsHeatmapToken({ origin: origin.origin });
+    } catch (error) {
+      // Token creation failed (network error, expired session, invalid origin,
+      // etc.); close the dialog so it doesn't hang on "Creating..." and let
+      // runAsynchronouslyWithAlert surface the error to the user.
+      setToken(null);
+      setDialogOpen(false);
+      throw error;
+    }
     setToken(created);
     const installedInCurrentTab = installHeatmapTokenForCurrentOrigin(created, adminApp.projectId);
     try {
@@ -435,7 +447,7 @@ export default function PageClient() {
                 </Typography>
                 <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="http://localhost:3000" />
               </div>
-              <Button onClick={async () => await showHeatmap({ id: "localhost", origin: customOrigin })}>
+              <Button onClick={() => runAsynchronouslyWithAlert(showHeatmap({ id: "localhost", origin: customOrigin }))}>
                 Show heatmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -462,7 +474,7 @@ export default function PageClient() {
                     </Typography>
                   </div>
                 </div>
-                <Button onClick={async () => await showHeatmap(origin)}>
+                <Button onClick={() => runAsynchronouslyWithAlert(showHeatmap(origin))}>
                   Show heatmap
                   <ArrowRight className="h-4 w-4" />
                 </Button>

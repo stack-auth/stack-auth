@@ -292,9 +292,14 @@ export class EventTracker {
 
     while (current && depth < 8 && current !== document.documentElement) {
       let part = current.tagName.toLowerCase();
-      const testId = current.getAttribute("data-testid") ?? current.getAttribute("data-test-id");
+      let testIdAttr = "data-testid";
+      let testId = current.getAttribute("data-testid");
+      if (testId == null) {
+        testIdAttr = "data-test-id";
+        testId = current.getAttribute("data-test-id");
+      }
       if (testId != null && testId.trim() !== "") {
-        part += `[data-testid="${testId.replace(/"/g, '\\"')}"]`;
+        part += `[${testIdAttr}="${testId.replace(/"/g, '\\"')}"]`;
         parts.unshift(part);
         break;
       }

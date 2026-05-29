@@ -14,11 +14,11 @@ const LINKED_LIMIT = 25;
 const ELEMENTS_CHAIN_LIMIT = 100;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-function formatClickhouseDateTimeParam(date: Date): string {
+export function formatClickhouseDateTimeParam(date: Date): string {
   return date.toISOString().slice(0, 19);
 }
 
-function parseBoundedDateTime(value: string, name: string): Date {
+export function parseBoundedDateTime(value: string, name: string): Date {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) {
     throw new StatusError(StatusError.BadRequest, `Invalid ${name}`);
@@ -26,21 +26,29 @@ function parseBoundedDateTime(value: string, name: string): Date {
   return date;
 }
 
+// ClickHouse raises a query-execution error when a user-supplied route regex
+// fails to compile. Only those errors should be reported as a 400 "Invalid
+// route regex"; unrelated ClickHouse failures must fall through to the generic
+// service-unavailable path instead of being misattributed to the regex.
+export function isClickhouseRegexpError(error: ClickHouseError): boolean {
+  return /regexp|regular expression|cannot compile/i.test(error.message);
+}
+
 // Device class buckets — kept as a back-compat shim for callers that still pass
 // `device`. Internally collapsed into viewport_width_min/max so the MV order key
 // (which leads with viewport_width) does the work instead of a multiIf scan.
-const DEVICE_WIDTH_BUCKETS: Record<string, { min: number, max: number }> = {
-  tv: { min: 1920, max: 65535 },
-  widescreen: { min: 1440, max: 1919 },
-  desktop: { min: 1200, max: 1439 },
-  laptop: { min: 1024, max: 1199 },
-  tablet: { min: 768, max: 1023 },
-  mobile: { min: 0, max: 767 },
-};
+const DEVICE_WIDTH_BUCKETS = new Map<string, { min: number, max: number }>([
+  ["tv", { min: 1920, max: 65535 }],
+  ["widescreen", { min: 1440, max: 1919 }],
+  ["desktop", { min: 1200, max: 1439 }],
+  ["laptop", { min: 1024, max: 1199 }],
+  ["tablet", { min: 768, max: 1023 }],
+  ["mobile", { min: 0, max: 767 }],
+]);
 
 export function getDeviceViewportBucket(device: string | undefined): { min: number, max: number } | null {
   if (device == null || device === "") return null;
-  return DEVICE_WIDTH_BUCKETS[device] ?? null;
+  return DEVICE_WIDTH_BUCKETS.get(device) ?? null;
 }
 
 // Translate a PostHog-style URL pattern with `*` wildcards into a SQL LIKE
@@ -415,7 +423,12 @@ export const POST = createSmartRouteHandler({
       if (!(error instanceof ClickHouseError)) {
         throw error;
       }
-      if (body.kind === "session_replay_clicks" && body.route_regex != null && body.route_regex !== "") {
+      if (
+        body.kind === "session_replay_clicks" &&
+        body.route_regex != null &&
+        body.route_regex !== "" &&
+        isClickhouseRegexpError(error)
+      ) {
         throw new StatusError(StatusError.BadRequest, "Invalid route regex");
       }
       captureError("internal-analytics-heatmap-clickhouse-fallback", new HexclaveAssertionError(

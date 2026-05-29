@@ -8,6 +8,7 @@ import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/s
 import {
   buildClickmapUrlLikePattern,
   clampClickmapSampling,
+  formatClickhouseDateTimeParam,
   getClickmapOriginFilter,
   getClickmapOriginParams,
   getClickmapRouteFilter,
@@ -15,24 +16,14 @@ import {
   getClickmapUserAndReplayFilter,
   getClickmapViewportFilter,
   getDeviceViewportBucket,
+  isClickhouseRegexpError,
+  parseBoundedDateTime,
 } from "../../internal/analytics/heatmap/route";
 
 const MAX_WINDOW_DAYS = 31;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const ROUTE_LIMIT = 50;
 const ELEMENTS_CHAIN_LIMIT = 200;
-
-function formatClickhouseDateTimeParam(date: Date): string {
-  return date.toISOString().slice(0, 19);
-}
-
-function parseBoundedDateTime(value: string, name: string): Date {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) {
-    throw new StatusError(StatusError.BadRequest, `Invalid ${name}`);
-  }
-  return date;
-}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -199,7 +190,7 @@ export const POST = createSmartRouteHandler({
       if (!(error instanceof ClickHouseError)) {
         throw error;
       }
-      if (body.route_regex != null && body.route_regex !== "") {
+      if (body.route_regex != null && body.route_regex !== "" && isClickhouseRegexpError(error)) {
         throw new StatusError(StatusError.BadRequest, "Invalid route regex");
       }
       captureError("analytics-heatmap-clickhouse-fallback", new HexclaveAssertionError(

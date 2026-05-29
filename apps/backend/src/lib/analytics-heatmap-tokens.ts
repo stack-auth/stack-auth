@@ -59,7 +59,7 @@ export async function createAnalyticsHeatmapToken(options: {
   const token = await signJWT({
     issuer: HEATMAP_TOKEN_ISSUER,
     audience: HEATMAP_TOKEN_AUDIENCE,
-    expirationTime: "24h",
+    expirationTime: `${HEATMAP_TOKEN_TTL_MS / 1000}s`,
     payload: {
       kind: HEATMAP_TOKEN_KIND,
       scope: HEATMAP_TOKEN_SCOPE,
