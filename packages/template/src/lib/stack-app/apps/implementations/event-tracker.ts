@@ -61,6 +61,15 @@ function escapeElementsChainValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+// Class tokens are written into the unquoted, dot-joined prefix of a segment, so
+// any "." or ":" inside a class (e.g. Tailwind variants like `md:hover:bg-blue-500`
+// or arbitrary values like `w-[1.5rem]`) must be escaped to round-trip through the
+// overlay parser, which splits the prefix on unescaped "." and the segment on
+// unescaped ":".
+function escapeElementsChainClass(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\./g, "\\.").replace(/:/g, "\\:");
+}
+
 function getElementClasses(element: Element): string[] {
   const className = (element as HTMLElement).className;
   if (typeof className !== "string" || className.trim() === "") {
@@ -95,7 +104,7 @@ function serializeElementsChainSegment(element: Element): string {
   parts.push(element.tagName.toLowerCase());
   const classes = getElementClasses(element);
   if (classes.length > 0) {
-    parts.push(`.${classes.join(".")}`);
+    parts.push(`.${classes.map(escapeElementsChainClass).join(".")}`);
   }
   const text = element.textContent.trim().replace(/\s+/g, " ").slice(0, ELEMENTS_CHAIN_TEXT_MAX);
   const nthChild = getNthChildIndex(element);

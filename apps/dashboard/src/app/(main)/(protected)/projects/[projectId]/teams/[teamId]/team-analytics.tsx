@@ -302,7 +302,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
         runQuery(DAU_QUERY, baseParams),
         stackAdminApp.getAnalyticsHeatmap({
           kind: "team_user_hour_of_week",
-          member_user_ids: memberIds,
+          memberUserIds: memberIds,
           since: heatmapSince.toISOString(),
           until: now.toISOString(),
         }),

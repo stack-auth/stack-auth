@@ -1170,20 +1170,34 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async getAnalyticsHeatmap(options: {
     kind: "team_user_hour_of_week" | "session_replay_clicks",
-    member_user_ids?: string[],
-    route_path?: string,
-    route_regex?: string,
-    url_pattern?: string,
-    user_id?: string,
-    replay_id?: string,
+    memberUserIds?: string[],
+    routePath?: string,
+    routeRegex?: string,
+    urlPattern?: string,
+    userId?: string,
+    replayId?: string,
     device?: AnalyticsHeatmapDevice,
-    viewport_width_min?: number,
-    viewport_width_max?: number,
+    viewportWidthMin?: number,
+    viewportWidthMax?: number,
     sampling?: number,
     since: string,
     until: string,
   }): Promise<AnalyticsHeatmapResponse> {
-    return await this._interface.getAnalyticsHeatmap(options);
+    return await this._interface.getAnalyticsHeatmap({
+      kind: options.kind,
+      member_user_ids: options.memberUserIds,
+      route_path: options.routePath,
+      route_regex: options.routeRegex,
+      url_pattern: options.urlPattern,
+      user_id: options.userId,
+      replay_id: options.replayId,
+      device: options.device,
+      viewport_width_min: options.viewportWidthMin,
+      viewport_width_max: options.viewportWidthMax,
+      sampling: options.sampling,
+      since: options.since,
+      until: options.until,
+    });
   }
 
   async createAnalyticsHeatmapToken(options: { origin: string }): Promise<AnalyticsHeatmapTokenResponse> {

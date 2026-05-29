@@ -149,7 +149,7 @@ function TopElementsPreview(props: {
       };
       const trimmedPattern = urlPattern.trim();
       if (trimmedPattern !== "") {
-        options.url_pattern = trimmedPattern;
+        options.urlPattern = trimmedPattern;
       }
       if (device !== "all") {
         options.device = device;
@@ -221,60 +221,59 @@ function TopElementsPreview(props: {
           </div>
         )}
       </div>
-      {error != null ? (
-        <Alert variant="destructive">{error}</Alert>
-      ) : (
-        <DataGrid
-          columns={TOP_ELEMENT_COLUMNS}
-          rows={gridData.rows}
-          getRowId={getTopElementRowId}
-          totalRowCount={gridData.totalRowCount}
-          isLoading={loading && data == null}
-          state={gridState}
-          onChange={setGridState}
-          toolbar={() => (
-            <div className="flex w-full min-w-0 flex-col gap-2 border-b border-foreground/[0.06] px-2.5 py-2.5 sm:flex-row sm:items-center">
-              <Select value={range} onValueChange={(value) => setRange(value as RangeKey)}>
-                <SelectTrigger className="h-8 w-full text-xs sm:w-[150px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RANGE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={device} onValueChange={(value) => setDevice(value as DeviceFilterKey)}>
-                <SelectTrigger className="h-8 w-full text-xs sm:w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEVICE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                value={urlPattern}
-                onChange={(event) => setUrlPattern(event.target.value)}
-                placeholder="/products/*"
-                className="h-8 w-full text-xs sm:ml-auto sm:w-[220px]"
-              />
-            </div>
-          )}
-          footer={false}
-          fillHeight={false}
-          rowHeight="auto"
-          estimatedRowHeight={56}
-          overscan={8}
-          paginationMode="infinite"
-          emptyState={
-            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-              No clicks captured in this window.
-            </div>
-          }
-        />
+      {error != null && (
+        <Alert variant="destructive" className="mb-2">{error}</Alert>
       )}
+      <DataGrid
+        columns={TOP_ELEMENT_COLUMNS}
+        rows={gridData.rows}
+        getRowId={getTopElementRowId}
+        totalRowCount={gridData.totalRowCount}
+        isLoading={loading && data == null}
+        state={gridState}
+        onChange={setGridState}
+        toolbar={() => (
+          <div className="flex w-full min-w-0 flex-col gap-2 border-b border-foreground/[0.06] px-2.5 py-2.5 sm:flex-row sm:items-center">
+            <Select value={range} onValueChange={(value) => setRange(value as RangeKey)}>
+              <SelectTrigger className="h-8 w-full text-xs sm:w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RANGE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={device} onValueChange={(value) => setDevice(value as DeviceFilterKey)}>
+              <SelectTrigger className="h-8 w-full text-xs sm:w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DEVICE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={urlPattern}
+              onChange={(event) => setUrlPattern(event.target.value)}
+              placeholder="/products/*"
+              className="h-8 w-full text-xs sm:ml-auto sm:w-[220px]"
+            />
+          </div>
+        )}
+        footer={false}
+        fillHeight={false}
+        rowHeight="auto"
+        estimatedRowHeight={56}
+        overscan={8}
+        paginationMode="infinite"
+        emptyState={
+          <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+            No clicks captured in this window.
+          </div>
+        }
+      />
     </div>
   );
 }

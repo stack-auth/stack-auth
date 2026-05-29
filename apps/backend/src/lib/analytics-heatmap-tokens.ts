@@ -4,6 +4,8 @@ import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-field
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { signJWT, verifyJWT } from "@stackframe/stack-shared/dist/utils/jwt";
 import { yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
+import { JOSEError } from "jose/errors";
+import { ValidationError } from "yup";
 
 const HEATMAP_TOKEN_ISSUER = "hexclave:analytics:heatmap";
 const HEATMAP_TOKEN_AUDIENCE = "hexclave:analytics:heatmap-overlay";
@@ -78,13 +80,21 @@ export async function verifyAnalyticsHeatmapToken(options: {
   const origin = normalizeAnalyticsHeatmapOrigin(options.origin);
   let payload: AnalyticsHeatmapTokenPayload;
   try {
-    payload = await yupValidate(
-      AnalyticsHeatmapTokenPayloadSchema,
-      await verifyJWT({ allowedIssuers: [HEATMAP_TOKEN_ISSUER], jwt: options.token }),
-      { abortEarly: false },
-    );
-  } catch {
-    throw new StatusError(StatusError.Unauthorized, "Invalid or expired heatmap token");
+    const verified = await verifyJWT({ allowedIssuers: [HEATMAP_TOKEN_ISSUER], jwt: options.token });
+    // verifyJWT only constrains the issuer, so also require the audience to match
+    // — otherwise a validly-signed token minted for a different audience could pass.
+    if (verified.aud !== HEATMAP_TOKEN_AUDIENCE) {
+      throw new StatusError(StatusError.Unauthorized, "Invalid or expired heatmap token");
+    }
+    payload = await yupValidate(AnalyticsHeatmapTokenPayloadSchema, verified, { abortEarly: false });
+  } catch (error) {
+    // Only expected JWT/validation failures are auth errors; rethrow anything
+    // unexpected (e.g. backend faults) so they aren't misreported as bad credentials.
+    if (error instanceof StatusError) throw error;
+    if (error instanceof JOSEError || error instanceof ValidationError) {
+      throw new StatusError(StatusError.Unauthorized, "Invalid or expired heatmap token");
+    }
+    throw error;
   }
 
   if (payload.origin !== origin) {

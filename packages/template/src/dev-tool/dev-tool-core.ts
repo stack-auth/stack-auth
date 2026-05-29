@@ -1901,6 +1901,30 @@ function parseElementsChain(chain: string): ElementsChainSegment[] {
   return segments.map(parseElementsChainSegment).filter((segment): segment is ElementsChainSegment => segment != null);
 }
 
+// Split a string on unescaped occurrences of `.`, unescaping `\.`, `\:` and `\\`
+// back to their literal characters. Used to recover class tokens from the
+// dot-joined segment prefix, which the event tracker escapes during serialization.
+function splitEscapedDots(input: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '\\' && i + 1 < input.length) {
+      cur += input[i + 1];
+      i += 1;
+      continue;
+    }
+    if (ch === '.') {
+      out.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
 function parseElementsChainSegment(segment: string): ElementsChainSegment | null {
   const trimmed = segment.trim();
   if (trimmed === '') return null;
@@ -1926,7 +1950,7 @@ function parseElementsChainSegment(segment: string): ElementsChainSegment | null
 
   const prefix = trimmed.slice(0, prefixEnd);
   const rest = trimmed.slice(prefixEnd);
-  const prefixParts = prefix.split('.');
+  const prefixParts = splitEscapedDots(prefix);
   const tag = prefixParts[0].trim().toLowerCase();
   if (tag === '') return null;
   const classes = prefixParts.slice(1).map((c) => c.trim()).filter((c) => c !== '');
@@ -3033,11 +3057,10 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
         serverHeatmapError = error instanceof Error ? error.message : 'Failed to load heatmap data';
       }
     } finally {
-      if (!isLatestRequest()) {
-        return;
+      if (isLatestRequest()) {
+        loadingServerHeatmap = false;
+        render();
       }
-      loadingServerHeatmap = false;
-      render();
     }
   }
 
@@ -3620,6 +3643,22 @@ function createPanel(
     }
   }
 
+  let heatmapsCleanup: (() => void) | null = null;
+  // The heatmaps tab installs global click/key blockers, an overlay root, a
+  // MutationObserver, and background polling. Unlike other panes it must not be
+  // cached-and-hidden: tear it down (running its cleanup) whenever we leave it,
+  // so the page isn't left interaction-blocked with work still running.
+  function teardownHeatmapsPane() {
+    const pane = mountedPanes.get('heatmaps');
+    if (pane == null) return;
+    if (heatmapsCleanup != null) {
+      heatmapsCleanup();
+      heatmapsCleanup = null;
+    }
+    pane.remove();
+    mountedPanes.delete('heatmaps');
+  }
+
   function getOrCreatePane(tabId: TabId): HTMLElement {
     if (mountedPanes.has(tabId)) {
       return mountedPanes.get(tabId)!;
@@ -3634,11 +3673,14 @@ function createPanel(
         break;
       }
       case 'heatmaps': {
-        mountTab(pane, createHeatmapsTab(app, () => {
+        const result = createHeatmapsTab(app, () => {
           state.update({ activeTab: lastNonHeatmapTab });
           applyPanelMode(lastNonHeatmapTab, { animate: true });
           showTab(lastNonHeatmapTab);
-        }));
+        });
+        pane.appendChild(result.element);
+        // Tracked separately from `cleanups` so it can run on tab-switch, not just unmount.
+        heatmapsCleanup = result.cleanup ?? null;
         break;
       }
       case 'customize': {
@@ -3668,6 +3710,9 @@ function createPanel(
   }
 
   function showTab(tabId: TabId) {
+    if (tabId !== 'heatmaps') {
+      teardownHeatmapsPane();
+    }
     const pane = getOrCreatePane(tabId);
     tabBar.setActive(tabId);
     for (const [, p] of mountedPanes) {
@@ -3732,6 +3777,7 @@ function createPanel(
       if (panelAnimationTimeout !== null) {
         clearTimeout(panelAnimationTimeout);
       }
+      teardownHeatmapsPane();
       for (const fn of cleanups) fn();
     },
   };
