@@ -117,6 +117,7 @@ describe("buildNpxInvocation", () => {
     expect(command).toMatch(/^npx(\.cmd)?$/);
     expect(args).toEqual([
       "--yes",
+      "--min-release-age=0",
       "--minimum-release-age=0",
       "-p",
       "@hexclave/cli@2.8.110",
@@ -138,7 +139,9 @@ describe("buildNpxInvocation", () => {
       binName: "stack",
       forwardArgs: [],
     });
-    // npm's `minimumReleaseAge` (>=11.6.1) would otherwise block the latest.
+    // Both keys npm has shipped: `min-release-age` (days, >=11.10.0) and the
+    // earlier `minimumReleaseAge` (minutes, >=11.6.1).
+    expect(args).toContain("--min-release-age=0");
     expect(args).toContain("--minimum-release-age=0");
   });
 
@@ -150,7 +153,7 @@ describe("buildNpxInvocation", () => {
       forwardArgs: ["dev", "--flag=a b", "--", "echo", "hello world"],
     });
     expect(args).toEqual([
-      "--yes", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack",
+      "--yes", "--min-release-age=0", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack",
       "dev", "--flag=a b", "--", "echo", "hello world",
     ]);
   });
@@ -202,7 +205,7 @@ describe("decideReexec", () => {
     expect(decision.reexec).toBe(true);
     if (decision.reexec) {
       expect(decision.invocation.args).toEqual([
-        "--yes", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack", "dev", "--config-file", "x",
+        "--yes", "--min-release-age=0", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack", "dev", "--config-file", "x",
       ]);
     }
   });
