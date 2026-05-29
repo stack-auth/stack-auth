@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { createGlobal } from "@stackframe/stack-shared/dist/utils/globals";
+import { createGlobal } from "@hexclave/shared/dist/utils/globals";
 
 type TranslationContextValue = {
   quetzalKeys: Map<string, string>,
