@@ -5,9 +5,6 @@ import { CliError } from "./errors.js";
 
 export const DEFAULT_EMULATOR_BACKEND_PORT = 26701;
 export const DEFAULT_EMULATOR_DASHBOARD_PORT = 26700;
-export const DEFAULT_EMULATOR_MINIO_PORT = 26702;
-export const DEFAULT_EMULATOR_INBUCKET_PORT = 26703;
-export const DEFAULT_EMULATOR_MOCK_OAUTH_PORT = 26704;
 
 export function envPort(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -36,10 +33,6 @@ export function emulatorRunDir(): string {
   return join(emulatorHome(), "run");
 }
 
-export function emulatorImageDir(): string {
-  return join(emulatorHome(), "images");
-}
-
 export function internalPckPath(): string {
   return join(emulatorRunDir(), "vm", "internal-pck");
 }
@@ -50,18 +43,6 @@ export function emulatorBackendPort(): number {
 
 export function emulatorDashboardPort(): number {
   return envPortFirstSet(["STACK_EMULATOR_DASHBOARD_PORT", "EMULATOR_DASHBOARD_PORT"], DEFAULT_EMULATOR_DASHBOARD_PORT);
-}
-
-export function emulatorMinioPort(): number {
-  return envPortFirstSet(["STACK_EMULATOR_MINIO_PORT", "EMULATOR_MINIO_PORT"], DEFAULT_EMULATOR_MINIO_PORT);
-}
-
-export function emulatorInbucketPort(): number {
-  return envPortFirstSet(["STACK_EMULATOR_INBUCKET_PORT", "EMULATOR_INBUCKET_PORT"], DEFAULT_EMULATOR_INBUCKET_PORT);
-}
-
-export function emulatorMockOAuthPort(): number {
-  return envPortFirstSet(["STACK_EMULATOR_MOCK_OAUTH_PORT", "EMULATOR_MOCK_OAUTH_PORT"], DEFAULT_EMULATOR_MOCK_OAUTH_PORT);
 }
 
 // Polls the development-environment runtime dir for the internal PCK file with
