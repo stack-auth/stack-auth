@@ -33,7 +33,6 @@ import {
 } from "@stackframe/dashboard-ui-components";
 import type { AnalyticsHeatmapDevice, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ArrowRight, GlobeHemisphereWest } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
@@ -447,7 +446,7 @@ export default function PageClient() {
                 </Typography>
                 <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="http://localhost:3000" />
               </div>
-              <Button onClick={() => runAsynchronouslyWithAlert(showHeatmap({ id: "localhost", origin: customOrigin }))}>
+              <Button onClick={async () => await showHeatmap({ id: "localhost", origin: customOrigin })}>
                 Show heatmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -474,7 +473,7 @@ export default function PageClient() {
                     </Typography>
                   </div>
                 </div>
-                <Button onClick={() => runAsynchronouslyWithAlert(showHeatmap(origin))}>
+                <Button onClick={async () => await showHeatmap(origin)}>
                   Show heatmap
                   <ArrowRight className="h-4 w-4" />
                 </Button>
