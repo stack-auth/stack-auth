@@ -302,7 +302,7 @@ function createConsoleSnippet(token: string, origin: string, projectId: string):
     `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY)}, ${JSON.stringify(origin)});`,
     `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,
     `window.dispatchEvent(new Event(${JSON.stringify(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT)}));`,
-    `console.info("Hexclave heatmap toolbar enabled for this tab.");`,
+    `console.info("Hexclave clickmap toolbar enabled for this tab.");`,
   ].join("\n");
 }
 
@@ -319,7 +319,7 @@ function installHeatmapTokenForCurrentOrigin(token: AnalyticsHeatmapTokenRespons
     window.dispatchEvent(new Event(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT));
     return true;
   } catch {
-    window.alert("Could not enable the heatmap toolbar in this tab. Copy the snippet and paste it in the console instead.");
+    window.alert("Could not enable the clickmap toolbar in this tab. Copy the snippet and paste it in the console instead.");
     return false;
   }
 }
@@ -337,19 +337,19 @@ function HeatmapTokenDialog(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Enable heatmap toolbar</DialogTitle>
+          <DialogTitle>Enable clickmap toolbar</DialogTitle>
           <DialogDescription>
             Paste this in the console on {props.origin?.origin ?? "the selected site"}. The token expires in 24 hours.
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
           {props.token == null ? (
-            <Alert>Creating heatmap token...</Alert>
+            <Alert>Creating clickmap token...</Alert>
           ) : (
             <>
               <CopyField type="textarea" value={snippet} monospace fixedSize height={124} />
               <Typography type="p" variant="secondary" className="text-sm">
-                The site will use normal client authentication plus this origin-bound heatmap token to fetch aggregate clickmap data.
+                The site will use normal client authentication plus this origin-bound clickmap token to fetch aggregate clickmap data.
               </Typography>
             </>
           )}
@@ -417,7 +417,7 @@ export default function PageClient() {
     const installedInCurrentTab = installHeatmapTokenForCurrentOrigin(created, adminApp.projectId);
     try {
       await navigator.clipboard.writeText(createConsoleSnippet(created.token, created.origin, adminApp.projectId));
-      toast({ title: installedInCurrentTab ? "Heatmap toolbar enabled" : "Snippet copied to clipboard" });
+      toast({ title: installedInCurrentTab ? "Clickmap toolbar enabled" : "Snippet copied to clipboard" });
     } catch {
       // Clipboard access can be denied (e.g. lost user-gesture after the
       // network round-trip); the snippet stays available to copy manually.
@@ -427,7 +427,7 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout
-        title="Heatmaps"
+        title="Clickmaps"
         description="Launch the clickmap toolbar on a trusted domain."
         fillWidth
       >
@@ -442,7 +442,7 @@ export default function PageClient() {
                 <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="http://localhost:3000" />
               </div>
               <Button onClick={async () => await showHeatmap({ id: "localhost", origin: customOrigin })}>
-                Show heatmap
+                Show clickmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -451,7 +451,7 @@ export default function PageClient() {
 
         {origins.length === 0 ? (
           <Alert className="rounded-2xl">
-            Add a trusted domain before launching a production heatmap.
+            Add a trusted domain before launching a production clickmap.
           </Alert>
         ) : (
           <DesignAnalyticsCard gradient="slate">
@@ -469,7 +469,7 @@ export default function PageClient() {
                   </div>
                 </div>
                 <Button onClick={async () => await showHeatmap(origin)}>
-                  Show heatmap
+                  Show clickmap
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>

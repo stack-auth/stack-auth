@@ -75,7 +75,7 @@ const DOCS_URL = 'https://docs.hexclave.com';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
-  { id: 'heatmaps', label: 'Heatmaps', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h.01"/><path d="M15 8h.01"/><path d="M12 15h.01"/><path d="M19 11h.01"/><path d="M5 16h.01"/><path d="M3 3l18 18"/><path d="M14 14l7 7"/><path d="M5 5l5 5"/></svg>' },
+  { id: 'heatmaps', label: 'Clickmaps', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h.01"/><path d="M15 8h.01"/><path d="M12 15h.01"/><path d="M19 11h.01"/><path d="M5 16h.01"/><path d="M3 3l18 18"/><path d="M14 14l7 7"/><path d="M5 5l5 5"/></svg>' },
   { id: 'customize', label: 'Customize', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
   { id: 'ai', label: 'AI', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
   { id: 'console', label: 'Console', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
@@ -1842,8 +1842,6 @@ function isHeatmapRangeKey(value: unknown): value is HeatmapRangeKey {
 function isHeatmapDeviceKey(value: unknown): value is HeatmapDeviceKey {
   return value === 'all' || value === 'mobile' || value === 'tablet' || value === 'laptop' || value === 'desktop' || value === 'widescreen' || value === 'tv';
 }
-const HEATMAP_BLOCKED_POINTER_EVENTS = ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'] as const;
-const HEATMAP_BLOCKED_KEY_EVENTS = ['keydown', 'keypress', 'keyup', 'beforeinput', 'input'] as const;
 const HEATMAP_DOM_INDEX_DEBOUNCE_MS = 250;
 
 type DevToolServerHeatmapSelector = {
@@ -1891,75 +1889,6 @@ function getHeatmapHue(count: number, maxCount: number): number {
   return 185 - Math.round(intensity * 155);
 }
 
-// Use event.composedPath() rather than target.closest(): the path is captured
-// at dispatch time and stays valid even if the original target has since been
-// detached from the DOM (e.g. an icon's <svg>/<path> that was replaced by an
-// innerHTML reset between mousedown and click). With .closest(), detached
-// targets have no ancestors so the check spuriously returns false, the page-
-// interaction blocker eats the click, and the icon button looks dead.
-function isInsideDevToolEvent(event: Event): boolean {
-  const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
-  for (const node of path) {
-    if (node instanceof Element && node.id === ROOT_ID) {
-      return true;
-    }
-  }
-  // Fallback for environments without composedPath: best-effort ancestor walk.
-  const target = event.target;
-  if (target instanceof Element) {
-    return target.closest(`#${ROOT_ID}`) != null;
-  }
-  return false;
-}
-
-function isHeatmapNavigationModifierEvent(event: Event): event is MouseEvent {
-  return event instanceof MouseEvent && (event.metaKey || event.ctrlKey);
-}
-
-function getHeatmapNavigationHref(target: EventTarget | null): string | null {
-  if (!(target instanceof Element)) {
-    return null;
-  }
-  const link = target.closest('a[href]');
-  if (!(link instanceof HTMLAnchorElement)) {
-    return null;
-  }
-  if (link.hasAttribute('download')) {
-    return null;
-  }
-  const href = link.href;
-  if (href === '' || href.startsWith('javascript:')) {
-    return null;
-  }
-  return href;
-}
-
-function maybeNavigateFromHeatmapModifierClick(event: Event): boolean {
-  if (!isHeatmapNavigationModifierEvent(event)) {
-    return false;
-  }
-  if (event.type !== 'click') {
-    return true;
-  }
-
-  const href = getHeatmapNavigationHref(event.target);
-  if (href == null) {
-    return true;
-  }
-
-  // Drop a sentinel into sessionStorage so the dev tool on the next page can
-  // auto-reopen straight back into the heatmap tab. We can't soft-navigate
-  // from outside the host framework reliably (Next.js App Router gates on a
-  // private history-state marker, so a generic pushState+popstate doesn't
-  // re-render the tree), so we hard-nav and rehydrate the panel on load.
-  try {
-    sessionStorage.setItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY, '1');
-  } catch {
-    // ignore (private mode, etc.)
-  }
-  window.location.assign(href);
-  return true;
-}
 
 function getReadableElementLabel(element: Element): string {
   const ariaLabel = element.getAttribute('aria-label');
@@ -2157,10 +2086,10 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   const selectorCount = h('div', { className: 'sdt-hm-stat-value' }, '0');
   const viewportValue = h('div', { className: 'sdt-hm-stat-value' }, `${window.innerWidth}x${window.innerHeight}`);
   const list = h('div', { className: 'sdt-hm-list' });
-  const empty = h('div', { className: 'sdt-hm-empty' }, 'Paste a heatmap token from the dashboard to load aggregated element clicks for this page.');
+  const empty = h('div', { className: 'sdt-hm-empty' }, 'Paste a clickmap token from the dashboard to load aggregated element clicks for this page.');
   const status = h('div', { className: 'sdt-hm-token-status' });
   const overlayToggle = h('button', { className: 'sdt-hm-btn sdt-hm-btn-primary' }, 'Hide');
-  const expandButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Expand heatmap options', title: 'Expand heatmap options' });
+  const expandButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Expand clickmap options', title: 'Expand clickmap options' });
   const backButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Back', title: 'Back' });
   const miniClicks = h('span', { className: 'sdt-hm-toolbar-metric' }, '0 clicks');
 
@@ -2373,8 +2302,8 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   const toolbar = h('div', { className: 'sdt-hm-toolbar' },
     backButton,
     h('div', { className: 'sdt-hm-toolbar-main' },
-      h('div', { className: 'sdt-hm-toolbar-title' }, 'Heatmap'),
-      h('div', { className: 'sdt-hm-toolbar-subtitle' }, 'Page locked while inspecting'),
+      h('div', { className: 'sdt-hm-toolbar-title' }, 'Clickmap'),
+      h('div', { className: 'sdt-hm-toolbar-subtitle' }, 'Aggregated clicks for this page'),
     ),
     miniClicks,
     expandButton,
@@ -2383,10 +2312,6 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Clicks'), statsCount),
     h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Elements'), selectorCount),
     h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Viewport'), viewportValue),
-  );
-
-  const note = h('div', { className: 'sdt-hm-note' },
-    'Heatmap mode blocks page clicks and keyboard input outside this toolbar while keeping every toolbar control interactive.'
   );
 
   let filters: HeatmapFilters = readStoredFilters();
@@ -2536,12 +2461,12 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   });
 
   // Two regions: a fixed head (filters + a single action row pairing the stat
-  // chips with the overlay toggle) and a scrolling body (status, note, list).
+  // chips with the overlay toggle) and a scrolling body (status, list).
   // Keeping borders to a single head/body divider avoids the dense stack of
   // bordered bands that made the expanded panel feel congested.
   const actions = h('div', { className: 'sdt-hm-actions' }, stats, overlayToggle);
   const head = h('div', { className: 'sdt-hm-head' }, filterRow, actions);
-  const body = h('div', { className: 'sdt-hm-body' }, status, note, list);
+  const body = h('div', { className: 'sdt-hm-body' }, status, list);
   const details = h('div', { className: 'sdt-hm-details' }, head, body);
 
   function getGroups(): DevToolClickGroup[] {
@@ -2750,8 +2675,8 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     miniClicks.textContent = `${formatHeatmapCount(aggregateClicks)} clicks`;
     container.classList.toggle('sdt-hm-expanded', expanded);
     expandButton.setAttribute('aria-expanded', String(expanded));
-    expandButton.setAttribute('aria-label', expanded ? 'Collapse heatmap options' : 'Expand heatmap options');
-    expandButton.title = expanded ? 'Collapse heatmap options' : 'Expand heatmap options';
+    expandButton.setAttribute('aria-label', expanded ? 'Collapse clickmap options' : 'Expand clickmap options');
+    expandButton.title = expanded ? 'Collapse clickmap options' : 'Expand clickmap options';
     setHtml(expandButton, expanded ? chevronDownSvg : chevronUpSvg);
     renderOverlay(groups);
     renderList(groups);
@@ -2820,9 +2745,9 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
       serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
       if (error instanceof Error && error.message.includes('Heatmap token does not belong to this project')) {
         clearHeatmapTokenStorage(app.projectId);
-        serverHeatmapError = 'The stored heatmap token belongs to another project. Generate a fresh token for this project.';
+        serverHeatmapError = 'The stored clickmap token belongs to another project. Generate a fresh token for this project.';
       } else {
-        serverHeatmapError = error instanceof Error ? error.message : 'Failed to load heatmap data';
+        serverHeatmapError = error instanceof Error ? error.message : 'Failed to load clickmap data';
       }
     } finally {
       if (isLatestRequest()) {
@@ -2832,29 +2757,21 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     }
   }
 
-  function blockHeatmapPageInteraction(event: Event) {
-    if (isInsideDevToolEvent(event)) {
-      return;
-    }
+  // The clickmap overlay leaves the page fully interactive. When the user
+  // navigates away with a token loaded, drop a sentinel so the dev tool on the
+  // next page can auto-reopen straight back into the clickmap tab.
+  const onBeforeUnloadResume = () => {
     const token = getHeatmapTokenFromStorage(app.projectId);
     const tokenOrigin = getHeatmapOriginFromStorage(app.projectId);
-    if (token == null || (tokenOrigin != null && tokenOrigin !== window.location.origin) || serverHeatmapError != null) {
+    if (token == null || (tokenOrigin != null && tokenOrigin !== window.location.origin)) {
       return;
     }
-
-    if (maybeNavigateFromHeatmapModifierClick(event)) {
-      if (event.type === 'click') {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-      }
-      return;
+    try {
+      sessionStorage.setItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY, '1');
+    } catch {
+      // ignore (private mode, etc.)
     }
-
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-  }
+  };
 
   overlayToggle.addEventListener('click', () => {
     overlayVisible = !overlayVisible;
@@ -2892,12 +2809,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   document.body.appendChild(overlayRoot);
   rebuildDomIndex();
   scheduleRender();
-  for (const eventName of HEATMAP_BLOCKED_POINTER_EVENTS) {
-    window.addEventListener(eventName, blockHeatmapPageInteraction, true);
-  }
-  for (const eventName of HEATMAP_BLOCKED_KEY_EVENTS) {
-    window.addEventListener(eventName, blockHeatmapPageInteraction, true);
-  }
+  window.addEventListener('beforeunload', onBeforeUnloadResume);
   const onWindowResize = () => {
     scheduleRender();
   };
@@ -2921,12 +2833,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
       mutationObserver.disconnect();
       clearHeatmapOverlayElements();
       domIndex.clear();
-      for (const eventName of HEATMAP_BLOCKED_POINTER_EVENTS) {
-        window.removeEventListener(eventName, blockHeatmapPageInteraction, true);
-      }
-      for (const eventName of HEATMAP_BLOCKED_KEY_EVENTS) {
-        window.removeEventListener(eventName, blockHeatmapPageInteraction, true);
-      }
+      window.removeEventListener('beforeunload', onBeforeUnloadResume);
       document.removeEventListener('scroll', scheduleRender, true);
       window.removeEventListener('resize', onWindowResize);
       visualViewport?.removeEventListener('resize', scheduleRender);
@@ -3425,10 +3332,10 @@ function createPanel(
   }
 
   let heatmapsCleanup: (() => void) | null = null;
-  // The heatmaps tab installs global click/key blockers, an overlay root, a
-  // MutationObserver, and background polling. Unlike other panes it must not be
-  // cached-and-hidden: tear it down (running its cleanup) whenever we leave it,
-  // so the page isn't left interaction-blocked with work still running.
+  // The clickmap tab installs an overlay root, a MutationObserver, and
+  // background polling. Unlike other panes it must not be cached-and-hidden:
+  // tear it down (running its cleanup) whenever we leave it, so the overlay and
+  // its work don't linger after the tab is closed.
   function teardownHeatmapsPane() {
     const pane = mountedPanes.get('heatmaps');
     if (pane == null) return;
@@ -3645,9 +3552,9 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   const trigger = createTrigger(togglePanel);
   wrapper.appendChild(trigger.element);
 
-  // Resume the heatmap panel after a Cmd+click hard navigation. The handler
-  // that performed the redirect drops a sentinel into sessionStorage; if it's
-  // present here, restore the heatmap tab as the active one and reopen the
+  // Resume the clickmap panel after navigating to a new page. While the overlay
+  // is mounted it drops a sentinel into sessionStorage on unload; if it's
+  // present here, restore the clickmap tab as the active one and reopen the
   // panel so the user picks up where they left off.
   let shouldResumeHeatmap = false;
   try {

@@ -2877,15 +2877,6 @@ export const devToolCSS = `
     padding: 12px 16px 14px;
   }
 
-  .stack-devtool .sdt-hm-note {
-    border-radius: var(--sdt-radius);
-    background: var(--sdt-info-muted);
-    color: var(--sdt-text-secondary);
-    padding: 9px 11px;
-    font-size: 11px;
-    line-height: 1.5;
-  }
-
   .stack-devtool .sdt-hm-token-status {
     color: var(--sdt-text-secondary);
     padding: 0 2px;
