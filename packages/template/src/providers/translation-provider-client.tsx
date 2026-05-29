@@ -1,11 +1,18 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import React from "react";
+import { createGlobal } from "@stackframe/stack-shared/dist/utils/globals";
 
-export const TranslationContext = createContext<null | {
+type TranslationContextValue = {
   quetzalKeys: Map<string, string>,
   quetzalLocale: Map<string, string>,
-}>(null);
+};
+
+export const TranslationContext = createGlobal<React.Context<TranslationContextValue | null>>(
+  "TranslationContext",
+  () => React.createContext<TranslationContextValue | null>(null),
+);
+TranslationContext.displayName ??= "TranslationContext";
 
 export function TranslationProviderClient(props: {
   children: React.ReactNode,
