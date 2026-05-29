@@ -7,6 +7,7 @@ async function setupProducts(products: Record<string, any>, productLines?: Recor
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: false,
       productLines,
       products,
     },

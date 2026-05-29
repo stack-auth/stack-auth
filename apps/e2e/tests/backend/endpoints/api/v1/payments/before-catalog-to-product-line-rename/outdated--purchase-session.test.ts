@@ -120,9 +120,9 @@ it("should block one-time purchase in same group using old catalogs config", asy
   const codeB = (urlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
   expect(codeB).toBeDefined();
 
-  const resB = await niceBackendFetch("/api/v1/payments/purchases/purchase-session", {
+  const resB = await niceBackendFetch("/api/v1/internal/payments/test-mode-purchase-session", {
     method: "POST",
-    accessType: "client",
+    accessType: "admin",
     body: { full_code: codeB, price_id: "one", quantity: 1 },
   });
   expect(resB.status).toBe(400);
@@ -134,7 +134,7 @@ it("should work with subscription switching using old catalogs config", async ({
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      testMode: true,
+      testMode: false,
       // Using the OLD property name "catalogs"
       catalogs: {
         grp: { displayName: "Test Group" },
