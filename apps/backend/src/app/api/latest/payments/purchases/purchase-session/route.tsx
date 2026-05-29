@@ -64,7 +64,7 @@ export const POST = createSmartRouteHandler({
     if (tenancy.config.payments.blockNewPurchases) {
       throw new KnownErrors.NewPurchasesBlocked();
     }
-    if (!data.stripeAccountId || !data.stripeCustomerId) {
+    if (data.stripeAccountId == null || data.stripeCustomerId == null) {
       throw new HexclaveAssertionError(
         "Live purchase-session called with a purchase code that has no Stripe identifiers. " +
         "Test-mode codes should be routed to /internal/payments/test-mode-purchase-session instead.",
@@ -72,8 +72,8 @@ export const POST = createSmartRouteHandler({
           tenancyId: tenancy.id,
           testMode: tenancy.config.payments.testMode === true,
           customerId: data.customerId,
-          hasStripeAccountId: !!data.stripeAccountId,
-          hasStripeCustomerId: !!data.stripeCustomerId,
+          hasStripeAccountId: data.stripeAccountId != null,
+          hasStripeCustomerId: data.stripeCustomerId != null,
         },
       );
     }
