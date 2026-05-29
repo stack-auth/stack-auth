@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildClickmapUrlLikePattern,
-  buildHourOfWeekHeatmapCells,
+  buildHourOfWeekClickmapCells,
   clampClickmapSampling,
   getClickmapOriginFilter,
   getClickmapOriginParams,
@@ -14,7 +14,7 @@ import {
 
 describe("analytics clickmap query helpers", () => {
   it("pads sparse hour-of-week rows into a complete 7x24 grid", () => {
-    const cells = buildHourOfWeekHeatmapCells([
+    const cells = buildHourOfWeekClickmapCells([
       { weekday: "1", hour: "0", value: "3" },
       { weekday: 7, hour: 23, value: 9 },
     ]);
@@ -44,7 +44,7 @@ describe("analytics clickmap query helpers", () => {
   });
 
   it("ignores invalid ClickHouse bucket rows", () => {
-    const cells = buildHourOfWeekHeatmapCells([
+    const cells = buildHourOfWeekClickmapCells([
       { weekday: 0, hour: 12, value: 10 },
       { weekday: 1, hour: 24, value: 10 },
       { weekday: 2, hour: 3, value: 4 },

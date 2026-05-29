@@ -31,27 +31,23 @@ import {
   useDataSource,
   type DataGridColumnDef,
 } from "@stackframe/dashboard-ui-components";
-import type { AnalyticsHeatmapDevice, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { AnalyticsClickmapDevice, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import {
-  getProjectHeatmapOriginStorageKey,
-  getProjectHeatmapTokenStorageKey,
-  HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY,
-  HEATMAP_OVERLAY_PROJECT_STORAGE_KEY,
-  HEATMAP_OVERLAY_TOKEN_STORAGE_KEY,
-  HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT,
-} from "@stackframe/stack-shared/dist/utils/analytics-heatmap-overlay";
+  CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
+  CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
+} from "@stackframe/stack-shared/dist/utils/analytics-clickmap-overlay";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ArrowRight, GlobeHemisphereWest } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 
-type HeatmapOrigin = {
+type ClickmapOrigin = {
   id: string,
   origin: string,
 };
 
 type RangeKey = "24h" | "7d" | "30d";
-type DeviceFilterKey = "all" | AnalyticsHeatmapDevice;
+type DeviceFilterKey = "all" | AnalyticsClickmapDevice;
 
 const RANGE_MS: Record<RangeKey, number> = {
   "24h": 24 * 60 * 60 * 1000,
@@ -81,7 +77,7 @@ function truncateMiddle(value: string, max: number): string {
   return `${value.slice(0, half)}…${value.slice(value.length - half)}`;
 }
 
-type TopElementRow = AnalyticsHeatmapResponse["elements"][number];
+type TopElementRow = AnalyticsClickmapResponse["elements"][number];
 
 const getTopElementRowId = (row: TopElementRow): string => row.elements_chain;
 
@@ -142,14 +138,14 @@ function TopElementsPreview(props: {
   const [urlPattern, setUrlPattern] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<AnalyticsHeatmapResponse | null>(null);
+  const [data, setData] = useState<AnalyticsClickmapResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {
       const until = new Date();
       const since = new Date(until.getTime() - RANGE_MS[range]);
-      const options: Parameters<typeof adminApp.getAnalyticsHeatmap>[0] = {
+      const options: Parameters<typeof adminApp.getAnalyticsClickmap>[0] = {
         kind: "session_replay_clicks",
         since: since.toISOString(),
         until: until.toISOString(),
@@ -164,7 +160,7 @@ function TopElementsPreview(props: {
       }
       setLoading(true);
       setError(null);
-      adminApp.getAnalyticsHeatmap(options)
+      adminApp.getAnalyticsClickmap(options)
         .then((response) => {
           if (cancelled) return;
           setData(response);
@@ -294,29 +290,23 @@ function normalizeOrigin(baseUrl: string): string | null {
   }
 }
 
-function createConsoleSnippet(token: string, origin: string, projectId: string): string {
+// The clickmap token is a self-describing JWT (its payload carries the project
+// and origin it was minted for), so the snippet only has to hand over the token
+// itself — the in-page overlay derives everything else from it.
+function createConsoleSnippet(token: string): string {
   return [
-    `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY)}, ${JSON.stringify(projectId)});`,
-    `sessionStorage.setItem(${JSON.stringify(getProjectHeatmapOriginStorageKey(projectId))}, ${JSON.stringify(origin)});`,
-    `sessionStorage.setItem(${JSON.stringify(getProjectHeatmapTokenStorageKey(projectId))}, ${JSON.stringify(token)});`,
-    `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY)}, ${JSON.stringify(origin)});`,
-    `sessionStorage.setItem(${JSON.stringify(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,
-    `window.dispatchEvent(new Event(${JSON.stringify(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT)}));`,
-    `console.info("Hexclave clickmap toolbar enabled for this tab.");`,
+    `sessionStorage.setItem(${JSON.stringify(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY)}, ${JSON.stringify(token)});`,
+    `window.dispatchEvent(new Event(${JSON.stringify(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT)}));`,
   ].join("\n");
 }
 
-function installHeatmapTokenForCurrentOrigin(token: AnalyticsHeatmapTokenResponse, projectId: string): boolean {
+function installClickmapTokenForCurrentOrigin(token: AnalyticsClickmapTokenResponse): boolean {
   if (token.origin !== window.location.origin) {
     return false;
   }
   try {
-    window.sessionStorage.setItem(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY, projectId);
-    window.sessionStorage.setItem(getProjectHeatmapOriginStorageKey(projectId), token.origin);
-    window.sessionStorage.setItem(getProjectHeatmapTokenStorageKey(projectId), token.token);
-    window.sessionStorage.setItem(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY, token.origin);
-    window.sessionStorage.setItem(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY, token.token);
-    window.dispatchEvent(new Event(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT));
+    window.sessionStorage.setItem(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY, token.token);
+    window.dispatchEvent(new Event(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT));
     return true;
   } catch {
     window.alert("Could not enable the clickmap toolbar in this tab. Copy the snippet and paste it in the console instead.");
@@ -324,14 +314,13 @@ function installHeatmapTokenForCurrentOrigin(token: AnalyticsHeatmapTokenRespons
   }
 }
 
-function HeatmapTokenDialog(props: {
-  origin: HeatmapOrigin | null,
-  projectId: string,
-  token: AnalyticsHeatmapTokenResponse | null,
+function ClickmapTokenDialog(props: {
+  origin: ClickmapOrigin | null,
+  token: AnalyticsClickmapTokenResponse | null,
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
-  const snippet = props.token == null ? "" : createConsoleSnippet(props.token.token, props.token.origin, props.projectId);
+  const snippet = props.token == null ? "" : createConsoleSnippet(props.token.token);
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -379,12 +368,12 @@ export default function PageClient() {
   const project = adminApp.useProject();
   const config = project.useConfig();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedOrigin, setSelectedOrigin] = useState<HeatmapOrigin | null>(null);
-  const [token, setToken] = useState<AnalyticsHeatmapTokenResponse | null>(null);
+  const [selectedOrigin, setSelectedOrigin] = useState<ClickmapOrigin | null>(null);
+  const [token, setToken] = useState<AnalyticsClickmapTokenResponse | null>(null);
   const [customOrigin, setCustomOrigin] = useState("http://localhost:8101");
 
   const origins = useMemo(() => {
-    const byOrigin = new Map<string, HeatmapOrigin>();
+    const byOrigin = new Map<string, ClickmapOrigin>();
     for (const [id, domain] of typedEntries(config.domains.trustedDomains)) {
       if (domain.baseUrl == null) {
         continue;
@@ -398,13 +387,13 @@ export default function PageClient() {
     return Array.from(byOrigin.values()).sort((a, b) => stringCompare(a.origin, b.origin));
   }, [config.domains.trustedDomains]);
 
-  async function showHeatmap(origin: HeatmapOrigin) {
+  async function showClickmap(origin: ClickmapOrigin) {
     setSelectedOrigin(origin);
     setToken(null);
     setDialogOpen(true);
-    let created: AnalyticsHeatmapTokenResponse;
+    let created: AnalyticsClickmapTokenResponse;
     try {
-      created = await adminApp.createAnalyticsHeatmapToken({ origin: origin.origin });
+      created = await adminApp.createAnalyticsClickmapToken({ origin: origin.origin });
     } catch (error) {
       // Token creation failed (network error, expired session, invalid origin,
       // etc.); close the dialog so it doesn't hang on "Creating..." and let
@@ -414,9 +403,9 @@ export default function PageClient() {
       throw error;
     }
     setToken(created);
-    const installedInCurrentTab = installHeatmapTokenForCurrentOrigin(created, adminApp.projectId);
+    const installedInCurrentTab = installClickmapTokenForCurrentOrigin(created);
     try {
-      await navigator.clipboard.writeText(createConsoleSnippet(created.token, created.origin, adminApp.projectId));
+      await navigator.clipboard.writeText(createConsoleSnippet(created.token));
       toast({ title: installedInCurrentTab ? "Clickmap toolbar enabled" : "Snippet copied to clipboard" });
     } catch {
       // Clipboard access can be denied (e.g. lost user-gesture after the
@@ -441,7 +430,7 @@ export default function PageClient() {
                 </Typography>
                 <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="http://localhost:3000" />
               </div>
-              <Button onClick={async () => await showHeatmap({ id: "localhost", origin: customOrigin })}>
+              <Button onClick={async () => await showClickmap({ id: "localhost", origin: customOrigin })}>
                 Show clickmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -468,7 +457,7 @@ export default function PageClient() {
                     </Typography>
                   </div>
                 </div>
-                <Button onClick={async () => await showHeatmap(origin)}>
+                <Button onClick={async () => await showClickmap(origin)}>
                   Show clickmap
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -478,9 +467,8 @@ export default function PageClient() {
         )}
 
         <TopElementsPreview adminApp={adminApp} />
-        <HeatmapTokenDialog
+        <ClickmapTokenDialog
           origin={selectedOrigin}
-          projectId={adminApp.projectId}
           token={token}
           open={dialogOpen}
           onOpenChange={setDialogOpen}

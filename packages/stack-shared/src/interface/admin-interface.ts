@@ -6,7 +6,7 @@ import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
-import type { AnalyticsHeatmapDevice, AnalyticsHeatmapKind, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
+import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -402,23 +402,23 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return (await response.json()) as UserActivityResponse;
   }
 
-  async getAnalyticsHeatmap(options: {
-    kind: AnalyticsHeatmapKind,
+  async getAnalyticsClickmap(options: {
+    kind: AnalyticsClickmapKind,
     member_user_ids?: string[],
     route_path?: string,
     route_regex?: string,
     url_pattern?: string,
     user_id?: string,
     replay_id?: string,
-    device?: AnalyticsHeatmapDevice,
+    device?: AnalyticsClickmapDevice,
     viewport_width_min?: number,
     viewport_width_max?: number,
     sampling?: number,
     since: string,
     until: string,
-  }): Promise<AnalyticsHeatmapResponse> {
+  }): Promise<AnalyticsClickmapResponse> {
     const response = await this.sendAdminRequest(
-      "/internal/analytics/heatmap",
+      "/internal/analytics/clickmap",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -426,14 +426,14 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       },
       null,
     );
-    return (await response.json()) as AnalyticsHeatmapResponse;
+    return (await response.json()) as AnalyticsClickmapResponse;
   }
 
-  async createAnalyticsHeatmapToken(options: {
+  async createAnalyticsClickmapToken(options: {
     origin: string,
-  }): Promise<AnalyticsHeatmapTokenResponse> {
+  }): Promise<AnalyticsClickmapTokenResponse> {
     const response = await this.sendAdminRequest(
-      "/internal/analytics/heatmap-token",
+      "/internal/analytics/clickmap-token",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -441,7 +441,7 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       },
       null,
     );
-    return (await response.json()) as AnalyticsHeatmapTokenResponse;
+    return (await response.json()) as AnalyticsClickmapTokenResponse;
   }
 
   async getMetricsUserCounts(): Promise<MetricsUserCounts> {

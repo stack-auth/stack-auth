@@ -1,6 +1,6 @@
-import { createAnalyticsHeatmapToken } from "@/lib/analytics-heatmap-tokens";
+import { createAnalyticsClickmapToken } from "@/lib/analytics-clickmap-tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { AnalyticsHeatmapTokenResponseBodySchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import { AnalyticsClickmapTokenResponseBodySchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
@@ -17,10 +17,10 @@ export const POST = createSmartRouteHandler({
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: AnalyticsHeatmapTokenResponseBodySchema,
+    body: AnalyticsClickmapTokenResponseBodySchema,
   }),
   handler: async ({ auth, body }) => {
-    const token = await createAnalyticsHeatmapToken({ tenancy: auth.tenancy, origin: body.origin });
+    const token = await createAnalyticsClickmapToken({ tenancy: auth.tenancy, origin: body.origin });
     return {
       statusCode: 200,
       bodyType: "json",

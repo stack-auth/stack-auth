@@ -2,12 +2,12 @@ import {
   type ClickmapClicksQueryResult,
   parseBoundedDateTime,
   runClickmapClicksQuery,
-  throwClickhouseHeatmapError,
+  throwClickhouseClickmapError,
 } from "@/lib/analytics-clickmap-query";
-import { verifyAnalyticsHeatmapToken } from "@/lib/analytics-heatmap-tokens";
+import { verifyAnalyticsClickmapToken } from "@/lib/analytics-clickmap-tokens";
 import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { AnalyticsHeatmapResponseBodySchema, type AnalyticsHeatmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import { AnalyticsClickmapResponseBodySchema, type AnalyticsClickmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -18,8 +18,8 @@ const ELEMENTS_CHAIN_LIMIT = 200;
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    summary: "Get page heatmap data",
-    description: "Returns click heatmap data for the current browser origin when authorized by a short-lived heatmap token.",
+    summary: "Get page clickmap data",
+    description: "Returns aggregated click data for the current browser origin when authorized by a short-lived clickmap token.",
     tags: ["Analytics"],
     hidden: true,
   },
@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
       user: adaptSchema.optional(),
     }).defined(),
     body: yupObject({
-      heatmap_token: yupString().defined(),
+      clickmap_token: yupString().defined(),
       origin: yupString().defined(),
       route_path: yupString().optional(),
       route_regex: yupString().optional(),
@@ -48,16 +48,16 @@ export const POST = createSmartRouteHandler({
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: AnalyticsHeatmapResponseBodySchema,
+    body: AnalyticsClickmapResponseBodySchema,
   }),
   handler: async ({ body }) => {
-    // The dashboard mint path is the feature gate for heatmap overlays. This
+    // The dashboard mint path is the feature gate for clickmap overlays. This
     // public read endpoint is authorized by the short-lived origin-bound token
     // below, so avoid app/user gates that can disagree with the launching
     // dashboard or anonymous customer pages.
 
-    const heatmapToken = await verifyAnalyticsHeatmapToken({
-      token: body.heatmap_token,
+    const clickmapToken = await verifyAnalyticsClickmapToken({
+      token: body.clickmap_token,
       origin: body.origin,
     });
 
@@ -67,18 +67,18 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "until must be after since");
     }
     if (until.getTime() - since.getTime() > MAX_WINDOW_DAYS * ONE_DAY_MS) {
-      throw new StatusError(StatusError.BadRequest, `Heatmap window cannot exceed ${MAX_WINDOW_DAYS} days`);
+      throw new StatusError(StatusError.BadRequest, `Clickmap window cannot exceed ${MAX_WINDOW_DAYS} days`);
     }
 
     const client = getClickhouseAdminClientForMetrics();
     let result: ClickmapClicksQueryResult;
     try {
       result = await runClickmapClicksQuery(client, {
-        projectId: heatmapToken.project_id,
-        branchId: heatmapToken.branch_id,
+        projectId: clickmapToken.project_id,
+        branchId: clickmapToken.branch_id,
         since,
         until,
-        origin: heatmapToken.origin,
+        origin: clickmapToken.origin,
         routePath: body.route_path,
         routeRegex: body.route_regex,
         urlPattern: body.url_pattern,
@@ -92,16 +92,16 @@ export const POST = createSmartRouteHandler({
         elementsChainLimit: ELEMENTS_CHAIN_LIMIT,
       });
     } catch (error) {
-      throwClickhouseHeatmapError(error, {
-        captureLabel: "analytics-heatmap-clickhouse-fallback",
+      throwClickhouseClickmapError(error, {
+        captureLabel: "analytics-clickmap-clickhouse-fallback",
         routeRegex: body.route_regex,
-        context: { projectId: heatmapToken.project_id, branchId: heatmapToken.branch_id },
+        context: { projectId: clickmapToken.project_id, branchId: clickmapToken.branch_id },
       });
     }
 
     // The public overlay only consumes routes/selectors/elements; per-user and
     // per-replay aggregates are intentionally not fetched here (no linkedLimit).
-    const responseBody: AnalyticsHeatmapResponse = {
+    const responseBody: AnalyticsClickmapResponse = {
       kind: "session_replay_clicks",
       cells: [],
       sampling: result.samplingPct / 100,

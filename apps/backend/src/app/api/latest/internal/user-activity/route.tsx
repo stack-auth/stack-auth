@@ -5,7 +5,7 @@ import { UserActivityResponseBodySchema } from "@stackframe/stack-shared/dist/in
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 
-// Per-user activity heatmap window. Sized to match the 22×16 dashboard grid
+// Per-user activity clickmap window. Sized to match the 22×16 dashboard grid
 // so every cell maps to exactly one day and we never truncate or pad awkwardly
 // on the client. Bump both sides if you want a longer/shorter window.
 const USER_ACTIVITY_WINDOW_DAYS = 22 * 16;

@@ -1,4 +1,4 @@
-import type { AnalyticsHeatmapOptions, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -154,8 +154,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       endAction?: "now" | "at-period-end",
     }): Promise<{ refundTransactionId: string }>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
-    getAnalyticsHeatmap(options: AnalyticsHeatmapOptions): Promise<AnalyticsHeatmapResponse>,
-    createAnalyticsHeatmapToken(options: { origin: string }): Promise<AnalyticsHeatmapTokenResponse>,
+    getAnalyticsClickmap(options: AnalyticsClickmapOptions): Promise<AnalyticsClickmapResponse>,
+    createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,
     getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay>,

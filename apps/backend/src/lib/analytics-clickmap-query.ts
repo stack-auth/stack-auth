@@ -4,8 +4,8 @@ import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/s
 
 // Canonical owner of the ClickHouse clickmap query: filter/param builders, the
 // shared aggregate queries, and result scaling. Both the admin route
-// (`internal/analytics/heatmap`) and the origin-token public route
-// (`analytics/heatmap`) drive their `session_replay_clicks` results through here
+// (`internal/analytics/clickmap`) and the origin-token public route
+// (`analytics/clickmap`) drive their `session_replay_clicks` results through here
 // so the SQL and sampling math live in exactly one place.
 
 const CLICKMAP_TABLE = "analytics_internal.clickmap_events";
@@ -35,12 +35,12 @@ export function isClickhouseRegexpError(error: ClickHouseError): boolean {
 }
 
 /**
- * Translate a heatmap query failure into the right StatusError. A failed
+ * Translate a clickmap query failure into the right StatusError. A failed
  * user-supplied route regex becomes a 400; any other ClickHouse failure is
  * captured and surfaced as a generic 503; non-ClickHouse errors are rethrown
  * untouched. Always throws.
  */
-export function throwClickhouseHeatmapError(error: unknown, options: {
+export function throwClickhouseClickmapError(error: unknown, options: {
   captureLabel: string,
   routeRegex?: string,
   context: Record<string, unknown>,
@@ -52,10 +52,10 @@ export function throwClickhouseHeatmapError(error: unknown, options: {
     throw new StatusError(StatusError.BadRequest, "Invalid route regex");
   }
   captureError(options.captureLabel, new HexclaveAssertionError(
-    "Failed to load analytics heatmap due to ClickHouse query failure.",
+    "Failed to load analytics data due to ClickHouse query failure.",
     { cause: error, ...options.context },
   ));
-  throw new StatusError(StatusError.ServiceUnavailable, "Analytics heatmap is temporarily unavailable.");
+  throw new StatusError(StatusError.ServiceUnavailable, "Analytics data is temporarily unavailable.");
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ export function getClickmapOriginParams(origin: string): {
   };
 }
 
-// Exclude clicks landing on the in-page dev tool / heatmap overlay itself. The
+// Exclude clicks landing on the in-page dev tool / clickmap overlay itself. The
 // dev-tool identity comes from shared constants so this SQL can never silently
 // drift from the actual DOM markers (see `utils/dev-tool`).
 export function getClickmapSystemElementFilter(): string {
@@ -154,7 +154,7 @@ export function clampClickmapSampling(value: number | undefined): number {
   return value;
 }
 
-export function buildHourOfWeekHeatmapCells(rows: { weekday: number | string, hour: number | string, value: number | string }[]) {
+export function buildHourOfWeekClickmapCells(rows: { weekday: number | string, hour: number | string, value: number | string }[]) {
   const byCell = new Map<string, number>();
   for (const row of rows) {
     const weekday = Number(row.weekday);

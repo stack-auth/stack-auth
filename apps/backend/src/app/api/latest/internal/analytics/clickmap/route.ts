@@ -1,16 +1,16 @@
 import {
-  buildHourOfWeekHeatmapCells,
+  buildHourOfWeekClickmapCells,
   type ClickmapClicksQueryResult,
   formatClickhouseDateTimeParam,
   parseBoundedDateTime,
   runClickmapClicksQuery,
-  throwClickhouseHeatmapError,
+  throwClickhouseClickmapError,
 } from "@/lib/analytics-clickmap-query";
 import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { AnalyticsHeatmapResponseBodySchema, type AnalyticsHeatmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import { AnalyticsClickmapResponseBodySchema, type AnalyticsClickmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import yup from "yup";
@@ -23,7 +23,7 @@ const LINKED_LIMIT = 25;
 const ELEMENTS_CHAIN_LIMIT = 100;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-const heatmapRequestBodySchema = yupObject({
+const clickmapRequestBodySchema = yupObject({
   kind: yupString().oneOf(["team_user_hour_of_week", "session_replay_clicks"]).defined(),
   member_user_ids: yupArray(yupString().defined()).optional().default([]).max(MAX_TEAM_MEMBER_IDS),
   route_path: yupString().optional(),
@@ -39,13 +39,13 @@ const heatmapRequestBodySchema = yupObject({
   until: yupString().defined(),
 }).defined();
 
-type HeatmapRequestBody = yup.InferType<typeof heatmapRequestBodySchema>;
+type ClickmapRequestBody = yup.InferType<typeof clickmapRequestBodySchema>;
 
-function emptyHeatmapResponse(kind: AnalyticsHeatmapResponse["kind"], cells: AnalyticsHeatmapResponse["cells"]): AnalyticsHeatmapResponse {
+function emptyClickmapResponse(kind: AnalyticsClickmapResponse["kind"], cells: AnalyticsClickmapResponse["cells"]): AnalyticsClickmapResponse {
   return { kind, cells, sampling: 1, routes: [], users: [], replays: [], selectors: [], elements: [] };
 }
 
-async function handleClickHeatmap(tenancy: Tenancy, body: HeatmapRequestBody, since: Date, until: Date): Promise<AnalyticsHeatmapResponse> {
+async function handleClickClickmap(tenancy: Tenancy, body: ClickmapRequestBody, since: Date, until: Date): Promise<AnalyticsClickmapResponse> {
   const client = getClickhouseAdminClientForMetrics();
   let result: ClickmapClicksQueryResult;
   try {
@@ -68,8 +68,8 @@ async function handleClickHeatmap(tenancy: Tenancy, body: HeatmapRequestBody, si
       linkedLimit: LINKED_LIMIT,
     });
   } catch (error) {
-    throwClickhouseHeatmapError(error, {
-      captureLabel: "internal-analytics-heatmap-clickhouse-fallback",
+    throwClickhouseClickmapError(error, {
+      captureLabel: "internal-analytics-clickmap-clickhouse-fallback",
       routeRegex: body.route_regex,
       context: { projectId: tenancy.project.id, branchId: tenancy.branchId, kind: body.kind },
     });
@@ -124,9 +124,9 @@ async function handleClickHeatmap(tenancy: Tenancy, body: HeatmapRequestBody, si
   };
 }
 
-async function handleTeamHourOfWeek(tenancy: Tenancy, body: HeatmapRequestBody, since: Date, until: Date): Promise<AnalyticsHeatmapResponse> {
+async function handleTeamHourOfWeek(tenancy: Tenancy, body: ClickmapRequestBody, since: Date, until: Date): Promise<AnalyticsClickmapResponse> {
   if (body.member_user_ids.length === 0) {
-    return emptyHeatmapResponse(body.kind, buildHourOfWeekHeatmapCells([]));
+    return emptyClickmapResponse(body.kind, buildHourOfWeekClickmapCells([]));
   }
 
   const client = getClickhouseAdminClientForMetrics();
@@ -153,10 +153,10 @@ async function handleTeamHourOfWeek(tenancy: Tenancy, body: HeatmapRequestBody, 
       format: "JSONEachRow",
     });
     const rows: { weekday: number | string, hour: number | string, value: number | string }[] = await result.json();
-    return emptyHeatmapResponse(body.kind, buildHourOfWeekHeatmapCells(rows));
+    return emptyClickmapResponse(body.kind, buildHourOfWeekClickmapCells(rows));
   } catch (error) {
-    throwClickhouseHeatmapError(error, {
-      captureLabel: "internal-analytics-heatmap-clickhouse-fallback",
+    throwClickhouseClickmapError(error, {
+      captureLabel: "internal-analytics-clickmap-clickhouse-fallback",
       context: { projectId: tenancy.project.id, branchId: tenancy.branchId, kind: body.kind },
     });
   }
@@ -169,12 +169,12 @@ export const POST = createSmartRouteHandler({
       type: adminAuthTypeSchema.defined(),
       tenancy: adaptSchema.defined(),
     }),
-    body: heatmapRequestBodySchema,
+    body: clickmapRequestBodySchema,
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
-    body: AnalyticsHeatmapResponseBodySchema,
+    body: AnalyticsClickmapResponseBodySchema,
   }),
   handler: async ({ auth, body }) => {
     const since = parseBoundedDateTime(body.since, "since");
@@ -183,11 +183,11 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "until must be after since");
     }
     if (until.getTime() - since.getTime() > MAX_WINDOW_DAYS * ONE_DAY_MS) {
-      throw new StatusError(StatusError.BadRequest, `Heatmap window cannot exceed ${MAX_WINDOW_DAYS} days`);
+      throw new StatusError(StatusError.BadRequest, `Query window cannot exceed ${MAX_WINDOW_DAYS} days`);
     }
 
     const responseBody = body.kind === "session_replay_clicks"
-      ? await handleClickHeatmap(auth.tenancy, body, since, until)
+      ? await handleClickClickmap(auth.tenancy, body, since, until)
       : await handleTeamHourOfWeek(auth.tenancy, body, since, until);
 
     return { statusCode: 200, bodyType: "json", body: responseBody } as const;

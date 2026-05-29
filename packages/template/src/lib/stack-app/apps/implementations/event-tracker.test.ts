@@ -135,7 +135,7 @@ describe("EventTracker", () => {
     vi.useFakeTimers();
     document.body.innerHTML = `
       <div id="__hexclave-dev-tool-root">
-        <button>Heatmap toolbar control</button>
+        <button>Clickmap toolbar control</button>
       </div>
     `;
 

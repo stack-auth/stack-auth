@@ -2,17 +2,13 @@
 
 import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
 import {
-  getProjectHeatmapOriginStorageKey,
-  getProjectHeatmapTokenStorageKey,
-  HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY,
-  HEATMAP_OVERLAY_PROJECT_STORAGE_KEY,
-  HEATMAP_OVERLAY_RESUME_STORAGE_KEY,
-  HEATMAP_OVERLAY_TOKEN_STORAGE_KEY,
-  HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT,
-} from "@stackframe/stack-shared/dist/utils/analytics-heatmap-overlay";
+  CLICKMAP_OVERLAY_RESUME_STORAGE_KEY,
+  CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
+  CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
+} from "@stackframe/stack-shared/dist/utils/analytics-clickmap-overlay";
 import { DEV_TOOL_ROOT_ID } from "@stackframe/stack-shared/dist/utils/dev-tool";
 import { cssEscapeIdent } from "@stackframe/stack-shared/dist/utils/dom";
-import { AnalyticsHeatmapResponseBodySchema, type AnalyticsHeatmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import { AnalyticsClickmapResponseBodySchema, type AnalyticsClickmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { parseElementsChain, type ElementsChainSegment } from "@stackframe/stack-shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
@@ -31,7 +27,7 @@ import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPositio
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'heatmaps' | 'customize' | 'ai' | 'dashboard' | 'console' | 'support';
+type TabId = 'overview' | 'clickmaps' | 'customize' | 'ai' | 'dashboard' | 'console' | 'support';
 
 type TabResult = { element: HTMLElement, cleanup?: () => void };
 
@@ -75,12 +71,12 @@ const DOCS_URL = 'https://docs.hexclave.com';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
-  { id: 'heatmaps', label: 'Clickmaps', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h.01"/><path d="M15 8h.01"/><path d="M12 15h.01"/><path d="M19 11h.01"/><path d="M5 16h.01"/><path d="M3 3l18 18"/><path d="M14 14l7 7"/><path d="M5 5l5 5"/></svg>' },
   { id: 'customize', label: 'Customize', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
   { id: 'ai', label: 'AI', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
   { id: 'console', label: 'Console', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
   { id: 'dashboard', label: 'Dashboard', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>' },
   { id: 'support', label: 'Support', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+  { id: 'clickmaps', label: 'Clickmaps', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h.01"/><path d="M15 8h.01"/><path d="M12 15h.01"/><path d="M19 11h.01"/><path d="M5 16h.01"/><path d="M3 3l18 18"/><path d="M14 14l7 7"/><path d="M5 5l5 5"/></svg>' },
 ];
 
 const DEFAULT_STATE: DevToolState = {
@@ -1795,7 +1791,7 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Heatmaps tab
+// Clickmaps tab
 // ---------------------------------------------------------------------------
 
 type DevToolClickGroup = {
@@ -1806,50 +1802,56 @@ type DevToolClickGroup = {
   rect: DOMRect | null;
 };
 
-type HeatmapGroupOverlayElement = {
+type ClickmapGroupOverlayElement = {
   marker: HTMLElement;
   outline: HTMLElement;
 };
 
-const HEATMAP_FILTERS_STORAGE_KEY = 'hexclave-heatmap-overlay-filters';
+const CLICKMAP_FILTERS_STORAGE_KEY = 'hexclave-clickmap-overlay-filters';
 
-type HeatmapRangeKey = '24h' | '7d' | '30d';
-type HeatmapDeviceKey = 'all' | 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'widescreen' | 'tv';
+type ClickmapRangeKey = '24h' | '7d' | '30d';
+type ClickmapDeviceKey = 'all' | 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'widescreen' | 'tv';
+type ClickmapUrlPatternMode = 'glob' | 'regex';
 
-type HeatmapFilters = {
-  range: HeatmapRangeKey,
-  device: HeatmapDeviceKey,
+type ClickmapFilters = {
+  range: ClickmapRangeKey,
+  device: ClickmapDeviceKey,
   urlPattern: string,
+  urlPatternMode: ClickmapUrlPatternMode,
   elementSearch: string,
 };
 
-const HEATMAP_DEFAULT_FILTERS: HeatmapFilters = {
+const CLICKMAP_DEFAULT_FILTERS: ClickmapFilters = {
   range: '7d',
   device: 'all',
   urlPattern: '',
+  urlPatternMode: 'glob',
   elementSearch: '',
 };
 
-const HEATMAP_RANGE_MS: Record<HeatmapRangeKey, number> = {
+const CLICKMAP_RANGE_MS: Record<ClickmapRangeKey, number> = {
   '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
   '30d': 30 * 24 * 60 * 60 * 1000,
 };
 
-function isHeatmapRangeKey(value: unknown): value is HeatmapRangeKey {
+function isClickmapRangeKey(value: unknown): value is ClickmapRangeKey {
   return value === '24h' || value === '7d' || value === '30d';
 }
-function isHeatmapDeviceKey(value: unknown): value is HeatmapDeviceKey {
+function isClickmapDeviceKey(value: unknown): value is ClickmapDeviceKey {
   return value === 'all' || value === 'mobile' || value === 'tablet' || value === 'laptop' || value === 'desktop' || value === 'widescreen' || value === 'tv';
 }
-const HEATMAP_DOM_INDEX_DEBOUNCE_MS = 250;
+function isClickmapUrlPatternMode(value: unknown): value is ClickmapUrlPatternMode {
+  return value === 'glob' || value === 'regex';
+}
+const CLICKMAP_DOM_INDEX_DEBOUNCE_MS = 250;
 
-type DevToolServerHeatmapSelector = {
+type DevToolServerClickmapSelector = {
   selector: string;
   clicks: number;
 };
 
-type DevToolServerHeatmapElement = {
+type DevToolServerClickmapElement = {
   elementsChain: string;
   elementsText: string;
   tagName: string;
@@ -1857,15 +1859,15 @@ type DevToolServerHeatmapElement = {
   clicks: number;
 };
 
-type DevToolServerHeatmap = {
+type DevToolServerClickmap = {
   path: string;
   // True aggregate click total returned for the active filter (summed across
   // every matching route), independent of how many elements can be drawn on the
   // current page's DOM. The overlay can only render elements that exist on the
   // page you're viewing, but this count reflects the full pattern.
   totalClicks: number;
-  selectors: DevToolServerHeatmapSelector[];
-  elements: DevToolServerHeatmapElement[];
+  selectors: DevToolServerClickmapSelector[];
+  elements: DevToolServerClickmapElement[];
 };
 
 function cssEscapeAttrValue(value: string): string {
@@ -1878,12 +1880,12 @@ function readChainAttr(segment: ElementsChainSegment, attr: string): string {
   return typeof value === 'string' ? value : '';
 }
 
-function formatHeatmapCount(value: number): string {
+function formatClickmapCount(value: number): string {
   if (value >= 1000) return `${Math.round(value / 100) / 10}k`;
   return String(value);
 }
 
-function getHeatmapHue(count: number, maxCount: number): number {
+function getClickmapHue(count: number, maxCount: number): number {
   if (maxCount <= 1) return 185;
   const intensity = Math.min(1, count / maxCount);
   return 185 - Math.round(intensity * 155);
@@ -1906,7 +1908,7 @@ function getReadableElementLabel(element: Element): string {
   return element.tagName.toLowerCase();
 }
 
-function isElementVisibleForHeatmap(element: Element): boolean {
+function isElementVisibleForClickmap(element: Element): boolean {
   if (element.closest(`#${ROOT_ID}`) != null) {
     return false;
   }
@@ -1927,7 +1929,7 @@ function isElementVisibleForHeatmap(element: Element): boolean {
 function getElementFromSelector(selector: string): Element | null {
   try {
     const elements = Array.from(document.querySelectorAll(selector));
-    return elements.find(isElementVisibleForHeatmap) ?? null;
+    return elements.find(isElementVisibleForClickmap) ?? null;
   } catch {
     return null;
   }
@@ -1942,10 +1944,6 @@ function getSessionStorageString(key: string): string | null {
   }
 }
 
-function getActiveHeatmapProjectId(fallbackProjectId: string): string {
-  return getSessionStorageString(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY) ?? fallbackProjectId;
-}
-
 function removeSessionStorageItem(key: string): void {
   try {
     sessionStorage.removeItem(key);
@@ -1955,7 +1953,12 @@ function removeSessionStorageItem(key: string): void {
   }
 }
 
-function getJwtPayloadProjectId(token: string): string | null {
+// Read a string claim out of a JWT payload without verifying the signature. The
+// clickmap token is self-describing — it carries the `project_id` and `origin`
+// it was minted for — so the overlay derives both from the token itself instead
+// of needing them handed over alongside. The server still verifies the token on
+// every request; this is only used to scope/label the token client-side.
+function getJwtPayloadClaim(token: string, claim: string): string | null {
   const tokenParts = token.split('.');
   if (tokenParts.length < 2 || tokenParts[1] === '') {
     return null;
@@ -1968,52 +1971,41 @@ function getJwtPayloadProjectId(token: string): string | null {
     if (typeof payload !== 'object' || payload === null) {
       return null;
     }
-    const projectId = Reflect.get(payload, 'project_id');
-    return typeof projectId === 'string' ? projectId : null;
+    const value = Reflect.get(payload, claim);
+    return typeof value === 'string' ? value : null;
   } catch {
     return null;
   }
 }
 
-function getHeatmapTokenFromStorage(projectId: string): string | null {
-  const activeProjectId = getActiveHeatmapProjectId(projectId);
-  const projectToken = getSessionStorageString(getProjectHeatmapTokenStorageKey(activeProjectId));
-  if (projectToken != null) {
-    return projectToken;
-  }
-  const legacyToken = getSessionStorageString(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY);
-  if (legacyToken == null) {
+function getClickmapTokenFromStorage(projectId: string): string | null {
+  const token = getSessionStorageString(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY);
+  if (token == null) {
     return null;
   }
-  const legacyProjectId = getJwtPayloadProjectId(legacyToken);
-  return legacyProjectId == null || legacyProjectId === activeProjectId ? legacyToken : null;
+  // A token minted for a different project must not apply to this app.
+  const tokenProjectId = getJwtPayloadClaim(token, 'project_id');
+  return tokenProjectId == null || tokenProjectId === projectId ? token : null;
 }
 
-function getHeatmapOriginFromStorage(projectId: string): string | null {
-  const activeProjectId = getActiveHeatmapProjectId(projectId);
-  return getSessionStorageString(getProjectHeatmapOriginStorageKey(activeProjectId)) ?? getSessionStorageString(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY);
+function getClickmapOriginFromStorage(projectId: string): string | null {
+  const token = getClickmapTokenFromStorage(projectId);
+  return token == null ? null : getJwtPayloadClaim(token, 'origin');
 }
 
-function clearHeatmapTokenStorage(projectId: string): void {
-  const activeProjectId = getActiveHeatmapProjectId(projectId);
-  removeSessionStorageItem(getProjectHeatmapTokenStorageKey(activeProjectId));
-  removeSessionStorageItem(getProjectHeatmapOriginStorageKey(activeProjectId));
-  removeSessionStorageItem(HEATMAP_OVERLAY_PROJECT_STORAGE_KEY);
-  const legacyToken = getSessionStorageString(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY);
-  const legacyProjectId = legacyToken == null ? null : getJwtPayloadProjectId(legacyToken);
-  if (legacyProjectId == null || legacyProjectId === activeProjectId) {
-    removeSessionStorageItem(HEATMAP_OVERLAY_TOKEN_STORAGE_KEY);
-    removeSessionStorageItem(HEATMAP_OVERLAY_ORIGIN_STORAGE_KEY);
+function clearClickmapTokenStorage(projectId: string): void {
+  if (getClickmapTokenFromStorage(projectId) != null) {
+    removeSessionStorageItem(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY);
   }
 }
 
-function parseServerHeatmapResponse(value: unknown, path: string): DevToolServerHeatmap {
-  let parsed: AnalyticsHeatmapResponse;
+function parseServerClickmapResponse(value: unknown, path: string): DevToolServerClickmap {
+  let parsed: AnalyticsClickmapResponse;
   try {
     // Validate against the canonical response contract instead of hand-walking
     // `unknown`. Anything that doesn't match is treated as "no data" so the
     // overlay stays alive rather than crashing on shape drift.
-    parsed = AnalyticsHeatmapResponseBodySchema.validateSync(value);
+    parsed = AnalyticsClickmapResponseBodySchema.validateSync(value);
   } catch {
     return { path, totalClicks: 0, selectors: [], elements: [] };
   }
@@ -2035,7 +2027,7 @@ function parseServerHeatmapResponse(value: unknown, path: string): DevToolServer
 
 // Heuristic: does this path segment look like an opaque per-entity id (a UUID,
 // numeric id, Mongo ObjectId, ULID, etc.) rather than a human-readable slug?
-// Used to auto-wildcard slug routes so a single heatmap pattern aggregates
+// Used to auto-wildcard slug routes so a single clickmap pattern aggregates
 // across every user/team instead of just the one currently in the URL.
 function isDynamicPathSegment(segment: string): boolean {
   if (segment === '') return false;
@@ -2053,7 +2045,7 @@ function isDynamicPathSegment(segment: string): boolean {
   return false;
 }
 
-// Turn the current pathname into a heatmap URL pattern by replacing id-like
+// Turn the current pathname into a clickmap URL pattern by replacing id-like
 // segments with `*` (PostHog-style wildcards). Stable slugs are preserved so
 // e.g. `/teams/<uuid>/settings` becomes `/teams/*/settings`.
 function wildcardizePathname(pathname: string): string {
@@ -2063,23 +2055,41 @@ function wildcardizePathname(pathname: string): string {
   return trailingSlash ? `${joined}/` : joined;
 }
 
-// Does `path` match a PostHog-style URL pattern (where `*` is a wildcard)?
-// Used to tell the user when the page they're on isn't covered by the pattern,
-// so the overlay can't be drawn here even though aggregate data exists.
-function patternMatchesPath(pattern: string, path: string): boolean {
-  if (pattern === '') return true;
-  const regexSource = pattern
+// Translate a PostHog-style glob (where `*` is the only wildcard) into an
+// anchored regex source mirroring the backend's SQL LIKE semantics.
+function globToRegexSource(glob: string): string {
+  return glob
     .split('*')
     .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('.*');
+}
+
+function isValidRegexSource(source: string): boolean {
   try {
-    return new RegExp(`^${regexSource}$`).test(path);
+    new RegExp(source);
+    return true;
   } catch {
     return false;
   }
 }
 
-function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabResult {
+// Does `path` match the active URL pattern? Used to tell the user when the page
+// they're on isn't covered by the pattern, so the overlay can't be drawn here
+// even though aggregate data exists. Glob mode mirrors the backend's anchored
+// `LIKE`; regex mode mirrors ClickHouse `match()` (unanchored RE2).
+function patternMatchesPath(pattern: string, path: string, mode: ClickmapUrlPatternMode): boolean {
+  if (pattern === '') return true;
+  try {
+    if (mode === 'regex') {
+      return new RegExp(pattern).test(path);
+    }
+    return new RegExp(`^${globToRegexSource(pattern)}$`).test(path);
+  } catch {
+    return false;
+  }
+}
+
+function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabResult {
   const container = h('div', { className: 'sdt-hm' });
   const overlayRoot = h('div', { className: 'sdt-hm-overlay-root', 'aria-hidden': 'true' });
   const statsCount = h('div', { className: 'sdt-hm-stat-value' }, '0');
@@ -2091,43 +2101,45 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   const overlayToggle = h('button', { className: 'sdt-hm-btn sdt-hm-btn-primary' }, 'Hide');
   const expandButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Expand clickmap options', title: 'Expand clickmap options' });
   const backButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Back', title: 'Back' });
-  const miniClicks = h('span', { className: 'sdt-hm-toolbar-metric' }, '0 clicks');
+  const miniClicks = h('span', { className: 'sdt-hm-toolbar-metric-value' }, '0');
+  const miniElements = h('span', { className: 'sdt-hm-toolbar-metric-value' }, '0');
 
-  function readStoredFilters(): HeatmapFilters {
+  function readStoredFilters(): ClickmapFilters {
     try {
-      const raw = sessionStorage.getItem(HEATMAP_FILTERS_STORAGE_KEY);
-      if (raw == null) return { ...HEATMAP_DEFAULT_FILTERS };
+      const raw = sessionStorage.getItem(CLICKMAP_FILTERS_STORAGE_KEY);
+      if (raw == null) return { ...CLICKMAP_DEFAULT_FILTERS };
       const parsed: unknown = JSON.parse(raw);
-      if (parsed == null || typeof parsed !== 'object') return { ...HEATMAP_DEFAULT_FILTERS };
+      if (parsed == null || typeof parsed !== 'object') return { ...CLICKMAP_DEFAULT_FILTERS };
       const obj = parsed as Record<string, unknown>;
       return {
-        range: isHeatmapRangeKey(obj.range) ? obj.range : HEATMAP_DEFAULT_FILTERS.range,
-        device: isHeatmapDeviceKey(obj.device) ? obj.device : HEATMAP_DEFAULT_FILTERS.device,
-        urlPattern: typeof obj.urlPattern === 'string' ? obj.urlPattern : HEATMAP_DEFAULT_FILTERS.urlPattern,
-        elementSearch: typeof obj.elementSearch === 'string' ? obj.elementSearch : HEATMAP_DEFAULT_FILTERS.elementSearch,
+        range: isClickmapRangeKey(obj.range) ? obj.range : CLICKMAP_DEFAULT_FILTERS.range,
+        device: isClickmapDeviceKey(obj.device) ? obj.device : CLICKMAP_DEFAULT_FILTERS.device,
+        urlPattern: typeof obj.urlPattern === 'string' ? obj.urlPattern : CLICKMAP_DEFAULT_FILTERS.urlPattern,
+        urlPatternMode: isClickmapUrlPatternMode(obj.urlPatternMode) ? obj.urlPatternMode : CLICKMAP_DEFAULT_FILTERS.urlPatternMode,
+        elementSearch: typeof obj.elementSearch === 'string' ? obj.elementSearch : CLICKMAP_DEFAULT_FILTERS.elementSearch,
       };
     } catch {
-      return { ...HEATMAP_DEFAULT_FILTERS };
+      return { ...CLICKMAP_DEFAULT_FILTERS };
     }
   }
-  function persistFilters(next: HeatmapFilters) {
+  function persistFilters(next: ClickmapFilters) {
     try {
-      sessionStorage.setItem(HEATMAP_FILTERS_STORAGE_KEY, JSON.stringify(next));
+      sessionStorage.setItem(CLICKMAP_FILTERS_STORAGE_KEY, JSON.stringify(next));
     } catch {
       // ignore storage errors
     }
   }
 
   let currentPath = window.location.pathname;
-  let serverHeatmap: DevToolServerHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
-  let loadingServerHeatmap = false;
-  let serverHeatmapError: string | null = null;
-  let serverHeatmapRequestId = 0;
+  let serverClickmap: DevToolServerClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+  let loadingServerClickmap = false;
+  let serverClickmapError: string | null = null;
+  let serverClickmapRequestId = 0;
   let overlayVisible = true;
   let expanded = false;
   let renderFrame = 0;
   let overlayMode: 'hidden' | 'elements' = 'hidden';
-  const groupOverlayElements = new Map<string, HeatmapGroupOverlayElement>();
+  const groupOverlayElements = new Map<string, ClickmapGroupOverlayElement>();
 
   // DOM-index cache for fast element-chain inference.
   const domIndex = new Map<string, Element[]>();
@@ -2137,7 +2149,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     domIndex.clear();
     const all = document.querySelectorAll('*');
     for (const el of all) {
-      if (!isElementVisibleForHeatmap(el)) continue;
+      if (!isElementVisibleForClickmap(el)) continue;
       const tag = el.tagName.toLowerCase();
       const bucket = domIndex.get(tag) ?? [];
       bucket.push(el);
@@ -2159,11 +2171,11 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
       domIndexDebounce = 0;
       invalidateDomIndex();
       scheduleRender();
-    }, HEATMAP_DOM_INDEX_DEBOUNCE_MS);
+    }, CLICKMAP_DOM_INDEX_DEBOUNCE_MS);
   }
 
   function isElementChainCandidateUnique(matches: Element[]): Element | null {
-    const visible = matches.filter(isElementVisibleForHeatmap);
+    const visible = matches.filter(isElementVisibleForClickmap);
     return visible.length === 1 ? visible[0] : null;
   }
 
@@ -2297,39 +2309,35 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   setHtml(backButton, '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>');
   const chevronUpSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>';
   const chevronDownSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  const clicksIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></svg>';
+  const elementsIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>';
   setHtml(expandButton, chevronUpSvg);
 
-  const toolbar = h('div', { className: 'sdt-hm-toolbar' },
-    backButton,
-    h('div', { className: 'sdt-hm-toolbar-main' },
-      h('div', { className: 'sdt-hm-toolbar-title' }, 'Clickmap'),
-      h('div', { className: 'sdt-hm-toolbar-subtitle' }, 'Aggregated clicks for this page'),
-    ),
-    miniClicks,
-    expandButton,
-  );
   const stats = h('div', { className: 'sdt-hm-stats' },
     h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Clicks'), statsCount),
     h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Elements'), selectorCount),
     h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Viewport'), viewportValue),
   );
 
-  let filters: HeatmapFilters = readStoredFilters();
+  let filters: ClickmapFilters = readStoredFilters();
   let filterReloadDebounce = 0;
   // When the user hasn't typed a custom pattern, the URL pattern field mirrors
   // the current route with id-like segments auto-wildcarded (`/teams/*/settings`)
-  // so the heatmap aggregates across all entities. A stored non-empty pattern
+  // so the clickmap aggregates across all entities. A stored non-empty pattern
   // means the user took manual control, so we leave it alone.
   let urlPatternUserEdited = filters.urlPattern.trim() !== '';
 
   function getEffectiveUrlPattern(): string {
+    // Auto route-tracking is a glob concept; in regex mode an empty field means
+    // "this exact page" (the route_path fallback), never an auto-wildcard.
+    if (filters.urlPatternMode === 'regex') return filters.urlPattern.trim();
     if (urlPatternUserEdited) return filters.urlPattern.trim();
     return wildcardizePathname(window.location.pathname);
   }
-  // Reflect the current route into the field while in auto mode. No-op once the
-  // user has typed their own pattern.
+  // Reflect the current route into the field while in glob auto mode. No-op in
+  // regex mode or once the user has typed their own pattern.
   function syncAutoUrlPattern() {
-    if (urlPatternUserEdited) return;
+    if (filters.urlPatternMode === 'regex' || urlPatternUserEdited) return;
     const auto = wildcardizePathname(window.location.pathname);
     if (urlPatternInput.value !== auto) {
       urlPatternInput.value = auto;
@@ -2351,15 +2359,65 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     ['7d', 'Last 7 days'],
     ['30d', 'Last 30 days'],
   ], filters.range);
-  const deviceSelect = makeFilterSelect([
-    ['all', 'All viewports'],
+  // Viewport filter as a segmented switcher: equal-weight options with a single
+  // pill that slides to the active mode, instead of a hidden-until-opened native
+  // <select>. The thumb is an absolutely-positioned element measured from the
+  // active button so labels of different widths still track precisely.
+  const deviceOptions: [ClickmapDeviceKey, string][] = [
+    ['all', 'All'],
     ['mobile', 'Mobile'],
     ['tablet', 'Tablet'],
     ['laptop', 'Laptop'],
     ['desktop', 'Desktop'],
-    ['widescreen', 'Widescreen'],
+    ['widescreen', 'Wide'],
     ['tv', 'TV'],
-  ], filters.device);
+  ];
+  const deviceThumb = h('span', { className: 'sdt-hm-seg-thumb', 'aria-hidden': 'true' });
+  const deviceSwitcher = h('div', {
+    className: 'sdt-hm-seg',
+    role: 'radiogroup',
+    'aria-label': 'Viewport',
+  }, deviceThumb);
+  const deviceButtons = new Map<ClickmapDeviceKey, HTMLButtonElement>();
+  // Skip the animated slide the very first time the thumb is placed (panel open),
+  // so it appears already parked on the active option rather than sweeping in.
+  let deviceThumbPlaced = false;
+  function positionDeviceThumb() {
+    const active = deviceButtons.get(filters.device);
+    // While the panel is collapsed the switcher isn't laid out (offsetWidth 0);
+    // defer until it has real geometry so the thumb lands in the right place.
+    if (active == null || active.offsetWidth === 0) return;
+    if (!deviceThumbPlaced) {
+      deviceThumb.style.transition = 'none';
+    }
+    deviceThumb.style.transform = `translateX(${active.offsetLeft}px)`;
+    deviceThumb.style.width = `${active.offsetWidth}px`;
+    if (!deviceThumbPlaced) {
+      // Force a reflow so the no-transition placement commits before we hand
+      // animation back, otherwise the first real move wouldn't tween.
+      void deviceThumb.offsetWidth;
+      deviceThumb.style.transition = '';
+      deviceThumbPlaced = true;
+    }
+  }
+  for (const [key, label] of deviceOptions) {
+    const btn = h('button', {
+      className: 'sdt-hm-seg-btn',
+      type: 'button',
+      role: 'radio',
+    }, label) as HTMLButtonElement;
+    btn.setAttribute('aria-checked', String(key === filters.device));
+    btn.addEventListener('click', () => {
+      if (filters.device === key) return;
+      updateFilters({ device: key });
+      for (const [k, b] of deviceButtons) {
+        b.setAttribute('aria-checked', String(k === key));
+      }
+      positionDeviceThumb();
+    });
+    deviceButtons.set(key, btn);
+    deviceSwitcher.appendChild(btn);
+  }
   const urlPatternInput = h('input', {
     className: 'sdt-hm-filter-input',
     type: 'text',
@@ -2376,6 +2434,144 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     type: 'button',
     title: 'Reset the URL pattern to the current page',
   }, 'Reset') as HTMLButtonElement;
+
+  // Info button + popover explaining the URL pattern syntax. The backend
+  // translates `*` into a SQL LIKE `%`, so `*` is the only wildcard — every
+  // other character is matched literally against the page's pathname.
+  const urlPatternInfo = h('button', {
+    className: 'sdt-hm-filter-info',
+    type: 'button',
+    'aria-label': 'URL pattern help',
+    'aria-expanded': 'false',
+    title: 'How URL patterns work',
+  }) as HTMLButtonElement;
+  setHtml(urlPatternInfo, '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>');
+
+  function makeUrlHelpRow(pattern: string, description: string): HTMLElement {
+    return h('div', { className: 'sdt-hm-url-help-row' },
+      h('code', { className: 'sdt-hm-url-help-code' }, pattern),
+      h('span', { className: 'sdt-hm-url-help-desc' }, description),
+    );
+  }
+  function makeCode(text: string): HTMLElement {
+    return h('code', { className: 'sdt-hm-url-help-code' }, text);
+  }
+  const urlHelpTitle = h('div', { className: 'sdt-hm-url-help-title' });
+  const urlHelpBody = h('div', { className: 'sdt-hm-url-help-body' });
+  const urlHelpRows = h('div', { className: 'sdt-hm-url-help-rows' });
+  // Cheatsheet content tracks the active matching mode so it only ever shows
+  // syntax that actually works.
+  function renderUrlHelp() {
+    if (filters.urlPatternMode === 'regex') {
+      urlHelpTitle.textContent = 'URL pattern · regex';
+      urlHelpBody.replaceChildren(
+        'Matched against the pathname with ClickHouse ',
+        makeCode('match()'),
+        ' (RE2 syntax), unanchored — add ',
+        makeCode('^'),
+        ' / ',
+        makeCode('$'),
+        ' to pin the start and end. No domain, hash, or query string.',
+      );
+      urlHelpRows.replaceChildren(
+        makeUrlHelpRow('^/pricing$', 'Exactly /pricing'),
+        makeUrlHelpRow('^/products/', 'Anything starting with /products/'),
+        makeUrlHelpRow('/(privacy|terms)$', 'Ends in /privacy or /terms'),
+        makeUrlHelpRow('^/teams/[^/]+/members$', 'One id segment in the middle'),
+        makeUrlHelpRow('\\.html$', 'Paths ending in .html'),
+        makeUrlHelpRow('(empty)', 'This exact page only'),
+      );
+      return;
+    }
+    urlHelpTitle.textContent = 'URL pattern · glob';
+    urlHelpBody.replaceChildren(
+      'Limits the clickmap to pages whose path matches. Matched against the pathname only — no domain, hash, or query string. ',
+      makeCode('*'),
+      ' is the only wildcard and stands in for any characters (including ',
+      makeCode('/'),
+      '). Everything else is matched literally — switch to regex for full RE2 syntax.',
+    );
+    urlHelpRows.replaceChildren(
+      makeUrlHelpRow('/pricing', 'That exact page'),
+      makeUrlHelpRow('/products/*', 'Any path under /products/'),
+      makeUrlHelpRow('/teams/*/members', 'A wildcard segment in the middle'),
+      makeUrlHelpRow('*/settings', 'Any path ending in /settings'),
+      makeUrlHelpRow('*', 'Every page'),
+      makeUrlHelpRow('(empty)', 'Auto-tracks the page you are viewing'),
+    );
+  }
+  const urlPatternHelp = h('div', { className: 'sdt-hm-url-help', role: 'dialog', 'aria-label': 'URL pattern help' },
+    urlHelpTitle,
+    urlHelpBody,
+    urlHelpRows,
+  );
+
+  let urlHelpOpen = false;
+  function setUrlHelpOpen(open: boolean) {
+    urlHelpOpen = open;
+    urlPatternHelp.classList.toggle('sdt-hm-url-help-open', open);
+    urlPatternInfo.setAttribute('aria-expanded', String(open));
+  }
+  urlPatternInfo.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setUrlHelpOpen(!urlHelpOpen);
+  });
+  urlPatternHelp.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+
+  // Glob vs. regex matching. The backend already supports both (`url_pattern`
+  // → SQL LIKE, `route_regex` → ClickHouse match()); this toggle picks which
+  // one we send and keeps the local coverage check in sync.
+  const urlModeButtons = new Map<ClickmapUrlPatternMode, HTMLButtonElement>();
+  const urlPatternModeToggle = h('div', {
+    className: 'sdt-hm-mode',
+    role: 'radiogroup',
+    'aria-label': 'URL pattern matching mode',
+  });
+  const urlModeOptions: Array<[ClickmapUrlPatternMode, string, string]> = [
+    ['glob', '*', 'Glob matching — * is the only wildcard'],
+    ['regex', '.*', 'Regex matching — full RE2 syntax'],
+  ];
+  function applyUrlPatternMode() {
+    for (const [mode, btn] of urlModeButtons) {
+      const active = mode === filters.urlPatternMode;
+      btn.setAttribute('aria-checked', String(active));
+      btn.classList.toggle('sdt-hm-mode-btn-active', active);
+    }
+    urlPatternInput.placeholder = filters.urlPatternMode === 'regex' ? '^/products/.*$' : '/products/*';
+    renderUrlHelp();
+  }
+  function setUrlPatternMode(mode: ClickmapUrlPatternMode) {
+    if (filters.urlPatternMode === mode) return;
+    let nextPattern: string;
+    if (mode === 'regex') {
+      // Seed regex mode from the current glob, translated to an equivalent
+      // anchored regex, so the switch leaves a working starting point.
+      const current = getEffectiveUrlPattern();
+      nextPattern = current === '' ? '' : `^${globToRegexSource(current)}$`;
+      urlPatternUserEdited = nextPattern !== '';
+      urlPatternInput.value = nextPattern;
+    } else {
+      // A regex can't be reversed into a glob, so fall back to auto route-tracking.
+      nextPattern = '';
+      urlPatternUserEdited = false;
+      urlPatternInput.value = wildcardizePathname(window.location.pathname);
+    }
+    filters = { ...filters, urlPatternMode: mode, urlPattern: nextPattern };
+    persistFilters(filters);
+    applyUrlPatternMode();
+    scheduleFilterReload();
+    scheduleRender();
+  }
+  for (const [mode, label, title] of urlModeOptions) {
+    const btn = h('button', { className: 'sdt-hm-mode-btn', type: 'button', role: 'radio', title }, label) as HTMLButtonElement;
+    btn.addEventListener('click', () => setUrlPatternMode(mode));
+    urlModeButtons.set(mode, btn);
+    urlPatternModeToggle.appendChild(btn);
+  }
+  applyUrlPatternMode();
+
   const elementSearchInput = h('input', {
     className: 'sdt-hm-filter-input',
     type: 'text',
@@ -2399,13 +2595,31 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     );
   }
 
-  const filterRow = h('div', { className: 'sdt-hm-filters' },
-    h('div', { className: 'sdt-hm-filter-row' },
-      wrapFilterField('Range', rangeSelect),
-      wrapFilterField('Viewport', deviceSelect),
-      wrapFilterField('URL pattern', urlPatternInput, urlPatternReset),
-      wrapFilterField('Element search', elementSearchInput),
+  // The range and URL-pattern controls live in the always-visible toolbar so
+  // they're reachable whether or not the panel is expanded (the previous pill
+  // only showed a static title + a single clicks badge and felt empty). The
+  // remaining filters stay in the expanded body.
+  const clicksIcon = h('span', { className: 'sdt-hm-toolbar-metric-icon' });
+  const elementsIcon = h('span', { className: 'sdt-hm-toolbar-metric-icon' });
+  setHtml(clicksIcon, clicksIconSvg);
+  setHtml(elementsIcon, elementsIconSvg);
+  const toolbar = h('div', { className: 'sdt-hm-toolbar' },
+    backButton,
+    h('div', { className: 'sdt-hm-toolbar-title' }, 'Clickmap'),
+    h('div', { className: 'sdt-hm-toolbar-filters' },
+      rangeSelect,
+      h('div', { className: 'sdt-hm-toolbar-url' }, urlPatternInput, urlPatternReset, urlPatternModeToggle, urlPatternInfo, urlPatternHelp),
     ),
+    h('div', { className: 'sdt-hm-toolbar-metrics' },
+      h('span', { className: 'sdt-hm-toolbar-metric', title: 'Aggregate clicks' }, miniClicks, clicksIcon),
+      h('span', { className: 'sdt-hm-toolbar-metric', title: 'Mapped elements' }, miniElements, elementsIcon),
+    ),
+    expandButton,
+  );
+
+  const filterRow = h('div', { className: 'sdt-hm-filters' },
+    wrapFilterField('Viewport', deviceSwitcher),
+    wrapFilterField('Element search', elementSearchInput),
   );
 
   function scheduleFilterReload() {
@@ -2414,11 +2628,11 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     }
     filterReloadDebounce = window.setTimeout(() => {
       filterReloadDebounce = 0;
-      runAsynchronously(loadServerHeatmap());
+      runAsynchronously(loadServerClickmap());
     }, 250);
   }
 
-  function updateFilters(next: Partial<HeatmapFilters>) {
+  function updateFilters(next: Partial<ClickmapFilters>) {
     filters = { ...filters, ...next };
     persistFilters(filters);
     scheduleFilterReload();
@@ -2438,10 +2652,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   }
 
   rangeSelect.addEventListener('change', () => {
-    if (isHeatmapRangeKey(rangeSelect.value)) updateFilters({ range: rangeSelect.value });
-  });
-  deviceSelect.addEventListener('change', () => {
-    if (isHeatmapDeviceKey(deviceSelect.value)) updateFilters({ device: deviceSelect.value });
+    if (isClickmapRangeKey(rangeSelect.value)) updateFilters({ range: rangeSelect.value });
   });
   urlPatternInput.addEventListener('input', () => {
     const value = urlPatternInput.value;
@@ -2451,9 +2662,10 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   });
   urlPatternReset.addEventListener('click', () => {
     // Hand control back to auto mode and reflect the current route immediately,
-    // so the pattern covers the page the overlay is bound to.
+    // so the pattern covers the page the overlay is bound to. In regex mode
+    // there's no auto-wildcard, so clearing the field means "this exact page".
     urlPatternUserEdited = false;
-    urlPatternInput.value = wildcardizePathname(window.location.pathname);
+    urlPatternInput.value = filters.urlPatternMode === 'regex' ? '' : wildcardizePathname(window.location.pathname);
     updateFilters({ urlPattern: '' });
   });
   elementSearchInput.addEventListener('input', () => {
@@ -2471,21 +2683,21 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
 
   function getGroups(): DevToolClickGroup[] {
     const byKey = new Map<string, DevToolClickGroup>();
-    if (serverHeatmap.path !== currentPath) {
+    if (serverClickmap.path !== currentPath) {
       return [];
     }
 
     const searchQuery = filters.elementSearch.trim().toLowerCase();
-    const matchesSearch = (entry: DevToolServerHeatmapElement): boolean => {
+    const matchesSearch = (entry: DevToolServerClickmapElement): boolean => {
       if (searchQuery === '') return true;
       const haystacks = [entry.elementsText, entry.tagName, entry.href ?? '', entry.elementsChain];
       return haystacks.some((value) => value.toLowerCase().includes(searchQuery));
     };
 
     // Prefer the elements-chain inference path (PostHog-style).
-    if (serverHeatmap.elements.length > 0) {
+    if (serverClickmap.elements.length > 0) {
       ensureDomIndex();
-      for (const elementEntry of serverHeatmap.elements) {
+      for (const elementEntry of serverClickmap.elements) {
         if (!matchesSearch(elementEntry)) continue;
         const chain = parseElementsChain(elementEntry.elementsChain);
         let element = chain.length > 0 ? inferElementFromChain(chain) : null;
@@ -2511,14 +2723,14 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
 
     // Legacy selectors fallback (older backends or unresolved chains).
     if (byKey.size === 0) {
-      for (const selectorHeatmap of serverHeatmap.selectors) {
-        if (searchQuery !== '' && !selectorHeatmap.selector.toLowerCase().includes(searchQuery)) continue;
-        const element = getElementFromSelector(selectorHeatmap.selector);
+      for (const selectorClickmap of serverClickmap.selectors) {
+        if (searchQuery !== '' && !selectorClickmap.selector.toLowerCase().includes(searchQuery)) continue;
+        const element = getElementFromSelector(selectorClickmap.selector);
         if (element == null) continue;
-        byKey.set(selectorHeatmap.selector, {
-          selector: selectorHeatmap.selector,
+        byKey.set(selectorClickmap.selector, {
+          selector: selectorClickmap.selector,
           label: getReadableElementLabel(element),
-          count: selectorHeatmap.clicks,
+          count: selectorClickmap.clicks,
           element,
           rect: element.getBoundingClientRect(),
         });
@@ -2534,12 +2746,12 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     renderFrame = requestAnimationFrame(render);
   }
 
-  function clearHeatmapOverlayElements() {
+  function clearClickmapOverlayElements() {
     groupOverlayElements.clear();
     overlayRoot.replaceChildren();
   }
 
-  function getHeatmapViewportSize(): { width: number, height: number } {
+  function getClickmapViewportSize(): { width: number, height: number } {
     const visualViewport = window.visualViewport;
     if (visualViewport != null) {
       return { width: visualViewport.width, height: visualViewport.height };
@@ -2555,7 +2767,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     const nextMode = shouldShowElements() ? 'elements' : 'hidden';
     if (overlayMode !== nextMode) {
       overlayMode = nextMode;
-      clearHeatmapOverlayElements();
+      clearClickmapOverlayElements();
     }
     if (!shouldShowElements()) {
       return;
@@ -2568,7 +2780,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
         continue;
       }
       visibleGroupKeys.add(group.selector);
-      const hue = getHeatmapHue(group.count, maxCount);
+      const hue = getClickmapHue(group.count, maxCount);
       let overlayElement = groupOverlayElements.get(group.selector);
       if (overlayElement == null) {
         overlayElement = {
@@ -2584,7 +2796,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
       marker.style.top = `${Math.round(group.rect.top + group.rect.height / 2)}px`;
       marker.style.background = `hsla(${hue}, 96%, 58%, 0.94)`;
       marker.style.boxShadow = `0 0 0 1px hsla(${hue}, 96%, 22%, 0.35), 0 8px 24px hsla(${hue}, 96%, 45%, 0.32)`;
-      marker.textContent = formatHeatmapCount(group.count);
+      marker.textContent = formatClickmapCount(group.count);
 
       outline.style.left = `${group.rect.left}px`;
       outline.style.top = `${group.rect.top}px`;
@@ -2609,7 +2821,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     }
     for (const group of groups.slice(0, 30)) {
       const row = h('button', { className: 'sdt-hm-row' });
-      row.appendChild(h('span', { className: 'sdt-hm-row-count' }, formatHeatmapCount(group.count)));
+      row.appendChild(h('span', { className: 'sdt-hm-row-count' }, formatClickmapCount(group.count)));
       const meta = h('span', { className: 'sdt-hm-row-meta' },
         h('span', { className: 'sdt-hm-row-label' }, group.label),
         h('span', { className: 'sdt-hm-row-selector' }, group.selector),
@@ -2625,39 +2837,43 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   function render() {
     if (currentPath !== window.location.pathname) {
       currentPath = window.location.pathname;
-      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
-      serverHeatmapError = null;
+      serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      serverClickmapError = null;
       syncAutoUrlPattern();
-      runAsynchronously(loadServerHeatmap());
+      runAsynchronously(loadServerClickmap());
     }
     const groups = getGroups();
     // Clicks mapped to an element that actually exists in the current DOM (what
     // the overlay can draw) vs. the true aggregate the filter matched server-side.
     const mappedClicks = groups.reduce((sum, group) => sum + group.count, 0);
-    const aggregateClicks = serverHeatmap.path === currentPath ? serverHeatmap.totalClicks : 0;
-    const viewport = getHeatmapViewportSize();
-    statsCount.textContent = formatHeatmapCount(aggregateClicks);
-    selectorCount.textContent = formatHeatmapCount(groups.length);
+    const aggregateClicks = serverClickmap.path === currentPath ? serverClickmap.totalClicks : 0;
+    const viewport = getClickmapViewportSize();
+    statsCount.textContent = formatClickmapCount(aggregateClicks);
+    selectorCount.textContent = formatClickmapCount(groups.length);
     viewportValue.textContent = `${Math.round(viewport.width)}x${Math.round(viewport.height)}`;
     overlayToggle.textContent = overlayVisible ? 'Hide overlay' : 'Show overlay';
     // A pattern that doesn't cover the current page means the overlay can't draw
     // here, so offer a one-click reset back to the current route.
     const effectiveUrlPattern = getEffectiveUrlPattern();
-    const urlPatternMatchesPath = patternMatchesPath(effectiveUrlPattern, currentPath);
+    const regexInvalid = filters.urlPatternMode === 'regex' && effectiveUrlPattern !== '' && !isValidRegexSource(effectiveUrlPattern);
+    const urlPatternMatchesPath = patternMatchesPath(effectiveUrlPattern, currentPath, filters.urlPatternMode);
     urlPatternReset.classList.toggle('sdt-hm-filter-reset-visible', !urlPatternMatchesPath);
-    const token = getHeatmapTokenFromStorage(app.projectId);
-    const tokenOrigin = getHeatmapOriginFromStorage(app.projectId);
+    urlPatternInput.classList.toggle('sdt-hm-filter-input-error', regexInvalid);
+    const token = getClickmapTokenFromStorage(app.projectId);
+    const tokenOrigin = getClickmapOriginFromStorage(app.projectId);
     if (token == null) {
-      status.textContent = serverHeatmapError ?? `No ${getProjectHeatmapTokenStorageKey(getActiveHeatmapProjectId(app.projectId))} token in sessionStorage.`;
+      status.textContent = serverClickmapError ?? 'No clickmap token in sessionStorage. Paste one from the dashboard to load this page.';
     } else if (tokenOrigin != null && tokenOrigin !== window.location.origin) {
       status.textContent = `Token was minted for ${tokenOrigin}, but this page is ${window.location.origin}. Generate a token for this exact origin.`;
-    } else if (loadingServerHeatmap) {
+    } else if (regexInvalid) {
+      status.textContent = 'Invalid regular expression — fix the pattern to load the clickmap.';
+    } else if (loadingServerClickmap) {
       status.textContent = 'Loading aggregate clickmap...';
-    } else if (serverHeatmapError != null) {
-      status.textContent = serverHeatmapError;
+    } else if (serverClickmapError != null) {
+      status.textContent = serverClickmapError;
     } else {
       const scope = effectiveUrlPattern !== '' && effectiveUrlPattern !== currentPath ? effectiveUrlPattern : currentPath;
-      let message = `Loaded ${formatHeatmapCount(aggregateClicks)} aggregate clicks for ${scope}.`;
+      let message = `Loaded ${formatClickmapCount(aggregateClicks)} aggregate clicks for ${scope}.`;
       if (aggregateClicks === 0) {
         message = `No clicks recorded for ${scope} in this range.`;
       } else if (!urlPatternMatchesPath) {
@@ -2667,91 +2883,109 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
       } else if (groups.length === 0) {
         message += ' No matching elements found on this page yet.';
       } else if (mappedClicks < aggregateClicks) {
-        message += ` ${formatHeatmapCount(mappedClicks)} mapped to elements on this page.`;
+        message += ` ${formatClickmapCount(mappedClicks)} mapped to elements on this page.`;
       }
       status.textContent = message;
     }
-    status.classList.toggle('sdt-hm-token-status-error', serverHeatmapError != null || (token != null && tokenOrigin != null && tokenOrigin !== window.location.origin));
-    miniClicks.textContent = `${formatHeatmapCount(aggregateClicks)} clicks`;
+    status.classList.toggle('sdt-hm-token-status-error', regexInvalid || serverClickmapError != null || (token != null && tokenOrigin != null && tokenOrigin !== window.location.origin));
+    miniClicks.textContent = formatClickmapCount(aggregateClicks);
+    miniElements.textContent = formatClickmapCount(groups.length);
     container.classList.toggle('sdt-hm-expanded', expanded);
     expandButton.setAttribute('aria-expanded', String(expanded));
     expandButton.setAttribute('aria-label', expanded ? 'Collapse clickmap options' : 'Expand clickmap options');
     expandButton.title = expanded ? 'Collapse clickmap options' : 'Expand clickmap options';
     setHtml(expandButton, expanded ? chevronDownSvg : chevronUpSvg);
+    // Keep the viewport switcher's sliding thumb aligned once the panel is laid
+    // out (expand, resize-driven re-render); it no-ops while collapsed.
+    positionDeviceThumb();
     renderOverlay(groups);
     renderList(groups);
   }
 
-  async function loadServerHeatmap() {
-    const requestId = serverHeatmapRequestId + 1;
-    serverHeatmapRequestId = requestId;
-    const isLatestRequest = () => requestId === serverHeatmapRequestId;
-    const token = getHeatmapTokenFromStorage(app.projectId);
+  async function loadServerClickmap() {
+    const requestId = serverClickmapRequestId + 1;
+    serverClickmapRequestId = requestId;
+    const isLatestRequest = () => requestId === serverClickmapRequestId;
+    const token = getClickmapTokenFromStorage(app.projectId);
     if (token == null) {
-      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
-      serverHeatmapError = null;
-      loadingServerHeatmap = false;
+      serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      serverClickmapError = null;
+      loadingServerClickmap = false;
       render();
       return;
     }
-    const tokenOrigin = getHeatmapOriginFromStorage(app.projectId);
+    const tokenOrigin = getClickmapOriginFromStorage(app.projectId);
     if (tokenOrigin != null && tokenOrigin !== window.location.origin) {
-      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
-      serverHeatmapError = null;
-      loadingServerHeatmap = false;
+      serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      serverClickmapError = null;
+      loadingServerClickmap = false;
       render();
       return;
     }
 
-    loadingServerHeatmap = true;
-    serverHeatmapError = null;
+    // Don't round-trip a regex we know ClickHouse will reject; surface it locally.
+    const pendingPattern = getEffectiveUrlPattern();
+    if (filters.urlPatternMode === 'regex' && pendingPattern !== '' && !isValidRegexSource(pendingPattern)) {
+      serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      serverClickmapError = null;
+      loadingServerClickmap = false;
+      render();
+      return;
+    }
+
+    loadingServerClickmap = true;
+    serverClickmapError = null;
     render();
     try {
       const until = new Date();
-      const since = new Date(until.getTime() - HEATMAP_RANGE_MS[filters.range]);
+      const since = new Date(until.getTime() - CLICKMAP_RANGE_MS[filters.range]);
       const requestedPath = window.location.pathname;
       const effectiveUrlPattern = getEffectiveUrlPattern();
       const body: Record<string, unknown> = {
-        heatmap_token: token,
+        clickmap_token: token,
         origin: window.location.origin,
         since: since.toISOString(),
         until: until.toISOString(),
       };
       if (effectiveUrlPattern !== '') {
-        body.url_pattern = effectiveUrlPattern;
+        if (filters.urlPatternMode === 'regex') {
+          body.route_regex = effectiveUrlPattern;
+        } else {
+          body.url_pattern = effectiveUrlPattern;
+        }
       } else {
         body.route_path = requestedPath;
       }
       if (filters.device !== 'all') {
         body.device = filters.device;
       }
-      const response = await app[stackAppInternalsSymbol].sendRequest("/analytics/heatmap", {
+      const response = await app[stackAppInternalsSymbol].sendRequest("/analytics/clickmap", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       }, "client");
       if (!response.ok) {
-        throw new Error(`Heatmap request failed with HTTP ${response.status}`);
+        throw new Error(`Clickmap request failed with HTTP ${response.status}`);
       }
       const responseBody: unknown = await response.json();
       if (!isLatestRequest()) {
         return;
       }
-      serverHeatmap = parseServerHeatmapResponse(responseBody, requestedPath);
+      serverClickmap = parseServerClickmapResponse(responseBody, requestedPath);
     } catch (error) {
       if (!isLatestRequest()) {
         return;
       }
-      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
-      if (error instanceof Error && error.message.includes('Heatmap token does not belong to this project')) {
-        clearHeatmapTokenStorage(app.projectId);
-        serverHeatmapError = 'The stored clickmap token belongs to another project. Generate a fresh token for this project.';
+      serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      if (error instanceof Error && error.message.includes('Clickmap token does not belong to this project')) {
+        clearClickmapTokenStorage(app.projectId);
+        serverClickmapError = 'The stored clickmap token belongs to another project. Generate a fresh token for this project.';
       } else {
-        serverHeatmapError = error instanceof Error ? error.message : 'Failed to load clickmap data';
+        serverClickmapError = error instanceof Error ? error.message : 'Failed to load clickmap data';
       }
     } finally {
       if (isLatestRequest()) {
-        loadingServerHeatmap = false;
+        loadingServerClickmap = false;
         render();
       }
     }
@@ -2761,13 +2995,13 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   // navigates away with a token loaded, drop a sentinel so the dev tool on the
   // next page can auto-reopen straight back into the clickmap tab.
   const onBeforeUnloadResume = () => {
-    const token = getHeatmapTokenFromStorage(app.projectId);
-    const tokenOrigin = getHeatmapOriginFromStorage(app.projectId);
+    const token = getClickmapTokenFromStorage(app.projectId);
+    const tokenOrigin = getClickmapOriginFromStorage(app.projectId);
     if (token == null || (tokenOrigin != null && tokenOrigin !== window.location.origin)) {
       return;
     }
     try {
-      sessionStorage.setItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY, '1');
+      sessionStorage.setItem(CLICKMAP_OVERLAY_RESUME_STORAGE_KEY, '1');
     } catch {
       // ignore (private mode, etc.)
     }
@@ -2783,7 +3017,7 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
     render();
   });
   const onTokenUpdated = () => {
-    runAsynchronously(loadServerHeatmap());
+    runAsynchronously(loadServerClickmap());
   };
   const routePollInterval = window.setInterval(scheduleRender, 500);
   // Mutations the overlay/dev-tool cause themselves must not drive a re-render:
@@ -2817,9 +3051,21 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
   window.addEventListener('resize', onWindowResize);
   visualViewport?.addEventListener('resize', scheduleRender);
   visualViewport?.addEventListener('scroll', scheduleRender);
-  window.addEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, onTokenUpdated);
+  window.addEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, onTokenUpdated);
+  // Dismiss the URL-pattern help popover on an outside click or Escape.
+  const onDocumentPointerDown = (event: MouseEvent) => {
+    if (!urlHelpOpen) return;
+    if (event.target instanceof Node && urlPatternHelp.contains(event.target)) return;
+    if (event.target instanceof Node && urlPatternInfo.contains(event.target)) return;
+    setUrlHelpOpen(false);
+  };
+  const onDocumentKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && urlHelpOpen) setUrlHelpOpen(false);
+  };
+  document.addEventListener('mousedown', onDocumentPointerDown, true);
+  document.addEventListener('keydown', onDocumentKeyDown, true);
   render();
-  runAsynchronously(loadServerHeatmap());
+  runAsynchronously(loadServerClickmap());
 
   container.append(details, toolbar);
   return {
@@ -2831,14 +3077,16 @@ function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabRe
       if (elementSearchDebounce !== 0) window.clearTimeout(elementSearchDebounce);
       window.clearInterval(routePollInterval);
       mutationObserver.disconnect();
-      clearHeatmapOverlayElements();
+      clearClickmapOverlayElements();
       domIndex.clear();
       window.removeEventListener('beforeunload', onBeforeUnloadResume);
       document.removeEventListener('scroll', scheduleRender, true);
       window.removeEventListener('resize', onWindowResize);
       visualViewport?.removeEventListener('resize', scheduleRender);
       visualViewport?.removeEventListener('scroll', scheduleRender);
-      window.removeEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, onTokenUpdated);
+      window.removeEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, onTokenUpdated);
+      document.removeEventListener('mousedown', onDocumentPointerDown, true);
+      document.removeEventListener('keydown', onDocumentKeyDown, true);
       overlayRoot.remove();
     },
   };
@@ -3263,7 +3511,7 @@ function createPanel(
       animateNextPanelGeometryChange();
     }
 
-    panel.classList.toggle('sdt-panel-heatmap', tabId === 'heatmaps');
+    panel.classList.toggle('sdt-panel-clickmap', tabId === 'clickmaps');
     if (tabId === 'dashboard') {
       panel.classList.add('sdt-panel-fullscreen');
       panel.style.width = '';
@@ -3272,7 +3520,7 @@ function createPanel(
     }
 
     panel.classList.remove('sdt-panel-fullscreen');
-    if (tabId === 'heatmaps') {
+    if (tabId === 'clickmaps') {
       panel.style.width = '';
       panel.style.height = '';
       return;
@@ -3284,7 +3532,7 @@ function createPanel(
   const tabs = getTabsForApp(app);
   const storedActiveTab = state.get().activeTab;
   const activeTab = tabs.some((tab) => tab.id === storedActiveTab) ? storedActiveTab : DEFAULT_STATE.activeTab;
-  let lastNonHeatmapTab: TabId = activeTab === 'heatmaps' ? 'overview' : activeTab;
+  let lastNonClickmapTab: TabId = activeTab === 'clickmaps' ? 'overview' : activeTab;
 
   applyPanelMode(activeTab);
 
@@ -3303,8 +3551,8 @@ function createPanel(
   const trailingControls = h('div', { className: 'sdt-tabbar-actions' }, docsLink, closeBtn);
 
   const tabBar = createTabBar(tabs, activeTab, (id) => {
-    if (id !== 'heatmaps') {
-      lastNonHeatmapTab = id as TabId;
+    if (id !== 'clickmaps') {
+      lastNonClickmapTab = id as TabId;
     }
     state.update({ activeTab: id as TabId });
     applyPanelMode(id as TabId, { animate: true });
@@ -3331,20 +3579,20 @@ function createPanel(
     }
   }
 
-  let heatmapsCleanup: (() => void) | null = null;
+  let clickmapsCleanup: (() => void) | null = null;
   // The clickmap tab installs an overlay root, a MutationObserver, and
   // background polling. Unlike other panes it must not be cached-and-hidden:
   // tear it down (running its cleanup) whenever we leave it, so the overlay and
   // its work don't linger after the tab is closed.
-  function teardownHeatmapsPane() {
-    const pane = mountedPanes.get('heatmaps');
+  function teardownClickmapsPane() {
+    const pane = mountedPanes.get('clickmaps');
     if (pane == null) return;
-    if (heatmapsCleanup != null) {
-      heatmapsCleanup();
-      heatmapsCleanup = null;
+    if (clickmapsCleanup != null) {
+      clickmapsCleanup();
+      clickmapsCleanup = null;
     }
     pane.remove();
-    mountedPanes.delete('heatmaps');
+    mountedPanes.delete('clickmaps');
   }
 
   function getOrCreatePane(tabId: TabId): HTMLElement {
@@ -3360,15 +3608,15 @@ function createPanel(
         mountTab(pane, createOverviewTab(app));
         break;
       }
-      case 'heatmaps': {
-        const result = createHeatmapsTab(app, () => {
-          state.update({ activeTab: lastNonHeatmapTab });
-          applyPanelMode(lastNonHeatmapTab, { animate: true });
-          showTab(lastNonHeatmapTab);
+      case 'clickmaps': {
+        const result = createClickmapsTab(app, () => {
+          state.update({ activeTab: lastNonClickmapTab });
+          applyPanelMode(lastNonClickmapTab, { animate: true });
+          showTab(lastNonClickmapTab);
         });
         pane.appendChild(result.element);
         // Tracked separately from `cleanups` so it can run on tab-switch, not just unmount.
-        heatmapsCleanup = result.cleanup ?? null;
+        clickmapsCleanup = result.cleanup ?? null;
         break;
       }
       case 'customize': {
@@ -3398,8 +3646,8 @@ function createPanel(
   }
 
   function showTab(tabId: TabId) {
-    if (tabId !== 'heatmaps') {
-      teardownHeatmapsPane();
+    if (tabId !== 'clickmaps') {
+      teardownClickmapsPane();
     }
     const pane = getOrCreatePane(tabId);
     tabBar.setActive(tabId);
@@ -3465,7 +3713,7 @@ function createPanel(
       if (panelAnimationTimeout !== null) {
         clearTimeout(panelAnimationTimeout);
       }
-      teardownHeatmapsPane();
+      teardownClickmapsPane();
       for (const fn of cleanups) fn();
     },
   };
@@ -3515,8 +3763,8 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     wrapper.appendChild(panel.element);
   }
 
-  function openHeatmapPanel() {
-    state.update({ activeTab: 'heatmaps', isOpen: true });
+  function openClickmapPanel() {
+    state.update({ activeTab: 'clickmaps', isOpen: true });
     if (panel) {
       const currentPanel = panel;
       panel = null;
@@ -3556,24 +3804,24 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   // is mounted it drops a sentinel into sessionStorage on unload; if it's
   // present here, restore the clickmap tab as the active one and reopen the
   // panel so the user picks up where they left off.
-  let shouldResumeHeatmap = false;
+  let shouldResumeClickmap = false;
   try {
-    if (sessionStorage.getItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY) === '1') {
-      shouldResumeHeatmap = true;
-      sessionStorage.removeItem(HEATMAP_OVERLAY_RESUME_STORAGE_KEY);
+    if (sessionStorage.getItem(CLICKMAP_OVERLAY_RESUME_STORAGE_KEY) === '1') {
+      shouldResumeClickmap = true;
+      sessionStorage.removeItem(CLICKMAP_OVERLAY_RESUME_STORAGE_KEY);
     }
   } catch {
     // ignore
   }
-  if (shouldResumeHeatmap) {
-    state.update({ activeTab: 'heatmaps', isOpen: true });
+  if (shouldResumeClickmap) {
+    state.update({ activeTab: 'clickmaps', isOpen: true });
   }
 
   if (state.get().isOpen) {
     openPanel();
   }
 
-  window.addEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, openHeatmapPanel);
+  window.addEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, openClickmapPanel);
 
   const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
     const timestamp = Date.now();
@@ -3602,7 +3850,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
         setGlobalDevToolInstance(null);
       }
       trigger.cleanup();
-      window.removeEventListener(HEATMAP_OVERLAY_TOKEN_UPDATED_EVENT, openHeatmapPanel);
+      window.removeEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, openClickmapPanel);
       removeRequestListener();
       panel?.cleanup();
       if (root.parentNode) {

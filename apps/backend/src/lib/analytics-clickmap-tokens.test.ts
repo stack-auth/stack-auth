@@ -1,34 +1,34 @@
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { signJWT } from "@stackframe/stack-shared/dist/utils/jwt";
 import { describe, expect, it } from "vitest";
-import { normalizeAnalyticsHeatmapOrigin, verifyAnalyticsHeatmapToken } from "./analytics-heatmap-tokens";
+import { normalizeAnalyticsClickmapOrigin, verifyAnalyticsClickmapToken } from "./analytics-clickmap-tokens";
 
-describe("analytics heatmap token helpers", () => {
+describe("analytics clickmap token helpers", () => {
   it("normalizes a trusted-domain URL to its origin", () => {
-    expect(normalizeAnalyticsHeatmapOrigin("https://example.com/dashboard?x=1")).toMatchInlineSnapshot(`"https://example.com"`);
+    expect(normalizeAnalyticsClickmapOrigin("https://example.com/dashboard?x=1")).toMatchInlineSnapshot(`"https://example.com"`);
   });
 
   it("rejects non-HTTP origins", () => {
-    expect(() => normalizeAnalyticsHeatmapOrigin("javascript:alert(1)")).toThrow(StatusError);
+    expect(() => normalizeAnalyticsClickmapOrigin("javascript:alert(1)")).toThrow(StatusError);
   });
 
-  it("returns the project encoded in a valid heatmap token", async () => {
+  it("returns the project encoded in a valid clickmap token", async () => {
     const token = await signJWT({
-      issuer: "hexclave:analytics:heatmap",
-      audience: "hexclave:analytics:heatmap-overlay",
+      issuer: "hexclave:analytics:clickmap",
+      audience: "hexclave:analytics:clickmap-overlay",
       expirationTime: "24h",
       payload: {
-        kind: "analytics_heatmap_overlay",
-        scope: "heatmap:read",
+        kind: "analytics_clickmap_overlay",
+        scope: "clickmap:read",
         project_id: "internal",
         branch_id: "main",
         origin: "http://localhost:8101",
       },
     });
 
-    const payload = await verifyAnalyticsHeatmapToken({
+    const payload = await verifyAnalyticsClickmapToken({
       token,
-      origin: "http://localhost:8101/projects/internal/analytics/heatmaps",
+      origin: "http://localhost:8101/projects/internal/analytics/clickmaps",
     });
 
     expect({
@@ -40,10 +40,10 @@ describe("analytics heatmap token helpers", () => {
     }).toMatchInlineSnapshot(`
       {
         "branch_id": "main",
-        "kind": "analytics_heatmap_overlay",
+        "kind": "analytics_clickmap_overlay",
         "origin": "http://localhost:8101",
         "project_id": "internal",
-        "scope": "heatmap:read",
+        "scope": "clickmap:read",
       }
     `);
   });

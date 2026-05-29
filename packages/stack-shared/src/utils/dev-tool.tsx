@@ -1,5 +1,5 @@
 /**
- * Shared identity of the Hexclave in-page dev tool / heatmap overlay.
+ * Shared identity of the Hexclave in-page dev tool / clickmap overlay.
  *
  * These constants are the single source of truth for "is this DOM / event /
  * stored click part of the dev tool itself?". They are consumed across package
@@ -8,7 +8,7 @@
  *    prefixes every generated class with {@link DEV_TOOL_CLASS_PREFIX};
  *  - the event tracker uses them to skip self-clicks at ingest;
  *  - the backend clickmap query uses them to filter dev-tool clicks out of
- *    aggregate heatmaps server-side.
+ *    aggregate clickmaps server-side.
  *
  * Keep them here so a rename can never silently desync the SQL filter from the
  * actual DOM identity.

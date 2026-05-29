@@ -1,7 +1,7 @@
 /**
  * PostHog-style `elements_chain` format — the single owner of both halves of the
  * contract. The event tracker {@link buildElementsChain serializes} a clicked
- * element (and its ancestors) into a string; the heatmap overlay
+ * element (and its ancestors) into a string; the clickmap overlay
  * {@link parseElementsChain parses} that string back into structured segments so
  * it can re-locate the element in a live DOM.
  *

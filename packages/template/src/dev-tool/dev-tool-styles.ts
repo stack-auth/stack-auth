@@ -133,7 +133,7 @@ export const devToolCSS = `
     border-radius: 0;
   }
 
-  .stack-devtool .sdt-panel-heatmap {
+  .stack-devtool .sdt-panel-clickmap {
     left: 50%;
     right: auto;
     bottom: 18px;
@@ -158,7 +158,7 @@ export const devToolCSS = `
     animation: sdt-panel-enter 0.2s ease-out;
   }
 
-  .stack-devtool .sdt-panel-heatmap .sdt-panel-inner {
+  .stack-devtool .sdt-panel-clickmap .sdt-panel-inner {
     height: auto;
     overflow: visible;
     border-radius: 0;
@@ -172,8 +172,8 @@ export const devToolCSS = `
     display: none;
   }
 
-  .stack-devtool .sdt-panel-heatmap .sdt-tabbar,
-  .stack-devtool .sdt-panel-heatmap .sdt-resize-handle {
+  .stack-devtool .sdt-panel-clickmap .sdt-tabbar,
+  .stack-devtool .sdt-panel-clickmap .sdt-resize-handle {
     display: none;
   }
 
@@ -215,6 +215,7 @@ export const devToolCSS = `
     flex-shrink: 0;
     gap: 2px;
     overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .stack-devtool .sdt-panel-fullscreen .sdt-tabbar {
@@ -354,7 +355,7 @@ export const devToolCSS = `
     min-height: 0;
   }
 
-  .stack-devtool .sdt-panel-heatmap .sdt-content {
+  .stack-devtool .sdt-panel-clickmap .sdt-content {
     flex: none;
     overflow: visible;
   }
@@ -371,7 +372,7 @@ export const devToolCSS = `
     inset: 0;
   }
 
-  .stack-devtool .sdt-panel-heatmap .sdt-tab-layers {
+  .stack-devtool .sdt-panel-clickmap .sdt-tab-layers {
     position: static;
   }
 
@@ -385,7 +386,7 @@ export const devToolCSS = `
     pointer-events: none;
   }
 
-  .stack-devtool .sdt-panel-heatmap .sdt-tab-pane {
+  .stack-devtool .sdt-panel-clickmap .sdt-tab-pane {
     position: static;
     padding: 0;
     overflow: visible;
@@ -413,17 +414,32 @@ export const devToolCSS = `
     }
   }
 
-  .stack-devtool .sdt-tab-pane::-webkit-scrollbar {
-    width: 6px;
+  /* Thin, unobtrusive scrollbars for every scroll container in the dev tool */
+  .stack-devtool * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sdt-border) transparent;
   }
 
-  .stack-devtool .sdt-tab-pane::-webkit-scrollbar-track {
+  .stack-devtool *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .stack-devtool *::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .stack-devtool .sdt-tab-pane::-webkit-scrollbar-thumb {
+  .stack-devtool *::-webkit-scrollbar-thumb {
     background: var(--sdt-border);
     border-radius: 3px;
+  }
+
+  .stack-devtool *::-webkit-scrollbar-thumb:hover {
+    background: var(--sdt-text-tertiary);
+  }
+
+  .stack-devtool *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   /* ===== Overview tab — single column ===== */
@@ -2616,7 +2632,7 @@ export const devToolCSS = `
     line-height: 1.4;
   }
 
-  /* --- Heatmaps --- */
+  /* --- Clickmaps --- */
 
   .stack-devtool .sdt-hm {
     height: auto;
@@ -2640,37 +2656,207 @@ export const devToolCSS = `
     backdrop-filter: blur(18px);
   }
 
-  .stack-devtool .sdt-hm-toolbar-main {
-    min-width: 0;
-    flex: 1;
-    padding-left: 2px;
-  }
-
   .stack-devtool .sdt-hm-toolbar-title {
+    flex-shrink: 0;
+    padding-left: 2px;
     font-size: 13px;
     font-weight: 650;
     color: var(--sdt-text);
     line-height: 1.1;
   }
 
-  .stack-devtool .sdt-hm-toolbar-subtitle {
-    margin-top: 1px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 10.5px;
+  .stack-devtool .sdt-hm-toolbar-filters {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-filters .sdt-hm-filter-input {
+    height: 28px;
+    border-radius: 999px;
+    font-size: 11.5px;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-filters > .sdt-hm-filter-input {
+    flex-shrink: 0;
+    width: auto;
+    max-width: 120px;
+    padding-right: 4px;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-url {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-url .sdt-hm-filter-input {
+    flex: 1;
+  }
+
+  .stack-devtool .sdt-hm-mode {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--sdt-bg-elevated);
+    border: 1px solid var(--sdt-border-subtle);
+  }
+
+  .stack-devtool .sdt-hm-mode-btn {
+    min-width: 24px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sdt-text-tertiary);
+    padding: 0 7px;
+    font: inherit;
+    font-family: var(--sdt-font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .stack-devtool .sdt-hm-mode-btn:hover {
+    color: var(--sdt-text);
+  }
+
+  .stack-devtool .sdt-hm-mode-btn-active {
+    background: var(--sdt-accent);
+    color: white;
+  }
+
+  .stack-devtool .sdt-hm-filter-input-error,
+  .stack-devtool .sdt-hm-filter-input-error:focus {
+    border-color: var(--sdt-error);
+  }
+
+  .stack-devtool .sdt-hm-filter-info {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sdt-text-tertiary);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .stack-devtool .sdt-hm-filter-info:hover,
+  .stack-devtool .sdt-hm-filter-info[aria-expanded="true"] {
+    background: var(--sdt-bg-hover);
+    color: var(--sdt-text);
+  }
+
+  .stack-devtool .sdt-hm-url-help {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    right: 0;
+    z-index: 2;
+    width: 320px;
+    max-width: min(320px, calc(100vw - 32px));
+    box-sizing: border-box;
+    padding: 14px;
+    border: 1px solid var(--sdt-border);
+    border-radius: var(--sdt-radius-lg);
+    background: var(--sdt-bg);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(18px);
+    cursor: default;
+  }
+
+  .stack-devtool .sdt-hm-url-help-open {
+    display: block;
+  }
+
+  .stack-devtool .sdt-hm-url-help-title {
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--sdt-text);
+    margin-bottom: 6px;
+  }
+
+  .stack-devtool .sdt-hm-url-help-body {
+    font-size: 11.5px;
+    line-height: 1.5;
     color: var(--sdt-text-secondary);
   }
 
-  .stack-devtool .sdt-hm-toolbar-metric {
+  .stack-devtool .sdt-hm-url-help-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--sdt-border-subtle);
+  }
+
+  .stack-devtool .sdt-hm-url-help-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .stack-devtool .sdt-hm-url-help-code {
     flex-shrink: 0;
-    border-radius: 999px;
-    background: var(--sdt-accent-muted);
-    color: var(--sdt-accent-hover);
-    padding: 5px 8px;
+    border-radius: var(--sdt-radius);
+    background: var(--sdt-bg-elevated);
+    border: 1px solid var(--sdt-border-subtle);
+    padding: 1px 6px;
+    font-family: var(--sdt-font-mono, ui-monospace, monospace);
     font-size: 11px;
+    color: var(--sdt-text);
+    white-space: nowrap;
+  }
+
+  .stack-devtool .sdt-hm-url-help-desc {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--sdt-text-secondary);
+  }
+
+  .stack-devtool .sdt-hm-toolbar-metrics {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 4px;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--sdt-text-secondary);
+  }
+
+  .stack-devtool .sdt-hm-toolbar-metric-value {
+    font-size: 12px;
     font-weight: 700;
+    color: var(--sdt-text);
     font-variant-numeric: tabular-nums;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-metric-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--sdt-text-tertiary);
   }
 
   .stack-devtool .sdt-hm-icon-btn {
@@ -2716,10 +2902,85 @@ export const devToolCSS = `
     border-bottom: 1px solid var(--sdt-border-subtle);
   }
 
+  .stack-devtool .sdt-hm-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
   .stack-devtool .sdt-hm-filter-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+  }
+
+  .stack-devtool .sdt-hm-seg {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: 30px;
+    padding: 3px;
+    border-radius: var(--sdt-radius);
+    border: 1px solid var(--sdt-border-subtle);
+    background: var(--sdt-bg-elevated);
+    box-sizing: border-box;
+  }
+
+  .stack-devtool .sdt-hm-seg-thumb {
+    position: absolute;
+    top: 3px;
+    left: 0;
+    bottom: 3px;
+    width: 0;
+    border-radius: calc(var(--sdt-radius) - 2px);
+    background: var(--sdt-bg);
+    border: 1px solid var(--sdt-border);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    transform: translateX(0);
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), width 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+
+  .stack-devtool .sdt-hm-seg-btn {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--sdt-text-tertiary);
+    font: inherit;
+    font-family: var(--sdt-font);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0 4px;
+    border-radius: calc(var(--sdt-radius) - 2px);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 160ms ease;
+  }
+
+  .stack-devtool .sdt-hm-seg-btn:hover {
+    color: var(--sdt-text-secondary);
+  }
+
+  .stack-devtool .sdt-hm-seg-btn[aria-checked="true"] {
+    color: var(--sdt-text);
+  }
+
+  .stack-devtool .sdt-hm-seg-btn:focus-visible {
+    outline: 2px solid var(--sdt-accent);
+    outline-offset: -2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stack-devtool .sdt-hm-seg-thumb {
+      transition: none;
+    }
   }
 
   .stack-devtool .sdt-hm-filter-field {

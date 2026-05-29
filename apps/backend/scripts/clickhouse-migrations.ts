@@ -702,7 +702,7 @@ ORDER BY (project_id, branch_id, toDate(event_at), path, viewport_width);
 
 // Materialized view that auto-populates clickmap_events on every $click insert.
 // No POPULATE clause: existing rows are not backfilled (they remain queryable
-// via the existing /api/.../analytics/heatmap route which still reads from
+// via the existing /api/.../analytics/clickmap route which still reads from
 // analytics_internal.events). New click rows flow into both tables.
 //
 // All field accesses use the toFloat64OrZero(toString(...)) pattern that the

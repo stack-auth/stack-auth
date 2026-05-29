@@ -394,7 +394,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
       { displayName: "Replays", href: "../session-replays" },
-      { displayName: "Clickmaps", href: "./heatmaps" },
+      { displayName: "Clickmaps", href: "./clickmaps" },
       { displayName: "Queries", href: "./queries" },
     ],
     screenshots: [],

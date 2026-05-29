@@ -1,7 +1,7 @@
 import { KnownErrors, HexclaveAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { AnalyticsHeatmapOptions, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -1168,8 +1168,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.queryAnalytics(options);
   }
 
-  async getAnalyticsHeatmap(options: AnalyticsHeatmapOptions): Promise<AnalyticsHeatmapResponse> {
-    return await this._interface.getAnalyticsHeatmap({
+  async getAnalyticsClickmap(options: AnalyticsClickmapOptions): Promise<AnalyticsClickmapResponse> {
+    return await this._interface.getAnalyticsClickmap({
       kind: options.kind,
       member_user_ids: options.memberUserIds,
       route_path: options.routePath,
@@ -1186,8 +1186,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
-  async createAnalyticsHeatmapToken(options: { origin: string }): Promise<AnalyticsHeatmapTokenResponse> {
-    return await this._interface.createAnalyticsHeatmapToken(options);
+  async createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse> {
+    return await this._interface.createAnalyticsClickmapToken(options);
   }
 
   async listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult> {
