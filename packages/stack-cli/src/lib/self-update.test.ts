@@ -118,7 +118,6 @@ describe("buildNpxInvocation", () => {
     expect(args).toEqual([
       "--yes",
       "--min-release-age=0",
-      "--minimum-release-age=0",
       "-p",
       "@hexclave/cli@2.8.110",
       "stack",
@@ -139,10 +138,8 @@ describe("buildNpxInvocation", () => {
       binName: "stack",
       forwardArgs: [],
     });
-    // Both keys npm has shipped: `min-release-age` (days, >=11.10.0) and the
-    // earlier `minimumReleaseAge` (minutes, >=11.6.1).
+    // npm's `min-release-age` (>=11.10.0) would otherwise block the latest.
     expect(args).toContain("--min-release-age=0");
-    expect(args).toContain("--minimum-release-age=0");
   });
 
   it("preserves args that start with dashes or contain spaces as individual argv elements", () => {
@@ -153,7 +150,7 @@ describe("buildNpxInvocation", () => {
       forwardArgs: ["dev", "--flag=a b", "--", "echo", "hello world"],
     });
     expect(args).toEqual([
-      "--yes", "--min-release-age=0", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack",
+      "--yes", "--min-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack",
       "dev", "--flag=a b", "--", "echo", "hello world",
     ]);
   });
@@ -205,7 +202,7 @@ describe("decideReexec", () => {
     expect(decision.reexec).toBe(true);
     if (decision.reexec) {
       expect(decision.invocation.args).toEqual([
-        "--yes", "--min-release-age=0", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack", "dev", "--config-file", "x",
+        "--yes", "--min-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack", "dev", "--config-file", "x",
       ]);
     }
   });

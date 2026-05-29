@@ -155,16 +155,12 @@ export function buildNpxInvocation(opts: {
     command,
     args: [
       "--yes",
-      // Override any global "cooldown" for this call only — we always want the
-      // just-published latest, and a pinned version newer than the cooldown
-      // window otherwise fails with ETARGET (which would kill `stack dev`).
-      // npm's real config is `min-release-age` (days, npm >=11.10.0), so
-      // `--min-release-age=0` is what matters for npx. We also pass the
-      // camelCase `--minimum-release-age=0` (the spelling pnpm/bun use, in case
-      // npx is shimmed to them) defensively — npm silently ignores config flags
-      // it doesn't recognize, so the extra flag is harmless.
+      // Override any global npm "cooldown" for this call only — we always want
+      // the just-published latest, and npx of a pinned version newer than the
+      // cooldown window otherwise fails with ETARGET (which would kill
+      // `stack dev`). npm's config is `min-release-age` (days, npm >=11.10.0);
+      // older npm silently ignores the unknown flag.
       "--min-release-age=0",
-      "--minimum-release-age=0",
       "-p",
       `${opts.packageName}@${opts.version}`,
       opts.binName,
