@@ -20,6 +20,24 @@ function getStackServerSecret() {
   return STACK_SERVER_SECRET;
 }
 
+/**
+ * Returns the previous `STACK_SERVER_SECRET` during a rotation, or `null` if none is set.
+ *
+ * When set, keys derived from this secret are accepted for verification (JWTs and OIDC cookies)
+ * but never used for signing new artifacts. Remove the env var once the grace window has
+ * elapsed — see the self-host rotation runbook.
+ */
+export function getOldStackServerSecret(): string | null {
+  const STACK_SERVER_SECRET_OLD = process.env.STACK_SERVER_SECRET_OLD;
+  if (!STACK_SERVER_SECRET_OLD) return null;
+  try {
+    jose.base64url.decode(STACK_SERVER_SECRET_OLD);
+  } catch (e) {
+    throw new StackAssertionError("STACK_SERVER_SECRET_OLD is set but not a valid base64url string. Remove it, or set it to the previous STACK_SERVER_SECRET value.", { cause: e });
+  }
+  return STACK_SERVER_SECRET_OLD;
+}
+
 export async function getJwtInfo(options: {
   jwt: string,
 }) {
@@ -96,6 +114,18 @@ async function getPrivateJwkFromDerivedSecret(derivedSecret: string, kid: string
   };
 }
 
+// Memoization cache for getPrivateJwks. Key is JSON([primarySecret, oldSecret, audience]).
+// Derivation is purely a function of those three inputs, so the cache is safe across calls
+// as long as the env vars are re-read on every call (which they are, below). Cached entries
+// stay valid even if env vars later change because the key includes the secret values.
+//
+// Bounded LRU: audience is typically a per-project identifier, so the keyspace grows with
+// the number of projects (and again on each secret rotation). Cap the cache and evict the
+// oldest entry on insert. Map iteration order is insertion order, so the first key returned
+// by keys() is the oldest. On a hit, we re-insert to bump recency.
+const PRIVATE_JWKS_CACHE_MAX = 1000;
+const privateJwksCache = new Map<string, Promise<PrivateJwk[]>>();
+
 /**
  * Returns a list of valid private JWKs for the given audience, with the first one taking precedence when signing new
  * JWTs.
@@ -103,26 +133,56 @@ async function getPrivateJwkFromDerivedSecret(derivedSecret: string, kid: string
 export async function getPrivateJwks(options: {
   audience: string,
 }): Promise<PrivateJwk[]> {
-  const getHashOfJwkInfo = (type: string) => jose.base64url.encode(
-    crypto
-      .createHash('sha256')
-      .update(JSON.stringify([type, getStackServerSecret(), {
-        audience: options.audience,
-      }]))
-      .digest()
-  );
-  const perAudienceSecret = getHashOfJwkInfo("stack-jwk-audience-secret");
-  const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid").slice(0, 12);
+  const primarySecret = getStackServerSecret();
+  const oldSecret = getOldStackServerSecret();
+  const cacheKey = JSON.stringify([primarySecret, oldSecret, options.audience]);
+  const cached = privateJwksCache.get(cacheKey);
+  if (cached) {
+    // Bump recency: re-insert so this key becomes most-recently-used.
+    privateJwksCache.delete(cacheKey);
+    privateJwksCache.set(cacheKey, cached);
+    return await cached;
+  }
 
-  const oldPerAudienceSecret = oldGetPerAudienceSecret({ audience: options.audience });
-  const oldPerAudienceKid = oldGetKid({ secret: oldPerAudienceSecret });
+  const derivePairForSecret = async (secret: string): Promise<PrivateJwk[]> => {
+    const getHashOfJwkInfo = (type: string) => jose.base64url.encode(
+      crypto
+        .createHash('sha256')
+        .update(JSON.stringify([type, secret, {
+          audience: options.audience,
+        }]))
+        .digest()
+    );
+    const perAudienceSecret = getHashOfJwkInfo("stack-jwk-audience-secret");
+    const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid").slice(0, 12);
 
-  return [
-    // TODO next-release: make this not take precedence; then, in the release after that, remove it entirely
-    await getPrivateJwkFromDerivedSecret(oldPerAudienceSecret, oldPerAudienceKid),
+    const oldPerAudienceSecret = oldGetPerAudienceSecret({ audience: options.audience, secret });
+    const oldPerAudienceKid = oldGetKid({ secret: oldPerAudienceSecret });
 
-    await getPrivateJwkFromDerivedSecret(perAudienceSecret, perAudienceKid),
-  ];
+    return [
+      // TODO next-release: make this not take precedence; then, in the release after that, remove it entirely
+      await getPrivateJwkFromDerivedSecret(oldPerAudienceSecret, oldPerAudienceKid),
+
+      await getPrivateJwkFromDerivedSecret(perAudienceSecret, perAudienceKid),
+    ];
+  };
+
+  const computePromise = (async () => {
+    const primaryPair = await derivePairForSecret(primarySecret);
+    const oldPair = oldSecret !== null && oldSecret !== primarySecret ? await derivePairForSecret(oldSecret) : [];
+    // Signing uses index 0 (primary secret, legacy derivation). Verify accepts all entries.
+    return [...primaryPair, ...oldPair];
+  })();
+  // Evict on rejection so a transient error doesn't poison the cache.
+  computePromise.catch(() => privateJwksCache.delete(cacheKey));
+  privateJwksCache.set(cacheKey, computePromise);
+  // Evict oldest entries while over capacity (Map iterates in insertion order).
+  while (privateJwksCache.size > PRIVATE_JWKS_CACHE_MAX) {
+    const oldestKey = privateJwksCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    privateJwksCache.delete(oldestKey);
+  }
+  return await computePromise;
 }
 
 export type PublicJwk = {
@@ -141,6 +201,7 @@ export async function getPublicJwkSet(privateJwks: PrivateJwk[]): Promise<{ keys
 
 function oldGetPerAudienceSecret(options: {
   audience: string,
+  secret: string,
 }) {
   if (options.audience === "kid") {
     throw new HexclaveAssertionError("You cannot use the 'kid' audience for a per-audience secret, see comment below in jwt.tsx");
@@ -150,7 +211,7 @@ function oldGetPerAudienceSecret(options: {
       .createHash('sha256')
       // TODO we should prefix a string like "stack-audience-secret" before we hash so you can't use `getKid(...)` to get the secret for eg. the "kid" audience if the same secret value is used
       // Sadly doing this modification is a bit annoying as we need to leave the old keys to be valid for a little longer
-      .update(JSON.stringify([getStackServerSecret(), options.audience]))
+      .update(JSON.stringify([options.secret, options.audience]))
       .digest()
   );
 };
