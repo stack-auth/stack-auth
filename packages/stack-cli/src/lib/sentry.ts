@@ -4,23 +4,11 @@ import { registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
-import { readFileSync } from "fs";
 import { homedir } from "os";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { cliVersion } from "./own-package.js";
 
 // Replaced at build time by tsdown `define`. Empty = not configured (dev/unbuilt).
 declare const __STACK_CLI_SENTRY_DSN__: string;
-
-function readPackageVersion(): string | undefined {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf-8")) as { version?: string };
-    return pkg.version;
-  } catch {
-    return undefined;
-  }
-}
 
 function scrubString(input: string): string {
   let out = input;
@@ -58,7 +46,7 @@ function scrubValue(value: unknown, key?: string): unknown {
 
 export function initSentry() {
   const dsn = typeof __STACK_CLI_SENTRY_DSN__ === "string" ? __STACK_CLI_SENTRY_DSN__ : "";
-  const version = readPackageVersion();
+  const version = cliVersion();
 
   Sentry.init({
     ...sentryBaseConfig,

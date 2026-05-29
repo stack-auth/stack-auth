@@ -92,6 +92,41 @@ describe("dev env state", () => {
     expect(state.cliUpdateCheck?.latestVersion).toBe("2.0.0");
   });
 
+  it("does not clobber projectsByConfigPath or anonymousRefreshToken when writing the update-check cache", () => {
+    useTempStateFile();
+    writeDevEnvState({
+      version: 1,
+      anonymousRefreshToken: "rt-123",
+      projectsByConfigPath: {
+        "/a/stack.config.ts": {
+          projectId: "p", teamId: "t", publishableClientKey: "pk",
+          secretServerKey: "sk", apiBaseUrl: "http://x", updatedAtMillis: 1,
+        },
+      },
+    });
+    writeCliUpdateCheckCache({ packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 1 });
+    const state = readDevEnvState();
+    expect(state.anonymousRefreshToken).toBe("rt-123");
+    expect(state.projectsByConfigPath["/a/stack.config.ts"]?.projectId).toBe("p");
+    expect(state.cliUpdateCheck?.latestVersion).toBe("2.0.0");
+  });
+
+  it("reads localDashboard.version as undefined from a legacy file without that field", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      localDashboard: { port: 26700, secret: "s", pid: 999, startedAtMillis: 1 },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    const state = readDevEnvState();
+    expect(state.localDashboard?.pid).toBe(999);
+    expect(state.localDashboard?.version).toBeUndefined();
+  });
+
   it("writes state as owner-readable JSON", () => {
     useTempStateFile();
     writeDevEnvState({

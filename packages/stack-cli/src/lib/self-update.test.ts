@@ -4,6 +4,7 @@ import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildNpxInvocation,
+  decideReexec,
   DISABLE_AUTO_UPDATE_ENV,
   isEnvFlagEnabled,
   isVersionNewer,
@@ -11,6 +12,7 @@ import {
   shouldAutoUpdate,
   SKIP_AUTO_UPDATE_ENV,
 } from "./self-update.js";
+import type { OwnPackage } from "./own-package.js";
 
 describe("isEnvFlagEnabled", () => {
   it("treats absent / empty / 0 / false as disabled", () => {
@@ -45,6 +47,16 @@ describe("shouldAutoUpdate", () => {
   it("is disabled in CI", () => {
     expect(shouldAutoUpdate({ CI: "true" })).toBe(false);
   });
+
+  it("still auto-updates when CI is a falsy string (CI=false / CI=0)", () => {
+    expect(shouldAutoUpdate({ CI: "false" })).toBe(true);
+    expect(shouldAutoUpdate({ CI: "0" })).toBe(true);
+  });
+
+  it("does not skip when an opt-out flag is a falsy string", () => {
+    expect(shouldAutoUpdate({ [SKIP_AUTO_UPDATE_ENV]: "0" })).toBe(true);
+    expect(shouldAutoUpdate({ [DISABLE_AUTO_UPDATE_ENV]: "false" })).toBe(true);
+  });
 });
 
 describe("isVersionNewer", () => {
@@ -68,6 +80,29 @@ describe("isVersionNewer", () => {
   it("returns false for unparseable versions (never downgrade or guess)", () => {
     expect(isVersionNewer("garbage", "2.8.109")).toBe(false);
     expect(isVersionNewer("2.8.110", "garbage")).toBe(false);
+  });
+
+  it("tolerates a leading v and surrounding whitespace on either side", () => {
+    expect(isVersionNewer("v2.8.110", "2.8.109")).toBe(true);
+    expect(isVersionNewer("2.8.110", "v2.8.109")).toBe(true);
+    expect(isVersionNewer("  2.8.110  ", "2.8.109")).toBe(true);
+    expect(isVersionNewer("v2.8.110", "v2.8.110")).toBe(false);
+  });
+
+  it("treats a two-segment version (x.y) as unparseable", () => {
+    expect(isVersionNewer("2.8", "2.8.109")).toBe(false);
+    expect(isVersionNewer("2.8.109", "2.8")).toBe(false);
+  });
+
+  it("ignores prerelease identifiers when both cores are equal prereleases", () => {
+    // Only "release beats prerelease" is modeled; beta.2 is NOT newer than beta.1.
+    expect(isVersionNewer("2.8.109-beta.2", "2.8.109-beta.1")).toBe(false);
+    expect(isVersionNewer("2.8.109-beta.1", "2.8.109-beta.2")).toBe(false);
+  });
+
+  it("compares very large numeric segments correctly", () => {
+    expect(isVersionNewer("2.8.1000000000", "2.8.999999999")).toBe(true);
+    expect(isVersionNewer("10000000000.0.0", "9999999999.0.0")).toBe(true);
   });
 });
 
@@ -93,6 +128,71 @@ describe("buildNpxInvocation", () => {
       "run",
       "dev:app",
     ]);
+  });
+
+  it("preserves args that start with dashes or contain spaces as individual argv elements", () => {
+    const { args } = buildNpxInvocation({
+      packageName: "@hexclave/cli",
+      version: "2.8.110",
+      binName: "stack",
+      forwardArgs: ["dev", "--flag=a b", "--", "echo", "hello world"],
+    });
+    expect(args).toEqual([
+      "--yes", "-p", "@hexclave/cli@2.8.110", "stack",
+      "dev", "--flag=a b", "--", "echo", "hello world",
+    ]);
+  });
+
+  it("uses npx.cmd on Windows", () => {
+    const spy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    try {
+      expect(buildNpxInvocation({
+        packageName: "@hexclave/cli", version: "1.0.0", binName: "stack", forwardArgs: [],
+      }).command).toBe("npx.cmd");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("decideReexec", () => {
+  const pkg: OwnPackage = { name: "@hexclave/cli", version: "2.8.109", binName: "stack" };
+
+  it("does not re-exec when auto-update is disabled", () => {
+    expect(decideReexec({ env: { CI: "true" }, pkg, latest: "9.9.9", forwardArgs: [] }))
+      .toEqual({ reexec: false, reason: "disabled" });
+  });
+
+  it("does not re-exec when own package is unresolvable", () => {
+    expect(decideReexec({ env: {}, pkg: null, latest: "9.9.9", forwardArgs: [] }))
+      .toEqual({ reexec: false, reason: "no-package" });
+  });
+
+  it("does not re-exec when the registry returned nothing", () => {
+    expect(decideReexec({ env: {}, pkg, latest: null, forwardArgs: [] }))
+      .toEqual({ reexec: false, reason: "no-latest" });
+  });
+
+  it("does not re-exec when latest is not strictly newer", () => {
+    expect(decideReexec({ env: {}, pkg, latest: "2.8.109", forwardArgs: ["dev"] }))
+      .toEqual({ reexec: false, reason: "not-newer" });
+    expect(decideReexec({ env: {}, pkg, latest: "2.8.108", forwardArgs: ["dev"] }))
+      .toEqual({ reexec: false, reason: "not-newer" });
+  });
+
+  it("re-execs with a pinned npx invocation when a newer version exists", () => {
+    const decision = decideReexec({
+      env: {},
+      pkg,
+      latest: "2.8.110",
+      forwardArgs: ["dev", "--config-file", "x"],
+    });
+    expect(decision.reexec).toBe(true);
+    if (decision.reexec) {
+      expect(decision.invocation.args).toEqual([
+        "--yes", "-p", "@hexclave/cli@2.8.110", "stack", "dev", "--config-file", "x",
+      ]);
+    }
   });
 });
 
@@ -170,5 +270,61 @@ describe("resolveLatestVersion", () => {
 
     const result = await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 1_000 });
     expect(result).toBeNull();
+  });
+
+  it("re-fetches when the cache age exactly equals the TTL (boundary is exclusive)", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ version: "2.0.0" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ version: "2.1.0" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 1_000 });
+    // now - checkedAt === ttlMs exactly → not "< ttl" → re-fetch.
+    const atBoundary = await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 11_000 });
+    expect(atBoundary).toBe("2.1.0");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns null on an OK response whose body is missing `version`", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ name: "@hexclave/cli" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 1_000 })).toBeNull();
+  });
+
+  it("returns null (and does not cache) when `version` is not a string", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ version: 123 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 1_000 })).toBeNull();
+
+    // Nothing cached → a later good fetch still succeeds.
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ version: "2.0.0" }) });
+    expect(await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 2_000 })).toBe("2.0.0");
+  });
+
+  it("requests the percent-encoded scoped `/latest` URL on the default registry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ version: "2.0.0" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 1_000 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://registry.npmjs.org/@hexclave%2fcli/latest",
+      expect.objectContaining({ headers: { Accept: "application/json" } }),
+    );
+  });
+
+  it("uses npm_config_registry (with trailing slashes stripped) for the lookup URL", async () => {
+    const prev = process.env.npm_config_registry;
+    process.env.npm_config_registry = "https://npm.internal.example.com///";
+    try {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ version: "2.0.0" }) });
+      vi.stubGlobal("fetch", fetchMock);
+      await resolveLatestVersion("@hexclave/cli", { timeoutMs: 1000, ttlMs: 10_000, now: 1_000 });
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://npm.internal.example.com/@hexclave%2fcli/latest",
+        expect.anything(),
+      );
+    } finally {
+      if (prev == null) delete process.env.npm_config_registry;
+      else process.env.npm_config_registry = prev;
+    }
   });
 });

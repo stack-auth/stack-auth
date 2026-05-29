@@ -19,6 +19,7 @@ import {
   pollInternalPck,
 } from "../lib/emulator-paths.js";
 import { CliError } from "../lib/errors.js";
+import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { writeIso } from "../lib/iso.js";
 
@@ -337,18 +338,7 @@ async function buildEmulatorChildEnv(resolvedConfigFile: string | undefined): Pr
 function runChildProcess(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, { stdio: "inherit", env });
-
-    const forward = (signal: NodeJS.Signals) => () => child.kill(signal);
-    const onSigint = forward("SIGINT");
-    const onSigterm = forward("SIGTERM");
-    const cleanup = () => {
-      process.off("SIGINT", onSigint);
-      process.off("SIGTERM", onSigterm);
-    };
-
-    process.on("SIGINT", onSigint);
-    process.on("SIGTERM", onSigterm);
-
+    const cleanup = forwardSignals(child);
     child.on("close", (code) => {
       cleanup();
       resolvePromise(code ?? 1);

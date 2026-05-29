@@ -4,10 +4,12 @@ import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirS
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
+import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
-import { cliVersion, isVersionNewer, maybeReexecToLatest } from "../lib/self-update.js";
+import { cliVersion } from "../lib/own-package.js";
+import { isVersionNewer, maybeReexecToLatest } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -32,6 +34,7 @@ const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_PORT = 26700;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
+const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
@@ -240,31 +243,63 @@ async function isDashboardReachable(url: string): Promise<boolean> {
   }
 }
 
+// Restart the running dashboard only when ours is strictly newer; this is how a
+// re-exec'd `npx @latest` rolls out a fresh dashboard without a reinstall.
+// Equal/older/unknown versions (e.g. a dashboard recorded by a pre-feature CLI
+// with no version field) are reused as-is. Exported for unit testing.
+export function shouldRestartDashboard(currentVersion: string | undefined, runningVersion: string | undefined): boolean {
+  return currentVersion != null && runningVersion != null && isVersionNewer(currentVersion, runningVersion);
+}
+
+// Whether `pid` refers to a live process. EPERM means it exists but is owned by
+// another user — i.e. the pid was recycled onto something that isn't ours.
+export function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 // Terminate the background dashboard recorded in dev-env state and wait until
-// the port stops answering, so a fresh (newer) dashboard can bind it.
-async function killLocalDashboard(url: string): Promise<void> {
+// both the process is gone AND the port stops answering, so a fresh (newer)
+// dashboard can rebind without EADDRINUSE.
+export async function killLocalDashboard(url: string): Promise<void> {
   const pid = readDevEnvState().localDashboard?.pid;
   if (pid == null || pid <= 0) return;
+  if (!processExists(pid)) return;
+
   try {
     process.kill(pid, "SIGTERM");
   } catch (error) {
-    // Already gone (ESRCH) — nothing to wait for.
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    const code = (error as NodeJS.ErrnoException).code;
+    // ESRCH: already gone. EPERM: the pid was recycled onto a process we don't
+    // own, so it isn't our dashboard — don't wait on it or escalate to SIGKILL.
+    if (code === "ESRCH" || code === "EPERM") return;
+    throw error;
   }
 
+  // Wait for graceful shutdown: the listening socket isn't released until the
+  // process actually exits, so gate on the pid being gone, not just on /health.
   const startedAt = performance.now();
   while (performance.now() - startedAt < DASHBOARD_STOP_TIMEOUT_MS) {
-    if (!(await isDashboardReachable(url))) return;
+    if (!processExists(pid) && !(await isDashboardReachable(url))) return;
     await wait(200);
   }
 
-  // Still up after SIGTERM — force it down so we don't fail to rebind the port.
+  // Still up after SIGTERM — force it down, then wait for the kernel to release
+  // the socket so the replacement can bind it.
   try {
     process.kill(pid, "SIGKILL");
   } catch {
     // best-effort
   }
-  await wait(500);
+  const killDeadline = performance.now() + DASHBOARD_FORCE_STOP_TIMEOUT_MS;
+  while (performance.now() < killDeadline) {
+    if (!processExists(pid) && !(await isDashboardReachable(url))) return;
+    await wait(200);
+  }
 }
 
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string }): Promise<void> {
@@ -272,10 +307,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   if (await isDashboardReachable(url)) {
     const currentVersion = cliVersion();
     const runningVersion = readDevEnvState().localDashboard?.version;
-    // Replace the running dashboard only when ours is strictly newer; this is
-    // how a re-exec'd `npx @latest` rolls out a fresh dashboard without a
-    // reinstall. Equal/older/unknown versions are reused as before.
-    if (currentVersion != null && runningVersion != null && isVersionNewer(currentVersion, runningVersion)) {
+    if (shouldRestartDashboard(currentVersion, runningVersion)) {
       logDev(`Existing Hexclave dashboard is ${runningVersion}; restarting with ${currentVersion}...`);
       await killLocalDashboard(url);
     } else {
@@ -412,15 +444,7 @@ async function createRemoteDevelopmentEnvironmentSession(options: {
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command.command, command.args, { stdio: "inherit", env });
-    const forward = (signal: NodeJS.Signals) => () => child.kill(signal);
-    const onSigint = forward("SIGINT");
-    const onSigterm = forward("SIGTERM");
-    const cleanup = () => {
-      process.off("SIGINT", onSigint);
-      process.off("SIGTERM", onSigterm);
-    };
-    process.on("SIGINT", onSigint);
-    process.on("SIGTERM", onSigterm);
+    const cleanup = forwardSignals(child);
     child.on("close", (code) => {
       cleanup();
       resolvePromise(code ?? 1);

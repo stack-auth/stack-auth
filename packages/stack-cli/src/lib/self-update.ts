@@ -1,8 +1,7 @@
 import { spawn } from "child_process";
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { forwardSignals } from "./child-process.js";
 import { readCliUpdateCheckCache, writeCliUpdateCheckCache } from "./dev-env-state.js";
+import { getOwnPackage, type OwnPackage } from "./own-package.js";
 
 // Set on the process we re-exec via npx so the child doesn't try to update
 // itself again (it already *is* the latest), preventing an infinite loop.
@@ -56,7 +55,8 @@ function parseVersionCore(version: string): ParsedVersion | null {
 
 // Returns true only when `candidate` is strictly newer than `current`. Unknown
 // or unparseable versions return false so we never re-exec into a version we
-// can't reason about (and never downgrade).
+// can't reason about (and never downgrade). Prerelease identifiers beyond the
+// "release beats same-core prerelease" rule are intentionally not ordered.
 export function isVersionNewer(candidate: string, current: string): boolean {
   const a = parseVersionCore(candidate);
   const b = parseVersionCore(current);
@@ -68,50 +68,6 @@ export function isVersionNewer(candidate: string, current: string): boolean {
   }
   // Same x.y.z: a final release outranks a prerelease of the same core.
   return !a.hasPrerelease && b.hasPrerelease;
-}
-
-export type OwnPackage = {
-  name: string,
-  version: string,
-  binName: string,
-};
-
-function resolveBinName(bin: unknown, packageName: string): string {
-  if (bin != null && typeof bin === "object") {
-    const keys = Object.keys(bin as Record<string, unknown>);
-    // Prefer the `stack` bin: it exists today and is kept as an alias after the
-    // hexclave rename, so it's the one bin name guaranteed across versions.
-    if (keys.includes("stack")) return "stack";
-    if (keys.length > 0) return keys[0];
-  }
-  // A string `bin` (or none) maps to the unscoped package name.
-  return packageName.includes("/") ? packageName.split("/")[1] : packageName;
-}
-
-// Reads this CLI's own package.json. After bundling, every module collapses
-// into dist/index.js, so package.json is one directory up from the module dir
-// in both the bundled and source layouts.
-export function getOwnPackage(): OwnPackage | null {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf-8")) as {
-      name?: unknown,
-      version?: unknown,
-      bin?: unknown,
-    };
-    if (typeof pkg.name !== "string" || typeof pkg.version !== "string") return null;
-    return {
-      name: pkg.name,
-      version: pkg.version,
-      binName: resolveBinName(pkg.bin, pkg.name),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function cliVersion(): string | undefined {
-  return getOwnPackage()?.version;
 }
 
 function npmRegistry(): string {
@@ -143,9 +99,9 @@ export function updateCheckTtlMs(): number {
 }
 
 async function fetchLatestVersion(packageName: string, timeoutMs: number): Promise<string | null> {
-  // Manual AbortController instead of AbortSignal.timeout: the latter isn't
-  // present on jsdom's AbortSignal (the test environment), and evaluating it
-  // would throw before fetch is even reached.
+  // Manual AbortController + clearTimeout (rather than AbortSignal.timeout) so
+  // the timer is always cleared on the fast path and we stay compatible with
+  // older Node runtimes that lack AbortSignal.timeout.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -201,6 +157,34 @@ export function buildNpxInvocation(opts: {
   };
 }
 
+export type ReexecDecision =
+  | { reexec: false, reason: "disabled" | "no-package" | "no-latest" | "not-newer" }
+  | { reexec: true, invocation: NpxInvocation };
+
+// Pure decision: given the environment, our own package, the resolved latest
+// version, and the args to forward, decide whether (and how) to re-exec. Kept
+// free of I/O so the branching can be unit-tested directly.
+export function decideReexec(opts: {
+  env: NodeJS.ProcessEnv,
+  pkg: OwnPackage | null,
+  latest: string | null,
+  forwardArgs: string[],
+}): ReexecDecision {
+  if (!shouldAutoUpdate(opts.env)) return { reexec: false, reason: "disabled" };
+  if (opts.pkg == null) return { reexec: false, reason: "no-package" };
+  if (opts.latest == null) return { reexec: false, reason: "no-latest" };
+  if (!isVersionNewer(opts.latest, opts.pkg.version)) return { reexec: false, reason: "not-newer" };
+  return {
+    reexec: true,
+    invocation: buildNpxInvocation({
+      packageName: opts.pkg.name,
+      version: opts.latest,
+      binName: opts.pkg.binName,
+      forwardArgs: opts.forwardArgs,
+    }),
+  };
+}
+
 type ReexecResult =
   | { exited: true, code: number }
   | { exited: false, error: string };
@@ -211,22 +195,7 @@ function runReexec(invocation: NpxInvocation): Promise<ReexecResult> {
       stdio: "inherit",
       env: { ...process.env, [SKIP_AUTO_UPDATE_ENV]: "1" },
     });
-
-    const forward = (signal: NodeJS.Signals) => () => {
-      try {
-        child.kill(signal);
-      } catch {
-        // best-effort
-      }
-    };
-    const onSigint = forward("SIGINT");
-    const onSigterm = forward("SIGTERM");
-    const cleanup = () => {
-      process.off("SIGINT", onSigint);
-      process.off("SIGTERM", onSigterm);
-    };
-    process.on("SIGINT", onSigint);
-    process.on("SIGTERM", onSigterm);
+    const cleanup = forwardSignals(child);
 
     child.on("close", (code) => {
       cleanup();
@@ -246,6 +215,7 @@ function runReexec(invocation: NpxInvocation): Promise<ReexecResult> {
 // reinstalling, then exits with the child's code. Best-effort: any failure
 // (offline, no npx, opted out) silently falls through to the installed CLI.
 export async function maybeReexecToLatest(opts: { forwardArgs: string[] }): Promise<void> {
+  // Fast-path: don't even hit the registry when auto-update is off.
   if (!shouldAutoUpdate(process.env)) return;
 
   const pkg = getOwnPackage();
@@ -255,21 +225,16 @@ export async function maybeReexecToLatest(opts: { forwardArgs: string[] }): Prom
     timeoutMs: updateCheckTimeoutMs(),
     ttlMs: updateCheckTtlMs(),
   });
-  if (latest == null) return;
-  if (!isVersionNewer(latest, pkg.version)) return;
+
+  const decision = decideReexec({ env: process.env, pkg, latest, forwardArgs: opts.forwardArgs });
+  if (!decision.reexec) return;
 
   logUpdate(
     `A newer ${pkg.name} (${latest}) is available; re-running via npx to use the latest dashboard. ` +
     `Set ${DISABLE_AUTO_UPDATE_ENV}=1 to disable.`,
   );
 
-  const invocation = buildNpxInvocation({
-    packageName: pkg.name,
-    version: latest,
-    binName: pkg.binName,
-    forwardArgs: opts.forwardArgs,
-  });
-  const result = await runReexec(invocation);
+  const result = await runReexec(decision.invocation);
   if (result.exited) {
     process.exit(result.code);
   }
