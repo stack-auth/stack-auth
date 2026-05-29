@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/dashboard-ui-components",
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "repository": "https://github.com/hexclave/hexclave",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,

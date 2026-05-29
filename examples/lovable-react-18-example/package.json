@@ -2,7 +2,7 @@
   "name": "@hexclave/lovable-react-18-example",
   "private": true,
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "repository": "https://github.com/hexclave/hexclave",
   "type": "module",
   "scripts": {
     "dev": "vite",

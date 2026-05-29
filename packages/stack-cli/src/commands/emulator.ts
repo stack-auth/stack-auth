@@ -24,7 +24,7 @@ import { writeIso } from "../lib/iso.js";
 
 const DEFAULT_PORT_PREFIX = "81";
 const GITHUB_API = "https://api.github.com";
-const DEFAULT_REPO = "stack-auth/stack-auth";
+const DEFAULT_REPO = "hexclave/hexclave";
 const AARCH64_FIRMWARE_PATHS = [
   "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
   "/usr/share/qemu/edk2-aarch64-code.fd",
@@ -789,7 +789,7 @@ export function registerEmulatorCommand(program: Command) {
     .option("--arch <arch>", "Target architecture (default: current system arch)")
     .option("--branch <branch>", "Release branch (default: dev)")
     .option("--tag <tag>", "Specific release tag (default: latest)")
-    .option("--repo <repo>", "GitHub repository (default: stack-auth/stack-auth)")
+    .option("--repo <repo>", "GitHub repository (default: hexclave/hexclave)")
     .option("--pr <number>", "Pull from a PR's CI artifacts")
     .option("--run <id>", "Pull from a specific workflow run's artifacts")
     .option("--skip-snapshot", "Download only the qcow2; skip the one-time local snapshot capture")
@@ -929,7 +929,7 @@ export function registerEmulatorCommand(program: Command) {
   emulator
     .command("list-releases")
     .description("List available emulator releases")
-    .option("--repo <repo>", "GitHub repository (default: stack-auth/stack-auth)")
+    .option("--repo <repo>", "GitHub repository (default: hexclave/hexclave)")
     .action(async (opts) => {
       const repo = opts.repo ?? DEFAULT_REPO;
       console.log(`Available emulator releases from ${repo}:\n`);

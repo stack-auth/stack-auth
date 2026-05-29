@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/backend",
   "version": "1.0.0",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
   "scripts": {
