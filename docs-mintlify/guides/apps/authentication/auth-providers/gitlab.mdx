@@ -14,7 +14,7 @@ This guide explains how to set up GitLab as an authentication provider with Hexc
     3. In the left sidebar, select **Applications** > **Add new application**.
     4. Fill out the form with the following details:
        - **Name**: Choose a name for your application
-       - **Redirect URI**: Enter the Redirect URL shown in the Hexclave dashboard when configuring GitLab (for Hexclave Cloud, this is commonly `https://api.hexclave.com/api/v1/auth/oauth/callback/gitlab` — always copy the exact value from your dashboard)
+       - **Redirect URI**: `https://api.hexclave.com/api/v1/auth/oauth/callback/gitlab`
        - **Scopes**: Select at minimum the `profile` and `email` scopes
     5. Click **Save application**.
     6. GitLab will display your **Application ID** and **Secret**. Make note of these values as you'll need them for the next steps.
