@@ -165,7 +165,7 @@ function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: 
   console.log("  • Start your dev server, then visit /handler/sign-up to create a test user");
   console.log("    (and /handler/sign-in to log in). Drop <UserButton /> into a page to see the session.");
 
-  if (args.projectId) {
+  if (args.projectId != null) {
     console.log("  • Manage this project in the dashboard:");
     console.log(`      ${args.dashboardUrl}/projects/${encodeURIComponent(args.projectId)}`);
   }
