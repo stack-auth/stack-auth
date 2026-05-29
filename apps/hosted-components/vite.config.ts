@@ -85,7 +85,13 @@ export default defineConfig({
     watchNodeModules(['@stackframe/react', '@stackframe/stack-shared']),
     tsConfigPaths(),
     tanstackStart(),
-    nitro(),
+    nitro({
+      config: {
+        scanDirs: [
+          'src/server',
+        ],
+      },
+    }),
     // react's vite plugin must come after start's vite plugin
     viteReact(),
   ],

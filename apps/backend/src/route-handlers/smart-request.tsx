@@ -18,7 +18,7 @@ import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/dist/utils/te
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 
-const allowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
+const allowedMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 
 export type SmartRequestAuth = {
   project: Omit<ProjectsCrud["Admin"]["Read"], "config">,
@@ -115,7 +115,7 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRe
 
 
 async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
-  const contentType = req.method === "GET" ? undefined : req.headers.get("content-type")?.split(";")[0];
+  const contentType = req.method === "GET" || req.method === "HEAD" ? undefined : req.headers.get("content-type")?.split(";")[0];
 
   const getText = () => {
     try {

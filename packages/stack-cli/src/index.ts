@@ -28,7 +28,7 @@ const program = new Command();
 
 program
   .name("stack")
-  .description("Hexclave CLI")
+  .description("Hexclave CLI. For more information, go to https://docs.hexclave.com. If you're an AI agent, go to https://skill.hexclave.com.")
   .version(pkg.version)
   .option("--json", "Output in JSON format");
 

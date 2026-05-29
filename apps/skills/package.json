@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@stackframe/stack-shared": "workspace:*",
     "next": "16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3"
