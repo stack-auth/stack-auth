@@ -13,7 +13,6 @@ import { createInitPrompt } from "../lib/init-prompt.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import { isEmulatorImageInstalled } from "./emulator.js";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -110,14 +109,11 @@ async function runInit(program: Command, opts: InitOptions) {
     mode = "link-config";
   } else {
     console.log("Creating a new Hexclave project.\n");
-    const localLabel = isEmulatorImageInstalled()
-      ? "Local (emulator already installed)"
-      : "Local (requires local emulator installation, ~1.3gb storage required)";
     const location = await select({
       message: "Where would you like to create the project?",
       choices: [
         { name: "Hexclave Cloud", value: "hosted" as const },
-        { name: localLabel, value: "local" as const },
+        { name: "Local config file", value: "local" as const },
       ],
     });
     mode = location === "local" ? "create" : "create-cloud";
@@ -169,11 +165,7 @@ function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: 
   console.log("  • Start your dev server, then visit /handler/sign-up to create a test user");
   console.log("    (and /handler/sign-in to log in). Drop <UserButton /> into a page to see the session.");
 
-  if (args.mode === "create") {
-    console.log("  • You're wired up to the local emulator. Start it in another terminal:");
-    console.log("      npx @stackframe/stack-cli emulator start");
-    console.log("    Local dashboard: http://localhost:26700");
-  } else if (args.projectId) {
+  if (args.projectId != null) {
     console.log("  • Manage this project in the dashboard:");
     console.log(`      ${args.dashboardUrl}/projects/${encodeURIComponent(args.projectId)}`);
   }
@@ -229,7 +221,6 @@ async function ensureLoggedInSession() {
 async function writeProjectKeysToEnv(
   project: { id: string, app: { createInternalApiKey: (opts: { description: string, expiresAt: Date, hasPublishableClientKey: boolean, hasSecretServerKey: boolean, hasSuperSecretAdminKey: boolean }) => Promise<{ publishableClientKey?: string | null, secretServerKey?: string | null }> } },
   outputDir: string,
-  variant: "cloud" | "local" = "cloud",
 ) {
   const apiKey = await project.app.createInternalApiKey({
     description: "Created by CLI init script",
@@ -242,16 +233,8 @@ async function writeProjectKeysToEnv(
   const publishableClientKey = apiKey.publishableClientKey ?? throwErr("createInternalApiKey returned no publishableClientKey despite hasPublishableClientKey=true");
   const secretServerKey = apiKey.secretServerKey ?? throwErr("createInternalApiKey returned no secretServerKey despite hasSecretServerKey=true");
 
-  const header = variant === "local"
-    ? [
-      "# Hexclave — local emulator keys",
-      "# These credentials point at your local Hexclave emulator, not a cloud project.",
-      "# They are only valid while the emulator is running (`stack emulator start`).",
-    ]
-    : ["# Hexclave"];
-
   const envLines = [
-    ...header,
+    "# Hexclave",
     `NEXT_PUBLIC_STACK_PROJECT_ID=${project.id}`,
     `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKey}`,
     `STACK_SECRET_SERVER_KEY=${secretServerKey}`,

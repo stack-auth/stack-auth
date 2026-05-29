@@ -1,6 +1,6 @@
 ---
 title: "Stack CLI"
-description: "Use the Hexclave CLI to initialize projects, manage config, run admin scripts, and start the local emulator"
+description: "Use the Hexclave CLI to initialize projects, manage config, and run admin scripts"
 sidebarTitle: "Stack CLI"
 ---
 
@@ -8,7 +8,7 @@ import { HexclaveAgentReminders } from "/snippets/hexclave-agent-reminders.jsx";
 
 <HexclaveAgentReminders />
 
-The Hexclave CLI is published as `@hexclave/cli` and exposes the `stack` command. Use it for project setup, branch config workflows, quick admin scripts, and the [local emulator](/guides/going-further/local-emulator).
+The Hexclave CLI is published as `@hexclave/cli` and exposes the `stack` command. Use it for project setup, branch config workflows, and quick admin scripts.
 
 ## Install
 
@@ -72,7 +72,7 @@ Run the interactive setup wizard:
 stack init
 ```
 
-The wizard can create a cloud project, create a local config file for the emulator, or link an existing project. In interactive terminals, it can run an agent to apply the setup changes to your app. Use `--no-agent` to print manual setup instructions instead.
+The wizard can create a cloud project, create a local config file, or link an existing project. In interactive terminals, it can run an agent to apply the setup changes to your app. Use `--no-agent` to print manual setup instructions instead.
 
 ### Non-interactive init
 
@@ -148,15 +148,3 @@ The JavaScript is executed as an async function. Return values are printed as fo
 <Warning>
   `stack exec` has server-level access to the selected project. It requires `stack login` and intentionally rejects `STACK_SECRET_SERVER_KEY` auth.
 </Warning>
-
-## Local emulator commands
-
-The CLI also manages the QEMU local emulator:
-
-```sh title="Terminal"
-stack emulator start
-stack emulator status
-stack emulator stop
-```
-
-See the [local emulator guide](/guides/going-further/local-emulator) for setup, ports, environment variables, and troubleshooting.

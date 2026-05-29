@@ -39,7 +39,7 @@ export function parseExecTarget(opts: ExecTargetOpts): ExecTarget {
     throw new CliError("Pass either --cloud-project-id or --config-file, not both.");
   }
   if (!hasCloud && !hasConfig) {
-    throw new CliError("Specify a target: pass --cloud-project-id <id> for the Hexclave cloud API, or --config-file <path> for the local emulator.");
+    throw new CliError("Specify a target: pass --cloud-project-id <id> for the Hexclave cloud API, or --config-file <path> for the development environment.");
   }
   if (hasCloud) {
     return { kind: "cloud", projectId: opts.cloudProjectId as string };
@@ -50,9 +50,9 @@ export function parseExecTarget(opts: ExecTargetOpts): ExecTarget {
 export function registerExecCommand(program: Command) {
   program
     .command("exec [javascript]")
-    .description("Execute JavaScript with a pre-configured StackServerApp as `stackServerApp`. Pass --cloud-project-id <id> for the cloud API, or --config-file <path> for the local emulator.")
-    .option("--cloud-project-id <id>", "Cloud project ID to run against (use --config-file instead for the local emulator)")
-    .option("--config-file <path>", "Path to a local emulator stack.config.ts (use --cloud-project-id instead for the cloud API)")
+    .description("Execute JavaScript with a pre-configured StackServerApp as `stackServerApp`. Pass --cloud-project-id <id> for the cloud API, or --config-file <path> for the development environment.")
+    .option("--cloud-project-id <id>", "Cloud project ID to run against (use --config-file instead for the development environment)")
+    .option("--config-file <path>", "Path to a development-environment stack.config.ts (use --cloud-project-id instead for the cloud API)")
     .addHelpText("after", "\nFor available API methods, see: https://docs.hexclave.com/docs/sdk")
     .action(async (javascript: string | undefined, opts: ExecTargetOpts) => {
       if (javascript === undefined) {
