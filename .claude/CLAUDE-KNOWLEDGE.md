@@ -568,3 +568,6 @@ A: Microsoft Entra ID's v2 token endpoint can reject authorization-code exchange
 
 ## Q: How should the development-environment dashboard load local config files?
 A: Use `jiti` to import the user's config module, matching `stack config push`, so helper functions such as `defineStackConfig(...)` or `makeConfig()` work. Disable `moduleCache` for this reader because the development-environment file watcher may import the same config path repeatedly after edits, and cached modules would otherwise hide changes.
+
+## Q: What is needed to put the legacy Fumadocs `docs/` app back into the Hexclave pnpm workspace?
+A: Add `docs` to `pnpm-workspace.yaml`, keep the package named `@hexclave/docs`, use `workspace:*` for `@hexclave/next` and `@hexclave/shared`, and update actual app imports from `@stackframe/stack`/`@stackframe/stack-shared` to `@hexclave/next`/`@hexclave/shared`. Docs app runtime env reads should prefer `NEXT_PUBLIC_HEXCLAVE_*`/`HEXCLAVE_*` while retaining legacy `STACK_*` fallbacks.

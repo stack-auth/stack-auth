@@ -1,8 +1,8 @@
 'use client';
 
-import { AdminOwnedProject, CurrentInternalUser, useUser } from '@stackframe/stack';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
+import { AdminOwnedProject, CurrentInternalUser, useUser } from '@hexclave/next';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { stringCompare } from '@hexclave/shared/dist/utils/strings';
 import { AlertTriangle, ChevronDown, Key, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
