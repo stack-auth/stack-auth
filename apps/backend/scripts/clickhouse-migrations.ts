@@ -32,10 +32,20 @@ export async function runClickhouseMigrations() {
     client.command({ query: NOTIFICATION_PREFERENCES_TABLE_BASE_SQL }),
     client.command({ query: REFRESH_TOKENS_TABLE_BASE_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL }),
+    client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
   ]);
 
   // Alter events table (must come before views that reference new columns)
   await client.command({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
+
+  // Clickmap materialized view depends on the events table existing; create after the ALTER above
+  // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
+  await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
+
+  // Backfill historical $click rows that pre-date the MV. Predicate picks rows
+  // older than the earliest MV-captured row, so re-runs are no-ops once the
+  // first backfill completes.
+  await client.command({ query: CLICKMAP_EVENTS_BACKFILL_SQL });
 
   // Create all views in parallel
   await Promise.all([
@@ -52,6 +62,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: NOTIFICATION_PREFERENCES_VIEW_SQL }),
     client.command({ query: REFRESH_TOKENS_VIEW_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_VIEW_SQL }),
+    client.command({ query: CLICKMAP_EVENTS_VIEW_SQL }),
   ]);
 
   // Data migrations (mutations)
@@ -66,6 +77,7 @@ export async function runClickhouseMigrations() {
     "events", "users", "contact_channels", "teams", "team_member_profiles",
     "team_permissions", "team_invitations", "email_outboxes",
     "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
+    "clickmap_events",
   ];
   await Promise.all(tables.map(table =>
     client.command({
@@ -647,4 +659,162 @@ WHERE sync_is_deleted = 0;
 
 const EXTERNAL_ANALYTICS_DB_SQL = `
 CREATE DATABASE IF NOT EXISTS analytics_internal;
+`;
+
+// Clickmap-only physical table (PostHog-style schema). Fed by clickmap_events_mv
+// from analytics_internal.events WHERE event_type='$click'. Backwards compatible
+// with click rows that pre-date elements_chain / scaled coords: the MV derives
+// pointer_* from raw data.x / data.y / data.page_y, and elements_chain falls
+// back to the empty string when the SDK didn't emit one.
+//
+// SCALE_FACTOR = 16 mirrors PostHog: pixel coords are divided at ingest so
+// downstream queries operate on small integers and partitions stay compact.
+//
+// Order key (project_id, branch_id, date, path, viewport_width) matches the
+// hot clickmap query: "all clicks on this path in this date range at these
+// viewport widths".
+const CLICKMAP_EVENTS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.clickmap_events (
+    project_id           String,
+    branch_id            String,
+    event_at             DateTime64(3, 'UTC'),
+    user_id              Nullable(String),
+    session_replay_id    Nullable(String),
+    url                  String,
+    path                 String,
+    viewport_width       UInt16,
+    viewport_height      UInt16,
+    pointer_x            UInt16,
+    pointer_y            UInt16,
+    client_y             UInt16,
+    pointer_relative_x   Float32,
+    pointer_target_fixed UInt8,
+    elements_chain       String,
+    selector             String,
+    elements_text        String,
+    tag_name             LowCardinality(String),
+    href                 Nullable(String)
+)
+ENGINE MergeTree
+PARTITION BY toYYYYMM(event_at)
+ORDER BY (project_id, branch_id, toDate(event_at), path, viewport_width);
+`;
+
+// Materialized view that auto-populates clickmap_events on every $click insert.
+// No POPULATE clause: existing rows are not backfilled (they remain queryable
+// via the existing /api/.../analytics/heatmap route which still reads from
+// analytics_internal.events). New click rows flow into both tables.
+//
+// All field accesses use the toFloat64OrZero(toString(...)) pattern that the
+// existing analytics queries use, so JSON-Variant nullability is handled the
+// same way.
+const CLICKMAP_EVENTS_MV_SQL = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics_internal.clickmap_events_mv
+TO analytics_internal.clickmap_events
+AS
+SELECT
+    project_id,
+    branch_id,
+    event_at,
+    user_id,
+    session_replay_id,
+    toString(data.url) AS url,
+    toString(data.path) AS path,
+    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_width)))))) AS viewport_width,
+    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_height)))))) AS viewport_height,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.x_scaled)), toFloat64OrZero(toString(data.page_x)) / 16, toFloat64OrZero(toString(data.x)) / 16)
+    )))) AS pointer_x,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.y_scaled)), toFloat64OrZero(toString(data.page_y)) / 16, toFloat64OrZero(toString(data.y)) / 16)
+    )))) AS pointer_y,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.client_y_scaled)), toFloat64OrZero(toString(data.y)) / 16)
+    )))) AS client_y,
+    toFloat32(coalesce(
+        toFloat64OrNull(toString(data.pointer_relative_x)),
+        if(toFloat64OrZero(toString(data.viewport_width)) > 0,
+           toFloat64OrZero(toString(data.x)) / toFloat64OrZero(toString(data.viewport_width)),
+           0)
+    )) AS pointer_relative_x,
+    toUInt8(coalesce(toUInt8OrNull(toString(data.pointer_target_fixed)), 0)) AS pointer_target_fixed,
+    toString(data.elements_chain) AS elements_chain,
+    toString(data.selector) AS selector,
+    toString(data.text) AS elements_text,
+    toString(data.tag_name) AS tag_name,
+    nullIf(toString(data.href), '') AS href
+FROM analytics_internal.events
+WHERE event_type = '$click';
+`;
+
+// Idempotent backfill: insert pre-MV $click rows into clickmap_events. After
+// the first run, min(event_at) in clickmap_events corresponds to the MV-capture
+// start (or earlier, once historical rows land), so this predicate returns no
+// new rows and the migration is a cheap no-op.
+const CLICKMAP_EVENTS_BACKFILL_SQL = `
+INSERT INTO analytics_internal.clickmap_events
+SELECT
+    project_id,
+    branch_id,
+    event_at,
+    user_id,
+    session_replay_id,
+    toString(data.url) AS url,
+    toString(data.path) AS path,
+    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_width)))))) AS viewport_width,
+    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_height)))))) AS viewport_height,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.x_scaled)), toFloat64OrZero(toString(data.page_x)) / 16, toFloat64OrZero(toString(data.x)) / 16)
+    )))) AS pointer_x,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.y_scaled)), toFloat64OrZero(toString(data.page_y)) / 16, toFloat64OrZero(toString(data.y)) / 16)
+    )))) AS pointer_y,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.client_y_scaled)), toFloat64OrZero(toString(data.y)) / 16)
+    )))) AS client_y,
+    toFloat32(coalesce(
+        toFloat64OrNull(toString(data.pointer_relative_x)),
+        if(toFloat64OrZero(toString(data.viewport_width)) > 0,
+           toFloat64OrZero(toString(data.x)) / toFloat64OrZero(toString(data.viewport_width)),
+           0)
+    )) AS pointer_relative_x,
+    toUInt8(coalesce(toUInt8OrNull(toString(data.pointer_target_fixed)), 0)) AS pointer_target_fixed,
+    toString(data.elements_chain) AS elements_chain,
+    toString(data.selector) AS selector,
+    toString(data.text) AS elements_text,
+    toString(data.tag_name) AS tag_name,
+    nullIf(toString(data.href), '') AS href
+FROM analytics_internal.events
+WHERE event_type = '$click'
+  AND event_at < coalesce(
+    (SELECT min(event_at) FROM analytics_internal.clickmap_events),
+    toDateTime64('2999-01-01 00:00:00', 3, 'UTC')
+  );
+`;
+
+const CLICKMAP_EVENTS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.clickmap_events
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  event_at,
+  user_id,
+  session_replay_id,
+  url,
+  path,
+  viewport_width,
+  viewport_height,
+  pointer_x,
+  pointer_y,
+  client_y,
+  pointer_relative_x,
+  pointer_target_fixed,
+  elements_chain,
+  selector,
+  elements_text,
+  tag_name,
+  href
+FROM analytics_internal.clickmap_events;
 `;

@@ -99,7 +99,7 @@ export const devToolCSS = `
     position: fixed;
     bottom: 60px;
     right: 16px;
-    z-index: 99998;
+    z-index: 2147483647;
     width: 800px;
     max-width: calc(100vw - 32px);
     height: 520px;
@@ -133,6 +133,21 @@ export const devToolCSS = `
     border-radius: 0;
   }
 
+  .stack-devtool .sdt-panel-heatmap {
+    left: 50%;
+    right: auto;
+    bottom: 18px;
+    width: min(680px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    height: auto;
+    max-height: calc(100vh - 36px);
+    transform: translateX(-50%);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
   .stack-devtool .sdt-panel-inner {
     display: flex;
     flex-direction: column;
@@ -143,11 +158,22 @@ export const devToolCSS = `
     animation: sdt-panel-enter 0.2s ease-out;
   }
 
+  .stack-devtool .sdt-panel-heatmap .sdt-panel-inner {
+    height: auto;
+    overflow: visible;
+    border-radius: 0;
+  }
+
   .stack-devtool .sdt-panel-fullscreen .sdt-panel-inner {
     border-radius: 0;
   }
 
   .stack-devtool .sdt-panel-fullscreen .sdt-resize-handle {
+    display: none;
+  }
+
+  .stack-devtool .sdt-panel-heatmap .sdt-tabbar,
+  .stack-devtool .sdt-panel-heatmap .sdt-resize-handle {
     display: none;
   }
 
@@ -259,9 +285,15 @@ export const devToolCSS = `
   }
 
   .stack-devtool .sdt-tabbar-actions {
+    position: sticky;
+    right: 0;
+    z-index: 2;
     display: flex;
     align-items: center;
+    align-self: stretch;
     gap: 4px;
+    padding-left: 6px;
+    background: inherit;
     flex-shrink: 0;
   }
 
@@ -322,6 +354,11 @@ export const devToolCSS = `
     min-height: 0;
   }
 
+  .stack-devtool .sdt-panel-heatmap .sdt-content {
+    flex: none;
+    overflow: visible;
+  }
+
   .stack-devtool .sdt-panel-fullscreen .sdt-content {
     position: absolute;
     inset: 0;
@@ -334,6 +371,10 @@ export const devToolCSS = `
     inset: 0;
   }
 
+  .stack-devtool .sdt-panel-heatmap .sdt-tab-layers {
+    position: static;
+  }
+
   .stack-devtool .sdt-tab-pane {
     position: absolute;
     inset: 0;
@@ -342,6 +383,12 @@ export const devToolCSS = `
     padding: 16px;
     visibility: hidden;
     pointer-events: none;
+  }
+
+  .stack-devtool .sdt-panel-heatmap .sdt-tab-pane {
+    position: static;
+    padding: 0;
+    overflow: visible;
   }
 
   .stack-devtool .sdt-tab-pane-iframe {
@@ -2567,6 +2614,386 @@ export const devToolCSS = `
     font-size: 12px;
     color: var(--sdt-error);
     line-height: 1.4;
+  }
+
+  /* --- Heatmaps --- */
+
+  .stack-devtool .sdt-hm {
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .stack-devtool .sdt-hm-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 6px 8px;
+    border: 1px solid var(--sdt-border);
+    border-radius: 999px;
+    background: var(--sdt-overlay-bg);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(18px);
+  }
+
+  .stack-devtool .sdt-hm-toolbar-main {
+    min-width: 0;
+    flex: 1;
+    padding-left: 2px;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-title {
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--sdt-text);
+    line-height: 1.1;
+  }
+
+  .stack-devtool .sdt-hm-toolbar-subtitle {
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10.5px;
+    color: var(--sdt-text-secondary);
+  }
+
+  .stack-devtool .sdt-hm-toolbar-metric {
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--sdt-accent-muted);
+    color: var(--sdt-accent-hover);
+    padding: 5px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stack-devtool .sdt-hm-icon-btn {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sdt-text-secondary);
+    cursor: pointer;
+  }
+
+  .stack-devtool .sdt-hm-icon-btn:hover {
+    background: var(--sdt-bg-hover);
+    color: var(--sdt-text);
+  }
+
+  .stack-devtool .sdt-hm-details {
+    display: none;
+    max-height: min(460px, calc(100vh - 98px));
+    overflow: hidden;
+    border: 1px solid var(--sdt-border);
+    border-radius: var(--sdt-radius-lg);
+    background: var(--sdt-bg);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  }
+
+  .stack-devtool .sdt-hm-expanded .sdt-hm-details {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stack-devtool .sdt-hm-head {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    border-bottom: 1px solid var(--sdt-border-subtle);
+  }
+
+  .stack-devtool .sdt-hm-filter-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .stack-devtool .sdt-hm-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .stack-devtool .sdt-hm-filter-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 13px;
+  }
+
+  .stack-devtool .sdt-hm-filter-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sdt-text-tertiary);
+  }
+
+  .stack-devtool .sdt-hm-filter-reset {
+    display: none;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    font-family: var(--sdt-font);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sdt-accent);
+    cursor: pointer;
+  }
+
+  .stack-devtool .sdt-hm-filter-reset:hover {
+    color: var(--sdt-accent-hover);
+  }
+
+  .stack-devtool .sdt-hm-filter-reset-visible {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .stack-devtool .sdt-hm-filter-input {
+    height: 30px;
+    border-radius: var(--sdt-radius);
+    border: 1px solid var(--sdt-border-subtle);
+    background: var(--sdt-bg-elevated);
+    color: var(--sdt-text);
+    padding: 0 9px;
+    font: inherit;
+    font-size: 12px;
+    font-family: var(--sdt-font);
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .stack-devtool .sdt-hm-filter-input:focus {
+    outline: none;
+    border-color: var(--sdt-accent);
+  }
+
+  .stack-devtool .sdt-hm-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .stack-devtool .sdt-hm-actions .sdt-hm-btn {
+    height: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0 16px;
+  }
+
+  .stack-devtool .sdt-hm-btn {
+    height: 30px;
+    border-radius: var(--sdt-radius);
+    border: 1px solid var(--sdt-border-subtle);
+    background: var(--sdt-bg-elevated);
+    color: var(--sdt-text-secondary);
+    padding: 0 10px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .stack-devtool .sdt-hm-btn:hover {
+    background: var(--sdt-bg-hover);
+    color: var(--sdt-text);
+    transition: none;
+  }
+
+  .stack-devtool .sdt-hm-btn-primary {
+    background: var(--sdt-accent);
+    border-color: var(--sdt-accent);
+    color: white;
+  }
+
+  .stack-devtool .sdt-hm-stats {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .stack-devtool .sdt-hm-stat {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-radius: var(--sdt-radius);
+    background: var(--sdt-bg-elevated);
+    padding: 7px 10px;
+  }
+
+  .stack-devtool .sdt-hm-stat-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sdt-text-tertiary);
+  }
+
+  .stack-devtool .sdt-hm-stat-value {
+    font-size: 15px;
+    font-weight: 650;
+    color: var(--sdt-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stack-devtool .sdt-hm-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px 14px;
+  }
+
+  .stack-devtool .sdt-hm-note {
+    border-radius: var(--sdt-radius);
+    background: var(--sdt-info-muted);
+    color: var(--sdt-text-secondary);
+    padding: 9px 11px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .stack-devtool .sdt-hm-token-status {
+    color: var(--sdt-text-secondary);
+    padding: 0 2px;
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+
+  .stack-devtool .sdt-hm-token-status-error {
+    color: var(--sdt-error);
+  }
+
+  .stack-devtool .sdt-hm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stack-devtool .sdt-hm-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 140px;
+    border-radius: var(--sdt-radius);
+    border: 1px dashed var(--sdt-border);
+    color: var(--sdt-text-tertiary);
+    font-size: 12px;
+    text-align: center;
+    padding: 0 16px;
+  }
+
+  .stack-devtool .sdt-hm-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    border-radius: var(--sdt-radius);
+    background: transparent;
+    color: var(--sdt-text);
+    padding: 8px;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--sdt-font);
+  }
+
+  .stack-devtool .sdt-hm-row:hover {
+    background: var(--sdt-bg-hover);
+  }
+
+  .stack-devtool .sdt-hm-row-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--sdt-accent-muted);
+    color: var(--sdt-accent-hover);
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stack-devtool .sdt-hm-row-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .stack-devtool .sdt-hm-row-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .stack-devtool .sdt-hm-row-selector {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--sdt-font-mono);
+    font-size: 10.5px;
+    color: var(--sdt-text-tertiary);
+  }
+
+  .sdt-hm-overlay-root {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    pointer-events: none;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-marker {
+    position: fixed;
+    transform: translate(-50%, -50%);
+    min-width: 28px;
+    height: 24px;
+    border-radius: 999px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(10, 10, 11, 0.92);
+    font: 700 12px/1 var(--sdt-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-outline {
+    position: fixed;
+    border: 1px solid;
+    border-radius: 4px;
+    background: rgba(99, 102, 241, 0.04);
   }
 
   /* --- Input area --- */

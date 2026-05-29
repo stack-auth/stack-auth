@@ -3,6 +3,7 @@
 import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import type { StackClientApp } from "../lib/stack-app";
 import { envVars } from "../lib/env";
 import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
@@ -17,7 +18,7 @@ import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPositio
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'customize' | 'ai' | 'dashboard' | 'console' | 'support';
+type TabId = 'overview' | 'heatmaps' | 'customize' | 'ai' | 'dashboard' | 'console' | 'support';
 
 type TabResult = { element: HTMLElement, cleanup?: () => void };
 
@@ -61,6 +62,7 @@ const DOCS_URL = 'https://docs.hexclave.com';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
+  { id: 'heatmaps', label: 'Heatmaps', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h.01"/><path d="M15 8h.01"/><path d="M12 15h.01"/><path d="M19 11h.01"/><path d="M5 16h.01"/><path d="M3 3l18 18"/><path d="M14 14l7 7"/><path d="M5 5l5 5"/></svg>' },
   { id: 'customize', label: 'Customize', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>' },
   { id: 'ai', label: 'AI', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
   { id: 'console', label: 'Console', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
@@ -663,8 +665,13 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
 // Overview tab
 // ---------------------------------------------------------------------------
 
+function hasPersistentTokenStoreForDevTool(app: StackClientApp<boolean>): boolean {
+  return app[stackAppInternalsSymbol].getConstructorOptions().tokenStore !== null;
+}
+
 function createOverviewTab(app: StackClientApp<true>): TabResult {
   const container = h('div', { className: 'sdt-ov' });
+  const hasPersistentTokenStore = hasPersistentTokenStoreForDevTool(app);
 
   // ── Identity card ──────────────────────────────────────────────────────────
   const heroCard = h('div', { className: 'sdt-ov-card sdt-ov-card-hero' });
@@ -718,6 +725,12 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
 
   function rebuildActions() {
     actions.innerHTML = '';
+    if (!hasPersistentTokenStore) {
+      userName.textContent = 'Current user unavailable';
+      userEmail.textContent = 'This app was initialized without a token store';
+      actions.appendChild(h('button', { className: 'sdt-ov-btn sdt-ov-btn-wide', disabled: 'true' }, 'Session actions unavailable'));
+      return;
+    }
     if (currentUser) {
       const signOutBtn = h('button', { className: 'sdt-ov-btn sdt-ov-btn-danger' }, 'Sign Out');
       signOutBtn.disabled = loading;
@@ -892,10 +905,13 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
 
   function buildChecklist() {
     checksCard.innerHTML = '';
+    const currentUserCheck = hasPersistentTokenStore
+      ? { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' }
+      : { ok: true, label: 'Current-user tools unavailable', hint: null };
     const checks = [
       { ok: !!projectId && projectId !== 'default', label: 'Project configured', hint: null },
       { ok: hasActiveAuthMethod === true, label: 'Auth method active', hint: hasActiveAuthMethod === null ? 'Still checking project config' : null },
-      { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' },
+      currentUserCheck,
     ];
     const passCount = checks.filter((c) => c.ok).length;
     const allGood = passCount === checks.length;
@@ -937,6 +953,17 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
   }
 
   async function refreshUser() {
+    if (!hasPersistentTokenStore) {
+      avatar.className = 'sdt-ov-avatar';
+      avatar.textContent = '?';
+      userName.textContent = 'Current user unavailable';
+      userEmail.textContent = 'This app was initialized without a token store';
+      authIndicator.style.display = 'none';
+      currentUser = null;
+      rebuildActions();
+      buildChecklist();
+      return;
+    }
     try {
       currentUser = await app.getUser();
 
@@ -1755,6 +1782,1358 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
+// Heatmaps tab
+// ---------------------------------------------------------------------------
+
+type DevToolClickGroup = {
+  selector: string;
+  label: string;
+  count: number;
+  element: Element | null;
+  rect: DOMRect | null;
+};
+
+type HeatmapGroupOverlayElement = {
+  marker: HTMLElement;
+  outline: HTMLElement;
+};
+
+const HEATMAP_TOOL_ROOT_ID = '__hexclave-dev-tool-root';
+const HEATMAP_TOKEN_STORAGE_KEY = 'hexclave-heatmap-overlay-token';
+const HEATMAP_ORIGIN_STORAGE_KEY = 'hexclave-heatmap-overlay-origin';
+const HEATMAP_PROJECT_STORAGE_KEY = 'hexclave-heatmap-overlay-project-id';
+const HEATMAP_FILTERS_STORAGE_KEY = 'hexclave-heatmap-overlay-filters';
+
+type HeatmapRangeKey = '24h' | '7d' | '30d';
+type HeatmapDeviceKey = 'all' | 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'widescreen' | 'tv';
+
+type HeatmapFilters = {
+  range: HeatmapRangeKey,
+  device: HeatmapDeviceKey,
+  urlPattern: string,
+  elementSearch: string,
+};
+
+const HEATMAP_DEFAULT_FILTERS: HeatmapFilters = {
+  range: '7d',
+  device: 'all',
+  urlPattern: '',
+  elementSearch: '',
+};
+
+const HEATMAP_RANGE_MS: Record<HeatmapRangeKey, number> = {
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+};
+
+function isHeatmapRangeKey(value: unknown): value is HeatmapRangeKey {
+  return value === '24h' || value === '7d' || value === '30d';
+}
+function isHeatmapDeviceKey(value: unknown): value is HeatmapDeviceKey {
+  return value === 'all' || value === 'mobile' || value === 'tablet' || value === 'laptop' || value === 'desktop' || value === 'widescreen' || value === 'tv';
+}
+const HEATMAP_BLOCKED_POINTER_EVENTS = ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu'] as const;
+const HEATMAP_BLOCKED_KEY_EVENTS = ['keydown', 'keypress', 'keyup', 'beforeinput', 'input'] as const;
+const HEATMAP_DOM_INDEX_DEBOUNCE_MS = 250;
+
+type DevToolServerHeatmapSelector = {
+  selector: string;
+  clicks: number;
+};
+
+type DevToolServerHeatmapElement = {
+  elementsChain: string;
+  elementsText: string;
+  tagName: string;
+  href: string | null;
+  clicks: number;
+};
+
+type DevToolServerHeatmap = {
+  path: string;
+  // True aggregate click total returned for the active filter (summed across
+  // every matching route), independent of how many elements can be drawn on the
+  // current page's DOM. The overlay can only render elements that exist on the
+  // page you're viewing, but this count reflects the full pattern.
+  totalClicks: number;
+  selectors: DevToolServerHeatmapSelector[];
+  elements: DevToolServerHeatmapElement[];
+};
+
+type ElementsChainSegment = {
+  tag: string;
+  classes: string[];
+  attrs: Record<string, string>;
+  text: string | null;
+  nthChild: number | null;
+  nthOfType: number | null;
+  href: string | null;
+};
+
+function parseElementsChain(chain: string): ElementsChainSegment[] {
+  // Split top-level by ';' respecting quoted strings.
+  const segments: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < chain.length; i++) {
+    const ch = chain[i];
+    if (ch === '\\' && i + 1 < chain.length) {
+      current += ch + chain[i + 1];
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      current += ch;
+      continue;
+    }
+    if (ch === ';' && !inQuotes) {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.length > 0) {
+    segments.push(current);
+  }
+  return segments.map(parseElementsChainSegment).filter((segment): segment is ElementsChainSegment => segment != null);
+}
+
+function parseElementsChainSegment(segment: string): ElementsChainSegment | null {
+  const trimmed = segment.trim();
+  if (trimmed === '') return null;
+
+  // Find first ':' at top level — separates tag/classes prefix from attribute pairs.
+  let prefixEnd = trimmed.length;
+  let inQuotes = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '\\' && i + 1 < trimmed.length) {
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (ch === ':' && !inQuotes) {
+      prefixEnd = i;
+      break;
+    }
+  }
+
+  const prefix = trimmed.slice(0, prefixEnd);
+  const rest = trimmed.slice(prefixEnd);
+  const prefixParts = prefix.split('.');
+  const tag = prefixParts[0].trim().toLowerCase();
+  if (tag === '') return null;
+  const classes = prefixParts.slice(1).map((c) => c.trim()).filter((c) => c !== '');
+
+  const attrs: Record<string, string> = {};
+  let nthChild: number | null = null;
+  let nthOfType: number | null = null;
+  let text: string | null = null;
+  let href: string | null = null;
+
+  // Parse :key="value" pairs from rest.
+  let i = 0;
+  while (i < rest.length) {
+    if (rest[i] !== ':') {
+      i += 1;
+      continue;
+    }
+    i += 1; // skip ':'
+    // read key up to '='
+    let keyEnd = i;
+    while (keyEnd < rest.length && rest[keyEnd] !== '=' && rest[keyEnd] !== ':') keyEnd += 1;
+    const key = rest.slice(i, keyEnd).trim();
+    if (keyEnd >= rest.length || rest[keyEnd] !== '=') {
+      i = keyEnd;
+      continue;
+    }
+    let valStart = keyEnd + 1;
+    if (rest[valStart] !== '"') {
+      // unquoted — read until next ':' at top level
+      let end = valStart;
+      while (end < rest.length && rest[end] !== ':') end += 1;
+      const value = rest.slice(valStart, end);
+      const result = applyElementsChainAttr(key, value);
+      if (result.nthChild != null) nthChild = result.nthChild;
+      if (result.nthOfType != null) nthOfType = result.nthOfType;
+      if (result.text != null) text = result.text;
+      if (result.href != null) href = result.href;
+      if (result.attrKey != null) attrs[result.attrKey] = result.attrValue ?? '';
+      i = end;
+      continue;
+    }
+    // quoted value — find unescaped closing quote
+    valStart += 1;
+    let end = valStart;
+    let value = '';
+    while (end < rest.length) {
+      const ch = rest[end];
+      if (ch === '\\' && end + 1 < rest.length) {
+        const next = rest[end + 1];
+        if (next === '"' || next === '\\') {
+          value += next;
+          end += 2;
+          continue;
+        }
+        value += ch;
+        end += 1;
+        continue;
+      }
+      if (ch === '"') break;
+      value += ch;
+      end += 1;
+    }
+    const result = applyElementsChainAttr(key, value);
+    if (result.nthChild != null) nthChild = result.nthChild;
+    if (result.nthOfType != null) nthOfType = result.nthOfType;
+    if (result.text != null) text = result.text;
+    if (result.href != null) href = result.href;
+    if (result.attrKey != null) attrs[result.attrKey] = result.attrValue ?? '';
+    i = end + 1; // skip closing quote
+  }
+
+  return { tag, classes, attrs, text, nthChild, nthOfType, href };
+}
+
+type ElementsChainAttrResult = {
+  nthChild?: number,
+  nthOfType?: number,
+  text?: string,
+  href?: string,
+  attrKey?: string,
+  attrValue?: string,
+};
+
+function applyElementsChainAttr(key: string, value: string): ElementsChainAttrResult {
+  if (key === 'nth-child') {
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? { nthChild: n } : {};
+  }
+  if (key === 'nth-of-type') {
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? { nthOfType: n } : {};
+  }
+  if (key === 'text') {
+    return { text: value };
+  }
+  if (key === 'href') {
+    return { href: value, attrKey: key, attrValue: value };
+  }
+  if (key.startsWith('attr__')) {
+    return { attrKey: key.slice('attr__'.length), attrValue: value };
+  }
+  return { attrKey: key, attrValue: value };
+}
+
+function cssEscapeAttrValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function readChainAttr(segment: ElementsChainSegment, attr: string): string {
+  if (!Object.prototype.hasOwnProperty.call(segment.attrs, attr)) return '';
+  const value = segment.attrs[attr];
+  return typeof value === 'string' ? value : '';
+}
+
+function cssEscapeIdent(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+  return value.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+}
+
+function formatHeatmapCount(value: number): string {
+  if (value >= 1000) return `${Math.round(value / 100) / 10}k`;
+  return String(value);
+}
+
+function getHeatmapHue(count: number, maxCount: number): number {
+  if (maxCount <= 1) return 185;
+  const intensity = Math.min(1, count / maxCount);
+  return 185 - Math.round(intensity * 155);
+}
+
+// Use event.composedPath() rather than target.closest(): the path is captured
+// at dispatch time and stays valid even if the original target has since been
+// detached from the DOM (e.g. an icon's <svg>/<path> that was replaced by an
+// innerHTML reset between mousedown and click). With .closest(), detached
+// targets have no ancestors so the check spuriously returns false, the page-
+// interaction blocker eats the click, and the icon button looks dead.
+function isInsideDevToolEvent(event: Event): boolean {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+  for (const node of path) {
+    if (node instanceof Element && node.id === HEATMAP_TOOL_ROOT_ID) {
+      return true;
+    }
+  }
+  // Fallback for environments without composedPath: best-effort ancestor walk.
+  const target = event.target;
+  if (target instanceof Element) {
+    return target.closest(`#${HEATMAP_TOOL_ROOT_ID}`) != null;
+  }
+  return false;
+}
+
+function isHeatmapNavigationModifierEvent(event: Event): event is MouseEvent {
+  return event instanceof MouseEvent && (event.metaKey || event.ctrlKey);
+}
+
+function getHeatmapNavigationHref(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  const link = target.closest('a[href]');
+  if (!(link instanceof HTMLAnchorElement)) {
+    return null;
+  }
+  if (link.hasAttribute('download')) {
+    return null;
+  }
+  const href = link.href;
+  if (href === '' || href.startsWith('javascript:')) {
+    return null;
+  }
+  return href;
+}
+
+function maybeNavigateFromHeatmapModifierClick(event: Event): boolean {
+  if (!isHeatmapNavigationModifierEvent(event)) {
+    return false;
+  }
+  if (event.type !== 'click') {
+    return true;
+  }
+
+  const href = getHeatmapNavigationHref(event.target);
+  if (href == null) {
+    return true;
+  }
+
+  // Drop a sentinel into sessionStorage so the dev tool on the next page can
+  // auto-reopen straight back into the heatmap tab. We can't soft-navigate
+  // from outside the host framework reliably (Next.js App Router gates on a
+  // private history-state marker, so a generic pushState+popstate doesn't
+  // re-render the tree), so we hard-nav and rehydrate the panel on load.
+  try {
+    sessionStorage.setItem('hexclave-heatmap-overlay-resume', '1');
+  } catch {
+    // ignore (private mode, etc.)
+  }
+  window.location.assign(href);
+  return true;
+}
+
+function getReadableElementLabel(element: Element): string {
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel != null && ariaLabel.trim() !== '') {
+    return ariaLabel.trim().slice(0, 80);
+  }
+  const title = element.getAttribute('title');
+  if (title != null && title.trim() !== '') {
+    return title.trim().slice(0, 80);
+  }
+  const text = element.textContent.trim().replace(/\s+/g, ' ');
+  if (text !== '') {
+    return text.slice(0, 80);
+  }
+  return element.tagName.toLowerCase();
+}
+
+function isElementVisibleForHeatmap(element: Element): boolean {
+  if (element.closest(`#${HEATMAP_TOOL_ROOT_ID}`) != null) {
+    return false;
+  }
+  if (element.closest('[hidden], [aria-hidden="true"], [inert]') != null) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  const style = window.getComputedStyle(element);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+    return false;
+  }
+  return true;
+}
+
+function getElementFromSelector(selector: string): Element | null {
+  try {
+    const elements = Array.from(document.querySelectorAll(selector));
+    return elements.find(isElementVisibleForHeatmap) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function getProjectHeatmapTokenStorageKey(projectId: string): string {
+  return `${HEATMAP_TOKEN_STORAGE_KEY}:${projectId}`;
+}
+
+function getProjectHeatmapOriginStorageKey(projectId: string): string {
+  return `${HEATMAP_ORIGIN_STORAGE_KEY}:${projectId}`;
+}
+
+function getSessionStorageString(key: string): string | null {
+  try {
+    const value = sessionStorage.getItem(key);
+    return value == null || value.trim() === '' ? null : value;
+  } catch {
+    return null;
+  }
+}
+
+function getActiveHeatmapProjectId(fallbackProjectId: string): string {
+  return getSessionStorageString(HEATMAP_PROJECT_STORAGE_KEY) ?? fallbackProjectId;
+}
+
+function removeSessionStorageItem(key: string): void {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Storage can be blocked in private or embedded contexts; the toolbar keeps
+    // rendering the actionable error state in that case.
+  }
+}
+
+function getJwtPayloadProjectId(token: string): string | null {
+  const tokenParts = token.split('.');
+  if (tokenParts.length < 2 || tokenParts[1] === '') {
+    return null;
+  }
+  try {
+    const payloadPart = tokenParts[1];
+    const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const payload: unknown = JSON.parse(atob(padded));
+    if (typeof payload !== 'object' || payload === null) {
+      return null;
+    }
+    const projectId = Reflect.get(payload, 'project_id');
+    return typeof projectId === 'string' ? projectId : null;
+  } catch {
+    return null;
+  }
+}
+
+function getHeatmapTokenFromStorage(projectId: string): string | null {
+  const activeProjectId = getActiveHeatmapProjectId(projectId);
+  const projectToken = getSessionStorageString(getProjectHeatmapTokenStorageKey(activeProjectId));
+  if (projectToken != null) {
+    return projectToken;
+  }
+  const legacyToken = getSessionStorageString(HEATMAP_TOKEN_STORAGE_KEY);
+  if (legacyToken == null) {
+    return null;
+  }
+  const legacyProjectId = getJwtPayloadProjectId(legacyToken);
+  return legacyProjectId == null || legacyProjectId === activeProjectId ? legacyToken : null;
+}
+
+function getHeatmapOriginFromStorage(projectId: string): string | null {
+  const activeProjectId = getActiveHeatmapProjectId(projectId);
+  return getSessionStorageString(getProjectHeatmapOriginStorageKey(activeProjectId)) ?? getSessionStorageString(HEATMAP_ORIGIN_STORAGE_KEY);
+}
+
+function clearHeatmapTokenStorage(projectId: string): void {
+  const activeProjectId = getActiveHeatmapProjectId(projectId);
+  removeSessionStorageItem(getProjectHeatmapTokenStorageKey(activeProjectId));
+  removeSessionStorageItem(getProjectHeatmapOriginStorageKey(activeProjectId));
+  removeSessionStorageItem(HEATMAP_PROJECT_STORAGE_KEY);
+  const legacyToken = getSessionStorageString(HEATMAP_TOKEN_STORAGE_KEY);
+  const legacyProjectId = legacyToken == null ? null : getJwtPayloadProjectId(legacyToken);
+  if (legacyProjectId == null || legacyProjectId === activeProjectId) {
+    removeSessionStorageItem(HEATMAP_TOKEN_STORAGE_KEY);
+    removeSessionStorageItem(HEATMAP_ORIGIN_STORAGE_KEY);
+  }
+}
+
+function readNumberProperty(value: unknown, key: string): number | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const property = Reflect.get(value, key);
+  return typeof property === 'number' && Number.isFinite(property) ? property : null;
+}
+
+function readStringProperty(value: unknown, key: string): string | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const property = Reflect.get(value, key);
+  return typeof property === 'string' && property !== '' ? property : null;
+}
+
+function parseServerHeatmapResponse(value: unknown, path: string): DevToolServerHeatmap {
+  const selectorsValue = typeof value === 'object' && value !== null ? Reflect.get(value, 'selectors') : undefined;
+  const selectors: DevToolServerHeatmapSelector[] = [];
+  if (Array.isArray(selectorsValue)) {
+    for (const selectorValue of selectorsValue) {
+      const selector = readStringProperty(selectorValue, 'selector');
+      const clicks = readNumberProperty(selectorValue, 'clicks');
+      if (selector != null && clicks != null) {
+        selectors.push({ selector, clicks });
+      }
+    }
+  }
+
+  const elementsValue = typeof value === 'object' && value !== null ? Reflect.get(value, 'elements') : undefined;
+  const elements: DevToolServerHeatmapElement[] = [];
+  if (Array.isArray(elementsValue)) {
+    for (const elementValue of elementsValue) {
+      const elementsChain = readStringProperty(elementValue, 'elements_chain');
+      const clicks = readNumberProperty(elementValue, 'clicks');
+      if (elementsChain == null || clicks == null) continue;
+      elements.push({
+        elementsChain,
+        elementsText: readStringProperty(elementValue, 'elements_text') ?? '',
+        tagName: readStringProperty(elementValue, 'tag_name') ?? '',
+        href: readStringProperty(elementValue, 'href'),
+        clicks,
+      });
+    }
+  }
+
+  const routesValue = typeof value === 'object' && value !== null ? Reflect.get(value, 'routes') : undefined;
+  let totalClicks = 0;
+  if (Array.isArray(routesValue)) {
+    for (const routeValue of routesValue) {
+      const clicks = readNumberProperty(routeValue, 'clicks');
+      if (clicks != null) totalClicks += clicks;
+    }
+  }
+
+  return { path, totalClicks, selectors, elements };
+}
+
+// Heuristic: does this path segment look like an opaque per-entity id (a UUID,
+// numeric id, Mongo ObjectId, ULID, etc.) rather than a human-readable slug?
+// Used to auto-wildcard slug routes so a single heatmap pattern aggregates
+// across every user/team instead of just the one currently in the URL.
+function isDynamicPathSegment(segment: string): boolean {
+  if (segment === '') return false;
+  let decoded = segment;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    // keep the raw segment if it isn't valid percent-encoding
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decoded)) return true; // UUID
+  if (/^[0-9a-f]{32}$/i.test(decoded)) return true; // UUID without dashes / md5
+  if (/^[0-9a-f]{24}$/i.test(decoded)) return true; // Mongo ObjectId
+  if (/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(decoded)) return true; // ULID
+  if (/^\d+$/.test(decoded)) return true; // numeric id
+  return false;
+}
+
+// Turn the current pathname into a heatmap URL pattern by replacing id-like
+// segments with `*` (PostHog-style wildcards). Stable slugs are preserved so
+// e.g. `/teams/<uuid>/settings` becomes `/teams/*/settings`.
+function wildcardizePathname(pathname: string): string {
+  const trailingSlash = pathname.length > 1 && pathname.endsWith('/');
+  const segments = pathname.split('/').map((segment) => (isDynamicPathSegment(segment) ? '*' : segment));
+  const joined = segments.join('/');
+  return trailingSlash ? `${joined}/` : joined;
+}
+
+// Does `path` match a PostHog-style URL pattern (where `*` is a wildcard)?
+// Used to tell the user when the page they're on isn't covered by the pattern,
+// so the overlay can't be drawn here even though aggregate data exists.
+function patternMatchesPath(pattern: string, path: string): boolean {
+  if (pattern === '') return true;
+  const regexSource = pattern
+    .split('*')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  try {
+    return new RegExp(`^${regexSource}$`).test(path);
+  } catch {
+    return false;
+  }
+}
+
+function createHeatmapsTab(app: StackClientApp<true>, onBack: () => void): TabResult {
+  const container = h('div', { className: 'sdt-hm' });
+  const overlayRoot = h('div', { className: 'sdt-hm-overlay-root', 'aria-hidden': 'true' });
+  const statsCount = h('div', { className: 'sdt-hm-stat-value' }, '0');
+  const selectorCount = h('div', { className: 'sdt-hm-stat-value' }, '0');
+  const viewportValue = h('div', { className: 'sdt-hm-stat-value' }, `${window.innerWidth}x${window.innerHeight}`);
+  const list = h('div', { className: 'sdt-hm-list' });
+  const empty = h('div', { className: 'sdt-hm-empty' }, 'Paste a heatmap token from the dashboard to load aggregated element clicks for this page.');
+  const status = h('div', { className: 'sdt-hm-token-status' });
+  const overlayToggle = h('button', { className: 'sdt-hm-btn sdt-hm-btn-primary' }, 'Hide');
+  const expandButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Expand heatmap options', title: 'Expand heatmap options' });
+  const backButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Back', title: 'Back' });
+  const miniClicks = h('span', { className: 'sdt-hm-toolbar-metric' }, '0 clicks');
+
+  function readStoredFilters(): HeatmapFilters {
+    try {
+      const raw = sessionStorage.getItem(HEATMAP_FILTERS_STORAGE_KEY);
+      if (raw == null) return { ...HEATMAP_DEFAULT_FILTERS };
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed == null || typeof parsed !== 'object') return { ...HEATMAP_DEFAULT_FILTERS };
+      const obj = parsed as Record<string, unknown>;
+      return {
+        range: isHeatmapRangeKey(obj.range) ? obj.range : HEATMAP_DEFAULT_FILTERS.range,
+        device: isHeatmapDeviceKey(obj.device) ? obj.device : HEATMAP_DEFAULT_FILTERS.device,
+        urlPattern: typeof obj.urlPattern === 'string' ? obj.urlPattern : HEATMAP_DEFAULT_FILTERS.urlPattern,
+        elementSearch: typeof obj.elementSearch === 'string' ? obj.elementSearch : HEATMAP_DEFAULT_FILTERS.elementSearch,
+      };
+    } catch {
+      return { ...HEATMAP_DEFAULT_FILTERS };
+    }
+  }
+  function persistFilters(next: HeatmapFilters) {
+    try {
+      sessionStorage.setItem(HEATMAP_FILTERS_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  let currentPath = window.location.pathname;
+  let serverHeatmap: DevToolServerHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+  let loadingServerHeatmap = false;
+  let serverHeatmapError: string | null = null;
+  let serverHeatmapRequestId = 0;
+  let overlayVisible = true;
+  let expanded = false;
+  let renderFrame = 0;
+  let overlayMode: 'hidden' | 'elements' = 'hidden';
+  const groupOverlayElements = new Map<string, HeatmapGroupOverlayElement>();
+
+  // DOM-index cache for fast element-chain inference.
+  const domIndex = new Map<string, Element[]>();
+  let domIndexDirty = true;
+  let domIndexDebounce = 0;
+  function rebuildDomIndex() {
+    domIndex.clear();
+    const all = document.querySelectorAll('*');
+    for (const el of all) {
+      if (!isElementVisibleForHeatmap(el)) continue;
+      const tag = el.tagName.toLowerCase();
+      const bucket = domIndex.get(tag) ?? [];
+      bucket.push(el);
+      domIndex.set(tag, bucket);
+    }
+    domIndexDirty = false;
+  }
+  function ensureDomIndex() {
+    if (domIndexDirty) rebuildDomIndex();
+  }
+  function invalidateDomIndex() {
+    domIndexDirty = true;
+  }
+  function scheduleDomIndexInvalidation() {
+    if (domIndexDebounce !== 0) {
+      window.clearTimeout(domIndexDebounce);
+    }
+    domIndexDebounce = window.setTimeout(() => {
+      domIndexDebounce = 0;
+      invalidateDomIndex();
+      scheduleRender();
+    }, HEATMAP_DOM_INDEX_DEBOUNCE_MS);
+  }
+
+  function isElementChainCandidateUnique(matches: Element[]): Element | null {
+    const visible = matches.filter(isElementVisibleForHeatmap);
+    return visible.length === 1 ? visible[0] : null;
+  }
+
+  function queryUniqueBySelector(selector: string): Element | null {
+    try {
+      const all = Array.from(document.querySelectorAll(selector));
+      return isElementChainCandidateUnique(all);
+    } catch {
+      return null;
+    }
+  }
+
+  function elementMatchesSegment(element: Element, segment: ElementsChainSegment, useClasses: boolean): boolean {
+    if (element.tagName.toLowerCase() !== segment.tag) return false;
+    if (useClasses) {
+      for (const cls of segment.classes) {
+        if (!element.classList.contains(cls)) return false;
+      }
+    }
+    return true;
+  }
+
+  function ancestorMatchesChain(leaf: Element, chain: ElementsChainSegment[], useClasses: boolean, useNthOfType: boolean, useNthChild: boolean): boolean {
+    let cursor: Element | null = leaf;
+    for (let i = 0; i < chain.length; i++) {
+      if (cursor == null) return false;
+      const segment = chain[i];
+      if (!elementMatchesSegment(cursor, segment, useClasses)) return false;
+      if (useNthOfType && segment.nthOfType != null) {
+        if (computeNthOfType(cursor) !== segment.nthOfType) return false;
+      }
+      if (useNthChild && segment.nthChild != null) {
+        if (computeNthChild(cursor) !== segment.nthChild) return false;
+      }
+      cursor = cursor.parentElement;
+    }
+    return true;
+  }
+
+  function computeNthOfType(el: Element): number {
+    let n = 1;
+    let sib = el.previousElementSibling;
+    const tag = el.tagName;
+    while (sib != null) {
+      if (sib.tagName === tag) n += 1;
+      sib = sib.previousElementSibling;
+    }
+    return n;
+  }
+
+  function computeNthChild(el: Element): number {
+    let n = 1;
+    let sib = el.previousElementSibling;
+    while (sib != null) {
+      n += 1;
+      sib = sib.previousElementSibling;
+    }
+    return n;
+  }
+
+  function inferElementFromChain(chain: ElementsChainSegment[]): Element | null {
+    if (chain.length === 0) return null;
+    const leaf = chain[0];
+
+    // 1. Stable attribute selectors on leaf (no tag).
+    const stableAttrOrder: Array<{ attr: string, prefix?: string }> = [
+      { attr: 'data-hexclave-id' },
+      { attr: 'data-testid' },
+      { attr: 'data-test-id' },
+      { attr: 'name' },
+    ];
+    for (const { attr } of stableAttrOrder) {
+      const value = readChainAttr(leaf, attr);
+      if (value === '') continue;
+      const sel = `[${attr}="${cssEscapeAttrValue(value)}"]`;
+      const match: Element | null = queryUniqueBySelector(sel);
+      if (match) return match;
+    }
+    const id = readChainAttr(leaf, 'id');
+    if (id !== '') {
+      const match: Element | null = queryUniqueBySelector(`#${cssEscapeIdent(id)}`);
+      if (match) return match;
+    }
+    if (leaf.href != null && leaf.href !== '' && leaf.tag === 'a') {
+      const match: Element | null = queryUniqueBySelector(`a[href="${cssEscapeAttrValue(leaf.href)}"]`);
+      if (match) return match;
+    }
+
+    // 2. Tag + stable attribute on the leaf.
+    const otherStableAttrs = ['aria-label', 'role', 'placeholder', 'title', 'type'];
+    for (const attr of otherStableAttrs) {
+      const value = readChainAttr(leaf, attr);
+      if (value === '') continue;
+      const sel = `${leaf.tag}[${attr}="${cssEscapeAttrValue(value)}"]`;
+      const match: Element | null = queryUniqueBySelector(sel);
+      if (match) return match;
+    }
+
+    // 3, 4, 5: walk the DOM index by leaf tag, score the chain.
+    ensureDomIndex();
+    const candidates = domIndex.get(leaf.tag) ?? [];
+    if (candidates.length === 0) return null;
+
+    // Variant 3: tag.classes across the chain, no nth.
+    const v3: Element[] = [];
+    for (const candidate of candidates) {
+      if (ancestorMatchesChain(candidate, chain, true, false, false)) v3.push(candidate);
+    }
+    const u3 = isElementChainCandidateUnique(v3);
+    if (u3 != null) return u3;
+
+    // Variant 4: tag.classes + nth-of-type.
+    const v4: Element[] = [];
+    for (const candidate of candidates) {
+      if (ancestorMatchesChain(candidate, chain, true, true, false)) v4.push(candidate);
+    }
+    const u4 = isElementChainCandidateUnique(v4);
+    if (u4 != null) return u4;
+
+    // Variant 5: tag.classes + nth-child.
+    const v5: Element[] = [];
+    for (const candidate of candidates) {
+      if (ancestorMatchesChain(candidate, chain, true, true, true)) v5.push(candidate);
+    }
+    const u5 = isElementChainCandidateUnique(v5);
+    if (u5 != null) return u5;
+
+    return null;
+  }
+
+  setHtml(backButton, '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>');
+  const chevronUpSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>';
+  const chevronDownSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  setHtml(expandButton, chevronUpSvg);
+
+  const toolbar = h('div', { className: 'sdt-hm-toolbar' },
+    backButton,
+    h('div', { className: 'sdt-hm-toolbar-main' },
+      h('div', { className: 'sdt-hm-toolbar-title' }, 'Heatmap'),
+      h('div', { className: 'sdt-hm-toolbar-subtitle' }, 'Page locked while inspecting'),
+    ),
+    miniClicks,
+    expandButton,
+  );
+  const stats = h('div', { className: 'sdt-hm-stats' },
+    h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Clicks'), statsCount),
+    h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Elements'), selectorCount),
+    h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Viewport'), viewportValue),
+  );
+
+  const note = h('div', { className: 'sdt-hm-note' },
+    'Heatmap mode blocks page clicks and keyboard input outside this toolbar while keeping every toolbar control interactive.'
+  );
+
+  let filters: HeatmapFilters = readStoredFilters();
+  let filterReloadDebounce = 0;
+  // When the user hasn't typed a custom pattern, the URL pattern field mirrors
+  // the current route with id-like segments auto-wildcarded (`/teams/*/settings`)
+  // so the heatmap aggregates across all entities. A stored non-empty pattern
+  // means the user took manual control, so we leave it alone.
+  let urlPatternUserEdited = filters.urlPattern.trim() !== '';
+
+  function getEffectiveUrlPattern(): string {
+    if (urlPatternUserEdited) return filters.urlPattern.trim();
+    return wildcardizePathname(window.location.pathname);
+  }
+  // Reflect the current route into the field while in auto mode. No-op once the
+  // user has typed their own pattern.
+  function syncAutoUrlPattern() {
+    if (urlPatternUserEdited) return;
+    const auto = wildcardizePathname(window.location.pathname);
+    if (urlPatternInput.value !== auto) {
+      urlPatternInput.value = auto;
+    }
+  }
+
+  function makeFilterSelect(options: Array<[string, string]>, value: string): HTMLSelectElement {
+    const el = h('select', { className: 'sdt-hm-filter-input' }) as HTMLSelectElement;
+    for (const [optValue, label] of options) {
+      const opt = h('option', { value: optValue }, label) as HTMLOptionElement;
+      el.appendChild(opt);
+    }
+    el.value = value;
+    return el;
+  }
+
+  const rangeSelect = makeFilterSelect([
+    ['24h', 'Last 24h'],
+    ['7d', 'Last 7 days'],
+    ['30d', 'Last 30 days'],
+  ], filters.range);
+  const deviceSelect = makeFilterSelect([
+    ['all', 'All viewports'],
+    ['mobile', 'Mobile'],
+    ['tablet', 'Tablet'],
+    ['laptop', 'Laptop'],
+    ['desktop', 'Desktop'],
+    ['widescreen', 'Widescreen'],
+    ['tv', 'TV'],
+  ], filters.device);
+  const urlPatternInput = h('input', {
+    className: 'sdt-hm-filter-input',
+    type: 'text',
+    placeholder: '/products/*',
+    spellcheck: 'false',
+    autocomplete: 'off',
+    autocapitalize: 'off',
+  }) as HTMLInputElement;
+  urlPatternInput.value = getEffectiveUrlPattern();
+  // Shown only while the active pattern doesn't cover the current page (see
+  // render); resets the field back to the auto-wildcarded current route.
+  const urlPatternReset = h('button', {
+    className: 'sdt-hm-filter-reset',
+    type: 'button',
+    title: 'Reset the URL pattern to the current page',
+  }, 'Reset') as HTMLButtonElement;
+  const elementSearchInput = h('input', {
+    className: 'sdt-hm-filter-input',
+    type: 'text',
+    placeholder: 'Search element text or tag',
+    spellcheck: 'false',
+    autocomplete: 'off',
+    autocapitalize: 'off',
+  }) as HTMLInputElement;
+  elementSearchInput.value = filters.elementSearch;
+
+  function wrapFilterField(label: string, input: HTMLElement, action?: HTMLElement): HTMLElement {
+    const labelRow = h('span', { className: 'sdt-hm-filter-label-row' },
+      h('span', { className: 'sdt-hm-filter-label' }, label),
+    );
+    if (action != null) {
+      labelRow.appendChild(action);
+    }
+    return h('label', { className: 'sdt-hm-filter-field' },
+      labelRow,
+      input,
+    );
+  }
+
+  const filterRow = h('div', { className: 'sdt-hm-filters' },
+    h('div', { className: 'sdt-hm-filter-row' },
+      wrapFilterField('Range', rangeSelect),
+      wrapFilterField('Viewport', deviceSelect),
+      wrapFilterField('URL pattern', urlPatternInput, urlPatternReset),
+      wrapFilterField('Element search', elementSearchInput),
+    ),
+  );
+
+  function scheduleFilterReload() {
+    if (filterReloadDebounce !== 0) {
+      window.clearTimeout(filterReloadDebounce);
+    }
+    filterReloadDebounce = window.setTimeout(() => {
+      filterReloadDebounce = 0;
+      runAsynchronously(loadServerHeatmap());
+    }, 250);
+  }
+
+  function updateFilters(next: Partial<HeatmapFilters>) {
+    filters = { ...filters, ...next };
+    persistFilters(filters);
+    scheduleFilterReload();
+  }
+
+  let elementSearchDebounce = 0;
+  function updateElementSearch(value: string) {
+    filters = { ...filters, elementSearch: value };
+    persistFilters(filters);
+    if (elementSearchDebounce !== 0) {
+      window.clearTimeout(elementSearchDebounce);
+    }
+    elementSearchDebounce = window.setTimeout(() => {
+      elementSearchDebounce = 0;
+      scheduleRender();
+    }, 120);
+  }
+
+  rangeSelect.addEventListener('change', () => {
+    if (isHeatmapRangeKey(rangeSelect.value)) updateFilters({ range: rangeSelect.value });
+  });
+  deviceSelect.addEventListener('change', () => {
+    if (isHeatmapDeviceKey(deviceSelect.value)) updateFilters({ device: deviceSelect.value });
+  });
+  urlPatternInput.addEventListener('input', () => {
+    const value = urlPatternInput.value;
+    // Clearing the field hands control back to auto mode (reflect the route).
+    urlPatternUserEdited = value.trim() !== '';
+    updateFilters({ urlPattern: value });
+  });
+  urlPatternReset.addEventListener('click', () => {
+    // Hand control back to auto mode and reflect the current route immediately,
+    // so the pattern covers the page the overlay is bound to.
+    urlPatternUserEdited = false;
+    urlPatternInput.value = wildcardizePathname(window.location.pathname);
+    updateFilters({ urlPattern: '' });
+  });
+  elementSearchInput.addEventListener('input', () => {
+    updateElementSearch(elementSearchInput.value);
+  });
+
+  // Two regions: a fixed head (filters + a single action row pairing the stat
+  // chips with the overlay toggle) and a scrolling body (status, note, list).
+  // Keeping borders to a single head/body divider avoids the dense stack of
+  // bordered bands that made the expanded panel feel congested.
+  const actions = h('div', { className: 'sdt-hm-actions' }, stats, overlayToggle);
+  const head = h('div', { className: 'sdt-hm-head' }, filterRow, actions);
+  const body = h('div', { className: 'sdt-hm-body' }, status, note, list);
+  const details = h('div', { className: 'sdt-hm-details' }, head, body);
+
+  function getGroups(): DevToolClickGroup[] {
+    const byKey = new Map<string, DevToolClickGroup>();
+    if (serverHeatmap.path !== currentPath) {
+      return [];
+    }
+
+    const searchQuery = filters.elementSearch.trim().toLowerCase();
+    const matchesSearch = (entry: DevToolServerHeatmapElement): boolean => {
+      if (searchQuery === '') return true;
+      const haystacks = [entry.elementsText, entry.tagName, entry.href ?? '', entry.elementsChain];
+      return haystacks.some((value) => value.toLowerCase().includes(searchQuery));
+    };
+
+    // Prefer the elements-chain inference path (PostHog-style).
+    if (serverHeatmap.elements.length > 0) {
+      ensureDomIndex();
+      for (const elementEntry of serverHeatmap.elements) {
+        if (!matchesSearch(elementEntry)) continue;
+        const chain = parseElementsChain(elementEntry.elementsChain);
+        let element = chain.length > 0 ? inferElementFromChain(chain) : null;
+        if (element == null && elementEntry.href != null && elementEntry.href !== '' && elementEntry.tagName.toLowerCase() === 'a') {
+          element = queryUniqueBySelector(`a[href="${cssEscapeAttrValue(elementEntry.href)}"]`);
+        }
+        if (element == null) continue;
+        const key = elementEntry.elementsChain;
+        const existing = byKey.get(key);
+        if (existing != null) {
+          existing.count += elementEntry.clicks;
+          continue;
+        }
+        byKey.set(key, {
+          selector: key,
+          label: getReadableElementLabel(element),
+          count: elementEntry.clicks,
+          element,
+          rect: element.getBoundingClientRect(),
+        });
+      }
+    }
+
+    // Legacy selectors fallback (older backends or unresolved chains).
+    if (byKey.size === 0) {
+      for (const selectorHeatmap of serverHeatmap.selectors) {
+        if (searchQuery !== '' && !selectorHeatmap.selector.toLowerCase().includes(searchQuery)) continue;
+        const element = getElementFromSelector(selectorHeatmap.selector);
+        if (element == null) continue;
+        byKey.set(selectorHeatmap.selector, {
+          selector: selectorHeatmap.selector,
+          label: getReadableElementLabel(element),
+          count: selectorHeatmap.clicks,
+          element,
+          rect: element.getBoundingClientRect(),
+        });
+      }
+    }
+
+    return Array.from(byKey.values())
+      .sort((a, b) => b.count - a.count || stringCompare(a.selector, b.selector));
+  }
+
+  function scheduleRender() {
+    cancelAnimationFrame(renderFrame);
+    renderFrame = requestAnimationFrame(render);
+  }
+
+  function clearHeatmapOverlayElements() {
+    groupOverlayElements.clear();
+    overlayRoot.replaceChildren();
+  }
+
+  function getHeatmapViewportSize(): { width: number, height: number } {
+    const visualViewport = window.visualViewport;
+    if (visualViewport != null) {
+      return { width: visualViewport.width, height: visualViewport.height };
+    }
+    return { width: window.innerWidth, height: window.innerHeight };
+  }
+
+  function shouldShowElements(): boolean {
+    return overlayVisible;
+  }
+
+  function renderOverlay(groups: DevToolClickGroup[]) {
+    const nextMode = shouldShowElements() ? 'elements' : 'hidden';
+    if (overlayMode !== nextMode) {
+      overlayMode = nextMode;
+      clearHeatmapOverlayElements();
+    }
+    if (!shouldShowElements()) {
+      return;
+    }
+
+    const visibleGroupKeys = new Set<string>();
+    const maxCount = Math.max(1, ...groups.map((group) => group.count));
+    for (const group of groups) {
+      if (group.rect == null || group.rect.width <= 0 || group.rect.height <= 0) {
+        continue;
+      }
+      visibleGroupKeys.add(group.selector);
+      const hue = getHeatmapHue(group.count, maxCount);
+      let overlayElement = groupOverlayElements.get(group.selector);
+      if (overlayElement == null) {
+        overlayElement = {
+          marker: h('div', { className: 'sdt-hm-marker' }),
+          outline: h('div', { className: 'sdt-hm-outline' }),
+        };
+        groupOverlayElements.set(group.selector, overlayElement);
+        overlayRoot.append(overlayElement.outline, overlayElement.marker);
+      }
+      const { marker, outline } = overlayElement;
+      marker.title = `${group.count} clicks on ${group.selector}`;
+      marker.style.left = `${Math.round(group.rect.left + group.rect.width / 2)}px`;
+      marker.style.top = `${Math.round(group.rect.top + group.rect.height / 2)}px`;
+      marker.style.background = `hsla(${hue}, 96%, 58%, 0.94)`;
+      marker.style.boxShadow = `0 0 0 1px hsla(${hue}, 96%, 22%, 0.35), 0 8px 24px hsla(${hue}, 96%, 45%, 0.32)`;
+      marker.textContent = formatHeatmapCount(group.count);
+
+      outline.style.left = `${group.rect.left}px`;
+      outline.style.top = `${group.rect.top}px`;
+      outline.style.width = `${group.rect.width}px`;
+      outline.style.height = `${group.rect.height}px`;
+      outline.style.borderColor = `hsla(${hue}, 96%, 58%, 0.5)`;
+    }
+    for (const [key, overlayElement] of groupOverlayElements) {
+      if (!visibleGroupKeys.has(key)) {
+        overlayElement.marker.remove();
+        overlayElement.outline.remove();
+        groupOverlayElements.delete(key);
+      }
+    }
+  }
+
+  function renderList(groups: DevToolClickGroup[]) {
+    list.replaceChildren();
+    if (groups.length === 0) {
+      list.appendChild(empty);
+      return;
+    }
+    for (const group of groups.slice(0, 30)) {
+      const row = h('button', { className: 'sdt-hm-row' });
+      row.appendChild(h('span', { className: 'sdt-hm-row-count' }, formatHeatmapCount(group.count)));
+      const meta = h('span', { className: 'sdt-hm-row-meta' },
+        h('span', { className: 'sdt-hm-row-label' }, group.label),
+        h('span', { className: 'sdt-hm-row-selector' }, group.selector),
+      );
+      row.appendChild(meta);
+      row.addEventListener('click', () => {
+        group.element?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+      });
+      list.appendChild(row);
+    }
+  }
+
+  function render() {
+    if (currentPath !== window.location.pathname) {
+      currentPath = window.location.pathname;
+      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      serverHeatmapError = null;
+      syncAutoUrlPattern();
+      runAsynchronously(loadServerHeatmap());
+    }
+    const groups = getGroups();
+    // Clicks mapped to an element that actually exists in the current DOM (what
+    // the overlay can draw) vs. the true aggregate the filter matched server-side.
+    const mappedClicks = groups.reduce((sum, group) => sum + group.count, 0);
+    const aggregateClicks = serverHeatmap.path === currentPath ? serverHeatmap.totalClicks : 0;
+    const viewport = getHeatmapViewportSize();
+    statsCount.textContent = formatHeatmapCount(aggregateClicks);
+    selectorCount.textContent = formatHeatmapCount(groups.length);
+    viewportValue.textContent = `${Math.round(viewport.width)}x${Math.round(viewport.height)}`;
+    overlayToggle.textContent = overlayVisible ? 'Hide overlay' : 'Show overlay';
+    // A pattern that doesn't cover the current page means the overlay can't draw
+    // here, so offer a one-click reset back to the current route.
+    const effectiveUrlPattern = getEffectiveUrlPattern();
+    const urlPatternMatchesPath = patternMatchesPath(effectiveUrlPattern, currentPath);
+    urlPatternReset.classList.toggle('sdt-hm-filter-reset-visible', !urlPatternMatchesPath);
+    const token = getHeatmapTokenFromStorage(app.projectId);
+    const tokenOrigin = getHeatmapOriginFromStorage(app.projectId);
+    if (token == null) {
+      status.textContent = serverHeatmapError ?? `No ${getProjectHeatmapTokenStorageKey(getActiveHeatmapProjectId(app.projectId))} token in sessionStorage.`;
+    } else if (tokenOrigin != null && tokenOrigin !== window.location.origin) {
+      status.textContent = `Token was minted for ${tokenOrigin}, but this page is ${window.location.origin}. Generate a token for this exact origin.`;
+    } else if (loadingServerHeatmap) {
+      status.textContent = 'Loading aggregate clickmap...';
+    } else if (serverHeatmapError != null) {
+      status.textContent = serverHeatmapError;
+    } else {
+      const scope = effectiveUrlPattern !== '' && effectiveUrlPattern !== currentPath ? effectiveUrlPattern : currentPath;
+      let message = `Loaded ${formatHeatmapCount(aggregateClicks)} aggregate clicks for ${scope}.`;
+      if (aggregateClicks === 0) {
+        message = `No clicks recorded for ${scope} in this range.`;
+      } else if (!urlPatternMatchesPath) {
+        // The overlay is bound to the page you're viewing; off-pattern pages
+        // can't render it. This is the "* / shows 0 dots" case made explicit.
+        message += ' This page isn’t covered by the pattern — reset it or open a matching page to see the overlay.';
+      } else if (groups.length === 0) {
+        message += ' No matching elements found on this page yet.';
+      } else if (mappedClicks < aggregateClicks) {
+        message += ` ${formatHeatmapCount(mappedClicks)} mapped to elements on this page.`;
+      }
+      status.textContent = message;
+    }
+    status.classList.toggle('sdt-hm-token-status-error', serverHeatmapError != null || (token != null && tokenOrigin != null && tokenOrigin !== window.location.origin));
+    miniClicks.textContent = `${formatHeatmapCount(aggregateClicks)} clicks`;
+    container.classList.toggle('sdt-hm-expanded', expanded);
+    expandButton.setAttribute('aria-expanded', String(expanded));
+    expandButton.setAttribute('aria-label', expanded ? 'Collapse heatmap options' : 'Expand heatmap options');
+    expandButton.title = expanded ? 'Collapse heatmap options' : 'Expand heatmap options';
+    setHtml(expandButton, expanded ? chevronDownSvg : chevronUpSvg);
+    renderOverlay(groups);
+    renderList(groups);
+  }
+
+  async function loadServerHeatmap() {
+    const requestId = serverHeatmapRequestId + 1;
+    serverHeatmapRequestId = requestId;
+    const isLatestRequest = () => requestId === serverHeatmapRequestId;
+    const token = getHeatmapTokenFromStorage(app.projectId);
+    if (token == null) {
+      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      serverHeatmapError = null;
+      loadingServerHeatmap = false;
+      render();
+      return;
+    }
+    const tokenOrigin = getHeatmapOriginFromStorage(app.projectId);
+    if (tokenOrigin != null && tokenOrigin !== window.location.origin) {
+      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      serverHeatmapError = null;
+      loadingServerHeatmap = false;
+      render();
+      return;
+    }
+
+    loadingServerHeatmap = true;
+    serverHeatmapError = null;
+    render();
+    try {
+      const until = new Date();
+      const since = new Date(until.getTime() - HEATMAP_RANGE_MS[filters.range]);
+      const requestedPath = window.location.pathname;
+      const effectiveUrlPattern = getEffectiveUrlPattern();
+      const body: Record<string, unknown> = {
+        heatmap_token: token,
+        origin: window.location.origin,
+        since: since.toISOString(),
+        until: until.toISOString(),
+      };
+      if (effectiveUrlPattern !== '') {
+        body.url_pattern = effectiveUrlPattern;
+      } else {
+        body.route_path = requestedPath;
+      }
+      if (filters.device !== 'all') {
+        body.device = filters.device;
+      }
+      const response = await app[stackAppInternalsSymbol].sendRequest("/analytics/heatmap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }, "client");
+      if (!response.ok) {
+        throw new Error(`Heatmap request failed with HTTP ${response.status}`);
+      }
+      const responseBody: unknown = await response.json();
+      if (!isLatestRequest()) {
+        return;
+      }
+      serverHeatmap = parseServerHeatmapResponse(responseBody, requestedPath);
+    } catch (error) {
+      if (!isLatestRequest()) {
+        return;
+      }
+      serverHeatmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
+      if (error instanceof Error && error.message.includes('Heatmap token does not belong to this project')) {
+        clearHeatmapTokenStorage(app.projectId);
+        serverHeatmapError = 'The stored heatmap token belongs to another project. Generate a fresh token for this project.';
+      } else {
+        serverHeatmapError = error instanceof Error ? error.message : 'Failed to load heatmap data';
+      }
+    } finally {
+      if (!isLatestRequest()) {
+        return;
+      }
+      loadingServerHeatmap = false;
+      render();
+    }
+  }
+
+  function blockHeatmapPageInteraction(event: Event) {
+    if (isInsideDevToolEvent(event)) {
+      return;
+    }
+    const token = getHeatmapTokenFromStorage(app.projectId);
+    const tokenOrigin = getHeatmapOriginFromStorage(app.projectId);
+    if (token == null || (tokenOrigin != null && tokenOrigin !== window.location.origin) || serverHeatmapError != null) {
+      return;
+    }
+
+    if (maybeNavigateFromHeatmapModifierClick(event)) {
+      if (event.type === 'click') {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  }
+
+  overlayToggle.addEventListener('click', () => {
+    overlayVisible = !overlayVisible;
+    render();
+  });
+  backButton.addEventListener('click', onBack);
+  expandButton.addEventListener('click', () => {
+    expanded = !expanded;
+    render();
+  });
+  const onTokenUpdated = () => {
+    runAsynchronously(loadServerHeatmap());
+  };
+  const routePollInterval = window.setInterval(scheduleRender, 500);
+  const mutationObserver = new MutationObserver(() => {
+    scheduleDomIndexInvalidation();
+    scheduleRender();
+  });
+  const visualViewport = window.visualViewport;
+  mutationObserver.observe(document.body, { attributes: true, childList: true, subtree: true });
+
+  document.body.appendChild(overlayRoot);
+  rebuildDomIndex();
+  scheduleRender();
+  for (const eventName of HEATMAP_BLOCKED_POINTER_EVENTS) {
+    window.addEventListener(eventName, blockHeatmapPageInteraction, true);
+  }
+  for (const eventName of HEATMAP_BLOCKED_KEY_EVENTS) {
+    window.addEventListener(eventName, blockHeatmapPageInteraction, true);
+  }
+  const onWindowResize = () => {
+    scheduleRender();
+  };
+  document.addEventListener('scroll', scheduleRender, true);
+  window.addEventListener('resize', onWindowResize);
+  visualViewport?.addEventListener('resize', scheduleRender);
+  visualViewport?.addEventListener('scroll', scheduleRender);
+  window.addEventListener('hexclave:heatmap-token-updated', onTokenUpdated);
+  render();
+  runAsynchronously(loadServerHeatmap());
+
+  container.append(details, toolbar);
+  return {
+    element: container,
+    cleanup: () => {
+      cancelAnimationFrame(renderFrame);
+      if (domIndexDebounce !== 0) window.clearTimeout(domIndexDebounce);
+      if (filterReloadDebounce !== 0) window.clearTimeout(filterReloadDebounce);
+      if (elementSearchDebounce !== 0) window.clearTimeout(elementSearchDebounce);
+      window.clearInterval(routePollInterval);
+      mutationObserver.disconnect();
+      clearHeatmapOverlayElements();
+      domIndex.clear();
+      for (const eventName of HEATMAP_BLOCKED_POINTER_EVENTS) {
+        window.removeEventListener(eventName, blockHeatmapPageInteraction, true);
+      }
+      for (const eventName of HEATMAP_BLOCKED_KEY_EVENTS) {
+        window.removeEventListener(eventName, blockHeatmapPageInteraction, true);
+      }
+      document.removeEventListener('scroll', scheduleRender, true);
+      window.removeEventListener('resize', onWindowResize);
+      visualViewport?.removeEventListener('resize', scheduleRender);
+      visualViewport?.removeEventListener('scroll', scheduleRender);
+      window.removeEventListener('hexclave:heatmap-token-updated', onTokenUpdated);
+      overlayRoot.remove();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard tab
 // ---------------------------------------------------------------------------
 
@@ -2173,6 +3552,7 @@ function createPanel(
       animateNextPanelGeometryChange();
     }
 
+    panel.classList.toggle('sdt-panel-heatmap', tabId === 'heatmaps');
     if (tabId === 'dashboard') {
       panel.classList.add('sdt-panel-fullscreen');
       panel.style.width = '';
@@ -2181,6 +3561,11 @@ function createPanel(
     }
 
     panel.classList.remove('sdt-panel-fullscreen');
+    if (tabId === 'heatmaps') {
+      panel.style.width = '';
+      panel.style.height = '';
+      return;
+    }
     panel.style.width = state.get().panelWidth + 'px';
     panel.style.height = state.get().panelHeight + 'px';
   }
@@ -2188,6 +3573,7 @@ function createPanel(
   const tabs = getTabsForApp(app);
   const storedActiveTab = state.get().activeTab;
   const activeTab = tabs.some((tab) => tab.id === storedActiveTab) ? storedActiveTab : DEFAULT_STATE.activeTab;
+  let lastNonHeatmapTab: TabId = activeTab === 'heatmaps' ? 'overview' : activeTab;
 
   applyPanelMode(activeTab);
 
@@ -2206,6 +3592,9 @@ function createPanel(
   const trailingControls = h('div', { className: 'sdt-tabbar-actions' }, docsLink, closeBtn);
 
   const tabBar = createTabBar(tabs, activeTab, (id) => {
+    if (id !== 'heatmaps') {
+      lastNonHeatmapTab = id as TabId;
+    }
     state.update({ activeTab: id as TabId });
     applyPanelMode(id as TabId, { animate: true });
     showTab(id as TabId);
@@ -2242,6 +3631,14 @@ function createPanel(
     switch (tabId) {
       case 'overview': {
         mountTab(pane, createOverviewTab(app));
+        break;
+      }
+      case 'heatmaps': {
+        mountTab(pane, createHeatmapsTab(app, () => {
+          state.update({ activeTab: lastNonHeatmapTab });
+          applyPanelMode(lastNonHeatmapTab, { animate: true });
+          showTab(lastNonHeatmapTab);
+        }));
         break;
       }
       case 'customize': {
@@ -2384,6 +3781,17 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     wrapper.appendChild(panel.element);
   }
 
+  function openHeatmapPanel() {
+    state.update({ activeTab: 'heatmaps', isOpen: true });
+    if (panel) {
+      const currentPanel = panel;
+      panel = null;
+      currentPanel.cleanup();
+      currentPanel.element.remove();
+    }
+    openPanel();
+  }
+
   function closePanel() {
     if (!panel) return;
     state.update({ isOpen: false });
@@ -2410,9 +3818,28 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   const trigger = createTrigger(togglePanel);
   wrapper.appendChild(trigger.element);
 
+  // Resume the heatmap panel after a Cmd+click hard navigation. The handler
+  // that performed the redirect drops a sentinel into sessionStorage; if it's
+  // present here, restore the heatmap tab as the active one and reopen the
+  // panel so the user picks up where they left off.
+  let shouldResumeHeatmap = false;
+  try {
+    if (sessionStorage.getItem('hexclave-heatmap-overlay-resume') === '1') {
+      shouldResumeHeatmap = true;
+      sessionStorage.removeItem('hexclave-heatmap-overlay-resume');
+    }
+  } catch {
+    // ignore
+  }
+  if (shouldResumeHeatmap) {
+    state.update({ activeTab: 'heatmaps', isOpen: true });
+  }
+
   if (state.get().isOpen) {
     openPanel();
   }
+
+  window.addEventListener('hexclave:heatmap-token-updated', openHeatmapPanel);
 
   const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
     const timestamp = Date.now();
@@ -2441,6 +3868,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
         setGlobalDevToolInstance(null);
       }
       trigger.cleanup();
+      window.removeEventListener('hexclave:heatmap-token-updated', openHeatmapPanel);
       removeRequestListener();
       panel?.cleanup();
       if (root.parentNode) {

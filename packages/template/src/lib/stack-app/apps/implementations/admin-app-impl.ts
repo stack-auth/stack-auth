@@ -1,7 +1,7 @@
 import { KnownErrors, HexclaveAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { AnalyticsHeatmapDevice, AnalyticsHeatmapResponse, AnalyticsHeatmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -1166,6 +1166,28 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
     return await this._interface.queryAnalytics(options);
+  }
+
+  async getAnalyticsHeatmap(options: {
+    kind: "team_user_hour_of_week" | "session_replay_clicks",
+    member_user_ids?: string[],
+    route_path?: string,
+    route_regex?: string,
+    url_pattern?: string,
+    user_id?: string,
+    replay_id?: string,
+    device?: AnalyticsHeatmapDevice,
+    viewport_width_min?: number,
+    viewport_width_max?: number,
+    sampling?: number,
+    since: string,
+    until: string,
+  }): Promise<AnalyticsHeatmapResponse> {
+    return await this._interface.getAnalyticsHeatmap(options);
+  }
+
+  async createAnalyticsHeatmapToken(options: { origin: string }): Promise<AnalyticsHeatmapTokenResponse> {
+    return await this._interface.createAnalyticsHeatmapToken(options);
   }
 
   async listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult> {
