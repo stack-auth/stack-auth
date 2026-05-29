@@ -5,10 +5,11 @@ const placeholderPrefix = "#";
 const replaceMePlaceholder = "REPLACE_ME";
 
 function envOrUndefined(value: string | undefined): string | undefined {
-  if (value == null || value === "" || value === replaceMePlaceholder || value.startsWith(placeholderPrefix)) {
+  const normalized = value?.trim();
+  if (normalized == null || normalized === "" || normalized.replace(/^["']|["']$/g, "") === replaceMePlaceholder || normalized.startsWith(placeholderPrefix)) {
     return undefined;
   }
-  return value;
+  return normalized;
 }
 
 // Explicitly configure Stack Auth for docs app
