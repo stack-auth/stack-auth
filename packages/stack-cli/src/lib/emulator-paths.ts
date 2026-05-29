@@ -64,16 +64,10 @@ export function emulatorMockOAuthPort(): number {
   return envPortFirstSet(["STACK_EMULATOR_MOCK_OAUTH_PORT", "EMULATOR_MOCK_OAUTH_PORT"], DEFAULT_EMULATOR_MOCK_OAUTH_PORT);
 }
 
-// Polls the emulator runtime dir for the internal PCK file with exponential
-// backoff. Returns the trimmed contents on success, or `null` if the file is
-// still missing/empty when the deadline elapses. Non-ENOENT read errors throw.
-//
-// Two callers care about this race:
-//   - `stack emulator start --config-file` waits up to ~60s for the VM to come
-//     up after a fresh boot.
-//   - `stack exec` (local default) waits a much shorter window so we still
-//     surface "emulator not running" quickly while absorbing a typical race
-//     between `stack emulator start` and the next CLI invocation.
+// Polls the development-environment runtime dir for the internal PCK file with
+// exponential backoff. Returns the trimmed contents on success, or `null` if the
+// file is still missing/empty when the deadline elapses. Non-ENOENT read errors
+// throw.
 export async function pollInternalPck(timeoutMs: number): Promise<string | null> {
   const pckPath = internalPckPath();
   const deadline = performance.now() + timeoutMs;
