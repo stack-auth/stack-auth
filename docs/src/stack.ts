@@ -2,9 +2,10 @@ import { StackServerApp } from '@hexclave/next';
 import "server-only";
 
 const placeholderPrefix = "#";
+const replaceMePlaceholder = "REPLACE_ME";
 
 function envOrUndefined(value: string | undefined): string | undefined {
-  if (value == null || value === "" || value.startsWith(placeholderPrefix)) {
+  if (value == null || value === "" || value === replaceMePlaceholder || value.startsWith(placeholderPrefix)) {
     return undefined;
   }
   return value;
