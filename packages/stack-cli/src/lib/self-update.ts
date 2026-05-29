@@ -153,7 +153,18 @@ export function buildNpxInvocation(opts: {
   const command = process.platform === "win32" ? "npx.cmd" : "npx";
   return {
     command,
-    args: ["--yes", "-p", `${opts.packageName}@${opts.version}`, opts.binName, ...opts.forwardArgs],
+    args: [
+      "--yes",
+      // Override any global `minimumReleaseAge` (npm's supply-chain "cooldown",
+      // npm >=11.6.1) for this call only: we always want the just-published
+      // latest so the dashboard refetch isn't blocked by a user's cooldown.
+      // Unknown to older npm, which ignores it.
+      "--minimum-release-age=0",
+      "-p",
+      `${opts.packageName}@${opts.version}`,
+      opts.binName,
+      ...opts.forwardArgs,
+    ],
   };
 }
 
@@ -228,11 +239,6 @@ export async function maybeReexecToLatest(opts: { forwardArgs: string[] }): Prom
 
   const decision = decideReexec({ env: process.env, pkg, latest, forwardArgs: opts.forwardArgs });
   if (!decision.reexec) return;
-
-  logUpdate(
-    `A newer ${pkg.name} (${latest}) is available; re-running via npx to use the latest dashboard. ` +
-    `Set ${DISABLE_AUTO_UPDATE_ENV}=1 to disable.`,
-  );
 
   const result = await runReexec(decision.invocation);
   if (result.exited) {

@@ -117,6 +117,7 @@ describe("buildNpxInvocation", () => {
     expect(command).toMatch(/^npx(\.cmd)?$/);
     expect(args).toEqual([
       "--yes",
+      "--minimum-release-age=0",
       "-p",
       "@hexclave/cli@2.8.110",
       "stack",
@@ -130,6 +131,17 @@ describe("buildNpxInvocation", () => {
     ]);
   });
 
+  it("overrides any global npm cooldown so a just-published version is fetched", () => {
+    const { args } = buildNpxInvocation({
+      packageName: "@hexclave/cli",
+      version: "2.8.110",
+      binName: "stack",
+      forwardArgs: [],
+    });
+    // npm's `minimumReleaseAge` (>=11.6.1) would otherwise block the latest.
+    expect(args).toContain("--minimum-release-age=0");
+  });
+
   it("preserves args that start with dashes or contain spaces as individual argv elements", () => {
     const { args } = buildNpxInvocation({
       packageName: "@hexclave/cli",
@@ -138,7 +150,7 @@ describe("buildNpxInvocation", () => {
       forwardArgs: ["dev", "--flag=a b", "--", "echo", "hello world"],
     });
     expect(args).toEqual([
-      "--yes", "-p", "@hexclave/cli@2.8.110", "stack",
+      "--yes", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack",
       "dev", "--flag=a b", "--", "echo", "hello world",
     ]);
   });
@@ -190,7 +202,7 @@ describe("decideReexec", () => {
     expect(decision.reexec).toBe(true);
     if (decision.reexec) {
       expect(decision.invocation.args).toEqual([
-        "--yes", "-p", "@hexclave/cli@2.8.110", "stack", "dev", "--config-file", "x",
+        "--yes", "--minimum-release-age=0", "-p", "@hexclave/cli@2.8.110", "stack", "dev", "--config-file", "x",
       ]);
     }
   });
