@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { createGlobal } from "@stackframe/stack-shared/dist/utils/globals";
+import { createGlobal } from "@hexclave/shared/dist/utils/globals";
 import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
 
 type StackContextValue = {
