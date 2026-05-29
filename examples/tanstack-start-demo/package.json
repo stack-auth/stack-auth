@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/example-tanstack-start-demo",
-  "version": "2.8.109",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "name": "@hexclave/example-tanstack-start-demo",
+  "version": "1.0.0",
+  "repository": "https://github.com/hexclave/hexclave",
   "description": "TanStack Start demo app for Hexclave",
   "private": true,
   "type": "module",
@@ -14,9 +14,9 @@
     "lint": "eslint --ext .ts,.tsx ."
   },
   "dependencies": {
-    "@stackframe/stack-shared": "workspace:*",
-    "@stackframe/stack-ui": "workspace:*",
-    "@stackframe/tanstack-start": "workspace:*",
+    "@hexclave/shared": "workspace:*",
+    "@hexclave/ui": "workspace:*",
+    "@hexclave/tanstack-start": "workspace:*",
     "@tanstack/react-router": "^1.168.23",
     "@tanstack/react-start": "^1.167.42",
     "nitro": "^3.0.0",

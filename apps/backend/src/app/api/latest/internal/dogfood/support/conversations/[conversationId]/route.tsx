@@ -13,7 +13,7 @@ import {
   yupNumber,
   yupObject,
   yupString,
-} from "@stackframe/stack-shared/dist/schema-fields";
+} from "@hexclave/shared/dist/schema-fields";
 
 export const GET = createSmartRouteHandler({
   metadata: {

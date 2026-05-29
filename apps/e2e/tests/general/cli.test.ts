@@ -2,8 +2,8 @@ import { execFile } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { StackAdminApp } from "@stackframe/js";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { StackAdminApp } from "@hexclave/js";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { describe, beforeAll, afterAll } from "vitest";
 import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_INTERNAL_PROJECT_ADMIN_KEY } from "../helpers";
 
@@ -49,7 +49,7 @@ describe("Stack CLI", () => {
   beforeAll(async () => {
     // Check CLI is built
     if (!fs.existsSync(CLI_BIN)) {
-      throw new Error("CLI not built. Run `pnpm --filter @stackframe/stack-cli run build` first.");
+      throw new Error("CLI not built. Run `pnpm --filter @hexclave/cli run build` first.");
     }
 
     // Create temp dir for config file
@@ -462,7 +462,7 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
+    expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
     expect(content).toContain("export const config: StackConfig");
   });
 
@@ -557,7 +557,7 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
+    expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
     expect(content).toContain("export const config: StackConfig");
     expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {
@@ -745,7 +745,7 @@ describe("Stack CLI — Doctor", () => {
 
   beforeAll(() => {
     if (!fs.existsSync(CLI_BIN)) {
-      throw new Error("CLI not built. Run `pnpm --filter @stackframe/stack-cli run build` first.");
+      throw new Error("CLI not built. Run `pnpm --filter @hexclave/cli run build` first.");
     }
     doctorTmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-doctor-test-"));
   });
@@ -799,13 +799,13 @@ describe("Stack CLI — Doctor", () => {
   function nextHappyFiles(): Record<string, string> {
     return {
       "package.json": pkg({
-        dependencies: { next: "14.0.0", "@stackframe/stack": "1.0.0" },
+        dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
       "stack/client.ts": "export const stackClientApp = {};\n",
       "stack/server.ts": "export const stackServerApp = {};\n",
       "app/handler/[...stack]/page.tsx": "export default function Page() { return null; }\n",
       "app/layout.tsx":
-        `import { StackProvider } from "@stackframe/stack";\n` +
+        `import { StackProvider } from "@hexclave/next";\n` +
         `export default function RootLayout({ children }) {\n` +
         `  return <StackProvider>{children}</StackProvider>;\n` +
         `}\n`,
@@ -900,13 +900,13 @@ describe("Stack CLI — Doctor", () => {
   it("Next.js applies src/ prefix when src/app exists", async ({ expect }) => {
     const dir = makeProject("next-src", {
       "package.json": pkg({
-        dependencies: { next: "14.0.0", "@stackframe/stack": "1.0.0" },
+        dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
       "src/stack/client.ts": "export const stackClientApp = {};\n",
       "src/stack/server.ts": "export const stackServerApp = {};\n",
       "src/app/handler/[...stack]/page.tsx": "export default function P() { return null; }\n",
       "src/app/layout.tsx":
-        `import { StackProvider } from "@stackframe/stack";\n` +
+        `import { StackProvider } from "@hexclave/next";\n` +
         `export default function L({ children }) { return <StackProvider>{children}</StackProvider>; }\n`,
       ".env.local":
         `NEXT_PUBLIC_STACK_PROJECT_ID=p\n` +
@@ -924,7 +924,7 @@ describe("Stack CLI — Doctor", () => {
   it("React happy path passes all checks", async ({ expect }) => {
     const dir = makeProject("react-happy", {
       "package.json": pkg({
-        dependencies: { react: "18.0.0", "@stackframe/react": "1.0.0" },
+        dependencies: { react: "18.0.0", "@hexclave/react": "1.0.0" },
       }),
       "stack/client.ts": "export const stackClientApp = {};\n",
       ".env.local":
@@ -941,7 +941,7 @@ describe("Stack CLI — Doctor", () => {
   it("JS catch-all happy path passes all checks", async ({ expect }) => {
     const dir = makeProject("js-happy", {
       "package.json": pkg({
-        dependencies: { svelte: "4.0.0", "@stackframe/js": "1.0.0" },
+        dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
       "stack/server.ts": "export const stackServerApp = {};\n",
       ".env":
@@ -959,7 +959,7 @@ describe("Stack CLI — Doctor", () => {
   it("JS catch-all accepts PUBLIC_* env aliases", async ({ expect }) => {
     const dir = makeProject("js-public", {
       "package.json": pkg({
-        dependencies: { svelte: "4.0.0", "@stackframe/js": "1.0.0" },
+        dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
       "stack/client.ts": "export const stackClientApp = {};\n",
       ".env":
@@ -974,7 +974,7 @@ describe("Stack CLI — Doctor", () => {
     expect(parsed.failed).toBe(0);
   });
 
-  it("fails when @stackframe/stack is not installed", async ({ expect }) => {
+  it("fails when @hexclave/next is not installed", async ({ expect }) => {
     const files = nextHappyFiles();
     files["package.json"] = pkg({ dependencies: { next: "14.0.0" } });
     const dir = makeProject("no-stack-pkg", files);
@@ -1011,7 +1011,7 @@ describe("Stack CLI — Doctor", () => {
   it("warns when layout imports StackProvider but does not render it", async ({ expect }) => {
     const files = nextHappyFiles();
     files["app/layout.tsx"] =
-      `import { StackProvider } from "@stackframe/stack";\n` +
+      `import { StackProvider } from "@hexclave/next";\n` +
       `export default function L({ children }) { return <html><body>{children}</body></html>; }\n`;
     const dir = makeProject("layout-no-jsx", files);
     const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);

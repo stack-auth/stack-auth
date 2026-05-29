@@ -39,8 +39,8 @@ const retryDelayMs = 1_000;
 
 const probeScript = `
 (async () => {
-  await import('@stackframe/stack');
-  await import('@stackframe/stack-shared/dist/utils/env');
+  await import('@hexclave/next');
+  await import('@hexclave/shared/dist/utils/env');
   const { existsSync, readdirSync } = await import('node:fs');
   const { join } = await import('node:path');
   const generatedDir = join(process.cwd(), 'src', 'generated', 'prisma');

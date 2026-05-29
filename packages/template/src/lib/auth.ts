@@ -1,8 +1,8 @@
-import { KnownError, HexclaveClientInterface } from "@stackframe/stack-shared";
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownError, HexclaveClientInterface } from "@hexclave/shared";
+import { InternalSession } from "@hexclave/shared/dist/sessions";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { constructRedirectUrl } from "../utils/url";
 import { consumeVerifierAndStateCookie, saveVerifierAndState } from "./cookie";
 export async function getNewOAuthProviderOrScopeUrl(

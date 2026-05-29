@@ -5,8 +5,8 @@ import { SettingSwitch } from "@/components/settings";
 import { ActionDialog, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { EnvelopeSimpleIcon } from "@phosphor-icons/react";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 
 type AffectedUser = {

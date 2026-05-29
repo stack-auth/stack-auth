@@ -1,4 +1,4 @@
-import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
+import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { readConfigValue } from "./config.js";
 import { emulatorBackendPort, emulatorDashboardPort, internalPckPath, pollInternalPck } from "./emulator-paths.js";
 import { AuthError, CliError } from "./errors.js";

@@ -1,8 +1,8 @@
 {
-  "name": "@stackframe/lovable-react-18-example",
+  "name": "@hexclave/lovable-react-18-example",
   "private": true,
-  "version": "2.8.109",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "version": "1.0.0",
+  "repository": "https://github.com/hexclave/hexclave",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -62,7 +62,7 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
     "zod": "^3.25.76",
-    "@stackframe/react": "workspace:*"
+    "@hexclave/react": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

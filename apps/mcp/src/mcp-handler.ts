@@ -1,5 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { remindersPrompt } from "@stackframe/stack-shared/dist/ai/unified-prompts/reminders";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 

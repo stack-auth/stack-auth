@@ -1,11 +1,11 @@
 import { PrismaClientTransaction } from "@/prisma-client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { ProjectPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
-import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
-import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownErrors } from "@hexclave/shared";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { ProjectPermissionsCrud } from "@hexclave/shared/dist/interface/crud/project-permissions";
+import { TeamPermissionDefinitionsCrud, TeamPermissionsCrud } from "@hexclave/shared/dist/interface/crud/team-permissions";
+import { groupBy } from "@hexclave/shared/dist/utils/arrays";
+import { getOrUndefined, has, typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { overrideEnvironmentConfigOverride } from "./config";
 import { recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "./external-db-sync";
 import { Tenancy } from "./tenancies";

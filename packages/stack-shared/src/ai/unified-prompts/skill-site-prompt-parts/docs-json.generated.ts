@@ -241,7 +241,7 @@ const docsJson = {
   "footer": {
     "socials": {
       "x": "https://x.com/stack_auth",
-      "github": "https://github.com/hexclave/stack",
+      "github": "https://github.com/hexclave/hexclave",
       "discord": "https://discord.hexclave.com"
     }
   },

@@ -1,8 +1,8 @@
 import { Link } from "@/components/link";
 import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
-import { StackAdminApp } from "@stackframe/stack";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
+import { StackAdminApp } from "@hexclave/next";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
 import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
 import NeonLogo from "../../public/neon-logo.png";
@@ -383,7 +383,7 @@ export const ALL_APPS_FRONTEND = {
     storeDescription: (
       <>
         <p>TanStack Start integration adds Hexclave to full-stack React apps built with TanStack Router and Vite.</p>
-        <p>Install the alpha `@stackframe/tanstack-start` package, wire the Stack provider into your root route, and mount the built-in auth handler pages under your app origin.</p>
+        <p>Install the alpha `@hexclave/tanstack-start` package, wire the Stack provider into your root route, and mount the built-in auth handler pages under your app origin.</p>
         <p>The dashboard sidebar entry opens the integration docs so your team can jump back to setup instructions from the project.</p>
       </>
     ),

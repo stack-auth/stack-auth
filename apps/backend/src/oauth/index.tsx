@@ -1,9 +1,9 @@
 import { DEFAULT_BRANCH_ID, Tenancy } from "@/lib/tenancies";
 import { DiscordProvider } from "@/oauth/providers/discord";
 import OAuth2Server from "@node-oauth/oauth2-server";
-import { getStackAuthApiBaseUrl } from "@stackframe/stack-shared/dist/utils/cloud-hosts";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getStackAuthApiBaseUrl } from "@hexclave/shared/dist/utils/cloud-hosts";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { OAuthModel } from "./model";
 import { AppleProvider } from "./providers/apple";
 import { OAuthBaseProvider } from "./providers/base";

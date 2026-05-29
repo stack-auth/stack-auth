@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle, Info, WarningCircle, XCircle } from "@phosphor-icons/react";
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 
 type DesignAlertVariant = "default" | "success" | "error" | "warning" | "info";
 

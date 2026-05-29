@@ -49,7 +49,7 @@ export default mergeConfig(
   defineConfig({
     resolve: {
       alias: {
-        "@stackframe/tanstack-start/tanstack-start-server-context": tanstackStartServerContextStub, // THIS_LINE_PLATFORM template
+        "@hexclave/tanstack-start/tanstack-start-server-context": tanstackStartServerContextStub, // THIS_LINE_PLATFORM template
       },
     },
     plugins: [replaceCompileTimeClientVersion()],

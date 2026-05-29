@@ -1,7 +1,7 @@
 "use client";
 
-import { Card } from "@stackframe/stack-ui";
-import { cn } from "@stackframe/stack-ui";
+import { Card } from "@hexclave/ui";
+import { cn } from "@hexclave/ui";
 import React from "react";
 
 // ─── Card nesting context ────────────────────────────────────────────────────

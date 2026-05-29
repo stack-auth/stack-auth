@@ -2,7 +2,7 @@
 
 import { Button, cn } from "@/components/ui";
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import React, { useCallback, useEffect, useState } from "react";
 import { InlineCode } from "./inline-code";
 

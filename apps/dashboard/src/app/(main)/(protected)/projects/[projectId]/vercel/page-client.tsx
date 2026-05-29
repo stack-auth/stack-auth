@@ -4,8 +4,8 @@ import { EnvKeys } from "@/components/env-keys";
 import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
 import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import {
   DesignAlert,
   DesignBadge,

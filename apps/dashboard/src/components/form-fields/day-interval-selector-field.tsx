@@ -1,4 +1,4 @@
-import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { Control, FieldValues, Path } from "react-hook-form";
 import { FieldLabel } from "../form-fields";
 import { FormControl, SelectValue, SelectTrigger, SelectItem, SelectContent, FormItem, FormMessage, Select, SelectGroup, FormField } from "@/components/ui";

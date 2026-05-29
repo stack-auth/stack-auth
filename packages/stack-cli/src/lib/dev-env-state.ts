@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { stackDevEnvStatePath } from "@stackframe/stack-shared/dist/utils/dev-env-state-path";
+import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
 
 export type DevEnvState = {
   version: 1,

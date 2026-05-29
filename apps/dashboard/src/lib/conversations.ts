@@ -6,7 +6,7 @@ import type {
   ConversationPriority,
   ConversationStatus,
 } from "@/lib/conversation-types";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 type ListConversationsOptions = {
   projectId: string,

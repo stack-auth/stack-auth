@@ -2,14 +2,14 @@ import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createCudHandlers } from "@/route-handlers/cud-handler";
 import { Tenancy } from "@/lib/tenancies";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { createCrud } from "@stackframe/stack-shared/dist/crud";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
+import { LightEmailTheme } from "@hexclave/shared/dist/helpers/emails";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { createCrud } from "@hexclave/shared/dist/crud";
+import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import type { InferType } from "yup";
 
 type ThemeItem = {

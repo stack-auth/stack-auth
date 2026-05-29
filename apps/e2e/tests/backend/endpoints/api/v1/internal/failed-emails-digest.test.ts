@@ -1,5 +1,5 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { describe, expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, bumpEmailAddress, InternalProjectKeys, niceBackendFetch, Project } from "../../../../backend-helpers";

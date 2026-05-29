@@ -12,9 +12,9 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
-import { DesignCard } from "@stackframe/dashboard-ui-components";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { DesignCard } from "@hexclave/dashboard-ui-components";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";

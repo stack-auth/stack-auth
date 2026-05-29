@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/backend",
-  "version": "2.8.109",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "name": "@hexclave/backend",
+  "version": "1.0.0",
+  "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
   "scripts": {
@@ -85,8 +85,8 @@
     "@react-email/render": "^1.2.1",
     "@sentry/nextjs": "^10.45.0",
     "@simplewebauthn/server": "^13.3.0",
-    "@stackframe/stack": "workspace:*",
-    "@stackframe/stack-shared": "workspace:*",
+    "@hexclave/next": "workspace:*",
+    "@hexclave/shared": "workspace:*",
     "@upstash/qstash": "^2.8.2",
     "@vercel/functions": "^2.0.0",
     "@vercel/otel": "^1.10.4",

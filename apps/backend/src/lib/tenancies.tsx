@@ -1,9 +1,9 @@
 import { globalPrismaClient, RawQuery, rawQuery } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
+import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
 import { getRenderedOrganizationConfigQuery } from "./config";
 import { getProject, getProjectQuery } from "./projects";
 

@@ -13,9 +13,9 @@ import {
   updateManagedEmailDomainWebhookStatus,
 } from "@/lib/managed-email-domains";
 import { Tenancy } from "@/lib/tenancies";
-import { getNodeEnvironment, getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { getNodeEnvironment, getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 
 type ResendDomainRecord = {
   record: string,

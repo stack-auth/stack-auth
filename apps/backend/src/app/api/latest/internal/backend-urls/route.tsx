@@ -1,8 +1,8 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getApiUrlForRequest } from "@/lib/request-api-url";
-import { urlSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { urlSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 /**
  * Env var format: JSON object mapping probability (as string number) to URL arrays.

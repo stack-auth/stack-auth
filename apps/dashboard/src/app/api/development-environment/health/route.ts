@@ -1,6 +1,6 @@
 import { getPublicEnvVar } from "@/lib/env";
 import { NextRequest, NextResponse } from "next/server";
-import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { createUrlIfValid, isLocalhost } from "@hexclave/shared/dist/utils/urls";
 
 export const runtime = "nodejs";
 

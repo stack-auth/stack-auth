@@ -1,10 +1,10 @@
 'use client';
 
-import { KnownErrors } from "@stackframe/stack-shared";
-import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { use } from "@stackframe/stack-shared/dist/utils/react";
-import { Typography } from "@stackframe/stack-ui";
+import { KnownErrors } from "@hexclave/shared";
+import { cacheFunction } from "@hexclave/shared/dist/utils/caches";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { use } from "@hexclave/shared/dist/utils/react";
+import { Typography } from "@hexclave/ui";
 import React from "react";
 import { MessageCard, StackClientApp, useStackApp, useUser } from "..";
 import { PredefinedMessageCard } from "../components/message-cards/predefined-message-card";

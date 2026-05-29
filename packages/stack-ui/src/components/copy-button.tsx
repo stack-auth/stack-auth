@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import { Copy } from "lucide-react";
 import React from "react";
 import { Button, cn, useToast } from "..";

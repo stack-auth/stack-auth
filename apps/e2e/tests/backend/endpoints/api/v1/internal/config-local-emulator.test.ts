@@ -115,7 +115,7 @@ describe("local emulator config restrictions", () => {
     const fileContent = await fs.readFile(filePath, "utf-8");
     expect(fileContent).toMatchInlineSnapshot(`
       deindent\`
-        import type { StackConfig } from "@stackframe/js";
+        import type { StackConfig } from "@hexclave/js";
         
         export const config: StackConfig = {
           "teams": {

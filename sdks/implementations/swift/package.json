@@ -1,6 +1,6 @@
 {
-  "name": "@stackframe/swift-sdk",
-  "version": "2.8.109",
+  "name": "@hexclave/swift-sdk",
+  "version": "1.0.0",
   "private": true,
   "description": "Hexclave Swift SDK",
   "scripts": {

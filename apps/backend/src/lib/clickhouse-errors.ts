@@ -1,5 +1,5 @@
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 const SAFE_CLICKHOUSE_ERROR_CODES = [
   62, // SYNTAX_ERROR

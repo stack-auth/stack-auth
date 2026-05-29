@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/skills",
-  "version": "2.8.109",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "name": "@hexclave/skills",
+  "version": "1.0.0",
+  "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@stackframe/stack-shared": "workspace:*",
+    "@hexclave/shared": "workspace:*",
     "next": "16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3"

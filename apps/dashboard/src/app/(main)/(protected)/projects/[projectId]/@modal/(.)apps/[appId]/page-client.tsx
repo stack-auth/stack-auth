@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui";
 import { ALL_APPS_FRONTEND, getAppPath, isSubApp } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
-import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 

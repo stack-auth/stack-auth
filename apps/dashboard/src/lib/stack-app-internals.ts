@@ -2,8 +2,8 @@ import {
   type MetricsResponse,
   type MetricsUserCounts,
   type UserActivityResponse,
-} from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+} from "@hexclave/shared/dist/interface/admin-metrics";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
@@ -25,7 +25,7 @@ export type {
   MetricsTopRegion,
   MetricsUserCounts,
   UserActivityResponse,
-} from "@stackframe/stack-shared/dist/interface/admin-metrics";
+} from "@hexclave/shared/dist/interface/admin-metrics";
 
 /**
  * Pulls the typed `useMetrics` hook out of the admin app via the internals

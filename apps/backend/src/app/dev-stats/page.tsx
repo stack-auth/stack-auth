@@ -1,7 +1,7 @@
 "use client";
 
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { useCallback, useMemo, useState } from "react";
 
 type RequestStat = {

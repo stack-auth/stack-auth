@@ -3,9 +3,9 @@
 import { ProjectTransferConfirmView, type ProjectTransferConfirmUiState } from "@/components/project-transfer-confirm-view";
 import { useRouter } from "@/components/router";
 import { buildTransferSignUpUrl, getStackAppInternals } from "@/lib/transfer-utils";
-import { useStackApp, useUser } from "@stackframe/stack";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { useStackApp, useUser } from "@hexclave/next";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 

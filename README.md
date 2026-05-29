@@ -176,6 +176,6 @@ Found a security issue? Email security@hexclave.com.
 
 ## ❤ Contributors
 
-<a href="https://github.com/hexclave/stack-auth/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=hexclave/stack-auth&columns=9" alt="Contributors" width="100%" />
+<a href="https://github.com/hexclave/hexclave/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=hexclave/hexclave&columns=9" alt="Contributors" width="100%" />
 </a>

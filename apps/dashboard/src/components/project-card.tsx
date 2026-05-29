@@ -5,8 +5,8 @@ import { Link } from "@/components/link";
 import { ProjectUsersMetric } from "@/components/project-users-metric";
 import { useFromNow } from '@/hooks/use-from-now';
 import { FolderOpenIcon } from "@phosphor-icons/react";
-import { AdminProject } from '@stackframe/stack';
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { AdminProject } from '@hexclave/next';
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 export function ProjectCard(props: {
   project: AdminProject,

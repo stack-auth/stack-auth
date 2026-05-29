@@ -73,11 +73,11 @@ function copyDashboardHoistedDependencies(pnpmRoot, current = pnpmRoot) {
 function copyDashboardAssets() {
   assertExists(
     join(dashboardStandaloneSrc, "apps/dashboard/server.js"),
-    "Dashboard standalone build is missing. Run `pnpm exec turbo run build:rde-standalone --filter=@stackframe/dashboard` before building @stackframe/stack-cli.",
+    "Dashboard standalone build is missing. Run `pnpm exec turbo run build:rde-standalone --filter=@hexclave/dashboard` before building @hexclave/cli.",
   );
   assertExists(
     dashboardStaticSrc,
-    "Dashboard static assets are missing. Run `pnpm exec turbo run build:rde-standalone --filter=@stackframe/dashboard` before building @stackframe/stack-cli.",
+    "Dashboard static assets are missing. Run `pnpm exec turbo run build:rde-standalone --filter=@hexclave/dashboard` before building @hexclave/cli.",
   );
 
   rmSync(dashboardDist, { recursive: true, force: true });

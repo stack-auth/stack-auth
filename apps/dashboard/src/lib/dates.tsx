@@ -1,4 +1,4 @@
-import { Interval } from "@stackframe/stack-shared/dist/utils/dates";
+import { Interval } from "@hexclave/shared/dist/utils/dates";
 
 export function readableInterval(interval: Interval | "never"): string {
   if (interval === "never") {

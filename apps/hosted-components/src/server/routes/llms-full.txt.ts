@@ -1,4 +1,4 @@
-import { createLlmsTextResponse, llmsFullTxt } from "@stackframe/stack-shared/dist/ai/llms/llms";
+import { createLlmsTextResponse, llmsFullTxt } from "@hexclave/shared/dist/ai/llms/llms";
 
 export default {
   fetch(request: Request) {

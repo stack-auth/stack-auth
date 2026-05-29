@@ -1,14 +1,14 @@
 "use client";
 
 import Loading from "@/app/loading";
-import { CursorBlastEffect } from "@stackframe/dashboard-ui-components";
+import { CursorBlastEffect } from "@hexclave/dashboard-ui-components";
 import { ConfigUpdateDialogProvider } from "@/lib/config-update";
 import { HexclaveRebrandModal } from "@/components/hexclave-rebrand-modal";
 import { getPublicEnvVar } from '@/lib/env';
-import { useStackApp, useUser } from "@stackframe/stack";
-import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { useStackApp, useUser } from "@hexclave/next";
+import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { useEffect, useRef } from "react";
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {

@@ -1,8 +1,8 @@
 import "server-only";
 
-import { showOnboardingStackConfigValue } from "@stackframe/stack-shared/dist/config-authoring";
-import { Config, isValidConfig } from "@stackframe/stack-shared/dist/config/format";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
+import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
+import { Config, isValidConfig } from "@hexclave/shared/dist/config/format";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";

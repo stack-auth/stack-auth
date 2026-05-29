@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { llmsTextHeaders, llmsTxt } from "@stackframe/stack-shared/dist/ai/llms/llms";
-import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { llmsTextHeaders, llmsTxt } from "@hexclave/shared/dist/ai/llms/llms";
+import { yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 
 export const GET = createSmartRouteHandler({
   metadata: {

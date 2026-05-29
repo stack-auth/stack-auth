@@ -10,10 +10,10 @@ import { UserPageMetricCard } from "../../users/[userId]/user-page-metric-card";
 import { UserPageTableSection } from "../../users/[userId]/user-page-table-section";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from "@phosphor-icons/react";
-import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import type { ServerTeam } from "@stackframe/stack";
-import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import type { ServerTeam } from "@hexclave/next";
+import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
 

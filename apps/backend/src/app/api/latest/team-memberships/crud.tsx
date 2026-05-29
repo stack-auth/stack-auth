@@ -7,11 +7,11 @@ import { sendTeamMembershipCreatedWebhook, sendTeamMembershipDeletedWebhook, sen
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { teamMembershipsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-memberships";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { KnownErrors } from "@hexclave/shared";
+import { teamMembershipsCrud } from "@hexclave/shared/dist/interface/crud/team-memberships";
+import { userIdOrMeSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 
 export async function addUserToTeam(tx: PrismaTransaction, options: {
