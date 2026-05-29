@@ -1,9 +1,9 @@
 import "server-only";
 
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { getEnvBoolean } from "@hexclave/shared/dist/utils/env";
 
 export async function startRemoteDevelopmentEnvironmentLifecycleIfNeeded(): Promise<void> {
-  if (getEnvVariable("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT", "") !== "true") {
+  if (!getEnvBoolean("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT")) {
     return;
   }
 

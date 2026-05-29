@@ -31,8 +31,10 @@ export async function register(): Promise<void> {
       let nicified;
       try {
         nicified = nicify(error, { maxDepth: 8 });
-      } catch (e) {
-        nicified = `Error occurred during nicification: ${e}`;
+      } catch (nicifyError: unknown) {
+        // Only nicify errors are converted to metadata; the original event still reports.
+        const nicifyErrorMessage = nicifyError instanceof Error ? nicifyError.message : String(nicifyError);
+        nicified = `Error occurred during nicification: ${nicifyErrorMessage}`;
       }
       if (error instanceof Error) {
         event.extra = {
