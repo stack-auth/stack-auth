@@ -209,6 +209,15 @@ export const POST = createSmartRouteHandler({
       return { statusCode: 200, bodyType: "json", body: { success: true } };
     }
 
+    // For now, we don't allow switching out of a Stripe-backed subscription while the project is in test mode.
+    if (testMode && existingSub && existingSub.stripeSubscriptionId) {
+      throw new StatusError(
+        400,
+        "Cannot switch a live subscription while the project is in test mode. " +
+        "Cancel the live subscription first, or disable test mode before switching.",
+      );
+    }
+
     const stripe = await getStripeForAccount({ tenancy: auth.tenancy });
     const stripeCustomer = await getStripeCustomerForCustomerOrNull({
       stripe,
