@@ -565,3 +565,6 @@ A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path fli
 
 ## Q: How should Microsoft OAuth callback token exchange include scopes?
 A: Microsoft Entra ID's v2 token endpoint can reject authorization-code exchanges with `AADSTS70011` if the token request omits `scope`. Keep scope emission opt-in at the provider layer (`includeScopeInCallbackTokenExchange`) and pass the same merged base/provider scopes to `openid-client` via the callback `extras.exchangeBody.scope` parameter. The callback route must forward stored `providerScope` from the outer OAuth info so custom Microsoft provider scopes are included in the token exchange.
+
+## Q: How should the development-environment dashboard load local config files?
+A: Use `jiti` to import the user's config module, matching `stack config push`, so helper functions such as `defineStackConfig(...)` or `makeConfig()` work. Disable `moduleCache` for this reader because the development-environment file watcher may import the same config path repeatedly after edits, and cached modules would otherwise hide changes.
