@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess, writeDevEnvState } from "./dev-env-state";
+import { devEnvStatePath, ensureLocalDashboardSecret, readCliUpdateCheckCache, readDevEnvState, recordLocalDashboardProcess, writeCliUpdateCheckCache, writeDevEnvState } from "./dev-env-state";
 
 let tempDir: string | undefined;
 
@@ -58,6 +58,38 @@ describe("dev env state", () => {
       pid: 12345,
       logPath: "/tmp/stack-rde-dashboard.log",
     });
+  });
+
+  it("records the CLI version that started the dashboard", () => {
+    useTempStateFile();
+    const secret = ensureLocalDashboardSecret(26700);
+    recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
+    expect(readDevEnvState().localDashboard?.version).toBe("2.8.110");
+  });
+
+  it("preserves a previously recorded dashboard version when ensuring the secret", () => {
+    useTempStateFile();
+    const secret = ensureLocalDashboardSecret(26700);
+    recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
+    ensureLocalDashboardSecret(26700);
+    expect(readDevEnvState().localDashboard?.version).toBe("2.8.110");
+  });
+
+  it("round-trips the latest-version update-check cache", () => {
+    useTempStateFile();
+    expect(readCliUpdateCheckCache()).toBeUndefined();
+    writeCliUpdateCheckCache({ packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 123 });
+    expect(readCliUpdateCheckCache()).toEqual({ packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 123 });
+  });
+
+  it("does not clobber the dashboard record when writing the update-check cache", () => {
+    useTempStateFile();
+    const secret = ensureLocalDashboardSecret(26700);
+    recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
+    writeCliUpdateCheckCache({ packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 123 });
+    const state = readDevEnvState();
+    expect(state.localDashboard?.pid).toBe(12345);
+    expect(state.cliUpdateCheck?.latestVersion).toBe("2.0.0");
   });
 
   it("writes state as owner-readable JSON", () => {

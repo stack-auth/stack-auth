@@ -3,6 +3,12 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync
 import { dirname } from "path";
 import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
 
+export type CliUpdateCheckCache = {
+  packageName: string,
+  latestVersion: string,
+  checkedAtMillis: number,
+};
+
 export type DevEnvState = {
   version: 1,
   anonymousRefreshToken?: string,
@@ -12,8 +18,13 @@ export type DevEnvState = {
     pid: number,
     startedAtMillis: number,
     logPath?: string,
+    // CLI version that started this dashboard, used to decide whether a
+    // reachable dashboard is stale and should be restarted.
+    version?: string,
   },
   anonymousApiBaseUrl?: string,
+  // Memoized result of the latest-version registry lookup (see self-update.ts).
+  cliUpdateCheck?: CliUpdateCheckCache,
   projectsByConfigPath: Partial<Record<string, {
     projectId: string,
     teamId: string,
@@ -46,6 +57,7 @@ export function readDevEnvState(): DevEnvState {
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
     localDashboard: parsed.localDashboard,
+    cliUpdateCheck: parsed.cliUpdateCheck,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }
@@ -69,12 +81,13 @@ export function ensureLocalDashboardSecret(port: number): string {
       pid: state.localDashboard?.pid ?? 0,
       startedAtMillis: state.localDashboard?.startedAtMillis ?? Date.now(),
       logPath: state.localDashboard?.logPath,
+      version: state.localDashboard?.version,
     },
   });
   return secret;
 }
 
-export function recordLocalDashboardProcess(port: number, secret: string, pid: number, logPath: string): void {
+export function recordLocalDashboardProcess(port: number, secret: string, pid: number, logPath: string, version?: string): void {
   writeDevEnvState({
     ...readDevEnvState(),
     localDashboard: {
@@ -83,6 +96,18 @@ export function recordLocalDashboardProcess(port: number, secret: string, pid: n
       pid,
       startedAtMillis: Date.now(),
       logPath,
+      version,
     },
+  });
+}
+
+export function readCliUpdateCheckCache(): CliUpdateCheckCache | undefined {
+  return readDevEnvState().cliUpdateCheck;
+}
+
+export function writeCliUpdateCheckCache(cache: CliUpdateCheckCache): void {
+  writeDevEnvState({
+    ...readDevEnvState(),
+    cliUpdateCheck: cache,
   });
 }

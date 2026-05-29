@@ -5,8 +5,9 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import { devEnvStatePath, ensureLocalDashboardSecret, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
+import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
+import { cliVersion, isVersionNewer, maybeReexecToLatest } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -15,6 +16,7 @@ type ChildCommand = {
 
 type DevOptions = {
   configFile?: string,
+  autoUpdate?: boolean,
 };
 
 type SessionResponse = {
@@ -29,6 +31,7 @@ const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_PORT = 26700;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
+const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
@@ -237,11 +240,48 @@ async function isDashboardReachable(url: string): Promise<boolean> {
   }
 }
 
+// Terminate the background dashboard recorded in dev-env state and wait until
+// the port stops answering, so a fresh (newer) dashboard can bind it.
+async function killLocalDashboard(url: string): Promise<void> {
+  const pid = readDevEnvState().localDashboard?.pid;
+  if (pid == null || pid <= 0) return;
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (error) {
+    // Already gone (ESRCH) — nothing to wait for.
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+  }
+
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < DASHBOARD_STOP_TIMEOUT_MS) {
+    if (!(await isDashboardReachable(url))) return;
+    await wait(200);
+  }
+
+  // Still up after SIGTERM — force it down so we don't fail to rebind the port.
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // best-effort
+  }
+  await wait(500);
+}
+
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string }): Promise<void> {
   const url = dashboardUrl();
   if (await isDashboardReachable(url)) {
-    logDev(`Using existing Hexclave dashboard on ${url}.`);
-    return;
+    const currentVersion = cliVersion();
+    const runningVersion = readDevEnvState().localDashboard?.version;
+    // Replace the running dashboard only when ours is strictly newer; this is
+    // how a re-exec'd `npx @latest` rolls out a fresh dashboard without a
+    // reinstall. Equal/older/unknown versions are reused as before.
+    if (currentVersion != null && runningVersion != null && isVersionNewer(currentVersion, runningVersion)) {
+      logDev(`Existing Hexclave dashboard is ${runningVersion}; restarting with ${currentVersion}...`);
+      await killLocalDashboard(url);
+    } else {
+      logDev(`Using existing Hexclave dashboard on ${url}.`);
+      return;
+    }
   }
 
   const progress = startProgressLog(`Hexclave dashboard not found on port ${DASHBOARD_PORT}. Starting now`);
@@ -285,7 +325,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     if (child.pid == null) {
       throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
     }
-    recordLocalDashboardProcess(DASHBOARD_PORT, options.secret, child.pid, logPath);
+    recordLocalDashboardProcess(DASHBOARD_PORT, options.secret, child.pid, logPath, cliVersion());
     child.unref();
 
     const startedAt = performance.now();
@@ -493,10 +533,20 @@ export function registerDevCommand(program: Command) {
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Hexclave development-environment credentials")
     .requiredOption("--config-file <path>", "Path to stack.config.ts")
+    .option("--no-auto-update", "Don't re-run the latest published CLI via npx before starting")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {
         throw new CliError("--config-file is required.");
+      }
+
+      // Before doing any work, re-exec through `npx <pkg>@latest` when a newer
+      // CLI is published so users get the latest dashboard without reinstalling.
+      // No-ops (and returns) when already latest, offline, in CI, or opted out.
+      if (opts.autoUpdate !== false) {
+        await maybeReexecToLatest({
+          forwardArgs: ["dev", "--config-file", opts.configFile, "--", ...commandArgs],
+        });
       }
 
       const childCommand = splitDevCommandArgs(commandArgs);
