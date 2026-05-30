@@ -3264,10 +3264,25 @@ export const devToolCSS = `
     text-align: left;
     cursor: pointer;
     font-family: var(--sdt-font);
+    user-select: none;
   }
 
   .stack-devtool .sdt-hm-row:hover {
     background: var(--sdt-bg-hover);
+    transition: none;
+  }
+
+  .stack-devtool .sdt-hm-row:focus-visible {
+    outline: 2px solid var(--sdt-accent);
+    outline-offset: 2px;
+  }
+
+  .stack-devtool .sdt-hm-row-muted {
+    opacity: 0.52;
+  }
+
+  .stack-devtool .sdt-hm-row-highlighted {
+    background: rgba(250, 204, 21, 0.12);
   }
 
   .stack-devtool .sdt-hm-row-count {
@@ -3279,9 +3294,31 @@ export const devToolCSS = `
     border-radius: 999px;
     background: var(--sdt-accent-muted);
     color: var(--sdt-accent-hover);
+    border: 0;
+    appearance: none;
+    padding: 0;
     font-size: 12px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
+    font-family: var(--sdt-font);
+    cursor: pointer;
+  }
+
+  .stack-devtool .sdt-hm-row-count:hover {
+    background: var(--sdt-bg-hover);
+    color: var(--sdt-text);
+    transition: none;
+  }
+
+  .stack-devtool .sdt-hm-row-count[aria-pressed="true"] {
+    background: var(--sdt-bg-elevated);
+    color: var(--sdt-text-tertiary);
+    text-decoration: line-through;
+  }
+
+  .stack-devtool .sdt-hm-row-count:focus-visible {
+    outline: 2px solid var(--sdt-accent);
+    outline-offset: 2px;
   }
 
   .stack-devtool .sdt-hm-row-meta {
@@ -3325,9 +3362,28 @@ export const devToolCSS = `
     display: flex;
     align-items: center;
     justify-content: center;
+    border: 0;
     color: rgba(10, 10, 11, 0.92);
     font: 700 12px/1 var(--sdt-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
     font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: opacity 0.15s ease, transform 0.15s ease, filter 0.15s ease;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-marker:hover {
+    transform: translate(-50%, -50%) scale(1.06);
+    transition: none;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-marker-muted {
+    opacity: 0.18;
+    filter: saturate(0.25);
+    text-decoration: line-through;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-marker-highlighted {
+    transform: translate(-50%, -50%) scale(1.08);
   }
 
   .sdt-hm-overlay-root .sdt-hm-outline {
@@ -3335,6 +3391,27 @@ export const devToolCSS = `
     border: 1px solid;
     border-radius: 4px;
     background: rgba(99, 102, 241, 0.04);
+    transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-outline-muted {
+    opacity: 0;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-outline-highlighted {
+    border-color: rgba(250, 204, 21, 0.92) !important;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-highlight {
+    position: fixed;
+    display: none;
+    border-radius: 5px;
+    background: rgba(250, 204, 21, 0.28);
+    box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.7), 0 0 0 9999px rgba(0, 0, 0, 0.04);
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-highlight-visible {
+    display: block;
   }
 
   /* --- Input area --- */

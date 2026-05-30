@@ -1809,6 +1809,15 @@ type DevToolClickGroup = {
 type ClickmapGroupOverlayElement = {
   marker: HTMLElement;
   outline: HTMLElement;
+  highlight: HTMLElement;
+};
+
+type ClickmapListRowElement = {
+  row: HTMLElement;
+  count: HTMLButtonElement;
+  label: HTMLElement;
+  selector: HTMLElement;
+  group: DevToolClickGroup | null;
 };
 
 const CLICKMAP_FILTERS_STORAGE_KEY = 'hexclave-clickmap-overlay-filters';
@@ -2171,7 +2180,10 @@ function createClickmapsTab(app: StackClientApp<true>, onClose: () => void): Tab
   let expanded = false;
   let renderFrame = 0;
   let overlayMode: 'hidden' | 'elements' = 'hidden';
+  let highlightedGroupSelector: string | null = null;
+  const mutedGroupSelectors = new Set<string>();
   const groupOverlayElements = new Map<string, ClickmapGroupOverlayElement>();
+  const listRowElements = new Map<string, ClickmapListRowElement>();
 
   function resetCopyButton(button: HTMLElement, label: string) {
     button.textContent = label;
@@ -2732,6 +2744,11 @@ function createClickmapsTab(app: StackClientApp<true>, onClose: () => void): Tab
     overlayRoot.replaceChildren();
   }
 
+  function clearClickmapListElements() {
+    listRowElements.clear();
+    list.replaceChildren();
+  }
+
   function getClickmapViewportSize(): { width: number, height: number } {
     const visualViewport = window.visualViewport;
     if (visualViewport != null) {
@@ -2742,6 +2759,66 @@ function createClickmapsTab(app: StackClientApp<true>, onClose: () => void): Tab
 
   function shouldShowElements(): boolean {
     return overlayVisible;
+  }
+
+  function toggleMutedGroup(selector: string) {
+    if (mutedGroupSelectors.has(selector)) {
+      mutedGroupSelectors.delete(selector);
+    } else {
+      mutedGroupSelectors.add(selector);
+    }
+    scheduleRender();
+  }
+
+  function highlightGroup(group: DevToolClickGroup) {
+    highlightedGroupSelector = group.selector;
+    group.element?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+    scheduleRender();
+  }
+
+  function createListRowElement(selector: string): ClickmapListRowElement {
+    const count = h('button', { className: 'sdt-hm-row-count', type: 'button' }) as HTMLButtonElement;
+    const label = h('span', { className: 'sdt-hm-row-label' });
+    const selectorText = h('span', { className: 'sdt-hm-row-selector' });
+    const row = h('div', {
+      className: 'sdt-hm-row',
+      role: 'button',
+      tabindex: '0',
+    },
+      count,
+      h('span', { className: 'sdt-hm-row-meta' }, label, selectorText),
+    );
+    const rowElement: ClickmapListRowElement = { row, count, label, selector: selectorText, group: null };
+    count.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMutedGroup(selector);
+    });
+    row.addEventListener('click', () => {
+      if (rowElement.group == null) return;
+      highlightGroup(rowElement.group);
+    });
+    row.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      if (rowElement.group == null) return;
+      highlightGroup(rowElement.group);
+    });
+    return rowElement;
+  }
+
+  function updateListRowElement(rowElement: ClickmapListRowElement, group: DevToolClickGroup) {
+    const muted = mutedGroupSelectors.has(group.selector);
+    const highlighted = highlightedGroupSelector === group.selector;
+    rowElement.group = group;
+    rowElement.row.classList.toggle('sdt-hm-row-muted', muted);
+    rowElement.row.classList.toggle('sdt-hm-row-highlighted', highlighted);
+    rowElement.count.textContent = formatClickmapCount(group.count);
+    rowElement.count.setAttribute('aria-pressed', String(muted));
+    rowElement.count.setAttribute('aria-label', muted ? `Unmute ${group.label}` : `Mute ${group.label}`);
+    rowElement.count.title = muted ? 'Unmute element' : 'Mute element';
+    rowElement.label.textContent = group.label;
+    rowElement.selector.textContent = group.selector;
   }
 
   function renderOverlay(groups: DevToolClickGroup[]) {
@@ -2762,56 +2839,81 @@ function createClickmapsTab(app: StackClientApp<true>, onClose: () => void): Tab
       }
       visibleGroupKeys.add(group.selector);
       const hue = getClickmapHue(group.count, maxCount);
+      const muted = mutedGroupSelectors.has(group.selector);
+      const highlighted = highlightedGroupSelector === group.selector;
       let overlayElement = groupOverlayElements.get(group.selector);
       if (overlayElement == null) {
+        const marker = h('button', { className: 'sdt-hm-marker', type: 'button', tabindex: '-1' });
+        marker.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleMutedGroup(group.selector);
+        });
         overlayElement = {
-          marker: h('div', { className: 'sdt-hm-marker' }),
+          marker,
           outline: h('div', { className: 'sdt-hm-outline' }),
+          highlight: h('div', { className: 'sdt-hm-highlight' }),
         };
         groupOverlayElements.set(group.selector, overlayElement);
-        overlayRoot.append(overlayElement.outline, overlayElement.marker);
+        overlayRoot.append(overlayElement.highlight, overlayElement.outline, overlayElement.marker);
       }
-      const { marker, outline } = overlayElement;
-      marker.title = `${group.count} clicks on ${group.selector}`;
+      const { marker, outline, highlight } = overlayElement;
+      marker.title = muted ? `Unmute ${group.selector}` : `Mute ${group.count} clicks on ${group.selector}`;
+      marker.setAttribute('aria-label', marker.title);
       marker.style.left = `${Math.round(group.rect.left + group.rect.width / 2)}px`;
       marker.style.top = `${Math.round(group.rect.top + group.rect.height / 2)}px`;
       marker.style.background = `hsla(${hue}, 96%, 58%, 0.94)`;
       marker.style.boxShadow = `0 0 0 1px hsla(${hue}, 96%, 22%, 0.35), 0 8px 24px hsla(${hue}, 96%, 45%, 0.32)`;
       marker.textContent = formatClickmapCount(group.count);
+      marker.classList.toggle('sdt-hm-marker-muted', muted);
+      marker.classList.toggle('sdt-hm-marker-highlighted', highlighted);
 
       outline.style.left = `${group.rect.left}px`;
       outline.style.top = `${group.rect.top}px`;
       outline.style.width = `${group.rect.width}px`;
       outline.style.height = `${group.rect.height}px`;
       outline.style.borderColor = `hsla(${hue}, 96%, 58%, 0.5)`;
+      outline.classList.toggle('sdt-hm-outline-muted', muted);
+      outline.classList.toggle('sdt-hm-outline-highlighted', highlighted);
+
+      highlight.style.left = `${group.rect.left}px`;
+      highlight.style.top = `${group.rect.top}px`;
+      highlight.style.width = `${group.rect.width}px`;
+      highlight.style.height = `${group.rect.height}px`;
+      highlight.classList.toggle('sdt-hm-highlight-visible', highlighted);
     }
     for (const [key, overlayElement] of groupOverlayElements) {
       if (!visibleGroupKeys.has(key)) {
         overlayElement.marker.remove();
         overlayElement.outline.remove();
+        overlayElement.highlight.remove();
         groupOverlayElements.delete(key);
       }
     }
   }
 
   function renderList(groups: DevToolClickGroup[]) {
-    list.replaceChildren();
     if (groups.length === 0) {
+      clearClickmapListElements();
       list.appendChild(empty);
       return;
     }
+    empty.remove();
+    const renderedKeys = new Set<string>();
     for (const group of groups.slice(0, 30)) {
-      const row = h('button', { className: 'sdt-hm-row' });
-      row.appendChild(h('span', { className: 'sdt-hm-row-count' }, formatClickmapCount(group.count)));
-      const meta = h('span', { className: 'sdt-hm-row-meta' },
-        h('span', { className: 'sdt-hm-row-label' }, group.label),
-        h('span', { className: 'sdt-hm-row-selector' }, group.selector),
-      );
-      row.appendChild(meta);
-      row.addEventListener('click', () => {
-        group.element?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
-      });
-      list.appendChild(row);
+      renderedKeys.add(group.selector);
+      let rowElement = listRowElements.get(group.selector);
+      if (rowElement == null) {
+        rowElement = createListRowElement(group.selector);
+        listRowElements.set(group.selector, rowElement);
+      }
+      updateListRowElement(rowElement, group);
+      list.appendChild(rowElement.row);
+    }
+    for (const [selector, rowElement] of listRowElements) {
+      if (renderedKeys.has(selector)) continue;
+      rowElement.row.remove();
+      listRowElements.delete(selector);
     }
   }
 
@@ -2820,10 +2922,18 @@ function createClickmapsTab(app: StackClientApp<true>, onClose: () => void): Tab
       currentPath = window.location.pathname;
       serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
       serverClickmapError = null;
+      clearClickmapListElements();
       syncAutoUrlPattern();
       runAsynchronously(loadServerClickmap());
     }
     const groups = getGroups();
+    const groupKeys = new Set(groups.map((group) => group.selector));
+    for (const mutedGroupSelector of mutedGroupSelectors) {
+      if (!groupKeys.has(mutedGroupSelector)) mutedGroupSelectors.delete(mutedGroupSelector);
+    }
+    if (highlightedGroupSelector != null && !groupKeys.has(highlightedGroupSelector)) {
+      highlightedGroupSelector = null;
+    }
     // Clicks mapped to an element that actually exists in the current DOM (what
     // the overlay can draw) vs. the true aggregate the filter matched server-side.
     const mappedClicks = groups.reduce((sum, group) => sum + group.count, 0);
