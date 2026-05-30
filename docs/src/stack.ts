@@ -6,7 +6,7 @@ const replaceMePlaceholder = "REPLACE_ME";
 
 function envOrUndefined(value: string | undefined): string | undefined {
   const normalized = value?.trim().replace(/^["']|["']$/g, "");
-  if (normalized == null || normalized === "" || normalized === replaceMePlaceholder || normalized.startsWith(placeholderPrefix)) {
+  if (normalized == null || normalized === "" || normalized === replaceMePlaceholder || normalized.startsWith(placeholderPrefix) || normalized.startsWith("$(")) {
     return undefined;
   }
   return normalized;
