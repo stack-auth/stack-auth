@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
-  toast,
   Typography,
 } from "@/components/ui";
 import { DesignAnalyticsCard } from "@/components/design-components/analytics-card";
@@ -317,6 +316,7 @@ function installClickmapTokenForCurrentOrigin(token: AnalyticsClickmapTokenRespo
 function ClickmapTokenDialog(props: {
   origin: ClickmapOrigin | null,
   token: AnalyticsClickmapTokenResponse | null,
+  autoCopied?: boolean,
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
@@ -336,7 +336,7 @@ function ClickmapTokenDialog(props: {
             <Alert>Creating clickmap token...</Alert>
           ) : (
             <>
-              <CopyField type="textarea" value={snippet} monospace fixedSize height={124} />
+              <CopyField type="textarea" value={snippet} monospace fixedSize height={124} initialCopied={props.autoCopied} />
               <Typography type="p" variant="secondary" className="text-sm">
                 The site will use normal client authentication plus this origin-bound clickmap token to fetch aggregate clickmap data.
               </Typography>
@@ -370,7 +370,12 @@ export default function PageClient() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOrigin, setSelectedOrigin] = useState<ClickmapOrigin | null>(null);
   const [token, setToken] = useState<AnalyticsClickmapTokenResponse | null>(null);
-  const [customOrigin, setCustomOrigin] = useState("http://localhost:8101");
+  const [autoCopied, setAutoCopied] = useState(false);
+  const [customOrigin, setCustomOrigin] = useState("");
+
+  useEffect(() => {
+    setCustomOrigin(window.location.origin);
+  }, []);
 
   const origins = useMemo(() => {
     const byOrigin = new Map<string, ClickmapOrigin>();
@@ -403,10 +408,11 @@ export default function PageClient() {
       throw error;
     }
     setToken(created);
-    const installedInCurrentTab = installClickmapTokenForCurrentOrigin(created);
+    installClickmapTokenForCurrentOrigin(created);
+    setAutoCopied(false);
     try {
       await navigator.clipboard.writeText(createConsoleSnippet(created.token));
-      toast({ title: installedInCurrentTab ? "Clickmap toolbar enabled" : "Snippet copied to clipboard" });
+      setAutoCopied(true);
     } catch {
       // Clipboard access can be denied (e.g. lost user-gesture after the
       // network round-trip); the snippet stays available to copy manually.
@@ -430,7 +436,17 @@ export default function PageClient() {
                 </Typography>
                 <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="http://localhost:3000" />
               </div>
-              <Button onClick={async () => await showClickmap({ id: "localhost", origin: customOrigin })}>
+              <Button
+                disabled={customOrigin.trim() === ""}
+                onClick={async () => {
+                  const origin = normalizeOrigin(customOrigin);
+                  if (origin == null) {
+                    window.alert("Enter a valid HTTP(S) origin, for example http://localhost:3000.");
+                    return;
+                  }
+                  await showClickmap({ id: "localhost", origin });
+                }}
+              >
                 Show clickmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -470,6 +486,7 @@ export default function PageClient() {
         <ClickmapTokenDialog
           origin={selectedOrigin}
           token={token}
+          autoCopied={autoCopied}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
         />

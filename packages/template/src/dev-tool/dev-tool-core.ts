@@ -27,7 +27,7 @@ import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPositio
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'clickmaps' | 'customize' | 'ai' | 'dashboard' | 'console' | 'support';
+type TabId = 'overview' | 'customize' | 'ai' | 'dashboard' | 'console' | 'support';
 
 type TabResult = { element: HTMLElement, cleanup?: () => void };
 
@@ -76,8 +76,12 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'console', label: 'Console', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>' },
   { id: 'dashboard', label: 'Dashboard', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>' },
   { id: 'support', label: 'Support', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
-  { id: 'clickmaps', label: 'Clickmaps', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h.01"/><path d="M15 8h.01"/><path d="M12 15h.01"/><path d="M19 11h.01"/><path d="M5 16h.01"/><path d="M3 3l18 18"/><path d="M14 14l7 7"/><path d="M5 5l5 5"/></svg>' },
 ];
+
+// Clickmaps is intentionally NOT a dev tool tab. It's a fully independent
+// feature with its own mount (see createDevTool), opened via a dashboard-minted
+// token (the CLICKMAP_OVERLAY_TOKEN_UPDATED event / resume flow), never from the
+// dev tool. The two coexist without affecting each other.
 
 const DEFAULT_STATE: DevToolState = {
   isOpen: false,
@@ -1811,21 +1815,23 @@ const CLICKMAP_FILTERS_STORAGE_KEY = 'hexclave-clickmap-overlay-filters';
 
 type ClickmapRangeKey = '24h' | '7d' | '30d';
 type ClickmapDeviceKey = 'all' | 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'widescreen' | 'tv';
-type ClickmapUrlPatternMode = 'glob' | 'regex';
 
 type ClickmapFilters = {
   range: ClickmapRangeKey,
   device: ClickmapDeviceKey,
   urlPattern: string,
-  urlPatternMode: ClickmapUrlPatternMode,
   elementSearch: string,
+};
+
+type ClickmapViewportBucket = {
+  min: number,
+  max: number | null,
 };
 
 const CLICKMAP_DEFAULT_FILTERS: ClickmapFilters = {
   range: '7d',
   device: 'all',
   urlPattern: '',
-  urlPatternMode: 'glob',
   elementSearch: '',
 };
 
@@ -1835,14 +1841,39 @@ const CLICKMAP_RANGE_MS: Record<ClickmapRangeKey, number> = {
   '30d': 30 * 24 * 60 * 60 * 1000,
 };
 
+const CLICKMAP_VIEWPORT_BUCKETS: Record<Exclude<ClickmapDeviceKey, 'all'>, ClickmapViewportBucket> = {
+  mobile: { min: 0, max: 767 },
+  tablet: { min: 768, max: 1023 },
+  laptop: { min: 1024, max: 1199 },
+  desktop: { min: 1200, max: 1439 },
+  widescreen: { min: 1440, max: 1919 },
+  tv: { min: 1920, max: null },
+};
+
+function getClickmapViewportBucket(device: ClickmapDeviceKey): ClickmapViewportBucket | null {
+  if (device === 'all') return null;
+  return CLICKMAP_VIEWPORT_BUCKETS[device];
+}
+
+function isClickmapViewportWidthInBucket(width: number, bucket: ClickmapViewportBucket): boolean {
+  return width >= bucket.min && (bucket.max == null || width <= bucket.max);
+}
+
+function getClickmapRecommendedViewportWidth(bucket: ClickmapViewportBucket): number {
+  if (bucket.max == null) return bucket.min;
+  return Math.round((bucket.min + bucket.max) / 2);
+}
+
+function formatClickmapViewportBucket(bucket: ClickmapViewportBucket): string {
+  if (bucket.max == null) return `${bucket.min}px+`;
+  return `${bucket.min}-${bucket.max}px`;
+}
+
 function isClickmapRangeKey(value: unknown): value is ClickmapRangeKey {
   return value === '24h' || value === '7d' || value === '30d';
 }
 function isClickmapDeviceKey(value: unknown): value is ClickmapDeviceKey {
   return value === 'all' || value === 'mobile' || value === 'tablet' || value === 'laptop' || value === 'desktop' || value === 'widescreen' || value === 'tv';
-}
-function isClickmapUrlPatternMode(value: unknown): value is ClickmapUrlPatternMode {
-  return value === 'glob' || value === 'regex';
 }
 const CLICKMAP_DOM_INDEX_DEBOUNCE_MS = 250;
 
@@ -1978,25 +2009,17 @@ function getJwtPayloadClaim(token: string, claim: string): string | null {
   }
 }
 
-function getClickmapTokenFromStorage(projectId: string): string | null {
-  const token = getSessionStorageString(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY);
-  if (token == null) {
-    return null;
-  }
-  // A token minted for a different project must not apply to this app.
-  const tokenProjectId = getJwtPayloadClaim(token, 'project_id');
-  return tokenProjectId == null || tokenProjectId === projectId ? token : null;
+function getClickmapTokenFromStorage(): string | null {
+  return getSessionStorageString(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY);
 }
 
-function getClickmapOriginFromStorage(projectId: string): string | null {
-  const token = getClickmapTokenFromStorage(projectId);
+function getClickmapOriginFromStorage(): string | null {
+  const token = getClickmapTokenFromStorage();
   return token == null ? null : getJwtPayloadClaim(token, 'origin');
 }
 
-function clearClickmapTokenStorage(projectId: string): void {
-  if (getClickmapTokenFromStorage(projectId) != null) {
-    removeSessionStorageItem(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY);
-  }
+function clearClickmapTokenStorage(): void {
+  removeSessionStorageItem(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY);
 }
 
 function parseServerClickmapResponse(value: unknown, path: string): DevToolServerClickmap {
@@ -2064,32 +2087,20 @@ function globToRegexSource(glob: string): string {
     .join('.*');
 }
 
-function isValidRegexSource(source: string): boolean {
-  try {
-    new RegExp(source);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // Does `path` match the active URL pattern? Used to tell the user when the page
 // they're on isn't covered by the pattern, so the overlay can't be drawn here
-// even though aggregate data exists. Glob mode mirrors the backend's anchored
-// `LIKE`; regex mode mirrors ClickHouse `match()` (unanchored RE2).
-function patternMatchesPath(pattern: string, path: string, mode: ClickmapUrlPatternMode): boolean {
+// even though aggregate data exists. Glob matching mirrors the backend's
+// anchored `LIKE`.
+function patternMatchesPath(pattern: string, path: string): boolean {
   if (pattern === '') return true;
   try {
-    if (mode === 'regex') {
-      return new RegExp(pattern).test(path);
-    }
     return new RegExp(`^${globToRegexSource(pattern)}$`).test(path);
   } catch {
     return false;
   }
 }
 
-function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabResult {
+function createClickmapsTab(app: StackClientApp<true>, onClose: () => void): TabResult {
   const container = h('div', { className: 'sdt-hm' });
   const overlayRoot = h('div', { className: 'sdt-hm-overlay-root', 'aria-hidden': 'true' });
   const statsCount = h('div', { className: 'sdt-hm-stat-value' }, '0');
@@ -2098,9 +2109,31 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   const list = h('div', { className: 'sdt-hm-list' });
   const empty = h('div', { className: 'sdt-hm-empty' }, 'Paste a clickmap token from the dashboard to load aggregated element clicks for this page.');
   const status = h('div', { className: 'sdt-hm-token-status' });
+  const viewportWarningTitle = h('div', { className: 'sdt-hm-viewport-warning-title' });
+  const viewportWarningBody = h('div', { className: 'sdt-hm-viewport-warning-body' });
+  const viewportWarningWidthValue = h('code', { className: 'sdt-hm-viewport-warning-code' });
+  const viewportWarningHeightValue = h('code', { className: 'sdt-hm-viewport-warning-code' });
+  const viewportWarningWidthCopy = h('button', { className: 'sdt-hm-copy-btn', type: 'button' });
+  const viewportWarningHeightCopy = h('button', { className: 'sdt-hm-copy-btn', type: 'button' });
+  const viewportWarning = h('div', { className: 'sdt-hm-viewport-warning', role: 'status' },
+    viewportWarningTitle,
+    viewportWarningBody,
+    h('div', { className: 'sdt-hm-viewport-warning-actions' },
+      h('span', { className: 'sdt-hm-viewport-warning-action' },
+        h('span', { className: 'sdt-hm-viewport-warning-label' }, 'Width'),
+        viewportWarningWidthValue,
+        viewportWarningWidthCopy,
+      ),
+      h('span', { className: 'sdt-hm-viewport-warning-action' },
+        h('span', { className: 'sdt-hm-viewport-warning-label' }, 'Height'),
+        viewportWarningHeightValue,
+        viewportWarningHeightCopy,
+      ),
+    ),
+  );
   const overlayToggle = h('button', { className: 'sdt-hm-btn sdt-hm-btn-primary' }, 'Hide');
   const expandButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Expand clickmap options', title: 'Expand clickmap options' });
-  const backButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Back', title: 'Back' });
+  const closeButton = h('button', { className: 'sdt-hm-icon-btn', 'aria-label': 'Close clickmap', title: 'Close clickmap' });
   const miniClicks = h('span', { className: 'sdt-hm-toolbar-metric-value' }, '0');
   const miniElements = h('span', { className: 'sdt-hm-toolbar-metric-value' }, '0');
 
@@ -2115,7 +2148,6 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
         range: isClickmapRangeKey(obj.range) ? obj.range : CLICKMAP_DEFAULT_FILTERS.range,
         device: isClickmapDeviceKey(obj.device) ? obj.device : CLICKMAP_DEFAULT_FILTERS.device,
         urlPattern: typeof obj.urlPattern === 'string' ? obj.urlPattern : CLICKMAP_DEFAULT_FILTERS.urlPattern,
-        urlPatternMode: isClickmapUrlPatternMode(obj.urlPatternMode) ? obj.urlPatternMode : CLICKMAP_DEFAULT_FILTERS.urlPatternMode,
         elementSearch: typeof obj.elementSearch === 'string' ? obj.elementSearch : CLICKMAP_DEFAULT_FILTERS.elementSearch,
       };
     } catch {
@@ -2140,6 +2172,23 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   let renderFrame = 0;
   let overlayMode: 'hidden' | 'elements' = 'hidden';
   const groupOverlayElements = new Map<string, ClickmapGroupOverlayElement>();
+
+  function resetCopyButton(button: HTMLElement, label: string) {
+    button.textContent = label;
+  }
+
+  function copyClickmapViewportValue(button: HTMLElement, value: string, label: string) {
+    runAsynchronously(async () => {
+      try {
+        await navigator.clipboard.writeText(value);
+        button.textContent = 'Copied';
+        window.setTimeout(() => resetCopyButton(button, label), 1200);
+      } catch {
+        button.textContent = 'Copy failed';
+        window.setTimeout(() => resetCopyButton(button, label), 1600);
+      }
+    });
+  }
 
   // DOM-index cache for fast element-chain inference.
   const domIndex = new Map<string, Element[]>();
@@ -2306,12 +2355,20 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
     return null;
   }
 
-  setHtml(backButton, '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>');
+  setHtml(closeButton, '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>');
   const chevronUpSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>';
   const chevronDownSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
   const clicksIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></svg>';
   const elementsIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>';
   setHtml(expandButton, chevronUpSvg);
+  resetCopyButton(viewportWarningWidthCopy, 'Copy width');
+  resetCopyButton(viewportWarningHeightCopy, 'Copy height');
+  viewportWarningWidthCopy.addEventListener('click', () => {
+    copyClickmapViewportValue(viewportWarningWidthCopy, viewportWarningWidthValue.textContent, 'Copy width');
+  });
+  viewportWarningHeightCopy.addEventListener('click', () => {
+    copyClickmapViewportValue(viewportWarningHeightCopy, viewportWarningHeightValue.textContent, 'Copy height');
+  });
 
   const stats = h('div', { className: 'sdt-hm-stats' },
     h('div', { className: 'sdt-hm-stat' }, h('div', { className: 'sdt-hm-stat-label' }, 'Clicks'), statsCount),
@@ -2328,16 +2385,13 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   let urlPatternUserEdited = filters.urlPattern.trim() !== '';
 
   function getEffectiveUrlPattern(): string {
-    // Auto route-tracking is a glob concept; in regex mode an empty field means
-    // "this exact page" (the route_path fallback), never an auto-wildcard.
-    if (filters.urlPatternMode === 'regex') return filters.urlPattern.trim();
     if (urlPatternUserEdited) return filters.urlPattern.trim();
     return wildcardizePathname(window.location.pathname);
   }
-  // Reflect the current route into the field while in glob auto mode. No-op in
-  // regex mode or once the user has typed their own pattern.
+  // Reflect the current route into the field while in auto mode. No-op once the
+  // user has typed their own pattern.
   function syncAutoUrlPattern() {
-    if (filters.urlPatternMode === 'regex' || urlPatternUserEdited) return;
+    if (urlPatternUserEdited) return;
     const auto = wildcardizePathname(window.location.pathname);
     if (urlPatternInput.value !== auto) {
       urlPatternInput.value = auto;
@@ -2428,12 +2482,14 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   }) as HTMLInputElement;
   urlPatternInput.value = getEffectiveUrlPattern();
   // Shown only while the active pattern doesn't cover the current page (see
-  // render); resets the field back to the auto-wildcarded current route.
+  // render); reverts the field back to the auto-wildcarded current route.
   const urlPatternReset = h('button', {
     className: 'sdt-hm-filter-reset',
     type: 'button',
-    title: 'Reset the URL pattern to the current page',
-  }, 'Reset') as HTMLButtonElement;
+    'aria-label': 'Revert the URL pattern to the current page',
+    title: 'Revert the URL pattern to the current page',
+  }) as HTMLButtonElement;
+  setHtml(urlPatternReset, '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>');
 
   // Info button + popover explaining the URL pattern syntax. The backend
   // translates `*` into a SQL LIKE `%`, so `*` is the only wildcard — every
@@ -2459,37 +2515,14 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   const urlHelpTitle = h('div', { className: 'sdt-hm-url-help-title' });
   const urlHelpBody = h('div', { className: 'sdt-hm-url-help-body' });
   const urlHelpRows = h('div', { className: 'sdt-hm-url-help-rows' });
-  // Cheatsheet content tracks the active matching mode so it only ever shows
-  // syntax that actually works.
   function renderUrlHelp() {
-    if (filters.urlPatternMode === 'regex') {
-      urlHelpTitle.textContent = 'URL pattern · regex';
-      urlHelpBody.replaceChildren(
-        'Matched against the pathname with ClickHouse ',
-        makeCode('match()'),
-        ' (RE2 syntax), unanchored — add ',
-        makeCode('^'),
-        ' / ',
-        makeCode('$'),
-        ' to pin the start and end. No domain, hash, or query string.',
-      );
-      urlHelpRows.replaceChildren(
-        makeUrlHelpRow('^/pricing$', 'Exactly /pricing'),
-        makeUrlHelpRow('^/products/', 'Anything starting with /products/'),
-        makeUrlHelpRow('/(privacy|terms)$', 'Ends in /privacy or /terms'),
-        makeUrlHelpRow('^/teams/[^/]+/members$', 'One id segment in the middle'),
-        makeUrlHelpRow('\\.html$', 'Paths ending in .html'),
-        makeUrlHelpRow('(empty)', 'This exact page only'),
-      );
-      return;
-    }
     urlHelpTitle.textContent = 'URL pattern · glob';
     urlHelpBody.replaceChildren(
       'Limits the clickmap to pages whose path matches. Matched against the pathname only — no domain, hash, or query string. ',
       makeCode('*'),
       ' is the only wildcard and stands in for any characters (including ',
       makeCode('/'),
-      '). Everything else is matched literally — switch to regex for full RE2 syntax.',
+      '). Everything else is matched literally.',
     );
     urlHelpRows.replaceChildren(
       makeUrlHelpRow('/pricing', 'That exact page'),
@@ -2519,58 +2552,7 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   urlPatternHelp.addEventListener('click', (event) => {
     event.stopPropagation();
   });
-
-  // Glob vs. regex matching. The backend already supports both (`url_pattern`
-  // → SQL LIKE, `route_regex` → ClickHouse match()); this toggle picks which
-  // one we send and keeps the local coverage check in sync.
-  const urlModeButtons = new Map<ClickmapUrlPatternMode, HTMLButtonElement>();
-  const urlPatternModeToggle = h('div', {
-    className: 'sdt-hm-mode',
-    role: 'radiogroup',
-    'aria-label': 'URL pattern matching mode',
-  });
-  const urlModeOptions: Array<[ClickmapUrlPatternMode, string, string]> = [
-    ['glob', '*', 'Glob matching — * is the only wildcard'],
-    ['regex', '.*', 'Regex matching — full RE2 syntax'],
-  ];
-  function applyUrlPatternMode() {
-    for (const [mode, btn] of urlModeButtons) {
-      const active = mode === filters.urlPatternMode;
-      btn.setAttribute('aria-checked', String(active));
-      btn.classList.toggle('sdt-hm-mode-btn-active', active);
-    }
-    urlPatternInput.placeholder = filters.urlPatternMode === 'regex' ? '^/products/.*$' : '/products/*';
-    renderUrlHelp();
-  }
-  function setUrlPatternMode(mode: ClickmapUrlPatternMode) {
-    if (filters.urlPatternMode === mode) return;
-    let nextPattern: string;
-    if (mode === 'regex') {
-      // Seed regex mode from the current glob, translated to an equivalent
-      // anchored regex, so the switch leaves a working starting point.
-      const current = getEffectiveUrlPattern();
-      nextPattern = current === '' ? '' : `^${globToRegexSource(current)}$`;
-      urlPatternUserEdited = nextPattern !== '';
-      urlPatternInput.value = nextPattern;
-    } else {
-      // A regex can't be reversed into a glob, so fall back to auto route-tracking.
-      nextPattern = '';
-      urlPatternUserEdited = false;
-      urlPatternInput.value = wildcardizePathname(window.location.pathname);
-    }
-    filters = { ...filters, urlPatternMode: mode, urlPattern: nextPattern };
-    persistFilters(filters);
-    applyUrlPatternMode();
-    scheduleFilterReload();
-    scheduleRender();
-  }
-  for (const [mode, label, title] of urlModeOptions) {
-    const btn = h('button', { className: 'sdt-hm-mode-btn', type: 'button', role: 'radio', title }, label) as HTMLButtonElement;
-    btn.addEventListener('click', () => setUrlPatternMode(mode));
-    urlModeButtons.set(mode, btn);
-    urlPatternModeToggle.appendChild(btn);
-  }
-  applyUrlPatternMode();
+  renderUrlHelp();
 
   const elementSearchInput = h('input', {
     className: 'sdt-hm-filter-input',
@@ -2604,11 +2586,11 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   setHtml(clicksIcon, clicksIconSvg);
   setHtml(elementsIcon, elementsIconSvg);
   const toolbar = h('div', { className: 'sdt-hm-toolbar' },
-    backButton,
+    closeButton,
     h('div', { className: 'sdt-hm-toolbar-title' }, 'Clickmap'),
     h('div', { className: 'sdt-hm-toolbar-filters' },
       rangeSelect,
-      h('div', { className: 'sdt-hm-toolbar-url' }, urlPatternInput, urlPatternReset, urlPatternModeToggle, urlPatternInfo, urlPatternHelp),
+      h('div', { className: 'sdt-hm-toolbar-url' }, urlPatternInput, urlPatternReset, urlPatternInfo, urlPatternHelp),
     ),
     h('div', { className: 'sdt-hm-toolbar-metrics' },
       h('span', { className: 'sdt-hm-toolbar-metric', title: 'Aggregate clicks' }, miniClicks, clicksIcon),
@@ -2662,10 +2644,9 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   });
   urlPatternReset.addEventListener('click', () => {
     // Hand control back to auto mode and reflect the current route immediately,
-    // so the pattern covers the page the overlay is bound to. In regex mode
-    // there's no auto-wildcard, so clearing the field means "this exact page".
+    // so the pattern covers the page the overlay is bound to.
     urlPatternUserEdited = false;
-    urlPatternInput.value = filters.urlPatternMode === 'regex' ? '' : wildcardizePathname(window.location.pathname);
+    urlPatternInput.value = wildcardizePathname(window.location.pathname);
     updateFilters({ urlPattern: '' });
   });
   elementSearchInput.addEventListener('input', () => {
@@ -2678,7 +2659,7 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   // bordered bands that made the expanded panel feel congested.
   const actions = h('div', { className: 'sdt-hm-actions' }, stats, overlayToggle);
   const head = h('div', { className: 'sdt-hm-head' }, filterRow, actions);
-  const body = h('div', { className: 'sdt-hm-body' }, status, list);
+  const body = h('div', { className: 'sdt-hm-body' }, status, viewportWarning, list);
   const details = h('div', { className: 'sdt-hm-details' }, head, body);
 
   function getGroups(): DevToolClickGroup[] {
@@ -2848,25 +2829,34 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
     const mappedClicks = groups.reduce((sum, group) => sum + group.count, 0);
     const aggregateClicks = serverClickmap.path === currentPath ? serverClickmap.totalClicks : 0;
     const viewport = getClickmapViewportSize();
+    const roundedViewportWidth = Math.round(viewport.width);
+    const roundedViewportHeight = Math.round(viewport.height);
+    const selectedViewportBucket = getClickmapViewportBucket(filters.device);
+    const viewportFilterMatches = selectedViewportBucket == null || isClickmapViewportWidthInBucket(roundedViewportWidth, selectedViewportBucket);
     statsCount.textContent = formatClickmapCount(aggregateClicks);
     selectorCount.textContent = formatClickmapCount(groups.length);
-    viewportValue.textContent = `${Math.round(viewport.width)}x${Math.round(viewport.height)}`;
+    viewportValue.textContent = `${roundedViewportWidth}x${roundedViewportHeight}`;
     overlayToggle.textContent = overlayVisible ? 'Hide overlay' : 'Show overlay';
+    viewportWarning.classList.toggle('sdt-hm-viewport-warning-visible', !viewportFilterMatches);
+    if (selectedViewportBucket != null && !viewportFilterMatches) {
+      const recommendedWidth = getClickmapRecommendedViewportWidth(selectedViewportBucket);
+      const recommendedHeight = Math.max(1, roundedViewportHeight);
+      viewportWarningTitle.textContent = 'Viewport filter mismatch';
+      viewportWarningBody.textContent = `This page is ${roundedViewportWidth}px wide, but ${filters.device} is ${formatClickmapViewportBucket(selectedViewportBucket)}. Update the Google DevTools device toolbar before comparing this clickmap.`;
+      viewportWarningWidthValue.textContent = String(recommendedWidth);
+      viewportWarningHeightValue.textContent = String(recommendedHeight);
+    }
     // A pattern that doesn't cover the current page means the overlay can't draw
     // here, so offer a one-click reset back to the current route.
     const effectiveUrlPattern = getEffectiveUrlPattern();
-    const regexInvalid = filters.urlPatternMode === 'regex' && effectiveUrlPattern !== '' && !isValidRegexSource(effectiveUrlPattern);
-    const urlPatternMatchesPath = patternMatchesPath(effectiveUrlPattern, currentPath, filters.urlPatternMode);
+    const urlPatternMatchesPath = patternMatchesPath(effectiveUrlPattern, currentPath);
     urlPatternReset.classList.toggle('sdt-hm-filter-reset-visible', !urlPatternMatchesPath);
-    urlPatternInput.classList.toggle('sdt-hm-filter-input-error', regexInvalid);
-    const token = getClickmapTokenFromStorage(app.projectId);
-    const tokenOrigin = getClickmapOriginFromStorage(app.projectId);
+    const token = getClickmapTokenFromStorage();
+    const tokenOrigin = getClickmapOriginFromStorage();
     if (token == null) {
       status.textContent = serverClickmapError ?? 'No clickmap token in sessionStorage. Paste one from the dashboard to load this page.';
     } else if (tokenOrigin != null && tokenOrigin !== window.location.origin) {
       status.textContent = `Token was minted for ${tokenOrigin}, but this page is ${window.location.origin}. Generate a token for this exact origin.`;
-    } else if (regexInvalid) {
-      status.textContent = 'Invalid regular expression — fix the pattern to load the clickmap.';
     } else if (loadingServerClickmap) {
       status.textContent = 'Loading aggregate clickmap...';
     } else if (serverClickmapError != null) {
@@ -2887,7 +2877,7 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
       }
       status.textContent = message;
     }
-    status.classList.toggle('sdt-hm-token-status-error', regexInvalid || serverClickmapError != null || (token != null && tokenOrigin != null && tokenOrigin !== window.location.origin));
+    status.classList.toggle('sdt-hm-token-status-error', serverClickmapError != null || (token != null && tokenOrigin != null && tokenOrigin !== window.location.origin));
     miniClicks.textContent = formatClickmapCount(aggregateClicks);
     miniElements.textContent = formatClickmapCount(groups.length);
     container.classList.toggle('sdt-hm-expanded', expanded);
@@ -2906,7 +2896,7 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
     const requestId = serverClickmapRequestId + 1;
     serverClickmapRequestId = requestId;
     const isLatestRequest = () => requestId === serverClickmapRequestId;
-    const token = getClickmapTokenFromStorage(app.projectId);
+    const token = getClickmapTokenFromStorage();
     if (token == null) {
       serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
       serverClickmapError = null;
@@ -2914,18 +2904,8 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
       render();
       return;
     }
-    const tokenOrigin = getClickmapOriginFromStorage(app.projectId);
+    const tokenOrigin = getClickmapOriginFromStorage();
     if (tokenOrigin != null && tokenOrigin !== window.location.origin) {
-      serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
-      serverClickmapError = null;
-      loadingServerClickmap = false;
-      render();
-      return;
-    }
-
-    // Don't round-trip a regex we know ClickHouse will reject; surface it locally.
-    const pendingPattern = getEffectiveUrlPattern();
-    if (filters.urlPatternMode === 'regex' && pendingPattern !== '' && !isValidRegexSource(pendingPattern)) {
       serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
       serverClickmapError = null;
       loadingServerClickmap = false;
@@ -2948,11 +2928,7 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
         until: until.toISOString(),
       };
       if (effectiveUrlPattern !== '') {
-        if (filters.urlPatternMode === 'regex') {
-          body.route_regex = effectiveUrlPattern;
-        } else {
-          body.url_pattern = effectiveUrlPattern;
-        }
+        body.url_pattern = effectiveUrlPattern;
       } else {
         body.route_path = requestedPath;
       }
@@ -2978,7 +2954,7 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
       }
       serverClickmap = { path: currentPath, totalClicks: 0, selectors: [], elements: [] };
       if (error instanceof Error && error.message.includes('Clickmap token does not belong to this project')) {
-        clearClickmapTokenStorage(app.projectId);
+        clearClickmapTokenStorage();
         serverClickmapError = 'The stored clickmap token belongs to another project. Generate a fresh token for this project.';
       } else {
         serverClickmapError = error instanceof Error ? error.message : 'Failed to load clickmap data';
@@ -2995,8 +2971,8 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
   // navigates away with a token loaded, drop a sentinel so the dev tool on the
   // next page can auto-reopen straight back into the clickmap tab.
   const onBeforeUnloadResume = () => {
-    const token = getClickmapTokenFromStorage(app.projectId);
-    const tokenOrigin = getClickmapOriginFromStorage(app.projectId);
+    const token = getClickmapTokenFromStorage();
+    const tokenOrigin = getClickmapOriginFromStorage();
     if (token == null || (tokenOrigin != null && tokenOrigin !== window.location.origin)) {
       return;
     }
@@ -3011,7 +2987,7 @@ function createClickmapsTab(app: StackClientApp<true>, onBack: () => void): TabR
     overlayVisible = !overlayVisible;
     render();
   });
-  backButton.addEventListener('click', onBack);
+  closeButton.addEventListener('click', onClose);
   expandButton.addEventListener('click', () => {
     expanded = !expanded;
     render();
@@ -3511,7 +3487,6 @@ function createPanel(
       animateNextPanelGeometryChange();
     }
 
-    panel.classList.toggle('sdt-panel-clickmap', tabId === 'clickmaps');
     if (tabId === 'dashboard') {
       panel.classList.add('sdt-panel-fullscreen');
       panel.style.width = '';
@@ -3520,11 +3495,6 @@ function createPanel(
     }
 
     panel.classList.remove('sdt-panel-fullscreen');
-    if (tabId === 'clickmaps') {
-      panel.style.width = '';
-      panel.style.height = '';
-      return;
-    }
     panel.style.width = state.get().panelWidth + 'px';
     panel.style.height = state.get().panelHeight + 'px';
   }
@@ -3532,7 +3502,6 @@ function createPanel(
   const tabs = getTabsForApp(app);
   const storedActiveTab = state.get().activeTab;
   const activeTab = tabs.some((tab) => tab.id === storedActiveTab) ? storedActiveTab : DEFAULT_STATE.activeTab;
-  let lastNonClickmapTab: TabId = activeTab === 'clickmaps' ? 'overview' : activeTab;
 
   applyPanelMode(activeTab);
 
@@ -3551,9 +3520,6 @@ function createPanel(
   const trailingControls = h('div', { className: 'sdt-tabbar-actions' }, docsLink, closeBtn);
 
   const tabBar = createTabBar(tabs, activeTab, (id) => {
-    if (id !== 'clickmaps') {
-      lastNonClickmapTab = id as TabId;
-    }
     state.update({ activeTab: id as TabId });
     applyPanelMode(id as TabId, { animate: true });
     showTab(id as TabId);
@@ -3579,22 +3545,6 @@ function createPanel(
     }
   }
 
-  let clickmapsCleanup: (() => void) | null = null;
-  // The clickmap tab installs an overlay root, a MutationObserver, and
-  // background polling. Unlike other panes it must not be cached-and-hidden:
-  // tear it down (running its cleanup) whenever we leave it, so the overlay and
-  // its work don't linger after the tab is closed.
-  function teardownClickmapsPane() {
-    const pane = mountedPanes.get('clickmaps');
-    if (pane == null) return;
-    if (clickmapsCleanup != null) {
-      clickmapsCleanup();
-      clickmapsCleanup = null;
-    }
-    pane.remove();
-    mountedPanes.delete('clickmaps');
-  }
-
   function getOrCreatePane(tabId: TabId): HTMLElement {
     if (mountedPanes.has(tabId)) {
       return mountedPanes.get(tabId)!;
@@ -3606,17 +3556,6 @@ function createPanel(
     switch (tabId) {
       case 'overview': {
         mountTab(pane, createOverviewTab(app));
-        break;
-      }
-      case 'clickmaps': {
-        const result = createClickmapsTab(app, () => {
-          state.update({ activeTab: lastNonClickmapTab });
-          applyPanelMode(lastNonClickmapTab, { animate: true });
-          showTab(lastNonClickmapTab);
-        });
-        pane.appendChild(result.element);
-        // Tracked separately from `cleanups` so it can run on tab-switch, not just unmount.
-        clickmapsCleanup = result.cleanup ?? null;
         break;
       }
       case 'customize': {
@@ -3646,9 +3585,6 @@ function createPanel(
   }
 
   function showTab(tabId: TabId) {
-    if (tabId !== 'clickmaps') {
-      teardownClickmapsPane();
-    }
     const pane = getOrCreatePane(tabId);
     tabBar.setActive(tabId);
     for (const [, p] of mountedPanes) {
@@ -3713,7 +3649,6 @@ function createPanel(
       if (panelAnimationTimeout !== null) {
         clearTimeout(panelAnimationTimeout);
       }
-      teardownClickmapsPane();
       for (const fn of cleanups) fn();
     },
   };
@@ -3763,17 +3698,6 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     wrapper.appendChild(panel.element);
   }
 
-  function openClickmapPanel() {
-    state.update({ activeTab: 'clickmaps', isOpen: true });
-    if (panel) {
-      const currentPanel = panel;
-      panel = null;
-      currentPanel.cleanup();
-      currentPanel.element.remove();
-    }
-    openPanel();
-  }
-
   function closePanel() {
     if (!panel) return;
     state.update({ isOpen: false });
@@ -3800,10 +3724,42 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   const trigger = createTrigger(togglePanel);
   wrapper.appendChild(trigger.element);
 
-  // Resume the clickmap panel after navigating to a new page. While the overlay
-  // is mounted it drops a sentinel into sessionStorage on unload; if it's
-  // present here, restore the clickmap tab as the active one and reopen the
-  // panel so the user picks up where they left off.
+  // Clickmaps is an independent feature with its own mount, completely separate
+  // from the dev tool panel above: opening or closing one never touches the
+  // other, and both can be on screen at once. It's driven entirely by the
+  // dashboard-minted token (the update event + the navigation resume sentinel),
+  // never by the dev tool trigger.
+  let clickmapMount: { element: HTMLElement, cleanup: () => void } | null = null;
+
+  function openClickmap() {
+    if (clickmapMount) return;
+    const result = createClickmapsTab(app, () => closeClickmap());
+    // Reuse the panel's clickmap-mode chrome (bottom-center positioning, no tab
+    // bar) by replicating the structure those styles target.
+    const element = h('div', { className: 'sdt-panel sdt-panel-clickmap' },
+      h('div', { className: 'sdt-panel-inner' },
+        h('div', { className: 'sdt-content' },
+          h('div', { className: 'sdt-tab-layers' },
+            h('div', { className: 'sdt-tab-pane sdt-tab-pane-active' }, result.element),
+          ),
+        ),
+      ),
+    );
+    clickmapMount = { element, cleanup: result.cleanup ?? (() => {}) };
+    wrapper.appendChild(element);
+  }
+
+  function closeClickmap() {
+    if (!clickmapMount) return;
+    const closing = clickmapMount;
+    clickmapMount = null;
+    closing.cleanup();
+    closing.element.remove();
+  }
+
+  // Resume the clickmap after navigating to a new page. While the overlay is
+  // mounted it drops a sentinel into sessionStorage on unload; if it's present
+  // here, reopen the clickmap so the user picks up where they left off.
   let shouldResumeClickmap = false;
   try {
     if (sessionStorage.getItem(CLICKMAP_OVERLAY_RESUME_STORAGE_KEY) === '1') {
@@ -3813,15 +3769,15 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   } catch {
     // ignore
   }
-  if (shouldResumeClickmap) {
-    state.update({ activeTab: 'clickmaps', isOpen: true });
-  }
 
   if (state.get().isOpen) {
     openPanel();
   }
+  if (shouldResumeClickmap) {
+    openClickmap();
+  }
 
-  window.addEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, openClickmapPanel);
+  window.addEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, openClickmap);
 
   const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
     const timestamp = Date.now();
@@ -3850,9 +3806,10 @@ export function createDevTool(app: StackClientApp<true>): () => void {
         setGlobalDevToolInstance(null);
       }
       trigger.cleanup();
-      window.removeEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, openClickmapPanel);
+      window.removeEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, openClickmap);
       removeRequestListener();
       panel?.cleanup();
+      clickmapMount?.cleanup();
       if (root.parentNode) {
         root.parentNode.removeChild(root);
       }

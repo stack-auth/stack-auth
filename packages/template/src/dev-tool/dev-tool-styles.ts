@@ -3008,26 +3008,26 @@ export const devToolCSS = `
 
   .stack-devtool .sdt-hm-filter-reset {
     display: none;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
     border: 0;
+    border-radius: 999px;
     background: transparent;
     padding: 0;
-    font: inherit;
-    font-family: var(--sdt-font);
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     color: var(--sdt-accent);
     cursor: pointer;
   }
 
   .stack-devtool .sdt-hm-filter-reset:hover {
+    background: var(--sdt-bg-hover);
     color: var(--sdt-accent-hover);
   }
 
   .stack-devtool .sdt-hm-filter-reset-visible {
     display: inline-flex;
-    align-items: center;
   }
 
   .stack-devtool .sdt-hm-filter-input {
@@ -3147,6 +3147,88 @@ export const devToolCSS = `
 
   .stack-devtool .sdt-hm-token-status-error {
     color: var(--sdt-error);
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning {
+    display: none;
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--sdt-radius);
+    border: 1px solid rgba(234, 179, 8, 0.24);
+    background: var(--sdt-warning-muted);
+    color: var(--sdt-text);
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning-visible {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning-title {
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--sdt-text);
+    line-height: 1.2;
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning-body {
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--sdt-text-secondary);
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning-action {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--sdt-radius);
+    border: 1px solid var(--sdt-border-subtle);
+    background: var(--sdt-bg-elevated);
+    padding: 4px 5px 4px 8px;
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sdt-text-tertiary);
+  }
+
+  .stack-devtool .sdt-hm-viewport-warning-code {
+    font-family: var(--sdt-font-mono);
+    font-size: 11.5px;
+    font-weight: 650;
+    color: var(--sdt-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stack-devtool .sdt-hm-copy-btn {
+    height: 22px;
+    border: 1px solid var(--sdt-border-subtle);
+    border-radius: 999px;
+    background: var(--sdt-bg);
+    color: var(--sdt-text-secondary);
+    padding: 0 8px;
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .stack-devtool .sdt-hm-copy-btn:hover {
+    background: var(--sdt-bg-hover);
+    border-color: var(--sdt-border);
+    color: var(--sdt-text);
+    transition: none;
   }
 
   .stack-devtool .sdt-hm-list {
