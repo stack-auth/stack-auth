@@ -495,7 +495,7 @@ function AIChatWidgetInner({
             type="button"
           >
             <ArrowLeftIcon className="h-3 w-3" />
-            <span>Back to history</span>
+            <span>History</span>
           </button>
           <button
             onClick={onNewChat}
