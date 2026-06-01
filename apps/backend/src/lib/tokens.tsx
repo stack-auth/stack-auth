@@ -3,13 +3,14 @@ import { withExternalDbSyncUpdate } from '@/lib/external-db-sync';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { KnownErrors } from '@hexclave/shared';
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
-import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { restrictedReasonSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { AccessTokenPayload } from '@hexclave/shared/dist/sessions';
 import { generateSecureRandomString } from '@hexclave/shared/dist/utils/crypto';
 import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { captureError, HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@hexclave/shared/dist/utils/jwt';
 import { Result } from '@hexclave/shared/dist/utils/results';
+import { parseScopeString, scopesToString } from '@hexclave/shared/dist/scopes';
 import { traceSpan } from '@hexclave/shared/dist/utils/telemetry';
 import { turnstileResultValues } from '@hexclave/shared/dist/utils/turnstile';
 import * as jose from 'jose';
@@ -30,6 +31,8 @@ const accessTokenSchema = yupObject({
   isAnonymous: yupBoolean().defined(),
   isRestricted: yupBoolean().defined(),
   restrictedReason: restrictedReasonSchema.nullable().defined(),
+  // Scopes granted to this token. Empty array = unrestricted (token carried no `scope` claim).
+  scopes: yupArray(yupString().defined()).defined(),
 }).defined();
 
 export const oauthCookieSchema = yupObject({
@@ -212,6 +215,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       isAnonymous,
       isRestricted,
       restrictedReason,
+      scopes: parseScopeString(payload.scope as string | undefined),
     });
 
     return Result.ok(result);
@@ -224,6 +228,9 @@ type RefreshTokenOptions = {
     projectUserId: string,
     id: string,
     expiresAt: Date | null,
+    // Space-separated scope string stored on the session; null = unrestricted. Mirrored into
+    // the access token's `scope` claim on every refresh so scopes survive token rolls.
+    scope?: string | null,
   },
 };
 
@@ -364,6 +371,10 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Genera
     }
   );
 
+  // Normalize the session's stored scopes; a null/empty scope column means an unrestricted
+  // session, in which case we omit the `scope` claim entirely so the token is unrestricted.
+  const sessionScopes = parseScopeString(options.refreshTokenObj.scope);
+
   const payload: Omit<AccessTokenPayload, "iss" | "aud" | "iat"> = {
     sub: options.refreshTokenObj.projectUserId,
     project_id: options.tenancy.project.id,
@@ -379,6 +390,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Genera
     is_restricted: user.is_restricted,
     restricted_reason: user.restricted_reason,
     requires_totp_mfa: user.requires_totp_mfa,
+    ...sessionScopes.length > 0 ? { scope: scopesToString(sessionScopes) } : {},
   };
 
   // Validate the payload matches the accessTokenSchema before signing, to catch inconsistencies early
@@ -392,6 +404,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Genera
       isAnonymous: user.is_anonymous,
       isRestricted: user.is_restricted,
       restrictedReason: user.restricted_reason,
+      scopes: sessionScopes,
     });
   } catch (error) {
     captureError("generated-access-token-payload-does-not-fit-the-access-token-schema", new HexclaveAssertionError("Generated access token payload does not fit the accessTokenSchema. This is a bug — the token data is inconsistent.", { cause: error, payload }));
@@ -411,6 +424,11 @@ type CreateRefreshTokenOptions = {
   projectUserId: string,
   expiresAt?: Date,
   isImpersonation?: boolean,
+  // Scopes to grant this session. Omitted/empty = unrestricted (stored as null). The granted
+  // scopes are persisted on the refresh-token row and minted into every access token derived
+  // from it. Callers wanting a downscoped token should intersect their requested scopes with
+  // whatever the caller is actually allowed to grant (see `intersectScopes` in `scopes.ts`).
+  scopes?: string[],
 }
 
 type CreateAuthTokensOptions = CreateRefreshTokenOptions & {
@@ -425,6 +443,8 @@ export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) 
 
   const refreshToken = generateSecureRandomString();
 
+  const scopes = options.scopes ? parseScopeString(scopesToString(options.scopes)) : [];
+
   const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.create({
     data: {
       tenancyId: options.tenancy.id,
@@ -432,6 +452,7 @@ export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) 
       refreshToken: refreshToken,
       expiresAt: options.expiresAt,
       isImpersonation: options.isImpersonation,
+      scope: scopes.length > 0 ? scopesToString(scopes) : null,
     },
   });
 

@@ -1,5 +1,6 @@
 import * as yup from 'yup';
 import { yupObject, yupString } from './schema-fields';
+import { Scope } from './scopes';
 import { filterUndefined } from './utils/objects';
 import { NullishCoalesce } from './utils/types';
 
@@ -26,6 +27,11 @@ type ShownEndpointDocumentation = {
   description: string,
   tags?: string[],
   crudOperation?: Capitalize<CrudlOperation>,
+  // Scopes a client access token must hold to call this endpoint. Enforced centrally in the
+  // smart route handler (server/admin keys bypass). See `packages/stack-shared/src/scopes.ts`.
+  // Omitted / undefined means "no scope required". An empty array means the same, but documents
+  // that the absence of a requirement was deliberate (useful for the scope-coverage test).
+  requiredScopes?: Scope[],
 };
 export type EndpointDocumentation =
   | ({ hidden: true } & Partial<ShownEndpointDocumentation>)

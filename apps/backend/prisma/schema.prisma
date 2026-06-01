@@ -650,6 +650,11 @@ model ProjectUserRefreshToken {
   expiresAt       DateTime?
   isImpersonation Boolean   @default(false)
 
+  // Space-separated list of scopes granted to this session (OAuth `scope` convention). Null
+  // means the session is unrestricted (the default), so access tokens minted from it omit the
+  // `scope` claim and pass every scope check. See `packages/stack-shared/src/scopes.ts`.
+  scope String?
+
   sequenceId             BigInt?  @unique
   shouldUpdateSequenceId Boolean  @default(true)
 

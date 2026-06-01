@@ -276,6 +276,8 @@ export function createCrudHandlers<
                         branchId: branchId,
                         tenancy: tenancy,
                         type: accessType,
+                        // Programmatic (server-side) invocation is full-trust; no scope restriction.
+                        scopes: [],
                       },
                     });
                   });

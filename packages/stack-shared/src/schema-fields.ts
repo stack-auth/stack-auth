@@ -794,6 +794,10 @@ export const accessTokenPayloadSchema = yupObject({
   is_restricted: yupBoolean().defined(),
   restricted_reason: restrictedReasonSchema.defined().nullable(),
   requires_totp_mfa: yupBoolean().defined(),
+  // Space-separated list of scopes this token was granted (OAuth `scope` convention). Optional:
+  // tokens minted before scopes existed (and tokens for sessions with no scope restriction) omit
+  // it, in which case the token is treated as unrestricted. See `scopes.ts`.
+  scope: yupString().optional(),
 });
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });

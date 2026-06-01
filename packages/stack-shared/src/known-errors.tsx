@@ -1379,6 +1379,19 @@ const TeamPermissionNotFound = createKnownErrorConstructor(
   (json) => [json.team_id, json.user_id, json.permission_id] as const,
 );
 
+const InsufficientScope = createKnownErrorConstructor(
+  KnownError,
+  "INSUFFICIENT_SCOPE",
+  (missingScopes: string[]) => [
+    403,
+    `The access token is missing the following required scope(s): ${missingScopes.map(s => `'${s}'`).join(", ")}. Mint a token that includes these scopes and try again.`,
+    {
+      missing_scopes: missingScopes,
+    },
+  ] as const,
+  (json: any) => [json.missing_scopes] as const,
+);
+
 const InvalidSharedOAuthProviderId = createKnownErrorConstructor(
   KnownError,
   "INVALID_SHARED_OAUTH_PROVIDER_ID",
@@ -1980,6 +1993,7 @@ export const KnownErrors = {
   TeamMembershipAlreadyExists,
   ProjectPermissionRequired,
   TeamPermissionRequired,
+  InsufficientScope,
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,
   InvalidAuthorizationCode,

@@ -57,26 +57,31 @@ export const teamsCrud = createCrud({
       summary: "List teams",
       description: "List all the teams that the current user is a member of. `user_id=me` must be passed in the query parameters.",
       tags: ["Teams"],
+      requiredScopes: ["teams:read"],
     },
     clientCreate: {
       summary: "Create a team",
       description: "Create a new team and optionally add the current user as a member.",
       tags: ["Teams"],
+      requiredScopes: ["teams:write"],
     },
     clientRead: {
       summary: "Get a team",
       description: "Get a team that the current user is a member of.",
       tags: ["Teams"],
+      requiredScopes: ["teams:read"],
     },
     clientUpdate: {
       summary: "Update a team",
       description: "Update the team information. Only allowed if the current user is a member of the team and has the `$update_team` permission.",
       tags: ["Teams"],
+      requiredScopes: ["teams:write"],
     },
     clientDelete: {
       summary: "Delete a team",
       description: "Delete a team. Only allowed if the current user is a member of the team and has the `$delete_team` permission.",
       tags: ["Teams"],
+      requiredScopes: ["teams:write"],
     },
     serverCreate: {
       summary: "Create a team",

@@ -48,26 +48,31 @@ export const contactChannelsCrud = createCrud({
       summary: "Get a contact channel",
       description: "Retrieves a specific contact channel by the user ID and the contact channel ID.",
       tags: ["Contact Channels"],
+      requiredScopes: ["contact_channels:read"],
     },
     clientCreate: {
       summary: "Create a contact channel",
       description: "Add a new contact channel for a user.",
       tags: ["Contact Channels"],
+      requiredScopes: ["contact_channels:write"],
     },
     clientUpdate: {
       summary: "Update a contact channel",
       description: "Updates an existing contact channel. Only the values provided will be updated.",
       tags: ["Contact Channels"],
+      requiredScopes: ["contact_channels:write"],
     },
     clientDelete: {
       summary: "Delete a contact channel",
       description: "Removes a contact channel for a given user.",
       tags: ["Contact Channels"],
+      requiredScopes: ["contact_channels:write"],
     },
     clientList: {
       summary: "List contact channels",
       description: "Retrieves a list of all contact channels for a user.",
       tags: ["Contact Channels"],
+      requiredScopes: ["contact_channels:read"],
     }
   }
 });

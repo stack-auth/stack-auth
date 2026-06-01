@@ -475,6 +475,8 @@ export function parseOverload(options: {
     }
   }
 
+  const requiredScopes = endpointDocumentation.requiredScopes ?? [];
+
   return {
     summary: endpointDocumentation.summary,
     description: endpointDocumentation.description,
@@ -482,6 +484,9 @@ export function parseOverload(options: {
     requestBody,
     tags: endpointDocumentation.tags ?? ["Others"],
     'x-full-url': `https://api.hexclave.com/api/v1${options.path}`,
+    // Vendor extension: scopes a client access token must hold to call this endpoint. Emitted
+    // as a generated catalog so the scope requirements stay in sync with the code declarations.
+    ...requiredScopes.length > 0 ? { 'x-required-scopes': requiredScopes } : {},
     responses: allResponses,
   };
 }

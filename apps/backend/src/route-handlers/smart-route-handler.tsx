@@ -4,6 +4,7 @@ import { recordRequestStats } from "@/lib/dev-request-stats";
 import * as Sentry from "@sentry/nextjs";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { getMissingScopes } from "@hexclave/shared/dist/scopes";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@hexclave/shared/dist/utils/errors";
@@ -269,6 +270,18 @@ export function createSmartRouteHandler<
     const smartReq = reqsParsed[0][0][0];
     const fullReq = reqsParsed[0][0][1];
     const handler = reqsParsed[0][1];
+
+    // Central scope enforcement. Scopes only constrain *client* access tokens; server/admin
+    // secret keys are full-trust and bypass. A token that carries no scopes (an empty list) is
+    // treated as unrestricted — this keeps every token issued before scopes existed working.
+    // Only tokens that explicitly carry scopes are restricted to the scopes they list.
+    const requiredScopes = handler.metadata?.requiredScopes ?? [];
+    if (requiredScopes.length > 0 && fullReq.auth?.type === "client" && fullReq.auth.scopes.length > 0) {
+      const missingScopes = getMissingScopes(requiredScopes, fullReq.auth.scopes);
+      if (missingScopes.length > 0) {
+        throw new KnownErrors.InsufficientScope(missingScopes);
+      }
+    }
 
     if (shouldSetContext) {
       Sentry.setContext("stack-parsed-smart-request", smartReq as any);

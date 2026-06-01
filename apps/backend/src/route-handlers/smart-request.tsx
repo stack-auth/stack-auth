@@ -27,6 +27,10 @@ export type SmartRequestAuth = {
   user?: UsersCrud["Admin"]["Read"] | undefined,
   type: "client" | "server" | "admin",
   refreshTokenId?: string,
+  // Scopes carried by the client access token (parsed from its `scope` claim). Empty array =
+  // unrestricted (legacy tokens, or sessions with no scope restriction). Always empty for
+  // server/admin key auth, which is full-trust and bypasses scope checks. See `scopes.ts`.
+  scopes: string[],
 };
 
 export type DeepPartialSmartRequestWithSentinel<T = SmartRequest> = (T extends object ? {
@@ -203,6 +207,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     return {
       userId: result.data.userId,
       refreshTokenId: result.data.refreshTokenId,
+      scopes: result.data.scopes,
     };
   };
 
@@ -246,7 +251,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     return user;
   };
 
-  const { userId, refreshTokenId } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId, allowAnonymous: allowAnonymousUser, allowRestricted: allowRestrictedUser }) : { userId: null, refreshTokenId: null };
+  const { userId, refreshTokenId, scopes } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId, allowAnonymous: allowAnonymousUser, allowRestricted: allowRestrictedUser }) : { userId: null, refreshTokenId: null, scopes: [] as string[] };
 
   // Prisma does a query for every function call by default, even if we batch them with transactions
   // Because smart route handlers are always called, we instead send over a single raw query that fetches all the
@@ -334,6 +339,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
     tenancy,
     user: user ?? undefined,
     type: requestType,
+    scopes,
   };
 });
 
