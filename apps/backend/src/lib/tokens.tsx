@@ -443,7 +443,7 @@ export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) 
 
   const refreshToken = generateSecureRandomString();
 
-  const scopes = options.scopes ? parseScopeString(scopesToString(options.scopes)) : [];
+  const scopes = options.scopes ? [...new Set(options.scopes)] : [];
 
   const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.create({
     data: {

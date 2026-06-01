@@ -27,8 +27,16 @@ type ShownEndpointDocumentation = {
   description: string,
   tags?: string[],
   crudOperation?: Capitalize<CrudlOperation>,
-  // Scopes a client access token must hold to call this endpoint. Enforced centrally in the
-  // smart route handler (server/admin keys bypass). See `packages/stack-shared/src/scopes.ts`.
+  // Scopes that a *scoped* client access token must hold to call this endpoint. Enforced centrally
+  // in the smart route handler. See `packages/stack-shared/src/scopes.ts`.
+  //
+  // IMPORTANT — this is an opt-in *down-scoping* restriction, NOT a security boundary. The check is
+  // fail-open: server/admin secret keys bypass entirely, and a client token that carries no `scope`
+  // claim (every token minted before scopes existed, and any session created without an explicit
+  // `scope`) is treated as unrestricted and reaches the handler regardless of this field. Only
+  // tokens that explicitly declare scopes are constrained to the scopes they list. Do NOT rely on
+  // `requiredScopes` to keep callers out of an endpoint — use access type / permissions for that.
+  //
   // Omitted / undefined means "no scope required". An empty array means the same, but documents
   // that the absence of a requirement was deliberate (useful for the scope-coverage test).
   requiredScopes?: Scope[],

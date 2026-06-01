@@ -30,7 +30,7 @@ export const SCOPES = {
 
 export type Scope = keyof typeof SCOPES;
 
-export const ALL_SCOPES = Object.keys(SCOPES) as Scope[];
+export const ALL_SCOPES: readonly Scope[] = Object.keys(SCOPES) as Scope[];
 
 export function isScope(value: string): value is Scope {
   return Object.prototype.hasOwnProperty.call(SCOPES, value);
