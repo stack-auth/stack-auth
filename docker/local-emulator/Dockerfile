@@ -43,8 +43,7 @@ COPY pnpm-workspace.yaml .
 COPY turbo.json .
 COPY configs ./configs
 COPY --from=pruner /app/scripts/postinstall-patch-next-async-debug-info.mjs ./scripts/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile --ignore-scripts
-RUN node ./scripts/postinstall-patch-next-async-debug-info.mjs
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
 
 # copy over the rest of the code for the build
 COPY --from=pruner /app/out/full/ .
