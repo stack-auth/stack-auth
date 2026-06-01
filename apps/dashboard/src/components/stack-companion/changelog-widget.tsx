@@ -6,7 +6,7 @@ import { CalendarIcon, CaretDownIcon, CaretUpIcon, InfoIcon, XIcon } from '@phos
 import { captureError } from '@hexclave/shared/dist/utils/errors';
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -101,8 +101,8 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
         </div>
       </div>
     ),
-    img: ({ src, alt }: { src?: string, alt?: string }) => {
-      if (!src) return null;
+    img: ({ src, alt }: ComponentPropsWithoutRef<'img'>) => {
+      if (typeof src !== 'string') return null;
       return (
         <button
           type="button"

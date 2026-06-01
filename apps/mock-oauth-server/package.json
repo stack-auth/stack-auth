@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/mock-oauth-server",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "main": "index.js",
@@ -22,5 +22,5 @@
   "devDependencies": {
     "tsx": "^4.16.2"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/example-middleware-demo",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
@@ -25,5 +25,5 @@
     "eslint-config-next": "14.2.3",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

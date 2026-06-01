@@ -128,9 +128,10 @@
         { suffix: "31", label: "OTel collector" },
         { suffix: "21", label: "S3 mock" },
         { suffix: "22", label: "Freestyle mock" },
+        { suffix: "23", label: "Stripe mock" },
         { suffix: "24", label: "LocalStack Gateway (AWS mock)" },
         { suffix: "25", label: "QStash mock" },
-        { suffix: "33", label: "ClickHouse native interface" },
+        { suffix: "37", label: "ClickHouse native interface" },
         { suffix: "39", label: "SpacetimeDB (MCP call log)" },
         { range: ["50", "99"], label: "Reserved for LocalStack (external services)" },
       ];
@@ -185,6 +186,15 @@
         {
           name: "Demo app",
           portSuffix: "03",
+          description: [
+            "Src: ./examples/demo",
+            "Prod: https://demo.hexclave.com",
+          ],
+          importance: 2,
+        },
+        {
+          name: "Demo app — Local dev environment",
+          portSuffix: "42",
           description: [
             "Src: ./examples/demo",
             "Prod: https://demo.hexclave.com",

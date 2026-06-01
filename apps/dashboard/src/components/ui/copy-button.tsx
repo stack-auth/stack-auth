@@ -4,12 +4,12 @@ import { cn } from "@/lib/utils";
 import { CopyIcon, SparkleIcon } from "@phosphor-icons/react";
 import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import React from "react";
-import { Button } from "./button";
+import { Button, type ButtonProps } from "./button";
 import { useToast } from "./use-toast";
 
 const CopyButton = forwardRefIfNeeded<
-  React.ElementRef<typeof Button>,
-  React.ComponentProps<typeof Button> & { content: string }
+  HTMLButtonElement,
+  ButtonProps & { content: string }
 >((props, ref) => {
   const { toast } = useToast();
 
@@ -36,8 +36,8 @@ const CopyButton = forwardRefIfNeeded<
 CopyButton.displayName = "CopyButton";
 
 const CopyPromptButton = forwardRefIfNeeded<
-  React.ElementRef<typeof Button>,
-  React.ComponentProps<typeof Button> & { content: string }
+  HTMLButtonElement,
+  ButtonProps & { content: string }
 >(({ content, children, onClick, ...props }, ref) => {
   const { toast } = useToast();
 

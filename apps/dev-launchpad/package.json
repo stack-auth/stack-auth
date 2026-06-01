@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/dev-launchpad",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
@@ -10,5 +10,5 @@
   "dependencies": {
     "serve": "^14.2.4"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }
