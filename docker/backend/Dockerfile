@@ -19,7 +19,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
 RUN corepack enable
-RUN corepack prepare pnpm@10.23.0 --activate
+RUN corepack prepare pnpm@11.5.0 --activate
 RUN pnpm add -g turbo
 RUN pnpm add -g tsx
 
@@ -45,7 +45,8 @@ COPY pnpm-workspace.yaml .
 COPY turbo.json .
 COPY configs ./configs
 COPY --from=pruner /app/scripts/postinstall-patch-next-async-debug-info.mjs ./scripts/
-RUN STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
+RUN STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile --ignore-scripts
+RUN node ./scripts/postinstall-patch-next-async-debug-info.mjs
 
 COPY --from=pruner /app/out/full/ .
 
