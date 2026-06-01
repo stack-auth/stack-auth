@@ -1,10 +1,11 @@
 import { getPublicEnvVar } from "@/lib/env";
-import { NextRequest, NextResponse } from "next/server";
 import { createUrlIfValid, isLocalhost } from "@hexclave/shared/dist/utils/urls";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 const LOCAL_EMULATOR_HEALTH_TIMEOUT_MS = 2_000;
+const DEFAULT_LOCAL_DASHBOARD_PORT = "26700";
 
 type HealthResponse = {
   ok: boolean,
@@ -23,11 +24,12 @@ function urlOrigin(value: string | undefined): string | null {
 }
 
 function expectedDashboardOrigins(): Set<string> {
+  const localDashboardPort = getPublicEnvVar("NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT") ?? DEFAULT_LOCAL_DASHBOARD_PORT;
   return new Set([
     urlOrigin(getPublicEnvVar("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
     urlOrigin(getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL")),
     urlOrigin(getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL")),
-    "http://127.0.0.1:26700",
+    `http://127.0.0.1:${localDashboardPort}`,
   ].filter((origin): origin is string => typeof origin === "string"));
 }
 

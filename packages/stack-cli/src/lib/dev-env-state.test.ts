@@ -41,9 +41,21 @@ describe("dev env state", () => {
     const first = ensureLocalDashboardSecret(9101);
     const second = ensureLocalDashboardSecret(9101);
     expect(second).toBe(first);
-    expect(readDevEnvState().localDashboard).toMatchObject({
-      port: 9101,
-      secret: first,
+    expect(readDevEnvState().localDashboardsByPort).toMatchObject({
+      "9101": { port: 9101, secret: first },
+    });
+  });
+
+  it("keeps dashboard secrets separate per port", () => {
+    useTempStateFile();
+    const first = ensureLocalDashboardSecret(9101);
+    const second = ensureLocalDashboardSecret(9102);
+
+    expect(second).not.toBe(first);
+    expect(ensureLocalDashboardSecret(9101)).toBe(first);
+    expect(readDevEnvState().localDashboardsByPort).toMatchObject({
+      "9101": { port: 9101, secret: first },
+      "9102": { port: 9102, secret: second },
     });
   });
 
@@ -52,11 +64,13 @@ describe("dev env state", () => {
     const secret = ensureLocalDashboardSecret(26700);
     recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log");
 
-    expect(readDevEnvState().localDashboard).toMatchObject({
-      port: 26700,
-      secret,
-      pid: 12345,
-      logPath: "/tmp/stack-rde-dashboard.log",
+    expect(readDevEnvState().localDashboardsByPort).toMatchObject({
+      "26700": {
+        port: 26700,
+        secret,
+        pid: 12345,
+        logPath: "/tmp/stack-rde-dashboard.log",
+      },
     });
   });
 
@@ -64,7 +78,7 @@ describe("dev env state", () => {
     useTempStateFile();
     const secret = ensureLocalDashboardSecret(26700);
     recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
-    expect(readDevEnvState().localDashboard?.version).toBe("2.8.110");
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]?.version).toBe("2.8.110");
   });
 
   it("preserves a previously recorded dashboard version when ensuring the secret", () => {
@@ -72,7 +86,7 @@ describe("dev env state", () => {
     const secret = ensureLocalDashboardSecret(26700);
     recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
     ensureLocalDashboardSecret(26700);
-    expect(readDevEnvState().localDashboard?.version).toBe("2.8.110");
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]?.version).toBe("2.8.110");
   });
 
   it("round-trips the latest-version update-check cache", () => {
@@ -119,7 +133,7 @@ describe("dev env state", () => {
     recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
     writeCliUpdateCheckCache({ packageName: "@hexclave/cli", latestVersion: "2.0.0", checkedAtMillis: 123 });
     const state = readDevEnvState();
-    expect(state.localDashboard?.pid).toBe(12345);
+    expect(state.localDashboardsByPort?.["26700"]?.pid).toBe(12345);
     expect(state.cliUpdateCheck?.latestVersion).toBe("2.0.0");
   });
 
@@ -142,7 +156,7 @@ describe("dev env state", () => {
     expect(state.cliUpdateCheck?.latestVersion).toBe("2.0.0");
   });
 
-  it("reads localDashboard.version as undefined from a legacy file without that field", () => {
+  it("reads a recorded dashboard without a version field as version undefined", () => {
     useTempStateFile();
     const statePath = process.env.STACK_DEV_ENVS_PATH;
     if (statePath == null) {
@@ -150,15 +164,15 @@ describe("dev env state", () => {
     }
     writeFileSync(statePath, JSON.stringify({
       version: 1,
-      localDashboard: { port: 26700, secret: "s", pid: 999, startedAtMillis: 1 },
+      localDashboardsByPort: { "26700": { port: 26700, secret: "s", pid: 999, startedAtMillis: 1 } },
       projectsByConfigPath: {},
     }), { mode: 0o600 });
     const state = readDevEnvState();
-    expect(state.localDashboard?.pid).toBe(999);
-    expect(state.localDashboard?.version).toBeUndefined();
+    expect(state.localDashboardsByPort?.["26700"]?.pid).toBe(999);
+    expect(state.localDashboardsByPort?.["26700"]?.version).toBeUndefined();
   });
 
-  it("drops a localDashboard whose version is a non-string", () => {
+  it("drops a per-port dashboard whose version is a non-string", () => {
     useTempStateFile();
     const statePath = process.env.STACK_DEV_ENVS_PATH;
     if (statePath == null) {
@@ -166,16 +180,16 @@ describe("dev env state", () => {
     }
     // A hand-edited / cross-version file with a non-string version would
     // otherwise reach parseVersionCore (version.trim()) and throw, crashing
-    // `stack dev` outside the auto-update fail-open guard. Treat as no record.
+    // `stack dev` outside the auto-update fail-open guard. Drop the entry.
     writeFileSync(statePath, JSON.stringify({
       version: 1,
-      localDashboard: { port: 26700, secret: "s", pid: 999, startedAtMillis: 1, version: 2 },
+      localDashboardsByPort: { "26700": { port: 26700, secret: "s", pid: 999, startedAtMillis: 1, version: 2 } },
       projectsByConfigPath: {},
     }), { mode: 0o600 });
-    expect(readDevEnvState().localDashboard).toBeUndefined();
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]).toBeUndefined();
   });
 
-  it("drops a structurally malformed localDashboard on read", () => {
+  it("drops a structurally malformed per-port dashboard on read", () => {
     useTempStateFile();
     const statePath = process.env.STACK_DEV_ENVS_PATH;
     if (statePath == null) {
@@ -184,10 +198,10 @@ describe("dev env state", () => {
     // Missing secret + non-numeric pid: not a usable dashboard record.
     writeFileSync(statePath, JSON.stringify({
       version: 1,
-      localDashboard: { port: 26700, pid: "nope", startedAtMillis: 1 },
+      localDashboardsByPort: { "26700": { port: 26700, pid: "nope", startedAtMillis: 1 } },
       projectsByConfigPath: {},
     }), { mode: 0o600 });
-    expect(readDevEnvState().localDashboard).toBeUndefined();
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]).toBeUndefined();
   });
 
   it("writes state as owner-readable JSON", () => {

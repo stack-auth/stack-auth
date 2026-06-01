@@ -49,7 +49,7 @@ describe("killLocalDashboard", () => {
     // Filter to our own signals: the worker-thread runtime may call
     // process.kill for its own bookkeeping, which isn't what we're asserting.
     const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
-    await killLocalDashboard("http://127.0.0.1:26700");
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
     // No recorded pid → return before probing the process or polling the port.
     expect(fetchMock).not.toHaveBeenCalled();
     const targetedCalls = killSpy.mock.calls.filter(([, sig]) => sig === "SIGTERM" || sig === "SIGKILL");
@@ -66,7 +66,7 @@ describe("killLocalDashboard", () => {
     });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    await killLocalDashboard("http://127.0.0.1:26700");
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -81,7 +81,7 @@ describe("killLocalDashboard", () => {
     });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    await killLocalDashboard("http://127.0.0.1:26700");
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
     // processExists sees EPERM → alive; SIGTERM throws EPERM → early return.
     // We never poll /health, and never send SIGKILL.
     expect(fetchMock).not.toHaveBeenCalled();
@@ -99,7 +99,7 @@ describe("killLocalDashboard", () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
     vi.stubGlobal("fetch", fetchMock);
 
-    await killLocalDashboard("http://127.0.0.1:26700");
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
 
     // SIGTERM is sent once; we must return as soon as the port frees up and
     // never escalate to SIGKILL against the (possibly recycled) pid.

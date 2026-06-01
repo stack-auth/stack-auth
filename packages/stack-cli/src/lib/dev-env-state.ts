@@ -1,7 +1,18 @@
+import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
 import { randomBytes } from "crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
+
+type LocalDashboardState = {
+  port: number,
+  secret: string,
+  pid: number,
+  startedAtMillis: number,
+  logPath?: string,
+  // CLI version that started this dashboard, used to decide whether a
+  // reachable dashboard is stale and should be restarted.
+  version?: string,
+};
 
 export type CliUpdateCheckCache = {
   packageName: string,
@@ -12,16 +23,7 @@ export type CliUpdateCheckCache = {
 export type DevEnvState = {
   version: 1,
   anonymousRefreshToken?: string,
-  localDashboard?: {
-    port: number,
-    secret: string,
-    pid: number,
-    startedAtMillis: number,
-    logPath?: string,
-    // CLI version that started this dashboard, used to decide whether a
-    // reachable dashboard is stale and should be restarted.
-    version?: string,
-  },
+  localDashboardsByPort?: Partial<Record<string, LocalDashboardState>>,
   anonymousApiBaseUrl?: string,
   // Memoized result of the latest-version registry lookup (see self-update.ts).
   cliUpdateCheck?: CliUpdateCheckCache,
@@ -33,7 +35,7 @@ export type DevEnvState = {
     apiBaseUrl: string,
     lastSyncedConfigHash?: string,
     updatedAtMillis: number,
-}>>,
+  }>>,
 };
 
 export function devEnvStatePath(): string {
@@ -54,15 +56,13 @@ function isCliUpdateCheckCache(value: unknown): value is CliUpdateCheckCache {
   );
 }
 
-type LocalDashboardState = NonNullable<DevEnvState["localDashboard"]>;
-
-// Validate the on-disk dashboard record, mirroring isCliUpdateCheckCache: a
+// Validate an on-disk dashboard record, mirroring isCliUpdateCheckCache: a
 // hand-edited or cross-version state file could carry wrong-typed fields. In
 // particular a non-string `version` flows into shouldRestartDashboard ->
 // isVersionNewer -> parseVersionCore (version.trim()) inside
 // startDashboardIfNeeded, which is not behind the auto-update fail-open guard,
-// so it would throw and crash `stack dev`. Treat anything malformed as "no
-// dashboard recorded" (a fresh one is then started).
+// so it would throw and crash `stack dev`. Malformed entries are dropped on
+// read (a fresh dashboard is then started for that port).
 function isLocalDashboardState(value: unknown): value is LocalDashboardState {
   if (value == null || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
@@ -77,6 +77,19 @@ function isLocalDashboardState(value: unknown): value is LocalDashboardState {
     (candidate.logPath === undefined || typeof candidate.logPath === "string") &&
     (candidate.version === undefined || typeof candidate.version === "string")
   );
+}
+
+// Keep only well-formed per-port dashboard records; drop the rest so a corrupt
+// or cross-version entry never reaches the restart/version-parsing path.
+function sanitizeLocalDashboardsByPort(value: unknown): Partial<Record<string, LocalDashboardState>> | undefined {
+  if (value == null || typeof value !== "object") return undefined;
+  const sanitized: Record<string, LocalDashboardState> = {};
+  for (const [port, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (isLocalDashboardState(entry)) {
+      sanitized[port] = entry;
+    }
+  }
+  return sanitized;
 }
 
 export function readDevEnvState(): DevEnvState {
@@ -95,7 +108,7 @@ export function readDevEnvState(): DevEnvState {
     version: 1,
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
-    localDashboard: isLocalDashboardState(parsed.localDashboard) ? parsed.localDashboard : undefined,
+    localDashboardsByPort: sanitizeLocalDashboardsByPort(parsed.localDashboardsByPort),
     cliUpdateCheck: isCliUpdateCheckCache(parsed.cliUpdateCheck) ? parsed.cliUpdateCheck : undefined,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
@@ -110,32 +123,42 @@ export function writeDevEnvState(state: DevEnvState): void {
 
 export function ensureLocalDashboardSecret(port: number): string {
   const state = readDevEnvState();
-  const existing = state.localDashboard?.secret;
-  const secret = existing ?? randomBytes(32).toString("hex");
+  const portKey = String(port);
+  const existingDashboard = state.localDashboardsByPort?.[portKey];
+  const secret = existingDashboard?.secret ?? randomBytes(32).toString("hex");
+  const dashboardState: LocalDashboardState = {
+    port,
+    secret,
+    pid: existingDashboard?.pid ?? 0,
+    startedAtMillis: existingDashboard?.startedAtMillis ?? Date.now(),
+    logPath: existingDashboard?.logPath,
+    version: existingDashboard?.version,
+  };
   writeDevEnvState({
     ...state,
-    localDashboard: {
-      port,
-      secret,
-      pid: state.localDashboard?.pid ?? 0,
-      startedAtMillis: state.localDashboard?.startedAtMillis ?? Date.now(),
-      logPath: state.localDashboard?.logPath,
-      version: state.localDashboard?.version,
+    localDashboardsByPort: {
+      ...state.localDashboardsByPort,
+      [portKey]: dashboardState,
     },
   });
   return secret;
 }
 
 export function recordLocalDashboardProcess(port: number, secret: string, pid: number, logPath: string, version?: string): void {
+  const state = readDevEnvState();
+  const dashboardState: LocalDashboardState = {
+    port,
+    secret,
+    pid,
+    startedAtMillis: Date.now(),
+    logPath,
+    version,
+  };
   writeDevEnvState({
-    ...readDevEnvState(),
-    localDashboard: {
-      port,
-      secret,
-      pid,
-      startedAtMillis: Date.now(),
-      logPath,
-      version,
+    ...state,
+    localDashboardsByPort: {
+      ...state.localDashboardsByPort,
+      [String(port)]: dashboardState,
     },
   });
 }
