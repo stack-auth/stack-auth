@@ -24,7 +24,7 @@ afterEach(() => {
 describe("remote development environment config file", () => {
   it("loads config exports wrapped in defineStackConfig", async () => {
     const configPath = writeTempConfig(`
-      import { defineStackConfig } from "@stackframe/stack-shared/config";
+      import { defineStackConfig } from "@hexclave/shared/config";
 
       export const config = defineStackConfig({
         auth: {
@@ -49,7 +49,7 @@ describe("remote development environment config file", () => {
 
   it("loads config exports wrapped in defineHexclaveConfig", async () => {
     const configPath = writeTempConfig(`
-      import { defineHexclaveConfig } from "@stackframe/stack-shared/config";
+      import { defineHexclaveConfig } from "@hexclave/shared/config";
 
       export const config = defineHexclaveConfig({
         auth: {
@@ -182,7 +182,7 @@ describe("remote development environment config file", () => {
     });
 
     expect(readFileSync(configPath, "utf-8")).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@stackframe/js";
+      "import type { StackConfig } from "@hexclave/js";
 
       export const config: StackConfig = {
         "auth": {
