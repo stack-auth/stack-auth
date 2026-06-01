@@ -1301,6 +1301,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels",
+        "x-required-scopes": [
+          "contact_channels:read"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1466,6 +1469,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels",
+        "x-required-scopes": [
+          "contact_channels:write"
+        ],
         "responses": {
           "201": {
             "description": "Successful response",
@@ -1690,6 +1696,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-required-scopes": [
+          "contact_channels:read"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1802,6 +1811,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-required-scopes": [
+          "contact_channels:write"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1916,6 +1928,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-required-scopes": [
+          "contact_channels:write"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7735,6 +7750,9 @@
           "Teams"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/teams",
+        "x-required-scopes": [
+          "teams:read"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7858,6 +7876,9 @@
           "Teams"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/teams",
+        "x-required-scopes": [
+          "teams:write"
+        ],
         "responses": {
           "201": {
             "description": "Successful response",
@@ -7925,6 +7946,9 @@
           "Teams"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/teams/{team_id}",
+        "x-required-scopes": [
+          "teams:read"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -7990,6 +8014,9 @@
           "Teams"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/teams/{team_id}",
+        "x-required-scopes": [
+          "teams:write"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -8066,6 +8093,9 @@
           "Teams"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/teams/{team_id}",
+        "x-required-scopes": [
+          "teams:write"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",

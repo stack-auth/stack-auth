@@ -1537,6 +1537,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels",
+        "x-required-scopes": [
+          "contact_channels:read"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1708,6 +1711,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels",
+        "x-required-scopes": [
+          "contact_channels:write"
+        ],
         "responses": {
           "201": {
             "description": "Successful response",
@@ -1932,6 +1938,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-required-scopes": [
+          "contact_channels:read"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2044,6 +2053,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-required-scopes": [
+          "contact_channels:write"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -2164,6 +2176,9 @@
           "Contact Channels"
         ],
         "x-full-url": "https://api.hexclave.com/api/v1/contact-channels/{user_id}/{contact_channel_id}",
+        "x-required-scopes": [
+          "contact_channels:write"
+        ],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -8248,6 +8263,9 @@
                   },
                   "is_impersonation": {
                     "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string"
                   }
                 },
                 "required": [
