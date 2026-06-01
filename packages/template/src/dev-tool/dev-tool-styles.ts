@@ -2728,7 +2728,7 @@ export const devToolCSS = `
     cursor: pointer;
   }
 
-  .stack-devtool .sdt-hm-mode-btn:hover {
+  .stack-devtool .sdt-hm-mode-btn:not(.sdt-hm-mode-btn-active):hover {
     color: var(--sdt-text);
   }
 

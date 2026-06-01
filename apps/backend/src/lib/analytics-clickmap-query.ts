@@ -201,9 +201,13 @@ export type ClickmapClicksQueryInput = {
 };
 
 type ClickmapRouteRow = { path: string, clicks: number, users: number, replays: number };
+type ClickmapRawRouteRow = { path: string, clicks: number | string, users: number | string, replays: number | string };
 type ClickmapSelectorRow = { selector: string, clicks: number };
+type ClickmapRawSelectorRow = { selector: string, clicks: number | string };
 type ClickmapElementRow = { elements_chain: string, elements_text: string, tag_name: string, href: string | null, clicks: number };
+type ClickmapRawElementRow = { elements_chain: string, elements_text: string, tag_name: string, href: string | null, clicks: number | string };
 type ClickmapUserRow = { id: string, clicks: number, replays: number, last_event_at_millis: number };
+type ClickmapRawUserRow = { id: string, clicks: number | string, replays: number | string, last_event_at_millis: number | string };
 type ClickmapReplayRow = {
   id: string,
   linked_user_id: string | null,
@@ -212,6 +216,15 @@ type ClickmapReplayRow = {
   viewport_height: number | null,
   clicks: number,
   last_event_at_millis: number,
+};
+type ClickmapRawReplayRow = {
+  id: string,
+  linked_user_id: string | null,
+  route_path: string | null,
+  viewport_width: number | string | null,
+  viewport_height: number | string | null,
+  clicks: number | string,
+  last_event_at_millis: number | string,
 };
 
 export type ClickmapClicksQueryResult = {
@@ -223,6 +236,52 @@ export type ClickmapClicksQueryResult = {
   users: ClickmapUserRow[],
   replays: ClickmapReplayRow[],
 };
+
+export function normalizeClickmapClicksQueryRows(input: {
+  samplingPct: number,
+  routesRows: ClickmapRawRouteRow[],
+  selectorsRows: ClickmapRawSelectorRow[],
+  elementsRows: ClickmapRawElementRow[],
+  userRows: ClickmapRawUserRow[],
+  replayRows: ClickmapRawReplayRow[],
+}): ClickmapClicksQueryResult {
+  const samplingScale = 100 / input.samplingPct;
+  const scaleSampledEventCount = (value: number | string) => Math.round(Number(value) * samplingScale);
+  const exactUniqueCount = (value: number | string) => Number(value);
+
+  return {
+    samplingPct: input.samplingPct,
+    routes: input.routesRows.map((row) => ({
+      path: row.path,
+      clicks: scaleSampledEventCount(row.clicks),
+      users: exactUniqueCount(row.users),
+      replays: exactUniqueCount(row.replays),
+    })),
+    selectors: input.selectorsRows.map((row) => ({ selector: row.selector, clicks: scaleSampledEventCount(row.clicks) })),
+    elements: input.elementsRows.map((row) => ({
+      elements_chain: row.elements_chain,
+      elements_text: row.elements_text,
+      tag_name: row.tag_name,
+      href: row.href,
+      clicks: scaleSampledEventCount(row.clicks),
+    })),
+    users: input.userRows.map((row) => ({
+      id: row.id,
+      clicks: scaleSampledEventCount(row.clicks),
+      replays: exactUniqueCount(row.replays),
+      last_event_at_millis: Number(row.last_event_at_millis),
+    })),
+    replays: input.replayRows.map((row) => ({
+      id: row.id,
+      linked_user_id: row.linked_user_id,
+      route_path: row.route_path,
+      viewport_width: row.viewport_width == null ? null : Number(row.viewport_width),
+      viewport_height: row.viewport_height == null ? null : Number(row.viewport_height),
+      clicks: scaleSampledEventCount(row.clicks),
+      last_event_at_millis: Number(row.last_event_at_millis),
+    })),
+  };
+}
 
 /**
  * Build the shared WHERE/params, run the routes/selectors/elements aggregates
@@ -241,8 +300,6 @@ export async function runClickmapClicksQuery(
   const viewportMax = input.viewportWidthMax ?? deviceBucket?.max;
   const urlPatternLike = buildClickmapUrlLikePattern(input.urlPattern);
   const samplingPct = Math.max(1, Math.round(clampClickmapSampling(input.sampling) * 100));
-  const samplingScale = 100 / samplingPct;
-  const scaleCount = (value: number | string) => Math.round(Number(value) * samplingScale);
 
   const samplingClause = samplingPct < 100
     ? "AND intHash32(toUInt32(toUnixTimestamp(event_at)) + cityHash64(coalesce(toString(user_id), ''))) % 100 < {samplingPct:UInt32}"
@@ -289,7 +346,7 @@ export async function runClickmapClicksQuery(
     return await result.json<T>();
   };
 
-  const routesQuery = runJson<{ path: string, clicks: number | string, users: number | string, replays: number | string }>(`
+  const routesQuery = runJson<ClickmapRawRouteRow>(`
     SELECT
       path,
       count() AS clicks,
@@ -304,7 +361,7 @@ export async function runClickmapClicksQuery(
     LIMIT {routeLimit:UInt32}
   `);
 
-  const selectorsQuery = runJson<{ selector: string, clicks: number | string }>(`
+  const selectorsQuery = runJson<ClickmapRawSelectorRow>(`
     SELECT
       nullIf(selector, '') AS selector,
       count() AS clicks
@@ -317,7 +374,7 @@ export async function runClickmapClicksQuery(
     LIMIT {routeLimit:UInt32}
   `);
 
-  const elementsQuery = runJson<{ elements_chain: string, elements_text: string, tag_name: string, href: string | null, clicks: number | string }>(`
+  const elementsQuery = runJson<ClickmapRawElementRow>(`
     SELECT
       elements_chain,
       any(elements_text) AS elements_text,
@@ -333,7 +390,7 @@ export async function runClickmapClicksQuery(
     LIMIT {elementsChainLimit:UInt32}
   `);
 
-  const usersQuery = input.linkedLimit == null ? null : runJson<{ id: string, clicks: number | string, replays: number | string, last_event_at_millis: number | string }>(`
+  const usersQuery = input.linkedLimit == null ? null : runJson<ClickmapRawUserRow>(`
     SELECT
       assumeNotNull(user_id) AS id,
       count() AS clicks,
@@ -348,7 +405,7 @@ export async function runClickmapClicksQuery(
     LIMIT {linkedLimit:UInt32}
   `);
 
-  const replaysQuery = input.linkedLimit == null ? null : runJson<{ id: string, linked_user_id: string | null, route_path: string | null, viewport_width: number | string | null, viewport_height: number | string | null, clicks: number | string, last_event_at_millis: number | string }>(`
+  const replaysQuery = input.linkedLimit == null ? null : runJson<ClickmapRawReplayRow>(`
     SELECT
       assumeNotNull(session_replay_id) AS id,
       any(user_id) AS linked_user_id,
@@ -374,31 +431,12 @@ export async function runClickmapClicksQuery(
     replaysQuery ?? Promise.resolve([]),
   ]);
 
-  return {
+  return normalizeClickmapClicksQueryRows({
     samplingPct,
-    routes: routesRows.map((row) => ({ path: row.path, clicks: scaleCount(row.clicks), users: scaleCount(row.users), replays: scaleCount(row.replays) })),
-    selectors: selectorsRows.map((row) => ({ selector: row.selector, clicks: scaleCount(row.clicks) })),
-    elements: elementsRows.map((row) => ({
-      elements_chain: row.elements_chain,
-      elements_text: row.elements_text,
-      tag_name: row.tag_name,
-      href: row.href,
-      clicks: scaleCount(row.clicks),
-    })),
-    users: userRows.map((row) => ({
-      id: row.id,
-      clicks: scaleCount(row.clicks),
-      replays: scaleCount(row.replays),
-      last_event_at_millis: Number(row.last_event_at_millis),
-    })),
-    replays: replayRows.map((row) => ({
-      id: row.id,
-      linked_user_id: row.linked_user_id,
-      route_path: row.route_path,
-      viewport_width: row.viewport_width == null ? null : Number(row.viewport_width),
-      viewport_height: row.viewport_height == null ? null : Number(row.viewport_height),
-      clicks: scaleCount(row.clicks),
-      last_event_at_millis: Number(row.last_event_at_millis),
-    })),
-  };
+    routesRows,
+    selectorsRows,
+    elementsRows,
+    userRows,
+    replayRows,
+  });
 }

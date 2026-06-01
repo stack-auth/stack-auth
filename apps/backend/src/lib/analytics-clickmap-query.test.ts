@@ -10,6 +10,7 @@ import {
   getClickmapUserAndReplayFilter,
   getClickmapViewportFilter,
   getDeviceViewportBucket,
+  normalizeClickmapClicksQueryRows,
 } from "./analytics-clickmap-query";
 
 describe("analytics clickmap query helpers", () => {
@@ -133,5 +134,64 @@ describe("analytics clickmap query helpers", () => {
     expect(clampClickmapSampling(0.25)).toBe(0.25);
     expect(clampClickmapSampling(2)).toBe(1);
     expect(clampClickmapSampling(Number.NaN)).toBe(1);
+  });
+
+  it("only scales sampled event counts, not unique users or replays", () => {
+    const result = normalizeClickmapClicksQueryRows({
+      samplingPct: 25,
+      routesRows: [{ path: "/pricing", clicks: "10", users: "8", replays: "3" }],
+      selectorsRows: [{ selector: "button.primary", clicks: "4" }],
+      elementsRows: [{ elements_chain: "button.primary", elements_text: "Buy", tag_name: "button", href: null, clicks: "5" }],
+      userRows: [{ id: "user-123", clicks: "6", replays: "2", last_event_at_millis: "1710000000000" }],
+      replayRows: [{ id: "replay-123", linked_user_id: "user-123", route_path: "/pricing", viewport_width: "1440", viewport_height: "900", clicks: "7", last_event_at_millis: "1710000000123" }],
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "elements": [
+          {
+            "clicks": 20,
+            "elements_chain": "button.primary",
+            "elements_text": "Buy",
+            "href": null,
+            "tag_name": "button",
+          },
+        ],
+        "replays": [
+          {
+            "clicks": 28,
+            "id": "replay-123",
+            "last_event_at_millis": 1710000000123,
+            "linked_user_id": "user-123",
+            "route_path": "/pricing",
+            "viewport_height": 900,
+            "viewport_width": 1440,
+          },
+        ],
+        "routes": [
+          {
+            "clicks": 40,
+            "path": "/pricing",
+            "replays": 3,
+            "users": 8,
+          },
+        ],
+        "samplingPct": 25,
+        "selectors": [
+          {
+            "clicks": 16,
+            "selector": "button.primary",
+          },
+        ],
+        "users": [
+          {
+            "clicks": 24,
+            "id": "user-123",
+            "last_event_at_millis": 1710000000000,
+            "replays": 2,
+          },
+        ],
+      }
+    `);
   });
 });
