@@ -47,6 +47,7 @@ The full docs sidebar — generated from the live navigation. Fetch any of these
     - [JWTS](https://docs.hexclave.com/guides/apps/authentication/jwts)
     - [Sign Up Rules](https://docs.hexclave.com/guides/apps/authentication/sign-up-rules)
     - [CLI Authentication](https://docs.hexclave.com/guides/apps/authentication/cli-authentication)
+    - [Fraud Protection](https://docs.hexclave.com/guides/apps/authentication/fraud-protection)
     - **[All Auth Providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers)**
       - [Apple](https://docs.hexclave.com/guides/apps/authentication/auth-providers/apple)
       - [Bitbucket](https://docs.hexclave.com/guides/apps/authentication/auth-providers/bitbucket)
@@ -62,18 +63,36 @@ The full docs sidebar — generated from the live navigation. Fetch any of these
       - [Twitch](https://docs.hexclave.com/guides/apps/authentication/auth-providers/twitch)
       - [Two Factor Auth](https://docs.hexclave.com/guides/apps/authentication/auth-providers/two-factor-auth)
       - [X Twitter](https://docs.hexclave.com/guides/apps/authentication/auth-providers/x-twitter)
-  - [Emails](https://docs.hexclave.com/guides/apps/emails/overview)
-  - [Payments](https://docs.hexclave.com/guides/apps/payments/overview)
-  - [Analytics](https://docs.hexclave.com/guides/apps/analytics/overview)
+  - **Emails**
+    - [Emails](https://docs.hexclave.com/guides/apps/emails/overview)
+  - **Payments**
+    - [Payments](https://docs.hexclave.com/guides/apps/payments/overview)
+  - **Analytics**
+    - [Analytics](https://docs.hexclave.com/guides/apps/analytics/overview)
   - **Teams**
     - [Teams](https://docs.hexclave.com/guides/apps/teams/overview)
     - [Team Selection](https://docs.hexclave.com/guides/apps/teams/team-selection)
-  - [Fraud Protection](https://docs.hexclave.com/guides/apps/fraud-protection/overview)
   - [RBAC](https://docs.hexclave.com/guides/apps/rbac/overview)
   - [API Keys](https://docs.hexclave.com/guides/apps/api-keys/overview)
   - [Data Vault](https://docs.hexclave.com/guides/apps/data-vault/overview)
   - [Webhooks](https://docs.hexclave.com/guides/apps/webhooks/overview)
   - [Launch Checklist](https://docs.hexclave.com/guides/apps/launch-checklist/overview)
+- **Dashboard reference**
+  - **Emails**
+    - [Sent](https://docs.hexclave.com/guides/dashboard-references/emails/sent)
+    - [Drafts](https://docs.hexclave.com/guides/dashboard-references/emails/drafts)
+    - [Templates](https://docs.hexclave.com/guides/dashboard-references/emails/templates)
+    - [Email Settings](https://docs.hexclave.com/guides/dashboard-references/emails/email-settings)
+  - **Payments**
+    - [Product Lines](https://docs.hexclave.com/guides/dashboard-references/payments/product-lines)
+    - [Products And Items](https://docs.hexclave.com/guides/dashboard-references/payments/products-and-items)
+    - [Customers](https://docs.hexclave.com/guides/dashboard-references/payments/customers)
+    - [Transactions](https://docs.hexclave.com/guides/dashboard-references/payments/transactions)
+    - [Settings](https://docs.hexclave.com/guides/dashboard-references/payments/settings)
+  - **Analytics**
+    - [Tables](https://docs.hexclave.com/guides/dashboard-references/analytics/tables)
+    - [Queries](https://docs.hexclave.com/guides/dashboard-references/analytics/queries)
+    - [Replays](https://docs.hexclave.com/guides/dashboard-references/analytics/replays)
 - **Integrations**
   - [Tanstack Start](https://docs.hexclave.com/guides/integrations/tanstack-start/overview)
   - [Supabase](https://docs.hexclave.com/guides/integrations/supabase/overview)

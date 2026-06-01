@@ -11,27 +11,7 @@ Hexclave includes a Payments app that handles billing, subscriptions, and one-ti
 
 This guide walks through how to set up payments, sell products, manage subscriptions, and work with item-based entitlements like credits or seats.
 
-## Dashboard pages
-
-The Payments app is split across five dashboard pages — one for shaping your catalogue, one for inspecting customers, and the rest for monitoring activity and configuring the integration.
-
-<CardGroup cols={2}>
-  <Card title="Product Lines" icon="layer-group" href="/guides/apps/payments/product-lines">
-    Group products into mutually exclusive tiers (Free, Pro, Enterprise) and arrange them visually with drag-and-drop.
-  </Card>
-  <Card title="Products & Items" icon="cubes" href="/guides/apps/payments/products-and-items">
-    Define products and items, set pricing, configure included items, and visualize how they connect.
-  </Card>
-  <Card title="Customers" icon="user" href="/guides/apps/payments/customers">
-    Inspect any user, team, or custom customer — view item balances, adjust quantities, and grant products manually.
-  </Card>
-  <Card title="Transactions" icon="receipt" href="/guides/apps/payments/transactions">
-    Browse every payment event, filter by type or customer, and issue partial or full refunds.
-  </Card>
-  <Card title="Settings" icon="gear" href="/guides/apps/payments/settings">
-    Connect Stripe, toggle test mode, pick which payment methods to accept, and block new purchases.
-  </Card>
-</CardGroup>
+In the dashboard, Payments is split across **Product Lines**, **Products & Items**, **Customers**, **Transactions**, and **Settings** — for shaping your catalogue, inspecting customers, monitoring activity, and configuring Stripe.
 
 ## Getting started
 
@@ -40,7 +20,7 @@ The Payments app is split across five dashboard pages — one for shaping your c
     Go to the **Apps** section in your dashboard, find **Payments**, and enable it.
   </Step>
   <Step title="Connect Stripe">
-    Open **Payments -> Settings** and follow the Stripe Connect onboarding flow. You'll be asked for business details, bank info, and identity verification. Once approved, payments are live. See [Settings](/guides/apps/payments/settings) for the full connection flow.
+    Open **Payments → Settings** in the dashboard and follow the Stripe Connect onboarding flow. You'll be asked for business details, bank info, and identity verification. Once approved, payments are live.
   </Step>
   <Step title="Turn on test mode">
     While building, enable **test mode** in **Payments -> Settings**. All purchases will be free - no real money is charged. You can switch to live when you're ready.
@@ -89,7 +69,7 @@ A few additional options:
 - **Server-only** - Hide the product from client SDK responses. Useful for products that should only be granted programmatically.
 - **Stackable** - Allow multiple purchases of the same product (default is one per customer).
 
-See [Products & Items](/guides/apps/payments/products-and-items) for the full editor walkthrough.
+Configure product lines, prices, and included items in **Payments → Products & Items** in the dashboard.
 
 ## Selling a product
 
@@ -413,7 +393,7 @@ await stackServerApp.grantProduct({
 
 If you have a reference to the user object already, you can also call `user.grantProduct({ productId })` directly.
 
-The same flow is available from the dashboard — see the [Customers](/guides/apps/payments/customers) page for the **Grant Product** dialog and per-customer item adjustments.
+The same flow is available from the dashboard under **Payments → Customers** using the **Grant Product** dialog and per-customer item adjustments.
 
 ## Customer types
 
@@ -432,7 +412,7 @@ Email notifications are sent automatically on payment events:
 - **Payment Receipt** - Sent on successful payment with product details, amount, and receipt link
 - **Payment Failed** - Sent on failed payment with product name, amount, and failure reason
 
-These apply to both one-time purchases and subscription renewals. Customize them in **Emails -> Templates** — see the [Templates guide](/guides/apps/emails/templates) for authoring details.
+These apply to both one-time purchases and subscription renewals. Customize them in **Emails → Templates** in the dashboard.
 
 ## Payouts
 
@@ -442,7 +422,7 @@ Use your Stripe dashboard for payout schedules, bank-account settings, and accou
 
 ## Test mode
 
-During development, enable **test mode** in [Payments -> Settings](/guides/apps/payments/settings). All purchases will be free and no real money is charged - products are granted immediately without going through Stripe.
+During development, enable **test mode** in **Payments → Settings** in the dashboard. All purchases will be free and no real money is charged — products are granted immediately without going through Stripe.
 
 When you're ready to test with real Stripe flows (but still using test credentials), disable Stack's test mode and use Stripe's test card numbers:
 

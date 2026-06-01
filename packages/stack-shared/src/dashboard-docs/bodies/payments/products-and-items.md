@@ -1,7 +1,3 @@
----
-title: "Products & Items"
-description: "Define what you sell and the entitlements it grants"
----
 
 The **Products & Items** page (`Payments -> Products & Items`) is the home for your billable catalogue. **Products** are the things you sell (plans, packs, add-ons). **Items** are the underlying entitlements (credits, seats, API quotas). One product can include many items, and the same item can be referenced by many products — like a pricing-table row that crosses multiple columns.
 
@@ -57,7 +53,7 @@ Each product has:
 
 A few additional toggles:
 
-- **Product lines** — assign products to a [product line](/guides/apps/payments/product-lines) to make them mutually exclusive (e.g. plan tiers).
+- **Product lines** — assign products to a [product line](/guides/dashboard-references/payments/product-lines) to make them mutually exclusive (e.g. plan tiers).
 - **Add-ons** — set **isAddOnTo** to require the customer to already own one of the listed base products before this one can be purchased.
 - **Free trial** — give customers a trial period before charging. Can be set on the product or on individual prices.
 - **Server-only** — hide the product from client SDK responses. Useful for products that should only be granted programmatically (e.g. promotional offers).
@@ -101,7 +97,7 @@ Items are far simpler than products: they just need an ID, a display name, and a
 
 - The `+` in the **Items** column header.
 - The **New Item** button inside the product editor's "Included items" picker.
-- The `Create <Type> Item` action button on the [Customers](/guides/apps/payments/customers) page.
+- The `Create <Type> Item` action button on the [Customers](/guides/dashboard-references/payments/customers) page.
 
 The item dialog enforces unique IDs against existing items. Customer type is locked when the dialog is launched from a context that requires a specific type (e.g. inside a team product, or from the Customers page with the team tab selected).
 
@@ -119,7 +115,7 @@ Generate a checkout URL from the user or team that will own the purchase:
   <Tab title="Client Component">
     ```typescript title="app/components/purchase-button.tsx"
     "use client";
-    import { useUser } from "@stackframe/stack";
+    import { useUser } from "@hexclave/next";
 
     export default function PurchaseButton({ productId }: { productId: string }) {
       const user = useUser({ or: "redirect" });
@@ -215,7 +211,7 @@ An item has two quantity fields:
 
 ```typescript title="app/components/credits-widget.tsx"
 "use client";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function CreditsWidget() {
   const user = useUser({ or: "redirect" });

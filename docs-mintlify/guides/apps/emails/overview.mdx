@@ -7,22 +7,7 @@ icon: "/images/app-icons/emails.svg"
 
 Hexclave includes a full email system for sending transactional and marketing emails to your users. It handles rendering, delivery, scheduling, notification preferences, and tracking out of the box.
 
-The dashboard splits the Emails app into four tabs:
-
-<CardGroup cols={2}>
-  <Card title="Sent" icon="paper-plane" href="/guides/apps/emails/sent">
-    Live email log, delivery status, and domain reputation.
-  </Card>
-  <Card title="Drafts" icon="file-pen" href="/guides/apps/emails/drafts">
-    Compose, preview, and send one-off emails to selected recipients.
-  </Card>
-  <Card title="Templates" icon="file-code" href="/guides/apps/emails/templates">
-    Author reusable TSX email templates with the AI builder.
-  </Card>
-  <Card title="Email Settings" icon="sliders" href="/guides/apps/emails/email-settings">
-    Configure the email server, sender identity, and active theme.
-  </Card>
-</CardGroup>
+In the dashboard, the Emails app is organized into **Sent**, **Drafts**, **Templates**, and **Email Settings** tabs for monitoring delivery, composing campaigns, editing templates, and configuring your mail server.
 
 ## How Emails Works
 
@@ -34,7 +19,7 @@ Every email - whether it comes from a built-in auth flow, your server code, a dr
 4. **Send** - Emails are delivered, honoring notification preferences and skipping users who have unsubscribed.
 5. **Track** - Delivery events (sent, opened, clicked, bounced, marked as spam) are recorded.
 
-You can monitor every email's status in the dashboard under [Emails → Sent](/guides/apps/emails/sent).
+You can monitor every email's status in the dashboard under **Emails → Sent**.
 
 ## Enabling the Emails app
 
@@ -95,7 +80,7 @@ await stackServerApp.sendEmail({
 
 ### Send from a dashboard draft
 
-If you've composed an email in the dashboard's draft editor, you can trigger it programmatically. See [Drafts](/guides/apps/emails/drafts) for the full workflow.
+If you've composed an email in the dashboard's draft editor, you can trigger it programmatically. See [Drafts](/guides/dashboard-references/emails/drafts) for the full workflow.
 
 ```typescript
 await stackServerApp.sendEmail({
@@ -148,7 +133,7 @@ type SendEmailOptions = {
 ```
 
 <Info>
-  `sendEmail` requires a custom email server (SMTP, Resend, or Managed). It cannot be used with the shared development server. Configure one in [Email Settings](/guides/apps/emails/email-settings).
+  `sendEmail` requires a custom email server (SMTP, Resend, or Managed). It cannot be used with the shared development server. Configure one in [Email Settings](/guides/dashboard-references/emails/email-settings).
 </Info>
 
 ### Error handling
@@ -212,7 +197,7 @@ If `scheduledAt` is omitted, the email is sent as soon as possible.
 
 ## React components integration
 
-Emails integrate with Hexclave UI components automatically (for example verification, password reset, and magic-link flows). Each of those flows uses a built-in template that you can customize in [Templates](/guides/apps/emails/templates).
+Emails integrate with Hexclave UI components automatically (for example verification, password reset, and magic-link flows). Each of those flows uses a built-in template that you can customize in the dashboard under **Emails → Templates**.
 
 For custom flows, trigger `sendEmail` from your server code:
 
@@ -232,10 +217,3 @@ export async function inviteUser(userId: string) {
   return result;
 }
 ```
-
-## Where to go next
-
-- [Sent](/guides/apps/emails/sent) - inspect the outbox, status, and domain reputation.
-- [Drafts](/guides/apps/emails/drafts) - compose visually and ship one-off campaigns.
-- [Templates](/guides/apps/emails/templates) - author reusable TSX templates with the AI builder.
-- [Email Settings](/guides/apps/emails/email-settings) - configure your email server and active theme.

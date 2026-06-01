@@ -1,8 +1,3 @@
----
-title: "Sent"
-description: "Inspect the outbox, delivery status, and domain reputation."
-sidebarTitle: "Sent"
----
 
 The **Sent** tab is your live email log. Every email that flows through the [pipeline](/guides/apps/emails/overview#how-emails-works) - whether triggered by built-in auth flows, a draft, a template, or `sendEmail()` - shows up here with its current status. The right rail shows your **Domain Reputation** so you always know how much sending capacity you have left.
 
@@ -54,7 +49,7 @@ The right-hand card surfaces three signals that determine how much - and how fas
 
 ### Email Capacity
 
-Shows hourly sends versus your current cap (`emails sent / max per hour`). Stack Auth automatically buffers email as your domain warms up, so this number scales over time.
+Shows hourly sends versus your current cap (`emails sent / max per hour`). Hexclave automatically buffers email as your domain warms up, so this number scales over time.
 
 If you need a temporary lift (e.g. you're launching a campaign), click **Temporarily increase capacity** to activate a **boost**. While a boost is active, the bar animates and a countdown timer shows when it expires. Boosts can also be triggered programmatically:
 
@@ -96,6 +91,6 @@ When you're running the local emulator, mock emails are captured by Inbucket ins
 
 ## Related
 
-- [Drafts](/guides/apps/emails/drafts) - compose and send one-off emails.
-- [Templates](/guides/apps/emails/templates) - author the templates that show up in the log.
-- [Email Settings](/guides/apps/emails/email-settings) - configure the sender that emails are sent from.
+- [Drafts](/guides/dashboard-references/emails/drafts) - compose and send one-off emails.
+- [Templates](/guides/dashboard-references/emails/templates) - author the templates that show up in the log.
+- [Email Settings](/guides/dashboard-references/emails/email-settings) - configure the sender that emails are sent from.

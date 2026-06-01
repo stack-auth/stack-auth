@@ -97,6 +97,7 @@ const docsJson = {
                   "guides/apps/authentication/jwts",
                   "guides/apps/authentication/sign-up-rules",
                   "guides/apps/authentication/cli-authentication",
+                  "guides/apps/authentication/fraud-protection",
                   {
                     "group": "All Auth Providers",
                     "root": "guides/apps/authentication/auth-providers",
@@ -119,9 +120,27 @@ const docsJson = {
                   }
                 ]
               },
-              "guides/apps/emails/overview",
-              "guides/apps/payments/overview",
-              "guides/apps/analytics/overview",
+              {
+                "group": "Emails",
+                "icon": "/images/app-icons/emails.svg",
+                "pages": [
+                  "guides/apps/emails/overview"
+                ]
+              },
+              {
+                "group": "Payments",
+                "icon": "/images/app-icons/payments.svg",
+                "pages": [
+                  "guides/apps/payments/overview"
+                ]
+              },
+              {
+                "group": "Analytics",
+                "icon": "/images/app-icons/analytics.svg",
+                "pages": [
+                  "guides/apps/analytics/overview"
+                ]
+              },
               {
                 "group": "Teams",
                 "icon": "/images/app-icons/teams.svg",
@@ -130,12 +149,48 @@ const docsJson = {
                   "guides/apps/teams/team-selection"
                 ]
               },
-              "guides/apps/fraud-protection/overview",
               "guides/apps/rbac/overview",
               "guides/apps/api-keys/overview",
               "guides/apps/data-vault/overview",
               "guides/apps/webhooks/overview",
               "guides/apps/launch-checklist/overview"
+            ]
+          },
+          {
+            "group": "Dashboard reference",
+            "hidden": true,
+            "searchable": true,
+            "pages": [
+              {
+                "group": "Emails",
+                "icon": "/images/app-icons/emails.svg",
+                "pages": [
+                  "guides/dashboard-references/emails/sent",
+                  "guides/dashboard-references/emails/drafts",
+                  "guides/dashboard-references/emails/templates",
+                  "guides/dashboard-references/emails/email-settings"
+                ]
+              },
+              {
+                "group": "Payments",
+                "icon": "/images/app-icons/payments.svg",
+                "pages": [
+                  "guides/dashboard-references/payments/product-lines",
+                  "guides/dashboard-references/payments/products-and-items",
+                  "guides/dashboard-references/payments/customers",
+                  "guides/dashboard-references/payments/transactions",
+                  "guides/dashboard-references/payments/settings"
+                ]
+              },
+              {
+                "group": "Analytics",
+                "icon": "/images/app-icons/analytics.svg",
+                "pages": [
+                  "guides/dashboard-references/analytics/tables",
+                  "guides/dashboard-references/analytics/queries",
+                  "guides/dashboard-references/analytics/replays"
+                ]
+              }
             ]
           },
           {
@@ -258,6 +313,10 @@ const docsJson = {
   },
   "redirects": [
     {
+      "source": "/guides/apps/fraud-protection/overview",
+      "destination": "/guides/apps/authentication/fraud-protection"
+    },
+    {
       "source": "/rest-api/overview",
       "destination": "/api/overview"
     },
@@ -300,6 +359,54 @@ const docsJson = {
     {
       "source": "/others/js-client",
       "destination": "/guides/going-further/stack-app"
+    },
+    {
+      "source": "/guides/apps/emails/sent",
+      "destination": "/guides/dashboard-references/emails/sent"
+    },
+    {
+      "source": "/guides/apps/emails/drafts",
+      "destination": "/guides/dashboard-references/emails/drafts"
+    },
+    {
+      "source": "/guides/apps/emails/templates",
+      "destination": "/guides/dashboard-references/emails/templates"
+    },
+    {
+      "source": "/guides/apps/emails/email-settings",
+      "destination": "/guides/dashboard-references/emails/email-settings"
+    },
+    {
+      "source": "/guides/apps/analytics/tables",
+      "destination": "/guides/dashboard-references/analytics/tables"
+    },
+    {
+      "source": "/guides/apps/analytics/queries",
+      "destination": "/guides/dashboard-references/analytics/queries"
+    },
+    {
+      "source": "/guides/apps/analytics/replays",
+      "destination": "/guides/dashboard-references/analytics/replays"
+    },
+    {
+      "source": "/guides/apps/payments/product-lines",
+      "destination": "/guides/dashboard-references/payments/product-lines"
+    },
+    {
+      "source": "/guides/apps/payments/products-and-items",
+      "destination": "/guides/dashboard-references/payments/products-and-items"
+    },
+    {
+      "source": "/guides/apps/payments/customers",
+      "destination": "/guides/dashboard-references/payments/customers"
+    },
+    {
+      "source": "/guides/apps/payments/transactions",
+      "destination": "/guides/dashboard-references/payments/transactions"
+    },
+    {
+      "source": "/guides/apps/payments/settings",
+      "destination": "/guides/dashboard-references/payments/settings"
     }
   ]
 } as const;

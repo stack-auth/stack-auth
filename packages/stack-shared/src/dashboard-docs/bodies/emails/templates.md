@@ -1,0 +1,170 @@
+
+The **Templates** tab is where you author every reusable email in your project - from custom transactional flows to the built-in auth emails. Templates are React Email components written in TSX. Once defined, they can be rendered from your server via `sendEmail({ templateId, variables })`, embedded in [Drafts](/guides/dashboard-references/emails/drafts), or wired automatically into Hexclave's auth flows.
+
+<Info>
+  Templates require a custom email server. On the shared server you can still open and read templates, but **Edit Template** opens a warning dialog and saves are rejected. Configure a provider in [Email Settings](/guides/dashboard-references/emails/email-settings) first.
+</Info>
+
+## Templates list
+
+The list shows every template in your project as a card with:
+
+- The **template name**.
+- An **Edit Template** button.
+- A `⋮` overflow menu with **Delete Template**.
+
+Both the shared-server warning and the delete confirmation appear as modal dialogs - delete is destructive and cannot be undone.
+
+The page header has a **New Template** button that opens a dialog asking for a name, then immediately opens the editor.
+
+## Built-in templates
+
+Hexclave ships with templates for common auth flows. These are pre-populated and used automatically by the built-in authentication components:
+
+| Template | Trigger |
+|---|---|
+| **Email Verification** | User signs up or changes their email |
+| **Password Reset** | User requests a password reset |
+| **Magic Link / OTP** | User signs in with magic link or one-time password |
+| **Team Invitation** | User is invited to join a team |
+| **Sign-in Invitation** | User is invited to create an account |
+| **Payment Receipt** | A payment succeeds (one-time or subscription) |
+| **Payment Failed** | A payment fails |
+
+Customize any built-in template by clicking **Edit Template** on its row. Your edits replace the default content for the matching auth flow.
+
+## The template editor
+
+The editor uses Hexclave's **vibe-coding** layout - a three-pane workspace identical to the [Drafts editor](/guides/dashboard-references/emails/drafts#the-draft-editor):
+
+- **AI Assistant** (left) - chat with the email builder to refactor the template, swap copy, restyle, or wire in new variables. The assistant has the current TSX as context and edits it directly.
+- **Preview** (center) - live render with viewport modes for **Edit**, **Desktop**, **Tablet**, and **Phone**. In **Edit** mode you can WYSIWYG-edit directly in the preview, and the assistant rewrites the source on commit.
+- **Code Editor** (right) - the raw TSX. Edit by hand for full control.
+
+The header has an **EmailThemeSelector** so you can pair the template with a specific theme as you iterate. **Save template** persists changes; **Undo** reverts to the last saved version. If a save fails because the template can't render, an inline alert shows the exact `EmailRenderingError` message so you can fix it.
+
+## Authoring templates
+
+Templates are React Email components written in TSX. Each template receives the current `user`, `project`, and any custom `variables` you pass when sending.
+
+```tsx
+import { type } from "arktype";
+import { Container } from "@react-email/components";
+import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+
+export const variablesSchema = type({
+  featureName: "string",
+});
+
+export function EmailTemplate({
+  user,
+  project,
+  variables,
+}: Props<typeof variablesSchema.infer>) {
+  return (
+    <Container>
+      <Subject value={`New feature: ${variables.featureName}`} />
+      <NotificationCategory value="Transactional" />
+      <p>Hi {user.displayName}, check out {variables.featureName}!</p>
+    </Container>
+  );
+}
+
+EmailTemplate.PreviewVariables = {
+  featureName: "Dark mode",
+} satisfies typeof variablesSchema.infer;
+```
+
+Key concepts:
+
+- **`variablesSchema`** - Define the shape of your template variables using [arktype](https://arktype.io). Hexclave validates variables against this schema at render time. If a call to `sendEmail()` passes the wrong shape, it fails with a `SCHEMA_ERROR`.
+- **`<Subject>`** - Sets the email subject line from inside the template.
+- **`<NotificationCategory>`** - Declares whether this is a `"Transactional"` or `"Marketing"` email. Drives unsubscribe behavior and the unsubscribe link in the footer.
+- **`PreviewVariables`** - Sample data used for the live preview in the dashboard editor and in [Email Settings → Theme Settings](/guides/dashboard-references/emails/email-settings#theme-settings).
+
+## Themes
+
+Templates render the *inside* of an email. **Themes** wrap that content in a consistent shell - header, footer, background, branding, and the unsubscribe link for marketing emails. Every template renders against the project's active theme by default, but you can swap themes per-send or even render with no theme at all.
+
+Hexclave includes three built-in themes:
+
+- **Default Light** - clean white background with a subtle shadow.
+- **Default Dark** - dark background with light text.
+- **Default Colorful** - light purple background with an accent border.
+
+You can switch the active theme, create new themes, edit existing ones, or delete custom themes from the dashboard - see [Email Settings → Theme Settings](/guides/dashboard-references/emails/email-settings#theme-settings) for the full management UI.
+
+### Authoring themes
+
+Like templates, themes are TSX components. They receive the rendered template content as `children`, an `unsubscribeLink` (only present for marketing emails), and `projectLogos`:
+
+```tsx
+import { Html, Head, Tailwind, Body, Container } from "@react-email/components";
+import { ThemeProps, ProjectLogo } from "@stackframe/emails";
+
+export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
+  return (
+    <Html>
+      <Head />
+      <Tailwind>
+        <Body className="bg-white font-sans m-0 p-0">
+          <Container className="max-w-[600px] mx-auto p-8">
+            <ProjectLogo data={projectLogos} mode="light" />
+            {children}
+          </Container>
+          {unsubscribeLink && (
+            <p className="text-center text-xs opacity-60">
+              <a href={unsubscribeLink}>Unsubscribe</a>
+            </p>
+          )}
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}
+```
+
+Key points:
+
+- **`children`** - the rendered template body. Wrap it in whatever layout you want.
+- **`unsubscribeLink`** - only populated for `Marketing` emails. Render it whenever it's present; omit the wrapper when it's `null` to keep transactional emails clean.
+- **`projectLogos`** - your project's logo set. Pair with `<ProjectLogo data={projectLogos} mode="light" />` (or `"dark"`) and Hexclave picks the right asset.
+- **Styling** - use `<Tailwind>` from `@react-email/components` for utility classes, or fall back to inline styles. Email clients are notoriously picky about CSS.
+
+### Choosing a theme at send time
+
+The project-wide active theme applies by default. Override it per-send with the `themeId` option:
+
+```typescript
+await stackServerApp.sendEmail({
+  userIds: ['user-id'],
+  templateId: 'welcome',
+  themeId: 'theme-id',   // specific theme
+  // themeId: null,       // use the project default theme
+  // themeId: false,      // send with no theme at all
+});
+```
+
+In the template editor, the **EmailThemeSelector** in the header lets you preview your template against any theme as you iterate.
+
+## Sending a template from code
+
+Once a template exists, render it from any server-side handler with `templateId` and `variables`:
+
+```typescript
+await stackServerApp.sendEmail({
+  userIds: ['user-id-1'],
+  templateId: 'your-template-id',
+  variables: {
+    featureName: 'Dark mode',
+  },
+});
+```
+
+Add `themeId` to override the active theme, or `allUsers: true` to broadcast. See [Overview → Full options](/guides/apps/emails/overview#full-options) for the complete shape.
+
+## Related
+
+- [Drafts](/guides/dashboard-references/emails/drafts) - turn a template into a one-off send with custom recipients.
+- [Email Settings](/guides/dashboard-references/emails/email-settings) - configure the active theme that templates render with.
+- [Sent](/guides/dashboard-references/emails/sent) - inspect the delivery status of emails rendered from your templates.

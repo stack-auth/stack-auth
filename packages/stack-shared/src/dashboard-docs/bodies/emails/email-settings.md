@@ -1,21 +1,16 @@
----
-title: "Email Settings"
-description: "Configure the email server, sender identity, and active theme."
-sidebarTitle: "Email Settings"
----
 
 The **Email Settings** tab is where you wire your project to an actual email provider and pick the theme every email is wrapped in. It has two cards:
 
 - **Theme Settings** - the layout, branding, and footer that wraps every email.
 - **Email Server** - the provider that actually delivers the bytes (Shared, Managed Domain, Resend, or Custom SMTP).
 
-You need a non-shared provider configured before `sendEmail()`, [Drafts](/guides/apps/emails/drafts), and custom [Templates](/guides/apps/emails/templates) can actually send.
+You need a non-shared provider configured before `sendEmail()`, [Drafts](/guides/dashboard-references/emails/drafts), and custom [Templates](/guides/dashboard-references/emails/templates) can actually send.
 
 ## Theme Settings
 
-Themes wrap your email content in a consistent shell - header, footer, background, branding. Stack Auth includes three built-in themes (**Default Light**, **Default Dark**, **Default Colorful**) and lets you author as many custom themes as you want.
+Themes wrap your email content in a consistent shell - header, footer, background, branding. Hexclave includes three built-in themes (**Default Light**, **Default Dark**, **Default Colorful**) and lets you author as many custom themes as you want.
 
-For the underlying TSX shape (`children`, `unsubscribeLink`, `projectLogos`) and how to override a theme per-send with `themeId`, see [Templates → Themes](/guides/apps/emails/templates#themes). This card is purely about *managing* and *selecting* themes.
+For the underlying TSX shape (`children`, `unsubscribeLink`, `projectLogos`) and how to override a theme per-send with `themeId`, see [Templates → Themes](/guides/dashboard-references/emails/templates#themes). This card is purely about *managing* and *selecting* themes.
 
 The card itself shows a small carousel of three thumbnails: your current active theme in the center, flanked by two others. The active theme is marked with a check badge and labeled at the bottom of the showcase.
 
@@ -24,7 +19,7 @@ Click **Manage Themes** in the header to open the full theme manager, where you 
 - **Switch the active theme** - clicking a theme opens a confirmation dialog showing a preview at your selected viewport (Phone / Tablet / Desktop). Confirm to set it project-wide.
 - **Create a new theme** with the **New Theme** button.
 - **Delete a custom theme** from its overflow menu (built-in themes can't be deleted).
-- **Edit a theme** by clicking it - opens the same vibe-coding editor used for [Templates](/guides/apps/emails/templates#the-template-editor), so you can iterate on the TSX with the AI assistant, the live preview, and viewport switching.
+- **Edit a theme** by clicking it - opens the same vibe-coding editor used for [Templates](/guides/dashboard-references/emails/templates#the-template-editor), so you can iterate on the TSX with the AI assistant, the live preview, and viewport switching.
 
 ## Email Server
 
@@ -39,7 +34,7 @@ You can send your own test email any time after saving with the **Send test emai
 
 ### Stack Shared
 
-The default for new projects. Emails are sent from `noreply@stackframe.co` using Stack Auth's shared infrastructure. Good for development - not suitable for production.
+The default for new projects. Emails are sent from `noreply@stackframe.co` using Hexclave's shared infrastructure. Good for development - not suitable for production.
 
 While the shared server is active you can't:
 
@@ -51,12 +46,12 @@ Default auth emails (verification, password reset, magic link) still work on the
 
 ### Managed Domain
 
-Bring your own domain - you add DNS records, Stack Auth handles signing, sending reputation, and delivery.
+Bring your own domain - you add DNS records, Hexclave handles signing, sending reputation, and delivery.
 
 Click **Add domain** to open the three-step setup wizard:
 
 1. **Your domain** - enter a dedicated subdomain (e.g. `emails.example.com`, not your apex domain) and a **sender local part** (e.g. `updates`). The full sender becomes `updates@emails.example.com`.
-2. **DNS records** - Stack Auth provisions an NS-record set. Add each record to your DNS provider. Use the **Copy** button next to each value. DNS changes typically propagate within 10 minutes but can take up to 48 hours.
+2. **DNS records** - Hexclave provisions an NS-record set. Add each record to your DNS provider. Use the **Copy** button next to each value. DNS changes typically propagate within 10 minutes but can take up to 48 hours.
 3. **Verify** - click **Check verification** to poll your DNS. Once verified, the wizard advances to a success state. Click **Use this domain** to apply it project-wide.
 
 Below the wizard, the **Tracked managed domains** list shows every domain you've started setting up. Each entry shows:
@@ -68,7 +63,7 @@ Below the wizard, the **Tracked managed domains** list shows every domain you've
 
 ### Resend
 
-Connect your [Resend](https://resend.com) account by entering your API key. Stack Auth configures the SMTP connection automatically.
+Connect your [Resend](https://resend.com) account by entering your API key. Hexclave configures the SMTP connection automatically.
 
 Required fields:
 
@@ -90,10 +85,10 @@ Credentials are encrypted at rest.
 
 ## Development environments
 
-In a [development environment](/guides/going-further/local-development) (RDE or local emulator), the Email Server card is read-only - an alert explains that you need to update the production deployment instead. The local emulator also shows a **Mock Emails** card on the [Sent](/guides/apps/emails/sent) tab that links to your Inbucket inbox.
+In a [development environment](/guides/going-further/local-development) (RDE or local emulator), the Email Server card is read-only - an alert explains that you need to update the production deployment instead. The local emulator also shows a **Mock Emails** card on the [Sent](/guides/dashboard-references/emails/sent) tab that links to your Inbucket inbox.
 
 ## Related
 
-- [Sent](/guides/apps/emails/sent) - check delivery status and capacity once your server is wired up.
-- [Templates](/guides/apps/emails/templates) - author templates that render with the active theme.
-- [Drafts](/guides/apps/emails/drafts) - need a configured server to actually send.
+- [Sent](/guides/dashboard-references/emails/sent) - check delivery status and capacity once your server is wired up.
+- [Templates](/guides/dashboard-references/emails/templates) - author templates that render with the active theme.
+- [Drafts](/guides/dashboard-references/emails/drafts) - need a configured server to actually send.

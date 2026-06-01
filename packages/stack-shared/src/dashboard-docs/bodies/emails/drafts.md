@@ -1,13 +1,8 @@
----
-title: "Drafts"
-description: "Compose, preview, and send one-off emails to selected recipients."
-sidebarTitle: "Drafts"
----
 
 The **Drafts** tab is your composer for one-off emails - launches, announcements, manual outreach, anything you'd write in Mailchimp. Each draft has a full TSX source, a live preview, an AI builder, a recipient picker, and an optional schedule. Drafts persist between sessions and can be sent later (or scheduled), and every send is logged with its delivery status.
 
 <Info>
-  Drafts can only be sent when you've configured a custom email server. On the shared server you can still create, edit, and preview drafts, but the **Send** action is disabled. See [Email Settings](/guides/apps/emails/email-settings).
+  Drafts can only be sent when you've configured a custom email server. On the shared server you can still create, edit, and preview drafts, but the **Send** action is disabled. See [Email Settings](/guides/dashboard-references/emails/email-settings).
 </Info>
 
 ## Drafts list
@@ -31,9 +26,9 @@ Opens a dialog that asks for a **Draft name**, then drops you into the editor wi
 
 ### Create from template
 
-Lists every template in your project. Pick one and Stack Auth uses AI to rewrite the template's TSX into a one-off draft (preserving layout and styling so you can tweak the copy). You can rename the draft before it's created.
+Lists every template in your project. Pick one and Hexclave uses AI to rewrite the template's TSX into a one-off draft (preserving layout and styling so you can tweak the copy). You can rename the draft before it's created.
 
-If no templates exist yet, this option shows a placeholder pointing you to [Templates](/guides/apps/emails/templates).
+If no templates exist yet, this option shows a placeholder pointing you to [Templates](/guides/dashboard-references/emails/templates).
 
 ## The draft editor
 
@@ -52,7 +47,7 @@ This stage uses the same **vibe-coding** layout as Templates - a three-pane work
 
 - **AI Assistant** (left) - chat with the email builder to make edits, summarize content, restyle, add CTAs, etc. The assistant has full context of the current TSX and can iterate on it.
 - **Preview** (center) - live render of the email. The viewport switcher lets you preview **Edit**, **Desktop**, **Tablet**, or **Phone**. In **Edit** mode you can WYSIWYG-edit directly in the preview, and the AI rewrites the source for you on commit.
-- **Code Editor** (right) - the raw TSX. Edit by hand if you want full control. Templates use the same [`@stackframe/emails`](/guides/apps/emails/templates#authoring-templates) primitives - `<Subject>`, `<NotificationCategory>`, `<Container>`, and React Email components.
+- **Code Editor** (right) - the raw TSX. Edit by hand if you want full control. Templates use the same [`@stackframe/emails`](/guides/dashboard-references/emails/templates#authoring-templates) primitives - `<Subject>`, `<NotificationCategory>`, `<Container>`, and React Email components.
 
 The header has an **EmailThemeSelector** so you can swap themes mid-edit. **Save draft** persists your changes; **Undo** reverts to the last saved version. **Next: Recipients** advances the flow.
 
@@ -85,7 +80,7 @@ If the configured email server can't handle the send (e.g. shared SMTP), you get
 
 ### 4. Send
 
-The final stage shows the **Sent Emails** view scoped to this draft - the same email log you see in [Sent](/guides/apps/emails/sent), filtered to the draft you just sent. You can drill into individual recipients to inspect the rendered HTML and delivery status.
+The final stage shows the **Sent Emails** view scoped to this draft - the same email log you see in [Sent](/guides/dashboard-references/emails/sent), filtered to the draft you just sent. You can drill into individual recipients to inspect the rendered HTML and delivery status.
 
 ## Sending a draft from code
 
@@ -102,6 +97,6 @@ You can mix `draftId` with `variables`, `scheduledAt`, `notificationCategoryName
 
 ## Related
 
-- [Templates](/guides/apps/emails/templates) - reusable templates that can be turned into drafts.
-- [Sent](/guides/apps/emails/sent) - inspect the delivery status of emails launched from a draft.
-- [Email Settings](/guides/apps/emails/email-settings) - required setup before drafts can actually send.
+- [Templates](/guides/dashboard-references/emails/templates) - reusable templates that can be turned into drafts.
+- [Sent](/guides/dashboard-references/emails/sent) - inspect the delivery status of emails launched from a draft.
+- [Email Settings](/guides/dashboard-references/emails/email-settings) - required setup before drafts can actually send.

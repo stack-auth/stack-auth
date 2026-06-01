@@ -1,7 +1,3 @@
----
-title: "Customers"
-description: "Inspect any customer's item balances and grant products or adjust quantities"
----
 
 The **Customers** page (`Payments -> Customers`) is the per-customer admin surface for Payments. Pick a user, team, or custom customer, and you'll see every item that's relevant to that customer type with the customer's current balance — plus actions to grant products or adjust balances by hand.
 
@@ -31,7 +27,7 @@ Once both the customer type and a customer are selected, the page shows a DataGr
 The table supports the standard DataGrid features that are enabled for this view: column resizing, sorting, and state synced into the URL under the `customeritems` prefix so deep links survive reloads.
 
 <Info>
-  If you select a customer type with no configured items, the table is replaced with "No user/team/custom items are configured yet." Add items from [Products & Items](/guides/apps/payments/products-and-items) or via the **Create … Item** button at the top.
+  If you select a customer type with no configured items, the table is replaced with "No user/team/custom items are configured yet." Add items from [Products & Items](/guides/dashboard-references/payments/products-and-items) or via the **Create … Item** button at the top.
 </Info>
 
 ## Adjusting an item balance
@@ -39,7 +35,7 @@ The table supports the standard DataGrid features that are enabled for this view
 Click **Adjust** on any row to open the adjustment dialog. The fields are:
 
 - **Quantity change** — a positive integer to add to the balance, or a negative integer to subtract. The dialog rejects `0`.
-- **Description** *(optional)* — a freeform note that appears alongside the resulting entry in [Transactions](/guides/apps/payments/transactions). Useful for audit context like "manual refund — chargeback dispute won".
+- **Description** *(optional)* — a freeform note that appears alongside the resulting entry in [Transactions](/guides/dashboard-references/payments/transactions). Useful for audit context like "manual refund — chargeback dispute won".
 - **Expires at** *(optional)* — a date after which the adjustment is rolled back automatically. Use this for time-limited grants like promotional credits.
 
 Submitting writes an entry of type **Manual Item Quantity Change** to the transactions log. Errors are surfaced as destructive toasts:
@@ -67,7 +63,7 @@ Once the grant succeeds, the items table refreshes the affected rows so any item
 
 ## Creating items inline
 
-The page also exposes a **Create User Item / Create Team Item / Create Custom Item** action that opens the same item dialog used in [Products & Items](/guides/apps/payments/products-and-items#items). The customer type is locked to whatever the customer-type dropdown is currently showing, so you can quickly add items without context-switching.
+The page also exposes a **Create User Item / Create Team Item / Create Custom Item** action that opens the same item dialog used in [Products & Items](/guides/dashboard-references/payments/products-and-items#items). The customer type is locked to whatever the customer-type dropdown is currently showing, so you can quickly add items without context-switching.
 
 ## Programmatic equivalents
 

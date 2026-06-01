@@ -1,7 +1,3 @@
----
-title: "Product Lines"
-description: "Group products into mutually exclusive tiers and lay them out as a pricing table"
----
 
 A **product line** is a set of products that a customer can only own one of at a time. Free, Pro, and Enterprise plans live in the same product line; upgrading to Pro automatically replaces the Free plan. Add-on products are the exception — they layer on top of a product line without competing with it.
 
@@ -82,7 +78,7 @@ Compatible drop zones are outlined with a primary-coloured ring while a card is 
 
 ## Cross-reference
 
-- For the data model and product fields (display name, customer type, prices, items, add-ons, free trials, server-only, stackable), see [Products & Items](/guides/apps/payments/products-and-items).
+- For the data model and product fields (display name, customer type, prices, items, add-ons, free trials, server-only, stackable), see [Products & Items](/guides/dashboard-references/payments/products-and-items).
 
 ## SDK usage
 
@@ -102,7 +98,7 @@ To switch between two products in the same product line, call `switchSubscriptio
 
 ```typescript title="app/components/upgrade-button.tsx"
 "use client";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function UpgradeButton() {
   const user = useUser({ or: "redirect" });

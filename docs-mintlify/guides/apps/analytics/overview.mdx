@@ -5,38 +5,24 @@ description: "Explore events, session replays, and SQL queries in your project's
 
 The Analytics app gives you direct access to your project's analytics dataset in Hexclave. You can inspect raw event tables, run ClickHouse SQL queries, ask an AI to write queries for you, and watch session replays to debug real user behavior.
 
-## Pages
-
-Analytics is organized into three pages in the dashboard, each documented separately:
-
-<CardGroup cols={3}>
-  <Card title="Tables" icon="table" href="/guides/apps/analytics/tables">
-    Browse rows from any of your project's analytics tables, with sorting, AI-assisted search, and incremental loading.
-  </Card>
-  <Card title="Queries" icon="code" href="/guides/apps/analytics/queries">
-    Write, run, and save reusable ClickHouse SQL queries in folders.
-  </Card>
-  <Card title="Replays" icon="play" href="/guides/apps/analytics/replays">
-    Watch session replays and filter by user, team, duration, last activity, and click count.
-  </Card>
-</CardGroup>
+In the dashboard, Analytics is organized into **Tables**, **Queries**, and **Replays** pages for browsing event data, running SQL, and watching session recordings.
 
 ## How Analytics Works
 
-User activity in your app flows into Stack's ingestion pipeline, which stores data in ClickHouse. This dataset powers all three pages.
+User activity in your app flows into Hexclave's ingestion pipeline, which stores data in ClickHouse. This dataset powers all three pages.
 
 ### What Gets Tracked
 
-Stack collects both client-side and server-side analytics events:
+Hexclave collects both client-side and server-side analytics events:
 
-- **Client-side events** (captured automatically by `StackClientApp`):
+- **Client-side events** (captured automatically by `HexclaveClientApp`):
   - `$page-view`
   - `$click`
 - **Server-side events** (captured automatically by the backend):
   - `$token-refresh`
   - `$sign-up-rule-trigger`
 
-Session replays are recorded as separate `rrweb` chunks tied to the same session/user as the events. Replay recording is **opt-in** — see the [Replays page](/guides/apps/analytics/replays#enabling-replay-recording-in-the-sdk) for SDK setup.
+Session replays are recorded as separate `rrweb` chunks tied to the same session/user as the events. Replay recording is **opt-in** — see [Enabling replay recording](#enabling-replay-recording) below.
 
 ## Enabling the Analytics App
 
@@ -57,7 +43,29 @@ Once enabled, the Analytics app gains a sidebar entry with three sub-pages: **Ta
 4. Open the app and navigate / click around
 5. Check **Analytics → Tables** to confirm events are arriving
 
-After setup, Stack automatically captures `$page-view` and `$click` events from the browser. If you also want session replay recordings, enable `analytics.replays.enabled` in your client app config — see [Enabling Replay Recording](/guides/apps/analytics/replays#enabling-replay-recording-in-the-sdk).
+After setup, Hexclave automatically captures `$page-view` and `$click` events from the browser. If you also want session replay recordings, enable `analytics.replays.enabled` in your client app config — see [Enabling replay recording](#enabling-replay-recording).
+
+## Enabling replay recording
+
+Session replay recording is disabled by default. Enable it when creating your client app:
+
+```ts
+import { HexclaveClientApp } from "@hexclave/next";
+
+export const stackClientApp = new HexclaveClientApp({
+  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
+  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
+  tokenStore: "nextjs-cookie",
+  analytics: {
+    replays: {
+      enabled: true,
+      maskAllInputs: true,
+    },
+  },
+});
+```
+
+`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it.
 
 ## Usage and Quotas
 
