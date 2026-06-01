@@ -923,7 +923,11 @@ export function DomainSettings() {
 
   // Managed requires a staged domain selection before it can be saved.
   const canSave = isDirty && !emailFormatError && missingRequiredFields.length === 0
-    && (serverType !== "managed" || draftManagedDomainId != null);
+    // For managed, also wait until the domains list has finished loading: a just-staged
+    // domain (e.g. one added via the setup dialog, which kicks off refreshDomains) may not
+    // be in `domains` yet, and saving early would spuriously fail with "Selected domain is
+    // no longer available". loadingDomains flips true synchronously when a refresh starts.
+    && (serverType !== "managed" || (draftManagedDomainId != null && !loadingDomains));
   const draftManagedDomain = draftManagedDomainId != null
     ? domains.find((d) => d.domainId === draftManagedDomainId) ?? null
     : null;
