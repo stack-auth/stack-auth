@@ -158,6 +158,38 @@ describe("dev env state", () => {
     expect(state.localDashboard?.version).toBeUndefined();
   });
 
+  it("drops a localDashboard whose version is a non-string", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    // A hand-edited / cross-version file with a non-string version would
+    // otherwise reach parseVersionCore (version.trim()) and throw, crashing
+    // `stack dev` outside the auto-update fail-open guard. Treat as no record.
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      localDashboard: { port: 26700, secret: "s", pid: 999, startedAtMillis: 1, version: 2 },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    expect(readDevEnvState().localDashboard).toBeUndefined();
+  });
+
+  it("drops a structurally malformed localDashboard on read", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    // Missing secret + non-numeric pid: not a usable dashboard record.
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      localDashboard: { port: 26700, pid: "nope", startedAtMillis: 1 },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    expect(readDevEnvState().localDashboard).toBeUndefined();
+  });
+
   it("writes state as owner-readable JSON", () => {
     useTempStateFile();
     writeDevEnvState({

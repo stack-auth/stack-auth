@@ -156,12 +156,27 @@ describe("buildNpxInvocation", () => {
     ]);
   });
 
-  it("uses npx.cmd on Windows", () => {
+  it("uses npx.cmd and requests a shell on Windows (needed to spawn a .cmd post-CVE-2024-27980)", () => {
     const spy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
     try {
-      expect(buildNpxInvocation({
+      const invocation = buildNpxInvocation({
         packageName: "@hexclave/cli", version: "1.0.0", binName: "stack", forwardArgs: [],
-      }).command).toBe("npx.cmd");
+      });
+      expect(invocation.command).toBe("npx.cmd");
+      expect(invocation.shell).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("spawns npx directly without a shell off Windows", () => {
+    const spy = vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    try {
+      const invocation = buildNpxInvocation({
+        packageName: "@hexclave/cli", version: "1.0.0", binName: "stack", forwardArgs: [],
+      });
+      expect(invocation.command).toBe("npx");
+      expect(invocation.shell).toBe(false);
     } finally {
       spy.mockRestore();
     }

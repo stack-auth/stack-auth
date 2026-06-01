@@ -142,6 +142,11 @@ export async function resolveLatestVersion(
 export type NpxInvocation = {
   command: string,
   args: string[],
+  // Windows' launcher is `npx.cmd`; after CVE-2024-27980 Node refuses to spawn
+  // a .cmd/.bat directly (EINVAL) unless `shell` is set, so the re-exec has to
+  // go through the shell there. `args` stays a clean argv array — runReexec
+  // quotes it for the shell at spawn time.
+  shell: boolean,
 };
 
 export function buildNpxInvocation(opts: {
@@ -150,9 +155,11 @@ export function buildNpxInvocation(opts: {
   binName: string,
   forwardArgs: string[],
 }): NpxInvocation {
-  const command = process.platform === "win32" ? "npx.cmd" : "npx";
+  const isWindows = process.platform === "win32";
+  const command = isWindows ? "npx.cmd" : "npx";
   return {
     command,
+    shell: isWindows,
     args: [
       "--yes",
       // Override any global npm "cooldown" for this call only — we always want
@@ -201,11 +208,23 @@ type ReexecResult =
   | { exited: true, code: number }
   | { exited: false, error: string };
 
+// Quote an argument for the single cmd.exe command line that Node builds when
+// `spawn` runs with `shell: true` on Windows — it joins argv with spaces and
+// does not quote, so an unquoted path/arg with a space would be split. Wrap
+// anything that isn't a plain token (and the empty string) in double quotes,
+// escaping embedded quotes. A no-op on the non-shell (POSIX) path.
+function quoteShellArg(arg: string): string {
+  if (arg !== "" && !/[\s"&|<>^()]/.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '\\"')}"`;
+}
+
 function runReexec(invocation: NpxInvocation): Promise<ReexecResult> {
   return new Promise((resolvePromise) => {
-    const child = spawn(invocation.command, invocation.args, {
+    const args = invocation.shell ? invocation.args.map(quoteShellArg) : invocation.args;
+    const child = spawn(invocation.command, args, {
       stdio: "inherit",
       env: { ...process.env, [SKIP_AUTO_UPDATE_ENV]: "1" },
+      shell: invocation.shell,
     });
     const cleanup = forwardSignals(child);
 

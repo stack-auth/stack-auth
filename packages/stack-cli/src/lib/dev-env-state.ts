@@ -54,6 +54,31 @@ function isCliUpdateCheckCache(value: unknown): value is CliUpdateCheckCache {
   );
 }
 
+type LocalDashboardState = NonNullable<DevEnvState["localDashboard"]>;
+
+// Validate the on-disk dashboard record, mirroring isCliUpdateCheckCache: a
+// hand-edited or cross-version state file could carry wrong-typed fields. In
+// particular a non-string `version` flows into shouldRestartDashboard ->
+// isVersionNewer -> parseVersionCore (version.trim()) inside
+// startDashboardIfNeeded, which is not behind the auto-update fail-open guard,
+// so it would throw and crash `stack dev`. Treat anything malformed as "no
+// dashboard recorded" (a fresh one is then started).
+function isLocalDashboardState(value: unknown): value is LocalDashboardState {
+  if (value == null || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.port === "number" &&
+    Number.isFinite(candidate.port) &&
+    typeof candidate.secret === "string" &&
+    typeof candidate.pid === "number" &&
+    Number.isFinite(candidate.pid) &&
+    typeof candidate.startedAtMillis === "number" &&
+    Number.isFinite(candidate.startedAtMillis) &&
+    (candidate.logPath === undefined || typeof candidate.logPath === "string") &&
+    (candidate.version === undefined || typeof candidate.version === "string")
+  );
+}
+
 export function readDevEnvState(): DevEnvState {
   const path = devEnvStatePath();
   if (!existsSync(path)) {
@@ -70,7 +95,7 @@ export function readDevEnvState(): DevEnvState {
     version: 1,
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
-    localDashboard: parsed.localDashboard,
+    localDashboard: isLocalDashboardState(parsed.localDashboard) ? parsed.localDashboard : undefined,
     cliUpdateCheck: isCliUpdateCheckCache(parsed.cliUpdateCheck) ? parsed.cliUpdateCheck : undefined,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
