@@ -1,6 +1,6 @@
 "use client";
 
-import { UserButton, useUser } from "@stackframe/stack";
+import { UserButton, useUser } from "@hexclave/next";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { api } from "../convex/_generated/api";

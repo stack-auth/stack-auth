@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import React from 'react';
 import { ClickableTableOfContents, ParamField } from '../mdx/sdk-components';
 import { AsideSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout } from '../ui/method-layout';

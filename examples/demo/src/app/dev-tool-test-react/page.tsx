@@ -1,6 +1,6 @@
 "use client";
 
-import { StackClientApp, StackProvider, useUser } from "@stackframe/react";
+import { StackClientApp, StackProvider, useUser } from "@hexclave/react";
 import { Suspense } from "react";
 
 const app = new StackClientApp({
@@ -23,9 +23,9 @@ export default function DevToolTestReactPage() {
   return (
     <StackProvider app={app}>
       <div style={{ padding: 40, maxWidth: 600, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 24, marginBottom: 16 }}>Dev Tool Test (@stackframe/react)</h1>
+        <h1 style={{ fontSize: 24, marginBottom: 16 }}>Dev Tool Test (@hexclave/react)</h1>
         <p style={{ marginBottom: 8 }}>
-          This page creates its own <code>StackProvider</code> from <code>@stackframe/react</code>.
+          This page creates its own <code>StackProvider</code> from <code>@hexclave/react</code>.
           The dev tool mounts via the <code>DevToolMount</code> component (<code>react-like</code> platform path).
         </p>
         <Suspense fallback={<p style={{ color: "#666" }}>Loading user…</p>}>

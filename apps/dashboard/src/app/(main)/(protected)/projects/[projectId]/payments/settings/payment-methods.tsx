@@ -5,8 +5,8 @@ import { getPaymentMethodIcon } from "@/components/ui/payment-method-icons";
 import { cn } from "@/lib/utils";
 import { DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { BankIcon, CircleNotchIcon, CreditCardIcon, CurrencyCircleDollarIcon, GlobeIcon, HandCoinsIcon, LightningIcon, ReceiptIcon, WalletIcon } from "@phosphor-icons/react";
-import { getPaymentMethodCategory, PAYMENT_CATEGORIES, PAYMENT_METHOD_DEPENDENCIES, PaymentMethodCategory } from "@stackframe/stack-shared/dist/payments/payment-methods";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { getPaymentMethodCategory, PAYMENT_CATEGORIES, PAYMENT_METHOD_DEPENDENCIES, PaymentMethodCategory } from "@hexclave/shared/dist/payments/payment-methods";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useState } from "react";
 import { useAdminApp } from "../../use-admin-app";
 

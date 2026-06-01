@@ -9,10 +9,10 @@ import {
 } from "@/components/design-components";
 import { Avatar, AvatarFallback, AvatarImage, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { WarningCircleIcon } from "@phosphor-icons/react";
-import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import { ServerTeam, ServerUser } from "@stackframe/stack";
-import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import { ServerTeam, ServerUser } from "@hexclave/next";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useState } from "react";
 import {
   Area,

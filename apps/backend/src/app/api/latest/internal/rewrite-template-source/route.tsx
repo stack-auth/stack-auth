@@ -1,7 +1,7 @@
 import { rewriteTemplateSourceWithAI } from "@/lib/email-template-rewrite";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: {

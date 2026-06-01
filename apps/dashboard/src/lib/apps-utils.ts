@@ -1,7 +1,7 @@
 "use client";
 
 import { ALL_APPS_FRONTEND, hasNavigationItems, isSubApp } from "@/lib/apps-frontend";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 
 type InstalledAppConfig = {
   enabled?: boolean,

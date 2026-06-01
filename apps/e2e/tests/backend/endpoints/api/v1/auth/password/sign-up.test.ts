@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 

@@ -112,13 +112,13 @@ function buildFixPrompt(errorText: string): string {
   const startDelim = `<<<ERROR_START_${nonce}>>>`;
   const endDelim = `<<<ERROR_END_${nonce}>>>`;
   return [
-    "You are fixing a Hexclave (https://hexclave.com, package `@stackframe/*`) integration error in the user's project.",
+    "You are fixing a Hexclave (https://hexclave.com, package `@hexclave/*`) integration error in the user's project.",
     "",
     "YOUR JOB: actually apply the fix to the files on disk using the Edit/Write tools. Do not just diagnose and stop. Do not just describe what to do. Make the edits.",
     "",
     "Workflow (do all of these — do not skip steps):",
     "1. Read the files needed to understand the error: package.json, stack.config.ts if present, .env / .env.local, the file(s) referenced in the stack trace, app/layout.* or pages/_app.*, and any handler route (e.g. app/handler/[...stack]/page.tsx).",
-    "2. Diagnose the Hexclave root cause (e.g. missing StackProvider wrapping, missing env vars, wrong handler route path, incorrect stack.config.ts, wrong import from @stackframe/*, missing API keys, missing `stackServerApp` instance, etc.).",
+    "2. Diagnose the Hexclave root cause (e.g. missing HexclaveProvider wrapping, missing env vars, wrong handler route path, incorrect stack.config.ts, wrong import from @hexclave/* (or legacy @stackframe/*), missing API keys, missing `stackServerApp` instance, etc.).",
     "3. Apply the minimal fix using Edit/Write. Actually modify the files. If env vars are missing, instruct the user clearly (do not invent secret values).",
     "4. After editing, verify your change by re-reading the affected file(s).",
     "",

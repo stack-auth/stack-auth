@@ -1,4 +1,4 @@
-import { AccountSettings } from '@stackframe/stack';
+import { AccountSettings } from '@hexclave/next';
 
 export default function MyAccountPage() {
   return (

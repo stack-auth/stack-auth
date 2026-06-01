@@ -1,6 +1,6 @@
-import { componentWrapper, forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { componentWrapper, forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { filterUndefined } from "@hexclave/shared/dist/utils/objects";
 import { cn } from "../../lib/utils";
 import { PacificaSurface } from "./surface";
 

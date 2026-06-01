@@ -10,9 +10,9 @@ import {
 } from "@/lib/cel-visual-parser";
 import { MinusIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { CountryCodeInput } from "@/components/country-code-select";
-import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { validateCountryCode } from "@stackframe/stack-shared/dist/utils/country-codes";
-import { type ConditionField, type ConditionOperator, conditionFields, fieldMetadata, getOperatorsForField, isNumericField, validateNumericFieldValue } from "@stackframe/stack-shared/dist/utils/cel-fields";
+import { normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
+import { validateCountryCode } from "@hexclave/shared/dist/utils/country-codes";
+import { type ConditionField, type ConditionOperator, conditionFields, fieldMetadata, getOperatorsForField, isNumericField, validateNumericFieldValue } from "@hexclave/shared/dist/utils/cel-fields";
 import React from "react";
 
 /**

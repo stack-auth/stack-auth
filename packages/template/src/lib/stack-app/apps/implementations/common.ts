@@ -1,14 +1,14 @@
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createGlobal, getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
-import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { ReactPromise, runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { Store } from "@stackframe/stack-shared/dist/utils/stores";
-import { getDefaultApiUrls } from "@stackframe/stack-shared/dist/utils/urls";
+import { InternalSession } from "@hexclave/shared/dist/sessions";
+import { AsyncCache } from "@hexclave/shared/dist/utils/caches";
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createGlobal, getGlobal } from "@hexclave/shared/dist/utils/globals";
+import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
+import { ReactPromise, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { Store } from "@hexclave/shared/dist/utils/stores";
+import { getDefaultApiUrls } from "@hexclave/shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { envVars } from "../../../env";
 import { HandlerUrlOptions, ResolvedHandlerUrls, stackAppInternalsSymbol } from "../../common";

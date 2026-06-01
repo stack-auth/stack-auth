@@ -10,7 +10,7 @@ import {
 } from "@/components/ui";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { cn } from "@/lib/utils";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 import { EditableInput } from "./editable-input";
 

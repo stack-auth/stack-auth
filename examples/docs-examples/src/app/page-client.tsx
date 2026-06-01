@@ -1,7 +1,7 @@
 'use client';
 
-import { useStackApp, useUser } from '@stackframe/stack';
-import { Button } from '@stackframe/stack-ui';
+import { useStackApp, useUser } from '@hexclave/next';
+import { Button } from '@hexclave/ui';
 
 export default function PageClient() {
   const user = useUser();

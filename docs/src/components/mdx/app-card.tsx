@@ -1,7 +1,7 @@
 'use client';
 
-import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
+import { ALL_APPS, AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@hexclave/shared/dist/apps/apps-ui";
 import { BarChart3, ClipboardList, Code, CreditCard, Headset, KeyRound, Mail, Mails, PlayCircle, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/cn";

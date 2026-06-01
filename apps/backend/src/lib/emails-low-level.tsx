@@ -4,11 +4,11 @@
  * providers. You probably shouldn't use this and should instead use the functions in emails.tsx.
  */
 
-import { HexclaveAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { omit, pick } from '@stackframe/stack-shared/dist/utils/objects';
-import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/promises';
-import { Result } from '@stackframe/stack-shared/dist/utils/results';
-import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
+import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
+import { omit, pick } from '@hexclave/shared/dist/utils/objects';
+import { runAsynchronously, wait } from '@hexclave/shared/dist/utils/promises';
+import { Result } from '@hexclave/shared/dist/utils/results';
+import { traceSpan } from '@hexclave/shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
 import { checkSmtpEgressPolicy } from '@/private';
 

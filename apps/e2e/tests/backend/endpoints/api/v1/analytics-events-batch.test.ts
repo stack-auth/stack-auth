@@ -1,6 +1,6 @@
-import { ITEM_IDS, PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { ITEM_IDS, PLAN_LIMITS, type PlanId } from "@hexclave/shared/dist/plans";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { it } from "../../../../helpers";

@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { CopyIcon, SparkleIcon } from "@phosphor-icons/react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import React from "react";
 import { Button } from "./button";
 import { useToast } from "./use-toast";

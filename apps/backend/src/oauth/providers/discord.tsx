@@ -11,14 +11,14 @@ export class DiscordProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
-    apiUrl: string,
+    redirectUri: string,
   }) {
-    const { apiUrl, ...rest } = options;
+    const { redirectUri, ...rest } = options;
     return new DiscordProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://discord.com",
       authorizationEndpoint: "https://discord.com/oauth2/authorize",
       tokenEndpoint: "https://discord.com/api/oauth2/token",
-      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/discord",
+      redirectUri,
       baseScope: "identify email",
       ...rest,
     }));

@@ -1,8 +1,8 @@
 "use client";
 
 import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea, Typography } from "@/components/ui";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import React, { useEffect, useMemo } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";

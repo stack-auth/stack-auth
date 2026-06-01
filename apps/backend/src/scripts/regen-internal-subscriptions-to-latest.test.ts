@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Stripe from "stripe";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import {
   runRegenInternalSubscriptionsToLatest,
   type StripeClientForRegen,

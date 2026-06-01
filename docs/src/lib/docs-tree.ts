@@ -1,4 +1,4 @@
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
 import type { PageTree } from 'fumadocs-core/server';
 
 export type DocsSection = 'guides' | 'sdk' | 'components';

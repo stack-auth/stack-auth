@@ -1,9 +1,9 @@
-import { DesignButton, DesignInput } from "@stackframe/dashboard-ui-components";
+import { DesignButton, DesignInput } from "@hexclave/dashboard-ui-components";
 import { cn } from "@/lib/utils";
 import { Check, X } from "@phosphor-icons/react";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useRef, useState } from "react";
 
 

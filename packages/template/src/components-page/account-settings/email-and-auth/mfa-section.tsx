@@ -1,9 +1,9 @@
 import { createTOTPKeyURI, verifyTOTP } from "@oslojs/otp";
-import { useAsyncCallback } from '@stackframe/stack-shared/dist/hooks/use-async-callback';
-import { generateRandomValues } from '@stackframe/stack-shared/dist/utils/crypto';
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input, Typography } from "@stackframe/stack-ui";
+import { useAsyncCallback } from '@hexclave/shared/dist/hooks/use-async-callback';
+import { generateRandomValues } from '@hexclave/shared/dist/utils/crypto';
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Input, Typography } from "@hexclave/ui";
 import * as QRCode from 'qrcode';
 import { useEffect, useState } from "react";
 import { CurrentUser, Project } from '../../..';

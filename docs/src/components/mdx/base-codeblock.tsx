@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { Check, Copy } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { codeToHtml } from 'shiki';
@@ -192,4 +192,3 @@ export function BaseCodeblock({
     </div>
   );
 }
-

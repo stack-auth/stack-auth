@@ -1,5 +1,5 @@
-import { getEnvVariable, getProcessEnv } from "@stackframe/stack-shared/dist/utils/env";
-import { getHostedHandlerTrustedDomain as getHostedHandlerTrustedDomainFromConfig, isAcceptedNativeAppUrl, validateRedirectUrl as validateRedirectUrlAgainstTrustedDomains } from "@stackframe/stack-shared/dist/utils/redirect-urls";
+import { getEnvVariable, getProcessEnv } from "@hexclave/shared/dist/utils/env";
+import { getHostedHandlerTrustedDomain as getHostedHandlerTrustedDomainFromConfig, isAcceptedNativeAppUrl, validateRedirectUrl as validateRedirectUrlAgainstTrustedDomains } from "@hexclave/shared/dist/utils/redirect-urls";
 import { Tenancy } from "./tenancies";
 
 export { isAcceptedNativeAppUrl };

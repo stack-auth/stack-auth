@@ -11,10 +11,10 @@ import {
 } from "@/components/design-components";
 import { Button, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { FunnelXIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import { ServerUser } from "@stackframe/stack";
-import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import { ServerUser } from "@hexclave/next";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,

@@ -1,6 +1,6 @@
 import { buildStackAuthHeaders, CurrentUser } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export type ConversationSummary = {
   id: string,

@@ -1,5 +1,5 @@
 import { stackServerApp } from '@/stack';
-import { StackProvider, StackTheme } from '@stackframe/stack';
+import { StackProvider, StackTheme } from '@hexclave/next';
 import { RootProvider } from 'fumadocs-ui/provider';
 import { Inter } from 'next/font/google';
 import './global.css';

@@ -4,7 +4,7 @@ import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { ArrowRightIcon, CheckCircleIcon, PlugsConnectedIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useAdminApp } from "../../use-admin-app";
 
 type StatusVariant = "success" | "warning" | "error";

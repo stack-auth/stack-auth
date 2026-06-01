@@ -10,7 +10,7 @@ import {
   ANALYTICS_CHART_DEFAULT_STATE,
   AnalyticsChart,
   type AnalyticsChartState,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useRouter } from "@/components/router";
 import {
   cn,
@@ -19,8 +19,8 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import { UserAvatar } from '@stackframe/stack';
-import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
+import { UserAvatar } from '@hexclave/next';
+import { fromNow, isWeekend } from '@hexclave/shared/dist/utils/dates';
 import { useId, useMemo, useState } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 

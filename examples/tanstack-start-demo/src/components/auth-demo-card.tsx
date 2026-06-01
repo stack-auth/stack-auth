@@ -1,6 +1,6 @@
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { UserAvatar, useStackApp } from "@stackframe/tanstack-start";
-import type { CurrentUser } from "@stackframe/tanstack-start";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { UserAvatar, useStackApp } from "@hexclave/tanstack-start";
+import type { CurrentUser } from "@hexclave/tanstack-start";
 
 type AuthDemoCardProps = {
   title: string,

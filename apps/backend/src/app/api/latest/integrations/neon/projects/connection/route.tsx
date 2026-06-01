@@ -1,8 +1,8 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { neonAuthorizationHeaderSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
+import { KnownErrors } from "@hexclave/shared";
+import { neonAuthorizationHeaderSchema, yupArray, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { decodeBasicAuthorizationHeader } from "@hexclave/shared/dist/utils/http";
 
 export const POST = createSmartRouteHandler({
   metadata: {

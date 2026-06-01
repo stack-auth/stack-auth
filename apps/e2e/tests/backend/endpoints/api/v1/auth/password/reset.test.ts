@@ -1,4 +1,4 @@
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { expect } from "vitest";
 import { it, localRedirectUrl, localRedirectUrlRegex } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";

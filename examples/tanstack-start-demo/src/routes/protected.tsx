@@ -1,4 +1,4 @@
-import { useUser } from "@stackframe/tanstack-start";
+import { useUser } from "@hexclave/tanstack-start";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/protected")({

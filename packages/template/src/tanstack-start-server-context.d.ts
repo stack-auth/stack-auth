@@ -1,4 +1,4 @@
-declare module "@stackframe/tanstack-start/tanstack-start-server-context" {
+declare module "@hexclave/tanstack-start/tanstack-start-server-context" {
   type TanStackStartServerContext = typeof import("@tanstack/react-start/server");
 
   export const deleteCookie: TanStackStartServerContext["deleteCookie"] | undefined;

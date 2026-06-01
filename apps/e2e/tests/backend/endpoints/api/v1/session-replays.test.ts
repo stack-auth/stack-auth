@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { PLAN_LIMITS } from "@hexclave/shared/dist/plans";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 

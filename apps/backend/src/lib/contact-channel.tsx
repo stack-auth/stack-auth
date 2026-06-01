@@ -1,6 +1,6 @@
 import { BooleanTrue, ContactChannelType } from "@/generated/prisma/client";
 import { markProjectUserForExternalDbSync, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { normalizeEmail } from "./emails";
 import { PrismaTransaction } from "./types";
 

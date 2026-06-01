@@ -1,4 +1,4 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -9,14 +9,14 @@ export class XProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(options: { clientId: string, clientSecret: string, apiUrl: string }) {
-    const { apiUrl, ...rest } = options;
+  static async create(options: { clientId: string, clientSecret: string, redirectUri: string }) {
+    const { redirectUri, ...rest } = options;
     return new XProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
         issuer: "https://twitter.com",
         authorizationEndpoint: "https://twitter.com/i/oauth2/authorize",
         tokenEndpoint: "https://api.x.com/2/oauth2/token",
-        redirectUri: apiUrl + "/api/v1/auth/oauth/callback/x",
+        redirectUri,
         baseScope: "users.read offline.access tweet.read",
         ...rest,
       }))

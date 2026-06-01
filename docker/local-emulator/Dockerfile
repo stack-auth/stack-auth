@@ -30,7 +30,7 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # https://turbo.build/repo/docs/guides/tools/docker
-RUN turbo prune --scope=@stackframe/backend --scope=@stackframe/dashboard --docker
+RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/dashboard --docker
 
 
 FROM node-base AS builder
@@ -56,7 +56,7 @@ ENV NEXT_CONFIG_OUTPUT=standalone
 ENV NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
 
 # Build the backend NextJS app
-RUN pnpm turbo run docker-build --filter=@stackframe/backend... --filter=@stackframe/dashboard...
+RUN pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
 
 # Build the self-host seed script.
 # tsdown -> rolldown is multi-threaded Rust; under qemu-user (cross-arch

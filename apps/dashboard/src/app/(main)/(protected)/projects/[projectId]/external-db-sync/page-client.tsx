@@ -14,10 +14,10 @@ import {
   Switch,
   Typography,
 } from "@/components/ui";
-import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notFound } from "next/navigation";
 

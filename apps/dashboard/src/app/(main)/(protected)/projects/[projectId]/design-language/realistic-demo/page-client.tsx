@@ -33,8 +33,8 @@ import {
   WarningCircle
 } from "@phosphor-icons/react";
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis, type TooltipProps } from "recharts";
-import { isWeekend } from "@stackframe/stack-shared/dist/utils/dates";
-import { DataGrid, useDataSource, type DataGridColumnDef, createDefaultDataGridState } from "@stackframe/dashboard-ui-components";
+import { isWeekend } from "@hexclave/shared/dist/utils/dates";
+import { DataGrid, useDataSource, type DataGridColumnDef, createDefaultDataGridState } from "@hexclave/dashboard-ui-components";
 import { useCallback, useMemo, useState } from "react";
 import { PageLayout } from "../../page-layout";
 

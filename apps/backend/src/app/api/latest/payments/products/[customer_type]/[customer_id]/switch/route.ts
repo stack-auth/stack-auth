@@ -6,12 +6,12 @@ import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 import Stripe from "stripe";
 
 

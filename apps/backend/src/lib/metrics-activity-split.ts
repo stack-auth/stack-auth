@@ -1,4 +1,4 @@
-import type { MetricsActivitySplit } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { MetricsActivitySplit } from "@hexclave/shared/dist/interface/admin-metrics";
 
 export type ActivitySplit = MetricsActivitySplit;
 

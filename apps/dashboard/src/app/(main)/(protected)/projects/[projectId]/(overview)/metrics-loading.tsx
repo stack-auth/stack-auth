@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Card, CardContent, cn } from '@/components/ui';
-import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError } from '@hexclave/shared/dist/utils/errors';
 import { ArrowClockwiseIcon, CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react';
 
 const capturedMetricsErrors = new WeakSet<Error>();

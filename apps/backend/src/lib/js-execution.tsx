@@ -1,9 +1,9 @@
 import { traceSpan } from '@/utils/telemetry';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
-import { HexclaveAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
+import { Result } from '@hexclave/shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
 import { Freestyle as FreestyleClient } from 'freestyle-sandboxes';
 

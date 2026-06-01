@@ -3,9 +3,9 @@
 import Loading from "@/app/loading";
 import { useRouter } from "@/components/router";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { useStackApp, useUser } from "@stackframe/stack";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useStackApp, useUser } from "@hexclave/next";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useRef } from "react";
 
 export default function PreviewProjectRedirect() {

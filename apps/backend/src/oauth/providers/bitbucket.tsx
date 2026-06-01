@@ -8,14 +8,14 @@ export class BitbucketProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(options: { clientId: string, clientSecret: string, apiUrl: string }) {
-    const { apiUrl, ...rest } = options;
+  static async create(options: { clientId: string, clientSecret: string, redirectUri: string }) {
+    const { redirectUri, ...rest } = options;
     return new BitbucketProvider(
       ...(await OAuthBaseProvider.createConstructorArgs({
         issuer: "https://bitbucket.org",
         authorizationEndpoint: "https://bitbucket.org/site/oauth2/authorize",
         tokenEndpoint: "https://bitbucket.org/site/oauth2/access_token",
-        redirectUri: apiUrl + "/api/v1/auth/oauth/callback/bitbucket",
+        redirectUri,
         baseScope: "account email",
         ...rest,
       }))

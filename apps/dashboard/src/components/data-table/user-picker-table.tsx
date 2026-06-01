@@ -6,7 +6,7 @@
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
-import type { ServerUser } from '@stackframe/stack';
+import type { ServerUser } from '@hexclave/next';
 import {
   createDefaultDataGridState,
   DataGrid,
@@ -14,7 +14,7 @@ import {
   type DataGridColumnDef,
   type DataGridDataSource,
   type DataGridState,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { extendUsers } from "./user-table";

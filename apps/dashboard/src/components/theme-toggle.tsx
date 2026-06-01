@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui";
 import { MoonIcon, SunIcon } from "@phosphor-icons/react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useTheme } from "@/lib/theme";
 
 const TRANSITION_DURATION_MS = 600;

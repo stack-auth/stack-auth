@@ -78,14 +78,20 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
-    exclude: ['@stackframe/react', '@stackframe/stack-shared'],
+    exclude: ['@hexclave/react', '@hexclave/shared'],
   },
   plugins: [
-    waitForWorkspacePackages(['@stackframe/react', '@stackframe/stack-shared']),
-    watchNodeModules(['@stackframe/react', '@stackframe/stack-shared']),
+    waitForWorkspacePackages(['@hexclave/react', '@hexclave/shared']),
+    watchNodeModules(['@hexclave/react', '@hexclave/shared']),
     tsConfigPaths(),
     tanstackStart(),
-    nitro(),
+    nitro({
+      config: {
+        scanDirs: [
+          'src/server',
+        ],
+      },
+    }),
     // react's vite plugin must come after start's vite plugin
     viteReact(),
   ],

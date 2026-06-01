@@ -1,19 +1,19 @@
-import { KnownErrors, HexclaveAdminInterface } from "@stackframe/stack-shared";
-import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
-import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
-import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import type { AdminGetSessionReplayChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
-import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import type { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { KnownErrors, HexclaveAdminInterface } from "@hexclave/shared";
+import { getProductionModeErrors } from "@hexclave/shared/dist/helpers/production-mode";
+import { InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
+import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@hexclave/shared/dist/interface/admin-metrics";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
+import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-templates";
+import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
+import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import type { AdminGetSessionReplayChunkEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
+import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { pick, typedEntries, typedValues } from "@hexclave/shared/dist/utils/objects";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
@@ -26,8 +26,8 @@ import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedE
 import { clientVersion, createCache, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
-import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { branchConfigSourceSchema } from "@hexclave/shared/dist/schema-fields";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like

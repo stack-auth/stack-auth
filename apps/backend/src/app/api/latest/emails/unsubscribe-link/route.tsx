@@ -2,7 +2,7 @@ import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
