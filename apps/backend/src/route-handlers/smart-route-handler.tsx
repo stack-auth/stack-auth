@@ -113,8 +113,6 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             "/api/latest/internal/external-db-sync/poller",
             "/api/latest/internal/external-db-sync/sequencer",
             "/api/latest/internal/external-db-sync/sync-engine",
-            "/api/latest/internal/preview/claim",
-            "/api/latest/internal/preview/fill-pool",
           ];
           const allAllowedLongRequestPaths = [
             ...allowedLongRequestPaths,

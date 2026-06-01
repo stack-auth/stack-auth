@@ -13,8 +13,6 @@ import React, { useSyncExternalStore } from "react";
 import { BackgroundShine } from "./background-shine";
 import { ClientPolyfill } from "./client-polyfill";
 import { DevelopmentPortDisplay } from "./development-port-display";
-import Loading from "./loading";
-import { PreviewLeaseAuthGate } from "./preview-lease-auth-gate";
 import { UserIdentity } from "./providers";
 import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-environment-auth-gate";
 
@@ -173,15 +171,11 @@ export function LayoutClient(props: {
           <DevEnvironmentHealthGate>
             <RemoteDevelopmentEnvironmentAuthGate>
               <RouterProvider>
-                <React.Suspense fallback={<Loading />}>
-                  <PreviewLeaseAuthGate>
-                    <UserIdentity />
-                    <VersionAlerter />
-                    <BackgroundShine />
-                    {props.children}
-                    <DevelopmentPortDisplay />
-                  </PreviewLeaseAuthGate>
-                </React.Suspense>
+                <UserIdentity />
+                <VersionAlerter />
+                <BackgroundShine />
+                {props.children}
+                <DevelopmentPortDisplay />
               </RouterProvider>
             </RemoteDevelopmentEnvironmentAuthGate>
           </DevEnvironmentHealthGate>

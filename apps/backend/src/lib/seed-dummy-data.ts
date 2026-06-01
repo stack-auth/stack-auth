@@ -2263,17 +2263,6 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
   return projectId;
 }
 
-export async function refreshDummyProjectLiveTokenRefreshEvents(projectId: string, clickhouseClient = getClickhouseAdminClient()): Promise<void> {
-  const dummyTenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID);
-  const dummyPrisma = await getPrismaClientForTenancy(dummyTenancy);
-  await seedDummyLiveTokenRefreshEvents({
-    prisma: dummyPrisma,
-    tenancyId: dummyTenancy.id,
-    projectId,
-    clickhouseClient,
-  });
-}
-
 // How many users to surface as currently "live" on the overview globe.
 const LIVE_USERS_SEED_COUNT = 8;
 
