@@ -1,8 +1,8 @@
 import fs from "fs";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { deepPlainEquals, filterUndefined } from "@hexclave/shared/dist/utils/objects";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 
 export type EndpointOutput = {
   status: number,

@@ -1,6 +1,6 @@
 import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 const windows = [
   { key: "hour" as const },

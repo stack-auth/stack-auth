@@ -1,4 +1,4 @@
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "@hexclave/ui";
 import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";

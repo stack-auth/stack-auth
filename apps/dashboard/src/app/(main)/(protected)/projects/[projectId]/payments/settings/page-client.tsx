@@ -5,7 +5,7 @@ import { DesignCard } from "@/components/design-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { LockIcon } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";

@@ -13,9 +13,9 @@ import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
-import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@hexclave/next";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";

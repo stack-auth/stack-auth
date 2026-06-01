@@ -1,7 +1,7 @@
 import { createMDX } from 'fumadocs-mdx/next';
 
 const withMDX = createMDX();
-const dashboardUrl = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL || 'http://localhost:8101';
+const dashboardUrl = process.env.NEXT_PUBLIC_HEXCLAVE_DASHBOARD_URL ?? process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL ?? 'http://localhost:8101';
 
 /** @type {import('next').NextConfig} */
 const config = {
@@ -105,4 +105,3 @@ const config = {
 };
 
 export default withMDX(config);
-

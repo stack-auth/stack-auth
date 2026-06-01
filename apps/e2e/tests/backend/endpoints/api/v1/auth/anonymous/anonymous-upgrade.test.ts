@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 

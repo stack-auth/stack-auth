@@ -3,7 +3,7 @@
 import * as LabelPrimitive from "@radix-ui/react-label";
 import { Slot } from "@radix-ui/react-slot";
 import React from "react";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import {
   Controller,
   ControllerProps,
@@ -13,7 +13,7 @@ import {
   useFormContext,
 } from "react-hook-form";
 
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { cn } from "../../lib/utils";
 import { SpanLabel } from "./label";
 

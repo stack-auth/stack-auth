@@ -6,7 +6,7 @@ import {
   DesignButton,
 } from "@/components/design-components";
 import { CursorClickIcon } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 import type {
   AnalyticsChartLayer,
@@ -14,7 +14,7 @@ import type {
   Annotation,
   FormatKind,
   Point,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 
 function formatFormatKindLiteral(kind: FormatKind): string {
   const fields: string[] = [`type: "${kind.type}"`];

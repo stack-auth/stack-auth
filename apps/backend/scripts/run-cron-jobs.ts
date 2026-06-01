@@ -1,7 +1,7 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { Result } from "@hexclave/shared/dist/utils/results";
 
 const endpoints = [
   "/api/latest/internal/external-db-sync/sequencer",

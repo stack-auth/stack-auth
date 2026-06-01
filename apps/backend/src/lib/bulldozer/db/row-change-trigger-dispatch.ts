@@ -1,5 +1,5 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import type { BulldozerExecutionContext } from "./execution-context";
 import { getBulldozerExecutionContext } from "./execution-context";
 import type { SqlExpression, SqlStatement } from "./utilities";

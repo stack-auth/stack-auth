@@ -1,8 +1,8 @@
 'use client';
 
 import { useChat, type UIMessage } from '@ai-sdk/react';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { convertToModelMessages, DefaultChatTransport, type DynamicToolUIPart } from 'ai';
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -351,7 +351,7 @@ export function AIChatDrawer() {
   const height = isHomePage && isScrolled ? 'h-[calc(100vh-1.5rem)]' : 'h-[calc(100vh-1.5rem)]';
 
   const [input, setInput] = useState('');
-  const apiBaseUrl = process.env.NEXT_PUBLIC_STACK_API_URL ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
+  const apiBaseUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL ?? process.env.NEXT_PUBLIC_STACK_API_URL ?? throwErr("NEXT_PUBLIC_HEXCLAVE_API_URL or NEXT_PUBLIC_STACK_API_URL is not set");
 
   const {
     messages,

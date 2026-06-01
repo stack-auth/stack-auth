@@ -1,5 +1,5 @@
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 

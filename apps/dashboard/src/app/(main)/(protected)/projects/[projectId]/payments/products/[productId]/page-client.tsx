@@ -38,16 +38,16 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import type { Transaction, TransactionEntry } from "@hexclave/shared/dist/interface/crud/transactions";
+import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { prettyPrintWithMagnitudes } from "@hexclave/shared/dist/utils/numbers";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Suspense, useMemo, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";

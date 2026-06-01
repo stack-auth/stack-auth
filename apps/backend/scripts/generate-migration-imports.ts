@@ -1,4 +1,4 @@
-import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
+import { writeFileSyncIfChanged } from '@hexclave/shared/dist/utils/fs';
 import fs from 'fs';
 import path from 'path';
 import { MIGRATION_FILES_DIR, getMigrationFiles } from '../src/auto-migrations/utils';

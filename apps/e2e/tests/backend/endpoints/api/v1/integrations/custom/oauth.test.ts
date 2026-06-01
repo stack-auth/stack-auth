@@ -1,5 +1,5 @@
-import { encodeBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
-import { encodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
+import { encodeBase64Url } from "@hexclave/shared/dist/utils/bytes";
+import { encodeBasicAuthorizationHeader } from "@hexclave/shared/dist/utils/http";
 import { expect } from "vitest";
 import { it, updateCookiesFromResponse } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";

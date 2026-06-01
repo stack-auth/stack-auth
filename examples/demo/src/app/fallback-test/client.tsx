@@ -1,7 +1,7 @@
 "use client";
 
-import { useStackApp, useUser } from "@stackframe/stack";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { useStackApp, useUser } from "@hexclave/next";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";

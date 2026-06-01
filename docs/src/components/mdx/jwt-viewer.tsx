@@ -1,7 +1,7 @@
 'use client';
 
-import { useUser } from '@stackframe/stack';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { useUser } from '@hexclave/next';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { decodeProtectedHeader, decodeJwt as joseDecodeJwt } from 'jose';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';

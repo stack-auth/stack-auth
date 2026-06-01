@@ -1,5 +1,5 @@
-import { branchConfigSchema, getConfigOverrideErrors } from "@stackframe/stack-shared/dist/config/schema";
-import { ITEM_IDS, PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
+import { branchConfigSchema, getConfigOverrideErrors } from "@hexclave/shared/dist/config/schema";
+import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { NextResponse } from "next/server";
 import { stackServerApp } from "src/stack";
 

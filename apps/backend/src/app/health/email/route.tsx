@@ -1,10 +1,10 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
-import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 
 type ResendEmail = {
   to: string[],

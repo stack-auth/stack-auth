@@ -6,7 +6,7 @@ import {
   yupMixed,
   yupObject,
   yupString,
-} from "@stackframe/stack-shared/dist/schema-fields";
+} from "@hexclave/shared/dist/schema-fields";
 
 /**
  * Auth schema shared by internal dashboard conversation routes. Only signed-in
@@ -57,7 +57,7 @@ export function parseConversationListOffset(value: string | undefined) {
 /**
  * Public (snake_case) response schemas. These are what leaves the API boundary
  * to external consumers; the internal camelCase shapes live in
- * `@stackframe/stack-shared/dist/interface/conversations`.
+ * `@hexclave/shared/dist/interface/conversations`.
  */
 export const publicConversationMetadataSchema = yupObject({
   assigned_to_user_id: yupString().nullable().defined(),

@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/node";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
-import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
-import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { registerErrorSink } from "@hexclave/shared/dist/utils/errors";
+import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
+import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
 import { readFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";

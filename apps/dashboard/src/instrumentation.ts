@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
-import { getEnvBoolean, getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { getEnvBoolean, getEnvVariable, getNextRuntime, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
 import "./polyfills";
 
 async function startRemoteDevelopmentEnvironmentLifecycleIfNeeded(): Promise<void> {

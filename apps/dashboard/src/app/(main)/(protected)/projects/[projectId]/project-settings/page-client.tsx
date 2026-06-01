@@ -13,10 +13,10 @@ import {
 import { ActionDialog, Avatar, AvatarFallback, AvatarImage, SimpleTooltip, Switch, useToast } from "@/components/ui";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
-import type { PushedConfigSource } from "@stackframe/stack";
-import { TeamSwitcher } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { PushedConfigSource } from "@hexclave/next";
+import { TeamSwitcher } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowsLeftRightIcon, BuildingsIcon, GearIcon, GlobeHemisphereWestIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";

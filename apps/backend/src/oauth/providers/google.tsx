@@ -11,15 +11,15 @@ export class GoogleProvider extends OAuthBaseProvider {
   static async create(options: {
     clientId: string,
     clientSecret: string,
-    apiUrl: string,
+    redirectUri: string,
   }) {
-    const { apiUrl, ...rest } = options;
+    const { redirectUri, ...rest } = options;
     return new GoogleProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://accounts.google.com",
       authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenEndpoint: "https://oauth2.googleapis.com/token",
       userinfoEndpoint: "https://openidconnect.googleapis.com/v1/userinfo",
-      redirectUri: apiUrl + "/api/v1/auth/oauth/callback/google",
+      redirectUri,
       openid: true,
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
       baseScope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",

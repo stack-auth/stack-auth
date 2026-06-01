@@ -1,5 +1,5 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
 import { Auth, niceBackendFetch, Payments, Project, Team } from "../../../../backend-helpers";
 

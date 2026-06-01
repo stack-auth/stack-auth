@@ -4,11 +4,11 @@ import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureU
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { teamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { KnownErrors } from "@hexclave/shared";
+import { teamMemberProfilesCrud } from "@hexclave/shared/dist/interface/crud/team-member-profiles";
+import { userIdOrMeSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 import { userFullInclude, userPrismaToCrud } from "../users/crud";
 
 const fullInclude = { projectUser: { include: userFullInclude } };

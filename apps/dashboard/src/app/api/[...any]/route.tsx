@@ -1,4 +1,4 @@
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
 import { NextRequest, NextResponse } from "next/server";
 import '../../../polyfills';
 

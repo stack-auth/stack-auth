@@ -13,11 +13,11 @@ import { getStripeForAccount } from "@/lib/stripe";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { moneyAmountToStripeUnits } from "@stackframe/stack-shared/dist/utils/currencies";
-import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type Stripe from "stripe";
 import { InferType } from "yup";
 

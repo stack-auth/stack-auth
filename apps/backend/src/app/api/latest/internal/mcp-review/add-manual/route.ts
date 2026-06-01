@@ -1,8 +1,8 @@
 import { getConnectionOrThrow } from "@/lib/ai/mcp-logger";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },

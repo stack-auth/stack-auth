@@ -6,7 +6,7 @@ import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
 import { BookOpenIcon, ClockClockwiseIcon, LightbulbIcon, QuestionIcon, SparkleIcon, XIcon } from '@phosphor-icons/react';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';

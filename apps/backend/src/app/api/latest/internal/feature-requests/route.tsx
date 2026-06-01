@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getOrCreateFeaturebaseUserFromAuth, requireFeaturebaseApiKey } from "@/lib/featurebase";
-import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 // Typed subset of the Featurebase v2 API responses; fields we don't use are omitted.
 // The response schema validated by yup on output acts as the runtime safety net.

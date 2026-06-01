@@ -10,7 +10,7 @@ import {
 import { ActionDialog, Checkbox, Switch, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { GearSix, ShieldCheck, ShieldIcon, UserPlus, UsersIcon } from "@phosphor-icons/react";
-import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";

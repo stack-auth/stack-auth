@@ -1,15 +1,15 @@
-import { KnownErrors } from "@stackframe/stack-shared";
-import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { KnownErrors } from "@hexclave/shared";
+import { yupString } from "@hexclave/shared/dist/schema-fields";
+import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import {
   TurnstileAction,
   TurnstilePhase,
   TurnstileResult,
   turnstileDevelopmentKeys,
   turnstilePhaseValues,
-} from "@stackframe/stack-shared/dist/utils/turnstile";
+} from "@hexclave/shared/dist/utils/turnstile";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
 import { validateRedirectHostname } from "./redirect-urls";
 import { Tenancy } from "./tenancies";
@@ -302,7 +302,7 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
   });
 
   test("can suppress captureError for expected siteverify rejections", async ({ expect }) => {
-    const errorsModule = await import("@stackframe/stack-shared/dist/utils/errors");
+    const errorsModule = await import("@hexclave/shared/dist/utils/errors");
     const captureErrorSpy = vi.spyOn(errorsModule, "captureError").mockImplementation(() => {});
     stubFetch({ success: false, action: "sign_up_with_credential" });
 

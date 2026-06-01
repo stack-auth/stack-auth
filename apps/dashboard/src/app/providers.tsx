@@ -1,5 +1,5 @@
 'use client';
-import { useStackApp, useUser } from '@stackframe/stack';
+import { useStackApp, useUser } from '@hexclave/next';
 import posthog from 'posthog-js';
 import { Suspense, useEffect, useState } from 'react';
 

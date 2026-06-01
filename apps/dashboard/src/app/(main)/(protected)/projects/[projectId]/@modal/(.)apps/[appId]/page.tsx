@@ -1,4 +1,4 @@
-import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS, AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { notFound } from "next/navigation";
 import AppDetailsModalPageClient from "./page-client";
 

@@ -1,5 +1,5 @@
 import { DesignBadgeColor } from "@/components/design-components";
-import { AdminEmailOutboxStatus } from "@stackframe/stack";
+import { AdminEmailOutboxStatus } from "@hexclave/next";
 import { StatsBarData } from "./stats-bar";
 
 export const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {

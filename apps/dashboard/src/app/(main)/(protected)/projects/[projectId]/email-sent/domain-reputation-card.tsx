@@ -5,7 +5,7 @@ import { DesignCard } from "@/components/design-components";
 import { SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Gauge } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 

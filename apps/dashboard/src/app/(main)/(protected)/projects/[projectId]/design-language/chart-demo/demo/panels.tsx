@@ -21,7 +21,7 @@ import {
   formatValue,
   TrendPill,
   type FormatKind,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { TABLE_ROWS, type TableRow } from "./fixtures";
 
 export { TrendPill };

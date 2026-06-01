@@ -7,8 +7,8 @@ import { useRouter } from "@/components/router";
 import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CheckIcon, PaintBrush } from "@phosphor-icons/react";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import React, { useMemo } from "react";
 import { useAdminApp } from "../use-admin-app";
 

@@ -1,4 +1,4 @@
-import { ServerUser } from '@stackframe/stack';
+import { ServerUser } from '@hexclave/next';
 import { ActionDialog, CopyField, Typography } from "@/components/ui";
 import { useRouter } from './router';
 

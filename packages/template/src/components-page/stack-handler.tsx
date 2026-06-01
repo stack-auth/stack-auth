@@ -6,7 +6,7 @@
 
 import { BaseHandlerProps, StackHandlerClient } from "./stack-handler-client";
 
-export default function StackHandler({ app, routeProps, params, searchParams, ...props }: BaseHandlerProps & { location?: string } & {
+type StackHandlerProps = BaseHandlerProps & { location?: string } & {
   /**
    * @deprecated The app parameter is no longer necessary. You can safely remove it.
    */
@@ -26,6 +26,19 @@ export default function StackHandler({ app, routeProps, params, searchParams, ..
    * @deprecated The searchParams parameter is no longer necessary. You can safely remove it.
    */
   searchParams?: any,
-}) {
+};
+
+function HandlerImpl({ app, routeProps, params, searchParams, ...props }: StackHandlerProps) {
   return <StackHandlerClient {...props} />;
 }
+
+// Non-deprecated Hexclave-branded export.
+export const HexclaveHandler = HandlerImpl;
+
+/** @deprecated Use `HexclaveHandler` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
+export const StackHandler = HandlerImpl;
+
+// Default export preserved for backwards compatibility (legacy `as`-rename re-exports).
+// Points at the deprecated alias so that `import StackHandler from ".../stack-handler"` still
+// surfaces the deprecation. Internal re-exports in template/src/index.ts use the named exports.
+export default StackHandler;

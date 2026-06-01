@@ -1,9 +1,9 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input, Label, Typography, cn } from "@stackframe/stack-ui";
+import { strictEmailSchema, yupObject } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Input, Label, Typography, cn } from "@hexclave/ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";

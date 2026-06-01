@@ -1,8 +1,8 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;

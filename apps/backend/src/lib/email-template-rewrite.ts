@@ -1,8 +1,8 @@
 import { renderEmailWithTemplate } from "@/lib/email-rendering";
-import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { emptyEmailTheme } from "@hexclave/shared/dist/helpers/emails";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 
 const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
 const AI_REQUEST_TIMEOUT_MS = 120_000;

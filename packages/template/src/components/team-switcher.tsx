@@ -1,6 +1,6 @@
 'use client';
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   Button,
   Select,
@@ -14,7 +14,7 @@ import {
   Skeleton,
   Typography,
   cn,
-} from "@stackframe/stack-ui";
+} from "@hexclave/ui";
 import { PlusCircle, Settings } from "lucide-react";
 import { Suspense, useMemo } from "react";
 import { Team, useStackApp, useUser } from "..";

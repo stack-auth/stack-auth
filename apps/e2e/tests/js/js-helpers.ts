@@ -1,7 +1,7 @@
-import type { StackClientAppConstructorOptions, StackServerAppConstructorOptions } from '@stackframe/js';
-import { AdminProjectCreateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@stackframe/js';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import type { StackClientAppConstructorOptions, StackServerAppConstructorOptions } from '@hexclave/js';
+import { AdminProjectCreateOptions, StackAdminApp, StackClientApp, StackServerApp } from '@hexclave/js';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
+import { Result } from '@hexclave/shared/dist/utils/results';
 import { SDK_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
 const testExtraRequestHeaders = {

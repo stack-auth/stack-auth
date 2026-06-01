@@ -7,7 +7,7 @@ import {
   type AnalyticsChartState,
   type Annotation,
   type Point,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 
 const DAY_COUNT = 30;
 

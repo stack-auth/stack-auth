@@ -1,6 +1,6 @@
 'use client';
 
-import { UserButton, useUser } from '@stackframe/stack';
+import { UserButton, useUser } from '@hexclave/next';
 import { Wrench } from "lucide-react";
 import { useState } from "react";
 import { DynamicCodeblock } from "../mdx/dynamic-code-block";

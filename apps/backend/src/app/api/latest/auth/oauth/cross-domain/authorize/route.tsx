@@ -6,10 +6,10 @@ import { isRefreshTokenValid } from "@/lib/tokens";
 import { createOAuthServer } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, urlSchema, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { publishableClientKeyNotNecessarySentinel } from "@hexclave/shared/dist/utils/oauth";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 
 type CrossDomainAuthorizeBody = {

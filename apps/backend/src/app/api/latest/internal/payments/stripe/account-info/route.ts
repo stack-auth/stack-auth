@@ -2,8 +2,8 @@ import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { getStackStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const GET = createSmartRouteHandler({
   metadata: {

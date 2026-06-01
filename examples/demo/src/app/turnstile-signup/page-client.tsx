@@ -1,11 +1,11 @@
 'use client';
 
-import { KnownErrors } from "@stackframe/stack-shared";
-import { stackAppInternalsSymbol, useStackApp, useUser } from "@stackframe/stack";
-import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
-import { executeTurnstileInvisible, showTurnstileVisibleChallenge, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
-import { Button, Card, CardContent, CardFooter, CardHeader, Input, Label, PasswordInput, Typography } from "@stackframe/stack-ui";
+import { KnownErrors } from "@hexclave/shared";
+import { stackAppInternalsSymbol, useStackApp, useUser } from "@hexclave/next";
+import { turnstileDevelopmentKeys } from "@hexclave/shared/dist/utils/turnstile";
+import { publishableClientKeyNotNecessarySentinel } from "@hexclave/shared/dist/utils/oauth";
+import { executeTurnstileInvisible, showTurnstileVisibleChallenge, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
+import { Button, Card, CardContent, CardFooter, CardHeader, Input, Label, PasswordInput, Typography } from "@hexclave/ui";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 import NextLink from 'next/link'; // THIS_LINE_PLATFORM next
 
 type LinkProps = {

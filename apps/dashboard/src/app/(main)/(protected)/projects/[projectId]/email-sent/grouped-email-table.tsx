@@ -2,14 +2,14 @@
 
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
-import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useEffect, useMemo, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 import { StatsBar, StatsBarData } from "./stats-bar";

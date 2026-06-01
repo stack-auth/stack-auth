@@ -9,7 +9,7 @@ import {
   LightningIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import {
@@ -19,7 +19,7 @@ import {
   type DataGridCellContext,
   type DataGridDataSource,
   type DataGridState,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import {
   DEMO_COLUMNS,
   DEMO_USERS_200,

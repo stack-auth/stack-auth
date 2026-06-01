@@ -5,10 +5,10 @@ import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import { REFUND_TXN_PREFIX, parseRefundTxnId } from "@/lib/payments/refund-txn-id";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { TRANSACTION_TYPES, transactionSchema, type Transaction, type TransactionEntry, type TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { TRANSACTION_TYPES, transactionSchema, type Transaction, type TransactionEntry, type TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 
 const schema = paymentsSchema;
 

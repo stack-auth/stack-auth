@@ -1,7 +1,7 @@
 'use client';
 
-import { OAuthConnection, useUser } from "@stackframe/stack";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Typography } from "@stackframe/stack-ui";
+import { OAuthConnection, useUser } from "@hexclave/next";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Typography } from "@hexclave/ui";
 import { useState } from "react";
 
 function ConnectedAccountCard({ account }: { account: OAuthConnection }) {

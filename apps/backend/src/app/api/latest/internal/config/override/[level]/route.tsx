@@ -16,9 +16,9 @@ import { assertConfigOverrideWriteAllowed } from "@/lib/development-environment"
 import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@hexclave/shared/dist/config/schema";
+import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import * as yup from "yup";
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 

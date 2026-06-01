@@ -1,8 +1,8 @@
 'use client';
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   Skeleton,
-} from "@stackframe/stack-ui";
+} from "@hexclave/ui";
 import { Suspense, useEffect } from "react";
 import { Team, useStackApp, useUser } from "..";
 import { TeamSwitcher } from "./team-switcher";

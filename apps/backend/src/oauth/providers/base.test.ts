@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getOAuthAccessTokenRefreshError, getOAuthAccessTokenRefreshErrorDisposition, isRetryableOAuthUserInfoError, resolveOAuthAccessTokenExpiredAt } from "./base";
+import { getOAuthAccessTokenRefreshError, getOAuthAccessTokenRefreshErrorDisposition, getOAuthCallbackExtraParams, isRetryableOAuthUserInfoError, resolveOAuthAccessTokenExpiredAt } from "./base";
 
 describe("isRetryableOAuthUserInfoError", () => {
   it("returns true for openid-client timeout errors", () => {
@@ -98,6 +98,28 @@ describe("getOAuthAccessTokenRefreshError", () => {
       retryCount: 1,
       sawAmbiguousRefreshAttempt: true,
       causes: [{ name: "RPError" }, providerError],
+    });
+  });
+});
+
+describe("getOAuthCallbackExtraParams", () => {
+  it("omits token exchange params unless the provider opts in", () => {
+    expect(getOAuthCallbackExtraParams({
+      includeScopeInTokenExchange: false,
+      baseScope: "openid",
+      extraScope: "User.Read",
+    })).toBeUndefined();
+  });
+
+  it("includes merged scopes for providers that require scope on callback exchange", () => {
+    expect(getOAuthCallbackExtraParams({
+      includeScopeInTokenExchange: true,
+      baseScope: "User.Read openid",
+      extraScope: "Mail.Read",
+    })).toEqual({
+      exchangeBody: {
+        scope: "User.Read openid Mail.Read",
+      },
     });
   });
 });

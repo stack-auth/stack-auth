@@ -24,9 +24,9 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ChatCircleDotsIcon, PlusIcon, SparkleIcon, SpinnerGapIcon, TrashIcon } from "@phosphor-icons/react";
-import { useUser } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useUser } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

@@ -1,4 +1,4 @@
-import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { Transaction } from "@hexclave/shared/dist/interface/crud/transactions";
 import { describe, expect, it } from "vitest";
 import { describeDetail, getTransactionSummary } from "./transaction-table";
 

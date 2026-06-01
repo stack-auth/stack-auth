@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/hosted-components",
+  "name": "@hexclave/hosted-components",
   "private": true,
-  "version": "2.8.109",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09",
@@ -12,8 +12,8 @@
     "clean": "rimraf .output && rimraf node_modules"
   },
   "dependencies": {
-    "@stackframe/react": "workspace:*",
-    "@stackframe/stack-shared": "workspace:*",
+    "@hexclave/react": "workspace:*",
+    "@hexclave/shared": "workspace:*",
     "@tanstack/react-router": "^1.121.3",
     "@tanstack/react-start": "^1.121.3",
     "@tanstack/react-start-client": "^1.121.3",

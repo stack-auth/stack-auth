@@ -1,9 +1,9 @@
 import { createPermissionDefinition, deletePermissionDefinition, listPermissionDefinitions, updatePermissionDefinition } from "@/lib/permissions";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { teamPermissionDefinitionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
-import { permissionDefinitionIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { teamPermissionDefinitionsCrud } from '@hexclave/shared/dist/interface/crud/team-permissions';
+import { permissionDefinitionIdSchema, yupObject } from "@hexclave/shared/dist/schema-fields";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 import { paginatePermissionDefinitions, permissionDefinitionsListQuerySchema } from "../permission-definitions-pagination";
 
 export const teamPermissionDefinitionsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamPermissionDefinitionsCrud, {

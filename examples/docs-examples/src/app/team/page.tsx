@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function TeamsPage() {
   const user = useUser({ or: 'redirect' });

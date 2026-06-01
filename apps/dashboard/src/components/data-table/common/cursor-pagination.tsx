@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
 export function useCursorPaginationCache(initialPage: number = 1) {
   const cursorCacheRef = useRef(new Map<number, string | null>([[initialPage, null]]));

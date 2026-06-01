@@ -7,10 +7,10 @@ import {
   sessionReplayAdminRowToApiItem,
 } from "./session-replay-admin-rows";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;

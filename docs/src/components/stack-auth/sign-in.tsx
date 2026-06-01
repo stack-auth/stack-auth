@@ -1,6 +1,6 @@
 'use client';
 
-import { SignIn } from '@stackframe/stack';
+import { SignIn } from '@hexclave/next';
 import { useState } from 'react';
 import { StackContainer } from '../mdx';
 import { DynamicCodeblock } from '../mdx/dynamic-code-block';

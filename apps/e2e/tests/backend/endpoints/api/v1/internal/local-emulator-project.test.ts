@@ -74,7 +74,7 @@ describe("local emulator project endpoint", () => {
     const fileContent = await fs.readFile(filePath, "utf-8");
     expect(fileContent).toMatchInlineSnapshot(`
       deindent\`
-        import type { StackConfig } from "@stackframe/js";
+        import type { StackConfig } from "@hexclave/js";
         
         export const config: StackConfig = "show-onboarding";
       \` + "\\n"
@@ -86,7 +86,7 @@ describe("local emulator project endpoint", () => {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(
       filePath,
-      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = "show-onboarding";\n`,
+      `import type { StackConfig } from "@hexclave/js";\n\nexport const config: StackConfig = "show-onboarding";\n`,
       "utf-8",
     );
 
@@ -116,7 +116,7 @@ describe("local emulator project endpoint", () => {
 
     await fs.writeFile(
       filePath,
-      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = "show-onboarding";\n`,
+      `import type { StackConfig } from "@hexclave/js";\n\nexport const config: StackConfig = "show-onboarding";\n`,
       "utf-8",
     );
     const onboardingAgainResponse = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {

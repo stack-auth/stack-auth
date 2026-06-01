@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { StackProvider, StackTheme } from "@stackframe/stack";
+import { StackProvider, StackTheme } from "@hexclave/next";
 import { stackServerApp } from "../stack/server";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
