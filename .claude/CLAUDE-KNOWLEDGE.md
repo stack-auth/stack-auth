@@ -574,3 +574,18 @@ A: Add `docs` to `pnpm-workspace.yaml`, keep the package named `@hexclave/docs`,
 
 ## Q: How should template React contexts avoid duplicate client-bundle context identities?
 A: Define exported provider contexts such as `StackContext` and `TranslationContext` through `createGlobal` from `@stackframe/stack-shared/dist/utils/globals`, not direct `React.createContext(...)` exports. That helper stores the React context under `globalThis[Symbol.for("__hexclave-globals")]`, so duplicated SDK bundles still share the same provider/consumer context object.
+
+## Q: Why should RDE project creation avoid passing `config` to `createProject`?
+A: `createProject({ config })` writes those values as environment config overrides, which have higher precedence than the branch/local config that the remote development environment later syncs from the user's config file. Seeding values such as `signUpEnabled: true` there masks dashboard edits like `"auth.allowSignUp": false`; RDE projects should be created without config and then configured through onboarding/config-file sync.
+
+## Q: How can multiple remote development-environment dashboards run without port conflicts?
+A: Let `NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT` select the local dashboard port, defaulting to `26700`. The CLI should key dashboard secrets/state, runtime directories, and log files by port so one dashboard does not overwrite another process's browser-origin checks or bundled runtime.
+
+## Q: How should the RDE CLI decide that the local dashboard is ready?
+A: Probe `/api/development-environment/health`, not a generic page route, and treat a structurally valid health response as dashboard readiness even when the HTTP status is `503`. Before any CLI session is registered, the RDE health route intentionally reports unhealthy; waiting for a 2xx response prevents session registration and lets the dashboard shut itself down after the empty-session grace period.
+
+## Q: Why should the dashboard avoid a global `/api/[...any]` App Router catch-all?
+A: The dashboard has real local API endpoints such as `/api/remote-development-environment/*`. In standalone Next builds, a broad `/api/[...any]` route can shadow more specific local API routes, sending RDE session requests down the wrong path. Prefer no catch-all so unknown dashboard API URLs 404 naturally instead of interfering with real endpoints.
+
+## Q: How should RDE session registration report an unreachable backend?
+A: Do not let SDK network errors escape the local dashboard route as an empty Next.js 500. Classify expected API connection failures such as `ECONNREFUSED`/`fetch failed`, return a sanitized `503` JSON error naming the configured API base URL, and have the CLI parse JSON error bodies so users see the actual cause instead of `Failed to register ... (500):`.

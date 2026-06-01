@@ -1,18 +1,20 @@
+import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
 import { randomBytes } from "crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
+
+type LocalDashboardState = {
+  port: number,
+  secret: string,
+  pid: number,
+  startedAtMillis: number,
+  logPath?: string,
+};
 
 export type DevEnvState = {
   version: 1,
   anonymousRefreshToken?: string,
-  localDashboard?: {
-    port: number,
-    secret: string,
-    pid: number,
-    startedAtMillis: number,
-    logPath?: string,
-  },
+  localDashboardsByPort?: Partial<Record<string, LocalDashboardState>>,
   anonymousApiBaseUrl?: string,
   projectsByConfigPath: Partial<Record<string, {
     projectId: string,
@@ -22,7 +24,7 @@ export type DevEnvState = {
     apiBaseUrl: string,
     lastSyncedConfigHash?: string,
     updatedAtMillis: number,
-}>>,
+  }>>,
 };
 
 export function devEnvStatePath(): string {
@@ -45,7 +47,7 @@ export function readDevEnvState(): DevEnvState {
     version: 1,
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
-    localDashboard: parsed.localDashboard,
+    localDashboardsByPort: parsed.localDashboardsByPort,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }
@@ -59,30 +61,42 @@ export function writeDevEnvState(state: DevEnvState): void {
 
 export function ensureLocalDashboardSecret(port: number): string {
   const state = readDevEnvState();
-  const existing = state.localDashboard?.secret;
+  const portKey = String(port);
+  const existingDashboard = state.localDashboardsByPort?.[portKey];
+  const existing =
+    existingDashboard?.secret;
   const secret = existing ?? randomBytes(32).toString("hex");
+  const dashboardState: LocalDashboardState = {
+    port,
+    secret,
+    pid: existingDashboard?.pid ?? 0,
+    startedAtMillis: existingDashboard?.startedAtMillis ?? Date.now(),
+    logPath: existingDashboard?.logPath,
+  };
   writeDevEnvState({
     ...state,
-    localDashboard: {
-      port,
-      secret,
-      pid: state.localDashboard?.pid ?? 0,
-      startedAtMillis: state.localDashboard?.startedAtMillis ?? Date.now(),
-      logPath: state.localDashboard?.logPath,
+    localDashboardsByPort: {
+      ...state.localDashboardsByPort,
+      [portKey]: dashboardState,
     },
   });
   return secret;
 }
 
 export function recordLocalDashboardProcess(port: number, secret: string, pid: number, logPath: string): void {
+  const state = readDevEnvState();
+  const dashboardState: LocalDashboardState = {
+    port,
+    secret,
+    pid,
+    startedAtMillis: Date.now(),
+    logPath,
+  };
   writeDevEnvState({
-    ...readDevEnvState(),
-    localDashboard: {
-      port,
-      secret,
-      pid,
-      startedAtMillis: Date.now(),
-      logPath,
+    ...state,
+    localDashboardsByPort: {
+      ...state.localDashboardsByPort,
+      [String(port)]: dashboardState,
     },
   });
 }

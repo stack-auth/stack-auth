@@ -41,9 +41,21 @@ describe("dev env state", () => {
     const first = ensureLocalDashboardSecret(9101);
     const second = ensureLocalDashboardSecret(9101);
     expect(second).toBe(first);
-    expect(readDevEnvState().localDashboard).toMatchObject({
-      port: 9101,
-      secret: first,
+    expect(readDevEnvState().localDashboardsByPort).toMatchObject({
+      "9101": { port: 9101, secret: first },
+    });
+  });
+
+  it("keeps dashboard secrets separate per port", () => {
+    useTempStateFile();
+    const first = ensureLocalDashboardSecret(9101);
+    const second = ensureLocalDashboardSecret(9102);
+
+    expect(second).not.toBe(first);
+    expect(ensureLocalDashboardSecret(9101)).toBe(first);
+    expect(readDevEnvState().localDashboardsByPort).toMatchObject({
+      "9101": { port: 9101, secret: first },
+      "9102": { port: 9102, secret: second },
     });
   });
 
@@ -52,11 +64,13 @@ describe("dev env state", () => {
     const secret = ensureLocalDashboardSecret(26700);
     recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log");
 
-    expect(readDevEnvState().localDashboard).toMatchObject({
-      port: 26700,
-      secret,
-      pid: 12345,
-      logPath: "/tmp/stack-rde-dashboard.log",
+    expect(readDevEnvState().localDashboardsByPort).toMatchObject({
+      "26700": {
+        port: 26700,
+        secret,
+        pid: 12345,
+        logPath: "/tmp/stack-rde-dashboard.log",
+      },
     });
   });
 

@@ -10,7 +10,6 @@ import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KE
 const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
 
 const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
-const CLI_SRC_BIN = path.resolve("packages/stack-cli/src/index.ts");
 
 function extractConfigObjectString(content: string): string {
   const configMatch = content.match(/export const config:\s*StackConfig\s*=\s*(.+);\s*$/s);
@@ -375,7 +374,7 @@ describe("Stack CLI", () => {
         },
       );
       expect(exitCode).toBe(1);
-      expect(stderr).toContain("Local emulator publishable client key not found");
+      expect(stderr).toContain("Development environment publishable client key not found");
     } finally {
       fs.rmSync(fakeEmulatorHome, { recursive: true });
     }
@@ -401,7 +400,7 @@ describe("Stack CLI", () => {
         },
       );
       expect(exitCode).toBe(1);
-      expect(stderr).toContain("Cannot reach local emulator");
+      expect(stderr).toContain("Cannot reach development environment");
     } finally {
       fs.rmSync(fakeEmulatorHome, { recursive: true });
     }
@@ -666,75 +665,6 @@ describe("Stack CLI", () => {
     ]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
-  });
-});
-
-// Emulator CLI tests — no backend required, just validates help/arg parsing
-describe("Stack CLI — Emulator", () => {
-  function runCliBare(
-    args: string[],
-  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
-    return new Promise((resolve) => {
-      execFile("node", [CLI_BIN, ...args], {
-        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
-        timeout: 15_000,
-      }, (error, stdout, stderr) => {
-        resolve({
-          stdout: stdout.toString(),
-          stderr: stderr.toString(),
-          exitCode: error ? (error as any).code ?? 1 : 0,
-        });
-      });
-    });
-  }
-
-  function runCliBareFromSource(
-    args: string[],
-  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
-    return new Promise((resolve) => {
-      execFile("node", ["--import", "tsx", CLI_SRC_BIN, ...args], {
-        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
-        timeout: 15_000,
-      }, (error, stdout, stderr) => {
-        resolve({
-          stdout: stdout.toString(),
-          stderr: stderr.toString(),
-          exitCode: error ? (error as any).code ?? 1 : 0,
-        });
-      });
-    });
-  }
-
-  it("emulator help shows subcommands", async ({ expect }) => {
-    const { stdout, exitCode } = await runCliBare(["emulator", "--help"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("pull");
-    expect(stdout).toContain("start");
-    expect(stdout).toContain("stop");
-    expect(stdout).toContain("reset");
-    expect(stdout).toContain("status");
-    expect(stdout).toContain("list-releases");
-  });
-
-  it("emulator pull help shows options", async ({ expect }) => {
-    const { stdout, exitCode } = await runCliBare(["emulator", "pull", "--help"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("--arch");
-    expect(stdout).toContain("--branch");
-    expect(stdout).toContain("--tag");
-    expect(stdout).toContain("--repo");
-  });
-
-  it("emulator pull rejects invalid arch values", async ({ expect }) => {
-    const { stderr, exitCode } = await runCliBareFromSource(["emulator", "pull", "--arch", "sparc"]);
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain("Invalid architecture: sparc. Expected arm64 or amd64.");
-  });
-
-  it("emulator list-releases help shows repo option", async ({ expect }) => {
-    const { stdout, exitCode } = await runCliBare(["emulator", "list-releases", "--help"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("--repo");
   });
 });
 
