@@ -15,7 +15,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists
 
 ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
+ENV PATH=$PNPM_HOME:$PNPM_HOME/bin:$PATH
 
 RUN corepack enable
 RUN corepack prepare pnpm@11.5.0 --activate
