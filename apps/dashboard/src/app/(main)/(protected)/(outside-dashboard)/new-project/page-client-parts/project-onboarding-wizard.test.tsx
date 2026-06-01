@@ -616,6 +616,28 @@ describe("ProjectOnboardingWizard", () => {
     expect(screen.getByText("Payments setup is not available in remote development environments.")).toBeTruthy();
   });
 
+  it("does not call setupPayments via Connect in a remote development environment, even if the disabled attribute is bypassed", async () => {
+    mockGetPublicEnvVar.mockImplementation((name: string) =>
+      name === "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT" ? "true" : "false"
+    );
+    const setupPayments = vi.fn(async () => ({ url: "https://example.com" }));
+
+    renderPaymentsSetupStep({ setupPayments });
+
+    // Simulate the disabled attribute being bypassed — DOM manipulation, a future
+    // refactor dropping the `disabled` prop, or any other way the button could
+    // be engaged despite the visible-state guard.
+    const connectButton = screen.getByRole("button", { name: "Connect" });
+    connectButton.removeAttribute("disabled");
+    fireEvent.click(connectButton);
+
+    // Flush microtasks so the async handler has a chance to run to completion.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setupPayments).not.toHaveBeenCalled();
+  });
+
   it("does not call setupPayments via Do Later in a remote development environment, even for a US project", async () => {
     mockGetPublicEnvVar.mockImplementation((name: string) =>
       name === "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT" ? "true" : "false"
