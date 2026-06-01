@@ -1389,7 +1389,11 @@ const InsufficientScope = createKnownErrorConstructor(
       missing_scopes: missingScopes,
     },
   ] as const,
-  (json: any) => [json.missing_scopes] as const,
+  (json: any) => [
+    Array.isArray(json?.missing_scopes)
+      ? json.missing_scopes
+      : throwErr("missing_scopes not found (or not an array) in InsufficientScope details"),
+  ] as const,
 );
 
 const InvalidSharedOAuthProviderId = createKnownErrorConstructor(

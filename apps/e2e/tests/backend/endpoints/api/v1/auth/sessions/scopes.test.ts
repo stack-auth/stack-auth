@@ -79,7 +79,19 @@ it("treats unrestricted (no-scope) sessions as unrestricted for scoped endpoints
     body: { display_name: "Unrestricted Test Team" },
     userAuth: { accessToken },
   });
-  expect(createRes.body.code).not.toBe("INSUFFICIENT_SCOPE");
+  expect(createRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 201,
+      "body": {
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "display_name": "Unrestricted Test Team",
+        "id": "<stripped UUID>",
+        "profile_image_url": null,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("persists scopes across a token refresh", async ({ expect }) => {
@@ -106,8 +118,20 @@ it("persists scopes across a token refresh", async ({ expect }) => {
     body: { display_name: "Refreshed Scoped Team" },
     userAuth: { accessToken: refreshedAccessToken },
   });
-  expect(createRes.status).toBe(403);
-  expect(createRes.body.code).toBe("INSUFFICIENT_SCOPE");
+  expect(createRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": {
+        "code": "INSUFFICIENT_SCOPE",
+        "details": { "missing_scopes": ["teams:write"] },
+        "error": "The access token is missing the following required scope(s): 'teams:write'. Mint a token that includes these scopes and try again.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_SCOPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("rejects creating a session with an unknown scope", async ({ expect }) => {

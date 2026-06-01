@@ -443,7 +443,9 @@ export async function createRefreshTokenObj(options: CreateRefreshTokenOptions) 
 
   const refreshToken = generateSecureRandomString();
 
-  const scopes = options.scopes ? [...new Set(options.scopes)] : [];
+  // Dedupe so the persisted scope string never carries duplicates (the registry intersection at
+  // grant time already constrains the set, this just normalizes it).
+  const scopes = options.scopes != null ? [...new Set(options.scopes)] : [];
 
   const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.create({
     data: {

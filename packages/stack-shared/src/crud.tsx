@@ -1,6 +1,6 @@
 import * as yup from 'yup';
 import { yupObject, yupString } from './schema-fields';
-import { Scope } from './scopes';
+import type { Scope } from './scopes';
 import { filterUndefined } from './utils/objects';
 import { NullishCoalesce } from './utils/types';
 
