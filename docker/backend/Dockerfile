@@ -55,7 +55,7 @@ COPY docs ./docs
 ENV NEXT_CONFIG_OUTPUT=standalone
 
 # Build backend only
-RUN pnpm turbo run docker-build --filter=@hexclave/backend...
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend...
 
 
 # Final image

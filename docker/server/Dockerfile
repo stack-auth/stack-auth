@@ -53,10 +53,10 @@ COPY docs ./docs
 ENV NEXT_CONFIG_OUTPUT=standalone
 
 # Build the backend NextJS app
-RUN pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
 
 # Build the self-host seed script
-RUN cd apps/backend && pnpm build-self-host-migration-script
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store cd apps/backend && pnpm build-self-host-migration-script
 
 
 

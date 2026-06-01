@@ -56,7 +56,7 @@ ENV NEXT_CONFIG_OUTPUT=standalone
 ENV NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
 
 # Build the backend NextJS app
-RUN pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
 
 # Build the self-host seed script.
 # tsdown -> rolldown is multi-threaded Rust; under qemu-user (cross-arch
