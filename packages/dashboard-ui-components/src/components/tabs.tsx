@@ -142,6 +142,7 @@ export function DesignCategoryTabs({
   };
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updatePrefersReducedMotion = () => setPrefersReducedMotion(mediaQuery.matches);
 
@@ -169,6 +170,7 @@ export function DesignCategoryTabs({
 
     updateSliderMetrics();
 
+    if (typeof ResizeObserver === "undefined") return;
     const resizeObserver = new ResizeObserver(updateSliderMetrics);
     resizeObserver.observe(tabList);
     resizeObserver.observe(selectedButton);
