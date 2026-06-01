@@ -144,8 +144,9 @@ export const POST = createSmartRouteHandler({
     })();
 
     const rows = body.events.map((event) => {
-      const baseData = (typeof event.data === "object" && !Array.isArray(event.data))
-        ? (event.data as Record<string, unknown>)
+      const rawData: unknown = event.data;
+      const baseData = (rawData != null && typeof rawData === "object" && !Array.isArray(rawData))
+        ? (rawData as Record<string, unknown>)
         : {};
       const existingUa = baseData.user_agent;
       const mergedData = (existingUa == null || existingUa === "")

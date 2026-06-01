@@ -9,16 +9,9 @@ import { GlobeIcon } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { easeOutCubic, prefersReducedMotion } from "./animation-utils";
 
 const TOP_LIST_ANIMATION_MS = 260;
-
-function easeOutCubic(progress: number): number {
-  return 1 - Math.pow(1 - progress, 3);
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 function useAnimatedBarValues(rows: Array<{ id: string, value: number }>): Map<string, number> {
   const [animatedValues, setAnimatedValues] = useState(() => new Map(rows.map((row) => [row.id, row.value])));

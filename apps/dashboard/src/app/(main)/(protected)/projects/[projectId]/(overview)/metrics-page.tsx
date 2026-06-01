@@ -71,6 +71,7 @@ import {
 } from "./line-chart";
 import { MetricsErrorFallback, MetricsLoadingFallback } from "./metrics-loading";
 import { ReferrersWithAnalyticsCard, TopNamedListCard, TopRegionsCard } from "./top-lists";
+import { easeOutCubic, prefersReducedMotion } from "./animation-utils";
 import {
   ANALYTICS_CHART_METRIC_MODE_ORDER,
   toggleAnalyticsChartMetricMode,
@@ -127,10 +128,6 @@ const reducedOverviewHeaderLayoutTransition: Transition = {
 };
 
 const scrollableOverflowValues = new Set(["auto", "scroll", "overlay"]);
-
-function easeOutCubic(progress: number): number {
-  return 1 - Math.pow(1 - progress, 3);
-}
 
 function findScrollContainer(element: HTMLElement): HTMLElement | null {
   let current = element.parentElement;
@@ -205,10 +202,6 @@ function useDelayedTrue(value: boolean, delayMs: number): boolean {
   }, [delayMs, value]);
 
   return delayedValue;
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function useAnimatedSeriesValues<T extends { value: number }>(series: T[]): T[] {

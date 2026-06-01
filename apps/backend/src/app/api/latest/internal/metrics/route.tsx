@@ -1685,7 +1685,7 @@ async function loadAnalyticsOverview(
     const hourlyActiveUsers: DataPoints = [];
     const hourlyVisitors: DataPoints = [];
     const latestHour = new Date(now);
-    latestHour.setMinutes(0, 0, 0);
+    latestHour.setUTCMinutes(0, 0, 0);
     for (let i = 23; i >= 0; i--) {
       const hour = new Date(latestHour.getTime() - i * 60 * 60 * 1000);
       const key = hour.toISOString().slice(0, 13);
