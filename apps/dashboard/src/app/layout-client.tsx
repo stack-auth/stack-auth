@@ -13,6 +13,7 @@ import React, { useSyncExternalStore } from "react";
 import { BackgroundShine } from "./background-shine";
 import { ClientPolyfill } from "./client-polyfill";
 import { DevelopmentPortDisplay } from "./development-port-display";
+import Loading from "./loading";
 import { UserIdentity } from "./providers";
 import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-environment-auth-gate";
 
