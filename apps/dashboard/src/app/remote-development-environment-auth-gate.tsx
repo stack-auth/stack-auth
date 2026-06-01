@@ -94,7 +94,20 @@ async function getRemoteDevelopmentEnvironmentAccessToken(): Promise<RemoteDevel
     },
   });
   if (!response.ok) {
-    throw new Error(`Failed to authenticate local remote development environment dashboard (${response.status}): ${await response.text()}`);
+    const responseText = await response.text();
+    // For 403 errors (e.g. accessing via 'localhost' instead of 127.0.0.1),
+    // surface the server's user-friendly message directly
+    if (response.status === 403) {
+      try {
+        const errorMessage = JSON.parse(responseText)?.error;
+        if (typeof errorMessage === "string") {
+          throw new Error(errorMessage);
+        }
+      } catch (e) {
+        if (!(e instanceof SyntaxError)) throw e;
+      }
+    }
+    throw new Error(`Failed to authenticate local remote development environment dashboard (${response.status}): ${responseText}`);
   }
 
   return parseRemoteDevelopmentEnvironmentAccessTokenResponse(await response.json());
