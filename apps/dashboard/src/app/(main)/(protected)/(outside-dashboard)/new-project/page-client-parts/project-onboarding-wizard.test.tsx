@@ -79,8 +79,10 @@ vi.mock("@/components/ui", () => ({
   cn: (...classNames: Array<string | false | null | undefined>) => classNames.filter(Boolean).join(" "),
 }));
 
+const mockGetPublicEnvVar = vi.hoisted(() => vi.fn((_name: string): string => "false"));
+
 vi.mock("@/lib/env", () => ({
-  getPublicEnvVar: () => "false",
+  getPublicEnvVar: (name: string) => mockGetPublicEnvVar(name),
 }));
 
 vi.mock("@/lib/config-update", () => ({
@@ -146,6 +148,7 @@ import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 afterEach(() => {
   cleanup();
   mockUpdateConfig.mockClear();
+  mockGetPublicEnvVar.mockImplementation((_name: string) => "false");
 });
 
 describe("ProjectOnboardingWizard", () => {
@@ -539,5 +542,94 @@ describe("ProjectOnboardingWizard", () => {
       expect(clearOnboardingState).toHaveBeenCalled();
       expect(onComplete).toHaveBeenCalled();
     });
+  });
+
+  // Real Stripe must not be reachable in a remote development environment. The wizard checks
+  // `isRemoteDevelopmentEnvironment` and is expected to (a) disable the Connect button,
+  // (b) render an "unavailable in remote development environments" notice, and
+  // (c) skip the implicit `setupPayments()` call from the Do Later path.
+  const renderPaymentsSetupStep = (overrides: {
+    setupPayments: () => Promise<{ url: string }>,
+    setStatus?: (status: any) => Promise<void>,
+    selectedPaymentsCountry?: "US" | "OTHER",
+  }) => render(
+    <ProjectOnboardingWizard
+      project={{
+        id: "proj_123",
+        config: {
+          credentialEnabled: true,
+          magicLinkEnabled: false,
+          passkeyEnabled: false,
+          oauthProviders: [],
+        },
+        useConfig: () => ({
+          apps: {
+            installed: {
+              authentication: { enabled: true },
+              emails: { enabled: true },
+              payments: { enabled: true },
+            },
+          },
+          domains: { trustedDomains: {} },
+          emails: { selectedThemeId: "default", server: {} },
+        }),
+        app: {
+          setupPayments: overrides.setupPayments,
+          useEmailThemes: () => [],
+          useStripeAccountInfo: () => null,
+        },
+      } as never}
+      status="payments_setup"
+      onboardingState={overrides.selectedPaymentsCountry ? {
+        selected_config_choice: "create-new",
+        selected_apps: ["authentication", "emails", "payments"],
+        selected_sign_in_methods: ["credential"],
+        selected_email_theme_id: "default",
+        selected_payments_country: overrides.selectedPaymentsCountry,
+      } : null}
+      mode={null}
+      setMode={vi.fn()}
+      setStatus={overrides.setStatus ?? vi.fn(async () => {})}
+      setOnboardingState={vi.fn(async () => {})}
+      clearOnboardingState={vi.fn(async () => {})}
+      onComplete={vi.fn()}
+    />,
+  );
+
+  it("disables the Connect button on the payments step in a remote development environment", () => {
+    mockGetPublicEnvVar.mockImplementation((name: string) =>
+      name === "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT" ? "true" : "false"
+    );
+
+    renderPaymentsSetupStep({ setupPayments: vi.fn(async () => ({ url: "https://example.com" })) });
+
+    expect(screen.getByRole("button", { name: "Connect" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("shows the remote-development-environment notice on the payments step", () => {
+    mockGetPublicEnvVar.mockImplementation((name: string) =>
+      name === "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT" ? "true" : "false"
+    );
+
+    renderPaymentsSetupStep({ setupPayments: vi.fn(async () => ({ url: "https://example.com" })) });
+
+    expect(screen.getByText("Payments setup is not available in remote development environments.")).toBeTruthy();
+  });
+
+  it("does not call setupPayments via Do Later in a remote development environment, even for a US project", async () => {
+    mockGetPublicEnvVar.mockImplementation((name: string) =>
+      name === "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT" ? "true" : "false"
+    );
+    const setStatus = vi.fn(async () => {});
+    const setupPayments = vi.fn(async () => ({ url: "https://example.com" }));
+
+    renderPaymentsSetupStep({ setupPayments, setStatus, selectedPaymentsCountry: "US" });
+
+    fireEvent.click(screen.getByText("Do Later"));
+
+    await waitFor(() => {
+      expect(setStatus).toHaveBeenCalledWith("welcome");
+    });
+    expect(setupPayments).not.toHaveBeenCalled();
   });
 });
