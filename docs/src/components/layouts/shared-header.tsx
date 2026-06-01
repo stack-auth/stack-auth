@@ -2,7 +2,7 @@
 import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import { type NavLink } from '@/lib/navigation-utils';
-import { UserButton, useUser } from '@stackframe/stack';
+import { UserButton, useUser } from '@hexclave/next';
 import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';

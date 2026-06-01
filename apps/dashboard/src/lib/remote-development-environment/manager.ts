@@ -351,7 +351,7 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
     return undefined;
   }
 
-  const { config, showOnboarding } = readConfigFile(configFilePath);
+  const { config, showOnboarding } = await readConfigFile(configFilePath);
   const configHash = sha256String(JSON.stringify({ config, showOnboarding, syncFormatVersion: CONFIG_SYNC_FORMAT_VERSION }));
   const app = createInternalApp(project.apiBaseUrl, state.anonymousRefreshToken);
   const user = await app.getUser({ or: "anonymous" });
@@ -637,7 +637,7 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       projectId: options.projectId,
       configFilePath,
     });
-    const currentConfig = readConfigFile(configFilePath).config;
+    const currentConfig = (await readConfigFile(configFilePath)).config;
     if (options.waitForSync === false) {
       writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
       scheduleSync(configFilePath);

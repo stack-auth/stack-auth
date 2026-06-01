@@ -27,7 +27,7 @@ export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
 
     ## Using the Hexclave CLI
 
-    The CLI (\`hexclave\`) is the fastest path for anything project-level. It is installed on demand via \`npx\` — no global install required. Every command below can be invoked as \`npx @hexclave/cli@latest <command>\`.
+    The CLI is the fastest path for anything project-level. It is installed on demand via \`npx\` — no global install required. Every command below can be invoked as \`npx @hexclave/cli@latest <command>\`.
 
     ${cliHelpPrompt}
 

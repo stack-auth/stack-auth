@@ -83,6 +83,7 @@
     "export-to-csv": "^1.4.0",
     "geist": "^1",
     "input-otp": "^1.4.1",
+    "jiti": "^2.4.2",
     "jose": "^6.1.3",
     "libsodium-wrappers": "^0.8.2",
     "lodash": "^4.17.21",

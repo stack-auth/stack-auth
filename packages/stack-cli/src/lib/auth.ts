@@ -120,11 +120,11 @@ export function resolveLocalEmulatorDashboardUrl(): string {
   return resolveLocalEmulatorUrl("STACK_EMULATOR_DASHBOARD_URL", emulatorDashboardPort());
 }
 
-// Per-phase budget for "absorb the race between `stack emulator start` and the
-// next CLI invocation". Applied independently to (a) waiting for the PCK file
-// to appear and (b) the sign-in retry loop, so the worst-case wall-clock is up
-// to ~2× this value when both phases hit the deadline. Override via
-// STACK_EMULATOR_READY_TIMEOUT_MS (in milliseconds).
+// Per-phase budget for waiting until the development environment is ready.
+// Applied independently to (a) waiting for the PCK file to appear and (b) the
+// sign-in retry loop, so the worst-case wall-clock is up to ~2× this value when
+// both phases hit the deadline. Override via STACK_EMULATOR_READY_TIMEOUT_MS
+// (in milliseconds).
 const DEFAULT_LOCAL_EMULATOR_READY_TIMEOUT_MS = 10_000;
 const LOCAL_EMULATOR_PER_REQUEST_TIMEOUT_MS = 5_000;
 
@@ -143,7 +143,7 @@ export function localEmulatorReadyTimeoutMs(): number {
 async function resolveLocalEmulatorInternalPck(timeoutMs: number): Promise<string> {
   const contents = await pollInternalPck(timeoutMs);
   if (contents === null) {
-    throw new AuthError(`Local emulator publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start the emulator with \`stack emulator start\`.`);
+    throw new AuthError(`Development environment publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start your development environment and try again.`);
   }
   return contents;
 }
@@ -193,7 +193,7 @@ async function localEmulatorSignInWithRetry(apiUrl: string, internalPck: string,
     }
     if (performance.now() >= deadline) {
       const message = lastError instanceof Error ? lastError.message : String(lastError);
-      throw new AuthError(`Cannot reach local emulator at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start it with \`stack emulator start\`.`);
+      throw new AuthError(`Cannot reach development environment at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start your development environment and try again.`);
     }
     const remaining = deadline - performance.now();
     await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
@@ -219,9 +219,9 @@ export async function resolveLocalEmulatorAuth(projectId: string): Promise<Proje
       body = await res.text();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+      throw new AuthError(`Development-environment sign-in failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the development environment is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
     }
-    throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+    throw new AuthError(`Development-environment sign-in failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the development environment is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
   }
 
   let data: unknown;
@@ -229,10 +229,10 @@ export async function resolveLocalEmulatorAuth(projectId: string): Promise<Proje
     data = await res.json();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new AuthError(`Local emulator sign-in returned a non-JSON response: ${message}.`);
+    throw new AuthError(`Development-environment sign-in returned a non-JSON response: ${message}.`);
   }
   if (data === null || typeof data !== "object" || typeof (data as { refresh_token?: unknown }).refresh_token !== "string") {
-    throw new AuthError("Local emulator sign-in response was missing a refresh token.");
+    throw new AuthError("Development-environment sign-in response was missing a refresh token.");
   }
   const refreshToken = (data as { refresh_token: string }).refresh_token;
 

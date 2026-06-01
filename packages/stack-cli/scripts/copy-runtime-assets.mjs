@@ -1,42 +1,22 @@
 #!/usr/bin/env node
-import { execFileSync } from "child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync } from "fs";
+import { cpSync, existsSync, readlinkSync, readdirSync, rmSync } from "fs";
 import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(__dirname, "..");
 const repoRoot = resolve(packageRoot, "../..");
-const qemuSrc = resolve(repoRoot, "docker/local-emulator/qemu");
-const envGenScript = resolve(repoRoot, "docker/local-emulator/generate-env-development.mjs");
-const envSrc = resolve(repoRoot, "docker/local-emulator/.env.development");
 const dashboardRoot = resolve(repoRoot, "apps/dashboard");
 const dashboardStandaloneSrc = join(dashboardRoot, ".next/standalone");
 const dashboardStaticSrc = join(dashboardRoot, ".next/static");
 const dashboardPublicSrc = join(dashboardRoot, "public");
 const distDir = join(packageRoot, "dist");
-const emulatorDist = join(distDir, "emulator");
 const dashboardDist = join(distDir, "dashboard");
 
 function assertExists(path, message) {
   if (!existsSync(path)) {
     throw new Error(message);
   }
-}
-
-function copyEmulatorAssets() {
-  execFileSync(process.execPath, [envGenScript], { stdio: "inherit" });
-
-  mkdirSync(emulatorDist, { recursive: true });
-
-  for (const name of ["run-emulator.sh", "common.sh", "cloud-init"]) {
-    cpSync(join(qemuSrc, name), join(emulatorDist, name), { recursive: true });
-  }
-
-  chmodSync(join(emulatorDist, "run-emulator.sh"), 0o755);
-  cpSync(envSrc, join(distDir, ".env.development"));
-
-  console.log(`Copied emulator assets into ${emulatorDist} (+ .env.development into ${distDir}).`);
 }
 
 function shouldCopyDashboardFile(path) {
@@ -111,5 +91,4 @@ function copyDashboardAssets() {
   console.log(`Copied dashboard standalone runtime into ${dashboardDist}.`);
 }
 
-copyEmulatorAssets();
 copyDashboardAssets();
