@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
       // Space-separated list of scopes to restrict the created session to (OAuth `scope`
       // convention). Omitted = unrestricted session. Access tokens minted from this session
       // carry these scopes and are gated by each endpoint's `requiredScopes`. See `scopes.ts`.
-      scope: yupString().optional(),
+      scope: yupString().optional().meta({ openapiField: { description: "Space-separated list of registered scopes to restrict the created session to (OAuth `scope` convention), e.g. `teams:read contact_channels:read`. Omitted means the session is unrestricted.", exampleValue: "teams:read contact_channels:read" } }),
     }).defined(),
   }),
   response: yupObject({

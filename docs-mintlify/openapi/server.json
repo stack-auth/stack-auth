@@ -7516,14 +7516,17 @@
                     "type": "boolean"
                   },
                   "scope": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "teams:read contact_channels:read",
+                    "description": "Space-separated list of registered scopes to restrict the created session to (OAuth `scope` convention), e.g. `teams:read contact_channels:read`. Omitted means the session is unrestricted."
                   }
                 },
                 "required": [
                   "user_id"
                 ],
                 "example": {
-                  "user_id": "3241a285-8329-4d69-8f3d-316e08cf140c"
+                  "user_id": "3241a285-8329-4d69-8f3d-316e08cf140c",
+                  "scope": "teams:read contact_channels:read"
                 }
               }
             }
