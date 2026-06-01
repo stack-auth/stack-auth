@@ -1425,7 +1425,11 @@ async function loadAnalyticsOverview(
           ORDER BY hour ASC
         `,
         query_params: {
-          hourlySince: formatClickhouseDateTimeParam(new Date(now.getTime() - 23 * 60 * 60 * 1000)),
+          hourlySince: formatClickhouseDateTimeParam((() => {
+            const latestHour = new Date(now);
+            latestHour.setUTCMinutes(0, 0, 0);
+            return new Date(latestHour.getTime() - 23 * 60 * 60 * 1000);
+          })()),
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
           projectId: tenancy.project.id,
