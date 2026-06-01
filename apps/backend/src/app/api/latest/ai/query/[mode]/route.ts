@@ -9,12 +9,12 @@ import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Json } from "@stackframe/stack-shared/dist/utils/json";
+import { validateImageAttachments } from "@hexclave/shared/dist/ai/image-limits";
+import { ChatContent } from "@hexclave/shared/dist/interface/admin-interface";
+import { yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { Json } from "@hexclave/shared/dist/utils/json";
 import { generateText, stepCountIs, streamText, type ModelMessage } from "ai";
 
 export const POST = createSmartRouteHandler({

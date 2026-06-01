@@ -1,5 +1,5 @@
 'use client';
-import { UserButton } from '@stackframe/stack';
+import { UserButton } from '@hexclave/next';
 
 export default function Page() {
   return (

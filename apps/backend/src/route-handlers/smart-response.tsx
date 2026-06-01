@@ -1,8 +1,8 @@
-import { yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import { yupValidate } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { Json } from "@hexclave/shared/dist/utils/json";
+import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
+import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 import "../polyfills";

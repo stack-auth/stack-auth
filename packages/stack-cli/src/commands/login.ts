@@ -1,4 +1,4 @@
-import { StackClientApp } from "@stackframe/js";
+import { StackClientApp } from "@hexclave/js";
 import { Command } from "commander";
 import { DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { readConfigValue, removeConfigValue, writeConfigValue } from "../lib/config.js";

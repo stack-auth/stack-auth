@@ -1,6 +1,6 @@
 "use client";
 import { getPublicEnvVar } from "@/lib/env";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { useTheme } from "@/lib/theme";

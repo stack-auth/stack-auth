@@ -20,12 +20,12 @@ import {
 import { listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { computeFirstResponseDueAt, computeNextResponseDueAt, DEFAULT_SUPPORT_SLA } from "@stackframe/stack-shared/dist/helpers/support-sla";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { yupArray, yupMixed, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { KnownErrors } from "@hexclave/shared";
+import { computeFirstResponseDueAt, computeNextResponseDueAt, DEFAULT_SUPPORT_SLA } from "@hexclave/shared/dist/helpers/support-sla";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { yupArray, yupMixed, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 
 const tagsSchema = yupArray(yupString().defined()).defined();
 const attachmentsSchema = yupArray(yupMixed().defined()).defined();

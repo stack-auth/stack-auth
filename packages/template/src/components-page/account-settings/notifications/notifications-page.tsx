@@ -1,8 +1,8 @@
 import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
-import { Switch } from "@stackframe/stack-ui";
-import { Separator, Typography } from "@stackframe/stack-ui";
+import { Switch } from "@hexclave/ui";
+import { Separator, Typography } from "@hexclave/ui";
 
 
 export function NotificationsPage() {

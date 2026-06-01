@@ -1,7 +1,7 @@
 'use client';
 
 
-// import { SignIn } from "@stackframe/stack";
+// import { SignIn } from "@hexclave/next";
 
 // export default function DefaultSignIn() {
 //   return <SignIn fullPage />;
@@ -10,7 +10,7 @@
 // --------------------------------------------
 
 
-// import { useStackApp } from "@stackframe/stack";
+// import { useStackApp } from "@hexclave/next";
 
 // export default function CustomOAuthSignIn() {
 //   const app = useStackApp();
@@ -28,7 +28,7 @@
 
 // --------------------------------------------
 
-// import { useStackApp } from "@stackframe/stack";
+// import { useStackApp } from "@hexclave/next";
 // import { useState } from "react";
 
 // export default function CustomCredentialSignIn() {
@@ -63,7 +63,7 @@
 // --------------------------------------------
 
 
-import { useStackApp } from "@stackframe/stack";
+import { useStackApp } from "@hexclave/next";
 import { useState } from "react";
 
 export default function CustomCredentialSignIn() {

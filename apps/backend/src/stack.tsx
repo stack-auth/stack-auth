@@ -1,5 +1,5 @@
-import { StackServerApp } from '@stackframe/stack';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
+import { StackServerApp } from '@hexclave/next';
+import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 
 export function getStackServerApp() {
   // Fail fast if the backend self-URL env var is missing — without it the SDK

@@ -1,9 +1,9 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { Spinner, Typography } from "@/components/ui";
 import { Archive, ArrowBendUpLeft, ArrowBendUpRight, ArrowLeft, CaretDown, DotsThreeVertical, Envelope, List, MagnifyingGlass, Pencil, Star, Trash } from "@phosphor-icons/react";
-import { KnownErrors } from "@stackframe/stack-shared";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { KnownErrors } from "@hexclave/shared";
+import type { EditableMetadata } from "@hexclave/shared/dist/utils/jsx-editable-transpiler";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Component, Fragment, ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { useDebounce } from 'use-debounce';
 import ResizableContainer from './resizable-container';

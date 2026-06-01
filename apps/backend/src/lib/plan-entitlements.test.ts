@@ -1,5 +1,5 @@
 import type { PrismaClientTransaction } from "@/prisma-client";
-import { ITEM_IDS, PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
+import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   arePlanLimitsEnforced,

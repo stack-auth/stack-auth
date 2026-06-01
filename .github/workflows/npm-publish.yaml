@@ -68,7 +68,7 @@ jobs:
           CHANGESET_FILE=".changeset/update-package-versions-${GITHUB_RUN_ID}.md"
           cat > "$CHANGESET_FILE" <<'EOF'
           ---
-          "@stackframe/stack": patch
+          "@hexclave/next": patch
           ---
 
           Update package versions.

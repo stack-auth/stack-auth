@@ -1,7 +1,7 @@
 'use client';
 
 import { WarningCircle } from '@phosphor-icons/react';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
 // eslint-disable-next-line no-restricted-imports
 import { useRouter as useNextRouter } from 'next/navigation';
 import React from 'react';

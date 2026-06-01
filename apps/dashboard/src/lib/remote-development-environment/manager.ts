@@ -2,13 +2,13 @@ import "server-only";
 
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { AdminOwnedProject, StackClientApp } from "@stackframe/stack";
-import { Config, override } from "@stackframe/stack-shared/dist/config/format";
-import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
-import { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
-import { AccessToken } from "@stackframe/stack-shared/dist/sessions";
-import { errorToNiceString } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminOwnedProject, StackClientApp } from "@hexclave/next";
+import { Config, override } from "@hexclave/shared/dist/config/format";
+import { DEFAULT_EMAIL_THEME_ID } from "@hexclave/shared/dist/helpers/emails";
+import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+import { AccessToken } from "@hexclave/shared/dist/sessions";
+import { errorToNiceString } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { watch, type FSWatcher } from "fs";
 import { basename, dirname } from "path";
@@ -351,7 +351,7 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
     return undefined;
   }
 
-  const { config, showOnboarding } = readConfigFile(configFilePath);
+  const { config, showOnboarding } = await readConfigFile(configFilePath);
   const configHash = sha256String(JSON.stringify({ config, showOnboarding, syncFormatVersion: CONFIG_SYNC_FORMAT_VERSION }));
   const app = createInternalApp(project.apiBaseUrl, state.anonymousRefreshToken);
   const user = await app.getUser({ or: "anonymous" });
@@ -637,7 +637,7 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       projectId: options.projectId,
       configFilePath,
     });
-    const currentConfig = readConfigFile(configFilePath).config;
+    const currentConfig = (await readConfigFile(configFilePath)).config;
     if (options.waitForSync === false) {
       writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
       scheduleSync(configFilePath);

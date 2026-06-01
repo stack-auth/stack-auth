@@ -115,6 +115,56 @@ it("should be able to fetch the inner callback URL by following the OAuth provid
   expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
 });
 
+it("sends the original (default) redirect_uri for a provider configured before customCallbackUrl existed, and the configured one when set", async ({ expect }) => {
+  // Simulate an "old customer": a standard provider whose stored config predates
+  // this feature and therefore has no customCallbackUrl. Alongside it, a provider
+  // that opted into the new behavior with an explicit (different-brand) callback.
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    "auth.oauth.providers.github": {
+      type: "github",
+      isShared: false,
+      clientId: "legacy-client-id",
+      clientSecret: "legacy-client-secret",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+    "auth.oauth.providers.spotify": {
+      type: "spotify",
+      isShared: false,
+      clientId: "new-client-id",
+      clientSecret: "new-client-secret",
+      customCallbackUrl: "https://api.hexclave.com/api/v1/auth/oauth/callback/spotify",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+
+  // The redirect_uri we hand the provider is carried as a query param on the
+  // authorize redirect; read it without following the redirect to the provider.
+  const redirectUriFor = async (provider: string) => {
+    const response = await niceBackendFetch(`/api/v1/auth/oauth/authorize/${provider}`, {
+      redirect: "manual",
+      query: await Auth.OAuth.getAuthorizeQuery(),
+    });
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    return new URL(location!).searchParams.get("redirect_uri");
+  };
+
+  // Old customer: still gets the default deployment callback (locally the
+  // localhost API URL) — exactly what they already registered with the provider,
+  // and NOT the new hexclave-branded URL.
+  const githubRedirectUri = await redirectUriFor("github");
+  expect(new URL(githubRedirectUri!).origin).toBe(localhostUrl("02"));
+  expect(new URL(githubRedirectUri!).pathname).toBe("/api/v1/auth/oauth/callback/github");
+  expect(githubRedirectUri).not.toBe("https://api.hexclave.com/api/v1/auth/oauth/callback/github");
+
+  // Provider that opted in: the configured customCallbackUrl is sent verbatim.
+  expect(await redirectUriFor("spotify")).toBe("https://api.hexclave.com/api/v1/auth/oauth/callback/spotify");
+});
+
 it("should fail if an invalid client_id is provided", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     redirect: "manual",

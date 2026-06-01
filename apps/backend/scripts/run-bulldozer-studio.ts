@@ -1,6 +1,6 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { deindent, stringCompare } from "@hexclave/shared/dist/utils/strings";
 import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
 import { performance } from "node:perf_hooks";

@@ -1,7 +1,7 @@
 "use client";
 
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
-import { cn } from "@stackframe/stack-ui";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
+import { cn } from "@hexclave/ui";
 import React from "react";
 
 /**

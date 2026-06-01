@@ -1,7 +1,7 @@
 import { yupResolver } from "@hookform/resolvers/yup";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input } from "@stackframe/stack-ui";
+import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Input } from "@hexclave/ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";

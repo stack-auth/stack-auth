@@ -3,14 +3,14 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { ActionCell, ActionDialog, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
-import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { branchPaymentsSchema } from "@hexclave/shared/dist/config/schema";
+import { typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useState } from "react";
 import * as yup from "yup";
 

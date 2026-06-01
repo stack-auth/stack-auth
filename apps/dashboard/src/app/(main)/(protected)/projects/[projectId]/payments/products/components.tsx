@@ -11,7 +11,7 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { useState } from "react";
 import { DEFAULT_INTERVAL_UNITS } from "./utils";
 

@@ -1,7 +1,7 @@
 import { StyleLink } from '@/components/style-link';
 import { cn } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GeistMono } from "geist/font/mono";

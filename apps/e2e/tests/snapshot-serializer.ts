@@ -1,7 +1,7 @@
-import { isApiKey, parseProjectApiKey } from "@stackframe/stack-shared/dist/utils/api-keys";
-import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { isApiKey, parseProjectApiKey } from "@hexclave/shared/dist/utils/api-keys";
+import { typedIncludes } from "@hexclave/shared/dist/utils/arrays";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
 import { SnapshotSerializer } from "vitest";
 import { getPortPrefix } from "./helpers/ports";
 

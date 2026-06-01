@@ -1,4 +1,4 @@
-import { StackClientApp } from "@stackframe/stack";
+import { StackClientApp } from "@hexclave/next";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const PLACEHOLDER = "REPLACE_ME";

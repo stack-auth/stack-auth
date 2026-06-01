@@ -1,6 +1,6 @@
 import { Attributes, AttributeValue, Span, trace } from "@opentelemetry/api";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 const tracer = trace.getTracer('stack-backend');
 

@@ -1,9 +1,9 @@
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, emailSchema, urlSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { usersCrudHandlers } from "../../../users/crud";
 import { resetPasswordVerificationCodeHandler } from "../reset/verification-code-handler";
 

@@ -1,4 +1,4 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 
 export function constructRedirectUrl(redirectUrl: URL | string | undefined, callbackUrlName: string) {

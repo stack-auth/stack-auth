@@ -9,7 +9,7 @@ import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { getPublicEnvVar } from "@/lib/env";
 import { ArrowRightIcon, ArrowsClockwiseIcon, ChartBarIcon, FlaskIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { usePathname } from "next/navigation";
 import { useState } from "react";

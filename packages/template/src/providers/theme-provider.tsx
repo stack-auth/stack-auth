@@ -1,7 +1,7 @@
 'use client';
 
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { TooltipProvider } from "@stackframe/stack-ui";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
+import { TooltipProvider } from "@hexclave/ui";
 import Color from "color";
 import React from "react";
 import { globalCSS } from "../generated/global-css";

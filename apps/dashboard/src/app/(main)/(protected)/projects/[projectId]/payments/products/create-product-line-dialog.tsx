@@ -8,8 +8,8 @@ import {
 } from "@/components/design-components";
 import { Label, SimpleTooltip, Typography } from "@/components/ui";
 import { FolderOpenIcon } from "@phosphor-icons/react";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 
 // Helper to convert display name to ID format

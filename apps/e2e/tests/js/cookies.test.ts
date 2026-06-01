@@ -1,5 +1,5 @@
-import { StackClientApp } from "@stackframe/js";
-import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { StackClientApp } from "@hexclave/js";
+import { encodeBase32 } from "@hexclave/shared/dist/utils/bytes";
 import { TextEncoder } from "util";
 import { vi } from "vitest";
 import { SDK_BASE_URL } from "../helpers";

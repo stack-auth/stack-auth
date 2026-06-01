@@ -1,7 +1,7 @@
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrCreateFeaturebaseUser as getOrCreateFeaturebaseUserShared, StackAuthUser } from "@stackframe/stack-shared/dist/utils/featurebase";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getOrCreateFeaturebaseUser as getOrCreateFeaturebaseUserShared, StackAuthUser } from "@hexclave/shared/dist/utils/featurebase";
 
 export function getFeaturebaseApiKey(): string {
   return getEnvVariable("STACK_FEATUREBASE_API_KEY", "");

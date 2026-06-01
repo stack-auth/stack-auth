@@ -1,5 +1,5 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export async function getOwnedConversation(conversationId: string, userId: string) {
   const conversation = await globalPrismaClient.aiConversation.findUnique({

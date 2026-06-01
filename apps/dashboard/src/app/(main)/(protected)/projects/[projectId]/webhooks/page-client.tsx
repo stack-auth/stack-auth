@@ -5,7 +5,7 @@ import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { DesignAlert, DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { getPublicEnvVar } from '@/lib/env';
-import { urlSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { urlSchema } from "@hexclave/shared/dist/schema-fields";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { ActionCell, ActionDialog, Form, Typography } from "@/components/ui";
 import { useMemo, useState } from "react";
@@ -16,7 +16,7 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { getSvixResult } from "./utils";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useTheme } from "@/lib/theme";
 import { GlobeHemisphereWestIcon } from "@phosphor-icons/react";
 import "svix-react/style.css";
@@ -25,7 +25,7 @@ import {
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 
 
 export default function PageClient() {

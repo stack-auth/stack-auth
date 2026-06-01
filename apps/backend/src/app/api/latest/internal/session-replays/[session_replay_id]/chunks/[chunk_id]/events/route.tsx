@@ -1,9 +1,9 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { downloadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { promisify } from "node:util";
 import { gunzip as gunzipCb } from "node:zlib";
 

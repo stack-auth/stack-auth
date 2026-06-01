@@ -29,11 +29,11 @@ import {
   WarningCircleIcon,
   WebhooksLogoIcon,
 } from "@phosphor-icons/react";
-import { AdminOwnedProject, AuthPage } from "@stackframe/stack";
-import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { type EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminOwnedProject, AuthPage } from "@hexclave/next";
+import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {

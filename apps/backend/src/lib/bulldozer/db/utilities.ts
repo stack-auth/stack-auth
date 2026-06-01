@@ -1,5 +1,5 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { templateIdentity } from "@hexclave/shared/dist/utils/strings";
 
 const sqlTemplateLiteral = <T>(type: T) => (strings: TemplateStringsArray, ...values: { sql: string }[]) => ({ type, sql: templateIdentity(strings, ...values.map(v => v.sql)) });
 

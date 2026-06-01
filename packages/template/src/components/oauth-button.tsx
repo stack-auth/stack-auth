@@ -1,6 +1,6 @@
 'use client';
 
-import { BrandIcons, Button, SimpleTooltip } from '@stackframe/stack-ui';
+import { BrandIcons, Button, SimpleTooltip } from '@hexclave/ui';
 import Color, { ColorInstance } from 'color';
 import { useEffect, useId, useState } from 'react';
 import { useStackApp } from '../lib/hooks';

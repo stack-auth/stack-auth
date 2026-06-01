@@ -1,9 +1,9 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { getActiveEmailTheme, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 
 export const PATCH = createSmartRouteHandler({

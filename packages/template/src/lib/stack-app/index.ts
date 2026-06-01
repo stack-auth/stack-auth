@@ -5,7 +5,7 @@ export {
 } from "./apps";
 
 // Legacy Stack* aliases — same runtime symbols, kept for backwards compatibility.
-// Prefer the Hexclave* equivalents in new code. See RENAME-TO-HEXCLAVE.md (Tier 1).
+// Prefer the Hexclave* equivalents in new code.
 // The @deprecated JSDoc lives on the original declarations in ./apps/interfaces/*.ts
 // so it survives dts bundling (per-specifier JSDoc on re-exports does not).
 export { StackAdminApp } from "./apps";

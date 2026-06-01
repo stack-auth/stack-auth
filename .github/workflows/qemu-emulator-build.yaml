@@ -149,12 +149,12 @@ jobs:
         if: matrix.arch == 'amd64'
         run: |
           # Turbo's task graph for stack-cli#build includes
-          # @stackframe/dashboard#build:rde-standalone, which transitively
-          # depends on @stackframe/stack#build (via dashboard → stack).
+          # @hexclave/dashboard#build:rde-standalone, which transitively
+          # depends on @hexclave/next#build (via dashboard → stack).
           # The pnpm filter must cover the dashboard dep tree too so that
           # devDependencies like tailwindcss are installed for the build.
-          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...' --filter '@stackframe/dashboard...'
-          pnpm exec turbo run build --filter='@stackframe/stack-cli...'
+          pnpm install --frozen-lockfile --filter '@hexclave/cli...' --filter '@hexclave/dashboard...'
+          pnpm exec turbo run build --filter='@hexclave/cli...'
 
       - name: Start emulator and verify
         if: matrix.arch == 'amd64'
@@ -270,8 +270,8 @@ jobs:
       - name: Install stack-cli deps + build
         run: |
           # See "Build stack-cli" step comment for why dashboard filter is needed
-          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...' --filter '@stackframe/dashboard...'
-          pnpm exec turbo run build --filter='@stackframe/stack-cli...'
+          pnpm install --frozen-lockfile --filter '@hexclave/cli...' --filter '@hexclave/dashboard...'
+          pnpm exec turbo run build --filter='@hexclave/cli...'
 
       - name: Download built image
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

@@ -86,15 +86,15 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/backend#build": {
+    "@hexclave/backend#build": {
       "dependsOn": [
         "codegen"
       ]
     },
-    "@stackframe/stack-cli#build": {
+    "@hexclave/cli#build": {
       "dependsOn": [
         "^build",
-        "@stackframe/dashboard#build:rde-standalone"
+        "@hexclave/dashboard#build:rde-standalone"
       ],
       "outputs": [
         "dist/**"

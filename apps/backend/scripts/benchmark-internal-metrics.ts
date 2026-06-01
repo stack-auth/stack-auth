@@ -33,7 +33,7 @@
  * Seeds synthetic events under a unique project_id so real data is never
  * touched; cleans up via ALTER TABLE ... DELETE on exit.
  *
- * Run: pnpm --filter @stackframe/backend run with-env:dev tsx scripts/benchmark-internal-metrics.ts
+ * Run: pnpm --filter @hexclave/backend run with-env:dev tsx scripts/benchmark-internal-metrics.ts
  * Env knobs:
  *   BENCH_USERS           (default 200_000) – distinct users in the perf seed
  *   BENCH_EVENTS_USER     (default 5)       – $token-refresh events per user
@@ -49,7 +49,7 @@
  */
 
 import { getClickhouseAdminClient, getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { randomUUID } from "node:crypto";
 
 const RUN_ID = randomUUID();

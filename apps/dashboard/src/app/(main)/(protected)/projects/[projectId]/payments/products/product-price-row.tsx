@@ -11,7 +11,7 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { InfoIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { useEffect, useState } from "react";
 import { IntervalPopover } from "./components";
 import { buildPriceUpdate, DEFAULT_INTERVAL_UNITS, freeTrialLabel, getPriceCheckoutError, intervalLabel, PRICE_INTERVAL_UNITS, Product } from "./utils";

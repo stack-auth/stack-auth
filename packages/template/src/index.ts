@@ -1,16 +1,10 @@
-// Side-effect import — fires once-per-process @stackframe/* deprecation warning at SDK load time.
-// In packages published as @hexclave/*, scripts/rewrite-packages-to-hexclave.ts rewrites the
-// build-time sentinel inside dist/ (`js @stackframe/<pkg>@<ver>` → `js @hexclave/<new>@<ver>`),
-// so the @stackframe/-prefixed check in deprecation-warning.ts short-circuits there.
-import "./internal/deprecation-warning";
-
 export * from './lib/stack-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
 // Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the original
-// declarations in @stackframe/stack-shared/config so it survives dts bundling
+// declarations in @hexclave/shared/config so it survives dts bundling
 // (per-specifier JSDoc on re-exports does not).
-export type { HexclaveConfig, StackConfig } from "@stackframe/stack-shared/config";
-export { defineHexclaveConfig, defineStackConfig } from "@stackframe/stack-shared/config";
+export type { HexclaveConfig, StackConfig } from "@hexclave/shared/config";
+export { defineHexclaveConfig, defineStackConfig } from "@hexclave/shared/config";
 
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";

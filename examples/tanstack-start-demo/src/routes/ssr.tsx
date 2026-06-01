@@ -1,4 +1,4 @@
-import { useUser } from "@stackframe/tanstack-start";
+import { useUser } from "@hexclave/tanstack-start";
 import { createFileRoute } from "@tanstack/react-router";
 import { AuthDemoCard } from "~/components/auth-demo-card";
 
@@ -6,7 +6,7 @@ export const Route = createFileRoute("/ssr")({
   component: SsrAuthDemoPage,
 });
 
-const ssrSnippet = `import { useUser } from "@stackframe/tanstack-start";
+const ssrSnippet = `import { useUser } from "@hexclave/tanstack-start";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/ssr")({

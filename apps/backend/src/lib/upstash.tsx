@@ -1,6 +1,6 @@
 import { SmartRequest } from "@/route-handlers/smart-request";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { Client, Receiver } from "@upstash/qstash";
 
 export const upstash = new Client({

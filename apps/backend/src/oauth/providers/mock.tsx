@@ -1,4 +1,4 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
@@ -9,10 +9,10 @@ export class MockProvider extends OAuthBaseProvider {
     super(...args);
   }
 
-  static async create(providerId: string, options: { apiUrl: string }) {
+  static async create(providerId: string, options: { redirectUri: string }) {
     return new MockProvider(...await OAuthBaseProvider.createConstructorArgs({
       discoverFromUrl: getEnvVariable("STACK_OAUTH_MOCK_URL"),
-      redirectUri: `${options.apiUrl}/api/v1/auth/oauth/callback/${providerId}`,
+      redirectUri: options.redirectUri,
       baseScope: "openid offline_access",
       openid: true,
       clientId: providerId,

@@ -1,14 +1,14 @@
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createGlobal, getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
-import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { ReactPromise, runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { Store } from "@stackframe/stack-shared/dist/utils/stores";
-import { getDefaultApiUrls } from "@stackframe/stack-shared/dist/utils/urls";
+import { InternalSession } from "@hexclave/shared/dist/sessions";
+import { AsyncCache } from "@hexclave/shared/dist/utils/caches";
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, captureError, concatStacktraces, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createGlobal, getGlobal } from "@hexclave/shared/dist/utils/globals";
+import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
+import { ReactPromise, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { Store } from "@hexclave/shared/dist/utils/stores";
+import { getDefaultApiUrls } from "@hexclave/shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { envVars } from "../../../env";
 import { HandlerUrlOptions, ResolvedHandlerUrls, stackAppInternalsSymbol } from "../../common";
@@ -123,20 +123,13 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
 
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
-// Hexclave rebrand: the last published `@stackframe/*` package version stays
-// pointed at `api.stack-auth.com` so that customers who upgrade their legacy
-// SDK without explicitly migrating to `@hexclave/*` keep receiving JWTs with
-// the stack-auth issuer and continue using their existing OAuth callback URL
-// registrations. The `@hexclave/*` mirror packages are republished from this
-// same source with these literals rewritten by
-// `scripts/rewrite-packages-to-hexclave.ts` (wiring lands in a follow-up PR),
-// so the new-brand SDK defaults to `api.hexclave.com` end-to-end.
-export const defaultBaseUrl = "https://api.stack-auth.com";
-export const defaultAnalyticsBaseUrl = "https://r.stack-auth.com";
+
+export const defaultBaseUrl = "https://api.hexclave.com";
+export const defaultAnalyticsBaseUrl = "https://r.hexclave.com";
 
 const analyticsBaseUrlsByApiBaseUrl = new Map<string, string>([
   [defaultBaseUrl, defaultAnalyticsBaseUrl],
-  ["https://api.hexclave.com", "https://r.hexclave.com"], // hexclave-branded host (forward compat)
+  ["https://api.stack-auth.com", "https://r.stack-auth.com"],
 ]);
 
 export function getAnalyticsBaseUrl(regularBaseUrl: string): string {

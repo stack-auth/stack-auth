@@ -1,1 +1,1 @@
-export * from "@stackframe/stack-shared/dist/interface/conversations";
+export * from "@hexclave/shared/dist/interface/conversations";
