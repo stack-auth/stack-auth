@@ -1,5 +1,5 @@
 import { getPublicEnvVar } from "@/lib/env";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export function getInternalProjectHeaders(options: {
   accessToken: string | null,

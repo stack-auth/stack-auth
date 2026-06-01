@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@stackframe/stack-ui";
+import { Avatar, AvatarFallback, AvatarImage } from "@hexclave/ui";
 import { UserRound } from "lucide-react";
 
 const defaultSize = 34;

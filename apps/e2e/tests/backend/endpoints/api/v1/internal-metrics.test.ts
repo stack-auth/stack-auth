@@ -1,5 +1,5 @@
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";

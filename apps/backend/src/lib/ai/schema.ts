@@ -1,4 +1,4 @@
-import { yupArray, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupArray, yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { ModelMessage } from "ai";
 import { InferType } from "yup";
 import { MODEL_QUALITIES, MODEL_SPEEDS } from "./models";

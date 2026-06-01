@@ -8,9 +8,9 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Typography }
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Plus, Trash } from "@phosphor-icons/react";
-import { DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useRef, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";

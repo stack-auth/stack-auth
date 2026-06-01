@@ -1,4 +1,4 @@
-import { branchConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings } from "@stackframe/stack-shared/dist/config/schema";
+import { branchConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings } from "@hexclave/shared/dist/config/schema";
 import { describe, expect, it } from "vitest";
 import { buildDummyPaymentsSetup } from "./seed-dummy-data";
 

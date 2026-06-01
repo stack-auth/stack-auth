@@ -1,7 +1,8 @@
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { createAuthTokens } from "@/lib/tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { usersCrudHandlers } from "../../users/crud";
 import { sessionsCrudHandlers } from "./crud";
 
@@ -30,7 +31,7 @@ export const POST = createSmartRouteHandler({
       access_token: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy }, body: { user_id: userId, expires_in_millis: expiresInMillis, is_impersonation: isImpersonation } }) {
+  async handler({ auth: { tenancy }, body: { user_id: userId, expires_in_millis: expiresInMillis, is_impersonation: isImpersonation } }, fullReq) {
     let user;
     try {
       user = await usersCrudHandlers.adminRead({
@@ -52,6 +53,7 @@ export const POST = createSmartRouteHandler({
       projectUserId: user.id,
       expiresAt: new Date(Date.now() + expiresInMillis),
       isImpersonation: isImpersonation,
+      apiUrl: getApiUrlForRequest(fullReq),
     });
 
     return {

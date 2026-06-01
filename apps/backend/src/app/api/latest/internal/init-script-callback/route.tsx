@@ -1,8 +1,8 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
-import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { InferType } from "yup";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const STACK_TRACE_MAX_LENGTH = 4000;
 const MESSAGE_PREFIX = "_".repeat(50);

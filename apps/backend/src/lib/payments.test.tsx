@@ -1,4 +1,4 @@
-import { KnownErrors } from '@stackframe/stack-shared';
+import { KnownErrors } from '@hexclave/shared';
 import { describe, expect, it } from 'vitest';
 import { validatePurchaseSession } from './payments';
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";

@@ -1,9 +1,9 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { ClickHouseError } from "@clickhouse/client";
-import { UserActivityResponseBodySchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { UserActivityResponseBodySchema } from "@hexclave/shared/dist/interface/admin-metrics";
+import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
 // Per-user activity heatmap window. Sized to match the 22×16 dashboard grid
 // so every cell maps to exactly one day and we never truncate or pad awkwardly

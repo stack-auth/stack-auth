@@ -2,15 +2,15 @@
 
 import { ApiKeySet, Prisma } from '@/generated/prisma/client';
 import { RawQuery, globalPrismaClient, rawQuery } from '@/prisma-client';
-import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/internal-api-keys';
-import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
-import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
-import { KnownError, KnownErrors } from '@stackframe/stack-shared/dist/known-errors';
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { publishableClientKeyNotNecessarySentinel } from '@stackframe/stack-shared/dist/utils/oauth';
-import { Result } from '@stackframe/stack-shared/dist/utils/results';
-import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { InternalApiKeysCrud } from '@hexclave/shared/dist/interface/crud/internal-api-keys';
+import { yupString } from '@hexclave/shared/dist/schema-fields';
+import { typedIncludes } from '@hexclave/shared/dist/utils/arrays';
+import { generateSecureRandomString } from '@hexclave/shared/dist/utils/crypto';
+import { KnownError, KnownErrors } from '@hexclave/shared/dist/known-errors';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
+import { Result } from '@hexclave/shared/dist/utils/results';
+import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
 import { getRenderedProjectConfigQuery } from './config';
 
 export const publishableClientKeyHeaderSchema = yupString().matches(/^[a-zA-Z0-9_-]*$/);

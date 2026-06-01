@@ -1,8 +1,8 @@
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
 import type * as PrismaRuntime from "@prisma/client/runtime/client";
-import { CrudSchema, CrudTypeOf } from "@stackframe/stack-shared/dist/crud";
-import { typedAssign } from "@stackframe/stack-shared/dist/utils/objects";
+import { CrudSchema, CrudTypeOf } from "@hexclave/shared/dist/crud";
+import { typedAssign } from "@hexclave/shared/dist/utils/objects";
 import * as yup from "yup";
 import { CrudHandlers, ParamsSchema, QuerySchema, createCrudHandlers } from "./crud-handler";
 import { SmartRequestAuth } from "./smart-request";

@@ -1,4 +1,4 @@
-import { StackHandler } from "@stackframe/stack";
+import { StackHandler } from "@hexclave/next";
 import { stackServerApp } from "src/stack";
 
 export default function Handler(props) {

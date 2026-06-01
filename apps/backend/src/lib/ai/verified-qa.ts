@@ -1,5 +1,5 @@
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { getConnection } from "./mcp-logger";
 
 export async function getVerifiedQaContext(): Promise<string> {

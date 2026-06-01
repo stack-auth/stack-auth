@@ -1,12 +1,13 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { Prisma } from "@/generated/prisma/client";
 import { Tenancy } from "@/lib/tenancies";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { generateAccessTokenFromRefreshTokenIfValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import type { InferType } from "yup";
 
 type CliSessionState = "anonymous" | "none";
@@ -201,7 +202,7 @@ export const POST = createSmartRouteHandler<PostCliAuthCompleteRequest, PostCliA
   },
   request: postCliAuthCompleteRequestSchema,
   response: postCliAuthCompleteResponseSchema,
-  async handler({ auth: { tenancy }, body: { login_code, mode, refresh_token } }) {
+  async handler({ auth: { tenancy }, body: { login_code, mode, refresh_token } }, fullReq) {
     const cliAuth = await getPendingCliAuthAttempt(tenancy, login_code);
     const prisma = await getPrismaClientForTenancy(tenancy);
     const schema = await getPrismaSchemaForTenancy(tenancy);
@@ -243,6 +244,7 @@ export const POST = createSmartRouteHandler<PostCliAuthCompleteRequest, PostCliA
       const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
         tenancy,
         refreshTokenObj: cliAnonymousSession.refreshTokenObj,
+        apiUrl: getApiUrlForRequest(fullReq),
       });
 
       if (!accessToken) {

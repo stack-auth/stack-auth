@@ -1,4 +1,4 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe } from "vitest";

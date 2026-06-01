@@ -6,8 +6,8 @@ import { ActivitySplit } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { KnownErrors } from "@hexclave/shared";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import {
   type MetricsDataPoint,
   type MetricsRecentUser,
@@ -19,9 +19,9 @@ import {
   MetricsLoginMethodEntrySchema,
   MetricsPaymentsOverviewSchema,
   MetricsRecentUserSchema,
-} from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+} from "@hexclave/shared/dist/interface/admin-metrics";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = MetricsDataPoint[];

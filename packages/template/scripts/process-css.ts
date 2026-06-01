@@ -1,6 +1,6 @@
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
-import { replaceAll } from '@stackframe/stack-shared/dist/utils/strings';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { writeFileSyncIfChanged } from '@hexclave/shared/dist/utils/fs';
+import { replaceAll } from '@hexclave/shared/dist/utils/strings';
 import autoprefixer from 'autoprefixer';
 import * as fs from 'fs';
 import * as path from 'path';

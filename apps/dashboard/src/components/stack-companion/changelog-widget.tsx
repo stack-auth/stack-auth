@@ -3,8 +3,8 @@
 import { Button } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
 import { CalendarIcon, CaretDownIcon, CaretUpIcon, InfoIcon, XIcon } from '@phosphor-icons/react';
-import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { captureError } from '@hexclave/shared/dist/utils/errors';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

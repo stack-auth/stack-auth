@@ -1,4 +1,4 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import type { MailboxMessage } from "../../../../../../helpers";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, ProjectApiKey, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";

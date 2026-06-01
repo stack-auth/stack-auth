@@ -1,7 +1,7 @@
 'use client';
 
-import { useHash } from '@stackframe/stack-shared/dist/hooks/use-hash';
-import { Button, Typography, cn } from '@stackframe/stack-ui';
+import { useHash } from '@hexclave/shared/dist/hooks/use-hash';
+import { Button, Typography, cn } from '@hexclave/ui';
 import { XIcon } from 'lucide-react';
 import React, { ReactNode } from 'react';
 import { useStackApp } from '../..';

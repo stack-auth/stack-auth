@@ -7,7 +7,7 @@ import { type AppId } from "@/lib/apps-frontend";
 import { type MetricsNamedCount, type MetricsTopReferrer } from "@/lib/stack-app-internals";
 import { GlobeIcon } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const TOP_LIST_ANIMATION_MS = 260;

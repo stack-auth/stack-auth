@@ -1,8 +1,8 @@
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 import './polyfills';
 
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { wait } from '@stackframe/stack-shared/dist/utils/promises';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { wait } from '@hexclave/shared/dist/utils/promises';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -35,7 +35,7 @@ const corsAllowedResponseHeaders = [
 ];
 
 // Hexclave rebrand: every `x-stack-*` header is dual-accepted under its `x-hexclave-*` equivalent.
-// Derive the alias names so the CORS allowlists never drift. See RENAME-TO-HEXCLAVE.md (Tier 0).
+// Derive the alias names so the CORS allowlists never drift.
 function withHexclaveHeaderAliases(headers: string[]): string[] {
   return headers.flatMap((header) => header.startsWith('x-stack-')
     ? [header, `x-hexclave-${header.slice('x-stack-'.length)}`]
@@ -60,7 +60,7 @@ export async function proxy(request: NextRequest) {
 
   // Hexclave rebrand: dual-accept request headers — copy each `x-hexclave-*` onto its `x-stack-*`
   // equivalent so downstream API routes that read `x-stack-*` keep working unchanged. The new form
-  // wins when both are present. See RENAME-TO-HEXCLAVE.md (Tier 0, HTTP request headers).
+  // wins when both are present.
   const newRequestHeaders = new Headers(request.headers);
   for (const [name, value] of request.headers) {
     if (name.startsWith('x-hexclave-')) {

@@ -1,9 +1,9 @@
 import { processResendDomainWebhookEvent } from "@/lib/managed-email-onboarding";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { Webhook } from "svix";
 
 function decodeBody(bodyBuffer: ArrayBuffer) {

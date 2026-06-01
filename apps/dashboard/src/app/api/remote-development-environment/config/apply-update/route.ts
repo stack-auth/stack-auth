@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { applyRemoteDevelopmentEnvironmentConfigUpdate } from "@/lib/remote-development-environment/manager";
 import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-development-environment/route-json";
 import { assertRemoteDevelopmentEnvironmentBrowserRequest, assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
-import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
+import { isValidConfig } from "@hexclave/shared/dist/config/format";
 
 export const runtime = "nodejs";
 

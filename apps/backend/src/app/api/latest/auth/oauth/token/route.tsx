@@ -1,11 +1,12 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { getProjectBranchFromClientId, oauthServer } from "@/oauth";
+import { createOAuthServer, getProjectBranchFromClientId } from "@/oauth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as OAuthRequest, Response as OAuthResponse, ServerError } from "@node-oauth/oauth2-server";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { oauthResponseToSmartResponse } from "../oauth-helpers";
 
 export const POST = createSmartRouteHandler({
@@ -59,6 +60,7 @@ export const POST = createSmartRouteHandler({
 
 
     const oauthResponse = new OAuthResponse();
+    const oauthServer = createOAuthServer({ apiUrl: getApiUrlForRequest(fullReq) });
     try {
       await oauthServer.token(
         oauthRequest,

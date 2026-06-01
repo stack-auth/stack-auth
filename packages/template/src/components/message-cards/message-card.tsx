@@ -2,7 +2,7 @@
 
 import React from "react";
 import { MaybeFullPage } from "../elements/maybe-full-page";
-import { Button, Typography } from "@stackframe/stack-ui";
+import { Button, Typography } from "@hexclave/ui";
 
 export function MessageCard(
   { fullPage=false, ...props }:

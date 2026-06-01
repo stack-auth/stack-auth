@@ -4,7 +4,7 @@ import { getTenancy } from "@/lib/tenancies";
 import { ensureUpstashSignature } from "@/lib/upstash";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
-import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { traceSpan } from "@/utils/telemetry";
 
 export const POST = createSmartRouteHandler({

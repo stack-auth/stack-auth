@@ -1,4 +1,4 @@
-import { StackClientApp } from "@stackframe/tanstack-start";
+import { StackClientApp } from "@hexclave/tanstack-start";
 
 function getPortPrefix(): string {
   return import.meta.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";

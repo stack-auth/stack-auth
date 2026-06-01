@@ -6,8 +6,8 @@ import {
   yupNumber,
   yupObject,
   yupString,
-} from "@stackframe/stack-shared/dist/schema-fields";
-import { KnownErrors } from "@stackframe/stack-shared";
+} from "@hexclave/shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
 import { getExternalDbSyncFusebox, updateExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 
 const fuseboxResponseSchema = yupObject({

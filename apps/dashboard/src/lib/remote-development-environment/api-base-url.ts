@@ -1,5 +1,5 @@
 import { getPublicEnvVar } from "@/lib/env";
-import { createUrlIfValid } from "@stackframe/stack-shared/dist/utils/urls";
+import { createUrlIfValid } from "@hexclave/shared/dist/utils/urls";
 
 const DEFAULT_REMOTE_DEVELOPMENT_ENVIRONMENT_API_BASE_URLS = [
   "https://api.hexclave.com",

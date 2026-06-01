@@ -1,8 +1,8 @@
 // IF_PLATFORM js-like
 
-import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/stack-app";
 import { envVars } from "../lib/env";
 import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";

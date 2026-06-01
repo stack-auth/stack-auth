@@ -4,10 +4,10 @@ import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
-import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@stackframe/stack";
-import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@hexclave/next";
+import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { createGithubFetch, GITHUB_SCOPE_REQUIREMENTS } from "./github-api";

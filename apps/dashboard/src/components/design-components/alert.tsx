@@ -1,2 +1,2 @@
-export { DesignAlert } from "@stackframe/dashboard-ui-components";
-export type { DesignAlertProps } from "@stackframe/dashboard-ui-components";
+export { DesignAlert } from "@hexclave/dashboard-ui-components";
+export type { DesignAlertProps } from "@hexclave/dashboard-ui-components";

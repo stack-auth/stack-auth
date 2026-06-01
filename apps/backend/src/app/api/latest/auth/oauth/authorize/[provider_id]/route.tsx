@@ -1,5 +1,6 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { botChallengeFlowRequestSchemaFields, getRequestContextAndBotChallengeAssessment } from "@/lib/turnstile";
@@ -7,10 +8,10 @@ import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
 import type { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
@@ -168,6 +169,11 @@ export const GET = createSmartRouteHandler({
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
           responseMode,
+          // Record the host that received /authorize so the callback can detect a
+          // legitimate cross-host landing (the redirect_uri/callback host is
+          // config-derived and may be a sibling brand) and not fail the
+          // host-scoped CSRF cookie check.
+          authorizeApiUrl: getApiUrlForRequest(fullReq),
         } satisfies InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },

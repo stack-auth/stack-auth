@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { cn, Spinner, Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from "@stackframe/stack-ui";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { cn, Spinner, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@hexclave/ui";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
 
 type DesignPillToggleSize = "sm" | "md" | "lg";
@@ -159,6 +160,7 @@ export function DesignPillToggle({
 
         const pill = (
           <button
+            type="button"
             key={option.id}
             ref={(element) => {
               if (element) {

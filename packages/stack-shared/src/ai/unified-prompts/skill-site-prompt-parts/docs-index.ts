@@ -1,9 +1,10 @@
-import docsJson from "../../../../../../docs-mintlify/docs.json";
+import docsJson from "./docs-json.generated";
 
 const DOCS_BASE = "https://docs.hexclave.com";
 
 type SidebarPage = string | SidebarGroup;
 type SidebarGroup = { group: string, root?: string, pages: SidebarPage[] };
+type DocsJson = { navigation?: { tabs?: readonly unknown[] } };
 
 const ACRONYMS = new Set(["api", "cli", "mcp", "sdk", "jwt", "jwts", "faq", "url", "ui", "ux", "rbac", "oauth", "saas", "ai"]);
 
@@ -61,7 +62,7 @@ function isSidebarPage(value: unknown): value is SidebarPage {
     && value.pages.every(isSidebarPage);
 }
 
-function buildDocsIndexPrompt(): string {
+export function buildDocsIndexPrompt(docsJson: DocsJson): string {
   const rawDocsJson: unknown = docsJson;
   const tabs = isRecord(rawDocsJson) && isRecord(rawDocsJson.navigation) && Array.isArray(rawDocsJson.navigation.tabs)
     ? rawDocsJson.navigation.tabs
@@ -73,4 +74,4 @@ function buildDocsIndexPrompt(): string {
   return renderSidebar(tab.pages).join("\n");
 }
 
-export const docsIndexPrompt = buildDocsIndexPrompt();
+export const docsIndexPrompt = buildDocsIndexPrompt(docsJson);

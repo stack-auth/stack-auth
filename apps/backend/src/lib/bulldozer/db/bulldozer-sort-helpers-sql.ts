@@ -1,4 +1,4 @@
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 
 export const BULLDOZER_SORT_HELPERS_SQL = deindent`
   CREATE TEMP TABLE IF NOT EXISTS pg_temp.bulldozer_side_effects (

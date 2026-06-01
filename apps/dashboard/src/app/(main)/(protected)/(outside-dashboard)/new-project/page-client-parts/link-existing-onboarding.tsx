@@ -10,11 +10,11 @@ import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { ActionDialog, Spinner, Typography, cn } from "@/components/ui";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { ArrowsClockwiseIcon, GithubLogoIcon, LinkBreakIcon, LockSimpleIcon, TerminalWindowIcon } from "@phosphor-icons/react";
-import { type AdminOwnedProject, type PushedConfigSource } from "@stackframe/stack";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { type AdminOwnedProject, type PushedConfigSource } from "@hexclave/next";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import sodium from "libsodium-wrappers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

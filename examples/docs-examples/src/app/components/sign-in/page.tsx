@@ -1,4 +1,4 @@
-import { SignIn } from '@stackframe/stack';
+import { SignIn } from '@hexclave/next';
 
 export default function Page() {
   return (

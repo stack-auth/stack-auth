@@ -5,9 +5,15 @@ export { parseStackConfigFileContent, renderConfigFileContent };
 
 /**
  * Packages that export the `StackConfig` type, in priority order.
- * The first match found in a project's dependencies wins.
+ * The first match found in a project's dependencies wins. Hexclave-branded
+ * packages come first (canonical); the legacy `@stackframe/*` names remain
+ * so projects pinned to the last legacy release still render a config file
+ * that compiles against their installed SDK.
  */
-const STACKFRAME_CONFIG_PACKAGES = [
+const CONFIG_IMPORT_PACKAGES = [
+  "@hexclave/next",
+  "@hexclave/react",
+  "@hexclave/js",
   "@stackframe/stack",
   "@stackframe/react",
   "@stackframe/js",
@@ -15,12 +21,12 @@ const STACKFRAME_CONFIG_PACKAGES = [
 ] as const;
 
 /**
- * Given a list of dependency names (from package.json), returns the
- * `@stackframe/*` package that should be used for the `StackConfig` import,
- * or `undefined` if none of the known packages are installed.
+ * Given a list of dependency names (from package.json), returns the SDK
+ * package that should be used for the `StackConfig` import, or `undefined`
+ * if none of the known packages are installed.
  */
-export function detectStackframeImportPackage(dependencies: string[]): string | undefined {
-  for (const pkg of STACKFRAME_CONFIG_PACKAGES) {
+export function detectConfigImportPackage(dependencies: string[]): string | undefined {
+  for (const pkg of CONFIG_IMPORT_PACKAGES) {
     if (dependencies.includes(pkg)) {
       return pkg;
     }
@@ -30,7 +36,7 @@ export function detectStackframeImportPackage(dependencies: string[]): string | 
 
 /**
  * Walks up from `dir` to find the nearest `package.json` and returns the
- * best `@stackframe/*` package to use for the `StackConfig` type import.
+ * best SDK package to use for the `StackConfig` type import.
  */
 export function detectImportPackageFromDir(dir: string): string | undefined {
   let current = dir;
@@ -43,7 +49,7 @@ export function detectImportPackageFromDir(dir: string): string | undefined {
           ...Object.keys(pkg.dependencies ?? {}),
           ...Object.keys(pkg.devDependencies ?? {}),
         ];
-        return detectStackframeImportPackage(deps);
+        return detectConfigImportPackage(deps);
       } catch {
         return undefined;
       }
@@ -73,7 +79,7 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
 
 import.meta.vitest?.test("parseStackConfigFileContent parses static config exports", ({ expect }) => {
   expect(parseStackConfigFileContent(`
-    import type { StackConfig } from "@stackframe/js";
+    import type { StackConfig } from "@hexclave/js";
     export const config: StackConfig = {
       auth: { allowSignUp: true },
       payments: { testMode: false },
@@ -112,20 +118,24 @@ import.meta.vitest?.test("renderConfigFileContent rejects invalid config exports
 });
 
 import.meta.vitest?.test("renderConfigFileContent uses custom import package", ({ expect }) => {
-  const content = renderConfigFileContent({}, "@stackframe/stack");
-  expect(content).toContain('import type { StackConfig } from "@stackframe/stack";');
+  const content = renderConfigFileContent({}, "@hexclave/next");
+  expect(content).toContain('import type { StackConfig } from "@hexclave/next";');
 });
 
-import.meta.vitest?.test("renderConfigFileContent defaults to @stackframe/js", ({ expect }) => {
+import.meta.vitest?.test("renderConfigFileContent defaults to @hexclave/js", ({ expect }) => {
   const content = renderConfigFileContent({});
-  expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
+  expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
 });
 
-import.meta.vitest?.test("detectStackframeImportPackage picks first matching package by priority", ({ expect }) => {
-  expect(detectStackframeImportPackage(["@stackframe/stack", "@stackframe/js"])).toBe("@stackframe/stack");
-  expect(detectStackframeImportPackage(["@stackframe/react", "@stackframe/js"])).toBe("@stackframe/react");
-  expect(detectStackframeImportPackage(["@stackframe/js"])).toBe("@stackframe/js");
-  expect(detectStackframeImportPackage(["@stackframe/template"])).toBe("@stackframe/template");
-  expect(detectStackframeImportPackage(["lodash", "express"])).toBeUndefined();
-  expect(detectStackframeImportPackage([])).toBeUndefined();
+import.meta.vitest?.test("detectConfigImportPackage picks first matching package by priority", ({ expect }) => {
+  expect(detectConfigImportPackage(["@hexclave/next", "@hexclave/js"])).toBe("@hexclave/next");
+  expect(detectConfigImportPackage(["@hexclave/react", "@hexclave/js"])).toBe("@hexclave/react");
+  expect(detectConfigImportPackage(["@hexclave/js"])).toBe("@hexclave/js");
+  // Hexclave names take priority over legacy stackframe names when both appear.
+  expect(detectConfigImportPackage(["@stackframe/stack", "@hexclave/next"])).toBe("@hexclave/next");
+  // Legacy fallback still works for projects pinned to the last @stackframe/* release.
+  expect(detectConfigImportPackage(["@stackframe/stack"])).toBe("@stackframe/stack");
+  expect(detectConfigImportPackage(["@stackframe/template"])).toBe("@stackframe/template");
+  expect(detectConfigImportPackage(["lodash", "express"])).toBeUndefined();
+  expect(detectConfigImportPackage([])).toBeUndefined();
 });

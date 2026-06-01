@@ -1,8 +1,8 @@
-import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
-import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
+import { ProductionModeError } from "@hexclave/shared/dist/helpers/production-mode";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 
-import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 

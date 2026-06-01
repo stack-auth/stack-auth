@@ -1,7 +1,7 @@
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { unsubscribeLinkVerificationCodeHandler } from "../app/api/latest/emails/unsubscribe-link/verification-handler";
 
 // For now, we only have two hardcoded notification categories. TODO: query from database instead and create UI to manage them in dashboard

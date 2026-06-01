@@ -1,11 +1,11 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { showOnboardingStackConfigValue } from "@stackframe/stack-shared/dist/config-authoring";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
-import { parseStackConfigFileContent } from "@stackframe/stack-shared/dist/stack-config-file";
-import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
-import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { parseStackConfigFileContent } from "@hexclave/shared/dist/stack-config-file";
+import { isValidConfig } from "@hexclave/shared/dist/config/format";
+import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import fs from "fs/promises";
 import path from "path";
 
@@ -127,7 +127,7 @@ export async function writeShowOnboardingConfigToFile(filePath: string): Promise
   } else {
     await fs.mkdir(dir, { recursive: true });
   }
-  const importPackage = detectImportPackageFromDir(dir) ?? "@stackframe/js";
+  const importPackage = detectImportPackageFromDir(dir) ?? "@hexclave/js";
   const content = `import type { StackConfig } from "${importPackage}";\n\nexport const config: StackConfig = "show-onboarding";\n`;
   await fs.writeFile(resolvedPath, content, "utf-8");
 }

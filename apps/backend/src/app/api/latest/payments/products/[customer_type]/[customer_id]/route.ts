@@ -2,12 +2,12 @@ import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrI
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownErrors } from "@hexclave/shared";
+import { customerProductsListResponseSchema } from "@hexclave/shared/dist/interface/crud/products";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 export const GET = createSmartRouteHandler({
   metadata: {

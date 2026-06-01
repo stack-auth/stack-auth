@@ -1,7 +1,7 @@
 "use client";
 
 import * as Sentry from "@sentry/nextjs";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { Suspense, useEffect } from "react";
 
 // ensure that the polyfills are loaded even on the client

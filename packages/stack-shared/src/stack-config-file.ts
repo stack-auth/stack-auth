@@ -4,7 +4,7 @@ import { isValidConfig, normalize } from "./config/format";
 
 export const showOnboardingStackConfigValue = "show-onboarding";
 
-const DEFAULT_CONFIG_IMPORT_PACKAGE = "@stackframe/js";
+const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
 
 /**
  * Renders a config object into the source text of a `stack.config.ts` file.

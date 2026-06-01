@@ -1,6 +1,6 @@
 import "server-only";
 
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const REMOTE_DEVELOPMENT_ENVIRONMENT_ENABLED_ENV = "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT";
 

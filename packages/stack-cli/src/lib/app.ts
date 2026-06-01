@@ -1,5 +1,5 @@
-import { StackClientApp } from "@stackframe/js";
-import type { CurrentInternalUser, AdminOwnedProject } from "@stackframe/js";
+import { StackClientApp } from "@hexclave/js";
+import type { CurrentInternalUser, AdminOwnedProject } from "@hexclave/js";
 import { AuthError } from "./errors.js";
 import type { SessionAuth, ProjectAuthWithRefreshToken } from "./auth.js";
 

@@ -39,9 +39,9 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
-import { useUser } from "@stackframe/stack";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { useUser } from "@hexclave/next";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { type ElementType, type ReactNode, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";

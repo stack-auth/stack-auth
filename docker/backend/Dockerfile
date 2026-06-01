@@ -32,7 +32,7 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # Only prune backend (no dashboard)
-RUN turbo prune --scope=@stackframe/backend --docker
+RUN turbo prune --scope=@hexclave/backend --docker
 
 
 # Build stage
@@ -55,7 +55,7 @@ COPY docs ./docs
 ENV NEXT_CONFIG_OUTPUT=standalone
 
 # Build backend only
-RUN pnpm turbo run docker-build --filter=@stackframe/backend...
+RUN pnpm turbo run docker-build --filter=@hexclave/backend...
 
 
 # Final image

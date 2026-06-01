@@ -1,7 +1,7 @@
 import { getStackServerApp } from "@/stack/server";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { getOrCreateFeaturebaseUser } from "@hexclave/shared/dist/utils/featurebase";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import * as jose from "jose";
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
