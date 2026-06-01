@@ -393,11 +393,6 @@ export function ProjectOnboardingWizard(props: {
   }, [isRemoteDevelopmentEnvironment, persistOnboardingState, props.project.app, runWithSaving, selectedPaymentsCountry, setStatus]);
 
   const connectPaymentsSetup = useCallback(async () => {
-    // Defense-in-depth: the Connect button is disabled in RDE (the primary guard
-    // at the JSX level). This early-return is the secondary guard so the handler
-    // is safe even if the button is ever engaged some other way — a future refactor
-    // dropping the `disabled` prop, DOM manipulation, programmatic invocation, etc.
-    // Mirrors the symmetric guard in deferPaymentsSetup.
     if (isRemoteDevelopmentEnvironment) return;
     await runWithSaving(async () => {
       setPaymentsSetupAction("connect");
