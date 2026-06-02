@@ -94,6 +94,50 @@ function evaluateStaticConfigExpression(expression: t.Expression): unknown {
   throw new Error(`Unsupported config expression: ${unwrapped.type}`);
 }
 
+/**
+ * Like {@link parseStackConfigFileContent}, but returns `null` instead of
+ * throwing when the file is not a plain static config (e.g. it wraps the config
+ * in a helper call, references imported values, or has a syntax error). Useful
+ * for deciding whether a config file can be safely regenerated deterministically
+ * or whether it has custom structure that must be preserved.
+ */
+export function tryParseStackConfigFileContent(content: string, filePath: string): ParsedStackConfig | null {
+  try {
+    return parseStackConfigFileContent(content, filePath);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns whether `content` parses as a module that exports a `config` binding.
+ * Used as a lightweight structural sanity check after editing config files whose
+ * values can't be evaluated by our loader (e.g. they import external text
+ * files), where a full semantic comparison isn't possible.
+ */
+export function stackConfigFileExportsConfig(content: string, filePath: string): boolean {
+  let ast: parser.ParseResult<t.File>;
+  try {
+    ast = parser.parse(content, {
+      sourceType: "module",
+      plugins: ["typescript", "importAttributes"],
+    });
+  } catch {
+    return false;
+  }
+  for (const statement of ast.program.body) {
+    if (!t.isExportNamedDeclaration(statement) || !t.isVariableDeclaration(statement.declaration)) {
+      continue;
+    }
+    for (const declaration of statement.declaration.declarations) {
+      if (t.isIdentifier(declaration.id) && declaration.id.name === "config" && declaration.init != null) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function parseStackConfigFileContent(content: string, filePath: string): ParsedStackConfig {
   if (content.trim() === "") return {};
   const ast = parser.parse(content, {

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { parseStackConfigFileContent, renderConfigFileContent } from "./stack-config-file";
-export { parseStackConfigFileContent, renderConfigFileContent };
+import { parseStackConfigFileContent, renderConfigFileContent, stackConfigFileExportsConfig, tryParseStackConfigFileContent } from "./stack-config-file";
+export { parseStackConfigFileContent, renderConfigFileContent, stackConfigFileExportsConfig, tryParseStackConfigFileContent };
 
 /**
  * Packages that export the `StackConfig` type, in priority order.
@@ -102,6 +102,28 @@ import.meta.vitest?.test("parseStackConfigFileContent parses show-onboarding", (
 
 import.meta.vitest?.test("parseStackConfigFileContent rejects dynamic config exports", ({ expect }) => {
   expect(() => parseStackConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
+});
+
+import.meta.vitest?.test("tryParseStackConfigFileContent returns the config for static exports", ({ expect }) => {
+  expect(tryParseStackConfigFileContent("export const config = { auth: { allowSignUp: true } };", "stack.config.ts")).toEqual({
+    auth: { allowSignUp: true },
+  });
+});
+
+import.meta.vitest?.test("tryParseStackConfigFileContent returns null for non-static exports", ({ expect }) => {
+  // Wrapped in a helper call (e.g. defineStackConfig) -> not a plain literal.
+  expect(tryParseStackConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toBeNull();
+  // References an imported value -> has structure to preserve.
+  expect(tryParseStackConfigFileContent('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBeNull();
+  // Syntax error.
+  expect(tryParseStackConfigFileContent("export const config = {", "stack.config.ts")).toBeNull();
+});
+
+import.meta.vitest?.test("stackConfigFileExportsConfig detects a config export", ({ expect }) => {
+  expect(stackConfigFileExportsConfig("export const config = { a: 1 };", "stack.config.ts")).toBe(true);
+  expect(stackConfigFileExportsConfig('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBe(true);
+  expect(stackConfigFileExportsConfig("export const notConfig = { a: 1 };", "stack.config.ts")).toBe(false);
+  expect(stackConfigFileExportsConfig("export const config = {", "stack.config.ts")).toBe(false);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {
