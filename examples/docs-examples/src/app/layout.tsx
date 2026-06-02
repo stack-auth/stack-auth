@@ -2,7 +2,7 @@ import { StackProvider } from "@hexclave/next";
 import { Metadata } from "next";
 import { Inter } from 'next/font/google';
 import Provider from "src/components/provider";
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 import './global.css';
 
 const inter = Inter({ subsets: ['latin'] });

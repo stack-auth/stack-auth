@@ -1,6 +1,6 @@
 "use client";
 
-import { stackClientApp } from "@/stack/client";
+import { stackClientApp } from "@/hexclave/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { ReactNode } from "react";
 

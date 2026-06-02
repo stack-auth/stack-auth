@@ -2,7 +2,7 @@ import Home from "./inner";
 import { preloadQuery, preloadedQueryResult } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { ConvexHttpClient } from "convex/browser";
-import { stackServerApp } from "@/stack/server";
+import { stackServerApp } from "@/hexclave/server";
 
 export default async function ServerPage() {
   const preloaded = await preloadQuery(api.myFunctions.listNumbers, {

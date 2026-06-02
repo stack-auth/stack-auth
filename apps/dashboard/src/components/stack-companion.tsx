@@ -105,22 +105,22 @@ const CLOSE_THRESHOLD = 100;
 const SPLIT_SCREEN_BREAKPOINT = 1000;
 
 // Context for sharing companion state with layout
-type StackCompanionContextType = {
+type HexclaveCompanionContextType = {
   drawerWidth: number,
   isSplitScreenMode: boolean,
 };
 
-const StackCompanionContext = createContext<StackCompanionContextType>({
+const HexclaveCompanionContext = createContext<HexclaveCompanionContextType>({
   drawerWidth: 0,
   isSplitScreenMode: false,
 });
 
-export function useStackCompanion() {
-  return useContext(StackCompanionContext);
+export function useHexclaveCompanion() {
+  return useContext(HexclaveCompanionContext);
 }
 
 
-export function StackCompanion({ className, glassBg = false }: { className?: string, glassBg?: boolean }) {
+export function HexclaveCompanion({ className, glassBg = false }: { className?: string, glassBg?: boolean }) {
   const [activeItem, setActiveItem] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [versionCheckResult, setVersionCheckResult] = useState<VersionCheckResult>(null);
@@ -524,7 +524,7 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
 
   if (isSplitScreenMode) {
     return (
-      <StackCompanionContext.Provider value={contextValue}>
+      <HexclaveCompanionContext.Provider value={contextValue}>
         <aside
           className={cn(
             "sticky top-14 h-[calc(100vh-3.5rem)] dark:top-20 dark:h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
@@ -553,7 +553,7 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
           {/* Handle */}
           {handleComponent}
         </aside>
-      </StackCompanionContext.Provider>
+      </HexclaveCompanionContext.Provider>
     );
   }
 
@@ -562,7 +562,7 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
   const showDrawerContainer = isOpen || isAnimating;
 
   return (
-    <StackCompanionContext.Provider value={contextValue}>
+    <HexclaveCompanionContext.Provider value={contextValue}>
       {/* Main Container - Fixed Right Edge, Flex Reverse to push handle left */}
       <div className={cn("fixed inset-y-0 right-0 z-50 flex flex-row-reverse items-center pointer-events-none", className)}>
 
@@ -584,6 +584,6 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
         {/* 2. Stack Companion Handle (Left of Drawer) */}
         {handleComponent}
       </div>
-    </StackCompanionContext.Provider>
+    </HexclaveCompanionContext.Provider>
   );
 }

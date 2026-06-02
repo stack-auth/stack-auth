@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import React from "react";
 import Header from "src/components/header";
 import Provider from "src/components/provider";
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 import './global.css';
 
 export const metadata: Metadata = {

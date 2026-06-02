@@ -5,7 +5,7 @@ async function getServerApp() {
   if (isRemoteDevelopmentEnvironmentEnabled()) {
     throw new Error("Team invitation management is not available in the remote development environment dashboard.");
   }
-  return (await import("@/stack/server")).getStackServerApp();
+  return (await import("@/stack/server")).getHexclaveServerApp();
 }
 
 export async function revokeInvitation(teamId: string, invitationId: string) {

@@ -1,7 +1,7 @@
 import { StackHandler, StackProvider, StackTheme } from "@hexclave/react";
 import { Suspense } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-import { stackClientApp } from "./stack";
+import { stackClientApp } from "./hexclave";
 
 function HandlerRoutes() {
   const location = useLocation();
