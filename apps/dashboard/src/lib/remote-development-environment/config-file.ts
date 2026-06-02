@@ -171,7 +171,7 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
       prompt: buildConfigUpdatePrompt(path.basename(configFilePath), configUpdate),
       cwd: path.dirname(configFilePath),
     });
-    await validateAgentUpdate(configFilePath, baselineConfig, configUpdate);
+    await validateAgentUpdate(configFilePath, baselineConfig, configUpdate, snapshots);
   } catch (error) {
     restoreConfigFiles(snapshots);
     throw error;
@@ -226,7 +226,7 @@ async function tryReadConfigForValidation(configFilePath: string): Promise<Confi
   }
 }
 
-async function validateAgentUpdate(configFilePath: string, baselineConfig: Config | null, configUpdate: Config): Promise<void> {
+async function validateAgentUpdate(configFilePath: string, baselineConfig: Config | null, configUpdate: Config, snapshots: ConfigFileSnapshot[]): Promise<void> {
   if (baselineConfig != null) {
     const target = canonicalizeConfig(override(baselineConfig, configUpdate));
     const result = canonicalizeConfig((await readConfigFile(configFilePath)).config);
@@ -237,12 +237,33 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
   }
 
   // The config couldn't be evaluated (e.g. it imports external text files), so a
-  // full semantic comparison isn't possible. Ensure at least that the agent left
-  // a syntactically valid file that still exports `config`.
+  // full semantic comparison isn't possible. We make the weaker checks we can:
+
+  // 1. The agent must have actually written something. If a non-empty update
+  //    left every file we snapshotted byte-for-byte unchanged, the agent didn't
+  //    apply the change (e.g. it couldn't find the referenced file) — fail loud
+  //    rather than report a success that did nothing.
+  if (flattenConfigUpdate(configUpdate).length > 0 && !snapshotsChangedOnDisk(snapshots)) {
+    throw new Error(`Config update validation failed for ${configFilePath}: the agent did not modify the config or any of its referenced files.`);
+  }
+
+  // 2. The file must still be syntactically valid and export `config`.
   const content = readFileSync(configFilePath, "utf-8");
   if (!stackConfigFileExportsConfig(content, configFilePath)) {
     throw new Error(`Config update validation failed for ${configFilePath}: the updated file no longer exports a valid \`config\`.`);
   }
+}
+
+/**
+ * Returns whether any snapshotted file's current on-disk content differs from
+ * what it was when captured (including being created or deleted). Used to detect
+ * a no-op agent run when the config isn't evaluable enough for a semantic check.
+ */
+function snapshotsChangedOnDisk(snapshots: ConfigFileSnapshot[]): boolean {
+  return snapshots.some(({ path: filePath, content }) => {
+    const current = existsSync(filePath) ? readFileSync(filePath, "utf-8") : null;
+    return current !== content;
+  });
 }
 
 type ConfigChange = { path: string, value: ConfigValue };

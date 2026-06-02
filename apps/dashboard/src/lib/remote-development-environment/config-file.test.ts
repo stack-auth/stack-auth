@@ -330,4 +330,26 @@ describe("remote development environment config file", () => {
     expect(readFileSync(configPath, "utf-8")).toBe(configSource);
     expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>Old email</div>;\n");
   });
+
+  it("fails a non-evaluable update when the agent leaves every file unchanged", async () => {
+    const templatePath = writeTempFile("welcome-email.tsx", "export default <div>Old email</div>;\n");
+    const configSource = `import welcomeEmail from "./welcome-email.tsx" with { type: "text" };\n\nexport const config = {\n  emails: { templates: { welcome: welcomeEmail } },\n};\n`;
+    const configPath = writeTempConfig(configSource);
+
+    const { updateConfigObject } = await import("./config-file");
+
+    // The agent reports success but doesn't actually touch any file. Since this
+    // config isn't evaluable, we can't do a semantic check, but a no-op for a
+    // non-empty update must still be reported as a failure rather than silently
+    // succeeding.
+    mockAgentImpl = () => {};
+
+    await expect(updateConfigObject(configPath, {
+      "emails.templates.welcome": "export default <div>New email</div>;\n",
+    })).rejects.toThrow(/did not modify/);
+
+    // The files are untouched (a no-op restored to its identical original).
+    expect(readFileSync(configPath, "utf-8")).toBe(configSource);
+    expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>Old email</div>;\n");
+  });
 });
