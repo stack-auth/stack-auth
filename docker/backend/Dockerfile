@@ -38,6 +38,9 @@ RUN turbo prune --scope=@hexclave/backend --docker
 # Build stage
 FROM base AS builder
 
+# Skip generate-sdks.ts in preinstall hook (file not available in pruned output)
+ENV STACK_SKIP_TEMPLATE_GENERATION=true
+
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml .
 COPY .gitignore .
@@ -45,7 +48,7 @@ COPY pnpm-workspace.yaml .
 COPY turbo.json .
 COPY configs ./configs
 COPY --from=pruner /app/scripts/postinstall-patch-next-async-debug-info.mjs ./scripts/
-RUN STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 COPY --from=pruner /app/out/full/ .
 
