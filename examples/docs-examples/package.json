@@ -25,7 +25,7 @@
     "react-icons": "^5.0.1"
   },
   "devDependencies": {
-    "@types/react": "link:@types/react@18.3.12",
+    "@types/react": "18.3.12",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.35",

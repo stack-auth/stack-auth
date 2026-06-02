@@ -1103,8 +1103,8 @@ importers:
         specifier: 20.17.6
         version: 20.17.6
       '@types/react':
-        specifier: link:@types/react@18.3.12
-        version: link:@types/react@18.3.12
+        specifier: 18.3.12
+        version: 18.3.12
       '@types/react-dom':
         specifier: ^18
         version: 18.3.1
@@ -1250,10 +1250,10 @@ importers:
     dependencies:
       '@emotion/react':
         specifier: ^11.11.3
-        version: 11.11.4(@types/react@examples+docs-examples+@types+react@18.3.12)(react@18.3.1)
+        version: 11.11.4(@types/react@18.3.12)(react@18.3.1)
       '@emotion/styled':
         specifier: ^11.11.0
-        version: 11.11.5(@emotion/react@11.11.4(@types/react@examples+docs-examples+@types+react@18.3.12)(react@18.3.1))(@types/react@examples+docs-examples+@types+react@18.3.12)(react@18.3.1)
+        version: 11.11.5(@emotion/react@11.11.4(@types/react@18.3.12)(react@18.3.1))(@types/react@18.3.12)(react@18.3.1)
       '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/stack
@@ -1280,8 +1280,8 @@ importers:
         version: 5.2.1(react@18.3.1)
     devDependencies:
       '@types/react':
-        specifier: link:@types/react@18.3.12
-        version: link:@types/react@18.3.12
+        specifier: 18.3.12
+        version: 18.3.12
       '@types/react-dom':
         specifier: ^18
         version: 18.3.1
@@ -1317,8 +1317,8 @@ importers:
         specifier: 20.17.6
         version: 20.17.6
       '@types/react':
-        specifier: link:@types/react@18.3.12
-        version: link:@types/react@18.3.12
+        specifier: 18.3.12
+        version: 18.3.12
       '@types/react-dom':
         specifier: ^18
         version: 18.3.1
@@ -1574,8 +1574,8 @@ importers:
         specifier: 20.17.6
         version: 20.17.6
       '@types/react':
-        specifier: link:@types/react@18.3.12
-        version: link:@types/react@18.3.12
+        specifier: 18.3.12
+        version: 18.3.12
       '@types/react-dom':
         specifier: ^18
         version: 18.3.1
@@ -1651,8 +1651,8 @@ importers:
         specifier: 20.17.6
         version: 20.17.6
       '@types/react':
-        specifier: link:@types/react@18.3.12
-        version: link:@types/react@18.3.12
+        specifier: 18.3.12
+        version: 18.3.12
       '@types/react-dom':
         specifier: ^18.3.0
         version: 18.3.1
@@ -21733,7 +21733,7 @@ snapshots:
 
   '@emotion/memoize@0.9.0': {}
 
-  '@emotion/react@11.11.4(@types/react@examples+docs-examples+@types+react@18.3.12)(react@18.3.1)':
+  '@emotion/react@11.11.4(@types/react@18.3.12)(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.24.7
       '@emotion/babel-plugin': 11.11.0
@@ -21745,7 +21745,7 @@ snapshots:
       hoist-non-react-statics: 3.3.2
       react: 18.3.1
     optionalDependencies:
-      '@types/react': link:examples/docs-examples/@types/react@18.3.12
+      '@types/react': 18.3.12
     transitivePeerDependencies:
       - supports-color
 
@@ -21785,18 +21785,18 @@ snapshots:
 
   '@emotion/sheet@1.4.0': {}
 
-  '@emotion/styled@11.11.5(@emotion/react@11.11.4(@types/react@examples+docs-examples+@types+react@18.3.12)(react@18.3.1))(@types/react@examples+docs-examples+@types+react@18.3.12)(react@18.3.1)':
+  '@emotion/styled@11.11.5(@emotion/react@11.11.4(@types/react@18.3.12)(react@18.3.1))(@types/react@18.3.12)(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.24.7
       '@emotion/babel-plugin': 11.11.0
       '@emotion/is-prop-valid': 1.2.2
-      '@emotion/react': 11.11.4(@types/react@examples+docs-examples+@types+react@18.3.12)(react@18.3.1)
+      '@emotion/react': 11.11.4(@types/react@18.3.12)(react@18.3.1)
       '@emotion/serialize': 1.1.4
       '@emotion/use-insertion-effect-with-fallbacks': 1.0.1(react@18.3.1)
       '@emotion/utils': 1.2.1
       react: 18.3.1
     optionalDependencies:
-      '@types/react': link:examples/docs-examples/@types/react@18.3.12
+      '@types/react': 18.3.12
     transitivePeerDependencies:
       - supports-color
 
