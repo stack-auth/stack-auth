@@ -12,7 +12,7 @@ A: `packages/stack-cli/src/lib/init-prompt.ts` re-exports `createInitPrompt` fro
 A: Connected accounts live in `ProjectUserOAuthAccount`. Stored refresh tokens are in `OAuthToken` (`oauthAccountId`, `scopes`, `isValid`), and cached access tokens are in `OAuthAccessToken` (`expiresAt`, `scopes`, `isValid`). A null `OAuthAccessToken.expiresAt` means the OAuth provider did not supply an access-token expiry; `retrieveOrRefreshAccessToken` treats null-expiry tokens as candidates and still calls the provider-specific validity check before returning them. If no usable access token exists, it looks for valid refresh tokens with matching scopes and invalidates only those that the provider explicitly rejects.
 
 ## Q: Which Hexclave rename compatibility layers should be avoided in PR #1475 follow-ups?
-A: Do not keep backwards compatibility for the MCP tool name, cross-domain auth query parameter names, `NEXT_PUBLIC_STACK_PORT_PREFIX`, or a parallel `hexclaveAppInternalsSymbol`. For refresh/access cookies, read both legacy Stack and new Hexclave cookie names, but only write the canonical Hexclave cookies.
+A: Do not keep backwards compatibility for the MCP tool name, cross-domain auth query parameter names, `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`, or a parallel `hexclaveAppInternalsSymbol`. For refresh/access cookies, read both legacy Stack and new Hexclave cookie names, but only write the canonical Hexclave cookies.
 
 ## Q: How should GitHub Contents API request-body assertions be written in Stack Auth tests?
 A: Prefer inline snapshots over individual field selectors. For request bodies that contain base64 file content, parse the JSON body, assert it is an object, decode the `content` field back to UTF-8, and snapshot the normalized call object so the test verifies the path, method, headers, branch, message, sha, and rendered file content together.
@@ -393,7 +393,7 @@ A: Use `getAuthorizationHeader()`, which returns `Bearer stackauth_<base64(getAu
 A: `RequestLike` accepts both `{ headers: { get(name): string | null } }` and `{ headers: Record<string, string | null> }`. Header lookup is case-insensitive for record-style headers, and supports `authorization`, `x-stack-auth`, and `cookie`.
 
 ### Q: Which env var should emulator onboarding URLs use for dashboard port?
-A: Use `EMULATOR_DASHBOARD_PORT` (default `26700`) or explicit `STACK_LOCAL_EMULATOR_DASHBOARD_URL`. Do not derive emulator URLs from `NEXT_PUBLIC_STACK_PORT_PREFIX`, because that points to the host dev environment ports (e.g. `92xx`) rather than the emulator host-forwarded ports.
+A: Use `EMULATOR_DASHBOARD_PORT` (default `26700`) or explicit `STACK_LOCAL_EMULATOR_DASHBOARD_URL`. Do not derive emulator URLs from `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX`, because that points to the host dev environment ports (e.g. `92xx`) rather than the emulator host-forwarded ports.
 
 ### Q: Why does `PATCH /api/v1/internal/projects/current` fail in local emulator when updating only `onboarding_state`?
 A: `createOrUpdateProjectWithLegacyConfig` always called `overrideEnvironmentConfigOverride`, even when there were zero config override keys to apply. In local emulator mode, environment config overrides are intentionally blocked, so this threw `Environment configuration overrides cannot be changed in the local emulator` and returned 500. The fix is to skip `overrideEnvironmentConfigOverride` unless `configOverrideOverride` has at least one key.
@@ -562,3 +562,18 @@ A: Project config overrides only support the hosted `sourceOfTruth` shape. Legac
 
 ## Q: How should managed email onboarding e2e tests wait for mock verification?
 A: Do not rely on a fixed `wait(1500)` after setup. The mock onboarding path flips the domain to `verified` asynchronously through `runAsynchronously`, so tests should poll the managed-onboarding check endpoint until the expected status appears.
+
+## Q: How should Microsoft OAuth callback token exchange include scopes?
+A: Microsoft Entra ID's v2 token endpoint can reject authorization-code exchanges with `AADSTS70011` if the token request omits `scope`. Keep scope emission opt-in at the provider layer (`includeScopeInCallbackTokenExchange`) and pass the same merged base/provider scopes to `openid-client` via the callback `extras.exchangeBody.scope` parameter. The callback route must forward stored `providerScope` from the outer OAuth info so custom Microsoft provider scopes are included in the token exchange.
+
+## Q: How should the development-environment dashboard load local config files?
+A: Use `jiti` to import the user's config module, matching `stack config push`, so helper functions such as `defineStackConfig(...)` or `makeConfig()` work. Disable `moduleCache` for this reader because the development-environment file watcher may import the same config path repeatedly after edits, and cached modules would otherwise hide changes.
+
+## Q: What is needed to put the legacy Fumadocs `docs/` app back into the Hexclave pnpm workspace?
+A: Add `docs` to `pnpm-workspace.yaml`, keep the package named `@hexclave/docs`, use `workspace:*` for `@hexclave/next` and `@hexclave/shared`, and update actual app imports from `@stackframe/stack`/`@stackframe/stack-shared` to `@hexclave/next`/`@hexclave/shared`. Docs app runtime env reads should prefer `NEXT_PUBLIC_HEXCLAVE_*`/`HEXCLAVE_*` while retaining legacy `STACK_*` fallbacks.
+
+## Q: How should template React contexts avoid duplicate client-bundle context identities?
+A: Define exported provider contexts such as `StackContext` and `TranslationContext` through `createGlobal` from `@stackframe/stack-shared/dist/utils/globals`, not direct `React.createContext(...)` exports. That helper stores the React context under `globalThis[Symbol.for("__hexclave-globals")]`, so duplicated SDK bundles still share the same provider/consumer context object.
+
+## Q: Why can `packages/template` typecheck fail after adding new `@hexclave/shared/dist/*` imports?
+A: `packages/template` resolves `@hexclave/shared` through the shared package's generated `dist` declarations. If new shared source files or exports were merged but packages have not been rebuilt by the dev watcher, template typecheck can report missing `@hexclave/shared/dist/*` modules or members even while `packages/stack-shared` source typechecks cleanly. Do not switch back to legacy `@stackframe/stack-shared` imports to mask this; wait for or ask the user to run the package build.

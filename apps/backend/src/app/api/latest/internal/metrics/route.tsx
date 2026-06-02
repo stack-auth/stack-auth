@@ -6,8 +6,8 @@ import { ActivitySplit } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { KnownErrors } from "@hexclave/shared";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import {
   type MetricsDataPoint,
   type MetricsRecentUser,
@@ -19,9 +19,9 @@ import {
   MetricsLoginMethodEntrySchema,
   MetricsPaymentsOverviewSchema,
   MetricsRecentUserSchema,
-} from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+} from "@hexclave/shared/dist/interface/admin-metrics";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = MetricsDataPoint[];
@@ -1425,7 +1425,11 @@ async function loadAnalyticsOverview(
           ORDER BY hour ASC
         `,
         query_params: {
-          hourlySince: formatClickhouseDateTimeParam(new Date(now.getTime() - 23 * 60 * 60 * 1000)),
+          hourlySince: formatClickhouseDateTimeParam((() => {
+            const latestHour = new Date(now);
+            latestHour.setUTCMinutes(0, 0, 0);
+            return new Date(latestHour.getTime() - 23 * 60 * 60 * 1000);
+          })()),
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
           projectId: tenancy.project.id,
@@ -1685,7 +1689,7 @@ async function loadAnalyticsOverview(
     const hourlyActiveUsers: DataPoints = [];
     const hourlyVisitors: DataPoints = [];
     const latestHour = new Date(now);
-    latestHour.setMinutes(0, 0, 0);
+    latestHour.setUTCMinutes(0, 0, 0);
     for (let i = 23; i >= 0; i--) {
       const hour = new Date(latestHour.getTime() - i * 60 * 60 * 1000);
       const key = hour.toISOString().slice(0, 13);

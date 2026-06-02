@@ -1,1 +1,1 @@
-export { createInitPrompt } from "@stackframe/stack-shared/dist/helpers/init-prompt";
+export { createInitPrompt } from "@hexclave/shared/dist/helpers/init-prompt";

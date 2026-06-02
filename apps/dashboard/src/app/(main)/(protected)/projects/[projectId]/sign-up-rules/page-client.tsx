@@ -69,15 +69,15 @@ import {
   XCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
-import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
+import type { SignUpRule, SignUpRuleAction } from "@hexclave/shared/dist/interface/crud/sign-up-rules";
+import { isValidCountryCode, normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { standardProviders } from "@hexclave/shared/dist/utils/oauth";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import React, { useMemo, useRef, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";

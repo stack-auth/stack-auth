@@ -1,9 +1,9 @@
 import type { Tenancy } from "@/lib/tenancies";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { signJWT, verifyJWT } from "@stackframe/stack-shared/dist/utils/jwt";
-import { yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { signJWT, verifyJWT } from "@hexclave/shared/dist/utils/jwt";
+import { yupValidate } from "@hexclave/shared/dist/schema-fields";
 import { JOSEError } from "jose/errors";
 import { ValidationError } from "yup";
 

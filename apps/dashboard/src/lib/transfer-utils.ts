@@ -1,5 +1,5 @@
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export function buildTransferSignUpUrl(): string {
   const currentUrl = new URL(window.location.href);

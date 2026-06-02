@@ -4,10 +4,10 @@ import { findRecentSessionReplay } from "@/lib/session-replays";
 import { getStackServerApp } from "@/stack";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import * as zlib from "node:zlib";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -144,13 +144,18 @@ export const POST = createSmartRouteHandler({
     })();
 
     const rows = body.events.map((event) => {
-      const baseData = (typeof event.data === "object" && !Array.isArray(event.data))
-        ? (event.data as Record<string, unknown>)
-        : {};
-      const existingUa = baseData.user_agent;
-      const mergedData = (existingUa == null || existingUa === "")
-        ? { ...baseData, user_agent: headerUserAgent }
-        : baseData;
+      const rawData: unknown = event.data;
+      const isPlainObject = rawData != null && typeof rawData === "object" && !Array.isArray(rawData);
+      // Only stamp the fallback User-Agent onto object payloads; preserve any other
+      // (non-object) data as-is instead of dropping it.
+      let mergedData: unknown = rawData;
+      if (isPlainObject) {
+        const baseData = rawData as Record<string, unknown>;
+        const existingUa = baseData.user_agent;
+        mergedData = (existingUa == null || existingUa === "")
+          ? { ...baseData, user_agent: headerUserAgent }
+          : baseData;
+      }
       return ({
         event_type: event.event_type,
         event_at: new Date(event.event_at_ms),

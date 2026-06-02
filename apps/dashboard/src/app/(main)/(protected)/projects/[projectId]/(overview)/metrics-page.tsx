@@ -39,9 +39,9 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
-import { useUser } from "@stackframe/stack";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { useUser } from "@hexclave/next";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { type ElementType, type ReactNode, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -71,6 +71,7 @@ import {
 } from "./line-chart";
 import { MetricsErrorFallback, MetricsLoadingFallback } from "./metrics-loading";
 import { ReferrersWithAnalyticsCard, TopNamedListCard, TopRegionsCard } from "./top-lists";
+import { easeOutCubic, prefersReducedMotion } from "./animation-utils";
 import {
   ANALYTICS_CHART_METRIC_MODE_ORDER,
   toggleAnalyticsChartMetricMode,
@@ -127,10 +128,6 @@ const reducedOverviewHeaderLayoutTransition: Transition = {
 };
 
 const scrollableOverflowValues = new Set(["auto", "scroll", "overlay"]);
-
-function easeOutCubic(progress: number): number {
-  return 1 - Math.pow(1 - progress, 3);
-}
 
 function findScrollContainer(element: HTMLElement): HTMLElement | null {
   let current = element.parentElement;
@@ -205,10 +202,6 @@ function useDelayedTrue(value: boolean, delayMs: number): boolean {
   }, [delayMs, value]);
 
   return delayedValue;
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function useAnimatedSeriesValues<T extends { value: number }>(series: T[]): T[] {
@@ -1680,7 +1673,10 @@ function MetricsContent({
       ? undefined
       : previousDauPoint.new + previousDauPoint.retained + previousDauPoint.reactivated;
     const visitorsTotalInRange = composedData.reduce((sum, row) => sum + row.visitors, 0);
-    const totalRevenueCentsInRange = composedData.reduce((sum, row) => sum + row.new_cents, 0);
+    // Revenue is only available at daily granularity, so derive the total from the
+    // daily revenue series (already filtered by the active range). The hourly composed
+    // data used in the 1d view has no revenue, which would otherwise zero this out.
+    const totalRevenueCentsInRange = revenueHoverData.reduce((sum, row) => sum + row.new_cents, 0);
 
     const composedIndexByDate = new Map(allComposedData.map((row, index) => [row.date, index]));
     const firstComposedPoint = composedData.at(0);
@@ -1708,7 +1704,7 @@ function MetricsContent({
       revenueLabel: "Revenue",
       revenueDelta: paymentsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData, paymentsEnabled]);
+  }, [allComposedData, composedData, dauStackedData, paymentsEnabled, revenueHoverData]);
 
   const bounceByDate = useMemo(() => new Map(dailyBounceRate.map((point) => [point.date, point.activity])), [dailyBounceRate]);
   const sessionByDate = useMemo(() => new Map(dailyAvgSession.map((point) => [point.date, point.activity])), [dailyAvgSession]);

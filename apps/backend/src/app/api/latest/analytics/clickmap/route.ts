@@ -7,9 +7,9 @@ import {
 import { verifyAnalyticsClickmapToken } from "@/lib/analytics-clickmap-tokens";
 import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { AnalyticsClickmapResponseBodySchema, type AnalyticsClickmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { AnalyticsClickmapResponseBodySchema, type AnalyticsClickmapResponse } from "@hexclave/shared/dist/interface/admin-metrics";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 const MAX_WINDOW_DAYS = 31;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

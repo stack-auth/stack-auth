@@ -1,7 +1,7 @@
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionCell, Badge, Button, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { ActionCell, Badge, Button, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@hexclave/ui";
 import { useEffect, useState } from "react";
 import { useUser } from "../../../lib/hooks";
 import { ActiveSession } from "../../../lib/stack-app/users";

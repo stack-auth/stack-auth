@@ -1,6 +1,6 @@
 import { PrismaClientTransaction } from "@/prisma-client";
-import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import crypto from "crypto";
 
 /**

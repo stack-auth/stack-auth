@@ -15,7 +15,7 @@ const hostedHandlerTemplateProjectIdB = "11111111-1111-4111-8111-111111111111";
 
 function replaceStackPortPrefix(input: string | undefined, stackPortPrefix: string | undefined): string | undefined {
   if (input == null) return undefined;
-  return stackPortPrefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, stackPortPrefix) : input;
+  return stackPortPrefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, stackPortPrefix) : input;
 }
 
 function getHostedHandlerUrlFromTemplate(template: string, projectId: string, hostedPath: string): string {
@@ -232,7 +232,7 @@ import.meta.vitest?.test("validateRedirectUrl trusts implicit hosted handler dom
     allowLocalhost: false,
     trustedDomains: getImplicitlyTrustedDomainsForProject({
       projectId,
-      hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}",
+      hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}",
       stackPortPrefix: "92",
     }),
   })).toBe(true);

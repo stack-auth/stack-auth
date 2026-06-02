@@ -6,8 +6,8 @@ import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
+import { emailSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { teamsCrudHandlers } from "../../teams/crud";
 
 export const teamInvitationCodeHandler = createVerificationCodeHandler({

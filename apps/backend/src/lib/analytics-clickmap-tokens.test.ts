@@ -1,5 +1,5 @@
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { signJWT } from "@stackframe/stack-shared/dist/utils/jwt";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { signJWT } from "@hexclave/shared/dist/utils/jwt";
 import { describe, expect, it } from "vitest";
 import { normalizeAnalyticsClickmapOrigin, verifyAnalyticsClickmapToken } from "./analytics-clickmap-tokens";
 

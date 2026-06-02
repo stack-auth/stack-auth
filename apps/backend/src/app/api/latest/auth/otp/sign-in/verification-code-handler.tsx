@@ -7,10 +7,10 @@ import { buildSignUpRuleOptions, deserializeStoredSignUpRequestContext, deserial
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { turnstileResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
+import { turnstileResultValues } from "@hexclave/shared/dist/utils/turnstile";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { usersCrudHandlers } from "../../../users/crud";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -106,7 +106,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
       nonce: codeObj.code.slice(6),
     };
   },
-  async handler(tenancy, { email }, data, requestBody, currentUser) {
+  async handler(tenancy, { email }, data, requestBody, currentUser, apiUrl) {
     let user = await ensureUserForEmailAllowsOtp(tenancy, email);
     let isNewUser = false;
 
@@ -148,6 +148,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: user.id,
+      apiUrl,
     });
 
     return {

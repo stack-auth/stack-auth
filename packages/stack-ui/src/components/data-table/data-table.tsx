@@ -1,6 +1,6 @@
 "use client";
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   Table,
   TableBody,

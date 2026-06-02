@@ -29,14 +29,14 @@ import {
   DataGrid,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
-import type { AnalyticsClickmapDevice, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+} from "@hexclave/dashboard-ui-components";
+import type { AnalyticsClickmapDevice, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import {
   CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
   CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
-} from "@stackframe/stack-shared/dist/utils/analytics-clickmap-overlay";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+} from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { ArrowRight, GlobeHemisphereWest } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 

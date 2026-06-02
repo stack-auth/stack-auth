@@ -1,10 +1,10 @@
 import { getSvixClient } from "@/lib/webhooks";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { svixTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/svix-token";
-import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { svixTokenCrud } from "@hexclave/shared/dist/interface/crud/svix-token";
+import { yupObject } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 const svixServerUrl = getEnvVariable("STACK_SVIX_SERVER_URL", "");
 

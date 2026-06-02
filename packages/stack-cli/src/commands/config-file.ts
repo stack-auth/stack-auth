@@ -5,9 +5,9 @@ import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolv
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const SHOW_ONBOARDING_STACK_CONFIG_VALUE = "show-onboarding";
 
@@ -277,7 +277,7 @@ export function registerConfigCommand(program: Command) {
 
       const config = parseConfigOverride(configModule.config);
       if (config == null) {
-        const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@stackframe/js";
+        const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
         throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { StackConfig } from "${examplePkg}"; export const config: StackConfig = { ... };`);
       }
 

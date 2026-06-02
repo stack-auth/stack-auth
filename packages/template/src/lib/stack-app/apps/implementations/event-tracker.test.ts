@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventTracker } from "./event-tracker";
 

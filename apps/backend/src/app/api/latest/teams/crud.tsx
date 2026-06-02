@@ -8,14 +8,14 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { Prisma, PurchaseCreationSource } from "@/generated/prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
-import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { KnownErrors } from "@hexclave/shared";
+import { teamsCrud } from "@hexclave/shared/dist/interface/crud/teams";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { validateBase64Image } from "@hexclave/shared/dist/utils/base64";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
+import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { addUserToTeam } from "../team-memberships/crud";
 
 

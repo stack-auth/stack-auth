@@ -1,5 +1,5 @@
-import type { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { XOR } from "@stackframe/stack-shared/dist/utils/types";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { XOR } from "@hexclave/shared/dist/utils/types";
 
 export type AdminSentEmail = {
   id: string,

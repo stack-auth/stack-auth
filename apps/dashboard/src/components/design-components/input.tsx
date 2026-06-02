@@ -1,2 +1,2 @@
-export { DesignInput } from "@stackframe/dashboard-ui-components";
-export type { DesignInputProps } from "@stackframe/dashboard-ui-components";
+export { DesignInput } from "@hexclave/dashboard-ui-components";
+export type { DesignInputProps } from "@hexclave/dashboard-ui-components";

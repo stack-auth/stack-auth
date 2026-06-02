@@ -1,7 +1,7 @@
 import { createAnalyticsClickmapToken } from "@/lib/analytics-clickmap-tokens";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { AnalyticsClickmapTokenResponseBodySchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { AnalyticsClickmapTokenResponseBodySchema } from "@hexclave/shared/dist/interface/admin-metrics";
+import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },

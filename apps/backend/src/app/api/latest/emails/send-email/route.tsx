@@ -4,10 +4,10 @@ import { sendEmailToMany } from "@/lib/emails";
 import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const bodyBase = yupObject({
   user_ids: yupArray(yupString().defined()).optional(),

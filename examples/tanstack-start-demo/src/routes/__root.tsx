@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import "../styles.css";
 
-import { StackProvider, StackTheme } from "@stackframe/tanstack-start";
+import { StackProvider, StackTheme } from "@hexclave/tanstack-start";
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Suspense, useMemo } from "react";

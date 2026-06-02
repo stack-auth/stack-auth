@@ -1,9 +1,9 @@
-import { DEV_TOOL_ROOT_ID } from "@stackframe/stack-shared/dist/utils/dev-tool";
-import { cssEscapeIdent } from "@stackframe/stack-shared/dist/utils/dom";
-import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@stackframe/stack-shared/dist/utils/elements-chain";
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
+import { DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
+import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
+import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { generateUuid } from "./session-replay";
 
 const FLUSH_INTERVAL_MS = 10_000;

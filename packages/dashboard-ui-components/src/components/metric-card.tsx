@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 import React from "react";
 
 type DesignMetricCardGradient = "blue" | "cyan" | "purple" | "green" | "orange" | "default";

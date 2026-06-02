@@ -1,10 +1,10 @@
 import { parseOpenAPI, parseWebhookOpenAPI } from '@/lib/openapi';
 import { isSmartRouteHandler } from '@/route-handlers/smart-route-handler';
-import { webhookEvents } from '@stackframe/stack-shared/dist/interface/webhooks';
-import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
-import { HTTP_METHODS } from '@stackframe/stack-shared/dist/utils/http';
-import { typedKeys } from '@stackframe/stack-shared/dist/utils/objects';
-import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
+import { webhookEvents } from '@hexclave/shared/dist/interface/webhooks';
+import { writeFileSyncIfChanged } from '@hexclave/shared/dist/utils/fs';
+import { HTTP_METHODS } from '@hexclave/shared/dist/utils/http';
+import { typedKeys } from '@hexclave/shared/dist/utils/objects';
+import { stringCompare } from '@hexclave/shared/dist/utils/strings';
 import fs from 'fs';
 import { glob } from 'glob';
 import path from 'path';

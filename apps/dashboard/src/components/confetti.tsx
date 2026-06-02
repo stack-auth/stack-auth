@@ -2,8 +2,8 @@
 
 import * as confetti from "canvas-confetti";
 import { useEffect } from "react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 
 export function Confetti() {

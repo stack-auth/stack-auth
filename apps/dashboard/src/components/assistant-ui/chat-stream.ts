@@ -1,7 +1,7 @@
 import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { ChatModelAdapter, ChatModelRunOptions, ChatModelRunResult } from "@assistant-ui/react";
-import type { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import type { ChatContent } from "@hexclave/shared/dist/interface/admin-interface";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import {
   convertToModelMessages,
   DefaultChatTransport,

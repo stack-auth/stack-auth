@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 
 export type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 export type DesignBadgeSize = "sm" | "md";

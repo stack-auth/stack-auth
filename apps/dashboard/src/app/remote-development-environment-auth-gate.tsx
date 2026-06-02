@@ -3,8 +3,8 @@
 import Loading from "@/app/loading";
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { useStackApp } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useStackApp } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 
 const RDE_ACCESS_TOKEN_MIN_EXPIRATION_MS = 30_000;

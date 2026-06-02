@@ -3,12 +3,12 @@ import { serializeRecipient } from "@/lib/email-queue-step";
 import { EmailOutboxRecipient } from "@/lib/emails";
 import { globalPrismaClient, RawQuery, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { emailOutboxCrud, EmailOutboxCrud } from "@stackframe/stack-shared/dist/interface/crud/email-outbox";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { KnownErrors } from "@hexclave/shared";
+import { emailOutboxCrud, EmailOutboxCrud } from "@hexclave/shared/dist/interface/crud/email-outbox";
+import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { Json } from "@hexclave/shared/dist/utils/json";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 /**
  * Converts an API recipient (snake_case: user_id) to the DB format (camelCase: userId).

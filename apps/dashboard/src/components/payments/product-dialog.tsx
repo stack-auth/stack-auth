@@ -7,9 +7,9 @@ import { IncludedItemEditorField } from "@/components/payments/included-item-edi
 import { PriceEditorField } from "@/components/payments/price-editor";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, SimpleTooltip, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
-import { AdminProject } from "@stackframe/stack";
-import { pricesSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
-import { has } from "@stackframe/stack-shared/dist/utils/objects";
+import { AdminProject } from "@hexclave/next";
+import { pricesSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@hexclave/shared/dist/schema-fields";
+import { has } from "@hexclave/shared/dist/utils/objects";
 import * as yup from "yup";
 
 type Props = {

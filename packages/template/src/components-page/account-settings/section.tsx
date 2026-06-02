@@ -1,4 +1,4 @@
-import { Separator, Typography } from "@stackframe/stack-ui";
+import { Separator, Typography } from "@hexclave/ui";
 
 export function Section(props: { title: string, description?: string, children: React.ReactNode }) {
   return (

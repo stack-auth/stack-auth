@@ -1,4 +1,4 @@
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick } from "@hexclave/shared/dist/utils/objects";
 import { describe } from "vitest";
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";

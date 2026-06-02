@@ -1,5 +1,5 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 export async function runClickhouseMigrations() {
   const start = performance.now();

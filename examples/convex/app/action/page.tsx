@@ -3,8 +3,8 @@
 import { useAction } from "convex/react";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
-import { useUser } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useUser } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 
 export default function Page() {
   const myAction = useAction(api.myActions.myAction);

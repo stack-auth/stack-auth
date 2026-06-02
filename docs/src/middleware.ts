@@ -1,5 +1,5 @@
 import { trackVisit } from '2027-track';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
 
 export default function middleware(request: NextRequest, event: NextFetchEvent) {
@@ -74,4 +74,3 @@ export const config = {
     '/api/:path*',
   ],
 };
-

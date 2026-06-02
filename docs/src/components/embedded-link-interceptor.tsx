@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
 

@@ -1,5 +1,5 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../../../backend-helpers";
 

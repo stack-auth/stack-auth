@@ -25,11 +25,11 @@ import {
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { AppId } from "@/lib/apps-frontend";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { getPublicEnvVar } from "@/lib/env";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

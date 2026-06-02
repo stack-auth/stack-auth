@@ -1,4 +1,4 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@hexclave/ui";
 import { Team } from "../../..";
 import { UserAvatar } from "../../../components/elements/user-avatar";
 import { useUser } from "../../../lib/hooks";

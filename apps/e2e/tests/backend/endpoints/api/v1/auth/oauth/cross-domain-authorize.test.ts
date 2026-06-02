@@ -1,5 +1,5 @@
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { publishableClientKeyNotNecessarySentinel } from "@hexclave/shared/dist/utils/oauth";
 import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Separator } from "@stackframe/stack-ui";
+import { Separator } from "@hexclave/ui";
 
 export function SeparatorWithText({ text }: { text: string }) {
   return (

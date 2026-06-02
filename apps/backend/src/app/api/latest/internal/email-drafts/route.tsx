@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 
 

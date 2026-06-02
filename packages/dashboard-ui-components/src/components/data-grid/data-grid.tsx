@@ -9,8 +9,8 @@ import {
   MinusSquare,
   Square,
 } from "@phosphor-icons/react";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { cn } from "@stackframe/stack-ui";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { cn } from "@hexclave/ui";
 import {
   type ColumnDef,
   type ColumnOrderState,

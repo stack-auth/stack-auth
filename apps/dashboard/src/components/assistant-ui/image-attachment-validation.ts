@@ -2,7 +2,7 @@ import {
   MAX_IMAGE_BYTES_PER_FILE,
   MAX_IMAGE_MB_PER_FILE,
   MAX_IMAGES_PER_MESSAGE,
-} from "@stackframe/stack-shared/dist/ai/image-limits";
+} from "@hexclave/shared/dist/ai/image-limits";
 
 type ValidationResult = { ok: true } | { ok: false, reason: string };
 

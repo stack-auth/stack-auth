@@ -7,18 +7,11 @@ import { type AppId } from "@/lib/apps-frontend";
 import { type MetricsNamedCount, type MetricsTopReferrer } from "@/lib/stack-app-internals";
 import { GlobeIcon } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { easeOutCubic, prefersReducedMotion } from "./animation-utils";
 
 const TOP_LIST_ANIMATION_MS = 260;
-
-function easeOutCubic(progress: number): number {
-  return 1 - Math.pow(1 - progress, 3);
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 function useAnimatedBarValues(rows: Array<{ id: string, value: number }>): Map<string, number> {
   const [animatedValues, setAnimatedValues] = useState(() => new Map(rows.map((row) => [row.id, row.value])));
@@ -124,7 +117,10 @@ export function CountryFlag({ code }: { code: string }) {
 
 export function regionName(code: string): string {
   try {
-    const dn = new Intl.DisplayNames([typeof navigator !== "undefined" ? navigator.language : "en"], { type: "region" });
+    // Use a fixed locale so server and client render identical region names; the
+    // dashboard UI is English-only, and navigator.language would cause hydration
+    // mismatches for non-English users.
+    const dn = new Intl.DisplayNames(["en"], { type: "region" });
     return dn.of(code.toUpperCase()) ?? code;
   } catch {
     return code;

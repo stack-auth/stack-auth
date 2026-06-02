@@ -1,4 +1,4 @@
-import { MAX_IMAGE_BYTES_PER_FILE } from "@stackframe/stack-shared/dist/ai/image-limits";
+import { MAX_IMAGE_BYTES_PER_FILE } from "@hexclave/shared/dist/ai/image-limits";
 
 /**
  * Maximum pixel dimension (width or height) for compressed output.

@@ -19,8 +19,8 @@ import {
 } from "@/lib/session-replay-streams";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowsClockwiseIcon, CheckIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -45,6 +45,8 @@ const BACKGROUND_CHUNK_BATCH = 50;
 const EXTRA_TABS_TO_SHOW = 2;
 const REPLAY_SETTINGS_STORAGE_KEY = "stack.session-replay.settings";
 const LEGACY_PLAYER_SPEED_STORAGE_KEY = "stack.session-replay.speed";
+// TEMPORARY: multiply the rendered list for scroll verification. Set back to 1 after manual verification.
+const SESSION_REPLAY_LIST_DEBUG_MULTIPLIER: number = 100;
 
 type RrwebEventWithTime = import("rrweb/typings/types").eventWithTime;
 type RrwebReplayer = InstanceType<typeof import("rrweb").Replayer>;
@@ -60,6 +62,11 @@ type RecordingRow = {
   lastEventAt: Date,
   chunkCount: number,
   eventCount: number,
+};
+
+type RecordingListRow = {
+  replay: RecordingRow,
+  key: string,
 };
 
 type ChunkRow = {
@@ -505,6 +512,19 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
       ?? (standaloneReplay?.id === selectedRecordingId ? standaloneReplay : null),
     [recordings, selectedRecordingId, standaloneReplay],
   );
+  const recordingListRows = useMemo<RecordingListRow[]>(() => {
+    if (SESSION_REPLAY_LIST_DEBUG_MULTIPLIER === 1) {
+      return recordings.map((replay) => ({ replay, key: replay.id }));
+    }
+
+    const rows: RecordingListRow[] = [];
+    for (let copyIndex = 0; copyIndex < SESSION_REPLAY_LIST_DEBUG_MULTIPLIER; copyIndex++) {
+      for (const replay of recordings) {
+        rows.push({ replay, key: `${replay.id}:${copyIndex}` });
+      }
+    }
+    return rows;
+  }, [recordings]);
 
   const hasAutoSelectedRef = useRef(false);
   const loadingMoreRef = useRef(false);
@@ -1464,17 +1484,18 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
         ) : undefined}
         fillWidth
         noPadding={isEmbedded}
+        containedHeight
       >
         <SessionReplayLimitBanner />
         <PanelGroup data-walkthrough="analytics-replays" direction="horizontal" className="flex-1 min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
           {!isStandaloneReplayPage && (
             <>
-              <Panel defaultSize={25} minSize={16}>
-                <div className="h-full flex flex-col">
+              <Panel defaultSize={25} minSize={16} className="min-h-0">
+                <div className="h-full min-h-0 flex flex-col overflow-hidden">
                   <div className="shrink-0 px-3 py-2 border-b border-border/30 space-y-2">
                     <div className="flex items-center justify-between gap-2 h-8">
                       <Typography className="text-sm font-medium">
-                        Sessions{!loadingInitial && recordings.length > 0 ? ` (${recordings.length}${nextCursor ? "+" : ""})` : ""}
+                        Sessions{!loadingInitial && recordingListRows.length > 0 ? ` (${recordingListRows.length}${nextCursor ? "+" : ""})` : ""}
                       </Typography>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -1750,7 +1771,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                   <div
                     ref={listBoxRef}
                     onScroll={onListScroll}
-                    className="flex-1 overflow-y-auto"
+                    className="flex-1 min-h-0 overflow-y-auto"
                   >
                     {loadingInitial ? (
                       <div className="p-2 space-y-1">
@@ -1769,13 +1790,13 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                       </div>
                     ) : (
                       <div className="p-1.5 space-y-0.5">
-                        {recordings.map((r) => {
+                        {recordingListRows.map(({ replay: r, key }) => {
                           const isSelected = r.id === selectedRecordingId;
                           const durationMs = r.lastEventAt.getTime() - r.startedAt.getTime();
                           const duration = formatDurationMs(durationMs);
                           return (
                             <div
-                              key={r.id}
+                              key={key}
                               className={cn(
                                 "rounded-lg",
                                 isSelected ? "bg-muted/60 ring-1 ring-border/40" : "hover:bg-muted/20",
@@ -1826,8 +1847,8 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
             </>
           )}
 
-          <Panel defaultSize={isStandaloneReplayPage ? 100 : 75} minSize={35}>
-            <div className="h-full flex flex-col">
+          <Panel defaultSize={isStandaloneReplayPage ? 100 : 75} minSize={35} className="min-h-0">
+            <div className="h-full min-h-0 flex flex-col overflow-hidden">
               {(standaloneReplayError || ms.downloadError || ms.playerError) && (
                 <div className="p-3 space-y-2">
                   {standaloneReplayError && <Alert variant="destructive">{standaloneReplayError}</Alert>}
@@ -1881,10 +1902,10 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
               </div>
 
               {selectedRecordingId ? (
-                <div className="flex-1 overflow-hidden flex flex-col">
-                  <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                  <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                     <div
-                      className="flex-1 overflow-hidden grid grid-cols-[minmax(0,1fr)_260px] gap-px bg-border/40"
+                      className="flex-1 min-h-0 overflow-hidden grid grid-cols-[minmax(0,1fr)_260px] gap-px bg-border/40"
                       style={{
                         gridTemplateColumns: showRightColumn ? "minmax(0, 1fr) 260px" : "minmax(0, 1fr) 0px",
                         gridTemplateRows: showRightColumn ? `repeat(${EXTRA_TABS_TO_SHOW}, auto) 1fr` : "1fr",

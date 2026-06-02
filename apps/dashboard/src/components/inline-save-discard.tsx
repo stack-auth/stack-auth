@@ -1,8 +1,8 @@
 "use client";
 
 import { CheckIcon, XIcon } from "@phosphor-icons/react";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Button, cn } from "./ui";
 
 /**

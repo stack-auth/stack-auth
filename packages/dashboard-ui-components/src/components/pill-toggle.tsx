@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { cn, Spinner, Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from "@stackframe/stack-ui";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { cn, Spinner, Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from "@hexclave/ui";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
 
 type DesignPillToggleSize = "sm" | "md" | "lg";
@@ -93,6 +93,7 @@ export function DesignPillToggle({
   };
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updatePrefersReducedMotion = () => setPrefersReducedMotion(mediaQuery.matches);
 
@@ -120,6 +121,7 @@ export function DesignPillToggle({
 
     updateSliderMetrics();
 
+    if (typeof ResizeObserver === "undefined") return;
     const resizeObserver = new ResizeObserver(updateSliderMetrics);
     resizeObserver.observe(toggle);
     resizeObserver.observe(selectedButton);
@@ -159,6 +161,7 @@ export function DesignPillToggle({
 
         const pill = (
           <button
+            type="button"
             key={option.id}
             ref={(element) => {
               if (element) {

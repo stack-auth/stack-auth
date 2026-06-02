@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Check, ChevronDown, ChevronUp, Code, Copy, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { codeToHtml } from 'shiki';

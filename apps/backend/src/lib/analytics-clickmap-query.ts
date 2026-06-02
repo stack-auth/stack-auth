@@ -1,6 +1,6 @@
 import { ClickHouseError, type ClickHouseClient } from "@clickhouse/client";
-import { DEV_TOOL_CLASS_PREFIX, DEV_TOOL_LEGACY_CLASS, DEV_TOOL_ROOT_ID } from "@stackframe/stack-shared/dist/utils/dev-tool";
-import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { DEV_TOOL_CLASS_PREFIX, DEV_TOOL_LEGACY_CLASS, DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
 // Canonical owner of the ClickHouse clickmap query: filter/param builders, the
 // shared aggregate queries, and result scaling. Both the admin route

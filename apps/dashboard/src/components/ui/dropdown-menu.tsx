@@ -2,12 +2,12 @@
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { CheckIcon, ChevronRightIcon, DotFilledIcon } from "@radix-ui/react-icons";
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import React from "react";
 
 import { cn } from "@/lib/utils";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Spinner } from "./spinner";
 
 const DropdownMenuContext = React.createContext<{

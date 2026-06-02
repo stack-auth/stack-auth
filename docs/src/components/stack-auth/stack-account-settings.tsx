@@ -1,4 +1,4 @@
-import { AccountSettings } from '@stackframe/stack';
+import { AccountSettings } from '@hexclave/next';
 import * as React from 'react';
 import { StackContainer } from '../mdx';
 

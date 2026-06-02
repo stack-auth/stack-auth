@@ -1,13 +1,13 @@
 import { Prisma } from "@/generated/prisma/client";
 import { uploadAndGetUrl } from "@/s3";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { KnownErrors } from "@hexclave/shared";
+import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { filterUndefined, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
@@ -235,6 +235,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
             isShared: provider.type === "shared",
             clientId: provider.client_id,
             clientSecret: provider.client_secret,
+            // Injecting the hexclave-branded callback for new providers is the
+            // dashboard's job; this legacy path leaves it unset so providers fall
+            // back to the stack-auth callback.
+            customCallbackUrl: undefined,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
             appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,

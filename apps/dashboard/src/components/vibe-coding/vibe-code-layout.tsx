@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ArrowCounterClockwise, ArrowRight, Bug, CaretDown, CaretUp, ChatsCircle, Code, DeviceMobile, DeviceTablet, FloppyDisk, Laptop, PencilSimple } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 
 export type ViewportMode = 'desktop' | 'tablet' | 'phone' | 'edit';

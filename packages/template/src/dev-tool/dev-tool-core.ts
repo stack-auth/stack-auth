@@ -1,18 +1,18 @@
 // IF_PLATFORM js-like
 
-import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
+import { AnalyticsClickmapResponseBodySchema, type AnalyticsClickmapResponse } from "@hexclave/shared/dist/interface/admin-metrics";
+import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
 import {
   CLICKMAP_OVERLAY_RESUME_STORAGE_KEY,
   CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
   CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
-} from "@stackframe/stack-shared/dist/utils/analytics-clickmap-overlay";
-import { DEV_TOOL_ROOT_ID } from "@stackframe/stack-shared/dist/utils/dev-tool";
-import { cssEscapeIdent } from "@stackframe/stack-shared/dist/utils/dom";
-import { AnalyticsClickmapResponseBodySchema, type AnalyticsClickmapResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { parseElementsChain, type ElementsChainSegment } from "@stackframe/stack-shared/dist/utils/elements-chain";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+} from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
+import { DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
+import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
+import { parseElementsChain, type ElementsChainSegment } from "@hexclave/shared/dist/utils/elements-chain";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/stack-app";
 import { envVars } from "../lib/env";
 import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";

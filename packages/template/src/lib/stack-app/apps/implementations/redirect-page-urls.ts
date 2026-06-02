@@ -1,5 +1,5 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getRelativePart } from "@hexclave/shared/dist/utils/urls";
 import { HandlerUrls } from "../../common";
 
 export const crossDomainAuthQueryParams = {

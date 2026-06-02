@@ -6,8 +6,8 @@ import { DesignAlert, DesignCard, DesignCategoryTabs, DesignInput } from "@/comp
 import { type AppId } from "@/lib/apps-frontend";
 import { getEnabledAppIds } from "@/lib/apps-utils";
 import { CheckCircleIcon, MagnifyingGlassIcon, SquaresFourIcon } from "@phosphor-icons/react";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { useMemo, useState } from "react";
 import { PageLayout } from "../page-layout";
 

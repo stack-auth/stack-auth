@@ -1,4 +1,4 @@
-import { StackClientApp } from "@stackframe/js";
+import { StackClientApp } from "@hexclave/js";
 import { afterEach, vi } from "vitest";
 import { it, localRedirectUrl } from "../helpers";
 

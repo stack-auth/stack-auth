@@ -37,8 +37,8 @@ import {
   SpinnerGapIcon,
   WarningCircleIcon
 } from "@phosphor-icons/react";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { memo, useCallback, useMemo, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
 

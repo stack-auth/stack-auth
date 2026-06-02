@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { cn, Spinner } from "@stackframe/stack-ui";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { cn, Spinner } from "@hexclave/ui";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
 
 type DesignTabsSize = "sm" | "md";
@@ -142,6 +142,7 @@ export function DesignCategoryTabs({
   };
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updatePrefersReducedMotion = () => setPrefersReducedMotion(mediaQuery.matches);
 
@@ -169,6 +170,7 @@ export function DesignCategoryTabs({
 
     updateSliderMetrics();
 
+    if (typeof ResizeObserver === "undefined") return;
     const resizeObserver = new ResizeObserver(updateSliderMetrics);
     resizeObserver.observe(tabList);
     resizeObserver.observe(selectedButton);

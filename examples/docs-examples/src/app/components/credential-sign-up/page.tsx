@@ -1,4 +1,4 @@
-import { CredentialSignUp } from '@stackframe/stack';
+import { CredentialSignUp } from '@hexclave/next';
 
 export default function Page() {
   return (

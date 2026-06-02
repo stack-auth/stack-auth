@@ -1,4 +1,4 @@
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 // 0.9% of every Stripe money movement on a non-internal project is collected
 // as a platform fee, ridden along via Stripe's native application_fee_*

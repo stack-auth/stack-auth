@@ -1,4 +1,4 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Auth, Payments, Project, niceBackendFetch } from "../backend-helpers";

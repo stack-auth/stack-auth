@@ -17,9 +17,9 @@ npx @hexclave/cli@latest init
 Next, update or create a file in `convex/auth.config.ts`:
 
 ```ts
-import { getConvexProvidersConfig } from "@stackframe/js/convex-auth.config";  // Vanilla JS
-// or: import { getConvexProvidersConfig } from "@stackframe/react/convex-auth.config";  // React
-// or: import { getConvexProvidersConfig } from "@stackframe/stack/convex-auth.config";  // Next.js
+import { getConvexProvidersConfig } from "@hexclave/js/convex-auth.config";  // Vanilla JS
+// or: import { getConvexProvidersConfig } from "@hexclave/react/convex-auth.config";  // React
+// or: import { getConvexProvidersConfig } from "@hexclave/next/convex-auth.config";  // Next.js
 
 export default {
   providers: getConvexProvidersConfig({
@@ -32,9 +32,9 @@ Next, update or create a file in `convex/convex.config.ts`:
 
 ```ts
 import { defineApp } from "convex/server";
-import stackAuthComponent from "@stackframe/js/convex.config";  // Vanilla JS
-// or: import stackAuthComponent from "@stackframe/react/convex.config";  // React
-// or: import stackAuthComponent from "@stackframe/stack/convex.config";  // Next.js
+import stackAuthComponent from "@hexclave/js/convex.config";  // Vanilla JS
+// or: import stackAuthComponent from "@hexclave/react/convex.config";  // React
+// or: import stackAuthComponent from "@hexclave/next/convex.config";  // Next.js
 
 
 const app = defineApp();

@@ -1,9 +1,9 @@
 "use client";
 
-import { useStackApp, useUser } from "@stackframe/stack";
-import { ITEM_IDS, PLAN_LIMITS, resolvePlanId } from "@stackframe/stack-shared/dist/plans";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@stackframe/stack-ui";
+import { useStackApp, useUser } from "@hexclave/next";
+import { ITEM_IDS, PLAN_LIMITS, resolvePlanId } from "@hexclave/shared/dist/plans";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@hexclave/ui";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
