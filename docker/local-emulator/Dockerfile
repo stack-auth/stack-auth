@@ -138,7 +138,7 @@ RUN npm install
 FROM node-base AS mock-oauth-builder
 WORKDIR /mock-oauth
 COPY apps/mock-oauth-server/package.json .
-RUN pnpm install && pnpm add esbuild --save-dev
+RUN printf 'allowBuilds:\n  esbuild: true\n' > pnpm-workspace.yaml && pnpm install && pnpm add esbuild --save-dev
 COPY apps/mock-oauth-server/src ./src
 RUN npx esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.cjs
 
