@@ -13,5 +13,5 @@
   "devDependencies": {
     "mint": "^4.2.487"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

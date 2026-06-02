@@ -2,6 +2,7 @@
 
 import { BrandIcons, Button, SimpleTooltip } from '@hexclave/ui';
 import Color, { ColorInstance } from 'color';
+import type { ReactElement } from 'react';
 import { useEffect, useId, useState } from 'react';
 import { useStackApp } from '../lib/hooks';
 import { useTranslation } from '../lib/translations';
@@ -42,7 +43,7 @@ export function OAuthButton({
     backgroundColor?: string,
     textColor?: string,
     name: string,
-    icon: JSX.Element | null,
+    icon: ReactElement | null,
     border?: string,
   };
   switch (provider) {

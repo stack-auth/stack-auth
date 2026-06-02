@@ -3,7 +3,7 @@
 import { useUser } from '@hexclave/next';
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { decodeProtectedHeader, decodeJwt as joseDecodeJwt } from 'jose';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { cn } from '../../lib/cn';
 
 type DecodedJWT = {
@@ -177,7 +177,7 @@ export function JWTViewer({ defaultToken = '', className = '' }: JWTViewerProps)
     return { status, exp, iat, nbf, issuer, audience, subject } as const;
   }, [decoded]);
 
-  const summaryRows: Array<{ key: string, label: string, content: JSX.Element }> = [];
+  const summaryRows: Array<{ key: string, label: string, content: ReactElement }> = [];
   if (decoded && tokenMeta) {
     if (tokenMeta.issuer) {
       summaryRows.push({
