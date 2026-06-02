@@ -148,9 +148,6 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "This subscription cannot be switched.");
     }
     const testMode = auth.tenancy.config.payments.testMode === true;
-    // Server-granted subscriptions (no stripeSubscriptionId) are immutable via this endpoint
-    // in live mode; they must be cancelled through admin tooling before the customer switches plans.
-    // In test mode they're swapped via the DB-only short-circuit below.
     if (existingSub != null && existingSub.stripeSubscriptionId == null && !testMode) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }

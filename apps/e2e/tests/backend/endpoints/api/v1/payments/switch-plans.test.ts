@@ -1,4 +1,5 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -443,4 +444,85 @@ it("rejects switch in live mode without Stripe onboarding", async ({ expect }) =
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+}, { timeout: 30_000 });
+
+it("two rapid test-mode switches in the same product line leave only the latest sub active", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        basic: {
+          displayName: "Basic",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "2000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        elite: {
+          displayName: "Elite",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "3000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  // Seed a test-mode grant for "basic"
+  const createUrl = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "basic" },
+  });
+  expect(createUrl.status).toBe(200);
+  const fullCode = (createUrl.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  if (!fullCode) throw new Error("Expected full purchase code");
+  const seed = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: fullCode, price_id: "monthly", quantity: 1 },
+  });
+  expect(seed.status).toBe(200);
+
+  // Switch basic → pro, then immediately pro → elite
+  const switchToPro = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: { from_product_id: "basic", to_product_id: "pro" },
+  });
+  expect(switchToPro.status).toBe(200);
+
+  const switchToElite = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: { from_product_id: "pro", to_product_id: "elite" },
+  });
+  expect(switchToElite.status).toBe(200);
+
+  const owned = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(owned.status).toBe(200);
+  const ownedIds = ((owned.body as { items: Array<{ id: string | null }> }).items)
+    .map(i => i.id)
+    .sort((a, b) => stringCompare(a ?? "", b ?? ""));
+  expect(ownedIds).toEqual(["elite"]);
 }, { timeout: 30_000 });

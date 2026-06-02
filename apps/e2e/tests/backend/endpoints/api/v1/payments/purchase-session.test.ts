@@ -441,6 +441,43 @@ it("should error when test mode is not enabled", async ({ expect }) => {
   expect(response.body).toBe("Test mode is not enabled for this project");
 });
 
+it("should reject test-mode codes sent to the live purchase-session route", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "test-product" },
+  });
+  expect(urlRes.status).toBe(200);
+  const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  await expect(
+    niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+      method: "POST",
+      accessType: "client",
+      body: { full_code: code, price_id: "monthly", quantity: 1 },
+    }),
+  ).rejects.toThrow(/no Stripe identifiers/);
+});
+
 it("creates subscription in test mode and increases included item quantity", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
