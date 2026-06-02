@@ -79,7 +79,7 @@ type ListItemProps = {
   onMouseLeave?: () => void,
   isEven?: boolean,
   isHighlighted?: boolean,
-  itemRef?: React.RefObject<HTMLDivElement>,
+  itemRef?: React.RefObject<HTMLDivElement | null>,
   actionItems?: ActionMenuItem[],
 };
 
@@ -320,7 +320,7 @@ type ProductsListProps = {
   paymentsGroups: any,
   hoveredItemId: string | null,
   getConnectedProducts: (itemId: string) => string[],
-  productRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  productRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onProductMouseEnter: (productId: string) => void,
   onProductMouseLeave: () => void,
   onProductAdd?: () => void,
