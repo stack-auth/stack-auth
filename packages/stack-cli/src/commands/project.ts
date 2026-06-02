@@ -93,7 +93,7 @@ export function registerProjectCommand(program: Command) {
     .option("--display-name <name>", "Project display name")
     .action(async (opts) => {
       if (!opts.cloud) {
-        throw new CliError("stack project create currently only creates cloud projects. Pass --cloud to confirm.");
+        throw new CliError("hexclave project create currently only creates cloud projects. Pass --cloud to confirm.");
       }
       const auth = resolveSessionAuth();
       const user = await getInternalUser(auth);

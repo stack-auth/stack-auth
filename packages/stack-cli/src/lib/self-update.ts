@@ -121,7 +121,7 @@ async function fetchLatestVersion(packageName: string, timeoutMs: number): Promi
 }
 
 // Resolves the latest published version, memoizing the result in the dev-env
-// state file for `ttlMs` so back-to-back `stack dev` runs don't hammer the
+// state file for `ttlMs` so back-to-back `hexclave dev` runs don't hammer the
 // registry. Returns null when the registry can't be reached (offline,
 // timeout) so callers fall back to the installed CLI.
 export async function resolveLatestVersion(
@@ -165,7 +165,7 @@ export function buildNpxInvocation(opts: {
       // Override any global npm "cooldown" for this call only — we always want
       // the just-published latest, and npx of a pinned version newer than the
       // cooldown window otherwise fails with ETARGET (which would kill
-      // `stack dev`). npm's config is `min-release-age` (days, npm >=11.10.0);
+      // `hexclave dev`). npm's config is `min-release-age` (days, npm >=11.10.0);
       // older npm silently ignores the unknown flag.
       "--min-release-age=0",
       "-p",
@@ -233,7 +233,7 @@ function runReexec(invocation: NpxInvocation): Promise<ReexecResult> {
       resolvePromise({ exited: true, code: code ?? 1 });
     });
     // npx missing / not spawnable: report so the caller can fall back to the
-    // installed CLI instead of failing the whole `stack dev`.
+    // installed CLI instead of failing the whole `hexclave dev`.
     child.on("error", (err) => {
       cleanup();
       resolvePromise({ exited: false, error: err.message });

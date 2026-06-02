@@ -46,7 +46,7 @@ function resolveRefreshToken(): string {
   const token = process.env.STACK_CLI_REFRESH_TOKEN
     ?? readConfigValue("STACK_CLI_REFRESH_TOKEN");
   if (!token) {
-    throw new AuthError("Not logged in. Run `stack login` first.");
+    throw new AuthError("Not logged in. Run `hexclave login` first.");
   }
   return token;
 }

@@ -12,14 +12,14 @@ function unscopedName(packageName: string): string {
   return packageName.includes("/") ? packageName.split("/")[1] : packageName;
 }
 
-// The bin name used to re-invoke this CLI via npx. Prefer the `stack` bin: it
-// exists today and is kept as an alias after the hexclave rename, so it's the
-// one bin name guaranteed across versions. A string `bin` (or none) maps to the
+// The bin name used to re-invoke this CLI via npx. Prefer the `hexclave` bin:
+// it is the canonical bin and is guaranteed to exist across published versions,
+// so it's safe to invoke against `@latest`. A string `bin` (or none) maps to the
 // unscoped package name, per npm convention.
 export function resolveBinName(bin: unknown, packageName: string): string {
   if (bin != null && typeof bin === "object") {
     const keys = Object.keys(bin as Record<string, unknown>);
-    if (keys.includes("stack")) return "stack";
+    if (keys.includes("hexclave")) return "hexclave";
     if (keys.length > 0) return keys[0];
   }
   return unscopedName(packageName);
