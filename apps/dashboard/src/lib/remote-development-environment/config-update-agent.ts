@@ -64,6 +64,17 @@ function getToolWriteTargetPath(toolName: string, toolInput: unknown, cwd: strin
   return path.isAbsolute(toolInput.file_path) ? toolInput.file_path : path.resolve(cwd, toolInput.file_path);
 }
 
+/**
+ * True if `target` resolves to a location inside `dir` (or is `dir` itself). Used
+ * to keep the agent's writes confined to the config directory: the SDK's `cwd`
+ * only controls how relative paths resolve, it is not a sandbox, so the boundary
+ * has to be checked explicitly.
+ */
+function isPathInsideDir(dir: string, target: string): boolean {
+  const relative = path.relative(path.resolve(dir), path.resolve(target));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 function stripClaudeCodeEnv(): Record<string, string | undefined> {
   const env = { ...process.env };
   // Removing CLAUDECODE prevents the SDK from detecting a nested agent. The
@@ -94,6 +105,11 @@ export async function runConfigUpdateAgent(options: {
   // stream can otherwise end without one (e.g. the process dies), which we must
   // treat as a failure rather than silently succeeding.
   let sawResult = false;
+  // Absolute paths the agent tried to write *outside* its working directory.
+  // These are denied as they happen (see the PreToolUse hook) and then surfaced
+  // as a hard failure after the run, so an attempt to escape the config
+  // directory fails loudly instead of silently applying a partial update.
+  const deniedOutOfBoundsWrites = new Set<string>();
   try {
     for await (const message of query({
       prompt: options.prompt,
@@ -102,13 +118,30 @@ export async function runConfigUpdateAgent(options: {
         // runs server-side so it must be fully isolated from the host environment.
         settingSources: [],
         strictMcpConfig: true,
-        hooks: options.onFileWillChange == null ? undefined : {
+        hooks: {
           PreToolUse: [{
             hooks: [async (input) => {
-              if (input.hook_event_name === "PreToolUse") {
-                const target = getToolWriteTargetPath(input.tool_name, input.tool_input, options.cwd);
-                if (target != null) options.onFileWillChange?.(target);
+              if (input.hook_event_name !== "PreToolUse") return { continue: true };
+              const target = getToolWriteTargetPath(input.tool_name, input.tool_input, options.cwd);
+              if (target == null) return { continue: true };
+              // Confine the agent's writes to the config directory. `cwd` only
+              // sets where relative paths resolve; it is not a sandbox, so with
+              // Write/Edit enabled the agent could otherwise overwrite arbitrary
+              // files (an absolute path, or a `../` escape resolved from an
+              // import). Deny any write that lands outside `cwd` and record it so
+              // the whole run fails afterwards.
+              if (!isPathInsideDir(options.cwd, target)) {
+                deniedOutOfBoundsWrites.add(target);
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: "PreToolUse",
+                    permissionDecision: "deny",
+                    permissionDecisionReason: `Refusing to modify ${target}: config updates may only change files inside the config directory.`,
+                  },
+                };
               }
+              // Capture the original content for rollback before the write lands.
+              options.onFileWillChange?.(target);
               return { continue: true };
             }],
           }],
@@ -151,6 +184,9 @@ export async function runConfigUpdateAgent(options: {
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+  if (deniedOutOfBoundsWrites.size > 0) {
+    throw new Error(`Config update agent tried to modify ${deniedOutOfBoundsWrites.size} file(s) outside the config directory, which is not allowed: ${[...deniedOutOfBoundsWrites].join(", ")}. The config was not updated.`);
   }
   if (!sawResult) {
     throw new Error("Config update agent ended without reporting a result. It was unable to apply the config changes to the file.");
