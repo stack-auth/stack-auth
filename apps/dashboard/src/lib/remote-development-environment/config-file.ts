@@ -352,9 +352,13 @@ function buildConfigUpdatePrompt(configFileName: string, configUpdate: Config): 
     return `- ${JSON.stringify(configPath)}: set to ${JSON.stringify(value)}`;
   }).join("\n");
 
+  // The file name comes from the on-disk path (effectively untrusted), so it's
+  // JSON-encoded for the same reason the change paths/values are above: a name
+  // containing a backtick would otherwise break out of this code span and could
+  // inject extra instructions into the prompt.
   return `You are editing a Hexclave / Stack Auth configuration file in place. Apply a set of configuration changes WITHOUT changing how the file is written.
 
-Config file: \`${configFileName}\` (in the current working directory).
+Config file: ${JSON.stringify(configFileName)} (in the current working directory).
 
 The file exports a \`config\` object (it may be wrapped in a helper such as \`defineStackConfig(...)\`). Some config values may be sourced from other files via imports, for example:
 
