@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY, INSTEAD EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@hexclave/react",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "repository": "https://github.com/hexclave/hexclave",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -84,8 +84,8 @@
     "yup": "^1.7.1"
   },
   "peerDependencies": {
-    "@types/react": ">=18.3.0",
-    "react": ">=18.3.0"
+    "@types/react": ">=19.0.0",
+    "react": ">=19.0.0"
   },
   "peerDependenciesMeta": {
     "@types/react": {

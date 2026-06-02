@@ -14,11 +14,13 @@ function useTempStateFile(secret = "secret") {
   process.env.STACK_DEV_ENVS_PATH = join(tempDir, "dev-envs.json");
   writeFileSync(process.env.STACK_DEV_ENVS_PATH, JSON.stringify({
     version: 1,
-    localDashboard: {
-      port: 26700,
-      secret,
-      pid: 123,
-      startedAtMillis: Date.now(),
+    localDashboardsByPort: {
+      "26700": {
+        port: 26700,
+        secret,
+        pid: 123,
+        startedAtMillis: Date.now(),
+      },
     },
     projectsByConfigPath: {},
   }));
@@ -122,6 +124,48 @@ describe("remote development environment security", () => {
       authorization: "Bearer secret",
     }));
     expect(response).toBeNull();
+  });
+
+  it("accepts separate dashboard secrets and origins per port", async () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      localDashboardsByPort: {
+        "26700": {
+          port: 26700,
+          secret: "first-secret",
+          pid: 123,
+          startedAtMillis: Date.now(),
+        },
+        "26701": {
+          port: 26701,
+          secret: "second-secret",
+          pid: 456,
+          startedAtMillis: Date.now(),
+        },
+      },
+      projectsByConfigPath: {},
+    }));
+    chmodSync(statePath, 0o600);
+
+    const { assertRemoteDevelopmentEnvironmentBrowserRequest, assertRemoteDevelopmentEnvironmentRequest } = await import("./security");
+    expect(assertRemoteDevelopmentEnvironmentRequest(new Request("http://127.0.0.1:26701/api/remote-development-environment/sessions", {
+      headers: {
+        host: "127.0.0.1:26701",
+        authorization: "Bearer second-secret",
+      },
+    }) as any)).toBeNull();
+    expect(assertRemoteDevelopmentEnvironmentBrowserRequest(new Request("http://127.0.0.1:26701/api/remote-development-environment/sessions", {
+      headers: {
+        host: "127.0.0.1:26701",
+        origin: "http://127.0.0.1:26701",
+        "sec-fetch-site": "same-origin",
+      },
+    }) as any)).toBeNull();
   });
 
   it("rejects config writes without an active session", async () => {

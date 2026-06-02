@@ -67,7 +67,7 @@ export function getNodeText(node: React.ReactNode): string {
   if (Array.isArray(node)) {
     return node.map(getNodeText).join("");
   }
-  if (typeof node === "object" && "props" in node) {
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
     return getNodeText(node.props.children);
   }
   throw new Error(`Unknown node type: ${typeof node}`);

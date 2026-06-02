@@ -131,7 +131,7 @@ function DashboardDetailContent({
   const [pendingCode, setPendingCode] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(hasSource);
   const [codePhase, setCodePhase] = useState<"typing" | "loading" | "done">("done");
-  const codePhaseTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const codePhaseTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
   const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
   const { setNeedConfirm } = useRouterConfirm();
   const { toast } = useToast();
@@ -243,7 +243,7 @@ function DashboardDetailContent({
       const stamped = stampEsmVersion(toolCall.args.content, packageJson.version);
       setPendingCode(stamped);
       setCurrentTsxSource(stamped);
-      clearTimeout(codePhaseTimerRef.current);
+      if (codePhaseTimerRef.current) clearTimeout(codePhaseTimerRef.current);
       setCodePhase("typing");
       codePhaseTimerRef.current = setTimeout(() => {
         setCodePhase("loading");
@@ -259,7 +259,7 @@ function DashboardDetailContent({
     setPendingCode(null);
     setIframeReady(false);
     setCodePhase("typing");
-    clearTimeout(codePhaseTimerRef.current);
+    if (codePhaseTimerRef.current) clearTimeout(codePhaseTimerRef.current);
   }, []);
 
   const handleRunEnd = useCallback(() => {

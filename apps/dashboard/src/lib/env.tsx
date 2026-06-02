@@ -18,6 +18,7 @@ const _inlineEnvVars = {
   NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR: process.env.NEXT_PUBLIC_HEXCLAVE_IS_LOCAL_EMULATOR ?? process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR,
   NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: process.env.NEXT_PUBLIC_HEXCLAVE_IS_REMOTE_DEVELOPMENT_ENVIRONMENT ?? process.env.NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT,
   NEXT_PUBLIC_STACK_IS_PREVIEW: process.env.NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW ?? process.env.NEXT_PUBLIC_STACK_IS_PREVIEW,
+  NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT: process.env.NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT,
   NEXT_PUBLIC_STACK_PROJECT_ID: process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID ?? process.env.NEXT_PUBLIC_STACK_PROJECT_ID,
   NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: process.env.NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY ?? process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   NEXT_PUBLIC_STACK_URL: process.env.NEXT_PUBLIC_HEXCLAVE_URL ?? process.env.NEXT_PUBLIC_STACK_URL,
@@ -51,7 +52,8 @@ const _inlineEnvVars = {
 // substitute via `${sentinel#STACK_ENV_VAR_SENTINEL_}` and only exports the
 // NEXT_PUBLIC_STACK_* names — renaming the sentinels here would break docker
 // self-host substitution. Dual-read in the docker post-build path needs an
-// entrypoint.sh change (separate work-area). Only the port-prefix KEY is renamed.
+// entrypoint.sh change (separate work-area). Hexclave-only variables that are
+// injected outside the docker entrypoint can use Hexclave sentinel names.
 const _postBuildEnvVars = {
   NEXT_PUBLIC_STACK_API_URL: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_API_URL",
   NEXT_PUBLIC_BROWSER_STACK_API_URL: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_BROWSER_STACK_API_URL",
@@ -67,6 +69,7 @@ const _postBuildEnvVars = {
   NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR",
   NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT",
   NEXT_PUBLIC_STACK_IS_PREVIEW: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_IS_PREVIEW",
+  NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT",
   NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY",
   NEXT_PUBLIC_STACK_URL: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_URL",
   NEXT_PUBLIC_STACK_INBUCKET_WEB_URL: "STACK_ENV_VAR_SENTINEL_NEXT_PUBLIC_STACK_INBUCKET_WEB_URL",
@@ -89,6 +92,6 @@ export function getPublicEnvVar(name: keyof typeof _inlineEnvVars): string | und
   if (_usePostBuildEnvVars.slice(0) === 'true' && value && value.startsWith('STACK_ENV_VAR_SENTINEL')) {
     return undefined;
   }
-  // Hexclave rebrand: port-prefix var renamed outright; skip port-prefix expansion for it.
-  return name === 'NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX' || !name.startsWith('NEXT_PUBLIC_STACK_') ? value : expandStackPortPrefix(value);
+
+  return name.startsWith('NEXT_PUBLIC_STACK_') ? expandStackPortPrefix(value) : value;
 }
