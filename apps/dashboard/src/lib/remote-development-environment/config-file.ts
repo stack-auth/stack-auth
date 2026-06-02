@@ -181,7 +181,18 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
     });
     await validateAgentUpdate(configFilePath, baselineConfig, configUpdate, snapshots);
   } catch (error) {
-    restoreConfigFiles(snapshots);
+    // Roll back best-effort. A failure *inside* the restore (e.g. disk full,
+    // permissions) must not replace `error`: the caller needs to see why the
+    // update actually failed, not a secondary restore error. We log the restore
+    // failure for diagnosis and always re-throw the original.
+    try {
+      restoreConfigFiles(snapshots);
+    } catch (restoreError) {
+      console.error(`${LOG_PREFIX} Failed to fully roll back config files after a failed update of ${configFilePath}; some files may be left in a partially-restored state`, {
+        configFilePath,
+        restoreError: restoreError instanceof Error ? restoreError.message : String(restoreError),
+      });
+    }
     throw error;
   }
 }
@@ -218,13 +229,27 @@ function snapshotConfigFiles(configFilePath: string, configContent: string): Con
   return snapshots;
 }
 
+/**
+ * Restores every snapshotted file to its captured state, deleting files that
+ * didn't exist when captured. Restoration is best-effort: if one file can't be
+ * restored we record it and keep going so a single failure doesn't strand the
+ * remaining files, then throw an aggregate at the end for the caller to log.
+ */
 function restoreConfigFiles(snapshots: ConfigFileSnapshot[]): void {
+  const failures: string[] = [];
   for (const { path: filePath, content } of snapshots) {
-    if (content === null) {
-      if (existsSync(filePath)) rmSync(filePath);
-    } else {
-      writeFileSync(filePath, content, "utf-8");
+    try {
+      if (content === null) {
+        if (existsSync(filePath)) rmSync(filePath);
+      } else {
+        writeFileSync(filePath, content, "utf-8");
+      }
+    } catch (error) {
+      failures.push(`${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+  if (failures.length > 0) {
+    throw new Error(`Failed to restore ${failures.length} file(s) during rollback: ${failures.join("; ")}`);
   }
 }
 
