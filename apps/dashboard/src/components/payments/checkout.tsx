@@ -1,10 +1,15 @@
-import { Button, Typography } from "@/components/ui";
+"use client";
+
+import { DesignButton } from "@/components/design-components/button";
+import { DesignCard } from "@/components/design-components/card";
+import { Typography } from "@/components/ui";
 import {
   PaymentElement,
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
 import { StripeError, StripePaymentElementOptions } from "@stripe/stripe-js";
+import { FlaskIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 const paymentElementOptions = {
@@ -90,22 +95,35 @@ export function CheckoutForm({
 
   if (onTestModeBypass) {
     return (
-      <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
-        <div className="space-y-1">
-          <Typography type="h3">Test mode active</Typography>
-          <p className="text-sm text-muted-foreground">
-            This project is in test mode. Use the bypass button to simulate a purchase.
-          </p>
+      <div className="flex flex-col items-center justify-center text-center space-y-6 py-8">
+        {/* Centered Beaker Icon */}
+        <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.05)]">
+          <FlaskIcon className="size-5" weight="fill" />
         </div>
-        <Button
+
+        {/* Text Details */}
+        <div className="space-y-2 max-w-xs">
+          <Typography type="h3" className="text-lg font-semibold text-foreground">
+            Test mode active
+          </Typography>
+          <Typography type="p" variant="secondary" className="text-sm text-muted-foreground leading-relaxed">
+            This project is in test mode. Use the bypass button to simulate a purchase.
+          </Typography>
+        </div>
+
+        {/* Centered Action Button */}
+        <DesignButton
           disabled={disabled}
           onClick={onTestModeBypass}
-          className="mt-2"
+          className="w-full max-w-xs h-11 text-sm font-semibold rounded-xl"
         >
           Complete test purchase
-        </Button>
+        </DesignButton>
+
         {message && (
-          <div className="text-destructive text-sm">{message}</div>
+          <Typography type="p" variant="destructive" className="text-sm">
+            {message}
+          </Typography>
         )}
       </div>
     );
@@ -113,29 +131,39 @@ export function CheckoutForm({
 
   if (!chargesEnabled) {
     return (
-      <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
-        <div className="space-y-1">
-          <Typography type="h3" variant="destructive">Payments not enabled</Typography>
-          <p className="text-sm text-muted-foreground">
-            This project does not have payments enabled yet. Please contact the app developer to finish setting up payments.
-          </p>
+      <DesignCard glassmorphic contentClassName="space-y-4 p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+            <WarningCircleIcon className="size-4" weight="fill" />
+          </div>
+          <div className="space-y-1">
+            <Typography type="h3" className="text-base font-semibold text-destructive">
+              Payments not enabled
+            </Typography>
+            <Typography type="p" variant="secondary" className="text-sm">
+              This project does not have payments enabled yet. Please contact the app developer to finish setting up payments.
+            </Typography>
+          </div>
         </div>
-      </div>
+      </DesignCard>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-md w-full p-6 rounded-md bg-background">
+    <DesignCard glassmorphic contentClassName="space-y-5 p-5 sm:p-6">
       <PaymentElement options={paymentElementOptions} />
-      <Button
+      <DesignButton
         disabled={!stripe || !elements || disabled || !chargesEnabled}
         onClick={handleSubmit}
+        className="w-full"
       >
         Submit
-      </Button>
+      </DesignButton>
       {message && (
-        <div className="text-destructive">{message}</div>
+        <Typography type="p" variant="destructive" className="text-sm">
+          {message}
+        </Typography>
       )}
-    </div>
+    </DesignCard>
   );
 }
