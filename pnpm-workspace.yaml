@@ -11,6 +11,20 @@ minimumReleaseAge: 10080
 
 blockExoticSubdeps: true
 
+overrides:
+  '@types/react': ^18.2.0
+  '@types/react-dom': ^18.2.0
+  sharp: ^0.34.5
+
+packageExtensions:
+  '@mintlify/link-rot':
+    dependencies:
+      react: '*'
+      react-dom: '*'
+
+patchedDependencies:
+  openid-client@5.6.4: patches/openid-client@5.6.4.patch
+
 allowBuilds:
   '@prisma/engines': true
   '@quetzallabs/i18n': true
