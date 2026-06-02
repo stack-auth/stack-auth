@@ -574,6 +574,3 @@ A: Add `docs` to `pnpm-workspace.yaml`, keep the package named `@hexclave/docs`,
 
 ## Q: How should template React contexts avoid duplicate client-bundle context identities?
 A: Define exported provider contexts such as `StackContext` and `TranslationContext` through `createGlobal` from `@stackframe/stack-shared/dist/utils/globals`, not direct `React.createContext(...)` exports. That helper stores the React context under `globalThis[Symbol.for("__hexclave-globals")]`, so duplicated SDK bundles still share the same provider/consumer context object.
-
-## Q: Why can `packages/template` typecheck fail after adding new `@hexclave/shared/dist/*` imports?
-A: `packages/template` resolves `@hexclave/shared` through the shared package's generated `dist` declarations. If new shared source files or exports were merged but packages have not been rebuilt by the dev watcher, template typecheck can report missing `@hexclave/shared/dist/*` modules or members even while `packages/stack-shared` source typechecks cleanly. Do not switch back to legacy `@stackframe/stack-shared` imports to mask this; wait for or ask the user to run the package build.
