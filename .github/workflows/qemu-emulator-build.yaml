@@ -143,17 +143,6 @@ jobs:
       # image to verify it works end-to-end before publishing. arm64 runs
       # under cross-arch TCG on an amd64 host, which can't reliably boot
       # Next.js within any sane window — skipped.
-      - name: Build stack-cli (for emulator CLI)
-        if: matrix.arch == 'amd64'
-        run: |
-          # Turbo's task graph for stack-cli#build includes
-          # @hexclave/dashboard#build:rde-standalone, which transitively
-          # depends on @hexclave/next#build (via dashboard → stack).
-          # The pnpm filter must cover the dashboard dep tree too so that
-          # devDependencies like tailwindcss are installed for the build.
-          pnpm install --frozen-lockfile --filter '@hexclave/cli...' --filter '@hexclave/dashboard...'
-          pnpm exec turbo run build --filter='@hexclave/cli...'
-
       - name: Start emulator and verify
         if: matrix.arch == 'amd64'
         env:
@@ -161,7 +150,9 @@ jobs:
           EMULATOR_READY_TIMEOUT: 3200
           EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
           EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
-        run: node packages/stack-cli/dist/index.js emulator start
+        run: |
+          chmod +x docker/local-emulator/qemu/run-emulator.sh
+          docker/local-emulator/qemu/run-emulator.sh start
 
       - name: Verify services are healthy
         if: matrix.arch == 'amd64'
@@ -169,7 +160,7 @@ jobs:
           EMULATOR_ARCH: ${{ matrix.arch }}
           EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
           EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
-        run: node packages/stack-cli/dist/index.js emulator status
+        run: docker/local-emulator/qemu/run-emulator.sh status
 
       - name: Stop emulator
         if: always() && matrix.arch == 'amd64'
@@ -177,7 +168,7 @@ jobs:
           EMULATOR_ARCH: ${{ matrix.arch }}
           EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
           EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
-        run: node packages/stack-cli/dist/index.js emulator stop
+        run: docker/local-emulator/qemu/run-emulator.sh stop
 
       - name: Package image
         run: |
