@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { cn, Spinner, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@hexclave/ui";
-import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { cn, Spinner, Tooltip, TooltipContent, TooltipPortal, TooltipProvider, TooltipTrigger } from "@hexclave/ui";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
 

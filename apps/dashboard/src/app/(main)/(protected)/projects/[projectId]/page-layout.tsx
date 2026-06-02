@@ -9,6 +9,7 @@ export function PageLayout(props: {
   fillWidth?: boolean,
   noPadding?: boolean,
   allowContentOverflow?: boolean,
+  containedHeight?: boolean,
   fullBleed?: boolean,
   wrapHeaderInCard?: boolean,
 } & ({
@@ -19,6 +20,7 @@ export function PageLayout(props: {
   return (
     <div
       className={cn("flex flex-1 min-h-0 flex-col", !props.noPadding && "py-4 px-4 sm:py-6 sm:px-6")}
+      data-contained-height={props.containedHeight ? "true" : undefined}
       data-full-bleed={props.fullBleed ? "true" : undefined}
     >
       <div
