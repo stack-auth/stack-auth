@@ -120,6 +120,7 @@ export function stackConfigFileExportsConfig(content: string, filePath: string):
   try {
     ast = parser.parse(content, {
       sourceType: "module",
+      sourceFilename: filePath,
       plugins: ["typescript", "importAttributes"],
     });
   } catch {
