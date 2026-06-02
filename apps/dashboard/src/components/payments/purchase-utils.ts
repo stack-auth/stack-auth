@@ -39,5 +39,10 @@ export function getPriceLabel(interval: [number, string] | undefined): string {
 }
 
 export function isFreePrice(usd: string | undefined): boolean {
-  return usd === "0" || usd === "0.00";
+  if (usd == null || usd.trim() === "") {
+    return false;
+  }
+
+  const usdAmount = Number(usd);
+  return Number.isFinite(usdAmount) && usdAmount === 0;
 }

@@ -38,7 +38,14 @@ export function shouldDisplayVersionResult(
 }
 
 function isLocalDashboardOrigin(origin: Location): boolean {
-  return origin.hostname === "localhost" || origin.hostname.endsWith(".localhost");
+  return (
+    origin.hostname === "localhost" ||
+    origin.hostname.endsWith(".localhost") ||
+    origin.hostname.startsWith("127.") ||
+    origin.hostname === "0.0.0.0" ||
+    origin.hostname === "::1" ||
+    origin.hostname === "[::1]"
+  );
 }
 
 /**

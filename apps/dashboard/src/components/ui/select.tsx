@@ -81,7 +81,7 @@ SelectScrollDownButton.displayName =
 const SelectContent = forwardRefIfNeeded<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
+>(({ className, children, position = "popper", style, ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
@@ -92,7 +92,7 @@ const SelectContent = forwardRefIfNeeded<
         className
       )}
       position={position}
-      style={{ maxHeight: "var(--radix-select-content-available-height)" }}
+      style={{ ...style, maxHeight: "var(--radix-select-content-available-height)" }}
       {...props}
     >
       <SelectScrollUpButton />

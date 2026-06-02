@@ -251,7 +251,7 @@ export function SelectField<F extends FieldValues>(props: {
           <FormControl>
             <Select
               onValueChange={field.onChange}
-              value={field.value}
+              value={field.value ?? ""}
               disabled={props.disabled}
             >
               <SelectTrigger className="max-w-lg">

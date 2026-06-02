@@ -138,6 +138,7 @@ export function CreateCheckoutDialog(props: Props) {
                 options={productOptions}
                 placeholder="Select a product"
                 size="md"
+                triggerId="checkout-product"
               />
             </div>
           )}

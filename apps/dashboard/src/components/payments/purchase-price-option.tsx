@@ -20,6 +20,7 @@ export function PurchasePriceOption({ priceId, priceData, selected, onSelect }: 
     <button
       type="button"
       onClick={() => onSelect(priceId)}
+      aria-pressed={selected}
       className={cn(
         "group relative w-full rounded-2xl border py-5 px-6 text-left transition-all duration-150 hover:transition-none",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",

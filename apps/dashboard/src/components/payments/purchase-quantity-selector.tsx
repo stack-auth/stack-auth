@@ -28,6 +28,11 @@ export function PurchaseQuantitySelector({
   selectedPriceId,
   priceData,
 }: Props) {
+  const unitPriceUsd = Number(priceData.USD ?? "0");
+  const totalAmount = selectedPriceId && Number.isFinite(unitPriceUsd)
+    ? (unitPriceUsd * Math.max(0, quantityNumber)).toFixed(2)
+    : "0.00";
+
   return (
     <div className="space-y-4">
       <div className="space-y-3">
@@ -42,6 +47,7 @@ export function PurchaseQuantitySelector({
               variant="outline"
               className="size-8 border-border/40 bg-foreground/[0.01] hover:bg-foreground/[0.03]"
               disabled={quantityNumber <= 1}
+              aria-label="Decrease quantity"
               onClick={() => onQuantityChange(String(Math.max(1, quantityNumber - 1)))}
             >
               <MinusIcon className="size-3.5 text-foreground" />
@@ -52,6 +58,7 @@ export function PurchaseQuantitySelector({
               pattern="[0-9]*"
               type="text"
               value={quantityInput}
+              aria-label="Quantity"
               onChange={(event) => {
                 const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
                 onQuantityChange(digitsOnly);
@@ -62,6 +69,7 @@ export function PurchaseQuantitySelector({
               size="icon"
               variant="outline"
               className="size-8 border-border/40 bg-foreground/[0.01] hover:bg-foreground/[0.03]"
+              aria-label="Increase quantity"
               onClick={() => onQuantityChange(String(quantityNumber + 1))}
             >
               <PlusIcon className="size-3.5 text-foreground" />
@@ -84,7 +92,7 @@ export function PurchaseQuantitySelector({
           </Typography>
           <div className="text-right">
             <Typography type="h2" className="text-xl font-bold tabular-nums text-foreground">
-              ${selectedPriceId ? (Number(priceData.USD) * Math.max(0, quantityNumber)).toFixed(2) : "0.00"}
+              ${totalAmount}
             </Typography>
             {selectedPriceId && priceData.interval && (
               <Typography type="p" variant="secondary" className="text-xs text-muted-foreground mt-0.5">
