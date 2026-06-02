@@ -17,6 +17,13 @@ function requestHostIsLoopback(req: NextRequest): boolean {
   return isLocalhost(`http://${host}`);
 }
 
+function loopbackRejectionMessage(req: NextRequest, state: RemoteDevelopmentEnvironmentState): string {
+  const dashboards = localDashboards(state);
+  const port = requestHostPort(req) ?? (dashboards.length > 0 ? dashboards[0].port : null);
+  const suggestedUrl = port != null ? `http://127.0.0.1:${port}` : "http://127.0.0.1:<port>";
+  return `You're accessing the development environment using an unsupported address (such as 'localhost'). Please go to ${suggestedUrl} instead — copy and paste this address into your browser.`;
+}
+
 function requestHostUrl(req: NextRequest): URL | null {
   const host = req.headers.get("host");
   if (host == null) return null;
@@ -74,7 +81,7 @@ export function assertRemoteDevelopmentEnvironmentRequest(req: NextRequest): Nex
 
   const state = readRemoteDevelopmentEnvironmentState();
   if (!requestHostIsLoopback(req)) {
-    return NextResponse.json({ error: "Remote development environment endpoints only accept loopback requests." }, { status: 403 });
+    return NextResponse.json({ error: loopbackRejectionMessage(req, state) }, { status: 403 });
   }
 
   const expectedSecret = localDashboardSecretForRequest(req, state);
@@ -101,7 +108,7 @@ export function assertRemoteDevelopmentEnvironmentBrowserRequest(req: NextReques
   }
 
   if (!requestHostIsLoopback(req) || !browserRequestOriginIsAllowed(req, state)) {
-    return NextResponse.json({ error: "Remote development environment endpoints only accept loopback requests." }, { status: 403 });
+    return NextResponse.json({ error: loopbackRejectionMessage(req, state) }, { status: 403 });
   }
 
   const fetchSite = req.headers.get("sec-fetch-site");
