@@ -62,6 +62,9 @@ export function parseWebhookOpenAPI(options: {
           post: {
             ...parseOverload({
               metadata: webhook.metadata,
+              // Webhooks are server-to-customer notifications, not client-token endpoints, so the
+              // client-token scope vendor extension never applies here.
+              audience: 'server',
               method: 'POST',
               path: `/webhooks/${webhook.type}`,
               requestBodyDesc: undefinedIfMixed(yupObject({
@@ -161,6 +164,7 @@ function parseRouteHandler(options: {
 
     result = parseOverload({
       metadata: overload.metadata,
+      audience: options.audience,
       method: options.method,
       path: options.path,
       pathDesc: undefinedIfMixed(requestDescribe.fields.params),
@@ -348,6 +352,7 @@ function toExamples(description: yup.SchemaFieldDescription, crudOperation?: Cap
 
 export function parseOverload(options: {
   metadata: EndpointDocumentation | undefined,
+  audience: 'client' | 'server' | 'admin',
   method: string,
   path: string,
   pathDesc?: yup.SchemaFieldDescription,
@@ -475,7 +480,12 @@ export function parseOverload(options: {
     }
   }
 
-  const requiredScopes = endpointDocumentation.requiredScopes ?? [];
+  // Scopes only constrain *client* access tokens (server/admin secret keys bypass enforcement
+  // entirely; see smart-route-handler). So we only emit the vendor extension on the client spec.
+  // Otherwise a CRUD that declares scopes only on its client docs would leak them onto the
+  // server/admin operations that inherit those docs, advertising a restriction that is never
+  // enforced for those audiences.
+  const requiredScopes = options.audience === 'client' ? (endpointDocumentation.requiredScopes ?? []) : [];
 
   return {
     summary: endpointDocumentation.summary,

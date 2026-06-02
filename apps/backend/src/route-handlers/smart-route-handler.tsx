@@ -276,8 +276,9 @@ export function createSmartRouteHandler<
     // treated as unrestricted — this keeps every token issued before scopes existed working.
     // Only tokens that explicitly carry scopes are restricted to the scopes they list.
     const requiredScopes = handler.metadata?.requiredScopes ?? [];
-    if (requiredScopes.length > 0 && fullReq.auth?.type === "client" && fullReq.auth.scopes.length > 0) {
-      const missingScopes = getMissingScopes(requiredScopes, fullReq.auth.scopes);
+    const auth = fullReq.auth;
+    if (requiredScopes.length > 0 && auth?.type === "client" && auth.scopes.length > 0) {
+      const missingScopes = getMissingScopes(requiredScopes, auth.scopes);
       if (missingScopes.length > 0) {
         throw new KnownErrors.InsufficientScope(missingScopes);
       }
