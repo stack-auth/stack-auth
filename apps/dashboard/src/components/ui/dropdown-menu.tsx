@@ -16,8 +16,8 @@ const DropdownMenuContext = React.createContext<{
 } | undefined>(undefined);
 
 const DropdownMenu = forwardRefIfNeeded<
-  React.ElementRef<typeof DropdownMenuPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>
+  never,
+  DropdownMenuPrimitive.DropdownMenuProps
 >(({ ...props }, ref) => {
   const [open, setOpen] = React.useState(() => props.open ?? props.defaultOpen ?? false);
 

@@ -34,5 +34,5 @@
     "vite": "^7.0.0",
     "vite-tsconfig-paths": "^4.3.2"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

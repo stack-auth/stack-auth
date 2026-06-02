@@ -26,5 +26,5 @@
     "rimraf": "^5.0.5",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

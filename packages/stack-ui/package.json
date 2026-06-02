@@ -98,5 +98,5 @@
     "react-dom": "^19.0.1",
     "rimraf": "^6.1.2"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }
