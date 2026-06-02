@@ -12,8 +12,8 @@ minimumReleaseAge: 10080
 blockExoticSubdeps: true
 
 overrides:
-  '@types/react': ^18.2.0
-  '@types/react-dom': ^18.2.0
+  '@types/react': 19.2.7
+  '@types/react-dom': 19.2.3
   sharp: ^0.34.5
 
 packageExtensions:
