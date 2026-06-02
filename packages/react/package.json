@@ -84,8 +84,8 @@
     "yup": "^1.7.1"
   },
   "peerDependencies": {
-    "@types/react": ">=19.0.0",
-    "react": ">=19.0.0"
+    "@types/react": ">=18.0.0",
+    "react": ">=18.0.0"
   },
   "peerDependenciesMeta": {
     "@types/react": {

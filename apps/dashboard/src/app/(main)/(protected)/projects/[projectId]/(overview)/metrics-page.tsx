@@ -948,12 +948,12 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const [customDateRange, setCustomDateRange] = useState<CustomDateRange | null>(null);
   const user = useUser();
 
-  const displayName = user?.displayName || user?.primaryEmail || "User";
-  const truncatedName = displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
+  const displayName = user?.displayName || user?.primaryEmail || null;
+  const truncatedName = displayName && displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
 
   return (
     <PageLayout
-      title={`Welcome back, ${truncatedName}!`}
+      title={`Welcome back${truncatedName ? `, ${truncatedName}` : ""}!`}
       actions={
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <TimeRangeToggle

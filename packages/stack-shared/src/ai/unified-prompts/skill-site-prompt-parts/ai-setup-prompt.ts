@@ -519,7 +519,9 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         ` : ""}
 
         <AccordionGroup>
-          <Accordion title="Option 1: Running Hexclave's dev environment (recommended)" defaultOpen>
+          <Accordion title="Option 1: Running Hexclave's dashboard locally (recommended)" defaultOpen>
+            ${isAiPrompt ? "This is the strongly recommended option unless the user has explicitly said otherwise, as it allows usage of \`stack.config.ts\` files and does not require the user to get project IDs or API keys from the dashboard." : ""}
+            
             First, create a \`stack.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts stack.config.ts
