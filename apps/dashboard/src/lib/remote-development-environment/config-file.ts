@@ -196,11 +196,13 @@ function snapshotConfigFiles(configFilePath: string, configContent: string): Con
   const snapshots: ConfigFileSnapshot[] = [{ path: configFilePath, content: configContent }];
   for (const specifier of getRelativeImportSpecifiers(configContent)) {
     const resolved = path.resolve(dir, specifier);
-    // Reject imports that escape the config directory (e.g. `../../some-host-file`)
-    // to avoid out-of-workspace read/write targets during snapshot/restore.
+    // Skip imports that resolve outside the config directory (e.g. `../shared/x`).
+    // The agent runs with its cwd set to the config directory, so it can only edit
+    // files within it; parent-directory imports are valid project layouts but
+    // simply aren't snapshot/rollback targets here (the agent won't touch them).
     const relative = path.relative(dir, resolved);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      throw new Error(`Config imports outside the config directory are not supported: ${JSON.stringify(specifier)}`);
+      continue;
     }
     if (snapshots.some((snapshot) => snapshot.path === resolved)) continue;
     snapshots.push({ path: resolved, content: existsSync(resolved) ? readFileSync(resolved, "utf-8") : null });

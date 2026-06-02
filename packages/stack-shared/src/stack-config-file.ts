@@ -130,6 +130,11 @@ export function stackConfigFileExportsConfig(content: string, filePath: string):
     if (!t.isExportNamedDeclaration(statement)) {
       continue;
     }
+    // Ignore type-only exports (`export type { config }`): they don't produce a
+    // runtime `config` value, so they must not satisfy the structural check.
+    if (statement.exportKind === "type") {
+      continue;
+    }
     // `export const config = ...`
     if (t.isVariableDeclaration(statement.declaration)) {
       for (const declaration of statement.declaration.declarations) {
@@ -140,7 +145,8 @@ export function stackConfigFileExportsConfig(content: string, filePath: string):
     }
     // `export { config }` / `export { somethingElse as config }`
     for (const specifier of statement.specifiers) {
-      if (t.isExportSpecifier(specifier)) {
+      // Skip inline type-only specifiers (`export { type config }`).
+      if (t.isExportSpecifier(specifier) && specifier.exportKind !== "type") {
         const exportedName = t.isIdentifier(specifier.exported) ? specifier.exported.name : specifier.exported.value;
         if (exportedName === "config") {
           return true;
