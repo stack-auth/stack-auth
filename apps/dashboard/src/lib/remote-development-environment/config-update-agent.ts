@@ -62,6 +62,10 @@ export async function runConfigUpdateAgent(options: {
     for await (const message of query({
       prompt: options.prompt,
       options: {
+        // Don't inherit user/project/local Claude settings or MCP configs — this
+        // runs server-side so it must be fully isolated from the host environment.
+        settingSources: [],
+        strictMcpConfig: true,
         // Bash is intentionally omitted: applying a config delta only needs file
         // inspection and editing, and withholding shell access reduces the blast
         // radius of running an agent against the user's project.
@@ -71,6 +75,7 @@ export async function runConfigUpdateAgent(options: {
         abortController,
         env: {
           ...stripClaudeCodeEnv(),
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
           ANTHROPIC_BASE_URL: ANTHROPIC_PROXY_BASE_URL,
           ANTHROPIC_API_KEY: "stack-auth-proxy",
         },

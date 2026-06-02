@@ -132,6 +132,10 @@ function renderConfigObjectToFile(configFilePath: string, config: Config): void 
  */
 export async function updateConfigObject(configFilePath: string, configUpdate: Config): Promise<void> {
   ensureConfigFileExists(configFilePath);
+
+  // Nothing to do when there are no leaf changes (e.g. `{}` or `{ foo: undefined }`).
+  if (flattenConfigUpdate(configUpdate).length === 0) return;
+
   const content = readFileSync(configFilePath, "utf-8");
 
   // Fast path: a plain static literal config has no structure to preserve, so we
@@ -192,6 +196,12 @@ function snapshotConfigFiles(configFilePath: string, configContent: string): Con
   const snapshots: ConfigFileSnapshot[] = [{ path: configFilePath, content: configContent }];
   for (const specifier of getRelativeImportSpecifiers(configContent)) {
     const resolved = path.resolve(dir, specifier);
+    // Reject imports that escape the config directory (e.g. `../../some-host-file`)
+    // to avoid out-of-workspace read/write targets during snapshot/restore.
+    const relative = path.relative(dir, resolved);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(`Config imports outside the config directory are not supported: ${JSON.stringify(specifier)}`);
+    }
     if (snapshots.some((snapshot) => snapshot.path === resolved)) continue;
     snapshots.push({ path: resolved, content: existsSync(resolved) ? readFileSync(resolved, "utf-8") : null });
   }
