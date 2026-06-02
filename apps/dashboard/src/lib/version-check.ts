@@ -37,17 +37,6 @@ export function shouldDisplayVersionResult(
   return result !== null && (enableNonSevereCheck || result.severe);
 }
 
-function isLocalDashboardOrigin(origin: Location): boolean {
-  return (
-    origin.hostname === "localhost" ||
-    origin.hostname.endsWith(".localhost") ||
-    origin.hostname.startsWith("127.") ||
-    origin.hostname === "0.0.0.0" ||
-    origin.hostname === "::1" ||
-    origin.hostname === "[::1]"
-  );
-}
-
 /**
  * Common utility function for checking version against Hexclave API
  * Used by both VersionAlerter and StackCompanion components
@@ -62,9 +51,8 @@ export function checkVersion(
     errorPrefix = "Version check failed"
   } = options;
 
-  // Skip check for managed hosting and local development. Local workspace apps use
-  // package version 1.0.0, which is not a released self-hosting version.
-  if (typeof window !== "undefined" && (window.location.origin === "https://app.hexclave.com" || isLocalDashboardOrigin(window.location))) {
+  // Skip check for managed hosting
+  if (typeof window !== "undefined" && window.location.origin === "https://app.hexclave.com") {
     return () => {}; // Return cleanup function
   }
 
