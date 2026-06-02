@@ -81,7 +81,7 @@ async function localEmulatorIsHealthy(): Promise<boolean> {
 
 export async function GET(req: NextRequest) {
   if (!requestHostIsLoopback(req) || !originIsAllowed(req)) {
-    return NextResponse.json({ error: "Development environment health checks only accept loopback requests." }, { status: 403 });
+    return NextResponse.json({ error: "You're accessing the development environment using an unsupported address (such as 'localhost'). Please go to http://127.0.0.1:26700 instead — copy and paste this address into your browser." }, { status: 403 });
   }
 
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";

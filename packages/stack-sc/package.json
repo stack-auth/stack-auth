@@ -67,5 +67,5 @@
     "react-dom": "^19.0.1",
     "next": "^14.2.35"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }
