@@ -145,13 +145,17 @@ export const POST = createSmartRouteHandler({
 
     const rows = body.events.map((event) => {
       const rawData: unknown = event.data;
-      const baseData = (rawData != null && typeof rawData === "object" && !Array.isArray(rawData))
-        ? (rawData as Record<string, unknown>)
-        : {};
-      const existingUa = baseData.user_agent;
-      const mergedData = (existingUa == null || existingUa === "")
-        ? { ...baseData, user_agent: headerUserAgent }
-        : baseData;
+      const isPlainObject = rawData != null && typeof rawData === "object" && !Array.isArray(rawData);
+      // Only stamp the fallback User-Agent onto object payloads; preserve any other
+      // (non-object) data as-is instead of dropping it.
+      let mergedData: unknown = rawData;
+      if (isPlainObject) {
+        const baseData = rawData as Record<string, unknown>;
+        const existingUa = baseData.user_agent;
+        mergedData = (existingUa == null || existingUa === "")
+          ? { ...baseData, user_agent: headerUserAgent }
+          : baseData;
+      }
       return ({
         event_type: event.event_type,
         event_at: new Date(event.event_at_ms),

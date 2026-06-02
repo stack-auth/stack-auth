@@ -692,6 +692,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
       controls.minDistance = cameraDistance;
       controls.maxDistance = 600;
     } else {
+      controls.enableZoom = false;
       controls.maxDistance = cameraDistance;
       controls.minDistance = cameraDistance;
     }

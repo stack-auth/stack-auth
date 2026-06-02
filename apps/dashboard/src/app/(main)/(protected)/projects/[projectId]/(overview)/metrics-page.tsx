@@ -1673,7 +1673,10 @@ function MetricsContent({
       ? undefined
       : previousDauPoint.new + previousDauPoint.retained + previousDauPoint.reactivated;
     const visitorsTotalInRange = composedData.reduce((sum, row) => sum + row.visitors, 0);
-    const totalRevenueCentsInRange = composedData.reduce((sum, row) => sum + row.new_cents, 0);
+    // Revenue is only available at daily granularity, so derive the total from the
+    // daily revenue series (already filtered by the active range). The hourly composed
+    // data used in the 1d view has no revenue, which would otherwise zero this out.
+    const totalRevenueCentsInRange = revenueHoverData.reduce((sum, row) => sum + row.new_cents, 0);
 
     const composedIndexByDate = new Map(allComposedData.map((row, index) => [row.date, index]));
     const firstComposedPoint = composedData.at(0);
@@ -1701,7 +1704,7 @@ function MetricsContent({
       revenueLabel: "Revenue",
       revenueDelta: paymentsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData, paymentsEnabled]);
+  }, [allComposedData, composedData, dauStackedData, paymentsEnabled, revenueHoverData]);
 
   const bounceByDate = useMemo(() => new Map(dailyBounceRate.map((point) => [point.date, point.activity])), [dailyBounceRate]);
   const sessionByDate = useMemo(() => new Map(dailyAvgSession.map((point) => [point.date, point.activity])), [dailyAvgSession]);

@@ -117,7 +117,10 @@ export function CountryFlag({ code }: { code: string }) {
 
 export function regionName(code: string): string {
   try {
-    const dn = new Intl.DisplayNames([typeof navigator !== "undefined" ? navigator.language : "en"], { type: "region" });
+    // Use a fixed locale so server and client render identical region names; the
+    // dashboard UI is English-only, and navigator.language would cause hydration
+    // mismatches for non-English users.
+    const dn = new Intl.DisplayNames(["en"], { type: "region" });
     return dn.of(code.toUpperCase()) ?? code;
   } catch {
     return code;

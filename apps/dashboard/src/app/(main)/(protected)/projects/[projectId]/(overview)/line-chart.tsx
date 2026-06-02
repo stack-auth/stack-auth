@@ -116,8 +116,10 @@ function parseChartDate(dateValue: string): Date {
 }
 
 function formatChartXAxisTick(value: string): string {
-  const date = parseChartDate(value);
-  if (Number.isNaN(date.getTime())) {
+  let date: Date;
+  try {
+    date = parseChartDate(value);
+  } catch {
     return value;
   }
   if (value.includes("T")) {
