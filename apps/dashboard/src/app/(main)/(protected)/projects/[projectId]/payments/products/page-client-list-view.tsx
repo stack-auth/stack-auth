@@ -79,7 +79,7 @@ type ListItemProps = {
   onMouseLeave?: () => void,
   isEven?: boolean,
   isHighlighted?: boolean,
-  itemRef?: React.RefObject<HTMLDivElement | null>,
+  itemRef?: React.RefObject<HTMLDivElement>,
   actionItems?: ActionMenuItem[],
 };
 
@@ -320,7 +320,7 @@ type ProductsListProps = {
   paymentsGroups: any,
   hoveredItemId: string | null,
   getConnectedProducts: (itemId: string) => string[],
-  productRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
+  productRefs?: Record<string, React.RefObject<HTMLDivElement>>,
   onProductMouseEnter: (productId: string) => void,
   onProductMouseLeave: () => void,
   onProductAdd?: () => void,
@@ -470,7 +470,7 @@ type ItemsListProps = {
   items: CompleteConfig['payments']['items'],
   hoveredProductId: string | null,
   getConnectedItems: (productId: string) => string[],
-  itemRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
+  itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
   onItemMouseEnter: (itemId: string) => void,
   onItemMouseLeave: () => void,
   onItemAdd?: () => void,
