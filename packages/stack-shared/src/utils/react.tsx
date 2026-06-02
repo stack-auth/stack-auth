@@ -90,30 +90,18 @@ import.meta.vitest?.test("getNodeText", ({ expect }) => {
   // Test with mixed array
   expect(getNodeText(["hello", 42, null])).toBe("hello42");
 
-  // Test with React element (mocked)
-  const mockElement = {
-    props: {
-      children: "child text"
-    }
-  } as React.ReactElement;
+  // Test with React element
+  const mockElement = React.createElement("span", null, "child text");
   expect(getNodeText(mockElement)).toBe("child text");
 
   // Test with nested React elements
-  const nestedElement = {
-    props: {
-      children: {
-        props: {
-          children: "nested text"
-        }
-      } as React.ReactElement
-    }
-  } as React.ReactElement;
+  const nestedElement = React.createElement("div", null, React.createElement("span", null, "nested text"));
   expect(getNodeText(nestedElement)).toBe("nested text");
 
   // Test with array of React elements
   const arrayOfElements = [
-    { props: { children: "first" } } as React.ReactElement,
-    { props: { children: "second" } } as React.ReactElement
+    React.createElement("span", null, "first"),
+    React.createElement("span", null, "second"),
   ];
   expect(getNodeText(arrayOfElements)).toBe("firstsecond");
 });
