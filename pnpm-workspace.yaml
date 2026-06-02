@@ -27,7 +27,7 @@ patchedDependencies:
 
 allowBuilds:
   '@prisma/engines': true
-  '@quetzallabs/i18n': true
+  '@quetzallabs/i18n': false
   '@sentry/cli': true
   '@tailwindcss/oxide': true
   '@vercel/speed-insights': true
