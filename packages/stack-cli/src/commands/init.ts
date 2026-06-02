@@ -47,7 +47,7 @@ export function registerInitCommand(program: Command) {
       const hasFlags = opts.mode != null || opts.configFile != null || opts.selectProjectId != null;
 
       if (!hasFlags && isNonInteractiveEnv()) {
-        throw new CliError("stack init requires an interactive terminal. Use --mode flag for non-interactive usage.");
+        throw new CliError("hexclave init requires an interactive terminal. Use --mode flag for non-interactive usage.");
       }
 
       try {
@@ -208,7 +208,7 @@ async function ensureLoggedInSession() {
   } catch (e) {
     if (e instanceof AuthError) {
       if (isNonInteractiveEnv()) {
-        throw new CliError("Not logged in. Run `stack login` first or set STACK_CLI_REFRESH_TOKEN.");
+        throw new CliError("Not logged in. Run `hexclave login` first or set STACK_CLI_REFRESH_TOKEN.");
       }
       console.log("You need to log in first.\n");
       await performLogin();
@@ -296,7 +296,7 @@ async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOp
       throw new CliError(`Project '${opts.selectProjectId}' not found among your owned projects. Check the ID or omit --select-project-id to create a new project interactively.`);
     }
     if (isNonInteractiveEnv()) {
-      throw new CliError("No projects found. Run `stack project create --display-name <name>` first.");
+      throw new CliError("No projects found. Run `hexclave project create --display-name <name>` first.");
     }
 
     const shouldCreate = await confirm({

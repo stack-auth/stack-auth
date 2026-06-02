@@ -229,7 +229,7 @@ export function registerConfigCommand(program: Command) {
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
-        throw new CliError("`stack config pull` requires `stack login`. Remove STACK_SECRET_SERVER_KEY and try again.");
+        throw new CliError("`hexclave config pull` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
       }
       const project = await getAdminProject(auth);
 
@@ -292,7 +292,7 @@ export function registerConfigCommand(program: Command) {
         await pushConfigWithSecretServerKey(auth, config, source);
       } else {
         if (!isProjectAuthWithRefreshToken(auth)) {
-          throw new CliError("`stack config push` requires either STACK_SECRET_SERVER_KEY or `stack login`.");
+          throw new CliError("`hexclave config push` requires either STACK_SECRET_SERVER_KEY or `hexclave login`.");
         }
         const project = await getAdminProject(auth);
         await project.pushConfig(config, {

@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { parseOwnPackage, resolveBinName } from "./own-package.js";
 
 describe("resolveBinName", () => {
-  it("prefers the `stack` bin when present (stable alias across versions)", () => {
-    expect(resolveBinName({ stack: "./d.js", hexclave: "./d.js" }, "@hexclave/cli")).toBe("stack");
+  it("prefers the `hexclave` bin when present (canonical bin across versions)", () => {
+    expect(resolveBinName({ stack: "./d.js", hexclave: "./d.js" }, "@hexclave/cli")).toBe("hexclave");
   });
 
-  it("falls back to the first bin key when there is no `stack`", () => {
-    expect(resolveBinName({ hexclave: "./d.js" }, "@hexclave/cli")).toBe("hexclave");
+  it("falls back to the first bin key when there is no `hexclave`", () => {
+    expect(resolveBinName({ stack: "./d.js" }, "@hexclave/cli")).toBe("stack");
   });
 
   it("derives the bin from the unscoped package name when bin is absent", () => {

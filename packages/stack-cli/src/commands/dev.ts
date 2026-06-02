@@ -78,7 +78,7 @@ function errorMessage(error: unknown): string {
 
 function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
   if (commandArgs.length === 0) {
-    throw new CliError("Missing command. Usage: stack dev --config-file <path> -- <command> [args...]");
+    throw new CliError("Missing command. Usage: hexclave dev --config-file <path> -- <command> [args...]");
   }
   const command = commandArgs[0];
   return { command, args: commandArgs.slice(1) };
@@ -185,7 +185,7 @@ function assertBundledDashboardExists(): void {
   if (!existsSync(serverPath)) {
     throw new CliError([
       "This stack-cli build does not include the bundled development-environment dashboard.",
-      "Build the CLI package with the dashboard standalone assets before running `stack dev`.",
+      "Build the CLI package with the dashboard standalone assets before running `hexclave dev`.",
     ].join(" "));
   }
 }

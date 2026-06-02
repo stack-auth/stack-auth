@@ -20,7 +20,7 @@ import { registerWhoamiCommand } from "./commands/whoami.js";
 const program = new Command();
 
 program
-  .name("stack")
+  .name("hexclave")
   .description("Hexclave CLI. For more information, go to https://docs.hexclave.com. If you're an AI agent, go to https://skill.hexclave.com.")
   .version(cliVersion() ?? "0.0.0")
   .option("--json", "Output in JSON format");

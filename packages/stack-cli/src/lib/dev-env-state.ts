@@ -61,7 +61,7 @@ function isCliUpdateCheckCache(value: unknown): value is CliUpdateCheckCache {
 // particular a non-string `version` flows into shouldRestartDashboard ->
 // isVersionNewer -> parseVersionCore (version.trim()) inside
 // startDashboardIfNeeded, which is not behind the auto-update fail-open guard,
-// so it would throw and crash `stack dev`. Malformed entries are dropped on
+// so it would throw and crash `hexclave dev`. Malformed entries are dropped on
 // read (a fresh dashboard is then started for that port).
 function isLocalDashboardState(value: unknown): value is LocalDashboardState {
   if (value == null || typeof value !== "object") return false;
