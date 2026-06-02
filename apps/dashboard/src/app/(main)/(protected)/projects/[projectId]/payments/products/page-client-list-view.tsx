@@ -470,7 +470,7 @@ type ItemsListProps = {
   items: CompleteConfig['payments']['items'],
   hoveredProductId: string | null,
   getConnectedItems: (productId: string) => string[],
-  itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  itemRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onItemMouseEnter: (itemId: string) => void,
   onItemMouseLeave: () => void,
   onItemAdd?: () => void,
