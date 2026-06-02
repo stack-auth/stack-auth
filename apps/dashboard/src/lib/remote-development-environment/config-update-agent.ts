@@ -1,5 +1,6 @@
 import "server-only";
 
+import path from "path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
 /**
@@ -33,6 +34,36 @@ const AGENT_TIMEOUT_MS: number = (() => {
   return parsed;
 })();
 
+/**
+ * True for the error produced when an `AbortController` aborts an awaited
+ * operation. The SDK surfaces this as either a real `AbortError` or a
+ * `DOMException` whose `name` is `"AbortError"`.
+ */
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+// The file-mutating tools we allow the agent to use, each of which takes the
+// target file in a `file_path` field. We watch these so callers can snapshot a
+// file for rollback *before* the agent overwrites it.
+const FILE_MUTATING_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+
+function hasStringFilePath(input: unknown): input is { file_path: string } {
+  return typeof input === "object" && input !== null && "file_path" in input && typeof input.file_path === "string";
+}
+
+/**
+ * Returns the absolute path a file-mutating tool call is about to write, or
+ * `null` if the tool doesn't write a file. Relative paths are resolved against
+ * the agent's `cwd` to match where the tool will actually write.
+ */
+function getToolWriteTargetPath(toolName: string, toolInput: unknown, cwd: string): string | null {
+  if (!FILE_MUTATING_TOOLS.has(toolName) || !hasStringFilePath(toolInput)) {
+    return null;
+  }
+  return path.isAbsolute(toolInput.file_path) ? toolInput.file_path : path.resolve(cwd, toolInput.file_path);
+}
+
 function stripClaudeCodeEnv(): Record<string, string | undefined> {
   const env = { ...process.env };
   // Removing CLAUDECODE prevents the SDK from detecting a nested agent. The
@@ -51,6 +82,11 @@ function stripClaudeCodeEnv(): Record<string, string | undefined> {
 export async function runConfigUpdateAgent(options: {
   prompt: string,
   cwd: string,
+  // Called with the absolute path of each file the agent is about to write or
+  // edit, *before* the change happens, so the caller can capture the original
+  // content for rollback even when the file isn't statically referenced by the
+  // config (a new file, or an existing-but-unimported file).
+  onFileWillChange?: (filePath: string) => void,
 }): Promise<void> {
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), AGENT_TIMEOUT_MS);
@@ -66,6 +102,17 @@ export async function runConfigUpdateAgent(options: {
         // runs server-side so it must be fully isolated from the host environment.
         settingSources: [],
         strictMcpConfig: true,
+        hooks: options.onFileWillChange == null ? undefined : {
+          PreToolUse: [{
+            hooks: [async (input) => {
+              if (input.hook_event_name === "PreToolUse") {
+                const target = getToolWriteTargetPath(input.tool_name, input.tool_input, options.cwd);
+                if (target != null) options.onFileWillChange?.(target);
+              }
+              return { continue: true };
+            }],
+          }],
+        },
         // Bash is intentionally omitted: applying a config delta only needs file
         // inspection and editing, and withholding shell access reduces the blast
         // radius of running an agent against the user's project.
@@ -82,17 +129,23 @@ export async function runConfigUpdateAgent(options: {
         stderr: (data: string) => { console.warn(`${LOG_PREFIX} [agent] ${data}`); },
       },
     })) {
-      // Detect the terminal message via `"result" in message` to match the CLI
-      // (`runClaudeAgent`); only a successful result carries a `result` field,
-      // so any other terminal subtype is reported as a failure.
-      if ("result" in message) {
-        sawResult = true;
-      } else if (message.type === "result") {
-        throw new Error(`Config update agent failed (${message.subtype}). It was unable to apply the config changes to the file.`);
+      // Only the terminal `result` message signals completion; a successful one
+      // carries a `result` field, so any other `result`-type subtype is a
+      // failure. Gating both branches on `type === "result"` avoids treating an
+      // intermediate message that happens to carry a `result` property as done.
+      if (message.type === "result") {
+        if ("result" in message) {
+          sawResult = true;
+        } else {
+          throw new Error(`Config update agent failed (${message.subtype}). It was unable to apply the config changes to the file.`);
+        }
       }
     }
   } catch (error) {
-    if (abortController.signal.aborted) {
+    // Only translate to a timeout error when the failure is the abort we
+    // triggered; otherwise a real agent error that races with the timeout would
+    // be masked by the generic "timed out" message.
+    if (abortController.signal.aborted && isAbortError(error)) {
       throw new Error(`Config update agent timed out after ${AGENT_TIMEOUT_MS}ms. It was unable to apply the config changes to the file.`);
     }
     throw error;

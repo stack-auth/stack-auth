@@ -1,15 +1,16 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Lets each AI-path test inject what the (otherwise network-backed) agent does
 // to the files on disk, so we can exercise the orchestration and validation
 // around `updateConfigObject` without calling a real model.
-let mockAgentImpl: ((options: { prompt: string, cwd: string }) => void | Promise<void>) | null = null;
+type MockAgentOptions = { prompt: string, cwd: string, onFileWillChange?: (filePath: string) => void };
+let mockAgentImpl: ((options: MockAgentOptions) => void | Promise<void>) | null = null;
 
 vi.mock("server-only", () => ({}));
 vi.mock("./config-update-agent", () => ({
-  runConfigUpdateAgent: async (options: { prompt: string, cwd: string }) => {
+  runConfigUpdateAgent: async (options: MockAgentOptions) => {
     if (mockAgentImpl == null) {
       throw new Error("runConfigUpdateAgent was called but no mock implementation was set for this test.");
     }
@@ -19,9 +20,20 @@ vi.mock("./config-update-agent", () => ({
 
 let tempDir: string | undefined;
 
+function getTempDir(): string {
+  if (tempDir == null) {
+    tempDir = mkdtempSync(join(process.cwd(), ".stack-rde-config-test-"));
+    // Give the temp dir its own package.json so SDK-package detection (which
+    // walks up to the nearest package.json) resolves deterministically here
+    // instead of picking up the dashboard's own dependencies, which would make
+    // the rendered `StackConfig` import env-dependent.
+    writeFileSync(join(tempDir, "package.json"), JSON.stringify({ name: "stack-rde-config-test" }), "utf-8");
+  }
+  return tempDir;
+}
+
 function writeTempFile(name: string, content: string): string {
-  tempDir ??= mkdtempSync(join(process.cwd(), ".stack-rde-config-test-"));
-  const filePath = join(tempDir, name);
+  const filePath = join(getTempDir(), name);
   writeFileSync(filePath, content, "utf-8");
   return filePath;
 }
@@ -329,6 +341,32 @@ describe("remote development environment config file", () => {
     // original contents \u2014 no half-applied update is left behind.
     expect(readFileSync(configPath, "utf-8")).toBe(configSource);
     expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>Old email</div>;\n");
+  });
+
+  it("rolls back a brand-new file the agent creates outside the statically-imported set", async () => {
+    // A wrapped config takes the agent path (it isn't a plain static literal),
+    // so the agent mock actually runs.
+    const configSource = `import { defineStackConfig } from "@hexclave/shared/config";\nexport const config = defineStackConfig({ auth: { allowSignUp: true } });\n`;
+    const configPath = writeTempConfig(configSource);
+    const newFilePath = join(getTempDir(), "generated-extra.ts");
+
+    const { updateConfigObject } = await import("./config-file");
+
+    // The agent creates a file that the config doesn't statically import, so the
+    // only way it can be rolled back is via the `onFileWillChange` hook firing
+    // before the write. After creating it, the agent fails so the run must roll
+    // back — deleting the newly-created file.
+    mockAgentImpl = (options) => {
+      options.onFileWillChange?.(newFilePath);
+      writeFileSync(newFilePath, "export const extra = true;\n", "utf-8");
+      throw new Error("agent blew up");
+    };
+
+    await expect(updateConfigObject(configPath, { "auth.allowSignUp": false }))
+      .rejects.toThrow("agent blew up");
+
+    expect(existsSync(newFilePath)).toBe(false);
+    expect(readFileSync(configPath, "utf-8")).toBe(configSource);
   });
 
   it("fails a non-evaluable update when the agent leaves every file unchanged", async () => {

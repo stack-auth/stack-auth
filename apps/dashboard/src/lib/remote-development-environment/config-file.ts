@@ -166,14 +166,18 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   // full semantic check afterwards), then let the agent apply the change.
   const baselineConfig = await tryReadConfigForValidation(configFilePath);
 
-  // Snapshot the config file and any externally-referenced files the agent might
-  // edit, so we can roll back to the original state if the agent fails or its
-  // result doesn't validate — never leaving a half-applied update behind.
+  // Snapshot the config file and its statically-referenced imports up front, then
+  // additionally capture any file the agent is about to write *before* it writes
+  // (via `onFileWillChange`). Together these let us roll back to the exact
+  // original state if the agent fails or its result doesn't validate — including
+  // brand-new files and files the agent edits that weren't statically imported —
+  // so we never leave a half-applied update behind.
   const snapshots = snapshotConfigFiles(configFilePath, content);
   try {
     await runConfigUpdateAgent({
       prompt: buildConfigUpdatePrompt(path.basename(configFilePath), configUpdate),
       cwd: path.dirname(configFilePath),
+      onFileWillChange: (filePath) => captureSnapshotIfAbsent(snapshots, filePath),
     });
     await validateAgentUpdate(configFilePath, baselineConfig, configUpdate, snapshots);
   } catch (error) {
@@ -186,26 +190,30 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
 type ConfigFileSnapshot = { path: string, content: string | null };
 
 /**
- * Captures the config file plus every file it imports via a relative path (e.g.
- * `import x from "./welcome-email.tsx" with { type: "text" }`), which are exactly
- * the files an in-place update is expected to touch. Files are read as UTF-8
- * text, which matches this feature's text-import use case.
+ * Captures a file's current on-disk content into `snapshots` (recording `null`
+ * if it doesn't exist) unless it's already captured. Paths are resolved to
+ * absolute form so the same file is never snapshotted twice under different
+ * spellings. Files are read as UTF-8 text, which matches this feature's
+ * text-import use case.
+ */
+function captureSnapshotIfAbsent(snapshots: ConfigFileSnapshot[], filePath: string): void {
+  const resolved = path.resolve(filePath);
+  if (snapshots.some((snapshot) => snapshot.path === resolved)) return;
+  snapshots.push({ path: resolved, content: existsSync(resolved) ? readFileSync(resolved, "utf-8") : null });
+}
+
+/**
+ * Seeds the rollback set with the config file plus every file it imports via a
+ * relative path (e.g. `import x from "./welcome-email.tsx" with { type: "text" }`),
+ * which are exactly the files an in-place update is expected to touch. Any other
+ * file the agent ends up writing is captured on the fly via `onFileWillChange`,
+ * so this static pass is just a best-effort head start, not the full guarantee.
  */
 function snapshotConfigFiles(configFilePath: string, configContent: string): ConfigFileSnapshot[] {
   const dir = path.dirname(configFilePath);
-  const snapshots: ConfigFileSnapshot[] = [{ path: configFilePath, content: configContent }];
+  const snapshots: ConfigFileSnapshot[] = [{ path: path.resolve(configFilePath), content: configContent }];
   for (const specifier of getRelativeImportSpecifiers(configContent)) {
-    const resolved = path.resolve(dir, specifier);
-    // Skip imports that resolve outside the config directory (e.g. `../shared/x`).
-    // The agent runs with its cwd set to the config directory, so it can only edit
-    // files within it; parent-directory imports are valid project layouts but
-    // simply aren't snapshot/rollback targets here (the agent won't touch them).
-    const relative = path.relative(dir, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      continue;
-    }
-    if (snapshots.some((snapshot) => snapshot.path === resolved)) continue;
-    snapshots.push({ path: resolved, content: existsSync(resolved) ? readFileSync(resolved, "utf-8") : null });
+    captureSnapshotIfAbsent(snapshots, path.resolve(dir, specifier));
   }
   return snapshots;
 }
@@ -312,7 +320,11 @@ function flattenConfigUpdate(update: Config): ConfigChange[] {
 function buildConfigUpdatePrompt(configFileName: string, configUpdate: Config): string {
   const changes = flattenConfigUpdate(configUpdate);
   const changeLines = changes.map(({ path: configPath, value }) => {
-    return `- \`${configPath}\`: set to ${JSON.stringify(value)}`;
+    // Both the path and value come from the (untrusted) config update, so they're
+    // JSON-encoded rather than interpolated raw — this escapes backticks, quotes,
+    // and newlines that could otherwise break out of the prompt's formatting or
+    // inject extra instructions.
+    return `- ${JSON.stringify(configPath)}: set to ${JSON.stringify(value)}`;
   }).join("\n");
 
   return `You are editing a Hexclave / Stack Auth configuration file in place. Apply a set of configuration changes WITHOUT changing how the file is written.
