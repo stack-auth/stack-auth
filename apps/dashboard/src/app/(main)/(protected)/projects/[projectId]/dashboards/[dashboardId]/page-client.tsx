@@ -131,7 +131,7 @@ function DashboardDetailContent({
   const [pendingCode, setPendingCode] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(hasSource);
   const [codePhase, setCodePhase] = useState<"typing" | "loading" | "done">("done");
-  const codePhaseTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const codePhaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
   const { setNeedConfirm } = useRouterConfirm();
   const { toast } = useToast();
