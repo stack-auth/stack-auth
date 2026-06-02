@@ -305,4 +305,29 @@ describe("remote development environment config file", () => {
     await expect(updateConfigObject(configPath, { "auth.allowSignUp": false }))
       .rejects.toThrow(/validation failed/);
   });
+
+  it("rolls back the config and its referenced files when the agent's result fails validation", async () => {
+    const templatePath = writeTempFile("welcome-email.tsx", "export default <div>Old email</div>;\n");
+    const configSource = `import welcomeEmail from "./welcome-email.tsx" with { type: "text" };\n\nexport const config = {\n  emails: { templates: { welcome: welcomeEmail } },\n};\n`;
+    const configPath = writeTempConfig(configSource);
+
+    const { updateConfigObject } = await import("./config-file");
+
+    // The agent edits both files but then fails, so the partially-applied edits
+    // must be rolled back and the failure surfaced.
+    mockAgentImpl = () => {
+      writeFileSync(templatePath, "export default <div>Corrupted</div>;\n", "utf-8");
+      writeFileSync(configPath, `export const config = { auth: { allowSignUp: true } };\n`, "utf-8");
+      throw new Error("agent blew up");
+    };
+
+    await expect(updateConfigObject(configPath, {
+      "emails.templates.welcome": "export default <div>New email</div>;\n",
+    })).rejects.toThrow("agent blew up");
+
+    // Both the config file and the externally-referenced file are back to their
+    // original contents \u2014 no half-applied update is left behind.
+    expect(readFileSync(configPath, "utf-8")).toBe(configSource);
+    expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>Old email</div>;\n");
+  });
 });

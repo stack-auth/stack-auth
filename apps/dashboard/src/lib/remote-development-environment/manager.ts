@@ -651,16 +651,19 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
     // The membership is held until the update resolves and then cleared after a
     // debounce so the file-change events our own edits produce are ignored too.
     state.synchronouslyUpdatingConfigFiles.add(configFilePath);
+    let updateSucceeded = false;
     try {
       await updateConfigObject(configFilePath, options.configUpdate);
+      updateSucceeded = true;
     } finally {
       setTimeout(() => {
         state.synchronouslyUpdatingConfigFiles.delete(configFilePath);
         // For fire-and-forget updates the sync is scheduled only after the
         // suppression window clears, otherwise scheduleSync would be swallowed
         // by its own guard while the path is still marked as synchronously
-        // updating.
-        if (options.waitForSync === false) {
+        // updating. Only sync a successful update: a failed one is rolled back,
+        // so there is nothing new to push.
+        if (options.waitForSync === false && updateSucceeded) {
           scheduleSync(configFilePath);
         }
       }, SYNC_DEBOUNCE_MS).unref();

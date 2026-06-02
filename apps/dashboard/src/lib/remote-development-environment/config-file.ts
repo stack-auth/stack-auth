@@ -3,9 +3,9 @@ import "server-only";
 import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { Config, ConfigValue, NormalizedConfig, isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { stackConfigFileExportsConfig, tryParseStackConfigFileContent } from "@hexclave/shared/dist/stack-config-file";
+import { getRelativeImportSpecifiers, stackConfigFileExportsConfig, tryParseStackConfigFileContent } from "@hexclave/shared/dist/stack-config-file";
 import { createHash } from "crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
 import { runConfigUpdateAgent } from "./config-update-agent";
@@ -88,21 +88,29 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
 }
 
 /**
- * Deterministically renders a config object into the file, overwriting whatever
- * was there. This is the canonical, lossy representation (a single
- * `export const config = { ...JSON... }`); it does not preserve imports, helper
- * wrappers, comments, or external file references. Only use it when there is no
- * existing structure to preserve (a brand-new/empty file, or a file that is
- * already a plain static literal). Otherwise use {@link updateConfigObject}.
+ * Renders a config object to its canonical, lossy source text (a single
+ * `export const config = { ...JSON... }`). It does not preserve imports, helper
+ * wrappers, comments, or external file references, so only render this for a
+ * file that has no existing structure to preserve (a brand-new/empty file, or a
+ * plain static literal). Otherwise use {@link updateConfigObject}.
  */
-function renderConfigObjectToFile(configFilePath: string, config: Config): void {
+function renderConfigObjectToString(configFilePath: string, config: Config): string {
+  const importPackage = detectImportPackageFromDir(path.dirname(configFilePath));
+  return renderConfigFileContent(config, importPackage);
+}
+
+/** Writes `content` to `configFilePath` atomically (write to temp, then rename). */
+function writeFileAtomic(configFilePath: string, content: string): void {
   const dir = path.dirname(configFilePath);
   mkdirSync(dir, { recursive: true });
-  const importPackage = detectImportPackageFromDir(dir);
-  const content = renderConfigFileContent(config, importPackage);
   const tempPath = path.join(dir, `.stack.config.${Math.random().toString(36).slice(2)}.tmp`);
   writeFileSync(tempPath, content, "utf-8");
   renameSync(tempPath, configFilePath);
+}
+
+/** Renders `config` to its canonical source text and writes it to disk, overwriting the file. */
+function renderConfigObjectToFile(configFilePath: string, config: Config): void {
+  writeFileAtomic(configFilePath, renderConfigObjectToString(configFilePath, config));
 }
 
 /**
@@ -139,11 +147,14 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
       throw new Error(`Config in ${configFilePath} parsed to a static literal that is not a valid config object.`);
     }
     const target = override(current, configUpdate);
-    renderConfigObjectToFile(configFilePath, target);
-    const written = tryParseStackConfigFileContent(readFileSync(configFilePath, "utf-8"), configFilePath);
+    // Validate the exact bytes we are about to write *before* touching the file,
+    // so a bad render can never leave the user's config in a broken state.
+    const rendered = renderConfigObjectToString(configFilePath, target);
+    const written = tryParseStackConfigFileContent(rendered, configFilePath);
     if (written == null || written === showOnboardingStackConfigValue || !isValidConfig(written) || !configsEqual(canonicalizeConfig(written), canonicalizeConfig(target))) {
       throw new Error(`Config update validation failed for ${configFilePath}: the regenerated file does not match the expected configuration.`);
     }
+    writeFileAtomic(configFilePath, rendered);
     return;
   }
 
@@ -151,12 +162,50 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   // full semantic check afterwards), then let the agent apply the change.
   const baselineConfig = await tryReadConfigForValidation(configFilePath);
 
-  await runConfigUpdateAgent({
-    prompt: buildConfigUpdatePrompt(path.basename(configFilePath), configUpdate),
-    cwd: path.dirname(configFilePath),
-  });
+  // Snapshot the config file and any externally-referenced files the agent might
+  // edit, so we can roll back to the original state if the agent fails or its
+  // result doesn't validate — never leaving a half-applied update behind.
+  const snapshots = snapshotConfigFiles(configFilePath, content);
+  try {
+    await runConfigUpdateAgent({
+      prompt: buildConfigUpdatePrompt(path.basename(configFilePath), configUpdate),
+      cwd: path.dirname(configFilePath),
+    });
+    await validateAgentUpdate(configFilePath, baselineConfig, configUpdate);
+  } catch (error) {
+    restoreConfigFiles(snapshots);
+    throw error;
+  }
+}
 
-  await validateAgentUpdate(configFilePath, baselineConfig, configUpdate);
+/** A captured file state used for rollback. `content` is `null` if the file did not exist. */
+type ConfigFileSnapshot = { path: string, content: string | null };
+
+/**
+ * Captures the config file plus every file it imports via a relative path (e.g.
+ * `import x from "./welcome-email.tsx" with { type: "text" }`), which are exactly
+ * the files an in-place update is expected to touch. Files are read as UTF-8
+ * text, which matches this feature's text-import use case.
+ */
+function snapshotConfigFiles(configFilePath: string, configContent: string): ConfigFileSnapshot[] {
+  const dir = path.dirname(configFilePath);
+  const snapshots: ConfigFileSnapshot[] = [{ path: configFilePath, content: configContent }];
+  for (const specifier of getRelativeImportSpecifiers(configContent)) {
+    const resolved = path.resolve(dir, specifier);
+    if (snapshots.some((snapshot) => snapshot.path === resolved)) continue;
+    snapshots.push({ path: resolved, content: existsSync(resolved) ? readFileSync(resolved, "utf-8") : null });
+  }
+  return snapshots;
+}
+
+function restoreConfigFiles(snapshots: ConfigFileSnapshot[]): void {
+  for (const { path: filePath, content } of snapshots) {
+    if (content === null) {
+      if (existsSync(filePath)) rmSync(filePath);
+    } else {
+      writeFileSync(filePath, content, "utf-8");
+    }
+  }
 }
 
 /**
@@ -196,20 +245,27 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
   }
 }
 
-type ConfigChange = { path: string, value: ConfigValue | undefined };
+type ConfigChange = { path: string, value: ConfigValue };
 
 /**
  * Flattens a (possibly dot-notation) config update into individual leaf changes,
- * so the agent gets an explicit list of which config paths to change. Arrays and
- * primitives are leaves; nested plain objects are walked. A `value` of
- * `undefined` denotes a field that should be removed.
+ * so the agent gets an explicit list of which config paths to set. Arrays,
+ * primitives, and empty objects are leaves; nested non-empty plain objects are
+ * walked.
+ *
+ * `undefined` values are skipped, matching `override` (which filters them out as
+ * a no-op rather than treating them as removals); emitting removals here would
+ * diverge from the configuration the update is validated against.
  */
 function flattenConfigUpdate(update: Config): ConfigChange[] {
   const changes: ConfigChange[] = [];
   const walk = (prefix: string, obj: Config): void => {
     for (const [key, value] of Object.entries(obj)) {
       const fullPath = prefix === "" ? key : `${prefix}.${key}`;
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      if (value === undefined) continue;
+      // An empty object is a leaf value (an explicit `{}`); only recurse into
+      // objects that actually have keys.
+      if (value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0) {
         walk(fullPath, value);
       } else {
         changes.push({ path: fullPath, value });
@@ -223,9 +279,6 @@ function flattenConfigUpdate(update: Config): ConfigChange[] {
 function buildConfigUpdatePrompt(configFileName: string, configUpdate: Config): string {
   const changes = flattenConfigUpdate(configUpdate);
   const changeLines = changes.map(({ path: configPath, value }) => {
-    if (value === undefined) {
-      return `- \`${configPath}\`: (remove this field)`;
-    }
     return `- \`${configPath}\`: set to ${JSON.stringify(value)}`;
   }).join("\n");
 
@@ -246,7 +299,6 @@ Rules:
 - Change ONLY the config paths listed above. Leave every other part of the file byte-for-byte unchanged: imports, comments, formatting, helper wrappers, and any config fields not listed.
 - If a listed path's value is currently provided by an imported external file (like the \`import ... with { type: "text" }\` example above), DO NOT inline the new value into the config file. Instead, overwrite that external file with the new value and keep the import statement intact.
 - If a listed path's value is a plain inline literal, edit it inline.
-- For a path marked "(remove this field)", delete that field from the config.
 - Keep the file valid: it must still export a \`config\` that, once evaluated, reflects the new values exactly.
 - Do not run any shell commands and do not create files other than what is required to apply these changes.`;
 }

@@ -126,23 +126,66 @@ export function stackConfigFileExportsConfig(content: string, filePath: string):
     return false;
   }
   for (const statement of ast.program.body) {
-    if (!t.isExportNamedDeclaration(statement) || !t.isVariableDeclaration(statement.declaration)) {
+    if (!t.isExportNamedDeclaration(statement)) {
       continue;
     }
-    for (const declaration of statement.declaration.declarations) {
-      if (t.isIdentifier(declaration.id) && declaration.id.name === "config" && declaration.init != null) {
-        return true;
+    // `export const config = ...`
+    if (t.isVariableDeclaration(statement.declaration)) {
+      for (const declaration of statement.declaration.declarations) {
+        if (t.isIdentifier(declaration.id) && declaration.id.name === "config" && declaration.init != null) {
+          return true;
+        }
+      }
+    }
+    // `export { config }` / `export { somethingElse as config }`
+    for (const specifier of statement.specifiers) {
+      if (t.isExportSpecifier(specifier)) {
+        const exportedName = t.isIdentifier(specifier.exported) ? specifier.exported.name : specifier.exported.value;
+        if (exportedName === "config") {
+          return true;
+        }
       }
     }
   }
   return false;
 }
 
+/**
+ * Returns the relative import sources (those starting with `./` or `../`)
+ * declared in `content`. Used to discover the external files a config update may
+ * touch — e.g. `import x from "./welcome-email.tsx" with { type: "text" }` — so
+ * they can be snapshotted and rolled back if an in-place update fails. Returns
+ * an empty array if the file can't be parsed.
+ */
+export function getRelativeImportSpecifiers(content: string): string[] {
+  let ast: parser.ParseResult<t.File>;
+  try {
+    ast = parser.parse(content, {
+      sourceType: "module",
+      plugins: ["typescript", "importAttributes"],
+    });
+  } catch {
+    return [];
+  }
+  const sources: string[] = [];
+  for (const statement of ast.program.body) {
+    if (t.isImportDeclaration(statement)) {
+      const source = statement.source.value;
+      if (source.startsWith("./") || source.startsWith("../")) {
+        sources.push(source);
+      }
+    }
+  }
+  return sources;
+}
+
 export function parseStackConfigFileContent(content: string, filePath: string): ParsedStackConfig {
   if (content.trim() === "") return {};
   const ast = parser.parse(content, {
     sourceType: "module",
-    plugins: ["typescript"],
+    // `importAttributes` matches `stackConfigFileExportsConfig` so both parsers
+    // accept the same files (e.g. `import x from "./f.txt" with { type: "text" }`).
+    plugins: ["typescript", "importAttributes"],
   });
 
   for (const statement of ast.program.body) {
