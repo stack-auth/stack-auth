@@ -1,7 +1,7 @@
 import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { Config, ConfigValue, NormalizedConfig, isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { getRelativeImportSpecifiers, stackConfigFileExportsConfig } from "@hexclave/shared/dist/stack-config-file";
+import { getRelativeImportSpecifiers, stackConfigFileExportsConfig } from "@hexclave/shared/dist/hexclave-config-file";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
