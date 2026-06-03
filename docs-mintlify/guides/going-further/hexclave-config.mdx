@@ -36,10 +36,6 @@ If you are running Hexclave on a [cloud project](/guides/going-further/local-vs-
 
 Most nested maps use IDs that you choose, such as `payments.products.pro` or `rbac.permissions.admin`. Unless a field says otherwise, custom IDs can contain letters, numbers, underscores, and hyphens, must not start with a hyphen, and can be up to 63 characters long.
 
-<Info>
-  `hexclave.config.ts` must be statically readable. Export a plain object or `"show-onboarding"`; do not use functions, spreads, computed keys, imports as values, or environment-dependent expressions inside the exported config.
-</Info>
-
 ## Top-Level Sections
 
 | Section | What it controls |
@@ -213,7 +209,7 @@ For more information on creating, listing, and validating API keys, see the [API
 | `users` | `{ allowClientUserDeletion?: boolean }` | `{ allowClientUserDeletion: false }` | Configures user self-service behavior. `allowClientUserDeletion` allows users to delete their own account from the client. |
 | `onboarding` | `{ requireEmailVerification?: boolean }` | `{ requireEmailVerification: false }` | Configures onboarding requirements. `requireEmailVerification` requires users to verify their email as part of onboarding. |
 
-For more information on team behavior, see [Teams](/guides/apps/teams/overview) and [Team Selection](/guides/apps/teams/team-selection). For user profile and onboarding behavior, see [User Fundamentals](/guides/getting-started/user-fundamentals), [User Onboarding](/guides/apps/authentication/user-onboarding), and [User Metadata](/guides/going-further/user-metadata).
+For more information on team behavior, see [Teams](/guides/apps/teams/overview) and [Team Selection](/guides/apps/teams/team-selection). For user profile, metadata, and onboarding behavior, see [User Fundamentals](/guides/getting-started/user-fundamentals#custom-metadata) and [User Onboarding](/guides/apps/authentication/user-onboarding).
 
 ## Emails
 

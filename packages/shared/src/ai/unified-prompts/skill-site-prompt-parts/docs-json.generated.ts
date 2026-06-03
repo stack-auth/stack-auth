@@ -77,12 +77,10 @@ const docsJson = {
           {
             "group": "Going Further",
             "pages": [
-              "guides/going-further/hexclave-app",
               "guides/going-further/backend-integration",
               "guides/going-further/cli",
               "guides/going-further/local-vs-cloud-dashboard",
-              "guides/going-further/hexclave-config",
-              "guides/going-further/user-metadata"
+              "guides/going-further/hexclave-config"
             ]
           },
           {
@@ -260,10 +258,6 @@ const docsJson = {
   },
   "redirects": [
     {
-      "source": "/guides/going-further/stack-app",
-      "destination": "/guides/going-further/hexclave-app"
-    },
-    {
       "source": "/sdk/objects/stack-app",
       "destination": "/sdk/objects/hexclave-app"
     },
@@ -309,11 +303,19 @@ const docsJson = {
     },
     {
       "source": "/docs/concepts/custom-user-data",
-      "destination": "/guides/going-further/user-metadata"
+      "destination": "/guides/getting-started/user-fundamentals#custom-metadata"
+    },
+    {
+      "source": "/guides/going-further/user-metadata",
+      "destination": "/guides/getting-started/user-fundamentals#custom-metadata"
     },
     {
       "source": "/others/js-client",
-      "destination": "/guides/going-further/hexclave-app"
+      "destination": "/sdk/objects/hexclave-app"
+    },
+    {
+      "source": "/guides/going-further/stack-app",
+      "destination": "/sdk/objects/hexclave-app"
     }
   ]
 } as const;
