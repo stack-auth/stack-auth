@@ -1,12 +1,13 @@
 import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { Config, ConfigValue, NormalizedConfig, isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
+import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
+import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { getRelativeImportSpecifiers, stackConfigFileExportsConfig } from "@hexclave/shared/dist/hexclave-config-file";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
-import { getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent";
+import { getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent.ts";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
 

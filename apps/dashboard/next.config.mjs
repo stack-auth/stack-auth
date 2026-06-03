@@ -48,6 +48,15 @@ const nextConfig = {
   // optionally set output to "standalone" for Docker builds
   // https://nextjs.org/docs/pages/api-reference/next-config-js/output
   output: process.env.NEXT_CONFIG_OUTPUT,
+  outputFileTracingIncludes: {
+    "/*": [
+      "./node_modules/@anthropic-ai/claude-agent-sdk/cli.js",
+      "./node_modules/@anthropic-ai/claude-agent-sdk/manifest.json",
+      "./node_modules/@anthropic-ai/claude-agent-sdk/manifest.zst.json",
+      "./node_modules/@anthropic-ai/claude-agent-sdk/resvg.wasm",
+      "./node_modules/@anthropic-ai/claude-agent-sdk/vendor/**/*",
+    ],
+  },
 
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
 
