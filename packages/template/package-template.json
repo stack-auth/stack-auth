@@ -1,6 +1,6 @@
 {
   "//": "IF_PLATFORM template",
-  "name": "@stackframe/template",
+  "name": "@hexclave/template",
   "//": "ELSE_IF_PLATFORM js",
   "name": "@hexclave/js",
   "//": "ELSE_IF_PLATFORM next",

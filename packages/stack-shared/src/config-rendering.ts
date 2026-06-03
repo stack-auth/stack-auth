@@ -14,6 +14,7 @@ const CONFIG_IMPORT_PACKAGES = [
   "@hexclave/next",
   "@hexclave/react",
   "@hexclave/js",
+  "@hexclave/template",
   "@stackframe/stack",
   "@stackframe/react",
   "@stackframe/js",
