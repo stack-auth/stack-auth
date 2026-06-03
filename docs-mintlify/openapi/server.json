@@ -6936,7 +6936,7 @@
     "/project-permissions/{user_id}/{permission_id}": {
       "post": {
         "summary": "Grant a global permission to a user",
-        "description": "Grant a global permission to a user (the permission must be created first on the Stack dashboard)",
+        "description": "Grant a global permission to a user (the permission must be created first on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "user_id",
@@ -7180,7 +7180,7 @@
     "/team-permissions/{team_id}/{user_id}/{permission_id}": {
       "post": {
         "summary": "Grant a team permission to a user",
-        "description": "Grant a team permission to a user (the team permission must be created first on the Stack dashboard)",
+        "description": "Grant a team permission to a user (the team permission must be created first on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "team_id",

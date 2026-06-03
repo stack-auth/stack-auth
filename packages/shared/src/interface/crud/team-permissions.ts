@@ -33,7 +33,7 @@ export const teamPermissionsCrud = createCrud({
     },
     serverCreate: {
       summary: "Grant a team permission to a user",
-      description: "Grant a team permission to a user (the team permission must be created first on the Stack dashboard)",
+      description: "Grant a team permission to a user (the team permission must be created first on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     serverDelete: {
@@ -95,22 +95,22 @@ export const teamPermissionDefinitionsCrud = createCrud({
   docs: {
     adminList: {
       summary: "List team permission definitions",
-      description: "Query and filter the permission with team_id, user_id, and permission_id (the equivalent of listing permissions on the Stack dashboard)",
+      description: "Query and filter the permission with team_id, user_id, and permission_id (the equivalent of listing permissions on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     adminCreate: {
       summary: "Create a new team permission definition",
-      description: "Create a new permission definition (the equivalent of creating a new permission on the Stack dashboard)",
+      description: "Create a new permission definition (the equivalent of creating a new permission on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     adminUpdate: {
       summary: "Update a team permission definition",
-      description: "Update a permission definition (the equivalent of updating a permission on the Stack dashboard)",
+      description: "Update a permission definition (the equivalent of updating a permission on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     adminDelete: {
       summary: "Delete a team permission definition",
-      description: "Delete a permission definition (the equivalent of deleting a permission on the Stack dashboard)",
+      description: "Delete a permission definition (the equivalent of deleting a permission on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
   },

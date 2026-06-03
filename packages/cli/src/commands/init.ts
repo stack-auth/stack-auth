@@ -145,7 +145,7 @@ async function runInit(program: Command, opts: InitOptions) {
     console.log("This also registers the Hexclave MCP server (https://mcp.hexclave.com)");
     console.log("so your agent can read the docs and answer Stack-specific questions going forward.\n");
     const success = await runClaudeAgent({
-      prompt: `Set up Stack Auth in my project now. Do not ask questions — detect the framework and package manager from existing files, apply the relevant sections of the setup guide, and skip sections for integrations this project does not use.\n\n${initPrompt}`,
+      prompt: `Set up Hexclave in my project now. Do not ask questions — detect the framework and package manager from existing files, apply the relevant sections of the setup guide, and skip sections for integrations this project does not use.\n\n${initPrompt}`,
       cwd: outputDir,
     });
     if (!success) {

@@ -46,11 +46,11 @@ function createCustomPagePrompt(options: {
   const latestPageVersion = Math.max(1, ...Object.keys(options.versions).map(Number));
   const latestSdkVersion = latestPageVersion === 1 ? options.minSdkVersion : options.versions[latestPageVersion].minSdkVersion;
   const fullPrompt = deindent`
-    This prompt explains how to implement a custom ${options.title} page for Stack Auth. The version of this page that you are implementing is v${latestPageVersion}. It can be found in Stack Auth's documentation, and in the Stack Auth devtool indicator.
+    This prompt explains how to implement a custom ${options.title} page for Hexclave. The version of this page that you are implementing is v${latestPageVersion}. It can be found in Hexclave's documentation, and in the Hexclave devtool indicator.
 
-    First, make sure to upgrade the Stack Auth SDK to a recent version. The minimum supported SDK version for this walkthrough is v${latestSdkVersion}.
+    First, make sure to upgrade the Hexclave SDK to a recent version. The minimum supported SDK version for this walkthrough is v${latestSdkVersion}.
 
-    The user's codebase may already have a ${options.title} page that could be suitable (eg. from an earlier version of Stack Auth, a template, another auth provider before migrating to Stack Auth, etc.). Use your critical thinking skills to determine what the user's intent is; it is likely that instead of creating a new page, you can just modify the existing page to use Stack Auth & support the logic/structure below.
+    The user's codebase may already have a ${options.title} page that could be suitable (eg. from an earlier version of Hexclave, a template, another auth provider before migrating to Hexclave, etc.). Use your critical thinking skills to determine what the user's intent is; it is likely that instead of creating a new page, you can just modify the existing page to use Hexclave & support the logic/structure below.
 
     Below is a description of the logical structure of what this page should contain (note that the visual structure and layout may be different, and up to you). The page can have more content than this, but it should always contain at least what's described below.
 

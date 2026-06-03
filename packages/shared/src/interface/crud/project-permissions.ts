@@ -32,7 +32,7 @@ export const projectPermissionsCrud = createCrud({
     },
     serverCreate: {
       summary: "Grant a global permission to a user",
-      description: "Grant a global permission to a user (the permission must be created first on the Stack dashboard)",
+      description: "Grant a global permission to a user (the permission must be created first on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     serverDelete: {
@@ -94,22 +94,22 @@ export const projectPermissionDefinitionsCrud = createCrud({
   docs: {
     adminList: {
       summary: "List project permission definitions",
-      description: "Query and filter project permission definitions (the equivalent of listing permissions on the Stack dashboard)",
+      description: "Query and filter project permission definitions (the equivalent of listing permissions on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     adminCreate: {
       summary: "Create a new project permission definition",
-      description: "Create a new project permission definition (the equivalent of creating a new permission on the Stack dashboard)",
+      description: "Create a new project permission definition (the equivalent of creating a new permission on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     adminUpdate: {
       summary: "Update a project permission definition",
-      description: "Update a project permission definition (the equivalent of updating a permission on the Stack dashboard)",
+      description: "Update a project permission definition (the equivalent of updating a permission on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
     adminDelete: {
       summary: "Delete a project permission definition",
-      description: "Delete a project permission definition (the equivalent of deleting a permission on the Stack dashboard)",
+      description: "Delete a project permission definition (the equivalent of deleting a permission on the Hexclave dashboard)",
       tags: ["Permissions"],
     },
   },

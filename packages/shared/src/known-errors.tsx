@@ -1204,7 +1204,7 @@ const OAuthExtraScopeNotAvailableWithSharedOAuthKeys = createKnownErrorConstruct
   "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
   () => [
     400,
-    "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes.",
+    "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Hexclave dashboard to use extra scopes.",
   ] as const,
   () => [] as const,
 );
@@ -1214,7 +1214,7 @@ const OAuthAccessTokenNotAvailableWithSharedOAuthKeys = createKnownErrorConstruc
   "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
   () => [
     400,
-    "Access tokens are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use access tokens.",
+    "Access tokens are not available with shared OAuth keys. Please add your own OAuth keys on the Hexclave dashboard to use access tokens.",
   ] as const,
   () => [] as const,
 );

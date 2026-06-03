@@ -287,7 +287,7 @@ function TestEndpointDialog(props: { endpoint: Endpoint, open: boolean, onOpenCh
   const previewPayload = useMemo(() => JSON.stringify({
     type: "stack.test",
     data: {
-      message: "Stack webhook test event triggered from the Stack dashboard.",
+      message: "Hexclave webhook test event triggered from the Hexclave dashboard.",
       endpointUrl: props.endpoint.url,
     },
   }, null, 2), [props.endpoint.url]);
