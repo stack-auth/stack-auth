@@ -12,7 +12,7 @@ const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "tru
 const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
 
 function extractConfigObjectString(content: string): string {
-  const configMatch = content.match(/export const config:\s*StackConfig\s*=\s*(.+);\s*$/s);
+  const configMatch = content.match(/export const config:\s*HexclaveConfig\s*=\s*(.+);\s*$/s);
   if (!configMatch) {
     throw new Error(`Could not extract config object from file:\n${content}`);
   }
@@ -461,8 +461,8 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
-    expect(content).toContain("export const config: StackConfig");
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain("export const config: HexclaveConfig");
   });
 
   it("config push succeeds", async ({ expect }) => {
@@ -520,7 +520,7 @@ describe("Stack CLI", () => {
       expect(exitCode).toBe(0);
       expect(stdout).toContain(`Config written to ${expected}`);
       const content = fs.readFileSync(expected, "utf-8");
-      expect(content).toContain("export const config: StackConfig");
+      expect(content).toContain("export const config: HexclaveConfig");
     } finally {
       fs.rmSync(cwdDir, { recursive: true });
     }
@@ -556,8 +556,8 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
-    expect(content).toContain("export const config: StackConfig");
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain("export const config: HexclaveConfig");
     expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {
         installed: {
