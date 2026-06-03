@@ -501,7 +501,7 @@ async function updateRemoteDevelopmentEnvironmentConfigFile(
     body: JSON.stringify({
       project_id: adminApp.projectId,
       config_update: configUpdate,
-      wait_for_sync: false,
+      wait_for_sync: true,
     }),
   });
   if (!response.ok) {

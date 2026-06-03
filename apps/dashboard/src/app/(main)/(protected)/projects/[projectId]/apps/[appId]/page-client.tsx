@@ -7,7 +7,6 @@ import { useUpdateConfig } from "@/lib/config-update";
 import { ALL_APPS_FRONTEND, getAppPath, getDocumentationHref, isSubApp, type AppId } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { PageLayout } from "../../page-layout";
 
 export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
@@ -70,9 +69,9 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
       <AppStoreEntry
         appId={appId}
         isEnabled={isEnabled}
-        onEnable={async () => runAsynchronouslyWithAlert(handleEnable())}
+        onEnable={handleEnable}
         onOpen={handleOpen}
-        onDisable={async () => runAsynchronouslyWithAlert(handleDisable())}
+        onDisable={handleDisable}
       />
     </PageLayout>
   );
