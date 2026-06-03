@@ -744,7 +744,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isAiPrompt ? deindent`
-            Note: If you are an AI agent, make sure to make the loading indicator visually appealing and match the design of your app, instead of the example that just says "Loading...".
+            Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Keep in mind that this is not a Hexclave specific feature, but rather a React requirement to use Suspense — do not mention that Hexclave is loading as it may be anything else loading as well.
           ` : ""}
         </Step>
 
