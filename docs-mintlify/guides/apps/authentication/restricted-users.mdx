@@ -6,7 +6,7 @@ sidebarTitle: "Restricted Users"
 
 Restricted users are signed-in users whose account exists, but has not been granted normal application access yet. Stack marks these users with `user.isRestricted === true` and provides a `user.restrictedReason` explaining why.
 
-By default, Stack Auth treats restricted users like unauthenticated users in most SDK calls. This prevents accounts that still need verification, review, or conversion from accidentally getting access to protected product flows.
+By default, Hexclave treats restricted users like unauthenticated users in most SDK calls. This prevents accounts that still need verification, review, or conversion from accidentally getting access to protected product flows.
 
 ## When users are restricted
 
@@ -97,9 +97,9 @@ For API routes or backend actions, keep using the default behavior unless the en
 
 ## Restricted users in JWTs
 
-Restricted users receive tokens with `is_restricted` and `restricted_reason` claims. If your backend verifies Stack Auth JWTs directly, make sure you reject restricted users unless the endpoint intentionally supports them.
+Restricted users receive tokens with `is_restricted` and `restricted_reason` claims. If your backend verifies Hexclave JWTs directly, make sure you reject restricted users unless the endpoint intentionally supports them.
 
-When fetching Stack Auth's JWKS, restricted-user signing keys are excluded by default. Include them only for services that intentionally accept restricted users:
+When fetching Hexclave's JWKS, restricted-user signing keys are excluded by default. Include them only for services that intentionally accept restricted users:
 
 ```txt jwks-url.txt
 /.well-known/jwks.json?include_restricted=true

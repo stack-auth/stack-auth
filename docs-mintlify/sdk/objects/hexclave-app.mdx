@@ -14,7 +14,7 @@ import {
   MethodReturns,
 } from "/snippets/sdk-type-components.jsx";
 
-This is a detailed reference for the `StackApp` object. If you're looking for a more high-level overview, please read the [respective page in the Concepts section](/guides/going-further/stack-app).
+This is a detailed reference for the `StackApp` object. If you're looking for a more high-level overview, please read the [respective page in the Concepts section](/guides/going-further/hexclave-app).
 
 ## Overview
 
@@ -27,7 +27,7 @@ This is a detailed reference for the `StackApp` object. If you're looking for a 
 
 A `StackApp` with client-level permissions. It contains most of the useful methods and hooks for your client-side code.
 
-Most commonly you get an instance of `HexclaveClientApp` by calling [`useHexclaveApp()`](/sdk/hooks/use-stack-app) in a Client Component.
+Most commonly you get an instance of `HexclaveClientApp` by calling [`useHexclaveApp()`](/sdk/hooks/use-hexclave-app) in a Client Component.
 
 ## Table of Contents
 
@@ -496,7 +496,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
 # HexclaveServerApp
 
-Like `HexclaveClientApp`, but with [server permissions](/guides/going-further/stack-app#client-vs-server). Has full read and write access to all users.
+Like `HexclaveClientApp`, but with [server permissions](/guides/going-further/hexclave-app#client-vs-server). Has full read and write access to all users.
 
 <Warning>
   Since this functionality should only be available in environments you trust
