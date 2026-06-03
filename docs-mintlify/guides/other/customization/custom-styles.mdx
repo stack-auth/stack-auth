@@ -1,0 +1,59 @@
+---
+title: Custom Styles
+description: Match Hexclave auth UI to your brand with theme variables
+sidebarTitle: Custom Styles
+---
+
+Customizing Hexclave component styles keeps your brand identity while using pre-built auth UI. The theming system uses CSS variables you override through `HexclaveTheme` — ideal when you want auth screens to match your design system without building every form from scratch.
+
+## Color variables
+
+Override these variables to match your brand:
+
+- `background`: Main background color
+- `foreground`: Main text color on the background
+- `card`: Card background color
+- `cardForeground`: Text color on cards
+- `popover`: Popover background (dropdowns, etc.)
+- `popoverForeground`: Text color on popovers
+- `primary`: Primary brand color (buttons, emphasis)
+- `primaryForeground`: Text on primary-colored elements
+- `secondary`: Secondary color for less prominent elements
+- `secondaryForeground`: Text on secondary-colored elements
+- `muted`: Muted or disabled elements
+- `mutedForeground`: Text on muted elements
+- `accent`: Accent color for highlights
+- `accentForeground`: Text on accent-colored elements
+- `destructive`: Destructive actions (delete, etc.)
+- `destructiveForeground`: Text on destructive elements
+- `border`: Border color
+- `input`: Input field border color
+- `ring`: Focus ring color for interactive elements
+
+## Other variables
+
+- `radius`: Border radius for buttons, inputs, and similar components
+
+These accept any valid CSS color (`hsl(0, 0%, 0%)`, `#fff`, `rgb(255, 0, 0)`, etc.). Light and dark mode can use different values.
+
+Pass a theme object to `HexclaveTheme` in your root layout (see [Setup](/guides/getting-started/setup)):
+
+```jsx title="app/layout.tsx"
+const theme = {
+  light: {
+    primary: "red",
+  },
+  dark: {
+    primary: "#00FF00",
+  },
+  radius: "8px",
+};
+
+// ...
+
+<HexclaveTheme theme={theme}>
+  {children}
+</HexclaveTheme>
+```
+
+For dark mode setup with `next-themes` or similar, see [Dark Mode](/guides/other/customization/dark-mode).

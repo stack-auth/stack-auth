@@ -1,0 +1,78 @@
+---
+title: Dark Mode
+description: Light and dark themes for Hexclave auth components
+sidebarTitle: Dark Mode
+---
+
+Hexclave components support light and dark mode out of the box. UI adapts colors, shadows, and contrast based on the active theme.
+
+Hexclave watches your app's theme signal on the `<html>` element — including `class`, `data-theme`, and related attributes — and syncs component styles automatically. [next-themes](https://github.com/pacocoursey/next-themes) is a common choice.
+
+## Setup with next-themes
+
+<Steps>
+  <Step title="Install next-themes">
+    ```bash
+    npm install next-themes
+    ```
+  </Step>
+
+  <Step title="Create a client provider">
+    ```jsx title="components/providers.jsx"
+    "use client";
+
+    import { ThemeProvider } from "next-themes";
+    import { HexclaveTheme } from "@hexclave/next";
+
+    export default function Providers({ children }) {
+      return (
+        <ThemeProvider defaultTheme="system" attribute="class">
+          <HexclaveTheme>{children}</HexclaveTheme>
+        </ThemeProvider>
+      );
+    }
+    ```
+
+    `ThemeProvider` enables theme switching. `defaultTheme="system"` follows the OS preference. `attribute="class"` sets `class="dark"` or `class="light"` on `<html>`, which Hexclave detects.
+  </Step>
+
+  <Step title="Wrap your layout">
+    ```jsx title="app/layout.tsx"
+    import Providers from "./components/providers";
+
+    export default function Layout({ children }) {
+      return (
+        <html lang="en" suppressHydrationWarning>
+          <body>
+            <Providers>{children}</Providers>
+          </body>
+        </html>
+      );
+    }
+    ```
+  </Step>
+
+  <Step title="Add a theme switcher">
+    ```jsx title="components/color-mode-switcher.jsx"
+    "use client";
+
+    import { useTheme } from "next-themes";
+
+    export default function ColorModeSwitcher() {
+      const { theme, setTheme } = useTheme();
+
+      return (
+        <button
+          type="button"
+          onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          aria-label="Toggle dark mode"
+        >
+          {theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+        </button>
+      );
+    }
+    ```
+  </Step>
+</Steps>
+
+Place `ColorModeSwitcher` anywhere in your app. Theme changes apply to Hexclave components without a full page reload, and reloads should not flicker when `suppressHydrationWarning` is set on `<html>`.

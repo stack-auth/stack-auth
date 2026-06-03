@@ -1,0 +1,41 @@
+---
+title: Internationalization
+description: Localize Hexclave auth UI for multiple languages
+sidebarTitle: Internationalization
+---
+
+Internationalization (i18n) lets your app support multiple languages. Hexclave ships translated strings for built-in auth components so you can offer a localized sign-in experience with minimal setup.
+
+## Setup
+
+Pass the `lang` prop to `HexclaveProvider`. All built-in auth pages use the selected locale.
+
+```jsx title="app/layout.tsx"
+<HexclaveProvider app={hexclaveServerApp} lang="de-DE">
+  {children}
+</HexclaveProvider>
+```
+
+If you omit `lang`, the default is `en-US`.
+
+Choose the locale however fits your app — `localStorage`, URL segments, user profile, or the browser's `Accept-Language` header.
+
+## Supported languages
+
+| Locale | Language |
+| --- | --- |
+| `en-US` | English (United States) |
+| `de-DE` | German (Germany) |
+| `es-419` | Spanish (Latin America) |
+| `es-ES` | Spanish (Spain) |
+| `fr-CA` | French (Canada) |
+| `fr-FR` | French (France) |
+| `it-IT` | Italian (Italy) |
+| `pt-BR` | Portuguese (Brazil) |
+| `pt-PT` | Portuguese (Portugal) |
+| `zh-CN` | Chinese (China) |
+| `zh-TW` | Chinese (Taiwan) |
+| `ja-JP` | Japanese (Japan) |
+| `ko-KR` | Korean (South Korea) |
+
+You can also pass `translationOverrides` to `HexclaveProvider` to override individual strings without forking the locale files.

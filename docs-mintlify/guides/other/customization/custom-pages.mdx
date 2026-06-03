@@ -1,0 +1,105 @@
+---
+title: Custom Pages
+description: Replace Hexclave's default auth pages with your own routes and components
+sidebarTitle: Custom Pages
+---
+
+Custom pages let you control the layout and logic of authentication pages in your application. Instead of using the default pages rendered by `HexclaveHandler`, you can build your own with Hexclave's pre-built components or low-level SDK methods.
+
+By default, `HexclaveHandler` serves sign-in, sign-up, password reset, and related flows under `/handler/*`. You can point any of those URLs at your own routes for a tailored experience.
+
+## Simple example
+
+To create a custom sign-in page with your own heading, add a route such as `app/signin/page.tsx`:
+
+```tsx title="app/signin/page.tsx"
+import { SignIn } from "@hexclave/next";
+
+export default function CustomSignInPage() {
+  return (
+    <div>
+      <h1>My custom sign-in page</h1>
+      <SignIn />
+    </div>
+  );
+}
+```
+
+Then tell Hexclave to use that route in your server app config:
+
+```tsx title="stack/server.ts"
+import { HexclaveServerApp } from "@hexclave/next";
+
+export const hexclaveServerApp = new HexclaveServerApp({
+  // ...
+  urls: {
+    signIn: { type: "custom", url: "/signin", version: 1 },
+  },
+});
+```
+
+Visit `/signin` to see your page. When users hit a protected route or the default handler sign-in URL, they are redirected to your custom URL.
+
+For more examples, see [Page Examples](/guides/other/customization/page-examples/sign-in).
+
+## Building from scratch
+
+The approach above wraps Hexclave components in your layout. When you need full control over UI and auth logic, use the SDK methods that power those components.
+
+For example, a custom OAuth sign-in button:
+
+```tsx title="app/signin/page.tsx"
+"use client";
+
+import { useHexclaveApp } from "@hexclave/next";
+
+export default function CustomOAuthSignIn() {
+  const app = useHexclaveApp();
+
+  return (
+    <div>
+      <h1>My custom sign-in page</h1>
+      <button
+        type="button"
+        onClick={async () => {
+          await app.signInWithOAuth("google");
+        }}
+      >
+        Sign in with Google
+      </button>
+    </div>
+  );
+}
+```
+
+Configure the custom URL the same way as above:
+
+```tsx title="stack/server.ts"
+export const hexclaveServerApp = new HexclaveServerApp({
+  // ...
+  urls: {
+    signIn: { type: "custom", url: "/signin", version: 1 },
+  },
+});
+```
+
+<Note>
+  Plain string URLs (for example `signIn: "/signin"`) still work but are deprecated. Prefer `{ type: "custom", url: "...", version: N }` so Hexclave can track page versions and prompt you when an upgrade is needed. The dev tool shows the required version for each page.
+</Note>
+
+## Configurable URLs
+
+You can customize any auth page URL. Common keys:
+
+| Key | Purpose |
+| --- | --- |
+| `signIn` | Sign-in page |
+| `signUp` | Sign-up page |
+| `forgotPassword` | Forgot-password form |
+| `passwordReset` | Password reset form (linked from email) |
+| `accountSettings` | Account settings |
+| `afterSignIn` | Redirect after sign-in |
+| `afterSignUp` | Redirect after sign-up |
+| `home` | Default home URL |
+
+Set `urls.default` to `{ type: "handler-component" }` (render inside `HexclaveHandler`) or `{ type: "hosted" }` (use Hexclave's hosted auth pages). Individual keys override the default.

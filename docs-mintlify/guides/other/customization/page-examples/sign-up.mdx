@@ -1,0 +1,86 @@
+---
+title: Sign-Up Page Examples
+description: Custom sign-up pages with Hexclave components and SDK methods
+sidebarTitle: Sign Up
+---
+
+Examples for custom sign-up pages. Configure your custom URL in [Custom Pages](/guides/other/customization/custom-pages).
+
+## Custom page with `SignUp` component
+
+```tsx title="app/signup/page.tsx"
+"use client";
+
+import { SignUp } from "@hexclave/next";
+
+export default function DefaultSignUp() {
+  // Optionally redirect if the user is already signed in:
+  // const user = useUser();
+  // if (user) { redirect("/dashboard"); }
+  return <SignUp fullPage />;
+}
+```
+
+You can call `useUser()` at the top of the page to detect an existing session and redirect before rendering the form.
+
+## Other useful components
+
+- **`CredentialSignUp`**: Email-and-password sign-up form with validation and error handling.
+- **`OAuthButtonGroup`**: Renders OAuth provider buttons based on your project configuration.
+- **`OAuthButton`**: A single OAuth provider button for specific providers.
+
+## Custom OAuth sign-up
+
+OAuth sign-in and sign-up use the same flow. See [Custom OAuth sign-in](/guides/other/customization/page-examples/sign-in#custom-oauth-sign-in).
+
+## Custom credential sign-up
+
+```tsx title="app/signup/page.tsx"
+"use client";
+
+import { useHexclaveApp } from "@hexclave/next";
+import { useState } from "react";
+
+export default function CustomCredentialSignUp() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const app = useHexclaveApp();
+
+  const onSubmit = async () => {
+    if (!password) {
+      setError("Please enter your password");
+      return;
+    }
+
+    const result = await app.signUpWithCredential({ email, password });
+    if (result.status === "error") {
+      setError(result.error.humanReadableMessage);
+    }
+    // On success, Hexclave redirects to urls.afterSignUp (configurable in HexclaveServerApp).
+  };
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }}>
+      {error && <div>{error}</div>}
+      <input
+        type="email"
+        placeholder="email@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <input
+        type="password"
+        placeholder="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      <button type="submit">Sign up</button>
+    </form>
+  );
+}
+```
+
+## Custom magic link sign-up
+
+Magic link sign-in and sign-up share the same function. See [Custom magic link sign-in](/guides/other/customization/page-examples/sign-in#custom-magic-link-sign-in).

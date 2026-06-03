@@ -83,6 +83,16 @@ The full docs sidebar — generated from the live navigation. Fetch any of these
   - [Self Host](https://docs.hexclave.com/guides/other/self-host)
   - [Known Errors](https://docs.hexclave.com/guides/other/known-errors)
   - [Migration](https://docs.hexclave.com/migration)
+  - **Customization**
+    - [Custom Pages](https://docs.hexclave.com/guides/other/customization/custom-pages)
+    - [Custom Styles](https://docs.hexclave.com/guides/other/customization/custom-styles)
+    - [Dark Mode](https://docs.hexclave.com/guides/other/customization/dark-mode)
+    - [Internationalization](https://docs.hexclave.com/guides/other/customization/internationalization)
+    - **Page Examples**
+      - [Sign In](https://docs.hexclave.com/guides/other/customization/page-examples/sign-in)
+      - [Sign Up](https://docs.hexclave.com/guides/other/customization/page-examples/sign-up)
+      - [Forgot Password](https://docs.hexclave.com/guides/other/customization/page-examples/forgot-password)
+      - [Password Reset](https://docs.hexclave.com/guides/other/customization/page-examples/password-reset)
   - **Tutorials**
     - [Build A SAAS With Hexclave](https://docs.hexclave.com/guides/other/tutorials/build-a-saas-with-hexclave)
     - [Build A Team Based App](https://docs.hexclave.com/guides/other/tutorials/build-a-team-based-app)
