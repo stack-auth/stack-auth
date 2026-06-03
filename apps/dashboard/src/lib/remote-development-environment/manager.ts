@@ -3,7 +3,7 @@ import "server-only";
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { AdminOwnedProject, StackClientApp } from "@hexclave/next";
-import { Config } from "@hexclave/shared/dist/config/format";
+import { Config, override } from "@hexclave/shared/dist/config/format";
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { AccessToken } from "@hexclave/shared/dist/sessions";
 import { errorToNiceString } from "@hexclave/shared/dist/utils/errors";
@@ -16,7 +16,7 @@ import {
   readConfigFile,
   resolveConfigFilePath,
   sha256String,
-  updateConfigObject,
+  replaceConfigObject,
 } from "./config-file";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 import {
@@ -646,29 +646,19 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       projectId: options.projectId,
       configFilePath,
     });
-    // Suppress watcher-driven syncs for the whole (potentially slow, AI-driven,
-    // multi-file) update so we never sync a partially-edited intermediate state.
-    // The membership is held until the update resolves and then cleared after a
-    // debounce so the file-change events our own edits produce are ignored too.
-    state.synchronouslyUpdatingConfigFiles.add(configFilePath);
-    let updateSucceeded = false;
-    try {
-      await updateConfigObject(configFilePath, options.configUpdate);
-      updateSucceeded = true;
-    } finally {
-      setTimeout(() => {
-        state.synchronouslyUpdatingConfigFiles.delete(configFilePath);
-        // For fire-and-forget updates the sync is scheduled only after the
-        // suppression window clears, otherwise scheduleSync would be swallowed
-        // by its own guard while the path is still marked as synchronously
-        // updating. Only sync a successful update: a failed one is rolled back,
-        // so there is nothing new to push.
-        if (options.waitForSync === false && updateSucceeded) {
-          scheduleSync(configFilePath);
-        }
-      }, SYNC_DEBOUNCE_MS).unref();
-    }
-    if (options.waitForSync !== false) {
+    const currentConfig = (await readConfigFile(configFilePath)).config;
+    if (options.waitForSync === false) {
+      await replaceConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+      scheduleSync(configFilePath);
+    } else {
+      state.synchronouslyUpdatingConfigFiles.add(configFilePath);
+      try {
+        await replaceConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+      } finally {
+        setTimeout(() => {
+          state.synchronouslyUpdatingConfigFiles.delete(configFilePath);
+        }, SYNC_DEBOUNCE_MS).unref();
+      }
       await syncConfigToRemoteNow(configFilePath);
     }
     logRemoteDevelopmentEnvironment("Applied config update from local dashboard", {
