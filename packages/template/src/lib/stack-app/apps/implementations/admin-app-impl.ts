@@ -16,7 +16,7 @@ import { pick, typedEntries, typedValues } from "@hexclave/shared/dist/utils/obj
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
-import { EmailConfig, stackAppInternalsSymbol } from "../../common";
+import { EmailConfig, hexclaveAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
@@ -574,9 +574,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     ]);
   }
 
-  get [stackAppInternalsSymbol]() {
+  get [hexclaveAppInternalsSymbol]() {
     return {
-      ...super[stackAppInternalsSymbol],
+      ...super[hexclaveAppInternalsSymbol],
       // IF_PLATFORM react-like
       useMetrics: (includeAnonymous: boolean = false): MetricsResponse => {
         return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "adminApp.useMetrics()") as MetricsResponse;

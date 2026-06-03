@@ -11,7 +11,7 @@ import { useRef } from 'react';
 // END_PLATFORM */
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
-import { HandlerUrls, StackClientApp, stackAppInternalsSymbol } from "../lib/stack-app";
+import { HandlerUrls, StackClientApp, hexclaveAppInternalsSymbol } from "../lib/stack-app";
 import { isLocalHandlerUrlTarget, resolveUnknownHandlerPathFallbackUrl } from "../lib/stack-app/url-targets";
 import { AccountSettings } from "./account-settings";
 import { CliAuthConfirmation } from "./cli-auth-confirm";
@@ -256,7 +256,7 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
 
   const getDefaultUnknownPathUrl = (unknownPath: string): string | null => {
     return resolveUnknownHandlerPathFallbackUrl({
-      defaultTarget: hexclaveApp[stackAppInternalsSymbol].getConstructorOptions().urls?.default,
+      defaultTarget: hexclaveApp[hexclaveAppInternalsSymbol].getConstructorOptions().urls?.default,
       projectId: hexclaveApp.projectId,
       unknownPath,
     });
@@ -306,7 +306,7 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
   useEffect(() => {
     if (redirectToPage == null) return;
     runAsynchronouslyWithAlert(
-      hexclaveApp[stackAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true })
+      hexclaveApp[hexclaveAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true })
     );
   }, [redirectToPage, hexclaveApp]);
 
@@ -326,7 +326,7 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
 
   /* IF_PLATFORM react
   const redirectTarget = redirectTargets[0];
-  const shouldRenderRedirectFallback = redirectTarget != null && hexclaveApp[stackAppInternalsSymbol].getRedirectMethod() === "none";
+  const shouldRenderRedirectFallback = redirectTarget != null && hexclaveApp[hexclaveAppInternalsSymbol].getRedirectMethod() === "none";
   useEffect(() => {
     if (redirectTarget == null || shouldRenderRedirectFallback) {
       return;

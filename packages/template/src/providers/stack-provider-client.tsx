@@ -4,7 +4,7 @@ import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-us
 import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import React, { useEffect } from "react";
 import { useStackApp } from "../lib/hooks";
-import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";
+import { StackClientApp, StackClientAppJson, hexclaveAppInternalsSymbol } from "../lib/stack-app";
 import { HexclaveContext } from "./stack-context";
 
 export function HexclaveProviderClient(props: {
@@ -13,7 +13,7 @@ export function HexclaveProviderClient(props: {
   children?: React.ReactNode,
 }) {
   const app = props.serialized
-    ? StackClientApp[stackAppInternalsSymbol].fromClientJson(props.app as StackClientAppJson<true, string>)
+    ? StackClientApp[hexclaveAppInternalsSymbol].fromClientJson(props.app as StackClientAppJson<true, string>)
     : props.app as StackClientApp<true>;
   globalVar.__STACK_AUTH__ = { app };
 
@@ -28,7 +28,7 @@ export function UserSetter(props: { userJsonPromise: Promise<CurrentUserCrud['Cl
   const app = useStackApp();
   useEffect(() => {
     const promise = (async () => await props.userJsonPromise)();  // there is a Next.js bug where Promises passed by server components return `undefined` as their `then` value, so wrap it in a normal promise
-    app[stackAppInternalsSymbol].setCurrentUser(promise);
+    app[hexclaveAppInternalsSymbol].setCurrentUser(promise);
   }, []);
   return null;
 }

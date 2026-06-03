@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { StackAdminApp, StackClientApp, StackServerApp, stackAppInternalsSymbol } from '../lib/stack-app';
+import { StackAdminApp, StackClientApp, StackServerApp, hexclaveAppInternalsSymbol } from '../lib/stack-app';
 import { HexclaveProviderClient } from './stack-provider-client';
 import { TranslationProvider } from './translation-provider';
 
@@ -23,7 +23,7 @@ function NextStackProvider({
   app: StackClientApp<true> | StackServerApp<true> | StackAdminApp<true>,
 }) {
   return (
-    <HexclaveProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true}>
+    <HexclaveProviderClient app={app[hexclaveAppInternalsSymbol].toClientJson()} serialized={true}>
       <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}

@@ -1,7 +1,7 @@
 import { KnownErrors } from "@hexclave/shared";
 import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, stackAppInternalsSymbol, TokenStoreInit } from "../../common";
+import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, hexclaveAppInternalsSymbol, TokenStoreInit } from "../../common";
 import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
@@ -120,7 +120,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     // END_PLATFORM
     useNavigate(): (to: string) => void, // THIS_LINE_PLATFORM react-like
 
-    [stackAppInternalsSymbol]: {
+    [hexclaveAppInternalsSymbol]: {
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
       getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
@@ -165,7 +165,7 @@ export type StackClientAppConstructor = {
   >(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>): StackClientApp<HasTokenStore, ProjectId>,
   new(options: StackClientAppConstructorOptions<boolean, string>): StackClientApp<boolean, string>,
 
-  [stackAppInternalsSymbol]: {
+  [hexclaveAppInternalsSymbol]: {
     fromClientJson<HasTokenStore extends boolean, ProjectId extends string>(
       json: StackClientAppJson<HasTokenStore, ProjectId>
     ): StackClientApp<HasTokenStore, ProjectId>,

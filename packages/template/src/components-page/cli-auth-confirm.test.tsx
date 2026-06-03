@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
+import { hexclaveAppInternalsSymbol } from "../lib/stack-app/common";
 import { HexclaveContext } from "../providers/stack-context";
 import { useCliAuthConfirmation } from "./cli-auth-confirm";
 
@@ -29,7 +29,7 @@ function createAppTestDouble(options: {
     useUser: () => options.user,
     redirectToSignIn: options.redirectToSignIn ?? vi.fn(async () => {}),
     redirectToSignUp: options.redirectToSignUp ?? vi.fn(async () => {}),
-    [stackAppInternalsSymbol]: {
+    [hexclaveAppInternalsSymbol]: {
       sendRequest: options.sendRequest,
       signInWithTokens: options.signInWithTokens ?? vi.fn(async () => {}),
     },

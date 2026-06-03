@@ -7,7 +7,7 @@ import type { StackClientApp } from "../lib/stack-app";
 import { envVars } from "../lib/env";
 import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
+import { hexclaveAppInternalsSymbol } from "../lib/stack-app/common";
 import { getPagePrompt } from "../lib/stack-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
 import type { TriggerCorner, TriggerPlacement } from "./dev-tool-trigger-position";
@@ -203,7 +203,7 @@ function nextId() {
 }
 
 function resolveApiBaseUrl(app: StackClientApp<true>): string {
-  const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+  const opts = app[hexclaveAppInternalsSymbol].getConstructorOptions();
   return getBaseUrl(opts.baseUrl);
 }
 
@@ -1184,7 +1184,7 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   ];
 
   function getHeaders(): Record<string, string> {
-    const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+    const opts = app[hexclaveAppInternalsSymbol].getConstructorOptions();
     // Hexclave rebrand: emit x-hexclave-* request headers (backend dual-accepts).
     const headers: Record<string, string> = {
       'X-Hexclave-Access-Type': 'client',
@@ -1930,7 +1930,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-pg-layout' });
   const apiBaseUrl = resolveApiBaseUrl(app);
   const urls = app.urls;
-  const urlOptions: HandlerUrlOptions = app[stackAppInternalsSymbol].getConstructorOptions().urls ?? {};
+  const urlOptions: HandlerUrlOptions = app[hexclaveAppInternalsSymbol].getConstructorOptions().urls ?? {};
 
   const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
     { key: 'signIn' as any, label: 'Sign-in' },
@@ -2414,7 +2414,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     openPanel();
   }
 
-  const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
+  const removeRequestListener = app[hexclaveAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
     const timestamp = Date.now();
     logStore.addApiLog({
       id: nextId(),

@@ -48,7 +48,7 @@ import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth"
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -3966,7 +3966,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     await this._ownedProjectsCache.refresh([session]);
   }
 
-  static get [stackAppInternalsSymbol]() {
+  static get [hexclaveAppInternalsSymbol]() {
     return {
       fromClientJson: <HasTokenStore extends boolean, ProjectId extends string>(
         json: StackClientAppJson<HasTokenStore, ProjectId>
@@ -3993,7 +3993,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  get [stackAppInternalsSymbol]() {
+  get [hexclaveAppInternalsSymbol]() {
     return {
       toClientJson: (): StackClientAppJson<HasTokenStore, ProjectId> => {
         if (typeof this._redirectMethod !== "string") {

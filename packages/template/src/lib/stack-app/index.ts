@@ -54,7 +54,7 @@ export type {
 } from "./internal-api-keys";
 
 export {
-  stackAppInternalsSymbol,
+  hexclaveAppInternalsSymbol,
 } from "./common";
 export {
   getPagePrompt,

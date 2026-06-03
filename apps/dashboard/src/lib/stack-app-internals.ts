@@ -5,7 +5,7 @@ import {
 } from "@hexclave/shared/dist/interface/admin-metrics";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
-export const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
+export const hexclaveAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
 // Re-export the metrics response type tree from the shared package so dashboard
 // code can read these types without having to know where the schemas live.
@@ -36,7 +36,7 @@ export type {
  * the backend route uses, so dashboard call sites do not need `as ...` casts.
  */
 export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): MetricsResponse {
-  const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
+  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !("useMetrics" in internals)) {
     throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetrics");
   }
@@ -56,7 +56,7 @@ export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): 
  * metrics endpoints use.
  */
 export function useUserActivityOrThrow(adminApp: object, userId: string): UserActivityResponse {
-  const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
+  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !("useUserActivity" in internals)) {
     throw new HexclaveAssertionError("Admin app internals are unavailable: missing useUserActivity");
   }
@@ -70,7 +70,7 @@ export function useUserActivityOrThrow(adminApp: object, userId: string): UserAc
 }
 
 export function useMetricsUserCountsOrThrow(adminApp: object): MetricsUserCounts {
-  const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
+  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !("useMetricsUserCounts" in internals)) {
     throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetricsUserCounts");
   }

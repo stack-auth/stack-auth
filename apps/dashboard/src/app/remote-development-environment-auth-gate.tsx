@@ -2,7 +2,7 @@
 
 import Loading from "@/app/loading";
 import { getPublicEnvVar } from "@/lib/env";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
@@ -12,7 +12,7 @@ const RDE_ACCESS_TOKEN_MIN_EXPIRATION_MS = 30_000;
 const RDE_ACCESS_TOKEN_MAX_AGE_MS = 60_000;
 const RDE_ACCESS_TOKEN_MIN_REFRESH_MS = 1_000;
 
-type StackAppTokenInternals = {
+type HexclaveAppTokenInternals = {
   signInWithTokens: (tokens: { accessToken: string, refreshToken: string }) => Promise<void>,
 };
 
@@ -23,7 +23,7 @@ type RemoteDevelopmentEnvironmentAccessTokenResponse = {
   userId: string,
 };
 
-function isStackAppTokenInternals(value: unknown): value is StackAppTokenInternals {
+function isStackAppTokenInternals(value: unknown): value is HexclaveAppTokenInternals {
   return (
     value != null &&
     typeof value === "object" &&
@@ -32,12 +32,12 @@ function isStackAppTokenInternals(value: unknown): value is StackAppTokenInterna
   );
 }
 
-function getStackAppTokenInternals(appValue: unknown): StackAppTokenInternals {
+function getStackAppTokenInternals(appValue: unknown): HexclaveAppTokenInternals {
   if (appValue == null || typeof appValue !== "object") {
     throw new Error("The Stack app instance is unavailable.");
   }
 
-  const internals = Reflect.get(appValue, stackAppInternalsSymbol);
+  const internals = Reflect.get(appValue, hexclaveAppInternalsSymbol);
   if (!isStackAppTokenInternals(internals)) {
     throw new Error("The Stack client app cannot install remote development environment tokens.");
   }

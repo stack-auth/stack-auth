@@ -45,7 +45,7 @@ import {
   type RuleNode,
 } from "@/lib/cel-visual-parser";
 import { useUpdateConfig } from "@/lib/config-update";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -1027,7 +1027,7 @@ function useTestRulesState(hexclaveAdminApp: ReturnType<typeof useAdminApp>) {
       throw new Error("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
     }
 
-    const response = await (hexclaveAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+    const response = await (hexclaveAdminApp as any)[hexclaveAppInternalsSymbol].sendRequest(
       '/internal/sign-up-rules-test',
       {
         method: 'POST',
@@ -1558,7 +1558,7 @@ function useSignUpRulesAnalytics() {
 
     const fetchAnalytics = async () => {
       try {
-        const response = await (hexclaveAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+        const response = await (hexclaveAdminApp as any)[hexclaveAppInternalsSymbol].sendRequest(
           '/internal/sign-up-rules-stats',
           { method: 'GET' },
           'admin'

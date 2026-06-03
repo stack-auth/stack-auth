@@ -11,7 +11,7 @@ import { Store } from "@hexclave/shared/dist/utils/stores";
 import { getDefaultApiUrls } from "@hexclave/shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { envVars } from "../../../env";
-import { HandlerUrlOptions, ResolvedHandlerUrls, stackAppInternalsSymbol } from "../../common";
+import { HandlerUrlOptions, ResolvedHandlerUrls, hexclaveAppInternalsSymbol } from "../../common";
 import { resolveHandlerUrls } from "../../url-targets";
 
 export const clientVersion = "STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL";
@@ -46,10 +46,10 @@ export const createCacheBySession = <D extends any[], T>(fetcher: (session: Inte
 };
 
 
-type AppLike = { [stackAppInternalsSymbol]: { getConstructorOptions: () => any } };
+type AppLike = { [hexclaveAppInternalsSymbol]: { getConstructorOptions: () => any } };
 export function resolveConstructorOptions<T extends { inheritsFrom?: AppLike }>(options: T): T & { inheritsFrom?: undefined } {
   return {
-    ...options.inheritsFrom?.[stackAppInternalsSymbol].getConstructorOptions() ?? {},
+    ...options.inheritsFrom?.[hexclaveAppInternalsSymbol].getConstructorOptions() ?? {},
     ...filterUndefined(omit(options, ["inheritsFrom"])),
   };
 }
