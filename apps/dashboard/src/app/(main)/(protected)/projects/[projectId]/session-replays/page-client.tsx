@@ -45,8 +45,6 @@ const BACKGROUND_CHUNK_BATCH = 50;
 const EXTRA_TABS_TO_SHOW = 2;
 const REPLAY_SETTINGS_STORAGE_KEY = "stack.session-replay.settings";
 const LEGACY_PLAYER_SPEED_STORAGE_KEY = "stack.session-replay.speed";
-// TEMPORARY: multiply the rendered list for scroll verification. Set back to 1 after manual verification.
-const SESSION_REPLAY_LIST_DEBUG_MULTIPLIER: number = 100;
 
 type RrwebEventWithTime = import("rrweb/typings/types").eventWithTime;
 type RrwebReplayer = InstanceType<typeof import("rrweb").Replayer>;
@@ -512,19 +510,10 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
       ?? (standaloneReplay?.id === selectedRecordingId ? standaloneReplay : null),
     [recordings, selectedRecordingId, standaloneReplay],
   );
-  const recordingListRows = useMemo<RecordingListRow[]>(() => {
-    if (SESSION_REPLAY_LIST_DEBUG_MULTIPLIER === 1) {
-      return recordings.map((replay) => ({ replay, key: replay.id }));
-    }
-
-    const rows: RecordingListRow[] = [];
-    for (let copyIndex = 0; copyIndex < SESSION_REPLAY_LIST_DEBUG_MULTIPLIER; copyIndex++) {
-      for (const replay of recordings) {
-        rows.push({ replay, key: `${replay.id}:${copyIndex}` });
-      }
-    }
-    return rows;
-  }, [recordings]);
+  const recordingListRows = useMemo<RecordingListRow[]>(
+    () => recordings.map((replay) => ({ replay, key: replay.id })),
+    [recordings],
+  );
 
   const hasAutoSelectedRef = useRef(false);
   const loadingMoreRef = useRef(false);

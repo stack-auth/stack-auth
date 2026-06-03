@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Link } from "@/components/link";
 import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";

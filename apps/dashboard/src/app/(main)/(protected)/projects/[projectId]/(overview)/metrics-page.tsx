@@ -366,7 +366,7 @@ function analyticsFiltersKey(filters: AnalyticsOverviewFilters): string {
   const params = new URLSearchParams();
   for (const dimension of FILTER_DIMENSIONS) {
     const value = filters[dimension];
-    if (value) {
+    if (value != null) {
       params.set(dimension, value);
     }
   }
@@ -382,7 +382,7 @@ function getFilterDimensionLabel(dimension: keyof AnalyticsOverviewFilters): str
 }
 
 function hasAnalyticsFilters(filters: AnalyticsOverviewFilters): boolean {
-  return FILTER_DIMENSIONS.some((dimension) => !!filters[dimension]);
+  return FILTER_DIMENSIONS.some((dimension) => filters[dimension] != null);
 }
 
 function FilterChipsBar({
@@ -396,7 +396,7 @@ function FilterChipsBar({
 }) {
   const entries = FILTER_DIMENSIONS.flatMap((dimension) => {
     const value = filters[dimension];
-    return value ? [{ dimension, value }] : [];
+    return value != null ? [{ dimension, value }] : [];
   });
   if (entries.length === 0) return null;
 
@@ -1374,8 +1374,8 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const [view, setView] = useState<"overview" | "globe">("overview");
   const user = useUser();
 
-  const displayName = user?.displayName || user?.primaryEmail || "User";
-  const truncatedName = displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
+  const displayName = user?.displayName || user?.primaryEmail || null;
+  const truncatedName = displayName && displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
   const selectedFilterKey = analyticsFiltersKey(analyticsFilters);
   const loadedFilterKey = analyticsFiltersKey(loadedAnalyticsFilters);
   const isUpdatingAnalyticsFilters = selectedFilterKey !== loadedFilterKey;
@@ -1390,7 +1390,7 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const markAnalyticsFiltersLoaded = useCallback(() => {
     setLoadedAnalyticsFilters(analyticsFilters);
   }, [analyticsFilters]);
-  const headerTitle = `Welcome back, ${truncatedName}!`;
+  const headerTitle = `Welcome back${truncatedName ? `, ${truncatedName}` : ""}!`;
   const headerActions = (
     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
       {view === "overview" && (

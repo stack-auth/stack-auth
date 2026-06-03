@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/internal-tool-module",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "dependencies": {
     "spacetimedb": "^2.1.0"
