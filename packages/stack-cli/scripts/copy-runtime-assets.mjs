@@ -70,11 +70,17 @@ function copyDashboardHoistedDependencies(pnpmRoot, current = pnpmRoot) {
   }
 }
 
-// Packages that are only needed at build time and should not be shipped in the
+// Packages that are only needed at build time or are unnecessary in the
 // standalone runtime. These are pulled in by file tracing (e.g. via jiti/next)
 // but are never loaded during production server execution.
+// sharp and its native bindings (@img/*) are excluded because the RDE
+// standalone build sets images.unoptimized=true.
 const EXCLUDED_RUNTIME_PACKAGES = new Set([
   "typescript",
+  "sharp",
+  "@img/sharp-libvips-linux-x64",
+  "@img/sharp-linux-x64",
+  "@img/colour",
 ]);
 
 function hoistPnpmNodeModules(pnpmDir) {
