@@ -947,16 +947,35 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const afterCallbackRedirectUrl = new URL(currentUrl);
     afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.refreshTokenId);
     afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.callbackUrl);
-    const { state: newState, codeChallenge: newCodeChallenge } = await this._getCrossDomainHandoffParamsForRedirect(currentUrl);
+    const { state: newState, codeChallenge: newCodeChallenge } = await this._getNestedCrossDomainAuthParamsForRedirect();
+    const nestedRedirectUri = new URL(this._getOAuthCallbackRedirectUri(), currentUrl);
+    nestedRedirectUri.searchParams.delete(nestedCrossDomainAuthQueryParams.refreshTokenId);
+    nestedRedirectUri.searchParams.delete(nestedCrossDomainAuthQueryParams.callbackUrl);
+    for (const param of [
+      "after_auth_return_to",
+      crossDomainAuthQueryParams.marker,
+      crossDomainAuthQueryParams.state,
+      crossDomainAuthQueryParams.codeChallenge,
+      crossDomainAuthQueryParams.afterCallbackRedirectUrl,
+    ]) {
+      const value = currentUrl.searchParams.get(param);
+      if (value != null && !nestedRedirectUri.searchParams.has(param)) {
+        nestedRedirectUri.searchParams.set(param, value);
+      }
+    }
 
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.refreshTokenId, refreshTokenId);
-    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.redirectUri, new URL(this._getOAuthCallbackRedirectUri(), currentUrl).toString());
+    callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.redirectUri, nestedRedirectUri.toString());
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.state, newState);
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.codeChallenge, newCodeChallenge);
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.codeChallengeMethod, "S256");
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl, afterCallbackRedirectUrl.toString());
     await this._redirectTo({ url: callbackUrl, replace: true });
     return true;
+  }
+
+  protected async _getNestedCrossDomainAuthParamsForRedirect(): Promise<CrossDomainHandoffParams> {
+    return await saveVerifierAndState();
   }
 
   /**
