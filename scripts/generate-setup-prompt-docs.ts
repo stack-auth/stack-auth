@@ -485,10 +485,6 @@ writeFileSyncIfChanged(
 writeFileSyncIfChanged(
   path.join(repoRoot, "docs-mintlify/snippets/hexclave-agent-reminders.jsx"),
   deindent`
-    export const hexclaveReminders = ${JSON.stringify(remindersPrompt)};
-
-    // Mintlify's MDX bundler doesn't preserve cross-export references from snippet files,
-    // so the string is inlined here instead of referencing hexclaveReminders.
     export const HexclaveAgentReminders = () => (
       <pre>{${JSON.stringify(remindersPrompt)}}</pre>
     );
