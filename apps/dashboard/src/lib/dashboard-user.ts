@@ -1,8 +1,8 @@
 "use client";
 
 import { getPublicEnvVar } from "@/lib/env";
-import { useUser } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { useUser } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 function isRemoteDevelopmentEnvironment(): boolean {
   return getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";

@@ -202,7 +202,7 @@ export function CustomSearchDialog({ open, onOpenChange }: CustomSearchDialogPro
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sidebarContext = useSidebar();
 
   // Handle AI chat opening

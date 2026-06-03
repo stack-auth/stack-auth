@@ -4,11 +4,11 @@ import { sendTeamPermissionCreatedWebhook, sendTeamPermissionDeletedWebhook } fr
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { teamPermissionsCrud } from '@stackframe/stack-shared/dist/interface/crud/team-permissions';
-import { permissionDefinitionIdSchema, userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { KnownErrors } from "@hexclave/shared";
+import { teamPermissionsCrud } from '@hexclave/shared/dist/interface/crud/team-permissions';
+import { permissionDefinitionIdSchema, userIdOrMeSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamPermissionsCrud, {
   querySchema: yupObject({

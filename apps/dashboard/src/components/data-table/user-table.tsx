@@ -22,17 +22,17 @@ import {
   toast,
 } from "@/components/ui";
 import { CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
-import type { ServerUser } from "@stackframe/stack";
+import type { ServerUser } from "@hexclave/next";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-} from "@stackframe/dashboard-ui-components";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+} from "@hexclave/dashboard-ui-components";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { Link } from "../link";

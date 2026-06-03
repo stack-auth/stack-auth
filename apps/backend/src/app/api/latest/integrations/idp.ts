@@ -1,12 +1,12 @@
 import { globalPrismaClient, retryTransaction } from '@/prisma-client';
 import { Prisma } from '@/generated/prisma/client';
-import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/dist/utils/bytes';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { HexclaveAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { sha512 } from '@stackframe/stack-shared/dist/utils/hashes';
-import { getPrivateJwks, getPublicJwkSet } from '@stackframe/stack-shared/dist/utils/jwt';
-import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
-import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { decodeBase64OrBase64Url, toHexString } from '@hexclave/shared/dist/utils/bytes';
+import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
+import { HexclaveAssertionError, captureError, throwErr } from '@hexclave/shared/dist/utils/errors';
+import { sha512 } from '@hexclave/shared/dist/utils/hashes';
+import { getPrivateJwks, getPublicJwkSet } from '@hexclave/shared/dist/utils/jwt';
+import { deindent } from '@hexclave/shared/dist/utils/strings';
+import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
 import Provider, { Adapter, AdapterConstructor, AdapterPayload } from 'oidc-provider';
 
 type AdapterData = {
@@ -169,7 +169,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
   // never exposed to OIDC clients (the actual OIDC `aud` claim is set elsewhere).
   // Changing this string rotates ALL outstanding JWT signing keys and invalidates
   // every cached client JWKS — so it is intentionally pinned to the pre-rebrand
-  // domain. Carve-out per RENAME-TO-HEXCLAVE.md ("internal opaque identifiers").
+  // domain (internal opaque identifier — never exposed to clients).
   const privateJwks = await getPrivateJwks({
     audience: `https://idp-jwk-audience.stack-auth.com/${encodeURIComponent(options.id)}`,
   });

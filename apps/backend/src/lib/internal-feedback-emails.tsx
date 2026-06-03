@@ -3,10 +3,10 @@ import { normalizeEmail, sendEmailToMany } from "@/lib/emails";
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { Tenancy } from "@/lib/tenancies";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { escapeHtml } from "@hexclave/shared/dist/utils/html";
 
 const transactionalCategoryId = getNotificationCategoryByName("Transactional")?.id ?? throwErr("Transactional notification category not found");
 

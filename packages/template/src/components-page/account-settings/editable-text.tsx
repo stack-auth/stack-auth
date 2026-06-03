@@ -1,4 +1,4 @@
-import { Button, Input, Typography } from "@stackframe/stack-ui";
+import { Button, Input, Typography } from "@hexclave/ui";
 import { Edit } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "../../lib/translations";

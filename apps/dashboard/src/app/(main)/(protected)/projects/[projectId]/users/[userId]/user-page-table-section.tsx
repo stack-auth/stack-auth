@@ -1,6 +1,6 @@
 "use client";
 
-import { createDefaultDataGridState, DataGrid, type DataGridColumnDef, type DataGridSortModel, useDataGridUrlState, useDataSource } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, type DataGridColumnDef, type DataGridSortModel, useDataGridUrlState, useDataSource } from "@hexclave/dashboard-ui-components";
 import { useState, type ReactNode } from "react";
 
 type UserPageTableSectionProps<TRow> = {

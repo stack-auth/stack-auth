@@ -11,10 +11,10 @@ import {
   yupObject,
   yupString,
   yupTuple,
-} from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+} from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import type { PublishBatchRequest } from "@upstash/qstash";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;

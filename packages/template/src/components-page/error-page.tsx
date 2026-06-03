@@ -1,7 +1,7 @@
 'use client';
 
-import { KnownError, KnownErrors } from "@stackframe/stack-shared";
-import { Typography } from "@stackframe/stack-ui";
+import { KnownError, KnownErrors } from "@hexclave/shared";
+import { Typography } from "@hexclave/ui";
 import { useStackApp } from "..";
 import { KnownErrorMessageCard } from "../components/message-cards/known-error-message-card";
 import { MessageCard } from "../components/message-cards/message-card";

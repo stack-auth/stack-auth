@@ -1,5 +1,5 @@
-import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
+import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { SignUpAuthMethod } from "@hexclave/shared/dist/utils/auth-methods";
 import { BestEffortEndUserRequestContext } from "./end-users";
 import { SignUpTurnstileAssessment } from "./turnstile";
 import { SignUpRuleOptions } from "./users";

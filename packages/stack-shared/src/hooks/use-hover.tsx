@@ -1,7 +1,7 @@
 import { useLayoutEffect } from "react";
 import { useRefState } from "../utils/react";
 
-export function useHover<T extends HTMLElement>(
+export function useHover<T extends HTMLElement | null>(
   ref: React.RefObject<T>,
   options: {
     onMouseEnter?: () => void,

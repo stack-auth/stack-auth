@@ -1,8 +1,8 @@
 'use client';
 
-import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { getTurnstileApi, loadTurnstileScript } from "@stackframe/stack-shared/dist/utils/turnstile-browser";
-import type { TurnstileWidgetId } from "@stackframe/stack-shared/dist/utils/turnstile-browser";
+import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
+import { getTurnstileApi, loadTurnstileScript } from "@hexclave/shared/dist/utils/turnstile-browser";
+import type { TurnstileWidgetId } from "@hexclave/shared/dist/utils/turnstile-browser";
 import { useEffect, useRef } from "react";
 
 export function TurnstileVisibleWidget(props: {

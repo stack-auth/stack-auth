@@ -10,8 +10,8 @@
  * All metrics are only collected in development mode.
  */
 
-import { getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { createGlobal } from "@stackframe/stack-shared/dist/utils/globals";
+import { getNextRuntime, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { createGlobal } from "@hexclave/shared/dist/utils/globals";
 
 // ============================================================================
 // Types

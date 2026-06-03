@@ -12,17 +12,17 @@ import {
   SimpleTooltip,
   toast,
 } from "@/components/ui";
-import { ServerTeam, ServerUser } from "@stackframe/stack";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { ServerTeam, ServerUser } from "@hexclave/next";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { CheckCircleIcon, CopyIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";

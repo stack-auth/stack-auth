@@ -3,8 +3,8 @@
 import { createAnalyticsQueryChatAdapter } from "@/components/vibe-coding";
 import { getPublicEnvVar } from "@/lib/env";
 import { useLocalThreadRuntime, type AssistantRuntime, type ThreadMessage, type ToolCallContentPart } from "@assistant-ui/react";
-import { useUser } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { useUser } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjectId } from "../../use-admin-app";
 

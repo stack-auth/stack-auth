@@ -1,11 +1,11 @@
 import { recordExternalDbSyncRefreshTokenDeletionsForUser } from "@/lib/external-db-sync";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
-import { adaptSchema, clientOrHigherAuthTypeSchema, passwordSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { comparePassword, hashPassword } from "@stackframe/stack-shared/dist/utils/hashes";
+import { KnownErrors } from "@hexclave/shared";
+import { getPasswordError } from "@hexclave/shared/dist/helpers/password";
+import { adaptSchema, clientOrHigherAuthTypeSchema, passwordSchema, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { comparePassword, hashPassword } from "@hexclave/shared/dist/utils/hashes";
 
 export const POST = createSmartRouteHandler({
   metadata: {

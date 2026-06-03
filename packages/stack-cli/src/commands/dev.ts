@@ -27,8 +27,10 @@ type SessionResponse = {
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
-const DASHBOARD_PORT = 26700;
+const DEFAULT_DASHBOARD_PORT = 26700;
+const DASHBOARD_PORT_ENV_VAR = "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT";
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
+const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
@@ -48,6 +50,7 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   "NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR",
   "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT",
   "NEXT_PUBLIC_STACK_IS_PREVIEW",
+  DASHBOARD_PORT_ENV_VAR,
 ]);
 
 type ProgressLogger = {
@@ -75,8 +78,23 @@ function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
   return { command, args: commandArgs.slice(1) };
 }
 
-function dashboardUrl(): string {
-  return `http://127.0.0.1:${DASHBOARD_PORT}`;
+function dashboardPort(): number {
+  const rawPort = process.env[DASHBOARD_PORT_ENV_VAR];
+  if (rawPort == null || rawPort.length === 0) {
+    return DEFAULT_DASHBOARD_PORT;
+  }
+  if (!/^[0-9]+$/.test(rawPort)) {
+    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
+  }
+  const port = Number(rawPort);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
+  }
+  return port;
+}
+
+function dashboardUrl(port = dashboardPort()): string {
+  return `http://127.0.0.1:${port}`;
 }
 
 function normalizeApiBaseUrl(apiBaseUrl: string): string {
@@ -108,11 +126,11 @@ function openUrlInBrowser(url: string): boolean {
   }
 }
 
-function maybeOpenOnboardingPage(session: SessionResponse): void {
+function maybeOpenOnboardingPage(session: SessionResponse, port: number): void {
   if (!session.onboarding_outstanding) {
     return;
   }
-  const url = `${dashboardUrl()}/new-project?project_id=${encodeURIComponent(session.project_id)}`;
+  const url = `${dashboardUrl(port)}/new-project?project_id=${encodeURIComponent(session.project_id)}`;
   const opened = openUrlInBrowser(url);
   if (opened) {
     logDev(`Onboarding is still pending for project ${session.project_id}. Opened: ${url}`);
@@ -166,12 +184,12 @@ function assertBundledDashboardExists(): void {
   }
 }
 
-function dashboardRuntimeRoot(): string {
-  return join(dirname(devEnvStatePath()), DASHBOARD_RUNTIME_DIR_NAME);
+function dashboardRuntimeRoot(port: number): string {
+  return join(dirname(devEnvStatePath()), `${DASHBOARD_RUNTIME_DIR_NAME}-${port}`);
 }
 
-function dashboardLogPath(): string {
-  return join(dirname(devEnvStatePath()), "rde-dashboard.log");
+function dashboardLogPath(port: number): string {
+  return join(dirname(devEnvStatePath()), `rde-dashboard-${port}.log`);
 }
 
 function replaceSentinels(content: string, env: NodeJS.ProcessEnv): string {
@@ -213,9 +231,9 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
   }
 }
 
-function prepareDashboardRuntime(env: NodeJS.ProcessEnv): string {
+function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
   assertBundledDashboardExists();
-  const runtimeRoot = dashboardRuntimeRoot();
+  const runtimeRoot = dashboardRuntimeRoot(port);
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   rmSync(runtimeRoot, { recursive: true, force: true });
   cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
@@ -230,25 +248,37 @@ function prepareDashboardRuntime(env: NodeJS.ProcessEnv): string {
 
 async function isDashboardReachable(url: string): Promise<boolean> {
   try {
-    const response = await fetch(`${url}/health`);
-    return response.ok;
+    const response = await fetch(`${url}${DASHBOARD_HEALTH_PATH}`, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    const body: unknown = await response.json();
+    return (
+      typeof body === "object"
+      && body !== null
+      && "ok" in body
+      && typeof body.ok === "boolean"
+      && "restart_command" in body
+      && typeof body.restart_command === "string"
+    );
   } catch {
     return false;
   }
 }
 
-async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string }): Promise<void> {
-  const url = dashboardUrl();
+async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number }): Promise<void> {
+  const url = dashboardUrl(options.port);
   if (await isDashboardReachable(url)) {
     logDev(`Using existing Hexclave dashboard on ${url}.`);
     return;
   }
 
-  const progress = startProgressLog(`Hexclave dashboard not found on port ${DASHBOARD_PORT}. Starting now`);
+  const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
   const dashboardEnv = {
     ...process.env,
     NODE_ENV: "production",
-    PORT: String(DASHBOARD_PORT),
+    PORT: String(options.port),
     HOSTNAME: "127.0.0.1",
     STACK_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_STACK_API_URL: options.apiBaseUrl,
@@ -262,10 +292,11 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR: "false",
     NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: "true",
     NEXT_PUBLIC_STACK_IS_PREVIEW: "false",
+    [DASHBOARD_PORT_ENV_VAR]: String(options.port),
   };
   try {
-    const dashboardServerPath = prepareDashboardRuntime(dashboardEnv);
-    const logPath = dashboardLogPath();
+    const dashboardServerPath = prepareDashboardRuntime(dashboardEnv, options.port);
+    const logPath = dashboardLogPath(options.port);
     mkdirSync(dirname(logPath), { recursive: true });
     const logFd = openSync(logPath, "a", 0o600);
     chmodSync(logPath, 0o600);
@@ -285,7 +316,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     if (child.pid == null) {
       throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
     }
-    recordLocalDashboardProcess(DASHBOARD_PORT, options.secret, child.pid, logPath);
+    recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath);
     child.unref();
 
     const startedAt = performance.now();
@@ -304,8 +335,8 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   }
 }
 
-async function dashboardRequest(path: string, options: RequestInit, secret: string): Promise<Response> {
-  const url = `${dashboardUrl()}${path}`;
+async function dashboardRequest(path: string, options: RequestInit, secret: string, port: number): Promise<Response> {
+  const url = `${dashboardUrl(port)}${path}`;
   try {
     return await fetch(url, {
       ...options,
@@ -328,6 +359,28 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function responseErrorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  if (text.length === 0) return "empty response body";
+
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (isRecord(parsed)) {
+      const error = parsed.error;
+      if (typeof error === "string") return error;
+      if (isRecord(error) && typeof error.message === "string") return error.message;
+    }
+  } catch {
+    // Fall back to the raw response below.
+  }
+
+  return text;
+}
+
 function isSessionResponse(value: unknown): value is SessionResponse {
   return (
     typeof value === "object" &&
@@ -347,6 +400,7 @@ function isSessionResponse(value: unknown): value is SessionResponse {
 async function createRemoteDevelopmentEnvironmentSession(options: {
   apiBaseUrl: string,
   configFilePath: string,
+  port: number,
   secret: string,
 }): Promise<SessionResponse> {
   const response = await dashboardRequest("/api/remote-development-environment/sessions", {
@@ -358,9 +412,9 @@ async function createRemoteDevelopmentEnvironmentSession(options: {
       api_base_url: options.apiBaseUrl,
       config_path: options.configFilePath,
     }),
-  }, options.secret);
+  }, options.secret, options.port);
   if (!response.ok) {
-    throw new CliError(`Failed to register development environment session (${response.status}): ${await response.text()}`);
+    throw new CliError(`Failed to register development environment session (${response.status}): ${await responseErrorMessage(response)}`);
   }
   const body: unknown = await response.json();
   if (!isSessionResponse(body)) {
@@ -396,6 +450,7 @@ async function restartDashboardForHeartbeat(options: {
   apiBaseUrl: string,
   configFilePath: string,
   dashboardReachableSinceMs: number,
+  port: number,
   secret: string,
 }): Promise<SessionResponse> {
   const dashboardUptimeMs = performance.now() - options.dashboardReachableSinceMs;
@@ -404,10 +459,11 @@ async function restartDashboardForHeartbeat(options: {
   }
 
   logDev("Local Hexclave dashboard stopped. Restarting...");
-  await startDashboardIfNeeded({ apiBaseUrl: options.apiBaseUrl, secret: options.secret });
+  await startDashboardIfNeeded({ apiBaseUrl: options.apiBaseUrl, secret: options.secret, port: options.port });
   return await createRemoteDevelopmentEnvironmentSession({
     apiBaseUrl: options.apiBaseUrl,
     configFilePath: options.configFilePath,
+    port: options.port,
     secret: options.secret,
   });
 }
@@ -425,6 +481,7 @@ async function waitForHeartbeatIntervalOrStop(shouldStop: () => boolean): Promis
 async function heartbeatUntilStopped(sessionState: DashboardSessionState, options: {
   apiBaseUrl: string,
   configFilePath: string,
+  port: number,
   secret: string,
   shouldStop: () => boolean,
 }): Promise<void> {
@@ -442,17 +499,18 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
       response = await dashboardRequest(`/api/remote-development-environment/sessions/${encodeURIComponent(sessionState.session.session_id)}/heartbeat`, {
         method: "POST",
         signal: controller.signal,
-      }, options.secret);
+      }, options.secret, options.port);
     } catch {
       if (options.shouldStop()) return;
       sessionState.session = await restartDashboardForHeartbeat({
         apiBaseUrl: options.apiBaseUrl,
         configFilePath: options.configFilePath,
         dashboardReachableSinceMs: sessionState.dashboardReachableSinceMs,
+        port: options.port,
         secret: options.secret,
       });
       sessionState.dashboardReachableSinceMs = performance.now();
-      logDev(`Hexclave dashboard running at ${dashboardUrl()}`);
+      logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}`);
       continue;
     } finally {
       clearInterval(abortOnStop);
@@ -464,20 +522,21 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
         apiBaseUrl: options.apiBaseUrl,
         configFilePath: options.configFilePath,
         dashboardReachableSinceMs: sessionState.dashboardReachableSinceMs,
+        port: options.port,
         secret: options.secret,
       });
       sessionState.dashboardReachableSinceMs = performance.now();
-      logDev(`Hexclave dashboard running at ${dashboardUrl()}`);
+      logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}`);
     }
   }
 }
 
-async function closeSession(sessionId: string, secret: string): Promise<void> {
+async function closeSession(sessionId: string, secret: string, port: number): Promise<void> {
   let response: Response;
   try {
     response = await dashboardRequest(`/api/remote-development-environment/sessions/${encodeURIComponent(sessionId)}`, {
       method: "DELETE",
-    }, secret);
+    }, secret, port);
   } catch (error) {
     logDev(`Failed to close development environment session: ${errorMessage(error)}`);
     return;
@@ -500,27 +559,30 @@ export function registerDevCommand(program: Command) {
       }
 
       const childCommand = splitDevCommandArgs(commandArgs);
-      const localDashboardUrl = dashboardUrl();
-      const secret = ensureLocalDashboardSecret(DASHBOARD_PORT);
+      const port = dashboardPort();
+      const localDashboardUrl = dashboardUrl(port);
+      const secret = ensureLocalDashboardSecret(port);
       const config = resolveLoginConfig();
       const apiBaseUrl = normalizeApiBaseUrl(config.apiUrl || DEFAULT_API_URL);
       const configFilePath = resolveConfigFilePathOption(opts.configFile, { mustExist: false });
-      await startDashboardIfNeeded({ apiBaseUrl, secret });
+      await startDashboardIfNeeded({ apiBaseUrl, secret, port });
       const sessionState: DashboardSessionState = {
         session: await createRemoteDevelopmentEnvironmentSession({
           apiBaseUrl,
           configFilePath,
+          port,
           secret,
         }),
         dashboardReachableSinceMs: performance.now(),
       };
       logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
-      maybeOpenOnboardingPage(sessionState.session);
+      maybeOpenOnboardingPage(sessionState.session, port);
 
       let stopped = false;
       const heartbeat = heartbeatUntilStopped(sessionState, {
         apiBaseUrl,
         configFilePath,
+        port,
         secret,
         shouldStop: () => stopped,
       });
@@ -533,7 +595,7 @@ export function registerDevCommand(program: Command) {
       } finally {
         stopped = true;
         await heartbeat;
-        await closeSession(sessionState.session.session_id, secret);
+        await closeSession(sessionState.session.session_id, secret, port);
       }
       process.exit(exitCode);
     });

@@ -1,4 +1,4 @@
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { clampColumnWidth, DEFAULT_COL_WIDTH } from "./data-grid-sizing";
 import type {
   DataGridColumnDef,

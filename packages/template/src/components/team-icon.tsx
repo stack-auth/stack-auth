@@ -1,4 +1,4 @@
-import { Avatar, AvatarImage, Typography } from "@stackframe/stack-ui";
+import { Avatar, AvatarImage, Typography } from "@hexclave/ui";
 import { User2 } from "lucide-react";
 import { Team } from "..";
 

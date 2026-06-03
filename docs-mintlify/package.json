@@ -1,6 +1,6 @@
 {
-  "name": "@stackframe/docs-mintlify",
-  "version": "2.8.109",
+  "name": "@hexclave/docs-mintlify",
+  "version": "1.0.3",
   "private": true,
   "scripts": {
     "dev": "mint dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}04 --no-open",
@@ -13,5 +13,5 @@
   "devDependencies": {
     "mint": "^4.2.487"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

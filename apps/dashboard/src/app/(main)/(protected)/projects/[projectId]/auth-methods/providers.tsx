@@ -9,12 +9,12 @@ import {
   DesignCardTint,
   DesignInput,
   DesignPillToggle,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { AdminProject } from "@stackframe/stack";
-import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { AdminProject } from "@hexclave/next";
+import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useState, type ReactNode } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";

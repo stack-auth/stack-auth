@@ -1,8 +1,8 @@
 "use client";
 
 import { UploadIcon, XIcon } from '@phosphor-icons/react';
-import { fileToBase64 } from '@stackframe/stack-shared/dist/utils/base64';
-import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
+import { fileToBase64 } from '@hexclave/shared/dist/utils/base64';
+import { runAsynchronouslyWithAlert } from '@hexclave/shared/dist/utils/promises';
 import { Button, cn, Typography } from '@/components/ui';
 import imageCompression from 'browser-image-compression';
 import { useState } from 'react';

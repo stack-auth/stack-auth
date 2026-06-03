@@ -1,5 +1,5 @@
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getJwtInfo } from "@stackframe/stack-shared/dist/utils/jwt";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { getJwtInfo } from "@hexclave/shared/dist/utils/jwt";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 

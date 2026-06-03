@@ -1,6 +1,6 @@
-import { CLOUD_HOST_PAIRS } from "@stackframe/stack-shared/dist/utils/cloud-hosts";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { CLOUD_HOST_PAIRS } from "@hexclave/shared/dist/utils/cloud-hosts";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * The stack-auth ↔ hexclave cloud host pairs live in stack-shared

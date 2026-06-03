@@ -1,8 +1,8 @@
 import { getPublicEnvVar } from "@/lib/env";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getHexclaveApiBaseUrl, getStackAuthApiBaseUrl } from "@stackframe/stack-shared/dist/utils/cloud-hosts";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { getHexclaveApiBaseUrl, getStackAuthApiBaseUrl } from "@hexclave/shared/dist/utils/cloud-hosts";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 type ConfigOAuthProvider = CompleteConfig['auth']['oauth']['providers'][string];
 

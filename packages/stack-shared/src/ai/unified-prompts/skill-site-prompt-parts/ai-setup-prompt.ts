@@ -519,7 +519,9 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         ` : ""}
 
         <AccordionGroup>
-          <Accordion title="Option 1: Running Hexclave's dev environment (recommended)" defaultOpen>
+          <Accordion title="Option 1: Running Hexclave's dashboard locally (recommended)" defaultOpen>
+            ${isAiPrompt ? "This is the strongly recommended option unless the user has explicitly said otherwise, as it allows usage of \`stack.config.ts\` files and does not require the user to get project IDs or API keys from the dashboard." : ""}
+            
             First, create a \`stack.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts stack.config.ts
@@ -742,7 +744,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isAiPrompt ? deindent`
-            Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Use broad loading boundaries sparingly; don't add loading indicators aggressively across the app unless they cover real async work.
+            Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Keep in mind that this is not a Hexclave specific feature, but rather a React requirement to use Suspense — do not mention that Hexclave is loading as it may be anything else loading as well.
           ` : ""}
         </Step>
 

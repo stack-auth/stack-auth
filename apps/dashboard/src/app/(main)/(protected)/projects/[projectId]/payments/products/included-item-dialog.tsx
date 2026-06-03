@@ -10,7 +10,7 @@ import {
 import { Checkbox, Label, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { PackageIcon } from "@phosphor-icons/react";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { useEffect, useMemo, useState } from "react";
 
 type ExpiresOption = 'never' | 'when-purchase-expires' | 'when-repeated';

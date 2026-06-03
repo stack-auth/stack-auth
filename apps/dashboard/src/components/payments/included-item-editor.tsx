@@ -2,8 +2,8 @@
 
 import { InputField, SelectField } from "@/components/form-fields";
 import { readableInterval } from "@/lib/dates";
-import { dayIntervalSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { dayIntervalSchema } from "@hexclave/shared/dist/schema-fields";
+import { DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { Control, FieldValues, Path } from "react-hook-form";
 import * as yup from "yup";
 import { DayIntervalSelectorField } from "../form-fields/day-interval-selector-field";

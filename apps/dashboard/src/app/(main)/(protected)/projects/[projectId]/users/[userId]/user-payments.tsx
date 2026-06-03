@@ -8,10 +8,10 @@ import {
 import { cn, Skeleton } from "@/components/ui";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from "@phosphor-icons/react";
-import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import type { ServerUser } from "@stackframe/stack";
-import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import type { ServerUser } from "@hexclave/next";
+import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
 import { UserPageMetricCard } from "./user-page-metric-card";

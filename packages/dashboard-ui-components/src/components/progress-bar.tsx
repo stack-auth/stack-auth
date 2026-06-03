@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 
 type DesignProgressBarGradient = "blue" | "cyan" | "purple" | "green" | "orange" | "default";
 

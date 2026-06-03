@@ -1,6 +1,6 @@
 "use client";
 
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@hexclave/ui";
 import { useStackApp } from "../..";
 import { useTranslation } from "../../lib/translations";
 import { MessageCard } from "./message-card";

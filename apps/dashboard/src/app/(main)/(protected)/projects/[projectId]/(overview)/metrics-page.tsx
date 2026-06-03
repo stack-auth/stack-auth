@@ -15,9 +15,9 @@ import {
 } from "@/lib/stack-app-internals";
 import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
-import { useUser } from "@stackframe/stack";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { useUser } from "@hexclave/next";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { type ElementType, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
@@ -948,12 +948,12 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const [customDateRange, setCustomDateRange] = useState<CustomDateRange | null>(null);
   const user = useUser();
 
-  const displayName = user?.displayName || user?.primaryEmail || "User";
-  const truncatedName = displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
+  const displayName = user?.displayName || user?.primaryEmail || null;
+  const truncatedName = displayName && displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
 
   return (
     <PageLayout
-      title={`Welcome back, ${truncatedName}!`}
+      title={`Welcome back${truncatedName ? `, ${truncatedName}` : ""}!`}
       actions={
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <TimeRangeToggle

@@ -1,6 +1,6 @@
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 // Binary search: index of the first item whose id > cursor, in an
 // array already sorted by `stringCompare(a.id, b.id)`.

@@ -1,6 +1,6 @@
 "use client";
 
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { useToast } from "@/components/ui";
 import { useEffect } from "react";
 

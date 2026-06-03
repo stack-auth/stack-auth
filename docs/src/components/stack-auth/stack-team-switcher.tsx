@@ -1,6 +1,6 @@
 'use client';
 
-import { SelectedTeamSwitcher } from '@stackframe/stack';
+import { SelectedTeamSwitcher } from '@hexclave/next';
 import { useState } from 'react';
 import { StackContainer } from '../mdx';
 import { DynamicCodeblock } from '../mdx/dynamic-code-block';

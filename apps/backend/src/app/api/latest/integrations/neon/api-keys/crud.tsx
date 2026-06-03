@@ -1,7 +1,7 @@
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { CrudTypeOf, createCrud } from "@stackframe/stack-shared/dist/crud";
-import { yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { CrudTypeOf, createCrud } from "@hexclave/shared/dist/crud";
+import { yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 import { internalApiKeyCrudHandlers } from "../../../internal/api-keys/crud";
 
 const baseApiKeysReadSchema = yupObject({

@@ -1,5 +1,5 @@
 import { getPublicEnvVar } from "@/lib/env";
-import { parseJson } from "@stackframe/stack-shared/dist/utils/json";
+import { parseJson } from "@hexclave/shared/dist/utils/json";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 

@@ -2,12 +2,12 @@ import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
 import { globalPrismaClient } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { sessionsCrud } from "@stackframe/stack-shared/dist/interface/crud/sessions";
-import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { geoInfoSchema } from "@stackframe/stack-shared/dist/utils/geo";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { KnownErrors } from "@hexclave/shared";
+import { sessionsCrud } from "@hexclave/shared/dist/interface/crud/sessions";
+import { userIdOrMeSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { geoInfoSchema } from "@hexclave/shared/dist/utils/geo";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 export const sessionsCrudHandlers = createLazyProxy(() => createCrudHandlers(sessionsCrud, {
   paramsSchema: yupObject({

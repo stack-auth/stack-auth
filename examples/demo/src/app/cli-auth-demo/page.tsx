@@ -19,9 +19,9 @@
  * =============================================================================
  */
 
-import { StackClientApp, useStackApp, useUser, stackAppInternalsSymbol } from '@stackframe/stack';
-import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
-import { Button, Card, CardContent, CardHeader, Typography } from '@stackframe/stack-ui';
+import { StackClientApp, useStackApp, useUser, stackAppInternalsSymbol } from '@hexclave/next';
+import { runAsynchronouslyWithAlert } from '@hexclave/shared/dist/utils/promises';
+import { Button, Card, CardContent, CardHeader, Typography } from '@hexclave/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Phase = 'idle' | 'setting-up' | 'polling' | 'success' | 'error';

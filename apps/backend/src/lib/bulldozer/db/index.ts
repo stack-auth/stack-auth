@@ -1,5 +1,5 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
 import type { BulldozerExecutionContext } from "./execution-context";

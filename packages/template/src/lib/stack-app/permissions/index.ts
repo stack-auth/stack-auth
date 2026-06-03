@@ -1,5 +1,5 @@
-import { ProjectPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/project-permissions";
-import { TeamPermissionDefinitionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
+import { ProjectPermissionDefinitionsCrud } from "@hexclave/shared/dist/interface/crud/project-permissions";
+import { TeamPermissionDefinitionsCrud } from "@hexclave/shared/dist/interface/crud/team-permissions";
 
 
 export type TeamPermission = {

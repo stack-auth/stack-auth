@@ -1,6 +1,6 @@
-import { ItemId } from "@stackframe/stack-shared/dist/plans";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { ItemId } from "@hexclave/shared/dist/plans";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { niceBackendFetch, withInternalProject } from "./backend-helpers";
 
 // Helpers for reading and waiting on payment-item quantities held by an

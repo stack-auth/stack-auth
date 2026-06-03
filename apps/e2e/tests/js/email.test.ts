@@ -1,6 +1,6 @@
-import { KnownErrors } from "@stackframe/stack-shared";
-import { DEFAULT_EMAIL_THEME_ID, DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { KnownErrors } from "@hexclave/shared";
+import { DEFAULT_EMAIL_THEME_ID, DEFAULT_TEMPLATE_IDS } from "@hexclave/shared/dist/helpers/emails";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../helpers";
 import { withPortPrefix } from "../helpers/ports";
 import { createApp } from "./js-helpers";

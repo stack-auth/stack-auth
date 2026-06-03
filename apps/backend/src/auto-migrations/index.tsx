@@ -1,7 +1,7 @@
 import { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { wait } from '@stackframe/stack-shared/dist/utils/promises';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { wait } from '@hexclave/shared/dist/utils/promises';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
 // The bigint key for the pg advisory lock

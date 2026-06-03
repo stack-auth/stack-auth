@@ -1,6 +1,6 @@
-import { yupArray, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { yupArray, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { getProject } from "../../../../../../../lib/projects";
 import { getPublicProjectJwkSet } from "../../../../../../../lib/tokens";
 import { createSmartRouteHandler } from "../../../../../../../route-handlers/smart-route-handler";

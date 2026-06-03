@@ -1,5 +1,5 @@
 import { StyledLink } from "@/components/link";
-import { StackHandler } from "@stackframe/stack";
+import { StackHandler } from "@hexclave/next";
 
 export default function Handler(props: unknown) {
   const extraInfo = <>

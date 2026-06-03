@@ -1,4 +1,4 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { it } from "../../../helpers";
 import { niceBackendFetch } from "../../backend-helpers";
 

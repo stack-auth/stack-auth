@@ -7,9 +7,9 @@ import {
   type ExportedMessageRepository,
   type ThreadHistoryAdapter,
 } from "@assistant-ui/react";
-import { StackAdminApp } from "@stackframe/stack";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
+import { StackAdminApp } from "@hexclave/next";
+import { ChatContent } from "@hexclave/shared/dist/interface/admin-interface";
+import type { EditableMetadata } from "@hexclave/shared/dist/utils/jsx-editable-transpiler";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 

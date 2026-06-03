@@ -1,4 +1,4 @@
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 

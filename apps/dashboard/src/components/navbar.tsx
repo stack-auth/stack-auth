@@ -2,7 +2,7 @@
 
 import { Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { UserButton } from "@stackframe/stack";
+import { UserButton } from "@hexclave/next";
 
 import { Link } from "./link";
 import { Logo } from "./logo";

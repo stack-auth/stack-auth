@@ -1,4 +1,4 @@
-import { writeFileSyncIfChanged } from '@stackframe/stack-shared/dist/utils/fs';
+import { writeFileSyncIfChanged } from '@hexclave/shared/dist/utils/fs';
 import { glob } from 'glob';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';

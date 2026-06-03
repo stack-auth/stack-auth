@@ -1,6 +1,6 @@
-import { getCustomPagePrompts, type CustomPagePrompt } from "@stackframe/stack-shared/dist/interface/handler-urls";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getHostedHandlerUrlFromConfig } from "@stackframe/stack-shared/dist/utils/redirect-urls";
+import { getCustomPagePrompts, type CustomPagePrompt } from "@hexclave/shared/dist/interface/handler-urls";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getHostedHandlerUrlFromConfig } from "@hexclave/shared/dist/utils/redirect-urls";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 

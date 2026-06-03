@@ -1,11 +1,11 @@
 import { Tenancy } from "@/lib/tenancies";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { CrudTypeOf, createCrud } from "@stackframe/stack-shared/dist/crud";
-import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
-import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { CrudTypeOf, createCrud } from "@hexclave/shared/dist/crud";
+import * as schemaFields from "@hexclave/shared/dist/schema-fields";
+import { yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
 
 const domainReadSchema = yupObject({

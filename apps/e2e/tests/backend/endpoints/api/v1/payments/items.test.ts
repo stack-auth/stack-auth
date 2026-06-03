@@ -1,4 +1,4 @@
-import { range } from "@stackframe/stack-shared/dist/utils/arrays";
+import { range } from "@hexclave/shared/dist/utils/arrays";
 import { describe, expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectKeys, Project, User, backendContext, createMailbox, niceBackendFetch } from "../../../../backend-helpers";

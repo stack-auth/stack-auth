@@ -1,4 +1,4 @@
-import { MessageCard } from "@stackframe/stack";
+import { MessageCard } from "@hexclave/next";
 
 export default function NotFound() {
   return (
