@@ -14,19 +14,11 @@ type LocalDashboardState = {
   version?: string,
 };
 
-export type CliUpdateCheckCache = {
-  packageName: string,
-  latestVersion: string,
-  checkedAtMillis: number,
-};
-
 export type DevEnvState = {
   version: 1,
   anonymousRefreshToken?: string,
   localDashboardsByPort?: Partial<Record<string, LocalDashboardState>>,
   anonymousApiBaseUrl?: string,
-  // Memoized result of the latest-version registry lookup (see self-update.ts).
-  cliUpdateCheck?: CliUpdateCheckCache,
   projectsByConfigPath: Partial<Record<string, {
     projectId: string,
     teamId: string,
@@ -42,23 +34,9 @@ export function devEnvStatePath(): string {
   return stackDevEnvStatePath();
 }
 
-// Validate the on-disk cache shape: a hand-edited or cross-version state file
-// could carry a wrong-typed entry, and a non-string latestVersion would later
-// throw in version parsing. Treat anything malformed as "no cache".
-function isCliUpdateCheckCache(value: unknown): value is CliUpdateCheckCache {
-  if (value == null || typeof value !== "object") return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.packageName === "string" &&
-    typeof candidate.latestVersion === "string" &&
-    typeof candidate.checkedAtMillis === "number" &&
-    Number.isFinite(candidate.checkedAtMillis)
-  );
-}
-
-// Validate an on-disk dashboard record, mirroring isCliUpdateCheckCache: a
-// hand-edited or cross-version state file could carry wrong-typed fields. In
-// particular a non-string `version` flows into shouldRestartDashboard ->
+// Validate an on-disk dashboard record: a hand-edited or cross-version state
+// file could carry wrong-typed fields. In particular a non-string `version`
+// flows into shouldRestartDashboard ->
 // isVersionNewer -> parseVersionCore (version.trim()) inside
 // startDashboardIfNeeded, which is not behind the auto-update fail-open guard,
 // so it would throw and crash `hexclave dev`. Malformed entries are dropped on
@@ -109,7 +87,6 @@ export function readDevEnvState(): DevEnvState {
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
     localDashboardsByPort: sanitizeLocalDashboardsByPort(parsed.localDashboardsByPort),
-    cliUpdateCheck: isCliUpdateCheckCache(parsed.cliUpdateCheck) ? parsed.cliUpdateCheck : undefined,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }
@@ -160,16 +137,5 @@ export function recordLocalDashboardProcess(port: number, secret: string, pid: n
       ...state.localDashboardsByPort,
       [String(port)]: dashboardState,
     },
-  });
-}
-
-export function readCliUpdateCheckCache(): CliUpdateCheckCache | undefined {
-  return readDevEnvState().cliUpdateCheck;
-}
-
-export function writeCliUpdateCheckCache(cache: CliUpdateCheckCache): void {
-  writeDevEnvState({
-    ...readDevEnvState(),
-    cliUpdateCheck: cache,
   });
 }
