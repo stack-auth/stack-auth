@@ -4,7 +4,7 @@
 //     Only plain objects, and a few built-ins, can be passed to Client Components from Server Components. Classes or null prototypes are not supported.
 // This file exists as a component that can be both client and server, ignores the non-serializable props, and returns <HexclaveHandlerClient />
 
-import { BaseHandlerProps, HexclaveHandlerClient } from "./stack-handler-client";
+import { BaseHandlerProps, HexclaveHandlerClient } from "./hexclave-handler-client";
 
 type HexclaveHandlerProps = BaseHandlerProps & { location?: string } & {
   /**
@@ -39,6 +39,6 @@ export const HexclaveHandler = HandlerImpl;
 export const StackHandler = HandlerImpl;
 
 // Default export preserved for backwards compatibility (legacy `as`-rename re-exports).
-// Points at the deprecated alias so that `import StackHandler from ".../stack-handler"` still
+// Points at the deprecated alias so that `import StackHandler from ".../hexclave-handler"` still
 // surfaces the deprecation. Internal re-exports in template/src/index.ts use the named exports.
 export default StackHandler;

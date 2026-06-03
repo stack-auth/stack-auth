@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react';
 import { StackAdminApp, StackClientApp, StackServerApp, hexclaveAppInternalsSymbol } from '../lib/stack-app';
-import { HexclaveProviderClient } from './stack-provider-client';
+import { HexclaveProviderClient } from './hexclave-provider-client';
 import { TranslationProvider } from './translation-provider';
 
 // IF_PLATFORM next

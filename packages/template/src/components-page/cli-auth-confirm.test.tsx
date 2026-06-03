@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
 import { hexclaveAppInternalsSymbol } from "../lib/stack-app/common";
-import { HexclaveContext } from "../providers/stack-context";
+import { HexclaveContext } from "../providers/hexclave-context";
 import { useCliAuthConfirmation } from "./cli-auth-confirm";
 
 const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");

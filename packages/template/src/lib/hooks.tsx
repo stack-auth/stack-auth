@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { HexclaveContext } from "../providers/stack-context";
+import { HexclaveContext } from "../providers/hexclave-context";
 import type { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
 
 type GetUserOptions = AppGetUserOptions<true> & {

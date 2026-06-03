@@ -10,9 +10,9 @@ export { defineHexclaveConfig, defineStackConfig } from "@hexclave/shared/config
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";
 // Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the original
 // declarations in the source files (so it survives dts bundling).
-export { HexclaveHandler, StackHandler } from "./components-page/stack-handler";
+export { HexclaveHandler, StackHandler } from "./components-page/hexclave-handler";
 export { useHexclaveApp, useStackApp } from "./lib/hooks";
-export { HexclaveProvider, StackProvider } from "./providers/stack-provider";
+export { HexclaveProvider, StackProvider } from "./providers/hexclave-provider";
 export { HexclaveTheme, StackTheme } from './providers/theme-provider';
 export { useUser } from "./lib/hooks";
 

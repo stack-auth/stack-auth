@@ -5,7 +5,7 @@ import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import React, { useEffect } from "react";
 import { useStackApp } from "../lib/hooks";
 import { StackClientApp, StackClientAppJson, hexclaveAppInternalsSymbol } from "../lib/stack-app";
-import { HexclaveContext } from "./stack-context";
+import { HexclaveContext } from "./hexclave-context";
 
 export function HexclaveProviderClient(props: {
   app: StackClientAppJson<true, string> | StackClientApp<true>,
