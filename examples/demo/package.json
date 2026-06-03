@@ -1,13 +1,14 @@
 {
   "name": "@hexclave/example-demo-app",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "repository": "https://github.com/hexclave/hexclave",
   "description": "",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
-    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}03",
+    "dev": "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}42 node scripts/dev-with-retry.mjs",
+    "dev:inner": "next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}03",
     "build": "next build",
     "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}03",
     "lint": "next lint",
@@ -35,5 +36,5 @@
     "rimraf": "^5.0.10",
     "tailwindcss": "^3.4.14"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

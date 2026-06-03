@@ -271,7 +271,9 @@ The frameworks and languages with explicit SDK support are:
     If you already use Hexclave for your product, we recommend you re-use the same project to share your configuration between the two.
 
     <AccordionGroup>
-      <Accordion title="Option 1: Running Hexclave's dev environment (recommended)" defaultOpen>
+      <Accordion title="Option 1: Running Hexclave's dashboard locally (recommended)" defaultOpen>
+        This is the strongly recommended option unless the user has explicitly said otherwise, as it allows usage of `stack.config.ts` files and does not require the user to get project IDs or API keys from the dashboard.
+
         First, create a `stack.config.ts` configuration file in the root directory of the workspace (or anywhere else):
 
         ```ts stack.config.ts
@@ -478,7 +480,7 @@ The frameworks and languages with explicit SDK support are:
     }
     ```
 
-    Note: If you are an AI agent, make sure to make the loading indicator visually appealing and match the design of your app, instead of the example that just says "Loading...".
+    Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Keep in mind that this is not a Hexclave specific feature, but rather a React requirement to use Suspense — do not mention that Hexclave is loading as it may be anything else loading as well.
   </Step>
 
   <Step title="TanStack Start: Add the Stack handler route">

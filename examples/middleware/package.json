@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/example-middleware-demo",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
@@ -19,11 +19,11 @@
   },
   "devDependencies": {
     "@types/node": "20.17.6",
-    "@types/react": "link:@types/react@18.3.12",
+    "@types/react": "18.3.12",
     "@types/react-dom": "^18",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.3",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

@@ -1,3 +1,5 @@
+import type { JSX } from 'react';
+
 type IconProps = { iconSize: number };
 
 export function Card({ iconSize }: IconProps) {

@@ -230,7 +230,10 @@ async function createDnsimpleZone(subdomain: string): Promise<DnsimpleZone> {
 async function deleteDnsimpleZoneByName(zoneName: string): Promise<{ status: "deleted" | "not_found" }> {
   const dnsimpleBaseUrl = getDnsimpleBaseUrl();
   const dnsimpleAccountId = getDnsimpleAccountId();
-  const response = await fetch(`${dnsimpleBaseUrl}/${encodeURIComponent(dnsimpleAccountId)}/zones/${encodeURIComponent(zoneName)}`, {
+  // A zone is created by creating a domain (see createDnsimpleZone), and DNSimple has no
+  // DELETE endpoint for zones — the symmetric teardown is to delete the owning domain,
+  // which removes its hosted DNS zone too.
+  const response = await fetch(`${dnsimpleBaseUrl}/${encodeURIComponent(dnsimpleAccountId)}/domains/${encodeURIComponent(zoneName)}`, {
     method: "DELETE",
     headers: getDnsimpleHeaders(),
   });
@@ -239,7 +242,7 @@ async function deleteDnsimpleZoneByName(zoneName: string): Promise<{ status: "de
   }
   if (!response.ok) {
     const responseBody = await response.text();
-    throw new HexclaveAssertionError(`DNSimple returned non-OK status when deleting managed email zone`, {
+    throw new HexclaveAssertionError(`DNSimple returned non-OK status when deleting managed email domain`, {
       zoneName,
       status: response.status,
       responseBody,
@@ -643,10 +646,19 @@ export async function applyManagedEmailProvider(options: {
   if (!domain || domain.tenancyId !== options.tenancy.id || !domain.isActive) {
     throw new StatusError(404, "Managed domain not found for this project/branch");
   }
-  if (domain.status === "applied") {
+  // Only short-circuit when the rendered config already points at this exact domain.
+  // If the row is marked "applied" but the config has since drifted (e.g. the user
+  // switched to a different provider and back), we must fall through and re-provision
+  // so the config is rewritten with the full, valid managed server settings — otherwise
+  // the config is left missing required fields like password/senderName.
+  if (domain.status === "applied" && isManagedEmailDomainInUseForTenancy({
+    tenancy: options.tenancy,
+    subdomain: domain.subdomain,
+    senderLocalPart: domain.senderLocalPart,
+  })) {
     return { status: "applied" };
   }
-  if (domain.status !== "verified") {
+  if (domain.status !== "verified" && domain.status !== "applied") {
     throw new StatusError(409, "Managed domain is not verified yet");
   }
 

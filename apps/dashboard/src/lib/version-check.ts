@@ -65,7 +65,10 @@ export function checkVersion(
 
       const res = await fetch(`https://api.hexclave.com/api/v1/check-version`, {
         method: "POST",
-        body: JSON.stringify({ clientVersion: packageJson.version }),
+        body: JSON.stringify({
+          clientPackageName: packageJson.name,
+          clientVersion: packageJson.version,
+        }),
         headers: {
           "Content-Type": "application/json",
         },
