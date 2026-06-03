@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
-import { StackContext } from "../providers/stack-context";
+import { HexclaveContext } from "../providers/stack-context";
 import { useCliAuthConfirmation } from "./cli-auth-confirm";
 
 const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
@@ -61,9 +61,9 @@ async function renderWithApp(app: StackClientApp<true>) {
   root = createRoot(container);
   await act(async () => {
     root?.render(
-      <StackContext.Provider value={{ app }}>
+      <HexclaveContext.Provider value={{ app }}>
         <HookProbe />
-      </StackContext.Provider>
+      </HexclaveContext.Provider>
     );
   });
 }

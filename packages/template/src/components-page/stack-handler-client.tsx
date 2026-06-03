@@ -222,7 +222,7 @@ function renderComponent(props: {
   }
 }
 
-export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps> & { location?: string }) {
+export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RouteProps> & { location?: string }) {
   // Use hooks to get app
   const hexclaveApp = useStackApp();
   const clientOrigin = useClientOriginAfterHydration();

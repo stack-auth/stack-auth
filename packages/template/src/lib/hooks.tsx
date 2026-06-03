@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { StackContext } from "../providers/stack-context";
+import { HexclaveContext } from "../providers/stack-context";
 import type { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
 
 type GetUserOptions = AppGetUserOptions<true> & {
@@ -36,7 +36,7 @@ export function useHexclaveApp<ProjectId extends string>(options: { projectIdMus
   if (typeof useContext !== "function") {
     throw new Error("useHexclaveApp() can only be used in a React Client Component. Make sure you're not calling it from a Server Component, or any other environment.");
   }
-  const context = useContext(StackContext);
+  const context = useContext(HexclaveContext);
   if (context === null) {
     throw new Error("useHexclaveApp must be used within a HexclaveProvider");
   }

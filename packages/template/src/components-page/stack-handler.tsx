@@ -2,11 +2,11 @@
 //     <StackHandler app={hexclaveServerApp} routeProps={props} />
 // does not throw the following error:
 //     Only plain objects, and a few built-ins, can be passed to Client Components from Server Components. Classes or null prototypes are not supported.
-// This file exists as a component that can be both client and server, ignores the non-serializable props, and returns <StackHandlerClient />
+// This file exists as a component that can be both client and server, ignores the non-serializable props, and returns <HexclaveHandlerClient />
 
-import { BaseHandlerProps, StackHandlerClient } from "./stack-handler-client";
+import { BaseHandlerProps, HexclaveHandlerClient } from "./stack-handler-client";
 
-type StackHandlerProps = BaseHandlerProps & { location?: string } & {
+type HexclaveHandlerProps = BaseHandlerProps & { location?: string } & {
   /**
    * @deprecated The app parameter is no longer necessary. You can safely remove it.
    */
@@ -28,8 +28,8 @@ type StackHandlerProps = BaseHandlerProps & { location?: string } & {
   searchParams?: any,
 };
 
-function HandlerImpl({ app, routeProps, params, searchParams, ...props }: StackHandlerProps) {
-  return <StackHandlerClient {...props} />;
+function HandlerImpl({ app, routeProps, params, searchParams, ...props }: HexclaveHandlerProps) {
+  return <HexclaveHandlerClient {...props} />;
 }
 
 // Non-deprecated Hexclave-branded export.

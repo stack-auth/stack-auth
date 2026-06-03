@@ -4,12 +4,12 @@ import React from "react";
 import { createGlobal } from "@hexclave/shared/dist/utils/globals";
 import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
 
-type StackContextValue = {
+type HexclaveContextValue = {
   app: StackClientApp<true>,
 };
 
-export const StackContext = createGlobal<React.Context<StackContextValue | null>>(
-  "StackContext",
-  () => React.createContext<StackContextValue | null>(null),
+export const HexclaveContext = createGlobal<React.Context<HexclaveContextValue | null>>(
+  "HexclaveContext",
+  () => React.createContext<HexclaveContextValue | null>(null),
 );
-StackContext.displayName ??= "StackContext";
+HexclaveContext.displayName ??= "HexclaveContext";

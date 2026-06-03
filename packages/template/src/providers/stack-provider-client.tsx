@@ -5,9 +5,9 @@ import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import React, { useEffect } from "react";
 import { useStackApp } from "../lib/hooks";
 import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";
-import { StackContext } from "./stack-context";
+import { HexclaveContext } from "./stack-context";
 
-export function StackProviderClient(props: {
+export function HexclaveProviderClient(props: {
   app: StackClientAppJson<true, string> | StackClientApp<true>,
   serialized: boolean,
   children?: React.ReactNode,
@@ -18,9 +18,9 @@ export function StackProviderClient(props: {
   globalVar.__STACK_AUTH__ = { app };
 
   return (
-    <StackContext.Provider value={{ app }}>
+    <HexclaveContext.Provider value={{ app }}>
       {props.children}
-    </StackContext.Provider>
+    </HexclaveContext.Provider>
   );
 }
 

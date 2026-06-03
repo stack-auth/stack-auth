@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react';
 import { StackAdminApp, StackClientApp, StackServerApp, stackAppInternalsSymbol } from '../lib/stack-app';
-import { StackProviderClient } from './stack-provider-client';
+import { HexclaveProviderClient } from './stack-provider-client';
 import { TranslationProvider } from './translation-provider';
 
 // IF_PLATFORM next
@@ -23,12 +23,12 @@ function NextStackProvider({
   app: StackClientApp<true> | StackServerApp<true> | StackAdminApp<true>,
 }) {
   return (
-    <StackProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true}>
+    <HexclaveProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true}>
       <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}
       </TranslationProvider>
-    </StackProviderClient>
+    </HexclaveProviderClient>
   );
 }
 // ELSE_IF_PLATFORM tanstack-start
@@ -51,13 +51,13 @@ function TanStackStartStackProvider({
   app: StackClientApp<true>,
 }) {
   return (
-    <StackProviderClient app={app} serialized={false}>
+    <HexclaveProviderClient app={app} serialized={false}>
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         <Suspense fallback={null}>
           {children}
         </Suspense>
       </TranslationProvider>
-    </StackProviderClient>
+    </HexclaveProviderClient>
   );
 }
 // ELSE_PLATFORM
@@ -80,12 +80,12 @@ function ReactStackProvider({
   app: StackClientApp<true>,
 }) {
   return (
-    <StackProviderClient app={app as any} serialized={false}>
+    <HexclaveProviderClient app={app as any} serialized={false}>
       <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}
       </TranslationProvider>
-    </StackProviderClient>
+    </HexclaveProviderClient>
   );
 }
 // END_PLATFORM
