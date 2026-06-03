@@ -6,7 +6,7 @@ sidebarTitle: "Overview"
 
 
 import { generatedSetupPromptText } from "/snippets/home-prompt-island.jsx";
-import { HexclaveAgentReminders } from "/snippets/hexclave-agent-reminders.jsx";
+import { hexclaveAgentRemindersText } from "/snippets/hexclave-agent-reminders.jsx";
 
 export const SectionLink = ({ href, children }) => (
   <a href={href} className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
@@ -110,7 +110,9 @@ export const copyGeneratedSetupPrompt = async (event) => {
   </div>
 </div>
 
-<HexclaveAgentReminders />
+<Visibility for="agents">
+{hexclaveAgentRemindersText}
+</Visibility>
 
 <div className="mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
   <div>
