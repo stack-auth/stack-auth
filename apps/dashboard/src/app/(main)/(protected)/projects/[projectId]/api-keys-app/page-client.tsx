@@ -14,6 +14,27 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+/**
+ * @dashboardReference api-keys/api-keys
+ * @dashboardReferenceDescription Configure whether users and teams can create their own API keys.
+ *
+ * The **API Keys** app controls whether your end users may create API keys scoped to their own account or to teams they belong to.
+ *
+ * ## About this page
+ *
+ * This page is **not** where you manage Hexclave **project keys** (publishable client keys and secret server keys for calling the Stack API). Use **Project Keys** in project settings for that.
+ *
+ * The info alert at the top links to the public [API Keys guide](https://docs.hexclave.com/docs/apps/api-keys) for SDK integration details.
+ *
+ * ## API Key Settings
+ *
+ * Two toggles sit in a deferred-save grid (edit, then **Save** or **Discard**):
+ *
+ * - **User API Keys** — sets `apiKeys.enabled.user`. When enabled, users can create API keys for their accounts and the user-api-keys backend routes are available.
+ * - **Team API Keys** — sets `apiKeys.enabled.team`. When enabled, users can create API keys for teams they belong to and the team-api-keys backend routes are available.
+ *
+ * Both can be on at the same time. Turning one off does not delete existing keys; it prevents new key creation through those scopes.
+ */
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();

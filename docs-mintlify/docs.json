@@ -160,6 +160,58 @@
             "searchable": true,
             "pages": [
               {
+                "group": "Analytics",
+                "icon": "/images/app-icons/analytics.svg",
+                "pages": [
+                  "guides/dashboard-references/analytics/tables",
+                  "guides/dashboard-references/analytics/replays",
+                  "guides/dashboard-references/analytics/queries"
+                ]
+              },
+              {
+                "group": "API Keys",
+                "icon": "/images/app-icons/api-keys.svg",
+                "pages": [
+                  "guides/dashboard-references/api-keys/api-keys"
+                ]
+              },
+              {
+                "group": "Authentication",
+                "icon": "/images/app-icons/authentication.svg",
+                "pages": [
+                  "guides/dashboard-references/authentication/auth-methods",
+                  "guides/dashboard-references/authentication/sign-up-rules"
+                ]
+              },
+              {
+                "group": "Catalyst",
+                "icon": "/images/app-icons/catalyst.svg",
+                "pages": [
+                  "guides/dashboard-references/catalyst/catalyst"
+                ]
+              },
+              {
+                "group": "Convex Integration",
+                "icon": "/images/app-icons/convex.svg",
+                "pages": [
+                  "guides/dashboard-references/convex/convex-integration"
+                ]
+              },
+              {
+                "group": "Data Vault",
+                "icon": "/images/app-icons/data-vault.svg",
+                "pages": [
+                  "guides/dashboard-references/data-vault/data-vault"
+                ]
+              },
+              {
+                "group": "Email API",
+                "icon": "/images/app-icons/email-api.svg",
+                "pages": [
+                  "guides/dashboard-references/email-api/email-api"
+                ]
+              },
+              {
                 "group": "Emails",
                 "icon": "/images/app-icons/emails.svg",
                 "pages": [
@@ -170,6 +222,27 @@
                 ]
               },
               {
+                "group": "Launch Checklist",
+                "icon": "/images/app-icons/launch-checklist.svg",
+                "pages": [
+                  "guides/dashboard-references/launch-checklist/launch-checklist"
+                ]
+              },
+              {
+                "group": "Neon Integration",
+                "icon": "/images/app-icons/neon.svg",
+                "pages": [
+                  "guides/dashboard-references/neon/neon-integration"
+                ]
+              },
+              {
+                "group": "Onboarding",
+                "icon": "/images/app-icons/onboarding.svg",
+                "pages": [
+                  "guides/dashboard-references/onboarding/onboarding"
+                ]
+              },
+              {
                 "group": "Payments",
                 "icon": "/images/app-icons/payments.svg",
                 "pages": [
@@ -177,16 +250,52 @@
                   "guides/dashboard-references/payments/products-and-items",
                   "guides/dashboard-references/payments/customers",
                   "guides/dashboard-references/payments/transactions",
+                  "guides/dashboard-references/payments/payouts",
                   "guides/dashboard-references/payments/settings"
                 ]
               },
               {
-                "group": "Analytics",
-                "icon": "/images/app-icons/analytics.svg",
+                "group": "RBAC",
+                "icon": "/images/app-icons/rbac.svg",
                 "pages": [
-                  "guides/dashboard-references/analytics/tables",
-                  "guides/dashboard-references/analytics/queries",
-                  "guides/dashboard-references/analytics/replays"
+                  "guides/dashboard-references/rbac/project-permissions",
+                  "guides/dashboard-references/rbac/team-permissions"
+                ]
+              },
+              {
+                "group": "Support",
+                "icon": "/images/app-icons/support.svg",
+                "pages": [
+                  "guides/dashboard-references/support/conversations"
+                ]
+              },
+              {
+                "group": "Teams",
+                "icon": "/images/app-icons/teams.svg",
+                "pages": [
+                  "guides/dashboard-references/teams/teams",
+                  "guides/dashboard-references/teams/team-settings"
+                ]
+              },
+              {
+                "group": "TV mode",
+                "icon": "/images/app-icons/tv-mode.svg",
+                "pages": [
+                  "guides/dashboard-references/tv-mode/tv-mode"
+                ]
+              },
+              {
+                "group": "Vercel Integration",
+                "icon": "/images/app-icons/vercel.svg",
+                "pages": [
+                  "guides/dashboard-references/vercel/setup"
+                ]
+              },
+              {
+                "group": "Webhooks",
+                "icon": "/images/app-icons/webhooks.svg",
+                "pages": [
+                  "guides/dashboard-references/webhooks/webhooks"
                 ]
               }
             ]
@@ -405,6 +514,82 @@
     {
       "source": "/guides/apps/payments/settings",
       "destination": "/guides/dashboard-references/payments/settings"
+    },
+    {
+      "source": "/guides/apps/authentication/auth-methods",
+      "destination": "/guides/dashboard-references/authentication/auth-methods"
+    },
+    {
+      "source": "/guides/apps/authentication/sign-up-rules",
+      "destination": "/guides/dashboard-references/authentication/sign-up-rules"
+    },
+    {
+      "source": "/guides/apps/catalyst/catalyst",
+      "destination": "/guides/dashboard-references/catalyst/catalyst"
+    },
+    {
+      "source": "/guides/apps/convex/convex-integration",
+      "destination": "/guides/dashboard-references/convex/convex-integration"
+    },
+    {
+      "source": "/guides/apps/neon/neon-integration",
+      "destination": "/guides/dashboard-references/neon/neon-integration"
+    },
+    {
+      "source": "/guides/apps/onboarding/onboarding",
+      "destination": "/guides/dashboard-references/onboarding/onboarding"
+    },
+    {
+      "source": "/guides/apps/rbac/project-permissions",
+      "destination": "/guides/dashboard-references/rbac/project-permissions"
+    },
+    {
+      "source": "/guides/apps/rbac/team-permissions",
+      "destination": "/guides/dashboard-references/rbac/team-permissions"
+    },
+    {
+      "source": "/guides/apps/support/conversations",
+      "destination": "/guides/dashboard-references/support/conversations"
+    },
+    {
+      "source": "/guides/apps/teams/teams",
+      "destination": "/guides/dashboard-references/teams/teams"
+    },
+    {
+      "source": "/guides/apps/teams/team-settings",
+      "destination": "/guides/dashboard-references/teams/team-settings"
+    },
+    {
+      "source": "/guides/apps/vercel/setup",
+      "destination": "/guides/dashboard-references/vercel/setup"
+    },
+    {
+      "source": "/guides/apps/webhooks/webhooks",
+      "destination": "/guides/dashboard-references/webhooks/webhooks"
+    },
+    {
+      "source": "/guides/apps/api-keys/api-keys",
+      "destination": "/guides/dashboard-references/api-keys/api-keys"
+    },
+    {
+      "source": "/guides/apps/data-vault/data-vault",
+      "destination": "/guides/dashboard-references/data-vault/data-vault"
+    },
+    {
+      "source": "/guides/apps/email-api/email-api",
+      "destination": "/guides/dashboard-references/email-api/email-api"
+    },
+    {
+      "source": "/guides/apps/launch-checklist/launch-checklist",
+      "destination": "/guides/dashboard-references/launch-checklist/launch-checklist"
+    },
+    {
+      "source": "/guides/apps/tv-mode/tv-mode",
+      "destination": "/guides/dashboard-references/tv-mode/tv-mode"
+    },
+    {
+      "source": "/guides/apps/payments/payouts",
+      "destination": "/guides/dashboard-references/payments/payouts"
     }
   ]
 }

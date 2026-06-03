@@ -82,7 +82,7 @@
     "generate-setup-prompt-docs": "pnpm exec tsx ./scripts/generate-setup-prompt-docs.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
     "generate-openapi-docs:watch": "pnpm exec tsx ./scripts/wait-for-dev-package-imports.ts && pnpm run --filter=@hexclave/backend codegen-docs && chokidar --silent -c 'pnpm run --filter=@hexclave/backend codegen-docs' './apps/backend/src/app/api/latest/**/route.{js,jsx,ts,tsx}' './apps/backend/src/lib/openapi.ts' './packages/stack-shared/src/interface/webhooks.ts' --throttle 2000",
-    "generate-dashboard-reference-docs:watch": "pnpm run generate-dashboard-reference-docs && chokidar --silent -c 'pnpm run generate-dashboard-reference-docs' './packages/stack-shared/src/dashboard-docs/**' './apps/dashboard/src/lib/apps-frontend.tsx' './scripts/generate-dashboard-reference-docs.ts' --throttle 2000",
+    "generate-dashboard-reference-docs:watch": "pnpm run generate-dashboard-reference-docs && chokidar --silent -c 'pnpm run generate-dashboard-reference-docs' './apps/dashboard/src/**' './apps/dashboard/src/lib/apps-frontend.tsx' './scripts/generate-dashboard-reference-docs.ts' './scripts/lib/dashboard-reference-docs.ts' './scripts/lib/extract-dashboard-reference-jsdoc.ts' --throttle 2000",
     "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './docs-mintlify/docs.json' './packages/stack-shared/src/ai/unified-prompts/**/*.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000"
   },
   "devDependencies": {

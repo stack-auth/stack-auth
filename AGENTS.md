@@ -67,6 +67,9 @@ The API follows a RESTful design with routes organized by resource type:
 ### Development Ports
 To see all development ports, refer to the index.html of `apps/dev-launchpad/public/index.html`.
 
+### Documentation
+- **Dashboard reference docs (Mintlify embeds):** When you add or change dashboard UI for a navigable app page, update the co-located `@dashboardReference` JSDoc on that page's `page-client.tsx` (example: `apps/dashboard/.../api-keys-app/page-client.tsx`). Required tag: `@dashboardReference <appId>/<slug>` (must match `apps-frontend.tsx` nav and route slug), optional `@dashboardReferenceTitle` / `@dashboardReferenceDescription`, then markdown prose in the comment body. Run `pnpm run generate-dashboard-reference-docs` (or rely on the dev watcher) to regenerate `docs-mintlify/guides/dashboard-references/`. Pages without JSDoc get a placeholder until documented.
+
 ## Important Notes
 - NEVER UPDATE packages/stack OR packages/js. Instead, update packages/template, as the others are simply copies of that package.
 - For blocking alerts and errors, never use `toast`, as they are easily missed by the user. Instead, use alerts.
