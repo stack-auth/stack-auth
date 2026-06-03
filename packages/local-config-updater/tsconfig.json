@@ -7,7 +7,6 @@
     "lib": ["ES2021", "ES2022.Error", "DOM"],
     "module": "ES2020",
     "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "noErrorTruncation": true,

@@ -7,7 +7,7 @@ import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
-import { getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent.ts";
+import { getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "@hexclave/local-config-updater/config-agent";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
 
