@@ -42,7 +42,7 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
-import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
+import { useUserActivityOrThrow } from "@/lib/hexclave-app-internals";
 import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, PlusIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@hexclave/next";

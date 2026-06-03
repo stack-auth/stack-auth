@@ -5,7 +5,7 @@ import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
 import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@hexclave/next";
 import { isPaidPlan } from "@hexclave/shared/dist/plans";

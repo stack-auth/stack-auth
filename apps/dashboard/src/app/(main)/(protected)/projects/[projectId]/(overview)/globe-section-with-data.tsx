@@ -1,6 +1,6 @@
 'use client';
 
-import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { cn } from "@/lib/utils";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";

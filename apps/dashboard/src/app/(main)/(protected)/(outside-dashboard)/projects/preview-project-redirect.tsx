@@ -2,7 +2,7 @@
 
 import Loading from "@/app/loading";
 import { useRouter } from "@/components/router";
-import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { useStackApp, useUser } from "@hexclave/next";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";

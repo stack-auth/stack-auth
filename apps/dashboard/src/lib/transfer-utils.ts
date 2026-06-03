@@ -1,4 +1,4 @@
-import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export function buildTransferSignUpUrl(): string {

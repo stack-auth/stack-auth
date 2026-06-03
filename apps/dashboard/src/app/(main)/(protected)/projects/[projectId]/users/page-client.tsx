@@ -5,7 +5,7 @@ import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
-import { useMetricsUserCountsOrThrow } from "@/lib/stack-app-internals";
+import { useMetricsUserCountsOrThrow } from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";

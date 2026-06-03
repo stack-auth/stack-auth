@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getPublicEnvVar } from "@/lib/env";
-import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { AdminOwnedProject, StackClientApp } from "@hexclave/next";
 import { Config, override } from "@hexclave/shared/dist/config/format";
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";

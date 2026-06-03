@@ -2,7 +2,7 @@
 
 import Loading from "@/app/loading";
 import { getPublicEnvVar } from "@/lib/env";
-import { hexclaveAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { useStackApp } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
