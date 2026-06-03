@@ -79,7 +79,7 @@ type ListItemProps = {
   onMouseLeave?: () => void,
   isEven?: boolean,
   isHighlighted?: boolean,
-  itemRef?: React.RefObject<HTMLDivElement>,
+  itemRef?: React.RefObject<HTMLDivElement | null>,
   actionItems?: ActionMenuItem[],
 };
 
@@ -180,9 +180,9 @@ function ListGroup({ title, children }: ListGroupProps) {
 
 // Connection line component
 type ConnectionLineProps = {
-  fromRef: React.RefObject<HTMLDivElement>,
-  toRef: React.RefObject<HTMLDivElement>,
-  containerRef: React.RefObject<HTMLDivElement>,
+  fromRef: React.RefObject<HTMLDivElement | null>,
+  toRef: React.RefObject<HTMLDivElement | null>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   quantity?: number,
 };
 
@@ -320,7 +320,7 @@ type ProductsListProps = {
   paymentsGroups: any,
   hoveredItemId: string | null,
   getConnectedProducts: (itemId: string) => string[],
-  productRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  productRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onProductMouseEnter: (productId: string) => void,
   onProductMouseLeave: () => void,
   onProductAdd?: () => void,
@@ -470,7 +470,7 @@ type ItemsListProps = {
   items: CompleteConfig['payments']['items'],
   hoveredProductId: string | null,
   getConnectedItems: (productId: string) => string[],
-  itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  itemRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onItemMouseEnter: (itemId: string) => void,
   onItemMouseLeave: () => void,
   onItemAdd?: () => void,

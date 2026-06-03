@@ -890,6 +890,11 @@ export default function PageClient() {
           size={tabSize}
           glassmorphic={tabGlass}
           gradient={tabGradient}
+          trailing={(
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+              + Install apps
+            </span>
+          )}
         />
       );
     }
@@ -2284,6 +2289,11 @@ export default function PageClient() {
   showBadge={${tabShowBadge}}
   size="${tabSize}"${tabGlass === undefined ? "" : `\n  glassmorphic={${tabGlass}}`}
   gradient="${tabGradient}"
+  trailing={
+    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+      + Install apps
+    </span>
+  }
 />`;
     }
     if (selected === "cursor-blast") {

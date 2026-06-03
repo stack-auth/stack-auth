@@ -1374,8 +1374,8 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const [view, setView] = useState<"overview" | "globe">("overview");
   const user = useUser();
 
-  const displayName = user?.displayName || user?.primaryEmail || "User";
-  const truncatedName = displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
+  const displayName = user?.displayName || user?.primaryEmail || null;
+  const truncatedName = displayName && displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
   const selectedFilterKey = analyticsFiltersKey(analyticsFilters);
   const loadedFilterKey = analyticsFiltersKey(loadedAnalyticsFilters);
   const isUpdatingAnalyticsFilters = selectedFilterKey !== loadedFilterKey;
@@ -1390,7 +1390,7 @@ export default function MetricsPage(props: { toSetup: () => void }) {
   const markAnalyticsFiltersLoaded = useCallback(() => {
     setLoadedAnalyticsFilters(analyticsFilters);
   }, [analyticsFilters]);
-  const headerTitle = `Welcome back, ${truncatedName}!`;
+  const headerTitle = `Welcome back${truncatedName ? `, ${truncatedName}` : ""}!`;
   const headerActions = (
     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
       {view === "overview" && (

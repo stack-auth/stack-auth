@@ -6,6 +6,7 @@ import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
+import { WrongAddressScreen } from "./wrong-address-screen";
 
 const RDE_ACCESS_TOKEN_MIN_EXPIRATION_MS = 30_000;
 const RDE_ACCESS_TOKEN_MAX_AGE_MS = 60_000;
@@ -87,6 +88,17 @@ function shouldRefreshAccessToken(token: RemoteDevelopmentEnvironmentAccessToken
   );
 }
 
+class LoopbackAddressError extends Error {
+  constructor(message: string, public readonly suggestedUrl: string) {
+    super(message);
+  }
+}
+
+function extractLoopbackSuggestedUrl(errorMessage: string): string | null {
+  const match = errorMessage.match(/http:\/\/127\.0\.0\.1(?::\d+)?/);
+  return match?.[0] ?? null;
+}
+
 async function getRemoteDevelopmentEnvironmentAccessToken(): Promise<RemoteDevelopmentEnvironmentAccessTokenResponse> {
   const response = await fetch("/api/remote-development-environment/auth", {
     headers: {
@@ -94,7 +106,24 @@ async function getRemoteDevelopmentEnvironmentAccessToken(): Promise<RemoteDevel
     },
   });
   if (!response.ok) {
-    throw new Error(`Failed to authenticate local remote development environment dashboard (${response.status}): ${await response.text()}`);
+    const responseText = await response.text();
+    // For 403 errors (e.g. accessing via 'localhost' instead of 127.0.0.1),
+    // throw a LoopbackAddressError so the auth gate can show a dedicated screen
+    if (response.status === 403) {
+      try {
+        const errorMessage = JSON.parse(responseText)?.error;
+        if (typeof errorMessage === "string") {
+          const suggestedUrl = extractLoopbackSuggestedUrl(errorMessage);
+          if (suggestedUrl != null) {
+            throw new LoopbackAddressError(errorMessage, suggestedUrl);
+          }
+          throw new Error(errorMessage);
+        }
+      } catch (e) {
+        if (!(e instanceof SyntaxError)) throw e;
+      }
+    }
+    throw new Error(`Failed to authenticate local remote development environment dashboard (${response.status}): ${responseText}`);
   }
 
   return parseRemoteDevelopmentEnvironmentAccessTokenResponse(await response.json());
@@ -112,6 +141,7 @@ async function installRemoteDevelopmentEnvironmentAccessToken(app: unknown): Pro
 function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.ReactNode }) {
   const app = useStackApp();
   const [accessTokenInstalled, setAccessTokenInstalled] = useState(false);
+  const [loopbackError, setLoopbackError] = useState<{ suggestedUrl: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,21 +150,31 @@ function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.Reac
     let currentToken: RemoteDevelopmentEnvironmentAccessTokenResponse | undefined;
 
     const refreshAccessToken = async (): Promise<void> => {
-      const token = await installRemoteDevelopmentEnvironmentAccessToken(app);
-      const currentUser = await app.getUser({
-        or: "anonymous-if-exists[deprecated]",
-      });
-      if (currentUser?.id !== token.userId) {
-        throw new Error("Installed remote development environment token did not match the expected anonymous user.");
-      }
-      if (cancelled) return;
-      currentToken = token;
-      setAccessTokenInstalled(true);
+      try {
+        const token = await installRemoteDevelopmentEnvironmentAccessToken(app);
+        const currentUser = await app.getUser({
+          or: "anonymous-if-exists[deprecated]",
+        });
+        if (currentUser?.id !== token.userId) {
+          throw new Error("Installed remote development environment token did not match the expected anonymous user.");
+        }
+        if (cancelled) return;
+        currentToken = token;
+        setAccessTokenInstalled(true);
 
-      refreshTimeout = setTimeout(() => {
-        refreshPromise = undefined;
-        requestRefresh();
-      }, getRefreshInMillis(token));
+        refreshTimeout = setTimeout(() => {
+          refreshPromise = undefined;
+          requestRefresh();
+        }, getRefreshInMillis(token));
+      } catch (e) {
+        if (e instanceof LoopbackAddressError) {
+          if (!cancelled) {
+            setLoopbackError({ suggestedUrl: e.suggestedUrl });
+          }
+          return;
+        }
+        throw e;
+      }
     };
 
     const requestRefresh = (options?: { force?: boolean }) => {
@@ -169,6 +209,10 @@ function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.Reac
       }
     };
   }, [app]);
+
+  if (loopbackError != null) {
+    return <WrongAddressScreen suggestedUrl={loopbackError.suggestedUrl} />;
+  }
 
   if (!accessTokenInstalled) {
     return <Loading />;

@@ -1,6 +1,5 @@
 import { StackProvider, StackTheme } from "@hexclave/next";
 import { Metadata } from "next";
-import React from "react";
 import Header from "src/components/header";
 import Provider from "src/components/provider";
 import { stackServerApp } from "src/stack";
@@ -13,9 +12,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode,
-}) {
+}: LayoutProps<"/">) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
