@@ -4,7 +4,7 @@ import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
-import { HexclaveCompanion } from "@/components/stack-companion";
+import { HexclaveCompanion } from "@/components/hexclave-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import {
   Button,
