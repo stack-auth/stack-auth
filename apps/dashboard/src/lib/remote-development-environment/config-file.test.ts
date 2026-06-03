@@ -5,18 +5,33 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // Lets each AI-path test inject what the (otherwise network-backed) agent does
 // to the files on disk, so we can exercise the orchestration and validation
 // around `updateConfigObject` without calling a real model.
-type MockAgentOptions = { prompt: string, cwd: string, onFileWillChange?: (filePath: string) => void };
+type MockAgentOptions = { prompt: string, cwd: string, onFileWillChange?: (filePath: string) => void | Promise<void> };
 let mockAgentImpl: ((options: MockAgentOptions) => void | Promise<void>) | null = null;
 
 vi.mock("server-only", () => ({}));
-vi.mock("./config-update-agent", () => ({
-  runConfigUpdateAgent: async (options: MockAgentOptions) => {
-    if (mockAgentImpl == null) {
-      throw new Error("runConfigUpdateAgent was called but no mock implementation was set for this test.");
-    }
-    await mockAgentImpl(options);
-  },
-}));
+vi.mock("@hexclave/local-config-updater/config-agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hexclave/local-config-updater/config-agent")>();
+  return {
+    ...actual,
+    runHeadlessClaudeAgent: async (options: { prompt: string, cwd: string, onPreToolUse?: (input: { hook_event_name: "PreToolUse", tool_name: string, tool_input: unknown }) => Promise<unknown> | unknown }) => {
+      if (mockAgentImpl == null) {
+        throw new Error("runHeadlessClaudeAgent was called but no mock implementation was set for this test.");
+      }
+      await mockAgentImpl({
+        prompt: options.prompt,
+        cwd: options.cwd,
+        onFileWillChange: async (filePath) => {
+          await options.onPreToolUse?.({
+            hook_event_name: "PreToolUse",
+            tool_name: "Write",
+            tool_input: { file_path: filePath },
+          });
+        },
+      });
+      return { resultText: "done" };
+    },
+  };
+});
 
 let tempDir: string | undefined;
 
@@ -195,7 +210,7 @@ describe("remote development environment config file", () => {
     await expect(readConfigFile(configPath)).rejects.toThrow(`Invalid config in ${configPath}.`);
   });
 
-  it("applies updates to a plain static config deterministically, without the agent", async () => {
+  it("applies updates to a plain static config through the agent", async () => {
     const configPath = writeTempConfig(`
       export const config = {
         auth: {
@@ -205,25 +220,24 @@ describe("remote development environment config file", () => {
     `);
     const { readConfigFile, updateConfigObject } = await import("./config-file");
 
-    // No mock impl is set: if this path tried to invoke the agent, the mock
-    // would throw. A plain static literal must take the deterministic fast path.
+    mockAgentImpl = () => {
+      writeFileSync(configPath, `
+        export const config = {
+          auth: {
+            allowSignUp: false,
+          },
+          payments: {
+            testMode: true,
+          },
+        };
+      `, "utf-8");
+    };
+
     await updateConfigObject(configPath, {
       "payments.testMode": true,
     });
 
-    expect(readFileSync(configPath, "utf-8")).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@hexclave/js";
-
-      export const config: StackConfig = {
-        "auth": {
-          "allowSignUp": false
-        },
-        "payments": {
-          "testMode": true
-        }
-      };
-      "
-    `);
+    expect(readFileSync(configPath, "utf-8")).toContain("payments");
     await expect(readConfigFile(configPath)).resolves.toMatchInlineSnapshot(`
       {
         "config": {
@@ -356,8 +370,8 @@ describe("remote development environment config file", () => {
     // only way it can be rolled back is via the `onFileWillChange` hook firing
     // before the write. After creating it, the agent fails so the run must roll
     // back — deleting the newly-created file.
-    mockAgentImpl = (options) => {
-      options.onFileWillChange?.(newFilePath);
+    mockAgentImpl = async (options) => {
+      await options.onFileWillChange?.(newFilePath);
       writeFileSync(newFilePath, "export const extra = true;\n", "utf-8");
       throw new Error("agent blew up");
     };
