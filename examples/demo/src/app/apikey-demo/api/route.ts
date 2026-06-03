@@ -1,6 +1,6 @@
 import { ServerTeam, ServerUser } from "@hexclave/next";
 import { NextResponse } from "next/server";
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 export async function POST(request: Request) {
   try {
     const body = await request.json();

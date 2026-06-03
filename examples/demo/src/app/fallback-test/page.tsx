@@ -1,4 +1,4 @@
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 import { FallbackTestClient } from "./client";
 
 export default async function FallbackTestPage() {

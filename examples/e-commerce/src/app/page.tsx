@@ -1,6 +1,6 @@
 import { ServerUser } from "@hexclave/next";
 import { Shop } from "@/shop";
-import { stackServerApp } from "@/stack";
+import { stackServerApp } from "@/hexclave";
 
 export default async function Home() {
   const users = await stackServerApp.listUsers();

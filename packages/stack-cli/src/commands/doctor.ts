@@ -222,9 +222,9 @@ const NEXT_CHECKS: CheckSpec[] = [
   ], "Create app/handler/[...stack]/page.tsx that renders <StackHandler fullPage app={stackServerApp} routeProps={props} />."),
   layoutWrapsStackProviderCheck(),
   envVarsCheck([
-    { names: ["NEXT_PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
-    { names: ["NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
-    { names: ["STACK_SECRET_SERVER_KEY"], severity: "fail" },
+    { names: ["NEXT_PUBLIC_HEXCLAVE_PROJECT_ID", "NEXT_PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
+    { names: ["NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
+    { names: ["HEXCLAVE_SECRET_SERVER_KEY", "STACK_SECRET_SERVER_KEY"], severity: "fail" },
   ]),
   configFileCheck(),
 ];
@@ -235,8 +235,8 @@ const REACT_CHECKS: CheckSpec[] = [
     "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
   ]),
   envVarsCheck([
-    { names: ["VITE_STACK_PROJECT_ID"], severity: "fail" },
-    { names: ["VITE_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
+    { names: ["VITE_HEXCLAVE_PROJECT_ID", "VITE_STACK_PROJECT_ID"], severity: "fail" },
+    { names: ["VITE_HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "VITE_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
   ]),
   configFileCheck(),
 ];
@@ -249,10 +249,11 @@ const JS_CHECKS: CheckSpec[] = [
   ]),
   envVarsCheck([
     // PUBLIC_* aliases cover SvelteKit / Astro, which require that prefix
-    // to expose vars to client code.
-    { names: ["STACK_PROJECT_ID", "PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
-    { names: ["STACK_PUBLISHABLE_CLIENT_KEY", "PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
-    { names: ["STACK_SECRET_SERVER_KEY"], severity: "fail" },
+    // to expose vars to client code. HEXCLAVE_* names are preferred; the
+    // legacy STACK_* / PUBLIC_STACK_* names remain accepted as a fallback.
+    { names: ["HEXCLAVE_PROJECT_ID", "PUBLIC_HEXCLAVE_PROJECT_ID", "STACK_PROJECT_ID", "PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
+    { names: ["HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "STACK_PUBLISHABLE_CLIENT_KEY", "PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
+    { names: ["HEXCLAVE_SECRET_SERVER_KEY", "STACK_SECRET_SERVER_KEY"], severity: "fail" },
   ]),
   configFileCheck(),
 ];

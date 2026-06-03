@@ -235,9 +235,9 @@ async function writeProjectKeysToEnv(
 
   const envLines = [
     "# Hexclave",
-    `NEXT_PUBLIC_STACK_PROJECT_ID=${project.id}`,
-    `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKey}`,
-    `STACK_SECRET_SERVER_KEY=${secretServerKey}`,
+    `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${project.id}`,
+    `NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY=${publishableClientKey}`,
+    `HEXCLAVE_SECRET_SERVER_KEY=${secretServerKey}`,
   ].join("\n");
 
   const envPath = path.resolve(outputDir, ".env");

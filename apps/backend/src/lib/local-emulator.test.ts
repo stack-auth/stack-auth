@@ -96,7 +96,7 @@ describe("local emulator config", () => {
     await writeConfigToFile(absoluteFilePath, { auth: { allowLocalhost: true } });
 
     await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
-      `import type { StackConfig } from "@hexclave/js";\n\nexport const config: StackConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
+      `import type { HexclaveConfig } from "@hexclave/js";\n\nexport const config: HexclaveConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
     );
   });
 
@@ -132,7 +132,7 @@ describe("local emulator config", () => {
         allowLocalhost: true,
       },
     });
-    await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toContain(`import type { StackConfig }`);
+    await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toContain(`import type { HexclaveConfig }`);
   });
 
   it("fails loudly when the QEMU host mount root is configured but unavailable", async () => {

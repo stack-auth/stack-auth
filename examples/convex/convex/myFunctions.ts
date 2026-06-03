@@ -1,7 +1,7 @@
 
 import { v } from "convex/values";
-import { stackClientApp } from "../stack/client";
-import { stackServerApp } from "../stack/server";
+import { stackClientApp } from "../hexclave/client";
+import { stackServerApp } from "../hexclave/server";
 import { action, mutation, query } from "./_generated/server";
 
 

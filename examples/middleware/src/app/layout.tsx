@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { StackProvider, StackTheme } from "@hexclave/next";
-import { stackServerApp } from "../stack";
+import { stackServerApp } from "../hexclave";
 import { Inter } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"] });

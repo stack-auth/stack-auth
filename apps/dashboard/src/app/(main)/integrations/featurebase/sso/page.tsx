@@ -1,4 +1,4 @@
-import { getStackServerApp } from "@/stack/server";
+import { getHexclaveServerApp } from "@/stack/server";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { getOrCreateFeaturebaseUser } from "@hexclave/shared/dist/utils/featurebase";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
@@ -21,7 +21,7 @@ export default async function FeaturebaseSSO({
     return <div>Missing return_to parameter. Please go back and try again.</div>;
   }
 
-  const user = await getStackServerApp().getUser();
+  const user = await getHexclaveServerApp().getUser();
   if (!user) {
     redirect(urlString`/handler/sign-in?after_auth_return_to=${urlString`/integrations/featurebase/sso?return_to=${returnTo}`}`);
   }

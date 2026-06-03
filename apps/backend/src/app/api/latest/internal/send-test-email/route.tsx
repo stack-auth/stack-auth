@@ -1,7 +1,7 @@
 import { isSecureEmailPort, lowLevelSendEmailDirectWithoutRetries } from "@/lib/emails-low-level";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getStackServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/stack";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import * as schemaFields from "@hexclave/shared/dist/schema-fields";
@@ -51,7 +51,7 @@ export const POST = createSmartRouteHandler({
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     const emailItem = billingTeamId == null || !arePlanLimitsEnforced()
       ? null
-      : await getStackServerApp().getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: billingTeamId });
+      : await getHexclaveServerApp().getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: billingTeamId });
     if (emailItem != null && billingTeamId != null) {
       const isDebited = await emailItem.tryDecreaseQuantity(1);
       if (!isDebited) {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { stackServerApp } from './stack';
+import { stackServerApp } from './hexclave';
 
 export async function middleware(request: NextRequest) {
   console.log('Running middleware on URL: ', request.url);

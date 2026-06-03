@@ -6,7 +6,7 @@ import { SiteLoadingIndicatorDisplay } from "@/components/site-loading-indicator
 import { Toaster } from "@/components/ui";
 import { VersionAlerter } from "@/components/version-alerter";
 import { getPublicEnvVar } from "@/lib/env";
-import { stackClientApp } from "@/stack/client";
+import { hexclaveClientApp } from "@/stack/client";
 import { StackProvider, StackTheme } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import React, { useSyncExternalStore } from "react";
@@ -184,7 +184,7 @@ export function LayoutClient(props: {
 }) {
   return (
     <>
-      <StackProvider app={stackClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
+      <StackProvider app={hexclaveClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
         <StackTheme>
           <ClientPolyfill />
           <DevEnvironmentHealthGate>

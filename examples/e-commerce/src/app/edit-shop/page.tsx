@@ -3,7 +3,7 @@ import "server-only";
 import Link from 'next/link';
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
-import { stackServerApp } from '@/stack';
+import { stackServerApp } from '@/hexclave';
 import { Product, Shop } from "@/shop";
 
 export default async function EditShop() {

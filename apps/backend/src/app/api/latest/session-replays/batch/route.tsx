@@ -4,7 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
-import { getStackServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/stack";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -109,7 +109,7 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
 
-    const app = getStackServerApp();
+    const app = getHexclaveServerApp();
 
     const isNewSession = recentSession == null;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);

@@ -1,4 +1,4 @@
-import { stackClientApp } from "./stack";
+import { stackClientApp } from "./hexclave";
 
 const updateUIState = (user: any | null) => {
   const authOptions = document.getElementById("authOptions");

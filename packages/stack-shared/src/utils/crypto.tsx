@@ -34,6 +34,9 @@ async function getDerivedSymmetricKey(purpose: string, secret: string | Uint8Arr
       name: "HKDF",
       salt: toArrayBufferBacked(salt),
       hash: "SHA-256",
+      // NOTE (Hexclave rebrand): do NOT rename this "stack-*" literal. It is a domain-separation
+      // tag baked into HKDF key derivation; changing it would derive different keys and make all
+      // previously-encrypted data undecryptable. It is an internal constant, never user-visible.
       info: new TextEncoder().encode(JSON.stringify([
         "stack-crypto-helper-derived-symmetric-key",
         purpose,
@@ -126,6 +129,9 @@ export async function iteratedHash(options: HashOptions & { iterations: number }
   );
   return new Uint8Array(await crypto.subtle.deriveBits({
     name: "PBKDF2",
+    // NOTE (Hexclave rebrand): do NOT rename this "stack-*" literal. It is a domain-separation tag
+    // mixed into the PBKDF2 salt; changing it would change every hash output and break verification
+    // of all previously-hashed values. It is an internal constant, never user-visible.
     salt: new TextEncoder().encode(JSON.stringify([
       "stack-crypto-helper-iterated-hash",
       options.purpose,
