@@ -41,9 +41,7 @@ function isAbortError(error: unknown): boolean {
 
 export function stripClaudeCodeEnv(): Record<string, string | undefined> {
   const env = { ...process.env };
-  // Removing CLAUDECODE prevents the SDK from detecting a nested agent. The
-  // ANTHROPIC_API_KEY must be non-empty or users without Claude Code installed
-  // hit a login error (it is ignored by the proxy).
+  // CLAUDECODE must be unset for nested agents; ANTHROPIC_API_KEY must be non-empty (proxy ignores it).
   delete env.CLAUDECODE;
   return env;
 }
@@ -53,6 +51,7 @@ export async function runHeadlessClaudeAgent(options: RunClaudeAgentOptions): Pr
   const timeout = options.timeoutMs == null ? null : setTimeout(() => abortController.abort(), options.timeoutMs);
   let sawResult = false;
   let resultText = "";
+  const onPreToolUse = options.onPreToolUse;
   try {
     for await (const message of query({
       prompt: options.prompt,
@@ -61,12 +60,14 @@ export async function runHeadlessClaudeAgent(options: RunClaudeAgentOptions): Pr
           settingSources: [],
           strictMcpConfig: true,
         } : {}),
-        ...(options.onPreToolUse == null ? {} : {
+        ...(onPreToolUse == null ? {} : {
           hooks: {
             PreToolUse: [{
               hooks: [async (input) => {
-                if (input.hook_event_name !== "PreToolUse") return { continue: true };
-                return await options.onPreToolUse?.(input) ?? { continue: true };
+                if (input.hook_event_name !== "PreToolUse") {
+                  return { continue: true };
+                }
+                return await onPreToolUse(input);
               }],
             }],
           },

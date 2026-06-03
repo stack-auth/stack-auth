@@ -54,7 +54,6 @@ class AgentProgressUI {
     this.completeAllActive();
     this.clearLines();
     const icon = success ? "\x1b[32m✔\x1b[0m" : "\x1b[31m✖\x1b[0m";
-    // Re-print header + all completed items as final output
     console.log(`${icon} ${this.mainLabel}`);
     for (const label of this.pendingCompleted) {
       console.log(`  \x1b[32m✔\x1b[0m ${label}`);
@@ -92,9 +91,7 @@ class AgentProgressUI {
     if (this.pendingCompleted.length === 0) {
       return;
     }
-    // Clear the spinner area, print completed items permanently, then re-render spinner below
     this.clearLines();
-    // Re-print the header line if this is the first flush
     if (this.flushedCount === 0) {
       const frame = SPINNER_FRAMES[this.spinnerFrame];
       process.stdout.write(`\x1b[36m${frame}\x1b[0m ${this.mainLabel}\n`);
@@ -104,7 +101,7 @@ class AgentProgressUI {
     }
     this.flushedCount += this.pendingCompleted.length;
     this.pendingCompleted = [];
-    this.lastLineCount = 0; // reset since we printed permanent lines
+    this.lastLineCount = 0;
   }
 
   private render() {
@@ -114,7 +111,6 @@ class AgentProgressUI {
     const frame = SPINNER_FRAMES[this.spinnerFrame];
     const lines: string[] = [];
 
-    // Only show header in spinner area if nothing has been flushed yet
     if (this.flushedCount === 0) {
       lines.push(`\x1b[36m${frame}\x1b[0m ${this.mainLabel}`);
     }
@@ -209,7 +205,6 @@ export async function runClaudeAgent(options: {
       stderr: (data: string) => { process.stderr.write(data); },
       onMessage: (message) => {
         if (isTopLevelAssistantMessage(message)) {
-          // New parent assistant turn — previous tools are done.
           ui.completeAllActive();
           for (const block of message.message.content) {
             if (isToolUseBlock(block)) {
@@ -217,7 +212,6 @@ export async function runClaudeAgent(options: {
             }
           }
         } else if (isSystemMessage(message)) {
-          // Subagent task lifecycle.
           const taskId = typeof message.task_id === "string" ? message.task_id : undefined;
 
           if (message.subtype === "task_started" && taskId) {

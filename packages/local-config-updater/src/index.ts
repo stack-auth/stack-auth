@@ -1,13 +1,13 @@
 import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { getRelativeImportSpecifiers, stackConfigFileExportsConfig } from "@hexclave/shared/dist/hexclave-config-file";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
-import { getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "@hexclave/local-config-updater/config-agent";
+import { getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
 
@@ -35,6 +35,7 @@ export function resolveConfigFilePath(inputPath: string): string {
   if (looksLikeConfigFile) {
     return resolved;
   }
+  // Prefer hexclave.config.ts, fall back to stack.config.ts, default to the new name.
   const hexclaveCandidate = path.join(resolved, "hexclave.config.ts");
   const legacyCandidate = path.join(resolved, "stack.config.ts");
   if (existsSync(hexclaveCandidate)) {

@@ -135,7 +135,6 @@ export function stackConfigFileExportsConfig(content: string, filePath: string):
     if (statement.exportKind === "type") {
       continue;
     }
-    // `export const config = ...`
     if (t.isVariableDeclaration(statement.declaration)) {
       for (const declaration of statement.declaration.declarations) {
         if (t.isIdentifier(declaration.id) && declaration.id.name === "config" && declaration.init != null) {
@@ -143,9 +142,7 @@ export function stackConfigFileExportsConfig(content: string, filePath: string):
         }
       }
     }
-    // `export { config }` / `export { somethingElse as config }`
     for (const specifier of statement.specifiers) {
-      // Skip inline type-only specifiers (`export { type config }`).
       if (t.isExportSpecifier(specifier) && specifier.exportKind !== "type") {
         const exportedName = t.isIdentifier(specifier.exported) ? specifier.exported.name : specifier.exported.value;
         if (exportedName === "config") {
@@ -190,8 +187,6 @@ export function parseStackConfigFileContent(content: string, filePath: string): 
   if (content.trim() === "") return {};
   const ast = parser.parse(content, {
     sourceType: "module",
-    // `importAttributes` matches `stackConfigFileExportsConfig` so both parsers
-    // accept the same files (e.g. `import x from "./f.txt" with { type: "text" }`).
     plugins: ["typescript", "importAttributes"],
   });
 

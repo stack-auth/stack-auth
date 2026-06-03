@@ -12,7 +12,7 @@ vi.mock("@hexclave/local-config-updater/config-agent", async (importOriginal) =>
     ...actual,
     runHeadlessClaudeAgent: async (options: { prompt: string, cwd: string, onPreToolUse?: (input: { hook_event_name: "PreToolUse", tool_name: string, tool_input: unknown }) => Promise<unknown> | unknown }) => {
       if (mockAgentImpl == null) {
-        throw new Error("runHeadlessClaudeAgent was called but no mock implementation was set for this test.");
+        throw new Error("mockAgentImpl not set");
       }
       await mockAgentImpl({
         prompt: options.prompt,
@@ -35,10 +35,6 @@ let tempDir: string | undefined;
 function getTempDir(): string {
   if (tempDir == null) {
     tempDir = mkdtempSync(join(process.cwd(), ".stack-rde-config-test-"));
-    // Give the temp dir its own package.json so SDK-package detection (which
-    // walks up to the nearest package.json) resolves deterministically here
-    // instead of picking up the dashboard's own dependencies, which would make
-    // the rendered `StackConfig` import env-dependent.
     writeFileSync(join(tempDir, "package.json"), JSON.stringify({ name: "stack-rde-config-test" }), "utf-8");
   }
   return tempDir;
