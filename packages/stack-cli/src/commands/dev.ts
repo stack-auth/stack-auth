@@ -521,6 +521,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
   secret: string,
   shouldStop: () => boolean,
 }): Promise<void> {
+  let lastLoggedConfirmationCode: string | null = null;
   while (!options.shouldStop()) {
     if (await waitForHeartbeatIntervalOrStop(options.shouldStop)) return;
 
@@ -566,12 +567,23 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
       continue;
     }
 
-    const heartbeatBody: unknown = await response.json();
+    let heartbeatBody: unknown;
+    try {
+      heartbeatBody = await response.json();
+    } catch {
+      logDev("Development environment heartbeat returned unparseable JSON.");
+      continue;
+    }
     if (!isHeartbeatResponse(heartbeatBody)) {
       logDev("Development environment heartbeat returned an invalid response.");
       continue;
     }
-    logBrowserSecretConfirmationCode(heartbeatBody);
+    // Deduplicate: only log a confirmation code once per unique code value.
+    if (heartbeatBody.browser_secret_confirmation_code != null &&
+        heartbeatBody.browser_secret_confirmation_code !== lastLoggedConfirmationCode) {
+      logBrowserSecretConfirmationCode(heartbeatBody);
+      lastLoggedConfirmationCode = heartbeatBody.browser_secret_confirmation_code;
+    }
   }
 }
 

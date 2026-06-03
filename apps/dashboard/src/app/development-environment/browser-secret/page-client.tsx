@@ -26,7 +26,12 @@ function parseSubmitResponse(value: unknown): { browserSecret: string } {
 function sameOriginReturnTo(searchParams: URLSearchParams): string {
   const returnTo = searchParams.get("return_to");
   if (returnTo == null) return "/";
-  const parsed = new URL(returnTo, window.location.href);
+  let parsed: URL;
+  try {
+    parsed = new URL(returnTo, window.location.href);
+  } catch {
+    return "/";
+  }
   return parsed.origin === window.location.origin ? parsed.toString() : "/";
 }
 

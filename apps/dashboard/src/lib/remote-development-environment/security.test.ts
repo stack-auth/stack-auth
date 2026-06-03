@@ -39,6 +39,9 @@ afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
   }
+  // Reset process-global browser-secret state so tests don't leak into each other.
+  delete (globalThis as Record<string, unknown>).__stackRemoteDevelopmentEnvironmentBrowserSecret;
+  vi.resetModules();
 });
 
 describe("remote development environment security", () => {

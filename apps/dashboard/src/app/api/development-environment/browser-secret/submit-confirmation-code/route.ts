@@ -1,4 +1,7 @@
-import { submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode } from "@/lib/remote-development-environment/browser-secret";
+import {
+  assertRemoteDevelopmentEnvironmentBrowserSecretSetupRequest,
+  submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode,
+} from "@/lib/remote-development-environment/browser-secret";
 import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-development-environment/route-json";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -17,6 +20,9 @@ function confirmationCodeFromBody(value: unknown): string | null {
 }
 
 export async function POST(req: NextRequest) {
+  const securityResponse = assertRemoteDevelopmentEnvironmentBrowserSecretSetupRequest(req);
+  if (securityResponse != null) return securityResponse;
+
   const parsedBody = await readRemoteDevelopmentEnvironmentJsonBody(req);
   if (parsedBody instanceof NextResponse) return parsedBody;
   const code = confirmationCodeFromBody(parsedBody);

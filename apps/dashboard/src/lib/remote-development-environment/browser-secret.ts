@@ -345,7 +345,11 @@ export async function startRemoteDevelopmentEnvironmentBrowserSecretLocalboundSe
     response.statusCode = 200;
     response.setHeader("Content-Type", "application/json");
     response.setHeader("Cache-Control", "no-store");
-    response.end(JSON.stringify({ browser_secret: browserSecret }));
+    response.end(JSON.stringify({ browser_secret: browserSecret }), () => {
+      // One-shot: shut down the helper after successfully issuing a secret.
+      server.close();
+      getGlobals().localboundHelper = undefined;
+    });
   });
 
   await new Promise<void>((resolvePromise, reject) => {
@@ -396,6 +400,7 @@ export function initRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(re
   if (
     existing != null &&
     unixNowMs() <= existing.expiresAtMs &&
+    existing.attempts < CONFIRMATION_CODE_MAX_ATTEMPTS &&
     existing.targetHost === targetHost &&
     existing.targetOrigin === targetOrigin
   ) {
@@ -447,11 +452,13 @@ export function submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(
   });
 }
 
-export function consumeRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli(): { code: string, expiresAtMillis: number } | null {
+export function peekRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli(): { code: string, expiresAtMillis: number } | null {
   const confirmationCode = getGlobals().confirmationCode;
-  if (confirmationCode == null || unixNowMs() > confirmationCode.expiresAtMs || confirmationCode.shownByCli) {
+  if (confirmationCode == null || unixNowMs() > confirmationCode.expiresAtMs) {
     return null;
   }
+  // Non-destructive: always return the code so retried/timed-out heartbeats
+  // can still deliver it. The CLI deduplicates display locally.
   confirmationCode.shownByCli = true;
   return {
     code: confirmationCode.code,
