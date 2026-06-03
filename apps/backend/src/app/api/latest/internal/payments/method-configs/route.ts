@@ -1,5 +1,5 @@
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
-import { getStackStripe } from "@/lib/stripe";
+import { getHexclaveStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -62,7 +62,7 @@ export const GET = createSmartRouteHandler({
       };
     }
 
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
     const configs = await stripe.paymentMethodConfigurations.list({}, {
       stripeAccount: project.stripeAccountId,
     });
@@ -155,7 +155,7 @@ export const PATCH = createSmartRouteHandler({
       };
     }
 
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
     await stripe.paymentMethodConfigurations.update(
       body.config_id,
       stripeUpdates,

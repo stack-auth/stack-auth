@@ -187,7 +187,7 @@ import.meta.vitest?.describe("resolveProductFromStripeMetadata", (test) => {
     });
   });
 });
-export const getStackStripe = (overrides?: StripeOverridesMap) => {
+export const getHexclaveStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
     throw new HexclaveAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
   }

@@ -1,4 +1,4 @@
-import { getStackStripe } from "@/lib/stripe";
+import { getHexclaveStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -23,7 +23,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
     const dashboardBaseUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL");
 
     const project = await globalPrismaClient.project.findUnique({

@@ -14,7 +14,7 @@ export default function Handler(props: unknown) {
       : null}
   </>;
   return (
-    <div data-stack-handler-page className="min-h-screen">
+    <div data-hexclave-handler-page className="min-h-screen">
       <StackHandler
         fullPage
         componentProps={{ SignIn: { extraInfo }, SignUp: { extraInfo } }}
