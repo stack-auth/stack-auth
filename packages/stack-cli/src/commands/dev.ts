@@ -9,7 +9,7 @@ import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
 import { cliVersion } from "../lib/own-package.js";
-import { isVersionNewer, maybeReexecToLatest } from "../lib/self-update.js";
+import { maybeReexecToLatest } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -271,6 +271,43 @@ async function isDashboardReachable(url: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+type ParsedVersion = {
+  core: [number, number, number],
+  hasPrerelease: boolean,
+};
+
+function parseVersionCore(version: string): ParsedVersion | null {
+  const trimmed = version.trim();
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(trimmed);
+  if (!match) return null;
+  return {
+    core: [Number(match[1]), Number(match[2]), Number(match[3])],
+    // A `-` immediately after the core marks a semver prerelease (e.g.
+    // 2.8.109-beta.1). `.test()` returns a plain boolean, sidestepping the
+    // optional-capture-group typing.
+    hasPrerelease: /^v?\d+\.\d+\.\d+-/.test(trimmed),
+  };
+}
+
+// Returns true only when `candidate` is strictly newer than `current`. Unknown
+// or unparseable versions return false so we never act on a version we can't
+// reason about (and never downgrade). Prerelease identifiers beyond the
+// "release beats same-core prerelease" rule are intentionally not ordered. Only
+// the dashboard restart check below needs this; the CLI re-exec just always runs
+// `@latest`. Exported for unit testing.
+export function isVersionNewer(candidate: string, current: string): boolean {
+  const a = parseVersionCore(candidate);
+  const b = parseVersionCore(current);
+  if (a == null || b == null) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a.core[i] !== b.core[i]) {
+      return a.core[i] > b.core[i];
+    }
+  }
+  // Same x.y.z: a final release outranks a prerelease of the same core.
+  return !a.hasPrerelease && b.hasPrerelease;
 }
 
 // Restart the running dashboard only when ours is strictly newer; this is how a

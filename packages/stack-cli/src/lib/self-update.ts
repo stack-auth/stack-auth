@@ -31,43 +31,6 @@ export function shouldAutoUpdate(env: NodeJS.ProcessEnv): boolean {
   return true;
 }
 
-type ParsedVersion = {
-  core: [number, number, number],
-  hasPrerelease: boolean,
-};
-
-function parseVersionCore(version: string): ParsedVersion | null {
-  const trimmed = version.trim();
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(trimmed);
-  if (!match) return null;
-  return {
-    core: [Number(match[1]), Number(match[2]), Number(match[3])],
-    // A `-` immediately after the core marks a semver prerelease (e.g.
-    // 2.8.109-beta.1). `.test()` returns a plain boolean, sidestepping the
-    // optional-capture-group typing.
-    hasPrerelease: /^v?\d+\.\d+\.\d+-/.test(trimmed),
-  };
-}
-
-// Returns true only when `candidate` is strictly newer than `current`. Unknown
-// or unparseable versions return false so we never act on a version we can't
-// reason about (and never downgrade). Prerelease identifiers beyond the
-// "release beats same-core prerelease" rule are intentionally not ordered.
-// Used by the dashboard restart check in dev.ts (the re-exec itself just always
-// runs `@latest`).
-export function isVersionNewer(candidate: string, current: string): boolean {
-  const a = parseVersionCore(candidate);
-  const b = parseVersionCore(current);
-  if (a == null || b == null) return false;
-  for (let i = 0; i < 3; i++) {
-    if (a.core[i] !== b.core[i]) {
-      return a.core[i] > b.core[i];
-    }
-  }
-  // Same x.y.z: a final release outranks a prerelease of the same core.
-  return !a.hasPrerelease && b.hasPrerelease;
-}
-
 export type NpxInvocation = {
   command: string,
   args: string[],

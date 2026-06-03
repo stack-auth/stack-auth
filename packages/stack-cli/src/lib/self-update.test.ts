@@ -4,7 +4,6 @@ import {
   decideReexec,
   DISABLE_AUTO_UPDATE_ENV,
   isEnvFlagEnabled,
-  isVersionNewer,
   maybeReexecToLatest,
   shouldAutoUpdate,
   SKIP_AUTO_UPDATE_ENV,
@@ -49,53 +48,6 @@ describe("shouldAutoUpdate", () => {
   it("does not skip when an opt-out flag is a falsy string", () => {
     expect(shouldAutoUpdate({ [SKIP_AUTO_UPDATE_ENV]: "0" })).toBe(true);
     expect(shouldAutoUpdate({ [DISABLE_AUTO_UPDATE_ENV]: "false" })).toBe(true);
-  });
-});
-
-describe("isVersionNewer", () => {
-  it("compares core versions numerically", () => {
-    expect(isVersionNewer("2.8.110", "2.8.109")).toBe(true);
-    expect(isVersionNewer("2.9.0", "2.8.999")).toBe(true);
-    expect(isVersionNewer("3.0.0", "2.999.999")).toBe(true);
-    expect(isVersionNewer("2.8.109", "2.8.109")).toBe(false);
-    expect(isVersionNewer("2.8.108", "2.8.109")).toBe(false);
-  });
-
-  it("does not treat double-digit segments as strings", () => {
-    expect(isVersionNewer("2.8.10", "2.8.9")).toBe(true);
-  });
-
-  it("ranks a final release above a prerelease of the same core", () => {
-    expect(isVersionNewer("2.8.109", "2.8.109-beta.1")).toBe(true);
-    expect(isVersionNewer("2.8.109-beta.1", "2.8.109")).toBe(false);
-  });
-
-  it("returns false for unparseable versions (never downgrade or guess)", () => {
-    expect(isVersionNewer("garbage", "2.8.109")).toBe(false);
-    expect(isVersionNewer("2.8.110", "garbage")).toBe(false);
-  });
-
-  it("tolerates a leading v and surrounding whitespace on either side", () => {
-    expect(isVersionNewer("v2.8.110", "2.8.109")).toBe(true);
-    expect(isVersionNewer("2.8.110", "v2.8.109")).toBe(true);
-    expect(isVersionNewer("  2.8.110  ", "2.8.109")).toBe(true);
-    expect(isVersionNewer("v2.8.110", "v2.8.110")).toBe(false);
-  });
-
-  it("treats a two-segment version (x.y) as unparseable", () => {
-    expect(isVersionNewer("2.8", "2.8.109")).toBe(false);
-    expect(isVersionNewer("2.8.109", "2.8")).toBe(false);
-  });
-
-  it("ignores prerelease identifiers when both cores are equal prereleases", () => {
-    // Only "release beats prerelease" is modeled; beta.2 is NOT newer than beta.1.
-    expect(isVersionNewer("2.8.109-beta.2", "2.8.109-beta.1")).toBe(false);
-    expect(isVersionNewer("2.8.109-beta.1", "2.8.109-beta.2")).toBe(false);
-  });
-
-  it("compares very large numeric segments correctly", () => {
-    expect(isVersionNewer("2.8.1000000000", "2.8.999999999")).toBe(true);
-    expect(isVersionNewer("10000000000.0.0", "9999999999.0.0")).toBe(true);
   });
 });
 
