@@ -28,8 +28,8 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
     throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
   }
   const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
-  const importLine = `import type { StackConfig } from "${pkg}";`;
-  return `${importLine}\n\nexport const config: StackConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
+  const importLine = `import type { HexclaveConfig } from "${pkg}";`;
+  return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 
 type ParsedStackConfig = Record<string, unknown> | typeof showOnboardingStackConfigValue;

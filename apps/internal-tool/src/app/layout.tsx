@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { StackProvider, StackTheme } from "@hexclave/next";
-import { stackClientApp } from "../stack";
+import { hexclaveClientApp } from "../stack";
 import Loading from "./loading";
 import "./globals.css";
 
@@ -13,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <title>Hexclave — MCP Review Tool</title>
       </head>
       <body>
-        <StackProvider app={stackClientApp}>
+        <StackProvider app={hexclaveClientApp}>
           <StackTheme>
             <Suspense fallback={<Loading />}>
               {children}

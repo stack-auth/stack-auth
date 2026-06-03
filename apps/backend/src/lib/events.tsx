@@ -1,7 +1,7 @@
 import withPostHog from "@/analytics";
 import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { globalPrismaClient } from "@/prisma-client";
-import { getStackServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/stack";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -278,7 +278,7 @@ export async function logEvent<T extends EventType[]>(
     const billingTeamId = options.billingTeamId;
 
     if (billingTeamId != null && arePlanLimitsEnforced()) {
-      const app = getStackServerApp();
+      const app = getHexclaveServerApp();
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
       const isDebited = await eventsItem.tryDecreaseQuantity(1);
       if (!isDebited) {

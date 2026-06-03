@@ -22,7 +22,7 @@ const publishableClientKey = envOrDevDefault(
 );
 const apiUrl = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_API_URL, `http://localhost:${portPrefix}02`);
 
-export const stackClientApp = new StackClientApp({
+export const hexclaveClientApp = new StackClientApp({
   projectId,
   publishableClientKey,
   tokenStore: "cookie",

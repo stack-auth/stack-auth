@@ -1,4 +1,4 @@
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 
 export default async function ProtectedPage() {
   await stackServerApp.getUser({ or: 'redirect' });

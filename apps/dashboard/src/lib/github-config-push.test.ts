@@ -42,17 +42,17 @@ function snapshotGithubCall(call: { path: string, init?: RequestInit }) {
 
 describe("buildUpdatedConfigFileContent", () => {
   it("merges a flat dot-notation update into the existing config", () => {
-    const current = `import type { StackConfig } from "@hexclave/next";
+    const current = `import type { HexclaveConfig } from "@hexclave/next";
 
-export const config: StackConfig = {
+export const config: HexclaveConfig = {
   teams: { allowClientTeamCreation: false },
 };
 `;
     const result = buildUpdatedConfigFileContent(current, { "teams.allowClientTeamCreation": true });
     expect(result).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@hexclave/next";
+      "import type { HexclaveConfig } from "@hexclave/next";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "teams": {
           "allowClientTeamCreation": true
         }
@@ -62,15 +62,15 @@ export const config: StackConfig = {
   });
 
   it("preserves the existing @hexclave/* import package when re-rendering", () => {
-    const current = `import type { StackConfig } from "@hexclave/react";
+    const current = `import type { HexclaveConfig } from "@hexclave/react";
 
-export const config: StackConfig = {};
+export const config: HexclaveConfig = {};
 `;
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@hexclave/react";
+      "import type { HexclaveConfig } from "@hexclave/react";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "auth": {
           "allowSignUp": true
         }
@@ -89,9 +89,9 @@ export const config: StackConfig = {};
 `;
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@stackframe/react";
+      "import type { HexclaveConfig } from "@stackframe/react";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "auth": {
           "allowSignUp": true
         }
@@ -104,9 +104,9 @@ export const config: StackConfig = {};
     const current = `export const config = {};\n`;
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@hexclave/js";
+      "import type { HexclaveConfig } from "@hexclave/js";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "auth": {
           "allowSignUp": true
         }
@@ -116,17 +116,17 @@ export const config: StackConfig = {};
   });
 
   it("adds new top-level keys to an empty config", () => {
-    const current = `import type { StackConfig } from "@hexclave/js";
-export const config: StackConfig = {};
+    const current = `import type { HexclaveConfig } from "@hexclave/js";
+export const config: HexclaveConfig = {};
 `;
     const result = buildUpdatedConfigFileContent(current, {
       "payments.items.todos.displayName": "Todos",
       "payments.items.todos.customerType": "user",
     });
     expect(result).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@hexclave/js";
+      "import type { HexclaveConfig } from "@hexclave/js";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "payments": {
           "items": {
             "todos": {
@@ -141,8 +141,8 @@ export const config: StackConfig = {};
   });
 
   it("replaces an existing nested value via dot notation", () => {
-    const current = `import type { StackConfig } from "@hexclave/js";
-export const config: StackConfig = {
+    const current = `import type { HexclaveConfig } from "@hexclave/js";
+export const config: HexclaveConfig = {
   payments: { items: { todos: { displayName: "Old" } } },
 };
 `;
@@ -150,9 +150,9 @@ export const config: StackConfig = {
       "payments.items.todos.displayName": "New",
     });
     expect(result).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@hexclave/js";
+      "import type { HexclaveConfig } from "@hexclave/js";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "payments": {
           "items": {
             "todos": {
@@ -206,8 +206,8 @@ describe("pushConfigUpdateToGitHub", () => {
   };
 
   it("fetches the existing file, merges the update, and PUTs the new content", async () => {
-    const { fn, calls } = buildFakeFetch(`import type { StackConfig } from "@hexclave/js";
-export const config: StackConfig = { teams: { allowClientTeamCreation: false } };
+    const { fn, calls } = buildFakeFetch(`import type { HexclaveConfig } from "@hexclave/js";
+export const config: HexclaveConfig = { teams: { allowClientTeamCreation: false } };
 `);
     await pushConfigUpdateToGitHub({
       source: baseSource,
@@ -226,9 +226,9 @@ export const config: StackConfig = { teams: { allowClientTeamCreation: false } }
         {
           "body": {
             "branch": "main",
-            "content": "import type { StackConfig } from "@hexclave/js";
+            "content": "import type { HexclaveConfig } from "@hexclave/js";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "teams": {
           "allowClientTeamCreation": true
         }
@@ -266,9 +266,9 @@ export const config: StackConfig = { teams: { allowClientTeamCreation: false } }
         {
           "body": {
             "branch": "main",
-            "content": "import type { StackConfig } from "@hexclave/js";
+            "content": "import type { HexclaveConfig } from "@hexclave/js";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "auth": {
           "allowSignUp": true
         }
@@ -288,9 +288,9 @@ export const config: StackConfig = { teams: { allowClientTeamCreation: false } }
   });
 
   it("skips the commit when the new rendered file is identical to the old one", async () => {
-    const same = `import type { StackConfig } from "@hexclave/js";
+    const same = `import type { HexclaveConfig } from "@hexclave/js";
 
-export const config: StackConfig = {
+export const config: HexclaveConfig = {
   "teams": {
     "allowClientTeamCreation": true
   }
