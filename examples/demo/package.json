@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
-    "dev": "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}42 pnpm -w run cli -- dev --config-file=./hexclave.config.ts -- pnpm --dir examples/demo run dev:inner",
+    "dev": "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT=${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}42 node scripts/dev-with-retry.mjs",
     "dev:inner": "next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}03",
     "build": "next build",
     "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}03",

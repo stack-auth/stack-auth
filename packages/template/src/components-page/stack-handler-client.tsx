@@ -5,7 +5,7 @@ import { FilterUndefined, filterUndefined } from "@hexclave/shared/dist/utils/ob
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { getRelativePart } from "@hexclave/shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 /* IF_PLATFORM react
 import { useRef } from 'react';
 // END_PLATFORM */
@@ -225,6 +225,7 @@ function renderComponent(props: {
 export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps> & { location?: string }) {
   // Use hooks to get app
   const stackApp = useStackApp();
+  const clientOrigin = useClientOriginAfterHydration();
 
   // IF_PLATFORM next
   const pathname = usePathname();
@@ -270,7 +271,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     return !isLocalHandlerUrlTarget({
       targetUrl: url,
       handlerPath,
-      currentOrigin: typeof window === "undefined" ? undefined : window.location.origin,
+      currentOrigin: clientOrigin,
     });
   };
 
@@ -361,4 +362,14 @@ function filterUndefinedINU<T extends {}>(value: T | undefined): FilterUndefined
 
 function toAbsoluteOrRelativeRedirectTarget(url: URL): string {
   return url.origin === "http://example.com" ? getRelativePart(url) : url.toString();
+}
+
+function useClientOriginAfterHydration(): string | undefined {
+  // The first hydrated render must match SSR. After hydration, React re-checks
+  // the snapshot and lets us distinguish same-path cross-origin handler URLs.
+  return useSyncExternalStore(
+    () => () => {},
+    () => window.location.origin,
+    () => undefined,
+  );
 }
