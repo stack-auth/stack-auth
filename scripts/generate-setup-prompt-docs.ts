@@ -488,7 +488,7 @@ writeFileSyncIfChanged(
     export const hexclaveReminders = ${JSON.stringify(remindersPrompt)};
 
     export const HexclaveAgentReminders = () => (
-      <pre>{hexclaveReminders}</pre>
+      <pre>{${JSON.stringify(remindersPrompt)}}</pre>
     );
   ` + "\n",
 );
