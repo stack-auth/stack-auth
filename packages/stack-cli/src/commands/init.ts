@@ -183,7 +183,7 @@ async function handleLink(flags: Record<string, unknown>, opts: InitOptions, out
 
 async function handleLinkFromConfigFile(opts: InitOptions): Promise<{ configPath: string }> {
   const filePath = opts.configFile ?? await input({
-    message: "Path to your existing stack.config.ts:",
+    message: "Path to your existing hexclave.config.ts (or stack.config.ts):",
     validate: (value) => {
       const resolved = path.resolve(value);
       if (!fs.existsSync(resolved)) {

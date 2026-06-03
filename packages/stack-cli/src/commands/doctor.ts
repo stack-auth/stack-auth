@@ -427,8 +427,8 @@ function envVarsCheck(specs: EnvVarSpec[]): CheckSpec {
 
 function configFileCheck(): CheckSpec {
   const id = "config-file";
-  const label = "stack.config validity";
-  const candidates = ["stack.config.ts", "stack.config.js"];
+  const label = "hexclave.config validity";
+  const candidates = ["hexclave.config.ts", "hexclave.config.js", "stack.config.ts", "stack.config.js"];
   return {
     id,
     label,
