@@ -140,17 +140,17 @@
   },
   "//": "IF_PLATFORM react-like",
   "peerDependencies": {
-    "@types/react": ">=19.0.0",
+    "@types/react": ">=18.0.0",
     "//": "IF_PLATFORM next",
-    "@types/react-dom": ">=19.0.0",
-    "react-dom": ">=19.0.0",
+    "@types/react-dom": ">=18.0.0",
+    "react-dom": ">=18.0.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
     "//": "END_PLATFORM",
     "//": "IF_PLATFORM tanstack-start",
     "@tanstack/react-router": ">=1.100.0",
     "@tanstack/react-start": ">=1.100.0",
     "//": "END_PLATFORM",
-    "react": ">=19.0.0"
+    "react": ">=18.0.0"
   },
   "//": "END_PLATFORM",
   "//": "IF_PLATFORM react-like",
