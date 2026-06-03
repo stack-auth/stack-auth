@@ -1107,7 +1107,7 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
       pushable: true,
     });
     if (!success) {
-      throw new Error("Operation cancelled");
+      return;
     }
 
     onItemsChange({
@@ -1118,7 +1118,7 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
         expires: 'never',
       },
     });
-    toast({ title: "Item created and added" });
+    toast({ title: "Item created", description: "Save product changes to keep it included." });
   };
 
   const handleDeleteItem = (itemId: string) => {
