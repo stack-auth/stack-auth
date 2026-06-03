@@ -36,12 +36,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Clean
-        run: pnpm run clean
-
-      - name: Install dependencies (after clean)
-        run: pnpm install --frozen-lockfile
-
       - name: Build packages
         run: pnpm build:packages
 

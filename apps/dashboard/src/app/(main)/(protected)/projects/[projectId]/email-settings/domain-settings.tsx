@@ -310,6 +310,7 @@ function ManagedDomainSetupDialog(props: {
   onOpenChange: (open: boolean) => void,
   initialState: SetupState | null,
   onCompleted: () => void,
+  onApply: (domainId: string) => void,
 }) {
   const stackAdminApp = useAdminApp();
   const { toast } = useToast();
@@ -416,21 +417,14 @@ function ManagedDomainSetupDialog(props: {
     }
   }, [setupState, stackAdminApp, toast, props]);
 
-  const handleApply = useCallback(async () => {
+  const handleApply = useCallback(() => {
     if (!setupState) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await stackAdminApp.applyManagedEmailProvider({ domainId: setupState.domainId });
-      toast({ title: "Domain applied", description: `Sending emails from ${setupState.senderLocalPart}@${setupState.subdomain}.`, variant: "success" });
-      props.onCompleted();
-      props.onOpenChange(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not apply domain");
-    } finally {
-      setSubmitting(false);
-    }
-  }, [setupState, stackAdminApp, toast, props]);
+    // Don't apply immediately — stage the selection so the parent surfaces the
+    // standard "unsaved changes" save bar, consistent with the other providers.
+    // The actual applyManagedEmailProvider call happens when the user hits Save.
+    props.onApply(setupState.domainId);
+    props.onOpenChange(false);
+  }, [setupState, props]);
 
   const steps = [
     { n: 1 as const, title: "Your domain" },
@@ -698,8 +692,7 @@ function ManagedDomainSetupDialog(props: {
             {stage === 3 && (
               <DesignButton
                 size="sm"
-                loading={submitting}
-                onClick={() => runAsynchronouslyWithAlert(handleApply)}
+                onClick={() => handleApply()}
               >
                 Use this domain
               </DesignButton>
@@ -731,6 +724,9 @@ export function DomainSettings() {
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [dialog, setDialog] = useState<{ initialState: SetupState | null } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ManagedDomain | null>(null);
+  // The managed domain the user has staged to apply but not yet saved. `null` means
+  // "no pending change" — the active domain (from config) is used as the baseline.
+  const [draftManagedDomainId, setDraftManagedDomainId] = useState<string | null>(null);
 
   const refreshDomains = useCallback(async () => {
     setLoadingDomains(true);
@@ -747,6 +743,15 @@ export function DomainSettings() {
       runAsynchronouslyWithAlert(refreshDomains);
     }
   }, [serverType, refreshDomains]);
+
+  // The managed domain currently applied per the saved config (the baseline).
+  const activeManagedDomainId = emailConfig.provider === "managed" && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
+    ? domains.find((d) =>
+      d.subdomain === emailConfig.managedSubdomain
+      && d.senderLocalPart === emailConfig.managedSenderLocalPart
+    )?.domainId ?? null
+    : null;
+  const isManagedDirty = serverType === "managed" && draftManagedDomainId != null && draftManagedDomainId !== activeManagedDomainId;
 
   const isShared = serverType === "shared";
 
@@ -768,6 +773,7 @@ export function DomainSettings() {
 
   const isDirty = useMemo(() => {
     if (serverType !== savedServerType) return true;
+    if (isManagedDirty) return true;
     const keys = new Set<string>();
     if (visibleSenderFields) {
       keys.add("senderEmail");
@@ -778,7 +784,7 @@ export function DomainSettings() {
       if ((formValues[k] || "") !== (savedValues[k] || "")) return true;
     }
     return false;
-  }, [serverType, savedServerType, formValues, savedValues, visibleSenderFields, configFields]);
+  }, [serverType, savedServerType, isManagedDirty, formValues, savedValues, visibleSenderFields, configFields]);
 
   const updateField = useCallback((key: string, value: string) => {
     setFormValues(prev => ({ ...prev, [key]: value }));
@@ -793,6 +799,7 @@ export function DomainSettings() {
   const handleDiscard = useCallback(() => {
     setServerType(savedServerType);
     setFormValues(savedValues);
+    setDraftManagedDomainId(null);
     setSaveError(null);
   }, [savedServerType, savedValues]);
 
@@ -809,6 +816,22 @@ export function DomainSettings() {
           pushable: false,
         });
         toast({ title: "Email server updated", variant: "success" });
+      } else if (serverType === "managed") {
+        const domainId = draftManagedDomainId;
+        if (!domainId) throwErr("Select a domain to use");
+        const selected = domains.find((d) => d.domainId === domainId);
+        if (!selected) throwErr("Selected domain is no longer available");
+        // applyManagedEmailProvider provisions the scoped sending key and writes the complete,
+        // valid managed config server-side — it owns the managed config entirely. We must NOT
+        // write a partial config from here: a partial managed override renders to a config
+        // missing required fields (password/senderName), which breaks every project read.
+        // The empty updateConfig is a no-op write whose only purpose is to refresh the reactive
+        // config cache (via _refreshProjectConfig) so the UI reflects the newly-active domain.
+        await stackAdminApp.applyManagedEmailProvider({ domainId });
+        await updateConfig({ adminApp: stackAdminApp, configUpdate: {}, pushable: false });
+        setDraftManagedDomainId(null);
+        await refreshDomains();
+        toast({ title: "Domain applied", description: `Sending emails from ${selected.senderLocalPart}@${selected.subdomain}.`, variant: "success" });
       } else {
         const requireField = (key: string, label: string): string => {
           const val = formValues[key];
@@ -875,7 +898,7 @@ export function DomainSettings() {
     } finally {
       setSaving(false);
     }
-  }, [serverType, formValues, stackAdminApp, updateConfig, toast]);
+  }, [serverType, formValues, stackAdminApp, updateConfig, toast, draftManagedDomainId, domains, refreshDomains]);
 
   if (isEmulator) {
     return (
@@ -898,12 +921,15 @@ export function DomainSettings() {
     ...configFields.filter(f => !(formValues[f.key] || "").trim()).map(f => f.label),
   ] : [];
 
-  const canSave = isDirty && !emailFormatError && missingRequiredFields.length === 0;
-  const activeManagedDomainId = emailConfig.provider === "managed" && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
-    ? domains.find((d) =>
-      d.subdomain === emailConfig.managedSubdomain
-      && d.senderLocalPart === emailConfig.managedSenderLocalPart
-    )?.domainId
+  // Managed requires a staged domain selection before it can be saved.
+  const canSave = isDirty && !emailFormatError && missingRequiredFields.length === 0
+    // For managed, also wait until the domains list has finished loading: a just-staged
+    // domain (e.g. one added via the setup dialog, which kicks off refreshDomains) may not
+    // be in `domains` yet, and saving early would spuriously fail with "Selected domain is
+    // no longer available". loadingDomains flips true synchronously when a refresh starts.
+    && (serverType !== "managed" || (draftManagedDomainId != null && !loadingDomains));
+  const draftManagedDomain = draftManagedDomainId != null
+    ? domains.find((d) => d.domainId === draftManagedDomainId) ?? null
     : null;
 
   return (
@@ -971,14 +997,27 @@ export function DomainSettings() {
             })}
           </div>
 
-          {isDirty && serverType !== "managed" && (
+          {isDirty && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 text-sm text-foreground">
                 <WarningDiamond className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" weight="fill" />
                 <span>
-                  Unsaved changes — previewing{" "}
-                  <span className="font-semibold">{PROVIDERS.find((p) => p.value === serverType)?.label}</span>.
-                  Changes don&apos;t take effect until you save.
+                  {serverType === "managed" ? (
+                    draftManagedDomain ? (
+                      <>
+                        Unsaved changes — save to start sending from{" "}
+                        <span className="font-semibold">{draftManagedDomain.senderLocalPart}@{draftManagedDomain.subdomain}</span>.
+                      </>
+                    ) : (
+                      <>Switching to a managed domain — select a verified domain below, then save.</>
+                    )
+                  ) : (
+                    <>
+                      Unsaved changes — previewing{" "}
+                      <span className="font-semibold">{PROVIDERS.find((p) => p.value === serverType)?.label}</span>.
+                      Changes don&apos;t take effect until you save.
+                    </>
+                  )}
                 </span>
               </div>
               <div className="flex gap-2 shrink-0">
@@ -1030,11 +1069,12 @@ export function DomainSettings() {
               ) : (
                 <div className="rounded-lg border border-border/60 divide-y divide-border/50 overflow-hidden">
                   {domains.map((d) => {
-                    const isInUse = d.domainId === activeManagedDomainId;
-                    const isReadyButUnused = !isInUse && (d.status === "verified" || d.status === "applied");
+                    const isActiveSaved = d.domainId === activeManagedDomainId;
+                    const isDraftSelected = draftManagedDomainId != null && d.domainId === draftManagedDomainId && draftManagedDomainId !== activeManagedDomainId;
+                    const isReadyButUnused = !isActiveSaved && !isDraftSelected && (d.status === "verified" || d.status === "applied");
                     const isPending = d.status === "pending_dns" || d.status === "pending_verification" || d.status === "failed";
-                    const displayStatus: ManagedDomainStatus = isInUse ? "applied" : isReadyButUnused ? "verified" : d.status;
-                    const displayLabel = isInUse ? "Active" : MANAGED_DOMAIN_STATUS_LABELS[displayStatus];
+                    const displayStatus: ManagedDomainStatus = isActiveSaved ? "applied" : isReadyButUnused ? "verified" : d.status;
+                    const displayLabel = isActiveSaved ? "Active" : MANAGED_DOMAIN_STATUS_LABELS[displayStatus];
                     return (
                       <div key={d.domainId} className="flex items-center justify-between px-4 py-3 gap-3 min-w-0">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1044,28 +1084,39 @@ export function DomainSettings() {
                               {d.senderLocalPart}@{d.subdomain}
                             </div>
                             <div className="text-[11px] text-muted-foreground mt-0.5">
-                              {isInUse ? "In use for this project" : "Not in use"}
+                              {isActiveSaved ? "In use for this project" : isDraftSelected ? "Selected — save to apply" : "Not in use"}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className={cn(
-                            "text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap",
-                            MANAGED_DOMAIN_STATUS_COLORS[displayStatus],
-                          )}>
-                            {displayLabel}
-                          </span>
+                          {isDraftSelected ? (
+                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap text-amber-700 dark:text-amber-400 bg-amber-500/10">
+                              Selected
+                            </span>
+                          ) : (
+                            <span className={cn(
+                              "text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap",
+                              MANAGED_DOMAIN_STATUS_COLORS[displayStatus],
+                            )}>
+                              {displayLabel}
+                            </span>
+                          )}
                           {isReadyButUnused && (
                             <DesignButton
                               size="sm"
                               variant="secondary"
-                              onClick={() => runAsynchronouslyWithAlert(async () => {
-                                await stackAdminApp.applyManagedEmailProvider({ domainId: d.domainId });
-                                toast({ title: "Domain applied", description: `Sending from ${d.senderLocalPart}@${d.subdomain}.`, variant: "success" });
-                                await refreshDomains();
-                              })}
+                              onClick={() => setDraftManagedDomainId(d.domainId)}
                             >
                               Use this domain
+                            </DesignButton>
+                          )}
+                          {isDraftSelected && (
+                            <DesignButton
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setDraftManagedDomainId(null)}
+                            >
+                              Deselect
                             </DesignButton>
                           )}
                           {isPending && (
@@ -1083,7 +1134,7 @@ export function DomainSettings() {
                               View DNS
                             </DesignButton>
                           )}
-                          {!isInUse && (
+                          {!isActiveSaved && (
                             <button
                               type="button"
                               title="Remove domain"
@@ -1174,6 +1225,11 @@ export function DomainSettings() {
         onOpenChange={(o) => { if (!o) setDialog(null); }}
         initialState={dialog?.initialState ?? null}
         onCompleted={() => { runAsynchronouslyWithAlert(refreshDomains); }}
+        onApply={(domainId) => {
+          setServerType("managed");
+          setDraftManagedDomainId(domainId);
+          runAsynchronouslyWithAlert(refreshDomains);
+        }}
       />
 
       <ActionDialog
@@ -1185,9 +1241,11 @@ export function DomainSettings() {
           label: "Remove",
           onClick: async () => {
             if (!confirmDelete) return;
+            const removed = confirmDelete;
             runAsynchronouslyWithAlert(async () => {
-              await stackAdminApp.deleteManagedEmailDomain({ resendDomainId: confirmDelete.domainId });
-              toast({ title: "Domain removed", description: `${confirmDelete.senderLocalPart}@${confirmDelete.subdomain} was removed.`, variant: "success" });
+              await stackAdminApp.deleteManagedEmailDomain({ resendDomainId: removed.domainId });
+              toast({ title: "Domain removed", description: `${removed.senderLocalPart}@${removed.subdomain} was removed.`, variant: "success" });
+              if (draftManagedDomainId === removed.domainId) setDraftManagedDomainId(null);
               await refreshDomains();
             });
           },
