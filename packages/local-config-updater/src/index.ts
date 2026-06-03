@@ -201,7 +201,9 @@ function snapshotConfigFiles(configFilePath: string, configContent: string): Con
   const dir = path.dirname(configFilePath);
   const snapshots: ConfigFileSnapshot[] = [{ path: path.resolve(configFilePath), content: configContent }];
   for (const specifier of getRelativeImportSpecifiers(configContent)) {
-    captureSnapshotIfAbsent(snapshots, path.resolve(dir, specifier));
+    const resolved = path.resolve(dir, specifier);
+    if (!isPathInsideDir(dir, resolved)) continue;
+    captureSnapshotIfAbsent(snapshots, resolved);
   }
   return snapshots;
 }
