@@ -2,8 +2,8 @@ import { createApiKeySet } from "@/lib/internal-api-keys";
 import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { decodeBasicAuthorizationHeader } from "@stackframe/stack-shared/dist/utils/http";
+import { neonAuthorizationHeaderSchema, projectDisplayNameSchema, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { decodeBasicAuthorizationHeader } from "@hexclave/shared/dist/utils/http";
 
 export const POST = createSmartRouteHandler({
   metadata: {

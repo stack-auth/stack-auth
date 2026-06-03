@@ -33,15 +33,7 @@ import { StackClientApp, StackProvider, useStackApp } from "@stackframe/stack";
 import { HexclaveClientApp, HexclaveProvider, useHexclaveApp } from "@hexclave/next";
 ```
 
-## 2. Update your OAuth callback URLs
-
-After migrating, Hexclave sends providers (Google, GitHub, Microsoft, Apple, Facebook, Discord, LinkedIn, GitLab, Bitbucket, Spotify, Twitch, X) a `redirect_uri` on `api.hexclave.com`. Update each enabled provider's OAuth app callback URL to:
-
-```
-https://api.hexclave.com/api/v1/auth/oauth/callback/<provider>
-```
-
-## 3. Update hardcoded references
+## 2. Update hardcoded references
 
 Sweep your codebase and replace:
 
@@ -76,5 +68,11 @@ const { payload } = await jose.jwtVerify(token, jwks, {
 ```
 
 The same applies to the anonymous (`/api/v1/projects-anonymous-users/...`) and restricted (`/api/v1/projects-restricted-users/...`) issuer variants.
+
+You don't need to update your OAuth provider callback URLs — your current `api.stack-auth.com` callback URLs keep working. However, if you recreate an OAuth provider on the dashboard, you'll need to use the new callback URL:
+
+```
+https://api.hexclave.com/api/v1/auth/oauth/callback/<provider>
+```
 
 Questions? [Discord](https://discord.hexclave.com) or [team@hexclave.com](mailto:team@hexclave.com).

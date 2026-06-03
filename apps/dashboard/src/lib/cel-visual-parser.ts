@@ -15,11 +15,11 @@
  * - riskScores.bot > 80 / riskScores.free_trial_abuse >= 60
  */
 
-import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { type ConditionField, type ConditionOperator, conditionFields, escapeCelString, fieldMetadata, isNumericField, unescapeCelString, validateNumericFieldValue } from "@stackframe/stack-shared/dist/utils/cel-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
+import { type ConditionField, type ConditionOperator, conditionFields, escapeCelString, fieldMetadata, isNumericField, unescapeCelString, validateNumericFieldValue } from "@hexclave/shared/dist/utils/cel-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
-export type { ConditionField, ConditionOperator } from "@stackframe/stack-shared/dist/utils/cel-fields";
+export type { ConditionField, ConditionOperator } from "@hexclave/shared/dist/utils/cel-fields";
 
 export type ConditionNode = {
   type: 'condition',

@@ -1,6 +1,6 @@
 import { StyledLink } from "@/components/link";
-import { StackHandler } from "@stackframe/stack";
 import { DashboardAccountSettingsPage } from "@/components/dashboard-account-settings/dashboard-account-settings-page";
+import { StackHandler } from "@hexclave/next";
 
 export default async function Handler(props: {
   params: Promise<{ stack?: string[] }>,

@@ -1,4 +1,4 @@
-import { StackProvider } from "@stackframe/stack";
+import { StackProvider } from "@hexclave/next";
 import { Metadata } from "next";
 import { Inter } from 'next/font/google';
 import Provider from "src/components/provider";

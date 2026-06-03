@@ -17,8 +17,8 @@ import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 
 // Page size for streaming teams. Big enough to amortise round-trips,
 // small enough to stay tiny in memory (~18KB per page).

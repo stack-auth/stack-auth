@@ -1,4 +1,4 @@
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import fs from "node:fs";
 import path from "node:path";
 

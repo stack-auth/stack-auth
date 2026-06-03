@@ -16,8 +16,8 @@ import {
 } from "@phosphor-icons/react";
 import { Alert, AlertDescription, Button } from "@/components/ui";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { PLAN_LIMITS, resolvePlanId } from "@stackframe/stack-shared/dist/plans";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { PLAN_LIMITS, resolvePlanId } from "@hexclave/shared/dist/plans";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMemo, useRef } from "react";
 import { useAdminApp } from "../use-admin-app";

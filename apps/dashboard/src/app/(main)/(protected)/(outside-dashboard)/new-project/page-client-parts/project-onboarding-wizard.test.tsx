@@ -87,17 +87,17 @@ vi.mock("@/lib/config-update", () => ({
   useUpdateConfig: () => mockUpdateConfig,
 }));
 
-vi.mock("@stackframe/stack", () => ({
+vi.mock("@hexclave/next", () => ({
   AdminOwnedProject: class {},
   AuthPage: () => <div>Auth preview</div>,
 }));
 
-vi.mock("@stackframe/stack-shared/dist/utils/oauth", () => ({
+vi.mock("@hexclave/shared/dist/utils/oauth", () => ({
   allProviders: ["google", "github", "microsoft", "spotify"],
   sharedProviders: ["google", "github", "microsoft", "spotify"],
 }));
 
-vi.mock("@stackframe/stack-shared/dist/utils/promises", () => ({
+vi.mock("@hexclave/shared/dist/utils/promises", () => ({
   runAsynchronouslyWithAlert: (fn: () => Promise<unknown>) => fn(),
 }));
 
@@ -141,7 +141,7 @@ vi.mock("./link-existing-onboarding", () => ({
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import { normalizeProjectOnboardingState, orderedAppIds, REQUIRED_APP_IDS } from "./shared";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
 
 afterEach(() => {
   cleanup();

@@ -18,8 +18,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui";
 import { CaretUpDownIcon, ClockIcon, CurrencyDollarIcon, HardDriveIcon } from "@phosphor-icons/react";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useMemo, useState } from "react";
 import { DEFAULT_INTERVAL_UNITS, getPriceCheckoutError, PRICE_INTERVAL_UNITS, type Price } from "./utils";
 

@@ -1,4 +1,4 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 export function isPreviewModeEnabled() {
   return getEnvVariable("NEXT_PUBLIC_STACK_IS_PREVIEW", "") === "true";

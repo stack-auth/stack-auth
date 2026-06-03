@@ -12,7 +12,7 @@ import {
 import { ActionDialog, Label, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { ArrowLeftIcon, CopyIcon, DatabaseIcon, HashIcon, TagIcon, TrashIcon } from "@phosphor-icons/react";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { useMemo, useState } from "react";
 import { useRouter } from "../../../../../../../../components/router";
 import { AppEnabledGuard } from "../../../app-enabled-guard";

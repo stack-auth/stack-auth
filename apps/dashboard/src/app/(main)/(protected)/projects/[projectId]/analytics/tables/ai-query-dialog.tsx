@@ -30,11 +30,11 @@ import {
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import {
   runAsynchronously,
   runAsynchronouslyWithAlert,
-} from "@stackframe/stack-shared/dist/utils/promises";
+} from "@hexclave/shared/dist/utils/promises";
 import {
   useCallback,
   useEffect,

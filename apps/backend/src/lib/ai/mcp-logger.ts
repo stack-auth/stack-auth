@@ -1,5 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { DbConnection } from "./spacetimedb-bindings";
 import type { LogMcpCallParams } from "./spacetimedb-bindings/types/reducers";
 

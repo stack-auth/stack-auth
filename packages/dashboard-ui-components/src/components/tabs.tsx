@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { cn, Spinner } from "@stackframe/stack-ui";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { cn, Spinner } from "@hexclave/ui";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
 
 type DesignTabsSize = "sm" | "md";
@@ -143,7 +143,7 @@ export function DesignCategoryTabs({
     >
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-1 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
+          "flex min-h-0 min-w-0 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
         )}
       >
         {categories.map((category) => {

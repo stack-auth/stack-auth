@@ -1,4 +1,4 @@
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 

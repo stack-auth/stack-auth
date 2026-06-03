@@ -1,4 +1,4 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";

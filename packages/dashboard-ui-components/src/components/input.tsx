@@ -1,9 +1,9 @@
 "use client";
 
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import React from "react";
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 
 export type DesignInputProps = {
   prefixItem?: React.ReactNode,

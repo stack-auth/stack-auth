@@ -8,13 +8,13 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
-import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@stackframe/dashboard-ui-components';
-import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
-import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
-import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
-import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
-import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
-import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/currency-constants';
+import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@hexclave/dashboard-ui-components';
+import type { Transaction, TransactionEntry, TransactionType } from '@hexclave/shared/dist/interface/crud/transactions';
+import { TRANSACTION_TYPES } from '@hexclave/shared/dist/interface/crud/transactions';
+import { moneyAmountSchema } from '@hexclave/shared/dist/schema-fields';
+import { moneyAmountToStripeUnits } from '@hexclave/shared/dist/utils/currencies';
+import type { MoneyAmount } from '@hexclave/shared/dist/utils/currency-constants';
+import { SUPPORTED_CURRENCIES } from '@hexclave/shared/dist/utils/currency-constants';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from '../link';
 

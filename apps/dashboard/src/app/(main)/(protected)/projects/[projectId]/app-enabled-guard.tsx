@@ -2,7 +2,7 @@
 
 import { useRouter } from "@/components/router";
 import { isAppEnabled } from "@/lib/apps-utils";
-import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { Typography } from "@/components/ui";
 import type { ReactNode } from "react";
 import { useEffect } from "react";

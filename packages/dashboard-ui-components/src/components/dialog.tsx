@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
   cn,
-} from "@stackframe/stack-ui";
+} from "@hexclave/ui";
 import React from "react";
 
 export type DesignDialogSize =

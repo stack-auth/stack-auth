@@ -24,9 +24,9 @@ import {
   cn,
 } from "@/components/ui";
 import { ArrowLeftIcon, CheckCircleIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { AdminOwnedProject } from "@stackframe/stack";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { AdminOwnedProject } from "@hexclave/next";
+import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
 
 import type { TimelineStep } from "./shared";
 

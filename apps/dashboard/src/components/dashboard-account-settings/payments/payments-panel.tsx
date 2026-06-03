@@ -1,7 +1,7 @@
 'use client';
 
-import { KnownErrors } from "@stackframe/stack-shared";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { KnownErrors } from "@hexclave/shared";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -22,10 +22,10 @@ import {
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { useMemo, useState } from "react";
-import { useStackApp } from "@stackframe/stack";
+import { useStackApp } from "@hexclave/next";
 import { getPublicEnvVar } from "@/lib/env";
 import { Section } from "../section";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { ActionDialog } from "@/components/ui/action-dialog";
 import { CreditCard, Receipt, CaretRight, WarningCircle } from "@phosphor-icons/react";
 

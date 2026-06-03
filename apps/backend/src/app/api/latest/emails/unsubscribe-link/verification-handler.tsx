@@ -1,7 +1,7 @@
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 export const unsubscribeLinkVerificationCodeHandler = createLazyProxy(() => createVerificationCodeHandler({
   type: VerificationCodeType.ONE_TIME_PASSWORD,

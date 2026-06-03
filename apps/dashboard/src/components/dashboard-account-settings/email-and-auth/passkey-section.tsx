@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { useStackApp, useUser } from "@stackframe/stack";
+import { useStackApp, useUser } from "@hexclave/next";
 import { Section } from "../section";
 
 export function PasskeySection(props?: {

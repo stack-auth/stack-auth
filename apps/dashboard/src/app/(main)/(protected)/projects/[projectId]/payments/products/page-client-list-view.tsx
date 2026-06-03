@@ -7,13 +7,13 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DropdownMenu
 import { cn } from "@/lib/utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
-import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { useHover } from "@hexclave/shared/dist/hooks/use-hover";
+import { DayInterval } from "@hexclave/shared/dist/utils/dates";
+import { prettyPrintWithMagnitudes } from "@hexclave/shared/dist/utils/numbers";
+import { typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { ListSection } from "./list-section";
@@ -79,7 +79,7 @@ type ListItemProps = {
   onMouseLeave?: () => void,
   isEven?: boolean,
   isHighlighted?: boolean,
-  itemRef?: React.RefObject<HTMLDivElement>,
+  itemRef?: React.RefObject<HTMLDivElement | null>,
   actionItems?: ActionMenuItem[],
 };
 
@@ -180,9 +180,9 @@ function ListGroup({ title, children }: ListGroupProps) {
 
 // Connection line component
 type ConnectionLineProps = {
-  fromRef: React.RefObject<HTMLDivElement>,
-  toRef: React.RefObject<HTMLDivElement>,
-  containerRef: React.RefObject<HTMLDivElement>,
+  fromRef: React.RefObject<HTMLDivElement | null>,
+  toRef: React.RefObject<HTMLDivElement | null>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   quantity?: number,
 };
 
@@ -320,7 +320,7 @@ type ProductsListProps = {
   paymentsGroups: any,
   hoveredItemId: string | null,
   getConnectedProducts: (itemId: string) => string[],
-  productRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  productRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onProductMouseEnter: (productId: string) => void,
   onProductMouseLeave: () => void,
   onProductAdd?: () => void,
@@ -470,7 +470,7 @@ type ItemsListProps = {
   items: CompleteConfig['payments']['items'],
   hoveredProductId: string | null,
   getConnectedItems: (productId: string) => string[],
-  itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  itemRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onItemMouseEnter: (itemId: string) => void,
   onItemMouseLeave: () => void,
   onItemAdd?: () => void,

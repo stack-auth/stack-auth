@@ -14,7 +14,7 @@ import {
   cn,
 } from "@/components/ui";
 import { SignInIcon, SignOutIcon, SunIcon, UserCircleIcon, UserPlusIcon } from "@phosphor-icons/react";
-import { useStackApp, useUser } from "@stackframe/stack";
+import { useStackApp, useUser } from "@hexclave/next";
 import { Suspense } from "react";
 
 type DashboardUserButtonProps = {

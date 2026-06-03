@@ -1,11 +1,11 @@
 'use client';
 
-import { useHash } from '@stackframe/stack-shared/dist/hooks/use-hash';
+import { useHash } from '@hexclave/shared/dist/hooks/use-hash';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { X } from '@phosphor-icons/react';
 import React, { ReactNode } from 'react';
-import { useStackApp } from '@stackframe/stack';
+import { useStackApp } from '@hexclave/next';
 
 export type SidebarItem = {
   title: React.ReactNode,

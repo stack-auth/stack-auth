@@ -191,7 +191,7 @@ function resolveFramework(
     return { kind: "ok", value: "js" };
   }
 
-  return { kind: "unsupported", reason: "package.json has no dependencies declared — install one of @stackframe/stack, @stackframe/react, or @stackframe/js to begin." };
+  return { kind: "unsupported", reason: "package.json has no dependencies declared — install one of @hexclave/next, @hexclave/react, or @hexclave/js to begin." };
 }
 
 function getChecks(framework: Framework): CheckSpec[] {
@@ -209,7 +209,7 @@ function getChecks(framework: Framework): CheckSpec[] {
 }
 
 const NEXT_CHECKS: CheckSpec[] = [
-  packageInstalledCheck("next.package", "@stackframe/stack"),
+  packageInstalledCheck("next.package", "@hexclave/next"),
   fileExistsCheck("next.client-app", "Stack client app instance", [
     "stack/client.ts", "stack/client.tsx",
   ]),
@@ -230,7 +230,7 @@ const NEXT_CHECKS: CheckSpec[] = [
 ];
 
 const REACT_CHECKS: CheckSpec[] = [
-  packageInstalledCheck("react.package", "@stackframe/react"),
+  packageInstalledCheck("react.package", "@hexclave/react"),
   fileExistsCheck("react.client-app", "Stack client app instance", [
     "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
   ]),
@@ -242,7 +242,7 @@ const REACT_CHECKS: CheckSpec[] = [
 ];
 
 const JS_CHECKS: CheckSpec[] = [
-  packageInstalledCheck("js.package", "@stackframe/js"),
+  packageInstalledCheck("js.package", "@hexclave/js"),
   fileExistsCheck("js.app", "Stack app instance", [
     "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
     "stack/server.ts", "stack/server.tsx", "stack/server.js", "stack/server.jsx",
@@ -336,8 +336,10 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
       }
 
       const content = fs.readFileSync(foundPath, "utf-8");
+      // Accept the canonical @hexclave/next scope and the legacy @stackframe/stack
+      // scope (matches the dual-scope detection used elsewhere in the codebase).
       const importsStackProvider =
-        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["']@stackframe\/stack["']/.test(content);
+        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["'](?:@hexclave\/next|@stackframe\/stack)["']/.test(content);
       const wrapsJsx = /<StackProvider\b/.test(content);
 
       const rel = path.relative(ctx.projectDir, foundPath);
@@ -349,7 +351,7 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
           id,
           label,
           status: "warn",
-          detail: `${rel} imports StackProvider from @stackframe/stack but does not render it.`,
+          detail: `${rel} imports StackProvider from @hexclave/next but does not render it.`,
           hint: "Wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.",
         };
       }
@@ -358,16 +360,16 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
           id,
           label,
           status: "fail",
-          detail: `${rel} renders <StackProvider> but is missing the import from @stackframe/stack.`,
-          hint: `Add: import { StackProvider } from "@stackframe/stack";`,
+          detail: `${rel} renders <StackProvider> but is missing the import from @hexclave/next.`,
+          hint: `Add: import { StackProvider } from "@hexclave/next";`,
         };
       }
       return {
         id,
         label,
         status: "fail",
-        detail: `${rel} does not import StackProvider from @stackframe/stack.`,
-        hint: `Add: import { StackProvider } from "@stackframe/stack"; and wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.`,
+        detail: `${rel} does not import StackProvider from @hexclave/next.`,
+        hint: `Add: import { StackProvider } from "@hexclave/next"; and wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.`,
       };
     },
   };

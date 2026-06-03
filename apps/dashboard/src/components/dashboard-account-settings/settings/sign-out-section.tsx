@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { Section } from "../section";
 
 export function SignOutSection(props?: { mockMode?: boolean }) {

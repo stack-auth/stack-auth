@@ -1,4 +1,4 @@
-export * from "@stackframe/dashboard-ui-components";
+export * from "@hexclave/dashboard-ui-components";
 export {
   DesignDialog,
   DesignDialogClose,

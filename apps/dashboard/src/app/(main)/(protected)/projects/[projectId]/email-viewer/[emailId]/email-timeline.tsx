@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { AdminEmailOutbox, AdminSendAttemptError } from "@stackframe/stack";
+import { AdminEmailOutbox, AdminSendAttemptError } from "@hexclave/next";
 
 type TimelineEvent = {
   id: string,

@@ -1,6 +1,6 @@
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import { deindent, nicify } from "@hexclave/shared/dist/utils/strings";
 import beautify from "js-beautify";
 import * as net from "net";
 import { afterAll, beforeAll, describe } from "vitest";

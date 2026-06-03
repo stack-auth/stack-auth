@@ -1,4 +1,4 @@
-import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 
 // ─── Sample data type ────────────────────────────────────────────────
 

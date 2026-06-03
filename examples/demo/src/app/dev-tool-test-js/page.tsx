@@ -1,10 +1,10 @@
 "use client";
 
-import { StackClientApp } from "@stackframe/js";
+import { StackClientApp } from "@hexclave/js";
 import { useEffect, useState } from "react";
 
 export default function DevToolTestJsPage() {
-  const [status, setStatus] = useState("Initializing StackClientApp from @stackframe/js…");
+  const [status, setStatus] = useState("Initializing StackClientApp from @hexclave/js…");
 
   useEffect(() => {
     const app = new StackClientApp({
@@ -19,9 +19,9 @@ export default function DevToolTestJsPage() {
 
   return (
     <div style={{ padding: 40, maxWidth: 600, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 16 }}>Dev Tool Test (@stackframe/js)</h1>
+      <h1 style={{ fontSize: 24, marginBottom: 16 }}>Dev Tool Test (@hexclave/js)</h1>
       <p style={{ marginBottom: 8 }}>
-        This page creates a <code>StackClientApp</code> from <code>@stackframe/js</code>.
+        This page creates a <code>StackClientApp</code> from <code>@hexclave/js</code>.
         The dev tool auto-mounts in the constructor (<code>js</code> platform path).
       </p>
       <p style={{ color: "#666" }}>{status}</p>

@@ -2,12 +2,12 @@
 
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import {
   DesignButton,
   DesignDialog,
   type DesignDialogSize,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import React, { Suspense, useId } from "react";
 import { Alert } from "./alert";
 import { Checkbox } from "./checkbox";

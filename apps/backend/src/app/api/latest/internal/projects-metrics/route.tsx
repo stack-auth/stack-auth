@@ -2,10 +2,10 @@ import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { MetricsDataPointsSchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { MetricsDataPointsSchema } from "@hexclave/shared/dist/interface/admin-metrics";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 const SIGNUPS_WINDOW_DAYS = 30;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

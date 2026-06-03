@@ -1,10 +1,10 @@
 import type { Tenancy } from "@/lib/tenancies";
 import { getStripeForAccount } from "@/lib/stripe";
-import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import type { Transaction } from "@hexclave/shared/dist/interface/crud/transactions";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 
 import type { ExpectStatusCode } from "./api";
 

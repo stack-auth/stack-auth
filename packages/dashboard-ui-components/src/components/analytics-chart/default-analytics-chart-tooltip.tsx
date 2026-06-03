@@ -1,4 +1,4 @@
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 import {
   ArrowDownIcon,
   ArrowUpIcon,

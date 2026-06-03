@@ -1,14 +1,14 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp, useUser } from "@stackframe/stack";
+import { useStackApp, useUser } from "@hexclave/next";
 import { PageLayout } from "../page-layout";
 import { Section } from "../section";
 import { Warning } from "@phosphor-icons/react";

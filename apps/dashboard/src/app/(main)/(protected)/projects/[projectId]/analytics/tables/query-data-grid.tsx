@@ -20,7 +20,7 @@ import {
   type DataGridDataSource,
   type DataGridState,
   type DataGridToolbarContext,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import {
   forwardRef,
   useCallback,

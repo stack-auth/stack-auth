@@ -2,7 +2,7 @@
 
 import { CircleAlert, Info, LucideIcon } from "lucide-react";
 import React, { Suspense, useId } from "react";
-import { Alert, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, Label, Skeleton } from '..';
+import { Alert, Button, type ButtonProps, Checkbox, Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, Label, Skeleton } from '..';
 
 export type ActionDialogProps = {
   trigger?: React.ReactNode,
@@ -16,12 +16,12 @@ export type ActionDialogProps = {
   okButton?: boolean | Readonly<{
     label?: string,
     onClick?: () => Promise<"prevent-close" | undefined | void>,
-    props?: Partial<React.ComponentProps<typeof Button>>,
+    props?: Partial<ButtonProps>,
   }>,
   cancelButton?: boolean | Readonly<{
     label?: string,
     onClick?: () => Promise<"prevent-close" | undefined | void>,
-    props?: Partial<React.ComponentProps<typeof Button>>,
+    props?: Partial<ButtonProps>,
   }>,
   confirmText?: string,
   children?: React.ReactNode,

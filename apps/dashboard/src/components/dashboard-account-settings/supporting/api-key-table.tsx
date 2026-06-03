@@ -1,6 +1,6 @@
 'use client';
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@stackframe/stack-ui";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@hexclave/ui";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import { ApiKey } from "./types";

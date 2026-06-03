@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 
 export type DesignSeparatorProps = {
   orientation?: "horizontal" | "vertical",

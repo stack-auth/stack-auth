@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { getPublicEnvVar } from "@/lib/env";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 

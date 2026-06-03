@@ -2,7 +2,7 @@
 
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { User } from "@phosphor-icons/react";
-import { Team } from "@stackframe/stack";
+import { Team } from "@hexclave/next";
 
 export function TeamIcon(props: { team: Team | 'personal' }) {
   if (props.team === 'personal') {

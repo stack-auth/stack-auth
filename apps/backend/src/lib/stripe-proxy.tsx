@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 export type StripeOverridesMap = Record<string, Record<string, any>>;
 
 export function createStripeProxy<T extends object = Stripe>(

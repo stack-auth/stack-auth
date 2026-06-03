@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { ProfileImageEditor } from "../profile-image-editor";
 import { EditableText } from "../editable-text";
 import { PageLayout } from "../page-layout";

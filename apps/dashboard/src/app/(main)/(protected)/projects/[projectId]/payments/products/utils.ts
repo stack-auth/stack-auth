@@ -1,7 +1,7 @@
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getStripeOneTimeMinAmount } from "@stackframe/stack-shared/dist/payments/stripe-limits";
-import { isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { getStripeOneTimeMinAmount } from "@hexclave/shared/dist/payments/stripe-limits";
+import { isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
+import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
 
 // ============================================================================
 // Types
@@ -197,7 +197,7 @@ export function isFreePrices(prices: PricesObject): boolean {
 // ============================================================================
 
 // Re-export utilities from schema-fields for convenience
-export { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+export { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
 
 /**
  * Validates if an ID matches the required pattern.

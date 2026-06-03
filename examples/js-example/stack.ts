@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { StackClientApp } from "@stackframe/js";
+import { StackClientApp } from "@hexclave/js";
 
 export const stackClientApp = new StackClientApp({
   baseUrl: import.meta.env.VITE_STACK_API_URL,

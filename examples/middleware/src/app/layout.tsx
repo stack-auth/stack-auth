@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { StackProvider, StackTheme } from "@stackframe/stack";
+import { StackProvider, StackTheme } from "@hexclave/next";
 import { stackServerApp } from "../stack";
 import { Inter } from "next/font/google";
 
@@ -10,10 +10,12 @@ export const metadata: Metadata = {
   description: "A demo of Hexclave's middleware capabilities.",
 };
 
+type StackThemeChildren = Parameters<typeof StackTheme>[0]["children"];
+
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode,
+  children: StackThemeChildren,
 }>) {
   return (
     <html lang="en">

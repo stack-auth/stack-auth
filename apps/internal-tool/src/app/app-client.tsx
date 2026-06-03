@@ -1,4 +1,4 @@
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { clsx } from "clsx";
 import { useState } from "react";
 import { AddManualQa } from "../components/AddManualQa";

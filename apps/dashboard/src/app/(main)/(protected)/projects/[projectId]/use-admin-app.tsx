@@ -1,8 +1,8 @@
 "use client";
 
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { StackAdminApp } from "@stackframe/stack";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAdminApp } from "@hexclave/next";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { notFound, usePathname } from "next/navigation";
 import React from "react";
 

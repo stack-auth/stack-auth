@@ -1,8 +1,8 @@
 "use client";
 
-import { useStackApp, useUser } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, Switch, Typography } from "@stackframe/stack-ui";
+import { useStackApp, useUser } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Card, Switch, Typography } from "@hexclave/ui";
 import { useState } from "react";
 
 // Decode JWT without verification (for display purposes only)

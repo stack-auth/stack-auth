@@ -38,7 +38,7 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";

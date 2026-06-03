@@ -1,8 +1,8 @@
 'use client';
 
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DotsThree, Monitor, DeviceMobile, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { ActiveSession } from "../supporting/types";
 import { PageLayout } from "../page-layout";
 import { cn } from "@/lib/utils";

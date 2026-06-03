@@ -1,14 +1,14 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { ServerTeam } from "@stackframe/stack";
+import { ServerTeam } from "@hexclave/next";
 import {
   createDefaultDataGridState,
   DataGrid,
   useDataSource,
   type DataGridColumnDef,
   type DataGridState,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 const PAGE_SIZE = 25;

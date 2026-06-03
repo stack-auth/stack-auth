@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { StackClientApp } from "@stackframe/react";
+import { StackClientApp } from "@hexclave/react";
 import { useNavigate } from "react-router-dom";
 
 export const stackClientApp = new StackClientApp({

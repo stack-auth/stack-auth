@@ -185,12 +185,28 @@ function renderNode(node: MessageNode, index: number): React.ReactNode {
     }
 
     case 'heading': {
-      const HeadingTag = `h${Math.min(node.level || 1, 6)}` as keyof JSX.IntrinsicElements;
-      return (
-        <HeadingTag key={index} className="font-semibold mt-4 mb-2 text-sm">
-          {node.children?.map(renderNode)}
-        </HeadingTag>
-      );
+      const children = node.children?.map(renderNode);
+      const className = "font-semibold mt-4 mb-2 text-sm";
+      switch (Math.min(node.level || 1, 6)) {
+        case 1: {
+          return <h1 key={index} className={className}>{children}</h1>;
+        }
+        case 2: {
+          return <h2 key={index} className={className}>{children}</h2>;
+        }
+        case 3: {
+          return <h3 key={index} className={className}>{children}</h3>;
+        }
+        case 4: {
+          return <h4 key={index} className={className}>{children}</h4>;
+        }
+        case 5: {
+          return <h5 key={index} className={className}>{children}</h5>;
+        }
+        default: {
+          return <h6 key={index} className={className}>{children}</h6>;
+        }
+      }
     }
 
     case 'paragraph': {

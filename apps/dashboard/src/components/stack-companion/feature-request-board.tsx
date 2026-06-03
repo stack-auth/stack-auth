@@ -5,10 +5,10 @@ import { getPublicEnvVar } from '@/lib/env';
 import { getInternalProjectHeaders } from '@/lib/internal-project-headers';
 import { cn } from '@/lib/utils';
 import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
-import { useUser } from '@stackframe/stack';
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
-import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
+import { useUser } from '@hexclave/next';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { htmlToText } from '@hexclave/shared/dist/utils/html';
+import { runAsynchronously, runAsynchronouslyWithAlert } from '@hexclave/shared/dist/utils/promises';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { KnownErrors } from "@stackframe/stack-shared";
+import { KnownErrors } from "@hexclave/shared";
 import {
   Button,
   InputOTP,
@@ -9,7 +9,7 @@ import {
   Spinner,
   Typography,
   cn,
-} from "@stackframe/stack-ui";
+} from "@hexclave/ui";
 import { CheckIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp } from "..";

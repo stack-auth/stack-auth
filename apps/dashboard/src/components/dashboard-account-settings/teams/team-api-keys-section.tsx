@@ -1,11 +1,11 @@
 'use client';
 
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { CreateApiKeyDialog, ShowApiKeyDialog } from "../supporting/api-key-dialogs";
 import { ApiKeyTable } from "../supporting/api-key-table";
-import { useStackApp, useUser, Team } from "@stackframe/stack";
+import { useStackApp, useUser, Team } from "@hexclave/next";
 import { Section } from "../section";
 
 export function TeamApiKeysSection(props: { team: Team }) {

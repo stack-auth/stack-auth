@@ -10,7 +10,7 @@ import {
   DesignCard,
   DesignCardTint,
   DesignInput,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { DesignMenu, type DesignMenuActionItem } from "@/components/design-components/menu";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import {
@@ -28,18 +28,19 @@ import {
   UserCircleIcon,
   UserPlusIcon,
 } from "@phosphor-icons/react";
-import { AdminProject, AuthPage } from "@stackframe/stack";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { AdminProject, AuthPage } from "@hexclave/next";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { allProviders } from "@hexclave/shared/dist/utils/oauth";
+import { typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { useId, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { getNewProviderCallbackUrl } from "./oauth-callback-url";
 import { ProviderIcon, ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
 
 type AdminOAuthProviderConfig = AdminProject['config']['oauthProviders'][number];
@@ -102,7 +103,10 @@ function ConfirmSignUpDisabledDialog(props: {
   );
 }
 
-function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): CompleteConfig['auth']['oauth']['providers'][string] {
+function adminProviderToConfigProvider(
+  provider: AdminOAuthProviderConfig,
+  existing: CompleteConfig['auth']['oauth']['providers'][string] | undefined,
+): CompleteConfig['auth']['oauth']['providers'][string] {
   switch (provider.type) {
     case 'shared': {
       return {
@@ -110,6 +114,9 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
         isShared: true,
         clientId: undefined,
         clientSecret: undefined,
+        // Shared providers always use Stack's shared OAuth app; customCallbackUrl
+        // is forbidden by the schema for them.
+        customCallbackUrl: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
         appleBundles: undefined,
@@ -123,6 +130,13 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
         isShared: false,
         clientId: provider.clientId,
         clientSecret: provider.clientSecret,
+        // Setting up a standard provider (brand-new, or converting shared ->
+        // standard) means registering a fresh OAuth app, so it gets the
+        // hexclave-branded callback URL. A provider that was already standard
+        // keeps whatever it had — legacy ones without a customCallbackUrl keep
+        // falling back to the stack-auth callback so edits never silently change
+        // an already-registered redirect URL.
+        customCallbackUrl: (existing && !existing.isShared) ? existing.customCallbackUrl : getNewProviderCallbackUrl(provider.id),
         facebookConfigId: provider.facebookConfigId,
         microsoftTenantId: provider.microsoftTenantId,
         appleBundles: provider.appleBundleIds?.length
@@ -142,6 +156,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const oauthProviders = project.config.oauthProviders;
+  const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [providerSearch, setProviderSearch] = useState("");
   const filteredProviders = allProviders
@@ -175,7 +190,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
               await updateConfig({
                 adminApp: stackAdminApp,
                 configUpdate: {
-                  [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider),
+                  [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, config.auth.oauth.providers[provider.id]),
                 },
                 pushable: false,
               });
@@ -204,6 +219,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
 
 function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
   const stackAdminApp = useAdminApp();
+  const completeConfig = stackAdminApp.useProject().useConfig();
   const updateConfig = useUpdateConfig();
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
@@ -212,7 +228,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
-        [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider),
+        [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, completeConfig.auth.oauth.providers[provider.id]),
       },
       pushable: false,
     });

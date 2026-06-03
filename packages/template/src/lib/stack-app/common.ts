@@ -1,4 +1,4 @@
-import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
+import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import type { GenericQueryCtx, UserIdentity } from "convex/server";
 export type {
   DefaultHandlerUrlTarget,
@@ -8,7 +8,7 @@ export type {
   HandlerUrlTarget,
   HandlerUrls,
   ResolvedHandlerUrls,
-} from "@stackframe/stack-shared/dist/interface/handler-urls";
+} from "@hexclave/shared/dist/interface/handler-urls";
 
 export type RedirectToOptions = {
   replace?: boolean,

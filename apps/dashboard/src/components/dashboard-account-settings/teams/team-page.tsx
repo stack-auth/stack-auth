@@ -1,4 +1,4 @@
-import { Team } from "@stackframe/stack";
+import { Team } from "@hexclave/next";
 import { PageLayout } from "../page-layout";
 import { LeaveTeamSection } from "./leave-team-section";
 import { TeamApiKeysSection } from "./team-api-keys-section";

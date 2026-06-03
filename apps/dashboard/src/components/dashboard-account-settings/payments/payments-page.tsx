@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { Team } from "@stackframe/stack";
-import { useUser } from "@stackframe/stack";
+import { Team } from "@hexclave/next";
+import { useUser } from "@hexclave/next";
 import { PageLayout } from "../page-layout";
 import { PaymentsPanel } from "./payments-panel";
 import { DashboardTeamSwitcher } from "../supporting/dashboard-team-switcher";

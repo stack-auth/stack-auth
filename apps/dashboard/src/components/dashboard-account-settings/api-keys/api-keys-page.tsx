@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { CreateApiKeyDialog, ShowApiKeyDialog } from "../supporting/api-key-dialogs";
 import { ApiKeyTable } from "../supporting/api-key-table";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { ApiKey, ApiKeyCreationOptions } from "../supporting/types";
 import { PageLayout } from "../page-layout";
 

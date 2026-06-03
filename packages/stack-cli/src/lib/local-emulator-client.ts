@@ -13,7 +13,7 @@ export type LocalEmulatorProjectListEntry = {
 async function getInternalPck(timeoutMs: number): Promise<string> {
   const contents = await pollInternalPck(timeoutMs);
   if (contents === null) {
-    throw new AuthError(`Local emulator publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start the emulator with \`stack emulator start\`.`);
+    throw new AuthError(`Development environment publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start your development environment and try again.`);
   }
   return contents;
 }
@@ -33,7 +33,7 @@ async function fetchWithRetry(url: string, init: RequestInit, totalTimeoutMs: nu
     }
     if (performance.now() >= deadline) {
       const message = lastError instanceof Error ? lastError.message : String(lastError);
-      throw new AuthError(`Cannot reach local emulator at ${url} (after ${totalTimeoutMs}ms): ${message}. Start it with \`stack emulator start\`.`);
+      throw new AuthError(`Cannot reach development environment at ${url} (after ${totalTimeoutMs}ms): ${message}. Start your development environment and try again.`);
     }
     const remaining = deadline - performance.now();
     await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
@@ -87,9 +87,9 @@ export async function listLocalEmulatorProjects(): Promise<LocalEmulatorProjectL
       body = await res.text();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new AuthError(`Local emulator project list failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+      throw new AuthError(`Development-environment project list failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the development environment is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
     }
-    throw new AuthError(`Local emulator project list failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+    throw new AuthError(`Development-environment project list failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the development environment is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
   }
 
   let data: unknown;
@@ -97,10 +97,10 @@ export async function listLocalEmulatorProjects(): Promise<LocalEmulatorProjectL
     data = await res.json();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new AuthError(`Local emulator project list returned a non-JSON response: ${message}.`);
+    throw new AuthError(`Development-environment project list returned a non-JSON response: ${message}.`);
   }
   if (!isListResponseBody(data)) {
-    throw new AuthError("Local emulator project list response had an unexpected shape.");
+    throw new AuthError("Development-environment project list response had an unexpected shape.");
   }
 
   return data.projects.map((p) => ({
@@ -122,7 +122,7 @@ export async function lookupLocalEmulatorProjectIdByPath(absolutePath: string): 
   const projects = await listLocalEmulatorProjects();
   const match = findProjectByAbsolutePath(projects, absolutePath);
   if (!match) {
-    throw new CliError(`No local emulator project registered for ${absolutePath}. Open it in the dashboard or run \`stack init\` from that directory first.`);
+    throw new CliError(`No development-environment project registered for ${absolutePath}. Open it in the dashboard or run \`stack init\` from that directory first.`);
   }
   return match.projectId;
 }

@@ -2,7 +2,7 @@
 
 import { Check } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export type DraftStep = {
   id: string,

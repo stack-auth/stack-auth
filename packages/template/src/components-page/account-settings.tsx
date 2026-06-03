@@ -1,7 +1,7 @@
 'use client';
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Skeleton, Typography } from '@stackframe/stack-ui';
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Skeleton, Typography } from '@hexclave/ui';
 import { Contact, ShieldCheck, Bell, Monitor, Key, Settings, CirclePlus, CreditCard } from 'lucide-react';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp, useUser } from '..';

@@ -13,7 +13,7 @@ import {
   pointValue,
   type AnalyticsChartState,
   type Annotation,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import {
   AnalyticsChartEventsPanel,
   type AnalyticsChartLabEvent,

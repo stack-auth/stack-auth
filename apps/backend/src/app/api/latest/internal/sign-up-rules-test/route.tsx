@@ -4,11 +4,11 @@ import { calculateSignUpRiskScores } from "@/lib/risk-scores";
 import { evaluateSignUpRulesWithTrace } from "@/lib/sign-up-rules";
 import { getDerivedSignUpCountryCode } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { riskScoreFieldSchema } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { signUpAuthMethodValues } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import type { TurnstileResult } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { turnstileResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { adaptSchema, adminAuthTypeSchema, countryCodeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { riskScoreFieldSchema } from "@hexclave/shared/dist/interface/crud/users";
+import { signUpAuthMethodValues } from "@hexclave/shared/dist/utils/auth-methods";
+import type { TurnstileResult } from "@hexclave/shared/dist/utils/turnstile";
+import { turnstileResultValues } from "@hexclave/shared/dist/utils/turnstile";
+import { adaptSchema, adminAuthTypeSchema, countryCodeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 const ACTION_TYPES = ['allow', 'reject', 'restrict', 'log'] as const;
 const DECISION_TYPES = ['allow', 'reject', 'default-allow', 'default-reject'] as const;

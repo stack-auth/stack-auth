@@ -1,6 +1,6 @@
 'use client';
 
-import { Team, useUser } from "@stackframe/stack";
+import { Team, useUser } from "@hexclave/next";
 import { ProfileImageEditor } from "../profile-image-editor";
 import { Section } from "../section";
 

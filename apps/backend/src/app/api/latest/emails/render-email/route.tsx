@@ -1,10 +1,10 @@
 import { getEmailThemeForThemeId, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, templateThemeIdSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { adaptSchema, templateThemeIdSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import type { EditableMetadata } from "@hexclave/shared/dist/utils/jsx-editable-transpiler";
 
 export const POST = createSmartRouteHandler({
   metadata: {

@@ -12,7 +12,7 @@ import {
   Plus,
 } from "@phosphor-icons/react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Team, useStackApp, useUser } from "@stackframe/stack";
+import { Team, useStackApp, useUser } from "@hexclave/next";
 import { SidebarLayout } from './sidebar-layout';
 import { ActiveSessionsPage } from "./active-sessions/active-sessions-page";
 import { ApiKeysPage } from "./api-keys/api-keys-page";
@@ -24,7 +24,7 @@ import { PaymentsPage } from "./payments/payments-page";
 import { TeamPage } from "./teams/team-page";
 import { TeamCreationPage } from "./teams/team-creation-page";
 import { TeamIcon } from "./supporting/team-icon";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 
 const iconMap = {
   Contact: UserCircle,

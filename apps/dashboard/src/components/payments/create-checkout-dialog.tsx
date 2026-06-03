@@ -1,7 +1,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { ServerUser, Team } from "@stackframe/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { ServerUser, Team } from "@hexclave/next";
+import { KnownErrors } from "@hexclave/shared";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { ActionDialog, InlineCode, Typography, toast } from "@/components/ui";
 import { useState } from "react";
 import * as yup from "yup";

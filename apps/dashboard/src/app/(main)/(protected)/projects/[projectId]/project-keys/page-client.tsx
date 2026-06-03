@@ -6,7 +6,7 @@ import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
 import { SettingSwitch } from "@/components/settings";
 import { ActionDialog, Button, Typography } from "@/components/ui";
-import { InternalApiKeyFirstView } from "@stackframe/stack";
+import { InternalApiKeyFirstView } from "@hexclave/next";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";

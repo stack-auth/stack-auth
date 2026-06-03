@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function Page() {
   const user = useUser({ or: 'redirect' });

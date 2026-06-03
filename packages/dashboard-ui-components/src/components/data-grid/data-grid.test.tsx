@@ -385,17 +385,13 @@ describe("DataGrid horizontal scrolling", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not keep the full unscaled column width in a narrow container", async () => {
+  it("sizes the sticky clipping layer to the full row width", () => {
     const { container } = render(<WideDataGridHarness />);
 
     const rowsClip = container.querySelector("[data-data-grid-rows-clip]");
 
     expect(rowsClip).toBeInstanceOf(HTMLElement);
-    await waitFor(() => {
-      const widthPx = Number.parseInt((rowsClip as HTMLElement).style.minWidth, 10);
-      expect(widthPx).toBeLessThan(740);
-      expect(widthPx).toBeLessThanOrEqual(320);
-    });
+    expect((rowsClip as HTMLElement).style.minWidth).toBe("740px");
   });
 
   it("lets the columns popover escape the sticky toolbar bounds", () => {

@@ -2,9 +2,9 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { stackAppInternalsSymbol } from "@stackframe/stack";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
+import { stackAppInternalsSymbol } from "@hexclave/next";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
+import { createCachedRegex } from "@hexclave/shared/dist/utils/regex";
 import { memo, useEffect, useMemo, useState } from "react";
 import { HookPrefetcher, HookPrefetcherCallback } from "./hook-prefetcher";
 

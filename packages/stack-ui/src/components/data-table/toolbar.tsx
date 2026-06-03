@@ -1,7 +1,7 @@
 "use client";
 
 import { Cross2Icon } from "@radix-ui/react-icons";
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
 import { Button } from "../ui/button";
 import { Cell, ColumnFiltersState, SortingState, Table } from "@tanstack/react-table";
 import { download, generateCsv, mkConfig } from 'export-to-csv';

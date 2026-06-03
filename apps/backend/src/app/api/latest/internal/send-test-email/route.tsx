@@ -2,13 +2,13 @@ import { isSecureEmailPort, lowLevelSendEmailDirectWithoutRetries } from "@/lib/
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getStackServerApp } from "@/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
-import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
-import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { timeout } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { KnownErrors } from "@hexclave/shared";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
+import * as schemaFields from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { timeout } from "@hexclave/shared/dist/utils/promises";
+import { Result } from "@hexclave/shared/dist/utils/results";
 
 export const POST = createSmartRouteHandler({
   metadata: {

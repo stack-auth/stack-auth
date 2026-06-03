@@ -4,9 +4,9 @@ const config = {
   darkMode: ["class"],
   content: [
     './src/**/*.{ts,tsx}',
-    "./node_modules/@stackframe/stack-ui/src/**/*.{ts,tsx}",
-    "./node_modules/@stackframe/stack-shared/src/**/*.{ts,tsx}",
-    "./node_modules/@stackframe/dashboard-ui-components/src/**/*.{ts,tsx}",
+    "./node_modules/@hexclave/ui/src/**/*.{ts,tsx}",
+    "./node_modules/@hexclave/shared/src/**/*.{ts,tsx}",
+    "./node_modules/@hexclave/dashboard-ui-components/src/**/*.{ts,tsx}",
 	],
   prefix: "",
   theme: {

@@ -1,6 +1,6 @@
 {
-  "name": "@stackframe/skills",
-  "version": "2.8.109",
+  "name": "@hexclave/skills",
+  "version": "1.0.4",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@hexclave/shared": "workspace:*",
     "next": "16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3"

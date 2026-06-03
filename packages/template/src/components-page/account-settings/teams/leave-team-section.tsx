@@ -1,4 +1,4 @@
-import { Button, Typography } from "@stackframe/stack-ui";
+import { Button, Typography } from "@hexclave/ui";
 import { useState } from "react";
 import { Team } from "../../..";
 import { useUser } from "../../../lib/hooks";

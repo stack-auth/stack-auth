@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 import { DesignButton } from "../button";
 import {
   type DesignChartConfig,
@@ -92,9 +92,9 @@ export type Margin = {
  * `Point`, …) don't exist at runtime anyway, so just drop the type
  * annotations in sandbox code.
  *
- * **In a regular TypeScript app** (anywhere importing `@stackframe/dashboard-ui-components`
+ * **In a regular TypeScript app** (anywhere importing `@hexclave/dashboard-ui-components`
  * directly): `import { AnalyticsChart, ANALYTICS_CHART_DEFAULT_STATE } from
- * "@stackframe/dashboard-ui-components"` and use the bare name. Drop the
+ * "@hexclave/dashboard-ui-components"` and use the bare name. Drop the
  * `DashboardUI.` prefix from the examples below when doing so.
  *
  * ## Data shape in 30 seconds

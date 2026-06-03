@@ -6,6 +6,7 @@ sidebarTitle: "Overview"
 
 
 import { generatedSetupPromptText } from "/snippets/home-prompt-island.jsx";
+import { HexclaveAgentReminders } from "/snippets/hexclave-agent-reminders.jsx";
 
 export const SectionLink = ({ href, children }) => (
   <a href={href} className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
@@ -109,6 +110,8 @@ export const copyGeneratedSetupPrompt = async (event) => {
   </div>
 </div>
 
+<HexclaveAgentReminders />
+
 <div className="mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
   <div>
     <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Navigate Through Our Docs</h2>
@@ -196,7 +199,7 @@ export const copyGeneratedSetupPrompt = async (event) => {
       <Card title="Dashboard" icon="table-columns" href="https://app.hexclave.com" cta="Open app" target="_blank" rel="noopener noreferrer">
         Manage projects, keys, providers, and authentication settings.
       </Card>
-      <Card title="GitHub" icon="github" href="https://github.com/hexclave/stack" cta="View repository">
+      <Card title="GitHub" icon="github" href="https://github.com/hexclave/hexclave" cta="View repository">
         Explore the open-source codebase, examples, and release history.
       </Card>
       <Card title="Discord" icon="comments" href="https://discord.hexclave.com" cta="Join community">

@@ -13,11 +13,11 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Team, useStackApp } from "@stackframe/stack";
+import { Team, useStackApp } from "@hexclave/next";
 import { TeamIcon } from "./team-icon";
 import { Gear, Plus } from "@phosphor-icons/react";
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 
 type MockTeam = {
   id: string;

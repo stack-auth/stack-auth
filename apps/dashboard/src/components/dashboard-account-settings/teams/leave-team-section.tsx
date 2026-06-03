@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { Team, useUser } from "@stackframe/stack";
+import { Team, useUser } from "@hexclave/next";
 import { Section } from "../section";
 
 export function LeaveTeamSection(props: { team: Team }) {

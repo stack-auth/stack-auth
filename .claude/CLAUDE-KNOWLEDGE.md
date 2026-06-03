@@ -2,6 +2,9 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should dashboard account-settings imports resolve after merging the Hexclave package rename?
+A: Use `@hexclave/next` for SDK hooks/components previously imported from `@stackframe/stack`, `@hexclave/shared` for shared utilities and dist subpaths previously imported from `@stackframe/stack-shared`, `@hexclave/ui` for shared UI previously imported from `@stackframe/stack-ui`, and `@hexclave/dashboard-ui-components` for dashboard UI components. When resolving `apps/dashboard/package.json` after this merge, keep the renamed Hexclave workspace deps and add `@hexclave/ui` if account-settings imports use it.
+
 ## Q: What are the local development ports for the MCP and Skills apps?
 A: The MCP app runs on port suffix `44` from `apps/mcp/package.json`, so with `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=91` it is at `http://localhost:9144/mcp`. The Skills app runs on suffix `45` from `apps/skills/package.json`, so with the same prefix it is at `http://localhost:9145`. The dev launchpad app list in `apps/dev-launchpad/public/index.html` should use these suffixes.
 

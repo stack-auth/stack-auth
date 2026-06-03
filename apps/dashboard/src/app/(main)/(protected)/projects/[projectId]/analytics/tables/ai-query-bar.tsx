@@ -9,7 +9,7 @@ import {
   SpinnerGapIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useState, type KeyboardEvent } from "react";
 import type { AiQueryChat } from "./use-ai-query-chat";
 

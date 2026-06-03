@@ -1,16 +1,16 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { getPasswordError } from '@stackframe/stack-shared/dist/helpers/password';
-import { passwordSchema as schemaFieldsPasswordSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { getPasswordError } from '@hexclave/shared/dist/helpers/password';
+import { passwordSchema as schemaFieldsPasswordSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp, useUser } from "@stackframe/stack";
+import { useStackApp, useUser } from "@hexclave/next";
 import { Section } from "../section";
 
 export function PasswordSection(props?: {
