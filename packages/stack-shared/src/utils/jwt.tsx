@@ -10,7 +10,7 @@ import { pick } from "./objects";
 import { Result } from "./results";
 import { nicify } from "./strings";
 
-function getStackServerSecret() {
+function getHexclaveServerSecret() {
   const STACK_SERVER_SECRET = getEnvVariable("STACK_SERVER_SECRET");
   try {
     jose.base64url.decode(STACK_SERVER_SECRET);
@@ -106,7 +106,7 @@ export async function getPrivateJwks(options: {
   const getHashOfJwkInfo = (type: string) => jose.base64url.encode(
     crypto
       .createHash('sha256')
-      .update(JSON.stringify([type, getStackServerSecret(), {
+      .update(JSON.stringify([type, getHexclaveServerSecret(), {
         audience: options.audience,
       }]))
       .digest()
@@ -153,7 +153,7 @@ function oldGetPerAudienceSecret(options: {
       .createHash('sha256')
       // TODO we should prefix a string like "stack-audience-secret" before we hash so you can't use `getKid(...)` to get the secret for eg. the "kid" audience if the same secret value is used
       // Sadly doing this modification is a bit annoying as we need to leave the old keys to be valid for a little longer
-      .update(JSON.stringify([getStackServerSecret(), options.audience]))
+      .update(JSON.stringify([getHexclaveServerSecret(), options.audience]))
       .digest()
   );
 };

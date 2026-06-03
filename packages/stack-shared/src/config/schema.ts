@@ -27,13 +27,13 @@ const customPermissionRegex = /^[a-z0-9_:]+$/;
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
-    stackConfigCanNoLongerBeOverridden?: true,
+    hexclaveConfigCanNoLongerBeOverridden?: true,
   }
 }
 
 function canNoLongerBeOverridden<T extends yup.AnyObjectSchema, K extends string[]>(schema: T, keys: K): yup.Schema<Omit<yup.InferType<T>, K[number]>, T['__context'], Omit<T['__default'], K[number]>, T['__flags']> {
   const notOmitted = schema.concat(yupObject(
-    Object.fromEntries(keys.map(key => [key, schema.getNested(key).meta({ stackConfigCanNoLongerBeOverridden: true })]))
+    Object.fromEntries(keys.map(key => [key, schema.getNested(key).meta({ hexclaveConfigCanNoLongerBeOverridden: true })]))
   ));
   return notOmitted as any;
 }
@@ -1186,7 +1186,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
       return undefined;
     }
     const nestedSchema = schema.getNested(keyParts[0]);
-    if (nestedSchema.meta()?.stackConfigCanNoLongerBeOverridden && !options.allowPropertiesThatCanNoLongerBeOverridden) {
+    if (nestedSchema.meta()?.hexclaveConfigCanNoLongerBeOverridden && !options.allowPropertiesThatCanNoLongerBeOverridden) {
       return undefined;
     }
     if (keyParts.length === 1) {
@@ -1197,7 +1197,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
   };
 
   const getRestrictedSchemaBase = (path: string, schema: yup.AnySchema): yup.AnySchema => {
-    const schemaInfo = schema.meta()?.stackSchemaInfo;
+    const schemaInfo = schema.meta()?.hexclaveSchemaInfo;
     switch (schemaInfo?.type) {
       case "string": {
         const stringSchema = schema as yup.StringSchema<any>;
@@ -1233,8 +1233,8 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
       }
       case "union": {
         const schemas = schemaInfo.items;
-        const nonObjectSchemas = [...schemas.entries()].filter(([index, s]) => s.meta()?.stackSchemaInfo?.type !== "object");
-        const objectSchemas = schemas.filter((s): s is yup.ObjectSchema<any> => s.meta()?.stackSchemaInfo?.type === "object");
+        const nonObjectSchemas = [...schemas.entries()].filter(([index, s]) => s.meta()?.hexclaveSchemaInfo?.type !== "object");
+        const objectSchemas = schemas.filter((s): s is yup.ObjectSchema<any> => s.meta()?.hexclaveSchemaInfo?.type === "object");
 
         // merge all object schemas into a single schema
         const allObjectSchemaKeys = [...new Set(objectSchemas.flatMap(s => Object.keys(s.fields)))];

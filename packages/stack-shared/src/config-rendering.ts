@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { parseStackConfigFileContent, renderConfigFileContent } from "./hexclave-config-file";
-export { parseStackConfigFileContent, renderConfigFileContent };
+import { parseHexclaveConfigFileContent, renderConfigFileContent } from "./hexclave-config-file";
+export { parseHexclaveConfigFileContent, renderConfigFileContent };
 
 /**
  * Packages that export the `HexclaveConfig` type, in priority order.
@@ -77,8 +77,8 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
 };`);
 });
 
-import.meta.vitest?.test("parseStackConfigFileContent parses static config exports", ({ expect }) => {
-  expect(parseStackConfigFileContent(`
+import.meta.vitest?.test("parseHexclaveConfigFileContent parses static config exports", ({ expect }) => {
+  expect(parseHexclaveConfigFileContent(`
     import type { StackConfig } from "@hexclave/js";
     export const config: StackConfig = {
       auth: { allowSignUp: true },
@@ -96,12 +96,12 @@ import.meta.vitest?.test("parseStackConfigFileContent parses static config expor
   `);
 });
 
-import.meta.vitest?.test("parseStackConfigFileContent parses show-onboarding", ({ expect }) => {
-  expect(parseStackConfigFileContent('export const config = "show-onboarding";', "stack.config.ts")).toBe("show-onboarding");
+import.meta.vitest?.test("parseHexclaveConfigFileContent parses show-onboarding", ({ expect }) => {
+  expect(parseHexclaveConfigFileContent('export const config = "show-onboarding";', "stack.config.ts")).toBe("show-onboarding");
 });
 
-import.meta.vitest?.test("parseStackConfigFileContent rejects dynamic config exports", ({ expect }) => {
-  expect(() => parseStackConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
+import.meta.vitest?.test("parseHexclaveConfigFileContent rejects dynamic config exports", ({ expect }) => {
+  expect(() => parseHexclaveConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {

@@ -1,7 +1,7 @@
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { getOrCreateFeaturebaseUser as getOrCreateFeaturebaseUserShared, StackAuthUser } from "@hexclave/shared/dist/utils/featurebase";
+import { getOrCreateFeaturebaseUser as getOrCreateFeaturebaseUserShared, HexclaveAuthUser } from "@hexclave/shared/dist/utils/featurebase";
 
 export function getFeaturebaseApiKey(): string {
   return getEnvVariable("STACK_FEATUREBASE_API_KEY", "");
@@ -15,7 +15,7 @@ export function requireFeaturebaseApiKey(): string {
   return key;
 }
 
-export function toFeaturebaseUserArgs(user: UsersCrud["Admin"]["Read"]): StackAuthUser {
+export function toFeaturebaseUserArgs(user: UsersCrud["Admin"]["Read"]): HexclaveAuthUser {
   return {
     id: user.id,
     primaryEmail: user.primary_email,

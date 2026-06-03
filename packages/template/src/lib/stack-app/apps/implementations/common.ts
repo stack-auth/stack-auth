@@ -19,7 +19,7 @@ if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
   throw new HexclaveAssertionError("Client version was not replaced. Something went wrong during build!");
 }
 
-const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
+const replaceHexclavePortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
   const prefix = envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX;
   return prefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) as T : input;
@@ -121,7 +121,7 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
     url = url || envVars.NEXT_PUBLIC_STACK_API_URL || envVars.STACK_API_URL || envVars.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
   }
 
-  return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
+  return replaceHexclavePortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
 
 export const defaultBaseUrl = "https://api.hexclave.com";

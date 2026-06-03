@@ -1,8 +1,8 @@
-import * as stackFs from "fs";
+import * as hexclaveFs from "fs";
 import * as path from "path";
 
 export async function list(path: string) {
-  return await stackFs.promises.readdir(path);
+  return await hexclaveFs.promises.readdir(path);
 }
 
 export async function listRecursively(p: string, options: { excludeDirectories?: boolean } = {}): Promise<string[]> {
@@ -10,7 +10,7 @@ export async function listRecursively(p: string, options: { excludeDirectories?:
   return [
     ...(await Promise.all(files.map(async (fileName) => {
       const filePath = path.join(p, fileName);
-      if ((await stackFs.promises.stat(filePath)).isDirectory()) {
+      if ((await hexclaveFs.promises.stat(filePath)).isDirectory()) {
         return [
           ...(await listRecursively(filePath, options)),
           ...(options.excludeDirectories ? [] : [filePath]),
@@ -23,11 +23,11 @@ export async function listRecursively(p: string, options: { excludeDirectories?:
 }
 
 export function writeFileSyncIfChanged(path: string, content: string): void {
-  if (stackFs.existsSync(path)) {
-    const existingContent = stackFs.readFileSync(path, "utf-8");
+  if (hexclaveFs.existsSync(path)) {
+    const existingContent = hexclaveFs.readFileSync(path, "utf-8");
     if (existingContent === content) {
       return;
     }
   }
-  stackFs.writeFileSync(path, content);
+  hexclaveFs.writeFileSync(path, content);
 }

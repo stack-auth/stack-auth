@@ -1,12 +1,12 @@
 import type { BranchConfigNormalizedOverride } from "./config/schema";
 
 type StackConfigObject = BranchConfigNormalizedOverride;
-export const showOnboardingStackConfigValue = "show-onboarding";
+export const showOnboardingHexclaveConfigValue = "show-onboarding";
 /** @deprecated Use `HexclaveConfig` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
-export type StackConfig = StackConfigObject | typeof showOnboardingStackConfigValue;
+export type StackConfig = StackConfigObject | typeof showOnboardingHexclaveConfigValue;
 
 // Hexclave alias — same shape, declared separately so it doesn't inherit the deprecation tag.
-export type HexclaveConfig = StackConfigObject | typeof showOnboardingStackConfigValue;
+export type HexclaveConfig = StackConfigObject | typeof showOnboardingHexclaveConfigValue;
 
 type StrictConfigShape<Actual, Expected> =
   Expected extends readonly unknown[]

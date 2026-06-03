@@ -13,14 +13,14 @@ if (typeof globalThis === 'undefined') {
 }
 
 // Hexclave rebrand: file-private symbol key, renamed outright (no cross-version compat needed).
-const stackGlobalsSymbol = Symbol.for('__hexclave-globals');
-globalVar[stackGlobalsSymbol] ??= {};
+const hexclaveGlobalsSymbol = Symbol.for('__hexclave-globals');
+globalVar[hexclaveGlobalsSymbol] ??= {};
 
 export function createGlobal<T>(key: string, init: () => T) {
-  if (!globalVar[stackGlobalsSymbol][key]) {
-    globalVar[stackGlobalsSymbol][key] = init();
+  if (!globalVar[hexclaveGlobalsSymbol][key]) {
+    globalVar[hexclaveGlobalsSymbol][key] = init();
   }
-  return globalVar[stackGlobalsSymbol][key] as T;
+  return globalVar[hexclaveGlobalsSymbol][key] as T;
 }
 
 /**
@@ -29,20 +29,20 @@ export function createGlobal<T>(key: string, init: () => T) {
  */
 export function createGlobalAsync<T>(key: string, init: () => Promise<T>): Promise<T> {
   let promise: Promise<T> | null = null;
-  if (!globalVar[stackGlobalsSymbol][key]) {
+  if (!globalVar[hexclaveGlobalsSymbol][key]) {
     promise = init().catch((e) => {
-      delete globalVar[stackGlobalsSymbol][key];
+      delete globalVar[hexclaveGlobalsSymbol][key];
       throw e;
     });
-    globalVar[stackGlobalsSymbol][key] = promise;
+    globalVar[hexclaveGlobalsSymbol][key] = promise;
   }
-  return promise ?? globalVar[stackGlobalsSymbol][key] as Promise<T>;
+  return promise ?? globalVar[hexclaveGlobalsSymbol][key] as Promise<T>;
 }
 
 export function getGlobal(key: string): any {
-  return globalVar[stackGlobalsSymbol][key];
+  return globalVar[hexclaveGlobalsSymbol][key];
 }
 
 export function setGlobal(key: string, value: any) {
-  globalVar[stackGlobalsSymbol][key] = value;
+  globalVar[hexclaveGlobalsSymbol][key] = value;
 }

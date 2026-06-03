@@ -119,8 +119,8 @@ registerErrorSink((location, error, level, ...extraArgs) => {
   );
 });
 registerErrorSink((location, error, level, ...extraArgs) => {
-  globalVar.stackCapturedErrors = globalVar.stackCapturedErrors ?? [];
-  globalVar.stackCapturedErrors.push({ location, error, level, extraArgs });
+  globalVar.hexclaveCapturedErrors = globalVar.hexclaveCapturedErrors ?? [];
+  globalVar.hexclaveCapturedErrors.push({ location, error, level, extraArgs });
 });
 
 function dispatchToSinks(location: string, error: unknown, level: CaptureLevel): void {

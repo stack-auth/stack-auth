@@ -1,4 +1,4 @@
-import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
+import { hexclaveDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
 import { randomBytes } from "crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname } from "path";
@@ -28,7 +28,7 @@ export type DevEnvState = {
 };
 
 export function devEnvStatePath(): string {
-  return stackDevEnvStatePath();
+  return hexclaveDevEnvStatePath();
 }
 
 export function readDevEnvState(): DevEnvState {

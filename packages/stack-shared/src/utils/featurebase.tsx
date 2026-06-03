@@ -8,7 +8,7 @@ export type FeaturebaseUser = {
   profilePicture?: string,
 };
 
-export type StackAuthUser = {
+export type HexclaveAuthUser = {
   id: string,
   primaryEmail: string | null,
   displayName?: string | null,
@@ -18,9 +18,9 @@ export type StackAuthUser = {
 /**
  * Find a Featurebase user by their Hexclave user ID
  */
-async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string): Promise<FeaturebaseUser | null> {
+async function findFeaturebaseUserById(hexclaveAuthUserId: string, apiKey: string): Promise<FeaturebaseUser | null> {
   try {
-    const response = await fetch(`https://do.featurebase.app/v2/organization/identifyUser?id=${stackAuthUserId}`, {
+    const response = await fetch(`https://do.featurebase.app/v2/organization/identifyUser?id=${hexclaveAuthUserId}`, {
       method: 'GET',
       headers: {
         'X-API-Key': apiKey,
@@ -39,11 +39,11 @@ async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string):
     const user = data.user;
 
     if (!user) {
-      throw new HexclaveAssertionError(`Featurebase API returned success but no user data for ID: ${stackAuthUserId}`, { data });
+      throw new HexclaveAssertionError(`Featurebase API returned success but no user data for ID: ${hexclaveAuthUserId}`, { data });
     }
 
     return {
-      userId: user.externalUserId || user.userId || stackAuthUserId,
+      userId: user.externalUserId || user.userId || hexclaveAuthUserId,
       email: user.email,
       name: user.name,
       profilePicture: user.profilePicture,
@@ -173,14 +173,14 @@ async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<Featu
  * 4. We update profile information when needed
  */
 export async function getOrCreateFeaturebaseUser(
-  stackAuthUser: StackAuthUser,
+  hexclaveAuthUser: HexclaveAuthUser,
   options?: { apiKey?: string }
 ): Promise<{ userId: string, email: string }> {
   const apiKey = options?.apiKey || getEnvVariable("STACK_FEATUREBASE_API_KEY");
-  const fallbackEmail = `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`;
+  const fallbackEmail = `${hexclaveAuthUser.id}@featurebase-user.stack-auth-app.com`;
 
   // First, try to find existing user by Hexclave user ID
-  const existingById = await findFeaturebaseUserById(stackAuthUser.id, apiKey);
+  const existingById = await findFeaturebaseUserById(hexclaveAuthUser.id, apiKey);
   if (existingById) {
     // Ensure the user has an email on Featurebase.
     let ensuredEmail = existingById.email;
@@ -189,8 +189,8 @@ export async function getOrCreateFeaturebaseUser(
         await createFeaturebaseUser({
           userId: existingById.userId,
           email: fallbackEmail,
-          name: stackAuthUser.displayName || undefined,
-          profilePicture: stackAuthUser.profileImageUrl || undefined,
+          name: hexclaveAuthUser.displayName || undefined,
+          profilePicture: hexclaveAuthUser.profileImageUrl || undefined,
         }, apiKey);
         ensuredEmail = fallbackEmail;
       } catch (e) {
@@ -203,12 +203,12 @@ export async function getOrCreateFeaturebaseUser(
     try {
       const updates: Partial<Omit<FeaturebaseUser, 'userId' | 'email'>> = {};
 
-      if (stackAuthUser.displayName && stackAuthUser.displayName !== existingById.name) {
-        updates.name = stackAuthUser.displayName;
+      if (hexclaveAuthUser.displayName && hexclaveAuthUser.displayName !== existingById.name) {
+        updates.name = hexclaveAuthUser.displayName;
       }
 
-      if (stackAuthUser.profileImageUrl && stackAuthUser.profileImageUrl !== existingById.profilePicture) {
-        updates.profilePicture = stackAuthUser.profileImageUrl;
+      if (hexclaveAuthUser.profileImageUrl && hexclaveAuthUser.profileImageUrl !== existingById.profilePicture) {
+        updates.profilePicture = hexclaveAuthUser.profileImageUrl;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -226,7 +226,7 @@ export async function getOrCreateFeaturebaseUser(
   }
 
   // No existing user found by ID, need to create one
-  const candidateEmail = stackAuthUser.primaryEmail ?? fallbackEmail;
+  const candidateEmail = hexclaveAuthUser.primaryEmail ?? fallbackEmail;
 
   // Check if someone already has this email on Featurebase
   const existingByEmail = await findFeaturebaseUserByEmail(candidateEmail, apiKey);
@@ -234,10 +234,10 @@ export async function getOrCreateFeaturebaseUser(
 
   // Create new user
   const created = await createFeaturebaseUser({
-    userId: stackAuthUser.id,
+    userId: hexclaveAuthUser.id,
     email: safeEmail,
-    name: stackAuthUser.displayName || stackAuthUser.primaryEmail?.split('@')[0] || 'User',
-    profilePicture: stackAuthUser.profileImageUrl || undefined,
+    name: hexclaveAuthUser.displayName || hexclaveAuthUser.primaryEmail?.split('@')[0] || 'User',
+    profilePicture: hexclaveAuthUser.profileImageUrl || undefined,
   }, apiKey);
 
   return {

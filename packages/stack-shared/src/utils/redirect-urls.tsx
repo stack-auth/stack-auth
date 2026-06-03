@@ -13,9 +13,9 @@ const defaultPorts = new Map<string, string>([['https:', '443'], ['http:', '80']
 const hostedHandlerTemplateProjectIdA = "00000000-0000-4000-8000-000000000000";
 const hostedHandlerTemplateProjectIdB = "11111111-1111-4111-8111-111111111111";
 
-function replaceStackPortPrefix(input: string | undefined, stackPortPrefix: string | undefined): string | undefined {
+function replaceHexclavePortPrefix(input: string | undefined, hexclavePortPrefix: string | undefined): string | undefined {
   if (input == null) return undefined;
-  return stackPortPrefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, stackPortPrefix) : input;
+  return hexclavePortPrefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, hexclavePortPrefix) : input;
 }
 
 function getHostedHandlerUrlFromTemplate(template: string, projectId: string, hostedPath: string): string {
@@ -39,7 +39,7 @@ export function getHostedHandlerTrustedDomain(options: {
   projectId: string,
   hostedHandlerDomainSuffix?: string,
   hostedHandlerUrlTemplate?: string,
-  stackPortPrefix?: string,
+  hexclavePortPrefix?: string,
 }): string {
   return new URL(getHostedHandlerUrlFromConfig({
     ...options,
@@ -52,12 +52,12 @@ export function getHostedHandlerUrlFromConfig(options: {
   hostedPath: string,
   hostedHandlerDomainSuffix?: string,
   hostedHandlerUrlTemplate?: string,
-  stackPortPrefix?: string,
+  hexclavePortPrefix?: string,
 }): string {
-  const configuredTemplate = replaceStackPortPrefix(options.hostedHandlerUrlTemplate, options.stackPortPrefix);
+  const configuredTemplate = replaceHexclavePortPrefix(options.hostedHandlerUrlTemplate, options.hexclavePortPrefix);
   return configuredTemplate == null
     ? (() => {
-      const domainSuffix = replaceStackPortPrefix(options.hostedHandlerDomainSuffix, options.stackPortPrefix) ?? defaultHostedHandlerDomainSuffix;
+      const domainSuffix = replaceHexclavePortPrefix(options.hostedHandlerDomainSuffix, options.hexclavePortPrefix) ?? defaultHostedHandlerDomainSuffix;
       if (!domainSuffix.startsWith(".")) {
         throw new HexclaveAssertionError("The hosted handler domain suffix must start with a dot.", {
           domainSuffix,
@@ -82,7 +82,7 @@ export function getImplicitlyTrustedDomainsForProject(options: {
   projectId: string,
   hostedHandlerDomainSuffix?: string,
   hostedHandlerUrlTemplate?: string,
-  stackPortPrefix?: string,
+  hexclavePortPrefix?: string,
 }): string[] {
   return [getHostedHandlerTrustedDomain(options)];
 }
@@ -233,7 +233,7 @@ import.meta.vitest?.test("validateRedirectUrl trusts implicit hosted handler dom
     trustedDomains: getImplicitlyTrustedDomainsForProject({
       projectId,
       hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}",
-      stackPortPrefix: "92",
+      hexclavePortPrefix: "92",
     }),
   })).toBe(true);
 });

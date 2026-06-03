@@ -35,7 +35,7 @@ declare module "yup" {
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
-    stackSchemaInfo?:
+    hexclaveSchemaInfo?:
     | {
       type: "object" | "array" | "string" | "number" | "boolean" | "date" | "mixed" | "never",
     }
@@ -68,7 +68,7 @@ yup.addMethod(yup.string, "nonEmpty", function (message?: string) {
 
 yup.addMethod(yup.Schema, "hasNested", function (path: any) {
   if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new HexclaveAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
-  const schemaInfo = this.meta()?.stackSchemaInfo as any;
+  const schemaInfo = this.meta()?.hexclaveSchemaInfo as any;
   if (schemaInfo?.type === "record") {
     return schemaInfo.keySchema.isValidSync(path);
   } else if (schemaInfo?.type === "union") {
@@ -91,7 +91,7 @@ yup.addMethod(yup.Schema, "getNested", function (path: any) {
 
   if (!this.hasNested(path as never)) throw new HexclaveAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, { path, schema: this });
 
-  const schemaInfo = this.meta()?.stackSchemaInfo;
+  const schemaInfo = this.meta()?.hexclaveSchemaInfo;
   if (schemaInfo?.type === "record") {
     return schemaInfo.valueSchema;
   } else if (schemaInfo?.type === "union") {
@@ -131,7 +131,7 @@ export async function yupValidate<S extends yup.ISchema<any>>(
       ...omit(options ?? {}, ['currentUserId']),
       context: {
         ...options?.context,
-        stackAllowUserIdMe: options?.currentUserId !== undefined,
+        hexclaveAllowUserIdMe: options?.currentUserId !== undefined,
       },
     });
   } catch (error) {
@@ -184,44 +184,44 @@ const _signedUpAtMillisDescription = `The time the user signed up ${_atMillisDes
 const _lastActiveAtMillisDescription = `The time the user was last active ${_atMillisDescription}`;
 
 
-declare const StackAdaptSentinel: unique symbol;
-export type StackAdaptSentinel = typeof StackAdaptSentinel;
+declare const HexclaveAdaptSentinel: unique symbol;
+export type HexclaveAdaptSentinel = typeof HexclaveAdaptSentinel;
 
 // Built-in replacements
 export function yupString<A extends string, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.string<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.string(...args).meta({ stackSchemaInfo: { type: "string" } });
+  return yup.string(...args).meta({ hexclaveSchemaInfo: { type: "string" } });
 }
 export function yupNumber<A extends number, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.number<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.number(...args).meta({ stackSchemaInfo: { type: "number" } });
+  return yup.number(...args).meta({ hexclaveSchemaInfo: { type: "number" } });
 }
 export function yupBoolean<A extends boolean, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.boolean<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.boolean(...args).meta({ stackSchemaInfo: { type: "boolean" } });
+  return yup.boolean(...args).meta({ hexclaveSchemaInfo: { type: "boolean" } });
 }
 /**
  * @deprecated, use number of milliseconds since epoch instead
  */
 export function yupDate<A extends Date, B extends yup.Maybe<yup.AnyObject> = yup.AnyObject>(...args: Parameters<typeof yup.date<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.date(...args).meta({ stackSchemaInfo: { type: "date" } });
+  return yup.date(...args).meta({ hexclaveSchemaInfo: { type: "date" } });
 }
 function _yupMixedInternal<A extends {}>(...args: Parameters<typeof yup.mixed<A>>) {
   // eslint-disable-next-line no-restricted-syntax
   return yup.mixed(...args);
 }
 export function yupMixed<A extends {}>(...args: Parameters<typeof yup.mixed<A>>) {
-  return _yupMixedInternal(...args).meta({ stackSchemaInfo: { type: "mixed" } });
+  return _yupMixedInternal(...args).meta({ hexclaveSchemaInfo: { type: "mixed" } });
 }
 export function yupArray<A extends yup.Maybe<yup.AnyObject> = yup.AnyObject, B = any>(...args: Parameters<typeof yup.array<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
-  return yup.array(...args).meta({ stackSchemaInfo: { type: "array" } });
+  return yup.array(...args).meta({ hexclaveSchemaInfo: { type: "array" } });
 }
 export function yupTuple<T extends [unknown, ...unknown[]]>(schemas: { [K in keyof T]: yup.Schema<T[K]> }) {
   if (schemas.length === 0) throw new Error('yupTuple must have at least one schema');
   // eslint-disable-next-line no-restricted-syntax
-  return yup.tuple<T>(schemas as any).meta({ stackSchemaInfo: { type: "tuple", items: schemas } });
+  return yup.tuple<T>(schemas as any).meta({ hexclaveSchemaInfo: { type: "tuple", items: schemas } });
 }
 export function yupObjectWithAutoDefault<A extends yup.Maybe<yup.AnyObject>, B extends yup.ObjectShape>(...args: Parameters<typeof yup.object<A, B>>) {
   // eslint-disable-next-line no-restricted-syntax
@@ -245,7 +245,7 @@ export function yupObjectWithAutoDefault<A extends yup.Maybe<yup.AnyObject>, B e
       }
       return true;
     },
-  ).meta({ stackSchemaInfo: { type: "object" } });
+  ).meta({ hexclaveSchemaInfo: { type: "object" } });
   return object;
 }
 export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.ObjectShape>(...args: Parameters<typeof yup.object<A, B>>) {
@@ -255,13 +255,13 @@ export function yupObject<A extends yup.Maybe<yup.AnyObject>, B extends yup.Obje
 }
 
 export function yupNever(): yup.MixedSchema<never> {
-  return _yupMixedInternal().meta({ stackSchemaInfo: { type: "never" } }).test('never', 'This value should never be reached', () => false) as any;
+  return _yupMixedInternal().meta({ hexclaveSchemaInfo: { type: "never" } }).test('never', 'This value should never be reached', () => false) as any;
 }
 
 export function yupUnion<T extends yup.AnySchema[]>(...args: T): yup.MixedSchema<yup.InferType<T[number]>> {
   if (args.length === 0) throw new Error('yupUnion must have at least one schema');
 
-  return _yupMixedInternal().meta({ stackSchemaInfo: { type: "union", items: args } }).test('is-one-of', 'Invalid value', async (value, context) => {
+  return _yupMixedInternal().meta({ hexclaveSchemaInfo: { type: "union", items: args } }).test('is-one-of', 'Invalid value', async (value, context) => {
     if (value == null) return true;
     const errors = [];
     for (const schema of args) {
@@ -288,7 +288,7 @@ export function yupRecord<K extends yup.StringSchema, T extends yup.AnySchema>(
   keySchema: K,
   valueSchema: T,
 ): yup.MixedSchema<Record<yup.InferType<K> & string, yup.InferType<T>>> {
-  return yupObject().meta({ stackSchemaInfo: { type: "record", keySchema, valueSchema } }).unknown(true).test(
+  return yupObject().meta({ hexclaveSchemaInfo: { type: "record", keySchema, valueSchema } }).unknown(true).test(
     'record',
     '${path} must be a record of valid values',
     async function (value: unknown, context: yup.TestContext) {
@@ -331,7 +331,7 @@ export function ensureObjectSchema<T extends yup.AnyObject>(schema: yup.Schema<T
 }
 
 // Common
-export const adaptSchema = yupMixed<StackAdaptSentinel>();
+export const adaptSchema = yupMixed<HexclaveAdaptSentinel>();
 /**
  * Yup's URL schema does not recognize some URLs (including `http://localhost`) as a valid URL. This schema is a workaround for that.
  */
@@ -735,8 +735,8 @@ export const userIdOrMeSchema = yupString().uuid().transform(v => {
   if (v === "me") return userIdMeSentinelUuid;
   else return v;
 }).test((v, context) => {
-  if (!("stackAllowUserIdMe" in (context.options.context ?? {}))) throw new HexclaveAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re using yupValidate from schema-fields.ts to validate, instead of schema.validate(...).');
-  if (!context.options.context?.stackAllowUserIdMe) throw new HexclaveAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re passing in the currentUserId option in yupValidate.');
+  if (!("hexclaveAllowUserIdMe" in (context.options.context ?? {}))) throw new HexclaveAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re using yupValidate from schema-fields.ts to validate, instead of schema.validate(...).');
+  if (!context.options.context?.hexclaveAllowUserIdMe) throw new HexclaveAssertionError('userIdOrMeSchema is not allowed in this context. Make sure you\'re passing in the currentUserId option in yupValidate.');
   if (v === userIdMeSentinelUuid) throw new ReplaceFieldWithOwnUserId(context.path);
   return true;
 }).meta({ openapiField: { description: 'The ID of the user, or the special value `me` for the currently authenticated user', exampleValue: '3241a285-8329-4d69-8f3d-316e08cf140c' } });

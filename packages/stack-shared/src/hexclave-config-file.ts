@@ -2,14 +2,14 @@ import * as parser from "@babel/parser";
 import * as t from "@babel/types";
 import { isValidConfig, normalize } from "./config/format";
 
-export const showOnboardingStackConfigValue = "show-onboarding";
+export const showOnboardingHexclaveConfigValue = "show-onboarding";
 
 const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
 
 /**
  * Renders a config object into the source text of a `stack.config.ts` file.
  *
- * Browser-safe: kept here (next to `parseStackConfigFileContent`) instead of in
+ * Browser-safe: kept here (next to `parseHexclaveConfigFileContent`) instead of in
  * `config-rendering.ts` so dashboard client code can render config files
  * without pulling in `fs` / `path`.
  */
@@ -32,7 +32,7 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 
-type ParsedStackConfig = Record<string, unknown> | typeof showOnboardingStackConfigValue;
+type ParsedStackConfig = Record<string, unknown> | typeof showOnboardingHexclaveConfigValue;
 
 function unwrapStaticConfigExpression(expression: t.Expression): t.Expression {
   if (
@@ -94,7 +94,7 @@ function evaluateStaticConfigExpression(expression: t.Expression): unknown {
   throw new Error(`Unsupported config expression: ${unwrapped.type}`);
 }
 
-export function parseStackConfigFileContent(content: string, filePath: string): ParsedStackConfig {
+export function parseHexclaveConfigFileContent(content: string, filePath: string): ParsedStackConfig {
   if (content.trim() === "") return {};
   const ast = parser.parse(content, {
     sourceType: "module",

@@ -16,8 +16,8 @@ import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 export const useStripeMock = isLocalEmulatorEnabled()
   || (stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment()));
-const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
-const stripeMockPort = Number(getEnvVariable("STACK_STRIPE_MOCK_PORT", "") || `${stackPortPrefix}23`);
+const hexclavePortPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+const stripeMockPort = Number(getEnvVariable("STACK_STRIPE_MOCK_PORT", "") || `${hexclavePortPrefix}23`);
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
   host: "localhost",

@@ -109,7 +109,7 @@ export const getHostedHandlerUrl = (options: { projectId: string, pagePath: stri
     hostedPath,
     hostedHandlerDomainSuffix: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX,
     hostedHandlerUrlTemplate: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE,
-    stackPortPrefix: envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX,
+    hexclavePortPrefix: envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX,
   });
 };
 

@@ -1,7 +1,7 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
+import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { parseStackConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
+import { parseHexclaveConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -16,7 +16,7 @@ export { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD };
 export const LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE =
   "This endpoint is only available in local emulator mode (set NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true).";
 export const LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV = "STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT";
-export const LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE = showOnboardingStackConfigValue;
+export const LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE = showOnboardingHexclaveConfigValue;
 
 type LocalEmulatorConfigValue = Record<string, unknown> | typeof LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE;
 
@@ -76,7 +76,7 @@ async function readConfigContent(filePath: string): Promise<string> {
 async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorConfigValue> {
   const content = await readConfigContent(filePath);
   try {
-    return parseStackConfigFileContent(content, filePath);
+    return parseHexclaveConfigFileContent(content, filePath);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);
