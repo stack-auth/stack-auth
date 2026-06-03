@@ -106,7 +106,7 @@ Read the full discussion in [User fundamentals — Protecting a page](/guides/ge
 ## 2. Secrets, keys, and environments
 
 <Warning>
-  **`STACK_SECRET_SERVER_KEY`** (or `ssk_...`) must **only** exist in server-side environments (SSR, route handlers, server actions, your backend). Never prefix it with `NEXT_PUBLIC_`, never import it from code that runs in the browser, and never log it. See [Stack App](/guides/going-further/stack-app) and the [REST API overview](/api/overview).
+  **`STACK_SECRET_SERVER_KEY`** (or `ssk_...`) must **only** exist in server-side environments (SSR, route handlers, server actions, your backend). Never prefix it with `NEXT_PUBLIC_`, never import it from code that runs in the browser, and never log it. See the [StackApp SDK reference](/sdk/objects/stack-app) and the [REST API overview](/api/overview).
 </Warning>
 
 Practical split:
@@ -156,7 +156,7 @@ If you consume Stack webhooks, **verify every payload** (for example with Svix a
 | First integration | [Build a SaaS with Hexclave](/guides/other/tutorials/build-a-saas-with-hexclave) |
 | Page protection details | [User fundamentals](/guides/getting-started/user-fundamentals) |
 | Domains, OAuth, email, prod mode | [Launch checklist](/guides/apps/launch-checklist/overview) |
-| `HexclaveServerApp` and keys | [Stack App](/guides/going-further/stack-app) |
+| `HexclaveServerApp` and keys | [StackApp SDK reference](/sdk/objects/stack-app) |
 | Webhook verification | [Webhooks](/guides/apps/webhooks/overview) |
 | REST from your backend | [API overview](/api/overview) |
 

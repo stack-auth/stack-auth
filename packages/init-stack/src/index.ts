@@ -333,7 +333,7 @@ async function main(): Promise<void> {
     }
     nextSteps.push(
       `Copy the environment variables from the new API key into your own environment and reference them in ${appFiles.join(" and ")}`,
-      `Follow the instructions on how to use Hexclave's vanilla SDK at https://docs.hexclave.com/guides/going-further/stack-app`,
+      `Follow the instructions on how to use Hexclave's vanilla SDK at https://docs.hexclave.com/sdk/objects/stack-app`,
     );
   }
   logVerbose("Primary integration steps completed", { type, nextStepsCount: nextSteps.length });
