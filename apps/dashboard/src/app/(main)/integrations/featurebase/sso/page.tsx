@@ -1,4 +1,4 @@
-import { getHexclaveServerApp } from "@/stack/server";
+import { getHexclaveServerApp } from "@/hexclave/server";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { getOrCreateFeaturebaseUser } from "@hexclave/shared/dist/utils/featurebase";
 import { urlString } from "@hexclave/shared/dist/utils/urls";

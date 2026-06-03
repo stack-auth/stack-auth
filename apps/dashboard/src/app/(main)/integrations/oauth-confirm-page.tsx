@@ -1,4 +1,4 @@
-import { getHexclaveServerApp } from "@/stack/server";
+import { getHexclaveServerApp } from "@/hexclave/server";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { redirect } from "next/navigation";
