@@ -529,6 +529,7 @@ it("starts nested cross-domain auth from the target domain", async ({ expect }) 
       state: "nested-state",
       codeChallenge: "nested-code-challenge",
     });
+    vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(true);
 
     globalThis.document = createMockDocument();
     globalThis.window = {
@@ -556,6 +557,74 @@ it("starts nested cross-domain auth from the target domain", async ({ expect }) 
     expect(redirectUrl.searchParams.get("code_challenge")).toBe("nested-code-challenge");
     expect(redirectUrl.searchParams.get("code_challenge_method")).toBe("S256");
     expect(redirectUrl.searchParams.get("after_callback_redirect_url")).toBe(`https://${projectId}.example-stack-hosted.test/handler/account-settings`);
+  });
+});
+
+it("carries hosted sign-in return state on the nested OAuth redirect URI", async ({ expect }) => {
+  await withHostedDomainSuffix(async () => {
+    const projectId = "14141414-1414-4414-8414-141414141414";
+    const clientApp = createClientApp(projectId);
+    const sourceRefreshTokenId = "source-session";
+    const handoffState = "state-from-hosted-sign-in";
+    const handoffCodeChallenge = "abcdefghijklmnopqrstuvwxyzABCDEFG_0123456789-._~";
+    const returnToAppUrl = `${localRedirectUrl}/handler/sign-in`;
+    const redirectBackUrl = new URL(`${localRedirectUrl}/handler/sign-in`);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_auth", "1");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_state", handoffState);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", returnToAppUrl);
+    const currentUrl = new URL(`https://${projectId}.example-stack-hosted.test/handler/sign-in`);
+    currentUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
+    currentUrl.searchParams.set("hexclave_cross_domain_state", handoffState);
+    currentUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
+    currentUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", returnToAppUrl);
+    currentUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", sourceRefreshTokenId);
+    currentUrl.searchParams.set("stack_nested_cross_domain_auth_callback_url", `${localRedirectUrl}/handler/sign-in`);
+    const expectedAfterCallbackRedirectUrl = new URL(currentUrl);
+    expectedAfterCallbackRedirectUrl.searchParams.delete("stack_nested_cross_domain_auth_refresh_token_id");
+    expectedAfterCallbackRedirectUrl.searchParams.delete("stack_nested_cross_domain_auth_callback_url");
+
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    let redirectedUrl = "";
+
+    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
+      state: "nested-state",
+      codeChallenge: "nested-code-challenge",
+    });
+    vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(true);
+
+    globalThis.document = createMockDocument();
+    globalThis.window = {
+      location: {
+        href: currentUrl.toString(),
+        replace: (url: string) => {
+          redirectedUrl = url;
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    try {
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    const redirectUrl = new URL(redirectedUrl);
+    expect(redirectUrl.pathname).toBe(new URL(`${localRedirectUrl}/handler/sign-in`).pathname);
+    expect(redirectUrl.searchParams.get("after_callback_redirect_url")).toBe(expectedAfterCallbackRedirectUrl.toString());
+    const redirectUri = new URL(redirectUrl.searchParams.get("redirect_uri") ?? "");
+    expect(redirectUri.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
+    expect(redirectUri.pathname).toBe("/handler/sign-in");
+    expect(redirectUrl.searchParams.get("state")).toBe("nested-state");
+    expect(redirectUrl.searchParams.get("code_challenge")).toBe("nested-code-challenge");
+    expect(redirectUri.searchParams.get("after_auth_return_to")).toBe(redirectBackUrl.toString());
+    expect(redirectUri.searchParams.get("hexclave_cross_domain_state")).toBe(handoffState);
+    expect(redirectUri.searchParams.get("hexclave_cross_domain_code_challenge")).toBe(handoffCodeChallenge);
+    expect(redirectUri.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBe(returnToAppUrl);
   });
 });
 
