@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { parseStackConfigFileContent, renderConfigFileContent } from "./stack-config-file";
+import { parseStackConfigFileContent, renderConfigFileContent } from "./hexclave-config-file";
 export { parseStackConfigFileContent, renderConfigFileContent };
 
 /**
- * Packages that export the `StackConfig` type, in priority order.
+ * Packages that export the `HexclaveConfig` type, in priority order.
  * The first match found in a project's dependencies wins. Hexclave-branded
  * packages come first (canonical); the legacy `@stackframe/*` names remain
  * so projects pinned to the last legacy release still render a config file
@@ -22,7 +22,7 @@ const CONFIG_IMPORT_PACKAGES = [
 
 /**
  * Given a list of dependency names (from package.json), returns the SDK
- * package that should be used for the `StackConfig` import, or `undefined`
+ * package that should be used for the `HexclaveConfig` import, or `undefined`
  * if none of the known packages are installed.
  */
 export function detectConfigImportPackage(dependencies: string[]): string | undefined {
@@ -36,7 +36,7 @@ export function detectConfigImportPackage(dependencies: string[]): string | unde
 
 /**
  * Walks up from `dir` to find the nearest `package.json` and returns the
- * best SDK package to use for the `StackConfig` type import.
+ * best SDK package to use for the `HexclaveConfig` type import.
  */
 export function detectImportPackageFromDir(dir: string): string | undefined {
   let current = dir;
@@ -65,7 +65,7 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
   expect(renderConfigFileContent({
     "payments.items.todos.displayName": "Todo Slots",
     "payments.items.todos.customerType": "user",
-  })).toContain(`export const config: StackConfig = {
+  })).toContain(`export const config: HexclaveConfig = {
   "payments": {
     "items": {
       "todos": {
@@ -119,12 +119,12 @@ import.meta.vitest?.test("renderConfigFileContent rejects invalid config exports
 
 import.meta.vitest?.test("renderConfigFileContent uses custom import package", ({ expect }) => {
   const content = renderConfigFileContent({}, "@hexclave/next");
-  expect(content).toContain('import type { StackConfig } from "@hexclave/next";');
+  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/next";');
 });
 
 import.meta.vitest?.test("renderConfigFileContent defaults to @hexclave/js", ({ expect }) => {
   const content = renderConfigFileContent({});
-  expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
+  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
 });
 
 import.meta.vitest?.test("detectConfigImportPackage picks first matching package by priority", ({ expect }) => {

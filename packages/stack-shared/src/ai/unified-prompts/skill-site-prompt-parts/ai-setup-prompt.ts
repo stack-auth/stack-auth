@@ -45,7 +45,7 @@ export const convexSetupPrompt = deindent`
 
       export default {
         providers: getConvexProvidersConfig({
-          projectId: process.env.STACK_PROJECT_ID, // or process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+          projectId: process.env.HEXCLAVE_PROJECT_ID, // or process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID
         }),
       };
       \`\`\`
@@ -78,7 +78,7 @@ export const convexSetupPrompt = deindent`
 
       \`\`\`ts convex/myFunctions.ts
       import { query } from "./_generated/server";
-      import { hexclaveServerApp } from "../src/stack/server";
+      import { hexclaveServerApp } from "../src/hexclave/server";
 
       export const myQuery = query({
         handler: async (ctx, args) => {
@@ -135,8 +135,8 @@ export const supabaseSetupPrompt = deindent`
       If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Hexclave:
 
       \`\`\`sh
-      npx create-next-app@latest -e with-supabase stack-supabase
-      cd stack-supabase
+      npx create-next-app@latest -e with-supabase hexclave-supabase
+      cd hexclave-supabase
       npx @hexclave/cli@latest init
       \`\`\`
 
@@ -152,10 +152,10 @@ export const supabaseSetupPrompt = deindent`
 
       \`\`\`.env .env.local
       # The project ID is the only client-exposed Hexclave variable; in Next.js it must
-      # be prefixed with NEXT_PUBLIC_. STACK_SECRET_SERVER_KEY is server-only and must
+      # be prefixed with NEXT_PUBLIC_. HEXCLAVE_SECRET_SERVER_KEY is server-only and must
       # NEVER be prefixed or exposed to the client.
-      NEXT_PUBLIC_STACK_PROJECT_ID=<your-stack-project-id>
-      STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+      NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=<your-hexclave-project-id>
+      HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
       \`\`\`
     </Step>
 
@@ -165,7 +165,7 @@ export const supabaseSetupPrompt = deindent`
       \`\`\`tsx utils/actions.ts
       'use server';
 
-      import { hexclaveServerApp } from "@/stack/server";
+      import { hexclaveServerApp } from "@/hexclave/server";
       import * as jose from "jose";
 
       export const getSupabaseJwt = async () => {
@@ -450,13 +450,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           \`\`\`
       </Step>
 
-      <Step title="Initializing the Stack App">
-        Next, let us create the Stack App object for your project. This is the most important object in a Hexclave project.
+      <Step title="Initializing the Hexclave App">
+        Next, let us create the Hexclave App object for your project. This is the most important object in a Hexclave project.
 
         ${isMaybeFrontend ? deindent`
           In a frontend where you cannot keep a secret key safe, you would use the \`HexclaveClientApp\` constructor:
 
-          \`\`\`ts src/stack/client.ts
+          \`\`\`ts src/hexclave/client.ts
           import { HexclaveClientApp } from "${packageName}";
 
           export const hexclaveClientApp = new HexclaveClientApp({
@@ -474,7 +474,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           In a backend where you can keep a secret key safe, you can use the \`HexclaveServerApp\`, which provides access to more sensitive APIs compared to \`HexclaveClientApp\`:
 
           ${!isDefinitelyFrontend ? deindent`
-            \`\`\`ts src/stack/server.ts
+            \`\`\`ts src/hexclave/server.ts
             import { HexclaveServerApp } from "${packageName}";
 
             export const hexclaveServerApp = new HexclaveServerApp({
@@ -493,7 +493,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isMaybeFrontend ? deindent`
-            \`\`\`ts src/stack/server.ts
+            \`\`\`ts src/hexclave/server.ts
             import { HexclaveServerApp } from "${packageName}";
             import { hexclaveClientApp } from "./client";
 
@@ -520,11 +520,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
         <AccordionGroup>
           <Accordion title="Option 1: Running Hexclave's dashboard locally (recommended)" defaultOpen>
-            ${isAiPrompt ? "This is the strongly recommended option unless the user has explicitly said otherwise, as it allows usage of \`stack.config.ts\` files and does not require the user to get project IDs or API keys from the dashboard." : ""}
-            
-            First, create a \`stack.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
+            ${isAiPrompt ? "This is the strongly recommended option unless the user has explicitly said otherwise, as it allows usage of \`hexclave.config.ts\` files and does not require the user to get project IDs or API keys from the dashboard." : ""}
 
-            \`\`\`ts stack.config.ts
+            First, create a \`hexclave.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
+
+            \`\`\`ts hexclave.config.ts
             import type { HexclaveConfig } from "${packageName}";
 
             // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
@@ -545,8 +545,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
               // ...
               "scripts": {
                 // ...
-                "dev": "stack dev --config-file ./stack.config.ts -- npm run dev:without-stack-auth",
-                "dev:without-stack-auth": "<your-existing-dev-script>"
+                "dev": "hexclave dev --config-file ./hexclave.config.ts -- npm run dev:without-hexclave",
+                "dev:without-hexclave": "<your-existing-dev-script>"
               }
             }
             \`\`\`
@@ -568,12 +568,12 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>
+            HEXCLAVE_PROJECT_ID=<your-project-id>
             \`\`\`
 
-            Alternatively, you can also just set the project ID in the \`stack/client.ts\` file:
+            Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
 
-            \`\`\`ts src/stack/client.ts
+            \`\`\`ts src/hexclave/client.ts
             export const hexclaveClientApp = new HexclaveClientApp({
               // ...
               projectId: "your-project-id",
@@ -590,8 +590,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Hexclave on a server.
             `}\n\n` : ""}\`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>
-            STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+            HEXCLAVE_PROJECT_ID=<your-project-id>
+            HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 
             They'll automatically be picked up by the \`HexclaveServerApp\` constructor.
@@ -608,7 +608,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             \`\`\`tsx src/App.tsx
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
-            import { hexclaveClientApp } from "./stack/client";
+            import { hexclaveClientApp } from "./hexclave/client";
 
             export default function App() {
               return (
@@ -628,7 +628,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             \`\`\`tsx src/app/layout.tsx
             import { Suspense } from "react";
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
-            import { hexclaveServerApp } from "@/stack/server";
+            import { hexclaveServerApp } from "@/hexclave/server";
 
             export default function RootLayout({ children }: { children: React.ReactNode }) {
               return (
@@ -649,7 +649,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             import { HexclaveProvider, HexclaveTheme } from "${isDefinitelyTanstackStart ? packageName : "@hexclave/tanstack-start"}";
             import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
             import type { ReactNode } from "react";
-            import { hexclaveClientApp } from "../stack/client";
+            import { hexclaveClientApp } from "../hexclave/client";
 
             export const Route = createRootRoute({
               shellComponent: RootDocument,
@@ -696,7 +696,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             \`\`\`tsx src/App.tsx
             import { Suspense } from "react";
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
-            import { hexclaveClientApp } from "./stack/client";
+            import { hexclaveClientApp } from "./hexclave/client";
 
             export default function App() {
               return (
@@ -749,7 +749,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         </Step>
 
         ${isMaybeTanstackStart ? deindent`
-          <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Stack handler route">
+          <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Hexclave handler route">
             Hexclave's auth flows (sign-in, sign-up, OAuth callbacks, password reset, etc.) are rendered by a single \`HexclaveHandler\` component mounted at \`/handler/*\`. In TanStack Start, expose it as a splat file route at \`src/routes/handler/$.tsx\`:
 
             \`\`\`tsx src/routes/handler/$.tsx

@@ -1,5 +1,5 @@
 import { api } from "@/convex/_generated/api";
-import { stackClientApp } from "@/stack/client";
+import { stackClientApp } from "@/hexclave/client";
 import { ConvexHttpClient, ConvexClient } from "convex/browser";
 
 const convexHttpClient = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);

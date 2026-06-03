@@ -1,7 +1,7 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { parseStackConfigFileContent } from "@hexclave/shared/dist/stack-config-file";
+import { parseStackConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
