@@ -6,7 +6,7 @@ import type { RequestListener } from "@hexclave/shared/dist/interface/client-int
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
-import { _StackClientAppImpl } from "../implementations";
+import { _HexclaveClientAppImpl } from "../implementations";
 import { AnalyticsOptions } from "../implementations/session-replay";
 
 /** @deprecated Use `HexclaveClientAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
@@ -175,6 +175,6 @@ export type HexclaveClientAppConstructorOptions<HasTokenStore extends boolean, P
 export type HexclaveClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppJson<HasTokenStore, ProjectId>;
 export type HexclaveClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackClientApp<HasTokenStore, ProjectId>;
 export type HexclaveClientAppConstructor = StackClientAppConstructor;
-export const HexclaveClientApp: HexclaveClientAppConstructor = _StackClientAppImpl;
+export const HexclaveClientApp: HexclaveClientAppConstructor = _HexclaveClientAppImpl;
 /** @deprecated Use `HexclaveClientApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export const StackClientApp: StackClientAppConstructor = HexclaveClientApp;

@@ -9,7 +9,7 @@ import { AdminEmailOutbox, AdminSentEmail } from "../../email";
 import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
 import { AdminProject } from "../../projects";
-import { _StackAdminAppImpl } from "../implementations";
+import { _HexclaveAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
 
 export type EmailOutboxListOptions = {
@@ -183,6 +183,6 @@ export type StackAdminAppConstructor = {
 export type HexclaveAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackAdminAppConstructorOptions<HasTokenStore, ProjectId>;
 export type HexclaveAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackAdminApp<HasTokenStore, ProjectId>;
 export type HexclaveAdminAppConstructor = StackAdminAppConstructor;
-export const HexclaveAdminApp: HexclaveAdminAppConstructor = _StackAdminAppImpl;
+export const HexclaveAdminApp: HexclaveAdminAppConstructor = _HexclaveAdminAppImpl;
 /** @deprecated Use `HexclaveAdminApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export const StackAdminApp: StackAdminAppConstructor = HexclaveAdminApp;

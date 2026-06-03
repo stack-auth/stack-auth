@@ -24,7 +24,7 @@ import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigO
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { _StackServerAppImplIncomplete } from "./server-app-impl";
+import { _HexclaveServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { branchConfigSourceSchema } from "@hexclave/shared/dist/schema-fields";
@@ -69,7 +69,7 @@ function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSou
   return source;
 }
 
-export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
+export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _HexclaveServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
   declare protected _interface: HexclaveAdminInterface;
 
   private readonly _adminProjectCache = createCache(async () => {

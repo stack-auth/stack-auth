@@ -2362,7 +2362,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   root.id = ROOT_ID;
   body.appendChild(root);
 
-  const wrapper = h('div', { className: 'stack-devtool' });
+  const wrapper = h('div', { className: 'hexclave-devtool' });
   root.appendChild(wrapper);
 
   const style = document.createElement('style');

@@ -7,7 +7,7 @@ import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
-import { _StackServerAppImpl } from "../implementations";
+import { _HexclaveServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 
@@ -130,6 +130,6 @@ export type StackServerAppConstructor = {
 export type HexclaveServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackServerAppConstructorOptions<HasTokenStore, ProjectId>;
 export type HexclaveServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = StackServerApp<HasTokenStore, ProjectId>;
 export type HexclaveServerAppConstructor = StackServerAppConstructor;
-export const HexclaveServerApp: HexclaveServerAppConstructor = _StackServerAppImpl;
+export const HexclaveServerApp: HexclaveServerAppConstructor = _HexclaveServerAppImpl;
 /** @deprecated Use `HexclaveServerApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export const StackServerApp: StackServerAppConstructor = HexclaveServerApp;

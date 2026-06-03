@@ -59,7 +59,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
-import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
+import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
@@ -201,9 +201,9 @@ async function getServerRequestHost(): Promise<string | null> {
   // END_PLATFORM
 }
 
-type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
+type HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
 
-export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
+export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
    * There is a circular dependency between the admin app and the client app, as the former inherits from the latter and
    * the latter needs to use the former when creating a new instance of an internal project.
@@ -211,9 +211,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * To break it, we set the admin app here lazily instead of importing it directly. This variable is set by ./index.ts,
    * which imports both this file and ./admin-app-impl.ts.
    */
-  static readonly LazyStackAdminAppImpl: { value: typeof import("./admin-app-impl")._StackAdminAppImplIncomplete | undefined } = { value: undefined };
+  static readonly LazyStackAdminAppImpl: { value: typeof import("./admin-app-impl")._HexclaveAdminAppImplIncomplete | undefined } = { value: undefined };
 
-  protected readonly _options: StackClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>;
+  protected readonly _options: HexclaveClientAppImplConstructorOptionsResolved<HasTokenStore, ProjectId>;
   protected readonly _extraOptions: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveClientInterface } | undefined;
   protected _uniqueIdentifier: string | undefined = undefined;
   protected _interface: HexclaveClientInterface;
@@ -227,7 +227,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _eventTracker: EventTracker | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
-  private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
+  private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _HexclaveAdminAppImplIncomplete<false, string>>();
 
   private readonly _currentUserCache = createCacheBySession(async (session) => {
     if (this.__DEMO_ENABLE_SLIGHT_FETCH_DELAY) {
@@ -623,8 +623,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   constructor(options: StackClientAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: HexclaveClientInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
-    if (!_StackClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
-      throw new HexclaveAssertionError("Admin app implementation not initialized. Did you import the _StackClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyStackAdminAppImpl for more details).");
+    if (!_HexclaveClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
+      throw new HexclaveAssertionError("Admin app implementation not initialized. Did you import the _HexclaveClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyHexclaveAdminAppImpl for more details).");
     }
 
     this._options = resolvedOptions;
@@ -705,7 +705,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._eventTracker.start();
     }
 
-    if (isBrowserLike() && this._isOAuthCallbackUrlHosted() && this._currentUrlLooksLikeStackOAuthCallback()) {
+    if (isBrowserLike() && this._isOAuthCallbackUrlHosted() && this._currentUrlLooksLikeHexclaveOAuthCallback()) {
       this._trackPendingAuthResolution(async () => {
         if (isBrowserLike()) {
           await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
@@ -805,7 +805,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     );
   }
 
-  protected _currentUrlLooksLikeStackOAuthCallback(): boolean {
+  protected _currentUrlLooksLikeHexclaveOAuthCallback(): boolean {
     if (typeof window === "undefined") {
       return false;
     }
@@ -2630,9 +2630,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _getOwnedAdminApp(forProjectId: string, session: InternalSession): _StackAdminAppImplIncomplete<false, string> {
+  protected _getOwnedAdminApp(forProjectId: string, session: InternalSession): _HexclaveAdminAppImplIncomplete<false, string> {
     if (!this._ownedAdminApps.has([session, forProjectId])) {
-      this._ownedAdminApps.set([session, forProjectId], new (_StackClientAppImplIncomplete.LazyStackAdminAppImpl.value!)({
+      this._ownedAdminApps.set([session, forProjectId], new (_HexclaveClientAppImplIncomplete.LazyStackAdminAppImpl.value!)({
         baseUrl: this._interface.options.getBaseUrl(),
         projectId: forProjectId,
         tokenStore: null,
@@ -3982,7 +3982,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
 
         const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
-        return new _StackClientAppImplIncomplete<HasTokenStore, ProjectId>({
+        return new _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId>({
           ...restJson as any,
           analytics: analyticsOptionsFromJson(analytics),
         }, {

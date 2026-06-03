@@ -34,12 +34,12 @@ import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermiss
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
-import { _StackClientAppImplIncomplete } from "./client-app-impl";
+import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
-export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackClientAppImplIncomplete<HasTokenStore, ProjectId> {
+export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: HexclaveServerInterface;
 
   // TODO override the client user cache to use the server user cache, so we save some requests
