@@ -4,9 +4,11 @@ description: Teach your coding agent how to use Hexclave — via web fetch, an i
 sidebarTitle: Using Hexclave with AI
 ---
 
-import { HexclaveAgentReminders } from "/snippets/hexclave-agent-reminders.jsx";
+import { hexclaveAgentRemindersText } from "/snippets/hexclave-agent-reminders.jsx";
 
-<HexclaveAgentReminders />
+<Visibility for="agents">
+{hexclaveAgentRemindersText}
+</Visibility>
 
 <Note>
   This page is for giving your own coding agent (Claude Code, Cursor, Codex, opencode, …) ongoing knowledge of Hexclave so it writes Hexclave code correctly.

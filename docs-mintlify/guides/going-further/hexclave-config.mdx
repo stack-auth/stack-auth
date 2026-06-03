@@ -1,0 +1,349 @@
+---
+title: "hexclave.config.ts"
+description: "Configure Hexclave from a versioned TypeScript config file."
+sidebarTitle: "hexclave.config.ts"
+---
+
+`hexclave.config.ts` is the config file for your Hexclave project. It contains all important settings for your project.
+
+The file exports a static `config` object:
+
+```ts title="hexclave.config.ts"
+import type { HexclaveConfig } from "@hexclave/js";
+
+export const config: HexclaveConfig = {
+  auth: {
+    allowSignUp: true,
+    password: {
+      allowSignIn: true,
+    },
+  },
+  apps: {
+    installed: {
+      authentication: {
+        enabled: true,
+      },
+    },
+  },
+};
+```
+
+If you are running Hexclave with a [local dashboard](/guides/going-further/local-vs-cloud-dashboard), you already have a `hexclave.config.ts` file, and any changes you make on the dashboard will automatically be synced to the config file.
+
+If you are running Hexclave on a [cloud project](/guides/going-further/local-vs-cloud-dashboard) instead, you may need to use the [CLI's `pull` and `push`](/guides/going-further/cli#config-commands) commands to sync your config file with the cloud. In production, you would usually do this in your GitHub Actions or CI/CD pipeline.
+
+## How To Read This Page
+
+Most nested maps use IDs that you choose, such as `payments.products.pro` or `rbac.permissions.admin`. Unless a field says otherwise, custom IDs can contain letters, numbers, underscores, and hyphens, must not start with a hyphen, and can be up to 63 characters long.
+
+<Info>
+  `hexclave.config.ts` must be statically readable. Export a plain object or `"show-onboarding"`; do not use functions, spreads, computed keys, imports as values, or environment-dependent expressions inside the exported config.
+</Info>
+
+## Top-Level Sections
+
+| Section | What it controls |
+| --- | --- |
+| `apps` | Which Hexclave apps are installed and enabled. |
+| `auth` | Sign-up, sign-in methods, OAuth behavior, and sign-up rules. |
+| `apiKeys` | Whether user and team API keys are available. |
+| `rbac` | Custom permissions and permissions granted by default. |
+| `teams` | Team creation behavior. |
+| `users` | User self-service account deletion. |
+| `onboarding` | Requirements that apply during user onboarding. |
+| `emails` | Email themes and templates. |
+| `payments` | Products, prices, items, and purchase controls. |
+| `dbSync` | External database sync targets. |
+| `dataVault` | Data Vault stores. |
+| `domains` | Reserved in the config file. Trusted domains are environment-specific. |
+
+## Apps
+
+`apps.installed` is a map from app ID to app settings.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `apps.installed.<appId>` | `{ enabled: boolean }` | Installs an app and enables or disables it. |
+
+```ts title="hexclave.config.ts"
+export const config: HexclaveConfig = {
+  apps: {
+    installed: {
+      authentication: { enabled: true },
+      teams: { enabled: true },
+      payments: { enabled: true },
+    },
+  },
+};
+```
+
+For more information on the major apps you can enable here, see the app docs for [Authentication](/guides/apps/authentication/overview), [Teams](/guides/apps/teams/overview), [RBAC](/guides/apps/rbac/overview), [API Keys](/guides/apps/api-keys/overview), [Emails](/guides/apps/emails/overview), [Payments](/guides/apps/payments/overview), [Data Vault](/guides/apps/data-vault/overview), and [Webhooks](/guides/apps/webhooks/overview).
+
+## Auth
+
+These fields control who can create accounts and which sign-in methods are available.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth.allowSignUp` | `boolean` | `true` | Allows new users to sign up. Server-side user creation can still create users even when this is `false`. |
+| `auth.password` | `{ allowSignIn?: boolean }` | `{ allowSignIn: false }` | Configures email and password auth. `allowSignIn` allows users to sign in with a password. |
+| `auth.otp` | `{ allowSignIn?: boolean }` | `{ allowSignIn: false }` | Configures one-time passcode or magic-link style auth. `allowSignIn` allows users to sign in with OTP. |
+| `auth.passkey` | `{ allowSignIn?: boolean }` | `{ allowSignIn: false }` | Configures passkey auth. `allowSignIn` allows users to sign in with passkeys. |
+
+For more information on sign-up, sign-in, and user sessions, see the [Authentication app docs](/guides/apps/authentication/overview) and [User Fundamentals](/guides/getting-started/user-fundamentals).
+
+### OAuth
+
+OAuth providers live under `auth.oauth.providers`.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth.oauth.accountMergeStrategy` | `"link_method"` \| `"raise_error"` \| `"allow_duplicates"` | `"link_method"` | Controls what happens when an OAuth sign-in has the same email as an existing user. |
+| `auth.oauth.providers.<providerId>` | `{ type?: OAuth provider ID, allowSignIn?: boolean, allowConnectedAccounts?: boolean }` | `{ allowSignIn: false, allowConnectedAccounts: false }` | Configures one OAuth provider. `type` is the provider implementation, usually the same as `<providerId>`. `allowSignIn` lets users sign in or sign up with it. `allowConnectedAccounts` lets signed-in users connect it to an existing account. |
+
+Valid OAuth provider types are `google`, `github`, `microsoft`, `spotify`, `facebook`, `discord`, `gitlab`, `bitbucket`, `linkedin`, `apple`, `x`, and `twitch`.
+
+For provider-specific setup instructions, see [All Auth Providers](/guides/apps/authentication/auth-providers). For account linking behavior, see [Connected Accounts](/guides/apps/authentication/connected-accounts).
+
+`accountMergeStrategy` options:
+
+| Value | Behavior |
+| --- | --- |
+| `"link_method"` | Add the OAuth method to the existing user with the same email. |
+| `"raise_error"` | Reject the OAuth sign-in when the email already belongs to another account. |
+| `"allow_duplicates"` | Create a separate user even if another user already has the same email. |
+
+```ts title="hexclave.config.ts"
+export const config: HexclaveConfig = {
+  auth: {
+    oauth: {
+      accountMergeStrategy: "link_method",
+      providers: {
+        google: {
+          type: "google",
+          allowSignIn: true,
+          allowConnectedAccounts: true,
+        },
+      },
+    },
+  },
+};
+```
+
+OAuth client IDs, client secrets, custom callback URLs, Apple bundle IDs, Facebook config IDs, and Microsoft tenant IDs are environment-specific and are not configured in `hexclave.config.ts`.
+
+### Sign-Up Rules
+
+Sign-up rules are evaluated during sign-up. Higher priority rules run first. The first matching rule decides the outcome.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `auth.signUpRules.<ruleId>` | `{ enabled?: boolean, displayName?: string, priority?: number, condition?: string, action?: { type: "allow" \| "reject" \| "restrict" \| "log", message?: string } }` | `{ enabled: false, priority: 0, action: { type: "allow" } }` | Defines one rule. `displayName` is shown in the dashboard. `priority` is a non-negative integer; higher values run first. `condition` is the CEL expression. `action.type` is the result when the rule matches, and `action.message` is an internal reject message that is not shown to the user. |
+| `auth.signUpRulesDefaultAction` | `"allow"` \| `"reject"` | `"allow"` | What to do when no sign-up rule matches. |
+
+```ts title="hexclave.config.ts"
+export const config: HexclaveConfig = {
+  auth: {
+    signUpRulesDefaultAction: "reject",
+    signUpRules: {
+      allowCompanyEmail: {
+        enabled: true,
+        displayName: "Allow company email",
+        priority: 100,
+        condition: 'emailDomain == "example.com"',
+        action: {
+          type: "allow",
+        },
+      },
+    },
+  },
+};
+```
+
+See [Sign-up Rules](/guides/apps/authentication/sign-up-rules) for the condition variables and examples.
+
+## RBAC
+
+RBAC config defines permissions and default grants. Permission IDs support lowercase letters, numbers, underscores, and colons. System permission IDs may start with `$`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `rbac.permissions.<permissionId>` | `{ description?: string, scope?: "team" \| "project", containedPermissionIds?: Record<string, true> }` | Defines one permission. `description` explains it in the dashboard. `scope` decides whether it applies inside a team or globally to the project. `containedPermissionIds` makes it include other permissions, which is useful for roles like `admin`. |
+| `rbac.defaultPermissions.teamCreator` | `Record<string, true>` | Permissions granted to users who create a team. |
+| `rbac.defaultPermissions.teamMember` | `Record<string, true>` | Permissions granted to users when they become team members. |
+| `rbac.defaultPermissions.signUp` | `Record<string, true>` | Project permissions granted to users when they sign up. |
+
+```ts title="hexclave.config.ts"
+export const config: HexclaveConfig = {
+  rbac: {
+    permissions: {
+      admin: {
+        description: "Can manage all team settings",
+        scope: "team",
+        containedPermissionIds: {
+          "team:read": true,
+          "team:write": true,
+        },
+      },
+    },
+    defaultPermissions: {
+      teamCreator: {
+        admin: true,
+      },
+    },
+  },
+};
+```
+
+See [RBAC Permissions](/guides/apps/rbac/overview) for how to check and grant permissions in code.
+
+## API Keys
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `apiKeys.enabled` | `{ team?: boolean, user?: boolean }` | `{ team: false, user: false }` | Controls which API key owner types are available. `team` allows team-owned API keys, and `user` allows user-owned API keys. |
+
+For more information on creating, listing, and validating API keys, see the [API Keys app docs](/guides/apps/api-keys/overview) and the [`ApiKey` SDK type](/sdk/types/api-key).
+
+## Teams And Users
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `teams` | `{ createPersonalTeamOnSignUp?: boolean, allowClientTeamCreation?: boolean }` | `{ createPersonalTeamOnSignUp: false, allowClientTeamCreation: false }` | Configures team behavior. `createPersonalTeamOnSignUp` creates a personal team for each new user. `allowClientTeamCreation` allows client-side code to create teams. |
+| `users` | `{ allowClientUserDeletion?: boolean }` | `{ allowClientUserDeletion: false }` | Configures user self-service behavior. `allowClientUserDeletion` allows users to delete their own account from the client. |
+| `onboarding` | `{ requireEmailVerification?: boolean }` | `{ requireEmailVerification: false }` | Configures onboarding requirements. `requireEmailVerification` requires users to verify their email as part of onboarding. |
+
+For more information on team behavior, see [Teams](/guides/apps/teams/overview) and [Team Selection](/guides/apps/teams/team-selection). For user profile and onboarding behavior, see [User Fundamentals](/guides/getting-started/user-fundamentals), [User Onboarding](/guides/apps/authentication/user-onboarding), and [User Metadata](/guides/going-further/user-metadata).
+
+## Emails
+
+The config file can define email themes and templates. Email delivery settings, such as SMTP credentials and sender address, are environment-specific and are not configured here.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `emails.selectedThemeId` | `string` | Hexclave default theme ID | The theme used by templates that do not choose their own theme. |
+| `emails.themes.<themeId>` | `{ displayName: string, tsxSource: string }` | `{ displayName: "Unnamed Theme", tsxSource: error placeholder }` | Defines one email theme. `displayName` is shown in the dashboard. `tsxSource` is the TSX source for the theme component. Theme IDs must be UUIDs. |
+| `emails.templates.<templateId>` | `{ displayName: string, tsxSource: string, themeId?: UUID string \| false }` | `{ displayName: "Unnamed Template", tsxSource: error placeholder }` | Defines one email template. `displayName` is shown in the dashboard. `tsxSource` is the TSX source for the template component. `themeId` chooses a theme; a UUID uses that theme, `false` sends with no theme, and unset uses `emails.selectedThemeId`. Template IDs must be UUIDs. |
+
+See [Emails](/guides/apps/emails/overview) for sending emails from your application.
+
+## Payments
+
+Payments config is where you define what customers can buy and what entitlements those purchases grant. Supported currency fields are `USD`, `EUR`, `GBP`, `JPY`, `INR`, `AUD`, and `CAD`. Money amounts are strings, such as `"9.99"` or `"1000"`.
+
+For more information on products, product lines, prices, items, checkout, and entitlement checks, see the [Payments app docs](/guides/apps/payments/overview). For the SDK shapes returned by entitlement APIs, see the [`Customer` SDK type](/sdk/types/customer) and [`Item` SDK type](/sdk/types/item).
+
+In the tables below, `DayInterval` means `[number, "day" | "week" | "month" | "year"]`.
+
+### Global Payment Settings
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `payments.blockNewPurchases` | `boolean` | `false` | Prevents new purchases while keeping existing purchases and subscriptions intact. |
+| `payments.autoPay` | `{ interval: DayInterval }` | unset | Enables automatic payment behavior on the given interval. |
+
+`payments.testMode` is environment-specific and is not configured in `hexclave.config.ts`.
+
+### Product Lines
+
+Product lines group mutually exclusive products, such as Free, Pro, and Enterprise plans.
+
+For more information on how product lines, add-ons, and switching plans work together, see [Defining products](/guides/apps/payments/overview#defining-products).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `payments.productLines.<productLineId>` | `{ displayName?: string, customerType: "user" \| "team" \| "custom" }` | Defines one product line. `displayName` is shown to admins and customers. `customerType` decides which kind of customer can own products in this line. |
+
+### Products
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `payments.products.<productId>` | `{ displayName?: string, productLineId?: string, customerType: "user" \| "team" \| "custom", freeTrial?: DayInterval, serverOnly?: boolean, stackable?: boolean, isAddOnTo?: false \| Record<string, true>, prices: Record<string, ProductPrice>, includedItems?: Record<string, IncludedItem> }` | `{ displayName: product ID, customerType: "user", serverOnly: false, isAddOnTo: false, includedItems: {} }` | Defines one product. `productLineId` places it in a mutually exclusive product line. `customerType` must match the product line when set. `freeTrial` applies to the product. `serverOnly` hides it from client SDK responses. `stackable` allows repeated ownership. `isAddOnTo` requires ownership of one of the listed base products. `prices` defines what can be purchased, and `includedItems` defines granted entitlements. |
+
+### Prices
+
+Each price must include at least one supported currency.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `payments.products.<productId>.prices.<priceId>` | `{ USD?: string, EUR?: string, GBP?: string, JPY?: string, INR?: string, AUD?: string, CAD?: string, interval?: DayInterval, serverOnly?: boolean, freeTrial?: DayInterval }` | `{ serverOnly: false }` | Defines one price. Include at least one currency amount. `interval` makes it recurring; leave it unset for a one-time price. `serverOnly` hides the price from client SDK responses. `freeTrial` applies to this specific price. JPY amounts cannot have decimals. |
+
+### Included Items And Standalone Items
+
+Items are quantifiable entitlements, such as credits, seats, messages, or API calls.
+
+For more information on item balances and consuming entitlements in your app, see [Checking item balances](/guides/apps/payments/overview#checking-item-balances).
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `payments.products.<productId>.includedItems.<itemId>` | `{ quantity: number, repeat?: DayInterval \| "never", expires?: "never" \| "when-purchase-expires" \| "when-repeated" }` | `{ quantity: 0, repeat: "never", expires: "when-repeated" }` | Defines one item grant from this product. `quantity` is the amount granted. `repeat` controls whether the grant repeats. `expires` controls when granted items expire. |
+| `payments.items.<itemId>` | `{ displayName?: string, customerType?: "user" \| "team" \| "custom" }` | `{ displayName: item ID, customerType: "user" }` | Defines a standalone item. `displayName` is shown for the item. `customerType` decides which kind of customer can hold it. |
+
+```ts title="hexclave.config.ts"
+export const config: HexclaveConfig = {
+  payments: {
+    productLines: {
+      plans: {
+        displayName: "Plans",
+        customerType: "user",
+      },
+    },
+    products: {
+      pro: {
+        displayName: "Pro",
+        productLineId: "plans",
+        customerType: "user",
+        prices: {
+          monthly: {
+            USD: "19.00",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {
+          credits: {
+            quantity: 1000,
+            repeat: [1, "month"],
+            expires: "when-repeated",
+          },
+        },
+      },
+    },
+    items: {
+      credits: {
+        displayName: "Credits",
+        customerType: "user",
+      },
+    },
+  },
+};
+```
+
+See [Payments](/guides/apps/payments/overview) for checkout and entitlement usage.
+
+## DB Sync
+
+`dbSync.externalDatabases` defines external databases that Hexclave can sync to.
+
+For more information on connecting Hexclave with your own backend and database workflows, see [Integrating with Backends](/guides/going-further/backend-integration) and the [REST API overview](/api/overview).
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `dbSync.externalDatabases.<externalDatabaseId>` | `{ type: "postgres", connectionString: string }` | Defines one external Postgres database. `connectionString` is required when `type` is `"postgres"`. |
+
+<Warning>
+  A database connection string is sensitive. Only put it in `hexclave.config.ts` if that file is kept private and reviewed like other secrets.
+</Warning>
+
+## Data Vault
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `dataVault.stores.<storeId>` | `{ displayName?: string }` | `{ displayName: "Unnamed Vault" }` | Defines one Data Vault store. `displayName` is the name shown for the store. |
+
+For more information on storing sensitive user data, see the [Data Vault app docs](/guides/apps/data-vault/overview).
+
+## Domains
+
+`domains` is reserved in the config file and currently has no file-level attributes. Trusted domains, localhost allowance, and handler paths are environment-specific settings.
+
+For more information on production readiness and domain-related launch checks, see the [Launch Checklist](/guides/apps/launch-checklist/overview).

@@ -324,7 +324,7 @@ writeFileSyncIfChanged(
     export const generatedSetupPromptText = ${JSON.stringify(setupPromptText)};
     export const setupToolIds = ${JSON.stringify(setupToolIds)};
     export const setupTabMetadata = ${JSON.stringify(setupTabMetadata)};
-    import { HexclaveAgentReminders } from "/snippets/hexclave-agent-reminders.jsx";
+    import { hexclaveAgentRemindersText } from "/snippets/hexclave-agent-reminders.jsx";
     export const unifiedAiPromptTabTitle = ${JSON.stringify(unifiedAiPromptTabTitle)};
 
     export const copyGeneratedSetupPrompt = async (event) => {
@@ -436,7 +436,9 @@ writeFileSyncIfChanged(
       updateSetupBuilder(root);
     };
 
-    <HexclaveAgentReminders />
+    <Visibility for="agents">
+    {hexclaveAgentRemindersText}
+    </Visibility>
 
     <Note>
       <p className="font-semibold">Setting up with AI? Use this single prompt:</p>
@@ -485,9 +487,7 @@ writeFileSyncIfChanged(
 writeFileSyncIfChanged(
   path.join(repoRoot, "docs-mintlify/snippets/hexclave-agent-reminders.jsx"),
   deindent`
-    export const HexclaveAgentReminders = () => (
-      <pre>{${JSON.stringify(remindersPrompt)}}</pre>
-    );
+    export const hexclaveAgentRemindersText = ${JSON.stringify(remindersPrompt)};
   ` + "\n",
 );
 
