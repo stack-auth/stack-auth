@@ -24,6 +24,12 @@ type SessionResponse = {
   onboarding_outstanding: boolean,
 };
 
+type HeartbeatResponse = {
+  ok: true,
+  browser_secret_confirmation_code?: string,
+  browser_secret_confirmation_code_expires_at_millis?: number,
+};
+
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
@@ -246,11 +252,12 @@ function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
   return runtimeServerPath;
 }
 
-async function isDashboardReachable(url: string): Promise<boolean> {
+async function isDashboardReachable(url: string, secret: string): Promise<boolean> {
   try {
     const response = await fetch(`${url}${DASHBOARD_HEALTH_PATH}`, {
       headers: {
         Accept: "application/json",
+        Authorization: `Bearer ${secret}`,
       },
     });
     const body: unknown = await response.json();
@@ -269,7 +276,7 @@ async function isDashboardReachable(url: string): Promise<boolean> {
 
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number }): Promise<void> {
   const url = dashboardUrl(options.port);
-  if (await isDashboardReachable(url)) {
+  if (await isDashboardReachable(url, options.secret)) {
     logDev(`Using existing Hexclave dashboard on ${url}.`);
     return;
   }
@@ -279,7 +286,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     ...process.env,
     NODE_ENV: "production",
     PORT: String(options.port),
-    HOSTNAME: "127.0.0.1",
+    HOSTNAME: "0.0.0.0",
     STACK_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_STACK_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_BROWSER_STACK_API_URL: options.apiBaseUrl,
@@ -321,7 +328,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
 
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
-      if (await isDashboardReachable(url)) {
+      if (await isDashboardReachable(url, options.secret)) {
         progress.stop(`Started Hexclave dashboard`);
         return;
       }
@@ -395,6 +402,35 @@ function isSessionResponse(value: unknown): value is SessionResponse {
     "env" in value &&
     isStringRecord(value.env)
   );
+}
+
+function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "ok" in value &&
+    value.ok === true &&
+    (
+      !("browser_secret_confirmation_code" in value) ||
+      typeof value.browser_secret_confirmation_code === "string"
+    ) &&
+    (
+      !("browser_secret_confirmation_code_expires_at_millis" in value) ||
+      typeof value.browser_secret_confirmation_code_expires_at_millis === "number"
+    )
+  );
+}
+
+function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
+  if (response.browser_secret_confirmation_code == null) return;
+  const expiresAtMillis = response.browser_secret_confirmation_code_expires_at_millis;
+  const expiresInSeconds = expiresAtMillis == null
+    ? undefined
+    : Math.max(0, Math.ceil((expiresAtMillis - Date.now()) / 1000));
+  logDev(expiresInSeconds == null
+    ? `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code}`
+    : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
 }
 
 async function createRemoteDevelopmentEnvironmentSession(options: {
@@ -527,7 +563,15 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
       });
       sessionState.dashboardReachableSinceMs = performance.now();
       logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}`);
+      continue;
     }
+
+    const heartbeatBody: unknown = await response.json();
+    if (!isHeartbeatResponse(heartbeatBody)) {
+      logDev("Development environment heartbeat returned an invalid response.");
+      continue;
+    }
+    logBrowserSecretConfirmationCode(heartbeatBody);
   }
 }
 

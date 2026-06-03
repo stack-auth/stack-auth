@@ -11,6 +11,7 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { watch, type FSWatcher } from "fs";
 import { basename, dirname } from "path";
+import { consumeRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli } from "./browser-secret";
 import {
   ensureConfigFileExists,
   readConfigFile,
@@ -564,6 +565,11 @@ export function heartbeatRemoteDevelopmentEnvironmentSession(sessionId: string):
   }
   session.lastHeartbeatMs = performance.now();
   return true;
+}
+
+export function getPendingRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(): { code: string, expiresAtMillis: number } | null {
+  assertRemoteDevelopmentEnvironmentEnabled();
+  return consumeRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli();
 }
 
 export function closeRemoteDevelopmentEnvironmentSession(sessionId: string): void {

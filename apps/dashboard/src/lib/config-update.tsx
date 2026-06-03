@@ -2,6 +2,7 @@
 
 import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret } from "@/app/remote-development-environment-browser-secret-client";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@hexclave/next";
@@ -492,7 +493,7 @@ async function updateRemoteDevelopmentEnvironmentConfigFile(
   adminApp: StackAdminApp<false>,
   configUpdate: EnvironmentConfigOverrideOverride,
 ): Promise<void> {
-  const response = await fetch("/api/remote-development-environment/config/apply-update", {
+  const response = await fetchWithRemoteDevelopmentEnvironmentBrowserSecret("/api/remote-development-environment/config/apply-update", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
