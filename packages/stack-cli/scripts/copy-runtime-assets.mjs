@@ -86,7 +86,7 @@ function hoistPnpmNodeModules(pnpmDir) {
   if (!existsSync(sharedNodeModules)) {
     return;
   }
-  const destNodeModules = join(dashboardDist, "node_modules");
+  const destNodeModules = dirname(pnpmDir);
   for (const entry of readdirSync(sharedNodeModules, { withFileTypes: true })) {
     const name = entry.name;
     if (name.startsWith(".")) {
@@ -97,12 +97,18 @@ function hoistPnpmNodeModules(pnpmDir) {
       const scopeDir = join(sharedNodeModules, name);
       for (const scopedEntry of readdirSync(scopeDir, { withFileTypes: true })) {
         const fullName = join(name, scopedEntry.name);
+        if (EXCLUDED_RUNTIME_PACKAGES.has(fullName)) {
+          continue;
+        }
         const dest = join(destNodeModules, fullName);
         if (!existsSync(dest)) {
           cpSync(join(scopeDir, scopedEntry.name), dest, { recursive: true, dereference: true });
         }
       }
     } else {
+      if (EXCLUDED_RUNTIME_PACKAGES.has(name)) {
+        continue;
+      }
       const dest = join(destNodeModules, name);
       if (!existsSync(dest)) {
         cpSync(join(sharedNodeModules, name), dest, { recursive: true, dereference: true });
@@ -133,6 +139,9 @@ function removeNftJsonFiles(dir) {
   // .nft.json files are Next.js file-trace manifests used only during the build
   // to determine which files to include in standalone output. They are not
   // needed at runtime and add ~4 MB to the package.
+  if (!existsSync(dir)) {
+    return;
+  }
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
