@@ -571,8 +571,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   protected override async _refreshUsers() {
     await Promise.all([
       super._refreshUsers(),
-      this._metricsCache.refresh([false, ""]),
-      this._metricsCache.refresh([true, ""]),
+      this._metricsCache.refreshWhere(() => true),
       this._metricsUserCountsCache.refresh([]),
     ]);
   }
@@ -585,8 +584,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         includeAnonymous: boolean = false,
         filters?: { country_code?: string, referrer?: string, browser?: string, os?: string, device?: string },
       ): MetricsResponse => {
-        const hasFilter = filters && Object.values(filters).some((v) => !!v);
-        const filtersKey = hasFilter ? JSON.stringify(filters) : "";
+        const filtersKey = (() => {
+          if (filters == null) return "";
+          const params = new URLSearchParams();
+          for (const key of ["browser", "country_code", "device", "os", "referrer"] as const) {
+            const v = filters[key];
+            if (v != null) params.set(key, v);
+          }
+          return params.toString();
+        })();
         return useAsyncCache(this._metricsCache, [includeAnonymous, filtersKey] as const, "adminApp.useMetrics()") as MetricsResponse;
       },
       useUserActivity: (userId: string): UserActivityResponse => {

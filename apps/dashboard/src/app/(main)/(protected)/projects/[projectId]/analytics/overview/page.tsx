@@ -6,5 +6,5 @@ export const metadata = {
 
 export default async function Page({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  redirect(`/projects/${projectId}`);
+  redirect(`/projects/${encodeURIComponent(projectId)}`);
 }

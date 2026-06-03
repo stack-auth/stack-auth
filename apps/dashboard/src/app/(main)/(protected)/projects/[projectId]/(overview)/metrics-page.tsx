@@ -366,7 +366,7 @@ function analyticsFiltersKey(filters: AnalyticsOverviewFilters): string {
   const params = new URLSearchParams();
   for (const dimension of FILTER_DIMENSIONS) {
     const value = filters[dimension];
-    if (value) {
+    if (value != null) {
       params.set(dimension, value);
     }
   }
@@ -382,7 +382,7 @@ function getFilterDimensionLabel(dimension: keyof AnalyticsOverviewFilters): str
 }
 
 function hasAnalyticsFilters(filters: AnalyticsOverviewFilters): boolean {
-  return FILTER_DIMENSIONS.some((dimension) => !!filters[dimension]);
+  return FILTER_DIMENSIONS.some((dimension) => filters[dimension] != null);
 }
 
 function FilterChipsBar({
@@ -396,7 +396,7 @@ function FilterChipsBar({
 }) {
   const entries = FILTER_DIMENSIONS.flatMap((dimension) => {
     const value = filters[dimension];
-    return value ? [{ dimension, value }] : [];
+    return value != null ? [{ dimension, value }] : [];
   });
   if (entries.length === 0) return null;
 
