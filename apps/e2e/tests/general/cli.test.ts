@@ -9,7 +9,7 @@ import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KE
 
 const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
 
-const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
+const CLI_BIN = path.resolve("packages/cli/dist/index.js");
 
 function extractConfigObjectString(content: string): string {
   const configMatch = content.match(/export const config:\s*HexclaveConfig\s*=\s*(.+);\s*$/s);
@@ -122,7 +122,7 @@ describe("Stack CLI", () => {
   });
 
   it("shows version output", async ({ expect }) => {
-    const pkg = JSON.parse(fs.readFileSync(path.resolve("packages/stack-cli/package.json"), "utf-8"));
+    const pkg = JSON.parse(fs.readFileSync(path.resolve("packages/cli/package.json"), "utf-8"));
     const { stdout, exitCode } = await runCli(["--version"]);
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe(pkg.version);

@@ -15,7 +15,7 @@
  *    real integrations should use the SDK.
  *  - Polling has no retry/backoff — fine for a debug page, bad for prod.
  *
- * For a real CLI login integration, see `packages/stack-cli/src/commands/login.ts`.
+ * For a real CLI login integration, see `packages/cli/src/commands/login.ts`.
  * =============================================================================
  */
 
