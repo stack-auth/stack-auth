@@ -77,7 +77,7 @@ const docsJson = {
           {
             "group": "Going Further",
             "pages": [
-              "guides/going-further/stack-app",
+              "guides/going-further/hexclave-app",
               "guides/going-further/backend-integration",
               "guides/going-further/cli",
               "guides/going-further/user-metadata"
@@ -172,7 +172,7 @@ const docsJson = {
           {
             "group": "Objects",
             "pages": [
-              "sdk/objects/stack-app"
+              "sdk/objects/hexclave-app"
             ]
           },
           {
@@ -195,7 +195,7 @@ const docsJson = {
           {
             "group": "Hooks",
             "pages": [
-              "sdk/hooks/use-stack-app",
+              "sdk/hooks/use-hexclave-app",
               "sdk/hooks/use-user"
             ]
           }
@@ -258,6 +258,18 @@ const docsJson = {
   },
   "redirects": [
     {
+      "source": "/guides/going-further/stack-app",
+      "destination": "/guides/going-further/hexclave-app"
+    },
+    {
+      "source": "/sdk/objects/stack-app",
+      "destination": "/sdk/objects/hexclave-app"
+    },
+    {
+      "source": "/sdk/hooks/use-stack-app",
+      "destination": "/sdk/hooks/use-hexclave-app"
+    },
+    {
       "source": "/rest-api/overview",
       "destination": "/api/overview"
     },
@@ -299,7 +311,7 @@ const docsJson = {
     },
     {
       "source": "/others/js-client",
-      "destination": "/guides/going-further/stack-app"
+      "destination": "/guides/going-further/hexclave-app"
     }
   ]
 } as const;
