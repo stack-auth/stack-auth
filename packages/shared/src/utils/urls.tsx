@@ -198,7 +198,7 @@ import.meta.vitest?.test("matchHostnamePattern", ({ expect }) => {
 
 export function getHardcodedFallbackUrls(primaryBaseUrl: string): string[] {
   // `defaultBaseUrl` in `@stackframe/*` SDK builds is `https://api.stack-auth.com`
-  // (see `packages/template/src/lib/stack-app/apps/implementations/common.ts`).
+  // (see `packages/template/src/lib/hexclave-app/apps/implementations/common.ts`).
   // The `@hexclave/*` mirror packages will get this rewritten to the hexclave
   // hostname by `scripts/rewrite-packages-to-hexclave.ts` in a follow-up PR; both
   // branches below stay listed so either build resolves its own fallback set.

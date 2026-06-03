@@ -4,7 +4,7 @@ import { yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "
 // Single source of truth for the `/internal/metrics` endpoint shape.
 //
 // Both the backend route handler (`apps/backend/src/app/api/latest/internal/metrics/route.tsx`)
-// and the dashboard hook (`apps/dashboard/src/lib/stack-app-internals.ts`) import
+// and the dashboard hook (`apps/dashboard/src/lib/hexclave-app-internals.ts`) import
 // these schemas. The runtime validation lives in the schemas; the static types
 // are derived via `yup.InferType` so we never have to keep parallel copies in
 // sync.
