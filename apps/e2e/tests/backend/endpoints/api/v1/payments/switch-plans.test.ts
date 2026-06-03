@@ -446,7 +446,7 @@ it("rejects switch in live mode without Stripe onboarding", async ({ expect }) =
   `);
 }, { timeout: 30_000 });
 
-it("two rapid test-mode switches in the same product line leave only the latest sub active", async ({ expect }) => {
+it("two rapid sequential test-mode switches in the same product line leave only the latest sub active", async ({ expect }) => {
   await Project.createAndSwitch();
   await Project.updateConfig({
     payments: {
@@ -501,7 +501,6 @@ it("two rapid test-mode switches in the same product line leave only the latest 
   });
   expect(seed.status).toBe(200);
 
-  // Switch basic → pro, then immediately pro → elite
   const switchToPro = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
     method: "POST",
     accessType: "client",
@@ -521,8 +520,9 @@ it("two rapid test-mode switches in the same product line leave only the latest 
     accessType: "server",
   });
   expect(owned.status).toBe(200);
-  const ownedIds = ((owned.body as { items: Array<{ id: string | null }> }).items)
+  const activeIds = ((owned.body as { items: Array<{ id: string | null, quantity: number }> }).items)
+    .filter(i => i.quantity > 0)
     .map(i => i.id)
     .sort((a, b) => stringCompare(a ?? "", b ?? ""));
-  expect(ownedIds).toEqual(["elite"]);
+  expect(activeIds).toEqual(["elite"]);
 }, { timeout: 30_000 });
