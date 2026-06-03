@@ -15,7 +15,7 @@ const hostedHandlerTemplateProjectIdB = "11111111-1111-4111-8111-111111111111";
 
 function replaceStackPortPrefix(input: string | undefined, stackPortPrefix: string | undefined): string | undefined {
   if (input == null) return undefined;
-  return stackPortPrefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, stackPortPrefix) : input;
+  return stackPortPrefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, stackPortPrefix) : input;
 }
 
 function getHostedHandlerUrlFromTemplate(template: string, projectId: string, hostedPath: string): string {
@@ -160,7 +160,9 @@ export function isAcceptedNativeAppUrl(urlOrString: string): boolean {
   const url = createUrlIfValid(urlOrString);
   if (!url) return false;
 
-  return url.protocol === 'stack-auth-mobile-oauth-url:';
+  // Legacy scheme accepted indefinitely; baked into already-shipped Swift SDK binaries.
+  return url.protocol === 'stack-auth-mobile-oauth-url:'
+    || url.protocol === 'hexclave-mobile-oauth-url:';
 }
 
 export function validateRedirectUrl(
@@ -230,7 +232,7 @@ import.meta.vitest?.test("validateRedirectUrl trusts implicit hosted handler dom
     allowLocalhost: false,
     trustedDomains: getImplicitlyTrustedDomainsForProject({
       projectId,
-      hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}",
+      hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}",
       stackPortPrefix: "92",
     }),
   })).toBe(true);
@@ -243,7 +245,7 @@ import.meta.vitest?.test("getImplicitlyTrustedDomainsForProject rejects shared-o
   })).toThrowErrorMatchingInlineSnapshot(`
     [HexclaveAssertionError: The hosted handler URL template must put {projectId} in the hostname.
 
-    This is likely an error in Hexclave (formerly Stack Auth). Please make sure you are running the newest version and report it.]
+    This is likely an error in Hexclave. Please make sure you are running the newest version and report it.]
   `);
 });
 

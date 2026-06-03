@@ -2,9 +2,9 @@ import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { CLICKHOUSE_COLUMN_NORMALIZERS } from "@/lib/external-db-sync";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
-import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { DEFAULT_DB_SYNC_MAPPINGS } from "@hexclave/shared/dist/config/db-sync-mappings";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 
 import type { RecurseFunction } from "./recurse";
 

@@ -1,4 +1,4 @@
-import { StackClientApp } from "@stackframe/js";
+import { StackClientApp } from "@hexclave/js";
 import { Command } from "commander";
 import { DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { readConfigValue, removeConfigValue, writeConfigValue } from "../lib/config.js";
@@ -8,7 +8,7 @@ export function registerLoginCommand(program: Command) {
   program
     .command("login")
     .description(
-      "Log in to Stack Auth via browser. To attach this login to an existing anonymous session, set STACK_CLI_ANON_REFRESH_TOKEN (env var) or the same key in the CLI credentials file before running; login does not write that value.",
+      "Log in to Hexclave via browser. To attach this login to an existing anonymous session, set STACK_CLI_ANON_REFRESH_TOKEN (env var) or the same key in the CLI credentials file before running; login does not write that value.",
     )
     .action(async () => {
       const config = resolveLoginConfig();

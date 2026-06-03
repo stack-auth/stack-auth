@@ -4,9 +4,9 @@ import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { emailSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const contactChannelVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {

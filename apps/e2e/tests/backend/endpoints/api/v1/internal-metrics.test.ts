@@ -1,5 +1,5 @@
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
@@ -207,7 +207,7 @@ it("should not work for non-admins", async ({ expect }) => {
           "actual_access_type": "server",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

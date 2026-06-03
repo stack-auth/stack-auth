@@ -105,11 +105,11 @@ export default function PageClient() {
           variant="info"
           title="About API Keys"
           description={<>
-            This app allows your users to create API keys for their accounts and teams. It is helpful if you have your own API that you would like to secure with Stack Auth.
+            This app allows your users to create API keys for their accounts and teams. It is helpful if you have your own API that you would like to secure with Hexclave.
             <br /><br />
-            If you are looking to create or manage keys for your Stack Auth project, head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> settings.
+            If you are looking to create or manage keys for your Hexclave project, head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> settings.
             <br /><br />
-            For more information, see the <StyledLink href="https://docs.stack-auth.com/docs/apps/api-keys">API Keys docs</StyledLink>.
+            For more information, see the <StyledLink href="https://docs.hexclave.com/docs/apps/api-keys">API Keys docs</StyledLink>.
           </>}
         />
 

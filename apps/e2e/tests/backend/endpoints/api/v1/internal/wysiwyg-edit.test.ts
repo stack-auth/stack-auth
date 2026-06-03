@@ -1,7 +1,7 @@
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 const hasRealAiKey = (() => {
   const key = getEnvVariable("STACK_OPENROUTER_API_KEY", "");

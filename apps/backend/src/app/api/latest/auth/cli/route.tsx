@@ -2,10 +2,10 @@ import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 type RefreshTokenRow = {
   tenancyId: string,

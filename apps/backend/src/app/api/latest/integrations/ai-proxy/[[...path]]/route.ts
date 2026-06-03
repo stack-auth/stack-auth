@@ -1,12 +1,12 @@
 import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
 import { preprocessProxyBody } from "@/private";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
-const PRODUCTION_PROXY_BASE_URL = "https://api.stack-auth.com/api/latest/integrations/ai-proxy";
+const PRODUCTION_PROXY_BASE_URL = "https://api.hexclave.com/api/latest/integrations/ai-proxy";
 const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 
 function sanitizeBody(raw: ArrayBuffer): Uint8Array {

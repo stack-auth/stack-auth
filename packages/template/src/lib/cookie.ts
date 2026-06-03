@@ -1,7 +1,7 @@
-import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
-import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
+import { cookies as rscCookies, headers as rscHeaders } from '@hexclave/sc/force-react-server'; // THIS_LINE_PLATFORM next
+import { isBrowserLike } from '@hexclave/shared/dist/utils/env';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
 

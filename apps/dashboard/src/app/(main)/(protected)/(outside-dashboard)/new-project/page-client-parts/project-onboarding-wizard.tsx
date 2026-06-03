@@ -29,11 +29,11 @@ import {
   WarningCircleIcon,
   WebhooksLogoIcon,
 } from "@phosphor-icons/react";
-import { AdminOwnedProject, AuthPage } from "@stackframe/stack";
-import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { type EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminOwnedProject, AuthPage } from "@hexclave/next";
+import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -117,6 +117,7 @@ export function ProjectOnboardingWizard(props: {
   const [authSetupMobileTab, setAuthSetupMobileTab] = useState<"methods" | "preview">("methods");
   const [domainSetupAutoAdvanceError, setDomainSetupAutoAdvanceError] = useState<string | null>(null);
   const [domainSetupAutoAdvancing, setDomainSetupAutoAdvancing] = useState(false);
+  const [paymentsSetupAction, setPaymentsSetupAction] = useState<"defer" | "connect" | null>(null);
   const previousProjectId = useRef<string | null>(null);
   const paymentsAutoCompletingRef = useRef(false);
   const stripeAccountInfo = props.project.app.useStripeAccountInfo();
@@ -166,6 +167,7 @@ export function ProjectOnboardingWizard(props: {
     setAuthSetupMobileTab("methods");
     setDomainSetupAutoAdvanceError(null);
     setDomainSetupAutoAdvancing(false);
+    setPaymentsSetupAction(null);
     paymentsAutoCompletingRef.current = false;
   }, [completeConfig, deriveCurrentOnboardingState, project, project.id, status]);
 
@@ -375,6 +377,37 @@ export function ProjectOnboardingWizard(props: {
     updateConfig,
   ]);
 
+  const deferPaymentsSetup = useCallback(async () => {
+    await runWithSaving(async () => {
+      setPaymentsSetupAction("defer");
+      try {
+        if (selectedPaymentsCountry === "US") {
+          await props.project.app.setupPayments();
+        }
+        await persistOnboardingState();
+        await setStatus("welcome");
+      } finally {
+        setPaymentsSetupAction(null);
+      }
+    });
+  }, [persistOnboardingState, props.project.app, runWithSaving, selectedPaymentsCountry, setStatus]);
+
+  const connectPaymentsSetup = useCallback(async () => {
+    await runWithSaving(async () => {
+      setPaymentsSetupAction("connect");
+      try {
+        const setup = await props.project.app.setupPayments();
+        const redirectUrl = new URL(setup.url);
+        if (redirectUrl.protocol !== "https:") {
+          throw new Error("Payments setup redirect URL must use HTTPS.");
+        }
+        window.location.href = redirectUrl.toString();
+      } finally {
+        setPaymentsSetupAction(null);
+      }
+    });
+  }, [props.project.app, runWithSaving]);
+
   useEffect(() => {
     if (status !== "payments_setup" || stripeAccountInfo?.details_submitted !== true || paymentsAutoCompletingRef.current) {
       return;
@@ -434,8 +467,8 @@ export function ProjectOnboardingWizard(props: {
       return (
         <OnboardingPage
           stepKey="config-choice"
-          title="Welcome to Stack Auth!"
-          subtitle={`You are running Stack Auth in the ${developmentEnvironmentName}.`}
+          title="Welcome to Hexclave!"
+          subtitle={`You are running Hexclave in the ${developmentEnvironmentName}.`}
           steps={timelineSteps}
           currentStep="config_choice"
           onStepClick={handleTimelineStepClick}
@@ -458,7 +491,7 @@ export function ProjectOnboardingWizard(props: {
               This development-environment project is ready for onboarding.
             </Typography>
             <Typography variant="secondary" className="mt-3 text-sm leading-relaxed">
-              Next, we will guide you through the onboarding flow to set up your Stack Auth configuration.
+              Next, we will guide you through the onboarding flow to set up your Hexclave configuration.
             </Typography>
           </div>
         </OnboardingPage>
@@ -520,7 +553,7 @@ export function ProjectOnboardingWizard(props: {
             </div>
             <div className="space-y-1.5">
               <Typography className="text-base font-semibold">Create New</Typography>
-              <Typography variant="secondary" className="text-sm leading-relaxed">Create and customize a new Stack Auth project.</Typography>
+              <Typography variant="secondary" className="text-sm leading-relaxed">Create and customize a new Hexclave project.</Typography>
             </div>
           </button>
 
@@ -548,7 +581,7 @@ export function ProjectOnboardingWizard(props: {
             </div>
             <div className="space-y-1.5">
               <Typography className="text-base font-semibold">Link Existing Config</Typography>
-              <Typography variant="secondary" className="text-sm leading-relaxed">If you already have a Stack Auth project locally or on GitHub, link it here.</Typography>
+              <Typography variant="secondary" className="text-sm leading-relaxed">If you already have a Hexclave project locally or on GitHub, link it here.</Typography>
             </div>
           </button>
         </div>
@@ -893,12 +926,9 @@ export function ProjectOnboardingWizard(props: {
         primaryAction={
           <DesignButton
             className="rounded-full px-6"
-            loading={saving}
-            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              await persistOnboardingState();
-              await props.setStatus("welcome");
-            }))}
-
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "defer"}
+            onClick={() => runAsynchronouslyWithAlert(deferPaymentsSetup)}
           >
             Do Later
           </DesignButton>
@@ -907,15 +937,9 @@ export function ProjectOnboardingWizard(props: {
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
-            loading={saving}
-            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              const setup = await props.project.app.setupPayments();
-              const redirectUrl = new URL(setup.url);
-              if (redirectUrl.protocol !== "https:") {
-                throw new Error("Payments setup redirect URL must use HTTPS.");
-              }
-              window.location.href = redirectUrl.toString();
-            }))}
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "connect"}
+            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
           >
             Connect
           </DesignButton>

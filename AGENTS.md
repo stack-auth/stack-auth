@@ -31,14 +31,14 @@ You should ALWAYS add new E2E tests when you change the API or SDK interface. Ge
 
 ## Architecture Overview
 
-Stack Auth is a monorepo using Turbo for build orchestration. The main components are:
+Hexclave is a monorepo using Turbo for build orchestration. The main components are:
 
 ### Apps (`/apps`)
-- **backend** (`/apps/backend`): Next.js API backend running on port `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02` (defaults to 8102)
+- **backend** (`/apps/backend`): Next.js API backend running on port `${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02` (defaults to 8102)
   - Main API routes in `/apps/backend/src/app/api/latest`
   - Database models using Prisma
-- **dashboard** (`/apps/dashboard`): Admin dashboard on port `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01` (defaults to 8101)
-- **dev-launchpad**: Development portal on port `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}00` (defaults to 8100)
+- **dashboard** (`/apps/dashboard`): Admin dashboard on port `${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01` (defaults to 8101)
+- **dev-launchpad**: Development portal on port `${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}00` (defaults to 8100)
 - **e2e**: End-to-end tests
 
 ### Packages (`/packages`)
@@ -74,15 +74,14 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Always run typecheck, lint, and test to make sure your changes are working as expected. You can save time by only linting and testing the files you've changed (and/or related E2E tests).
 - The project uses a custom route handler system in the backend for consistent API responses
 - When writing tests, prefer .toMatchInlineSnapshot over other selectors, if possible. You can check (and modify) the snapshot-serializer.ts file to see how the snapshots are formatted and how non-deterministic values are handled.
-- Whenever you learn something new, or at the latest right before you call the `Stop` tool, write whatever you learned into the .claude/CLAUDE-KNOWLEDGE.md file, in the Q&A format in there. You will later be able to look up knowledge from there (based on the question you asked).
 - Animations: Keep hover/click transitions snappy and fast. Don't delay the action with a pre-transition (e.g. no fade-in when hovering a button) — it makes the UI feel sluggish. Instead, apply transitions after the action, like a smooth fade-out when the hover ends.
-- Whenever you make changes in the dashboard, provide the user with a deep link to the dashboard page that you've just changed. Usually, this takes the form of `http://localhost:<whatever-is-in-$NEXT_PUBLIC_STACK_PORT_PREFIX>01/projects/-selector-/...`, although sometimes it's different. If $NEXT_PUBLIC_STACK_PORT_PREFIX is set to 91, 92, or 93, use `a.localhost`, `b.localhost`, and `c.localhost` for the domains, respectively.
+- Whenever you make changes in the dashboard, provide the user with a deep link to the dashboard page that you've just changed. Usually, this takes the form of `http://localhost:<whatever-is-in-$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>01/projects/-selector-/...`, although sometimes it's different. If $NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX is set to 91, 92, or 93, use `a.localhost`, `b.localhost`, and `c.localhost` for the domains, respectively.
 - To update the list of apps available, edit `apps-frontend.tsx` and `apps-config.ts`. When you're tasked to implement a new app or a new page, always check existing apps for inspiration on how you could implement the new app or page.
 - NEVER use Next.js dynamic functions if you can avoid them. Instead, prefer using a client component to make sure the page remains static (eg. prefer `usePathname` instead of `await params`).
 - Whenever you make backwards-incompatible changes to the config schema, you must update the migration functions in `packages/stack-shared/src/config/schema.ts`!
 - NEVER try-catch-all, NEVER void a promise, and NEVER .catch(console.error) (or similar). In most cases you don't actually need to be asynchronous, especially when UI is involved (instead, use a loading indicator! eg. our <Button> component already takes an async callback for onClick and sets its loading state accordingly — if whatever component doesn't do that, update the component instead). If you really do need things to be asynchronous, use `runAsynchronously` or `runAsynchronouslyWithAlert` instead as it deals with error logging.
 - WHENEVER you create hover transitions, avoid hover-enter transitions, and just use hover-exit transitions. For example, `transition-colors hover:transition-none`.
-- Any environment variables you create should be prefixed with `STACK_` (or NEXT_PUBLIC_STACK_ if they are public). This ensures that their changes are picked up by Turborepo (and helps readability).
+- Any environment variables you create should be prefixed with `HEXCLAVE_` (or `NEXT_PUBLIC_HEXCLAVE_` if they are public) for new customer-facing or framework-internal vars. This ensures that their changes are picked up by Turborepo (and helps readability). Self-host operator vars (e.g. `STACK_DATABASE_CONNECTION_STRING`) and build/dev/test vars (e.g. `NEXT_PUBLIC_STACK_API_URL` in dev fixtures) stay `STACK_`-prefixed for now — the dual-read shim accepts both. The Hexclave SDK reads both prefixes; new names take precedence when both are set.
 - NEVER just silently use fallback values or whatever when you don't know how to fix type errors. If there is a state that should never happen because of higher-level logic, and the type system doesn't represent that, either update the types or throw an error. Stuff like `?? 0` or `?? ""` is often code smell when `?? throwErr("this should never happen because XYZ")` would be better.
 - Code defensively. Prefer `?? throwErr(...)` over non-null assertions, with good error messages explicitly stating the assumption that must've been violated for the error to be thrown.
 - Try to avoid the `any` type. Whenever you need to use `any`, leave a comment explaining why you're using it (optimally it explains why the type system fails here, and how you can be certain that any errors in that code path would still be flagged at compile-, test-, or runtime).
@@ -92,7 +91,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - IMPORTANT: Any assumption you make should either be validated through type system (preferred), assertions, or tests. Optimally, two out of three.
 - If there is an external browser tool connected, use it to test changes you make to the frontend when possible.
 - Whenever you update an SDK implementation in `sdks/implementations`, make sure to update the specs accordingly in `sdks/specs` such that if you reimplemented the entire SDK from the specs again, you would get the same implementation. (For example, if the specs are not precise enough to describe a change you made, make the specs more precise.)
-- When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
+- When building internal tools for Hexclave developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Hexclave developers.
 - The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
 - When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
 - NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT! if its already staged and you didnt do it then dont unstage it.
@@ -118,6 +117,8 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - NEVER EVER return a server error with an internal server error that may contain information that the user shouldn't see. For example, never return the error message on a public API from an upstream provider without properly filtering it first. Most of the time, for internal server errors, you should just use StackAssertionError (which won't pass the message to the user), not StatusError (you almost never want to instantiate a StatusError with status 5xx).
 - When adding code to the `private` part of the backend, put the actual implementation into `implementation` (if the submodule is checked out), and implement a simple fallback in `implementation-fallback` for self-hosters. `implementation.generated.ts` will automatically be generated, which you can then import from `index.ts`. (See the existing code as an example.) If the submodule isn't checked out, but you need to add code to the `private` part of the backend, let the user know.
 - Security-sensitive code on the backend that shouldn't be public should be in the `private` part of the backend.
+- When you fix some obscure bug, or otherwise make a small change that is the result of a complex thought, add a concise comment explaining the thought in detail. Your mental model should be that we want to keep track of all the tiny decisions that are not clearly visible in the code, such that when/if we rewrite the code in the future, we don't have to re-learn all the tiny decisions that were made iteratively.
+- If you create any temporary files, always suffix them with `.untracked` or `.untracked.<ext>` so they don't get committed to Git.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

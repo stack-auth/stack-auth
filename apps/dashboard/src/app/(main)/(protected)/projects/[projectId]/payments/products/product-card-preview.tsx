@@ -2,8 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import { GiftIcon, HardDriveIcon, PuzzlePieceIcon, StackIcon } from "@phosphor-icons/react";
-import { prettyPrintWithMagnitudes } from "@stackframe/stack-shared/dist/utils/numbers";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { prettyPrintWithMagnitudes } from "@hexclave/shared/dist/utils/numbers";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { Fragment } from "react";
 import {
   freeTrialLabel,

@@ -1,10 +1,10 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { createPrismaCrudHandlers } from "@/route-handlers/prisma-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { internalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
-import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { KnownErrors } from "@hexclave/shared";
+import { internalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
+import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 export const internalApiKeyCrudHandlers = createLazyProxy(() => createPrismaCrudHandlers(internalApiKeysCrud, "apiKeySet", {
   paramsSchema: yupObject({

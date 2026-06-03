@@ -1,9 +1,9 @@
 "use client";
 
-import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getGlobal, setGlobal } from "@stackframe/stack-shared/dist/utils/globals";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { AsyncCache } from "@hexclave/shared/dist/utils/caches";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { getGlobal, setGlobal } from "@hexclave/shared/dist/utils/globals";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import React, { Suspense, memo, useEffect } from "react";
 

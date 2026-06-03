@@ -1,9 +1,9 @@
 "use client";
 
-import { useStackApp, useUser } from "@stackframe/stack";
-import { ITEM_IDS, PLAN_LIMITS, resolvePlanId } from "@stackframe/stack-shared/dist/plans";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@stackframe/stack-ui";
+import { useStackApp, useUser } from "@hexclave/next";
+import { ITEM_IDS, PLAN_LIMITS, resolvePlanId } from "@hexclave/shared/dist/plans";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@hexclave/ui";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -224,7 +224,7 @@ export default function PaymentsDemoPage() {
           <div>
             <Typography type="h1">Payments Demo</Typography>
             <Typography className="max-w-3xl text-gray-600 dark:text-gray-400">
-              Manual test surface for Stack Auth internal team plans, Stripe checkout, subscription ending, and email quota deductions.
+              Manual test surface for Hexclave internal team plans, Stripe checkout, subscription ending, and email quota deductions.
             </Typography>
           </div>
           <Link className="text-sm font-medium underline" href={internalDashboardUrl}>

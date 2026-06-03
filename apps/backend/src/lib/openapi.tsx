@@ -1,11 +1,11 @@
 import { SmartRouteHandler } from '@/route-handlers/smart-route-handler';
-import { CrudlOperation, EndpointDocumentation } from '@stackframe/stack-shared/dist/crud';
-import { WebhookEvent } from '@stackframe/stack-shared/dist/interface/webhooks';
-import { yupNumber, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { HttpMethod } from '@stackframe/stack-shared/dist/utils/http';
-import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
-import { deindent, stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
+import { CrudlOperation, EndpointDocumentation } from '@hexclave/shared/dist/crud';
+import { WebhookEvent } from '@hexclave/shared/dist/interface/webhooks';
+import { yupNumber, yupObject, yupString } from '@hexclave/shared/dist/schema-fields';
+import { HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
+import { HttpMethod } from '@hexclave/shared/dist/utils/http';
+import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/objects';
+import { deindent, stringCompare } from '@hexclave/shared/dist/utils/strings';
 import * as yup from 'yup';
 
 export function parseOpenAPI(options: {
@@ -15,12 +15,13 @@ export function parseOpenAPI(options: {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'Stack REST API',
+      title: 'Hexclave REST API',
       version: '1.0.0',
+      description: 'The Hexclave REST API. All request headers are documented as canonical `X-Hexclave-*`; the equivalent `X-Stack-*` aliases are accepted on every endpoint for backwards compatibility. Response headers `X-Hexclave-actual-status`, `X-Hexclave-known-error`, and `X-Hexclave-request-id` are emitted alongside their legacy `X-Stack-*` equivalents.',
     },
     servers: [{
-      url: 'https://api.stack-auth.com/api/v1',
-      description: 'Stack REST API',
+      url: 'https://api.hexclave.com/api/v1',
+      description: 'Hexclave REST API',
     }],
     paths: Object.fromEntries(
       [...options.endpoints]
@@ -51,7 +52,7 @@ export function parseWebhookOpenAPI(options: {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'Stack Webhooks API',
+      title: 'Hexclave Webhooks API',
       version: '1.0.0',
     },
     webhooks: options.webhooks.reduce((acc, webhook) => {
@@ -480,7 +481,7 @@ export function parseOverload(options: {
     parameters: [...queryParameters, ...pathParameters, ...headerParameters],
     requestBody,
     tags: endpointDocumentation.tags ?? ["Others"],
-    'x-full-url': `https://api.stack-auth.com/api/v1${options.path}`,
+    'x-full-url': `https://api.hexclave.com/api/v1${options.path}`,
     responses: allResponses,
   };
 }

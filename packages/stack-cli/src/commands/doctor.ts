@@ -51,7 +51,7 @@ type Report = {
 export function registerDoctorCommand(program: Command) {
   program
     .command("doctor")
-    .description("Check that Stack Auth is correctly wired up in your project")
+    .description("Check that Hexclave is correctly wired up in your project")
     .option("--output-dir <dir>", "Project root to inspect (defaults to cwd)")
     .option("--framework <fw>", "Override framework detection (next | react | js)")
     .option("--json", "Emit a machine-readable JSON report")
@@ -177,7 +177,7 @@ function resolveFramework(
     if (!hasAppRouter) {
       return {
         kind: "unsupported",
-        reason: "Detected Next.js but no app router (app/ or src/app/). The pages router is not yet supported by Stack Auth doctor.",
+        reason: "Detected Next.js but no app router (app/ or src/app/). The pages router is not yet supported by Hexclave doctor.",
       };
     }
     return { kind: "ok", value: "next" };
@@ -191,7 +191,7 @@ function resolveFramework(
     return { kind: "ok", value: "js" };
   }
 
-  return { kind: "unsupported", reason: "package.json has no dependencies declared — install one of @stackframe/stack, @stackframe/react, or @stackframe/js to begin." };
+  return { kind: "unsupported", reason: "package.json has no dependencies declared — install one of @hexclave/next, @hexclave/react, or @hexclave/js to begin." };
 }
 
 function getChecks(framework: Framework): CheckSpec[] {
@@ -209,7 +209,7 @@ function getChecks(framework: Framework): CheckSpec[] {
 }
 
 const NEXT_CHECKS: CheckSpec[] = [
-  packageInstalledCheck("next.package", "@stackframe/stack"),
+  packageInstalledCheck("next.package", "@hexclave/next"),
   fileExistsCheck("next.client-app", "Stack client app instance", [
     "stack/client.ts", "stack/client.tsx",
   ]),
@@ -222,37 +222,38 @@ const NEXT_CHECKS: CheckSpec[] = [
   ], "Create app/handler/[...stack]/page.tsx that renders <StackHandler fullPage app={stackServerApp} routeProps={props} />."),
   layoutWrapsStackProviderCheck(),
   envVarsCheck([
-    { names: ["NEXT_PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
-    { names: ["NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
-    { names: ["STACK_SECRET_SERVER_KEY"], severity: "fail" },
+    { names: ["NEXT_PUBLIC_HEXCLAVE_PROJECT_ID", "NEXT_PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
+    { names: ["NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
+    { names: ["HEXCLAVE_SECRET_SERVER_KEY", "STACK_SECRET_SERVER_KEY"], severity: "fail" },
   ]),
   configFileCheck(),
 ];
 
 const REACT_CHECKS: CheckSpec[] = [
-  packageInstalledCheck("react.package", "@stackframe/react"),
+  packageInstalledCheck("react.package", "@hexclave/react"),
   fileExistsCheck("react.client-app", "Stack client app instance", [
     "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
   ]),
   envVarsCheck([
-    { names: ["VITE_STACK_PROJECT_ID"], severity: "fail" },
-    { names: ["VITE_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
+    { names: ["VITE_HEXCLAVE_PROJECT_ID", "VITE_STACK_PROJECT_ID"], severity: "fail" },
+    { names: ["VITE_HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "VITE_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
   ]),
   configFileCheck(),
 ];
 
 const JS_CHECKS: CheckSpec[] = [
-  packageInstalledCheck("js.package", "@stackframe/js"),
+  packageInstalledCheck("js.package", "@hexclave/js"),
   fileExistsCheck("js.app", "Stack app instance", [
     "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
     "stack/server.ts", "stack/server.tsx", "stack/server.js", "stack/server.jsx",
   ]),
   envVarsCheck([
     // PUBLIC_* aliases cover SvelteKit / Astro, which require that prefix
-    // to expose vars to client code.
-    { names: ["STACK_PROJECT_ID", "PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
-    { names: ["STACK_PUBLISHABLE_CLIENT_KEY", "PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
-    { names: ["STACK_SECRET_SERVER_KEY"], severity: "fail" },
+    // to expose vars to client code. HEXCLAVE_* names are preferred; the
+    // legacy STACK_* / PUBLIC_STACK_* names remain accepted as a fallback.
+    { names: ["HEXCLAVE_PROJECT_ID", "PUBLIC_HEXCLAVE_PROJECT_ID", "STACK_PROJECT_ID", "PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
+    { names: ["HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "STACK_PUBLISHABLE_CLIENT_KEY", "PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"], severity: "warn" },
+    { names: ["HEXCLAVE_SECRET_SERVER_KEY", "STACK_SECRET_SERVER_KEY"], severity: "fail" },
   ]),
   configFileCheck(),
 ];
@@ -336,8 +337,10 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
       }
 
       const content = fs.readFileSync(foundPath, "utf-8");
+      // Accept the canonical @hexclave/next scope and the legacy @stackframe/stack
+      // scope (matches the dual-scope detection used elsewhere in the codebase).
       const importsStackProvider =
-        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["']@stackframe\/stack["']/.test(content);
+        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["'](?:@hexclave\/next|@stackframe\/stack)["']/.test(content);
       const wrapsJsx = /<StackProvider\b/.test(content);
 
       const rel = path.relative(ctx.projectDir, foundPath);
@@ -349,7 +352,7 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
           id,
           label,
           status: "warn",
-          detail: `${rel} imports StackProvider from @stackframe/stack but does not render it.`,
+          detail: `${rel} imports StackProvider from @hexclave/next but does not render it.`,
           hint: "Wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.",
         };
       }
@@ -358,16 +361,16 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
           id,
           label,
           status: "fail",
-          detail: `${rel} renders <StackProvider> but is missing the import from @stackframe/stack.`,
-          hint: `Add: import { StackProvider } from "@stackframe/stack";`,
+          detail: `${rel} renders <StackProvider> but is missing the import from @hexclave/next.`,
+          hint: `Add: import { StackProvider } from "@hexclave/next";`,
         };
       }
       return {
         id,
         label,
         status: "fail",
-        detail: `${rel} does not import StackProvider from @stackframe/stack.`,
-        hint: `Add: import { StackProvider } from "@stackframe/stack"; and wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.`,
+        detail: `${rel} does not import StackProvider from @hexclave/next.`,
+        hint: `Add: import { StackProvider } from "@hexclave/next"; and wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.`,
       };
     },
   };
@@ -534,7 +537,7 @@ function renderHuman(report: Report) {
       report.framework === "react" ? "React" :
         "JS / Node";
 
-  console.log(`\nStack Auth doctor — ${frameworkName} project at ${report.projectDir}\n`);
+  console.log(`\nHexclave doctor — ${frameworkName} project at ${report.projectDir}\n`);
 
   for (const r of report.checks) {
     const icon =

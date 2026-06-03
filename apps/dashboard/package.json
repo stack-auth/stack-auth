@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/dashboard",
-  "version": "2.8.107",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "name": "@hexclave/dashboard",
+  "version": "1.0.4",
+  "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
     "clean": "rimraf .next && rimraf node_modules",
@@ -61,9 +61,9 @@
     "@radix-ui/react-tooltip": "^1.1.3",
     "@react-hook/resize-observer": "^2.0.2",
     "@sentry/nextjs": "^10.11.0",
-    "@stackframe/dashboard-ui-components": "workspace:*",
-    "@stackframe/stack": "workspace:*",
-    "@stackframe/stack-shared": "workspace:*",
+    "@hexclave/dashboard-ui-components": "workspace:*",
+    "@hexclave/next": "workspace:*",
+    "@hexclave/shared": "workspace:*",
     "@stripe/connect-js": "^3.3.27",
     "@stripe/react-connect-js": "^3.3.24",
     "@stripe/react-stripe-js": "^3.8.1",
@@ -83,6 +83,7 @@
     "export-to-csv": "^1.4.0",
     "geist": "^1",
     "input-otp": "^1.4.1",
+    "jiti": "^2.4.2",
     "jose": "^6.1.3",
     "libsodium-wrappers": "^0.8.2",
     "lodash": "^4.17.21",
@@ -128,5 +129,5 @@
     "tailwindcss": "^3.4.1",
     "tsx": "^4.7.2"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

@@ -1,9 +1,9 @@
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { AdminOwnedProject } from "@stackframe/stack";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
-import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { AdminOwnedProject } from "@hexclave/next";
+import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 

@@ -1,16 +1,16 @@
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { readReplicas } from '@prisma/extension-read-replicas';
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { yupObject, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
-import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { yupObject, yupValidate } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { globalVar } from "@hexclave/shared/dist/utils/globals";
+import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@hexclave/shared/dist/utils/objects";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { throwingProxy } from "@hexclave/shared/dist/utils/proxies";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
@@ -387,14 +387,14 @@ export async function getPrismaSchemaForSourceOfTruth(_sourceOfTruth: CompleteCo
 
 class TransactionErrorThatShouldBeRetried extends Error {
   constructor(cause: unknown) {
-    super("This is an internal error used by Stack Auth to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
+    super("This is an internal error used by Hexclave to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
     this.name = 'TransactionErrorThatShouldBeRetried';
   }
 }
 
 class TransactionErrorThatShouldNotBeRetried extends Error {
   constructor(cause: unknown) {
-    super("This is an internal error used by Stack Auth to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
+    super("This is an internal error used by Hexclave to rollback Prisma transactions. It should not be visible to you, so please report this.", { cause });
     this.name = 'TransactionErrorThatShouldNotBeRetried';
   }
 }

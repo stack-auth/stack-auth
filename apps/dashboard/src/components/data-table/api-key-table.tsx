@@ -1,12 +1,12 @@
 'use client';
-import { InternalApiKey } from '@stackframe/stack';
+import { InternalApiKey } from '@hexclave/next';
 import { ActionCell, ActionDialog, Badge, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useMemo, useState } from "react";
 
 type ApiKeyStatus = 'valid' | 'expired' | 'revoked';

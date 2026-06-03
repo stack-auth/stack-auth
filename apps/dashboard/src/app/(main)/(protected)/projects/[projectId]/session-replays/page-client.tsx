@@ -19,8 +19,8 @@ import {
 } from "@/lib/session-replay-streams";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowsClockwiseIcon, CheckIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -2085,7 +2085,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                       <Typography className="mt-2 text-sm text-muted-foreground">
                         Session replays let you watch how users interact with your app. For info on enabling replays,{" "}
                         <StyledLink
-                          href="https://docs.stack-auth.com/docs/apps/analytics"
+                          href="https://docs.hexclave.com/docs/apps/analytics"
                           target="_blank"
                         >
                           look here

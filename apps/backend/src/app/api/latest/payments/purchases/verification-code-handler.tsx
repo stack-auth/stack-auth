@@ -1,6 +1,6 @@
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
-import { productSchema, yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { productSchema, yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const purchaseUrlVerificationCodeHandler = createVerificationCodeHandler({
   type: VerificationCodeType.PURCHASE_URL,

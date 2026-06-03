@@ -20,7 +20,7 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-const INSTALL_CMD = "npx @stackframe/stack-cli@latest init";
+const INSTALL_CMD = "npx @hexclave/cli@latest init";
 
 function renderHtml(): string {
   const skillEscaped = escapeHtml(SKILL_MD);
@@ -32,8 +32,8 @@ function renderHtml(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
-<title>Stack Auth Skill</title>
-<meta name="description" content="The Stack Auth agent skill — user management, auth, payments, emails, analytics, and the Stack Auth CLI." />
+<title>Hexclave Skill</title>
+<meta name="description" content="The Hexclave agent skill — user management, auth, payments, emails, analytics, and the Hexclave CLI." />
 <style>
   :root {
     color-scheme: light dark;
@@ -159,12 +159,12 @@ function renderHtml(): string {
 <a class="skip" href="#main">Skip to Content</a>
 <main id="main">
   <header>
-    <div class="brand"><span class="brand-dot" aria-hidden="true"></span><span translate="no">Stack&nbsp;Auth</span></div>
-    <a class="ghost" href="https://docs.stack-auth.com" rel="noreferrer">Docs&nbsp;↗</a>
+    <div class="brand"><span class="brand-dot" aria-hidden="true"></span><span translate="no">Hexclave</span></div>
+    <a class="ghost" href="https://docs.hexclave.com" rel="noreferrer">Docs&nbsp;↗</a>
   </header>
 
-  <h1>The Stack Auth Agent Skill</h1>
-  <p class="lede">This endpoint serves the canonical <span translate="no">SKILL.md</span> that teaches coding agents how to wire Stack Auth into a project — auth, orgs, payments, emails, analytics, and the <span translate="no">stack-cli</span>.</p>
+  <h1>The Hexclave Agent Skill</h1>
+  <p class="lede">This endpoint serves the canonical <span translate="no">SKILL.md</span> that teaches coding agents how to wire Hexclave into a project — auth, orgs, payments, emails, analytics, and the <span translate="no">hexclave-cli</span>.</p>
 
   <h2>Install in One Command</h2>
   <p>Run this in any project root. It detects your agent, installs the skill, registers the MCP server, and writes credentials.</p>
@@ -176,17 +176,17 @@ function renderHtml(): string {
   <h2>Fetch the Skill Directly</h2>
   <p>Agents and tools fetch the markdown from this same URL — content negotiation serves <span translate="no">text/markdown</span> to non-browser clients.</p>
   <div class="cards">
-    <a class="card" href="https://docs.stack-auth.com/guides/getting-started/ai-integration" rel="noreferrer">
+    <a class="card" href="https://docs.hexclave.com/guides/getting-started/ai-integration" rel="noreferrer">
       <div class="card-title">AI Integration Guide</div>
       <div class="card-desc">How to point an agent at this skill.</div>
     </a>
-    <a class="card" href="https://mcp.stack-auth.com" rel="noreferrer">
+    <a class="card" href="https://mcp.hexclave.com" rel="noreferrer">
       <div class="card-title">MCP Server</div>
       <div class="card-desc">Ask questions over the docs with citations.</div>
     </a>
-    <a class="card" href="https://docs.stack-auth.com/guides/going-further/cli" rel="noreferrer">
+    <a class="card" href="https://docs.hexclave.com/guides/going-further/cli" rel="noreferrer">
       <div class="card-title">CLI Reference</div>
-      <div class="card-desc">Every <span translate="no">stack-cli</span> command and flag.</div>
+      <div class="card-desc">Every <span translate="no">hexclave-cli</span> command and flag.</div>
     </a>
   </div>
 
@@ -197,8 +197,8 @@ function renderHtml(): string {
   </details>
 
   <footer>
-    <span>© Stack Auth</span>
-    <a href="https://github.com/hexclave/stack-auth" rel="noreferrer">GitHub&nbsp;↗</a>
+    <span>© Hexclave</span>
+    <a href="https://github.com/hexclave/hexclave" rel="noreferrer">GitHub&nbsp;↗</a>
   </footer>
 </main>
 <script>

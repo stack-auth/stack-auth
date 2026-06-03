@@ -1,10 +1,10 @@
-import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@stackframe/stack-shared/dist/local-emulator";
+import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { readConfigValue } from "./config.js";
 import { emulatorBackendPort, emulatorDashboardPort, internalPckPath, pollInternalPck } from "./emulator-paths.js";
 import { AuthError, CliError } from "./errors.js";
 
-export const DEFAULT_API_URL = "https://api.stack-auth.com";
-export const DEFAULT_DASHBOARD_URL = "https://app.stack-auth.com";
+export const DEFAULT_API_URL = "https://api.hexclave.com";
+export const DEFAULT_DASHBOARD_URL = "https://app.hexclave.com";
 export const DEFAULT_PUBLISHABLE_CLIENT_KEY = process.env.STACK_CLI_PUBLISHABLE_CLIENT_KEY ?? "pck_9bbqvqsbh0gdb6smk11d71qg4ktc4rz8ya7cc69yndm7g";
 
 export type LoginConfig = {
@@ -52,7 +52,7 @@ function resolveRefreshToken(): string {
 }
 
 function resolveSecretServerKey(): string | null {
-  return process.env.STACK_SECRET_SERVER_KEY ?? null;
+  return process.env.HEXCLAVE_SECRET_SERVER_KEY ?? process.env.STACK_SECRET_SERVER_KEY ?? null;
 }
 
 export function resolveLoginConfig(): LoginConfig {
@@ -87,15 +87,16 @@ export function resolveAuth(projectId: string): ProjectAuth {
 }
 
 // Resolve the cloud project ID from the `--cloud-project-id` option, falling
-// back to the STACK_PROJECT_ID environment variable. Empty strings are treated
-// as absent so callers can pass through optional option values directly.
+// back to the HEXCLAVE_PROJECT_ID environment variable (and the legacy
+// STACK_PROJECT_ID name). Empty strings are treated as absent so callers can
+// pass through optional option values directly.
 export function resolveProjectId(projectIdOption?: string): string {
-  for (const candidate of [projectIdOption, process.env.STACK_PROJECT_ID]) {
+  for (const candidate of [projectIdOption, process.env.HEXCLAVE_PROJECT_ID, process.env.STACK_PROJECT_ID]) {
     if (candidate != null && candidate !== "") {
       return candidate;
     }
   }
-  throw new CliError("No project ID provided. Pass --cloud-project-id <id> or set the STACK_PROJECT_ID environment variable.");
+  throw new CliError("No project ID provided. Pass --cloud-project-id <id> or set the HEXCLAVE_PROJECT_ID environment variable.");
 }
 
 export function isProjectAuthWithSecretServerKey(auth: ProjectAuth): auth is ProjectAuthWithSecretServerKey {
@@ -120,11 +121,11 @@ export function resolveLocalEmulatorDashboardUrl(): string {
   return resolveLocalEmulatorUrl("STACK_EMULATOR_DASHBOARD_URL", emulatorDashboardPort());
 }
 
-// Per-phase budget for "absorb the race between `stack emulator start` and the
-// next CLI invocation". Applied independently to (a) waiting for the PCK file
-// to appear and (b) the sign-in retry loop, so the worst-case wall-clock is up
-// to ~2× this value when both phases hit the deadline. Override via
-// STACK_EMULATOR_READY_TIMEOUT_MS (in milliseconds).
+// Per-phase budget for waiting until the development environment is ready.
+// Applied independently to (a) waiting for the PCK file to appear and (b) the
+// sign-in retry loop, so the worst-case wall-clock is up to ~2× this value when
+// both phases hit the deadline. Override via STACK_EMULATOR_READY_TIMEOUT_MS
+// (in milliseconds).
 const DEFAULT_LOCAL_EMULATOR_READY_TIMEOUT_MS = 10_000;
 const LOCAL_EMULATOR_PER_REQUEST_TIMEOUT_MS = 5_000;
 
@@ -143,7 +144,7 @@ export function localEmulatorReadyTimeoutMs(): number {
 async function resolveLocalEmulatorInternalPck(timeoutMs: number): Promise<string> {
   const contents = await pollInternalPck(timeoutMs);
   if (contents === null) {
-    throw new AuthError(`Local emulator publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start the emulator with \`stack emulator start\`.`);
+    throw new AuthError(`Development environment publishable client key not found at ${internalPckPath()} (waited ${timeoutMs}ms). Start your development environment and try again.`);
   }
   return contents;
 }
@@ -193,7 +194,7 @@ async function localEmulatorSignInWithRetry(apiUrl: string, internalPck: string,
     }
     if (performance.now() >= deadline) {
       const message = lastError instanceof Error ? lastError.message : String(lastError);
-      throw new AuthError(`Cannot reach local emulator at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start it with \`stack emulator start\`.`);
+      throw new AuthError(`Cannot reach development environment at ${apiUrl} (after ${totalTimeoutMs}ms): ${message}. Start your development environment and try again.`);
     }
     const remaining = deadline - performance.now();
     await new Promise((r) => setTimeout(r, Math.min(delay, remaining)));
@@ -219,9 +220,9 @@ export async function resolveLocalEmulatorAuth(projectId: string): Promise<Proje
       body = await res.text();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+      throw new AuthError(`Development-environment sign-in failed (${res.status} ${res.statusText}). Failed to read response body: ${message}. Make sure the development environment is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
     }
-    throw new AuthError(`Local emulator sign-in failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the emulator is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
+    throw new AuthError(`Development-environment sign-in failed (${res.status} ${res.statusText})${body ? `: ${body}` : ""}. Make sure the development environment is running with NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true.`);
   }
 
   let data: unknown;
@@ -229,10 +230,10 @@ export async function resolveLocalEmulatorAuth(projectId: string): Promise<Proje
     data = await res.json();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new AuthError(`Local emulator sign-in returned a non-JSON response: ${message}.`);
+    throw new AuthError(`Development-environment sign-in returned a non-JSON response: ${message}.`);
   }
   if (data === null || typeof data !== "object" || typeof (data as { refresh_token?: unknown }).refresh_token !== "string") {
-    throw new AuthError("Local emulator sign-in response was missing a refresh token.");
+    throw new AuthError("Development-environment sign-in response was missing a refresh token.");
   }
   const refreshToken = (data as { refresh_token: string }).refresh_token;
 

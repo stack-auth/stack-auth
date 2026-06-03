@@ -16,7 +16,7 @@ export type StackAuthUser = {
 };
 
 /**
- * Find a Featurebase user by their Stack Auth user ID
+ * Find a Featurebase user by their Hexclave user ID
  */
 async function findFeaturebaseUserById(stackAuthUserId: string, apiKey: string): Promise<FeaturebaseUser | null> {
   try {
@@ -165,10 +165,10 @@ async function updateFeaturebaseUser(userId: string, updates: Partial<Omit<Featu
 }
 
 /**
- * Get or create a Featurebase user based on Stack Auth user data.
+ * Get or create a Featurebase user based on Hexclave user data.
  * This function ensures that:
  * 1. We never change a user's email address on Featurebase
- * 2. We use Stack Auth user ID as the primary identifier
+ * 2. We use Hexclave user ID as the primary identifier
  * 3. We handle email conflicts by using fallback emails
  * 4. We update profile information when needed
  */
@@ -179,7 +179,7 @@ export async function getOrCreateFeaturebaseUser(
   const apiKey = options?.apiKey || getEnvVariable("STACK_FEATUREBASE_API_KEY");
   const fallbackEmail = `${stackAuthUser.id}@featurebase-user.stack-auth-app.com`;
 
-  // First, try to find existing user by Stack Auth user ID
+  // First, try to find existing user by Hexclave user ID
   const existingById = await findFeaturebaseUserById(stackAuthUser.id, apiKey);
   if (existingById) {
     // Ensure the user has an email on Featurebase.

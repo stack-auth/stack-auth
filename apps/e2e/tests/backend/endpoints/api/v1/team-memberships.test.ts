@@ -1,4 +1,4 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { STACK_SVIX_SERVER_URL, it, niceFetch } from "../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, Project, Team, Webhook, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
@@ -24,7 +24,7 @@ it("is not allowed to add user to team on client", async ({ expect }) => {
             "admin",
           ],
         },
-        "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+        "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

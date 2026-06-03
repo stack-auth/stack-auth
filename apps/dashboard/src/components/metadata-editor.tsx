@@ -6,8 +6,8 @@ import { cn, SimpleTooltip } from "@/components/ui";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
 import { DatabaseIcon } from "@phosphor-icons/react";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { parseJson, type Json } from "@stackframe/stack-shared/dist/utils/json";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { parseJson, type Json } from "@hexclave/shared/dist/utils/json";
 import { useEffect, useMemo, useState } from "react";
 
 type MetadataEditorProps = {

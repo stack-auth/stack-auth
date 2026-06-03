@@ -1,21 +1,18 @@
-import { StackProvider, StackTheme } from "@stackframe/stack";
+import { StackProvider, StackTheme } from "@hexclave/next";
 import { Metadata } from "next";
-import React from "react";
 import Header from "src/components/header";
 import Provider from "src/components/provider";
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 import './global.css';
 
 export const metadata: Metadata = {
-  title: 'Stack Demo',
-  description: 'Example of using Stack as your authentication system.',
+  title: 'Hexclave Demo',
+  description: 'Example of using Hexclave as your authentication system.',
 };
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode,
-}) {
+}: LayoutProps<"/">) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head />

@@ -1,5 +1,5 @@
-const { StackProvider, StackTheme } = require("@stackframe/stack");
-const { stackServerApp } = require("../stack");
+const { StackProvider, StackTheme } = require("@hexclave/next");
+const { stackServerApp } = require("../hexclave");
 require("./globals.css");
 
 

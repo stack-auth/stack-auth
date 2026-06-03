@@ -2,8 +2,8 @@ import { Command } from "commander";
 import { select, input, checkbox, confirm } from "@inquirer/prompts";
 import * as fs from "fs";
 import * as path from "path";
-import { StackClientApp } from "@stackframe/js";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { StackClientApp } from "@hexclave/js";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
 import { resolveLoginConfig, resolveSessionAuth, DEFAULT_PUBLISHABLE_CLIENT_KEY } from "../lib/auth.js";
 import { getInternalUser } from "../lib/app.js";
 import { writeConfigValue } from "../lib/config.js";
@@ -13,9 +13,8 @@ import { createInitPrompt } from "../lib/init-prompt.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import { isEmulatorImageInstalled } from "./emulator.js";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const VALID_INIT_MODES = ["create", "create-cloud", "link-config", "link-cloud"] as const;
 type InitMode = typeof VALID_INIT_MODES[number];
@@ -33,7 +32,7 @@ type InitOptions = {
 export function registerInitCommand(program: Command) {
   program
     .command("init")
-    .description("Initialize Stack Auth in your project")
+    .description("Initialize Hexclave in your project")
     .option("--mode <mode>", "Mode: create, create-cloud, link-config, or link-cloud (skips interactive prompts)")
     .option("--apps <apps>", "Comma-separated app IDs to enable (for create mode)")
     .option("--config-file <path>", "Path to existing config file (for link-config mode)")
@@ -99,7 +98,7 @@ async function runInit(program: Command, opts: InitOptions) {
 
   validateOptions(opts);
 
-  console.log("Welcome to Stack Auth!\n");
+  console.log("Welcome to Hexclave!\n");
 
   let mode: string;
   if (opts.mode) {
@@ -109,15 +108,12 @@ async function runInit(program: Command, opts: InitOptions) {
   } else if (opts.configFile) {
     mode = "link-config";
   } else {
-    console.log("Creating a new Stack Auth project.\n");
-    const localLabel = isEmulatorImageInstalled()
-      ? "Local (emulator already installed)"
-      : "Local (requires local emulator installation, ~1.3gb storage required)";
+    console.log("Creating a new Hexclave project.\n");
     const location = await select({
       message: "Where would you like to create the project?",
       choices: [
-        { name: "Stack Auth Cloud", value: "hosted" as const },
-        { name: localLabel, value: "local" as const },
+        { name: "Hexclave Cloud", value: "hosted" as const },
+        { name: "Local config file", value: "local" as const },
       ],
     });
     mode = location === "local" ? "create" : "create-cloud";
@@ -145,8 +141,8 @@ async function runInit(program: Command, opts: InitOptions) {
   const useAgent = opts.agent !== false && !isNonInteractiveEnv();
 
   if (useAgent) {
-    console.log("\nRunning your coding agent to wire up Stack Auth.");
-    console.log("This also registers the Stack Auth MCP server (https://mcp.stack-auth.com)");
+    console.log("\nRunning your coding agent to wire up Hexclave.");
+    console.log("This also registers the Hexclave MCP server (https://mcp.hexclave.com)");
     console.log("so your agent can read the docs and answer Stack-specific questions going forward.\n");
     const success = await runClaudeAgent({
       prompt: `Set up Stack Auth in my project now. Do not ask questions — detect the framework and package manager from existing files, apply the relevant sections of the setup guide, and skip sections for integrations this project does not use.\n\n${initPrompt}`,
@@ -169,16 +165,12 @@ function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: 
   console.log("  • Start your dev server, then visit /handler/sign-up to create a test user");
   console.log("    (and /handler/sign-in to log in). Drop <UserButton /> into a page to see the session.");
 
-  if (args.mode === "create") {
-    console.log("  • You're wired up to the local emulator. Start it in another terminal:");
-    console.log("      npx @stackframe/stack-cli emulator start");
-    console.log("    Local dashboard: http://localhost:26700");
-  } else if (args.projectId) {
+  if (args.projectId != null) {
     console.log("  • Manage this project in the dashboard:");
     console.log(`      ${args.dashboardUrl}/projects/${encodeURIComponent(args.projectId)}`);
   }
 
-  console.log("  • Docs: https://docs.stack-auth.com");
+  console.log("  • Docs: https://docs.hexclave.com");
   console.log("");
 }
 
@@ -229,7 +221,6 @@ async function ensureLoggedInSession() {
 async function writeProjectKeysToEnv(
   project: { id: string, app: { createInternalApiKey: (opts: { description: string, expiresAt: Date, hasPublishableClientKey: boolean, hasSecretServerKey: boolean, hasSuperSecretAdminKey: boolean }) => Promise<{ publishableClientKey?: string | null, secretServerKey?: string | null }> } },
   outputDir: string,
-  variant: "cloud" | "local" = "cloud",
 ) {
   const apiKey = await project.app.createInternalApiKey({
     description: "Created by CLI init script",
@@ -242,19 +233,11 @@ async function writeProjectKeysToEnv(
   const publishableClientKey = apiKey.publishableClientKey ?? throwErr("createInternalApiKey returned no publishableClientKey despite hasPublishableClientKey=true");
   const secretServerKey = apiKey.secretServerKey ?? throwErr("createInternalApiKey returned no secretServerKey despite hasSecretServerKey=true");
 
-  const header = variant === "local"
-    ? [
-      "# Stack Auth — local emulator keys",
-      "# These credentials point at your local Stack Auth emulator, not a cloud project.",
-      "# They are only valid while the emulator is running (`stack emulator start`).",
-    ]
-    : ["# Stack Auth"];
-
   const envLines = [
-    ...header,
-    `NEXT_PUBLIC_STACK_PROJECT_ID=${project.id}`,
-    `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKey}`,
-    `STACK_SECRET_SERVER_KEY=${secretServerKey}`,
+    "# Hexclave",
+    `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${project.id}`,
+    `NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY=${publishableClientKey}`,
+    `HEXCLAVE_SECRET_SERVER_KEY=${secretServerKey}`,
   ].join("\n");
 
   const envPath = path.resolve(outputDir, ".env");
@@ -265,16 +248,16 @@ async function writeProjectKeysToEnv(
 
     if (isNonInteractiveEnv()) {
       fs.appendFileSync(envPath, separator + envLines + "\n");
-      console.log("\nAppended Stack Auth keys to .env");
+      console.log("\nAppended Hexclave keys to .env");
     } else {
       const shouldAppend = await confirm({
-        message: `.env file already exists. Append Stack Auth keys?`,
+        message: `.env file already exists. Append Hexclave keys?`,
         default: true,
       });
 
       if (shouldAppend) {
         fs.appendFileSync(envPath, separator + envLines + "\n");
-        console.log("\nAppended Stack Auth keys to .env");
+        console.log("\nAppended Hexclave keys to .env");
       } else {
         console.log("\nHere are your environment variables:\n");
         console.log(envLines);
@@ -282,7 +265,7 @@ async function writeProjectKeysToEnv(
     }
   } else {
     fs.writeFileSync(envPath, envLines + "\n");
-    console.log("\nCreated .env with Stack Auth keys");
+    console.log("\nCreated .env with Hexclave keys");
   }
 }
 
@@ -317,7 +300,7 @@ async function handleLinkFromCloud(_flags: Record<string, unknown>, opts: InitOp
     }
 
     const shouldCreate = await confirm({
-      message: "You don't have any Stack Auth projects yet. Would you like to create one?",
+      message: "You don't have any Hexclave projects yet. Would you like to create one?",
       default: true,
     });
 

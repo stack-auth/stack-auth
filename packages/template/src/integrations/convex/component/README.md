@@ -1,25 +1,25 @@
-# Stack Auth Convex Component
+# Hexclave Convex Component
 
-This component is the official way to integrate Stack Auth with your Convex project.
+This component is the official way to integrate Hexclave with your Convex project.
 
 ## Installation
 
-To get started, first install Stack Auth using the setup wizard:
+To get started, first install Hexclave using the setup wizard:
 
 ```bash
-npx @stackframe/stack-cli@latest init
+npx @hexclave/cli@latest init
 ```
 
 ## Get Started
 
-[Create a new Stack Auth project](https://app.stack-auth.com) and set the environment variables in Convex to the project ID & API key environment variables from the Stack Auth dashboard. Also, add the same values to the `.env.local` file.
+[Create a new Hexclave project](https://app.hexclave.com) and set the environment variables in Convex to the project ID & API key environment variables from the Hexclave dashboard. Also, add the same values to the `.env.local` file.
 
 Next, update or create a file in `convex/auth.config.ts`:
 
 ```ts
-import { getConvexProvidersConfig } from "@stackframe/js/convex-auth.config";  // Vanilla JS
-// or: import { getConvexProvidersConfig } from "@stackframe/react/convex-auth.config";  // React
-// or: import { getConvexProvidersConfig } from "@stackframe/stack/convex-auth.config";  // Next.js
+import { getConvexProvidersConfig } from "@hexclave/js/convex-auth.config";  // Vanilla JS
+// or: import { getConvexProvidersConfig } from "@hexclave/react/convex-auth.config";  // React
+// or: import { getConvexProvidersConfig } from "@hexclave/next/convex-auth.config";  // Next.js
 
 export default {
   providers: getConvexProvidersConfig({
@@ -32,9 +32,9 @@ Next, update or create a file in `convex/convex.config.ts`:
 
 ```ts
 import { defineApp } from "convex/server";
-import stackAuthComponent from "@stackframe/js/convex.config";  // Vanilla JS
-// or: import stackAuthComponent from "@stackframe/react/convex.config";  // React
-// or: import stackAuthComponent from "@stackframe/stack/convex.config";  // Next.js
+import stackAuthComponent from "@hexclave/js/convex.config";  // Vanilla JS
+// or: import stackAuthComponent from "@hexclave/react/convex.config";  // React
+// or: import stackAuthComponent from "@hexclave/next/convex.config";  // Next.js
 
 
 const app = defineApp();
@@ -43,20 +43,20 @@ app.use(stackAuthComponent);
 export default app;
 ```
 
-Then, update your Convex client to use Stack Auth:
+Then, update your Convex client to use Hexclave:
 
 ```ts
 convexClient.setAuth(stackClientApp.getConvexClientAuth({}));  // browser JS
 convexReactClient.setAuth(stackClientApp.getConvexClientAuth({}));  // React
-convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));  // HTTP, see Stack Auth docs for more information on tokenStore
+convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));  // HTTP, see Hexclave docs for more information on tokenStore
 ```
 
-Now, you'll be able to access Stack Auth's functionality from your frontend & backend:
+Now, you'll be able to access Hexclave's functionality from your frontend & backend:
 
 ```ts
 // MyPage.tsx
 export function MyPage() {
-  // see https://docs.stack-auth.com for more information on how to use Stack Auth
+  // see https://docs.hexclave.com for more information on how to use Hexclave
   const user = useUser();
   return <div>Your email is {user.email}</div>;
 }
@@ -71,4 +71,4 @@ export const myQuery = query({
 });
 ```
 
-For more information on how to use Stack Auth, see the [Stack Auth docs](https://docs.stack-auth.com).
+For more information on how to use Hexclave, see the [Hexclave docs](https://docs.hexclave.com).

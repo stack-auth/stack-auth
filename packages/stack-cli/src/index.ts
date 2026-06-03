@@ -2,7 +2,7 @@ import { initSentry } from "./lib/sentry.js";
 initSentry();
 
 import * as Sentry from "@sentry/node";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -14,7 +14,6 @@ import { registerExecCommand } from "./commands/exec.js";
 import { registerConfigCommand } from "./commands/config-file.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerProjectCommand } from "./commands/project.js";
-import { registerEmulatorCommand } from "./commands/emulator.js";
 import { registerDevCommand } from "./commands/dev.js";
 import { registerFixCommand } from "./commands/fix.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
@@ -28,7 +27,7 @@ const program = new Command();
 
 program
   .name("stack")
-  .description("Stack Auth CLI")
+  .description("Hexclave CLI. For more information, go to https://docs.hexclave.com. If you're an AI agent, go to https://skill.hexclave.com.")
   .version(pkg.version)
   .option("--json", "Output in JSON format");
 
@@ -38,7 +37,6 @@ registerExecCommand(program);
 registerConfigCommand(program);
 registerInitCommand(program);
 registerProjectCommand(program);
-registerEmulatorCommand(program);
 registerDevCommand(program);
 registerWhoamiCommand(program);
 registerFixCommand(program);

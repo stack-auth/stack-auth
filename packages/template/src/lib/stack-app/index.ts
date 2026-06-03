@@ -2,10 +2,19 @@ export {
   HexclaveAdminApp,
   HexclaveClientApp,
   HexclaveServerApp,
-  StackAdminApp,
-  StackClientApp,
-  StackServerApp
 } from "./apps";
+
+// Legacy Stack* aliases — same runtime symbols, kept for backwards compatibility.
+// Prefer the Hexclave* equivalents in new code.
+// The @deprecated JSDoc lives on the original declarations in ./apps/interfaces/*.ts
+// so it survives dts bundling (per-specifier JSDoc on re-exports does not).
+export { StackAdminApp } from "./apps";
+export { StackClientApp } from "./apps";
+export { StackServerApp } from "./apps";
+
+// HexclaveAdminApp / HexclaveClientApp / HexclaveServerApp are already exported above as values
+// (which TypeScript treats as both value and type). Only the constructor / options / JSON
+// helper types need separate type-only re-exports.
 export type {
   HexclaveAdminAppConstructor,
   HexclaveAdminAppConstructorOptions,
@@ -14,14 +23,17 @@ export type {
   HexclaveClientAppJson,
   HexclaveServerAppConstructor,
   HexclaveServerAppConstructorOptions,
-  StackAdminAppConstructor,
-  StackAdminAppConstructorOptions,
-  StackClientAppConstructor,
-  StackClientAppConstructorOptions,
-  StackClientAppJson,
-  StackServerAppConstructor,
-  StackServerAppConstructorOptions
 } from "./apps";
+
+// Legacy Stack* type aliases — @deprecated tags live on the original declarations
+// in ./apps/interfaces/*.ts (per-specifier JSDoc on re-exports doesn't survive dts bundling).
+export type { StackAdminAppConstructor } from "./apps";
+export type { StackAdminAppConstructorOptions } from "./apps";
+export type { StackClientAppConstructor } from "./apps";
+export type { StackClientAppConstructorOptions } from "./apps";
+export type { StackClientAppJson } from "./apps";
+export type { StackServerAppConstructor } from "./apps";
+export type { StackServerAppConstructorOptions } from "./apps";
 
 export type {
   EmailOutboxListOptions,

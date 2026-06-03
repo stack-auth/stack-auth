@@ -1,4 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { remindersPrompt } from "@hexclave/shared/dist/ai/unified-prompts/reminders";
 import { createMcpHandler } from "@vercel/mcp-adapter";
 import { z } from "zod";
 
@@ -23,7 +24,7 @@ type AiQueryResponse = {
   conversationId?: string,
 };
 
-const skillResourceUri = "https://skill.stack-auth.com";
+const skillResourceUri = "https://skill.hexclave.com";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -77,8 +78,8 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
         "skill",
         skillResourceUri,
         {
-          title: "Stack Auth skill",
-          description: "The canonical Stack Auth agent skill (SKILL.md) — how to wire Stack Auth into a project.",
+          title: "Hexclave skill",
+          description: "The canonical Hexclave agent skill (SKILL.md) — how to wire Hexclave into a project.",
           mimeType: "text/markdown",
         },
         async () => ({
@@ -92,7 +93,7 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
 
       server.prompt(
         "skill",
-        "Load the Stack Auth skill (SKILL.md) into the conversation — how to wire Stack Auth into a project.",
+        "Load the Hexclave skill (SKILL.md) into the conversation — how to wire Hexclave into a project.",
         async () => ({
           messages: [{
             role: "user",
@@ -176,7 +177,9 @@ export function createStackMcpHandler(config: { streamableHttpEndpoint: string }
         name: "hexclave-mcp",
         version: packageJson.version,
       },
-      instructions: "Hexclave's official MCP server. Prefer the `ask_hexclave` tool for any question about Hexclave — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Hexclave changes frequently. The `skill` resource/tool loads SKILL.md (the canonical Hexclave agent skill) — pull it in when you need a quick reference for project setup, CLI usage, or wiring conventions, but always use `ask_hexclave` first.",
+      instructions: `Hexclave's official MCP server. Prefer the \`ask_hexclave\` tool for any question about Hexclave — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Hexclave changes frequently. The \`skill\` resource/tool loads SKILL.md (the canonical Hexclave agent skill) — pull it in when you need a quick reference for project setup, CLI usage, or wiring conventions, but always use \`ask_hexclave\` first.
+
+${remindersPrompt}`,
     },
     {
       streamableHttpEndpoint: config.streamableHttpEndpoint,

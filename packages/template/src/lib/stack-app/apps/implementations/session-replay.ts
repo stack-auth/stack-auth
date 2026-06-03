@@ -1,6 +1,7 @@
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
+import { captureWarning } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Result } from "@hexclave/shared/dist/utils/results";
 
 export type AnalyticsReplayOptions = {
   /**
@@ -255,12 +256,12 @@ export class SessionRecorder {
       );
 
       if (res.status === "error") {
-        console.warn("SessionRecorder flush failed:", res.error);
+        captureWarning("SessionRecorder.flush", res.error);
         return;
       }
 
       if (!res.data.ok) {
-        console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+        captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
       }
     } finally {
       this._flushInProgress = false;

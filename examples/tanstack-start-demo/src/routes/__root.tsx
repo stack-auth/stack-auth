@@ -1,22 +1,22 @@
 /// <reference types="vite/client" />
 import "../styles.css";
 
-import { StackProvider, StackTheme } from "@stackframe/tanstack-start";
+import { StackProvider, StackTheme } from "@hexclave/tanstack-start";
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Suspense, useMemo } from "react";
 import { Header } from "~/components/header";
-import { createStackApp } from "~/stack";
+import { createStackApp } from "~/hexclave";
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Stack Auth TanStack Start Demo" },
+      { title: "Hexclave TanStack Start Demo" },
       {
         name: "description",
-        content: "TanStack Start demo application using Stack Auth.",
+        content: "TanStack Start demo application using Hexclave.",
       },
     ],
   }),

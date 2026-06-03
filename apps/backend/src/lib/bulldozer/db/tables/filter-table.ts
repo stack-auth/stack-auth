@@ -1,4 +1,4 @@
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick } from "@hexclave/shared/dist/utils/objects";
 import type { Table } from "..";
 import type { Json, RowData, SqlPredicate, TableId } from "../utilities";
 import {

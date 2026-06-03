@@ -2,12 +2,13 @@ import { createOAuthUserAndAccount, findExistingOAuthAccount, getProjectUserIdFr
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
 import { getDisabledBotChallengeAssessment, isBotChallengeDisabled } from "@/lib/turnstile";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 // Apple's JWKS endpoint for verifying identity tokens
@@ -67,7 +68,7 @@ export const POST = createSmartRouteHandler({
       is_new_user: yupBoolean().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy }, body }) {
+  async handler({ auth: { tenancy }, body }, fullReq) {
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     // Check if Apple OAuth provider is enabled for this project
@@ -152,6 +153,7 @@ export const POST = createSmartRouteHandler({
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId,
+      apiUrl: getApiUrlForRequest(fullReq),
     });
 
     return {

@@ -1,15 +1,15 @@
-import { StackProvider } from "@stackframe/stack";
+import { StackProvider } from "@hexclave/next";
 import { Metadata } from "next";
 import { Inter } from 'next/font/google';
 import Provider from "src/components/provider";
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 import './global.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Stack Demo',
-  description: 'Example of using Stack as your authentication system.',
+  title: 'Hexclave Docs Example',
+  description: 'Example of using Hexclave as your authentication system.',
 };
 
 export default function RootLayout({

@@ -1,13 +1,13 @@
-import { KnownErrors } from "@stackframe/stack-shared";
-import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
-import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
-import { ReadonlyJson } from "@stackframe/stack-shared/dist/utils/json";
-import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { KnownErrors } from "@hexclave/shared";
+import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { InternalSession } from "@hexclave/shared/dist/sessions";
+import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { GeoInfo } from "@hexclave/shared/dist/utils/geo";
+import { ReadonlyJson } from "@hexclave/shared/dist/utils/json";
+import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty, AuthLike } from "../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../connected-accounts";
@@ -18,7 +18,7 @@ import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, ServerListTeamsOptions, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 
-const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
+const userGetterErrorMessage = "Hexclave: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
 export function withUserDestructureGuard<T extends object>(target: T): T {
   Object.freeze(target);

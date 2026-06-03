@@ -1,4 +1,4 @@
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { it } from "../../../../../../helpers";
 import { withPortPrefix } from "../../../../../../helpers/ports";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../../backend-helpers";
@@ -165,7 +165,7 @@ it("should error for no connected stripe account in live mode", async ({ expect 
   expect(response).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.",
+        "body": "Payments are not set up in this Hexclave project. Please go to the Hexclave dashboard and complete the Payments onboarding.",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);

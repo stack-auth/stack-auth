@@ -79,6 +79,9 @@ async function getKmsClient() {
 }
 
 async function getOrCreateKekId(): Promise<string> {
+  // NOTE (Hexclave rebrand): do NOT rename this "stack-*" alias. It is the AWS KMS key alias for
+  // the existing key-encryption key; renaming it would point at a non-existent key and break
+  // wrap/unwrap of all stored data keys. Internal infrastructure constant, never user-visible.
   const id = "alias/stack-data-vault-server-side-kek";
   const kms = await getKmsClient();
   try {
@@ -123,6 +126,8 @@ export async function encryptWithKms(value: string) {
   const { dekBytes, edkBytes } = await genDEK();
   try {
     const ciphertext = await encrypt({
+      // NOTE (Hexclave rebrand): do NOT rename this "stack-*" purpose tag — it must match the one
+      // used in decryptWithKms below, or already-encrypted values become undecryptable.
       purpose: "stack-data-vault-server-side-encryption",
       secret: dekBytes,
       value: new TextEncoder().encode(value),

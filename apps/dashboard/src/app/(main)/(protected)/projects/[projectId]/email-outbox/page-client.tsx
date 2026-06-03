@@ -2,12 +2,12 @@
 
 import { SettingCard } from "@/components/settings";
 import { ActionDialog, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SimpleTooltip, Switch, Typography, useToast } from "@/components/ui";
-import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from "@stackframe/dashboard-ui-components";
+import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from "@hexclave/dashboard-ui-components";
 import { cn } from "@/lib/utils";
 import { DotsThreeIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
-import { AdminEmailOutbox, AdminEmailOutboxSimpleStatus, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminEmailOutbox, AdminEmailOutboxSimpleStatus, AdminEmailOutboxStatus } from "@hexclave/next";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";

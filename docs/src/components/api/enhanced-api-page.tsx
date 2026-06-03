@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@stackframe/stack';
+import { useUser } from '@hexclave/next';
 import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { OpenAPIOperation, OpenAPIParameter, OpenAPISchema, OpenAPISpec } from '../../lib/openapi-types';
@@ -230,7 +230,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
       }
       // Use local API URL in development, production URL from OpenAPI spec otherwise
       const defaultBaseUrl = spec?.servers?.[0]?.url || '';
-      const localApiUrl = process.env.NEXT_PUBLIC_STACK_API_URL;
+      const localApiUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL ?? process.env.NEXT_PUBLIC_STACK_API_URL;
       const baseUrl = localApiUrl ? localApiUrl + '/api/v1' : defaultBaseUrl;
 
       let url = baseUrl + path;
@@ -439,8 +439,9 @@ function ModernAPIPlayground({
   const generateCurlCommand = useCallback(() => {
     // Use local API URL in development, production URL otherwise
     const defaultBaseUrl = spec.servers?.[0]?.url || '';
-    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
-      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+    const localApiUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL ?? process.env.NEXT_PUBLIC_STACK_API_URL;
+    const baseUrl = localApiUrl
+      ? localApiUrl + '/api/v1'
       : defaultBaseUrl;
     let url = baseUrl + path;
 
@@ -491,8 +492,9 @@ function ModernAPIPlayground({
   const generateJavaScriptCode = useCallback(() => {
     // Use local API URL in development, production URL otherwise
     const defaultBaseUrl = spec.servers?.[0]?.url || '';
-    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
-      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+    const localApiUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL ?? process.env.NEXT_PUBLIC_STACK_API_URL;
+    const baseUrl = localApiUrl
+      ? localApiUrl + '/api/v1'
       : defaultBaseUrl;
     let url = baseUrl + path;
 
@@ -552,8 +554,9 @@ function ModernAPIPlayground({
   const generatePythonCode = useCallback(() => {
     // Use local API URL in development, production URL otherwise
     const defaultBaseUrl = spec.servers?.[0]?.url || '';
-    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
-      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+    const localApiUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL ?? process.env.NEXT_PUBLIC_STACK_API_URL;
+    const baseUrl = localApiUrl
+      ? localApiUrl + '/api/v1'
       : defaultBaseUrl;
     let url = baseUrl + path;
 

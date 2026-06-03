@@ -111,6 +111,9 @@ export async function getPrivateJwks(options: {
       }]))
       .digest()
   );
+  // NOTE (Hexclave rebrand): do NOT rename these "stack-*" literals. They are hashed into the
+  // per-audience JWT signing secret and key id (kid); renaming them would rotate every project's
+  // JWKS and invalidate all already-issued access tokens. Internal constants, never user-visible.
   const perAudienceSecret = getHashOfJwkInfo("stack-jwk-audience-secret");
   const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid").slice(0, 12);
 

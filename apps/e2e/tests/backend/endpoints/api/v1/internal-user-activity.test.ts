@@ -1,4 +1,4 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "node:crypto";
 import { it } from "../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
@@ -80,7 +80,7 @@ it("should reject non-admin callers", async ({ expect }) => {
           "actual_access_type": "server",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

@@ -1,5 +1,5 @@
-import { KnownErrors } from '@stackframe/stack-shared';
-import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { KnownErrors } from '@hexclave/shared';
+import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
 import { describe, expect, it } from 'vitest';
 import { validatePurchaseSession } from './payments';
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";

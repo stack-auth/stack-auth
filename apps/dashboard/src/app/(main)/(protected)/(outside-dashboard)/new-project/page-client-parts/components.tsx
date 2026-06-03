@@ -24,9 +24,9 @@ import {
   cn,
 } from "@/components/ui";
 import { ArrowLeftIcon, CheckCircleIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { AdminOwnedProject } from "@stackframe/stack";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { AdminOwnedProject } from "@hexclave/next";
+import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
 
 import type { TimelineStep } from "./shared";
 
@@ -484,7 +484,7 @@ export function WelcomeSlide(props: WelcomeSlideProps) {
 
         <div className="onboarding-cascade flex flex-col items-center gap-3 text-center" style={{ "--cascade-i": 1 } as CSSProperties}>
           <Typography className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Welcome to Stack Auth
+            Welcome to Hexclave
           </Typography>
           <Typography variant="secondary" className="mx-auto max-w-sm text-sm leading-relaxed text-balance">
             Your project is ready. Start building with authentication, emails, payments, and more — all in one place.

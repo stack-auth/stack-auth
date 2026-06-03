@@ -1,5 +1,5 @@
 import { getPublicEnvVar } from '@/lib/env';
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import packageJson from "../../package.json";
 
 export type VersionCheckResult = {
@@ -38,8 +38,8 @@ export function shouldDisplayVersionResult(
 }
 
 /**
- * Common utility function for checking version against Stack Auth API
- * Used by both VersionAlerter and StackCompanion components
+ * Common utility function for checking version against Hexclave API
+ * Used by both VersionAlerter and HexclaveCompanion components
  */
 export function checkVersion(
   onResult: (result: VersionCheckResult) => void,
@@ -52,7 +52,7 @@ export function checkVersion(
   } = options;
 
   // Skip check for managed hosting
-  if (typeof window !== "undefined" && window.location.origin === "https://app.stack-auth.com") {
+  if (typeof window !== "undefined" && window.location.origin === "https://app.hexclave.com") {
     return () => {}; // Return cleanup function
   }
 
@@ -63,9 +63,12 @@ export function checkVersion(
       await wait(delay);
       if (cancelled) return;
 
-      const res = await fetch(`https://api.stack-auth.com/api/v1/check-version`, {
+      const res = await fetch(`https://api.hexclave.com/api/v1/check-version`, {
         method: "POST",
-        body: JSON.stringify({ clientVersion: packageJson.version }),
+        body: JSON.stringify({
+          clientPackageName: packageJson.name,
+          clientVersion: packageJson.version,
+        }),
         headers: {
           "Content-Type": "application/json",
         },

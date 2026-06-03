@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Stack Webhooks API",
+    "title": "Hexclave Webhooks API",
     "version": "1.0.0"
   },
   "webhooks": {
@@ -246,7 +246,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/user.created",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/user.created",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -501,7 +501,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/user.updated",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/user.updated",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -575,7 +575,7 @@
         "tags": [
           "Users"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/user.deleted",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/user.deleted",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -672,7 +672,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/team.created",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/team.created",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -769,7 +769,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/team.updated",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/team.updated",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -828,7 +828,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/team.deleted",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/team.deleted",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -889,7 +889,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/team_membership.created",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/team_membership.created",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -950,7 +950,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/team_membership.deleted",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/team_membership.deleted",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1021,7 +1021,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/team_permission.created",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/team_permission.created",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -1092,7 +1092,7 @@
         "tags": [
           "Teams"
         ],
-        "x-full-url": "https://api.stack-auth.com/api/v1/webhooks/team_permission.deleted",
+        "x-full-url": "https://api.hexclave.com/api/v1/webhooks/team_permission.deleted",
         "responses": {
           "200": {
             "description": "Successful response",

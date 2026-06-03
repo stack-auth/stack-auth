@@ -1,7 +1,7 @@
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
 export const MODEL_SPEEDS = ["slow", "fast"] as const;
@@ -61,7 +61,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 export function createOpenRouterProvider() {
   const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
-    : "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1";
+    : "https://api.hexclave.com/api/latest/integrations/ai-proxy/v1";
   return createOpenRouter({
     apiKey: "forwarded",
     baseURL,

@@ -6,7 +6,7 @@ sidebarTitle: User Fundamentals
 
 import { UserFieldsTable } from "/snippets/user-fields-table.jsx";
 
-You've set up Stack Auth. Now let's understand the most important object in your application: the **User**.
+You've set up Hexclave. Now let's understand the most important object in your application: the **User**.
 
 The user object represents whoever is currently interacting with your app — their identity, profile, and metadata. Almost everything you build will revolve around it: retrieving the current user, protecting pages from unauthorized access, updating profile information, signing out, and more.
 
@@ -16,9 +16,9 @@ On both client and server, you can use the `getUser()` function to get the curre
 
 <CodeGroup dropdown>
 ```ts my-app.ts
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
-const user = await stackClientApp.getUser();
+const user = await hexclaveClientApp.getUser();
 if (user) {
   console.log("Signed in: " + (user.displayName ?? user.primaryEmail ?? "<Unnamed>"));
 } else {
@@ -28,13 +28,13 @@ if (user) {
 
 ```tsx my-react-component.tsx
 "use client";
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
-// Like most `getXyz()` or `listXyz()` functions, Stack Auth provides a `useUser()` hook equivalent to `getUser()`.
+// Like most `getXyz()` or `listXyz()` functions, Hexclave provides a `useUser()` hook equivalent to `getUser()`.
 // It behaves the same, but returns the user directly instead of a Promise, and updates when the user object changes.
-// Note: In Server Components, you can still use `await stackServerApp.getUser()`.
+// Note: In Server Components, you can still use `await hexclaveServerApp.getUser()`.
 export default async function MyReactComponent() {
-  const user = stackClientApp.useUser();
+  const user = hexclaveClientApp.useUser();
   if (user) {
     return <div>Hello, {user.displayName ?? user.primaryEmail ?? "anon"}</div>;
   } else {
@@ -54,19 +54,19 @@ In both cases, the return type is non-nullable, so you don't need to handle `nul
 
 <CodeGroup dropdown>
 ```ts my-app.ts
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
-const user = await stackClientApp.getUser({ or: "redirect" });
+const user = await hexclaveClientApp.getUser({ or: "redirect" });
 // user is guaranteed to be non-null here
 console.log("Signed in: " + (user.displayName ?? user.primaryEmail ?? "<Unnamed>"));
 ```
 
 ```tsx my-react-component.tsx
 "use client";
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
 export default function MyReactComponent() {
-  const user = stackClientApp.useUser({ or: "redirect" });
+  const user = hexclaveClientApp.useUser({ or: "redirect" });
   // user is guaranteed to be non-null here
   return <div>{`Hello, ${user.displayName ?? user.primaryEmail ?? "anon"}`}</div>;
 }
@@ -89,15 +89,15 @@ You can update attributes on a user object with the `user.update()` function.
 
 <CodeGroup dropdown>
 ```ts my-app.ts
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
-const user = await stackClientApp.getUser();
+const user = await hexclaveClientApp.getUser();
 await user.update({ displayName: "New Name" });
 ```
 
 ```tsx my-client-component.tsx
 'use client';
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function MyClientComponent() {
   const user = useUser();
@@ -110,19 +110,21 @@ export default function MyClientComponent() {
 
 ### Custom metadata
 
-Beyond built-in fields like `displayName` and `primaryEmail`, you'll often need to store your own data on a user. Stack Auth provides three metadata fields for this:
+Beyond built-in fields like `displayName` and `primaryEmail`, you can store your own JSON-like data on a user. Hexclave provides three metadata fields, each with different read and write permissions:
 
-- **`clientMetadata`** — Readable and writable from both the client and the server. Use this for non-sensitive user preferences like theme, locale, or UI state.
-- **`serverMetadata`** — Readable and writable only from the server. Use this for sensitive or internal data like internal flags, or anything users shouldn't be able to see or modify.
-- **`clientReadOnlyMetadata`** — Readable from the client, writable only from the server. Use this for data the client needs to display but shouldn't be able to change, like subscription plans or role labels.
+| Field | Client access | Server access | Use for |
+| --- | --- | --- | --- |
+| `clientMetadata` | Read and write | Read and write | Non-sensitive user preferences, such as theme, locale, onboarding form drafts, or UI state. |
+| `serverMetadata` | No access | Read and write | Sensitive or internal data that users should not be able to see or modify. |
+| `clientReadOnlyMetadata` | Read only | Read and write | Server-authoritative data that the client should display, such as subscription plans, role labels, or validated onboarding state. |
 
-For example, storing a user's theme preference in `clientMetadata`:
+Use `clientMetadata` for information that is safe for the browser to read and change. For example, a user can store their own theme preference:
 
 <CodeGroup dropdown>
 ```ts my-app.ts
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
-const user = await stackClientApp.getUser();
+const user = await hexclaveClientApp.getUser();
 await user.update({
   clientMetadata: {
     theme: "dark",
@@ -132,7 +134,7 @@ await user.update({
 
 ```tsx my-client-component.tsx
 'use client';
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function ThemeToggle() {
   const user = useUser({ or: "redirect" });
@@ -154,38 +156,70 @@ export default function ThemeToggle() {
 ```
 </CodeGroup>
 
-And storing sensitive data in `serverMetadata` (server-side only):
+Use `serverMetadata` for sensitive or internal data. It is only available through [`HexclaveServerApp`](/sdk/objects/stack-app#hexclaveserverapp):
 
 <CodeGroup dropdown>
-```ts my-app.ts
-import { stackServerApp } from "../src/stack/server";
+```ts my-server-file.ts
+import { hexclaveServerApp } from "../src/stack/server";
 
-const user = await stackServerApp.getUser();
+const user = await hexclaveServerApp.getUser();
 await user.update({
   serverMetadata: {
     internalFlag: true,
   },
 });
+
+console.log(user.serverMetadata);
 ```
 </CodeGroup>
 
-For more details, see the [User Metadata](/guides/going-further/user-metadata) documentation.
+Use `clientReadOnlyMetadata` when the client needs to read a value but only your server should decide it. A common example is storing a validated onboarding or subscription state:
+
+<CodeGroup dropdown>
+```ts my-server-file.ts
+import { hexclaveServerApp } from "../src/stack/server";
+
+const user = await hexclaveServerApp.getUser({ or: "throw" });
+await user.update({
+  clientReadOnlyMetadata: {
+    subscriptionPlan: "premium",
+    onboarded: true,
+  },
+});
+```
+
+```tsx my-client-component.tsx
+'use client';
+import { useUser } from "@hexclave/next";
+
+export default function SubscriptionBadge() {
+  const user = useUser({ or: "redirect" });
+  const plan = user.clientReadOnlyMetadata?.subscriptionPlan ?? "free";
+
+  return <div>Current plan: {plan}</div>;
+}
+```
+</CodeGroup>
+
+<Warning>
+  Do not put secrets or trusted authorization decisions in `clientMetadata`. Users can read and modify it from client-side code. If the value affects access control, validate it on your server and store it in `serverMetadata` or `clientReadOnlyMetadata`.
+</Warning>
 
 ## Signing out
 
-You can sign out the user by calling `user.signOut()`. They will be redirected to the URL [configured as `afterSignOut` in the Stack App](/sdk/objects/stack-app).
+You can sign out the user by calling `user.signOut()`. They will be redirected to the URL [configured as `afterSignOut` in the Hexclave App](/sdk/objects/stack-app).
 
 <CodeGroup dropdown>
 ```ts my-app.ts
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
-const user = await stackClientApp.getUser();
+const user = await hexclaveClientApp.getUser();
 await user.signOut();
 ```
 
 ```tsx my-client-component.tsx
 'use client';
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 
 export default function MyClientComponent() {
   const user = useUser();
@@ -196,16 +230,16 @@ export default function MyClientComponent() {
 
 ## Example: Custom profile page
 
-Stack automatically creates a user profile on sign-up. Let's build a page that displays this information. In `app/profile/page.tsx`:
+Hexclave automatically creates a user profile on sign-up. Let's build a page that displays this information. In `app/profile/page.tsx`:
 
 <CodeGroup dropdown>
 ```tsx my-app.tsx
 "use client";
-import { useUser, useStackApp, UserButton } from "../src/stack/client";
+import { useUser, useHexclaveApp, UserButton } from "../src/stack/client";
 
 export default function PageClient() {
   const user = useUser();
-  const app = useStackApp();
+  const app = useHexclaveApp();
   return (
     <div>
       {user ? (
@@ -228,11 +262,11 @@ export default function PageClient() {
 ```
 ```tsx my-client-component.tsx
 "use client";
-import { stackClientApp, UserButton } from "../src/stack/client";
+import { hexclaveClientApp, UserButton } from "../src/stack/client";
 
 export default function MyClientComponent() {
-  const user = stackClientApp.useUser();
-  const app = stackClientApp.useStackApp();
+  const user = hexclaveClientApp.useUser();
+  const app = hexclaveClientApp.useHexclaveApp();
   return (
     <div>
       {user ? (
@@ -261,7 +295,7 @@ For more examples on how to use the `User` object, check the [the SDK documentat
 
 ## Anonymous users
 
-Stack Auth supports anonymous users - users who can interact with your app without signing up. This is useful for features like guest checkouts, try-before-you-sign-up flows, or collecting analytics before a user creates an account. If you have the analytics app enabled, anonymous users will automatically be created and visible in the Users table.
+Hexclave supports anonymous users - users who can interact with your app without signing up. This is useful for features like guest checkouts, try-before-you-sign-up flows, or collecting analytics before a user creates an account. If you have the analytics app enabled, anonymous users will automatically be created and visible in the Users table.
 
 In most ways, anonymous users are just like any other, however, there are some key differences:
 
@@ -274,16 +308,16 @@ To get an anonymous user, pass `{ or: "anonymous" }` to `useUser()` or `getUser(
 
 <CodeGroup dropdown>
 ```ts my-app.ts
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
-const user = await stackClientApp.getUser({ or: "anonymous" });
+const user = await hexclaveClientApp.getUser({ or: "anonymous" });
 // user is guaranteed to be non-null here
 console.log("Signed in: " + (user.displayName ?? user.primaryEmail ?? "<Unnamed>"));
 ```
 
 ```tsx my-client-component.tsx
 "use client";
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
 export default function MyComponent() {
   const user = useUser({ or: "anonymous" });

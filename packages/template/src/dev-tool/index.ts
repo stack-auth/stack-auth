@@ -1,9 +1,9 @@
 // IF_PLATFORM js-like
 
 import type { StackClientApp } from "../lib/stack-app";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
 // Hexclave rebrand: UI-only local pref — straight rename (one-time reset is harmless)
@@ -79,7 +79,7 @@ function tryMount() {
 }
 
 /**
- * Mounts the Stack Auth dev tool on the page.
+ * Mounts the Hexclave dev tool on the page.
  *
  * - Only renders on localhost (or when overridden via console)
  * - Lazily loads the dev tool UI via dynamic import

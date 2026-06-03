@@ -1,6 +1,6 @@
-import { StackAdminApp, StackClientApp, StackServerApp } from "@stackframe/js";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { StackAdminApp, StackClientApp, StackServerApp } from "@hexclave/js";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { SDK_BASE_URL, it } from "../helpers";
 import { scaffoldProject } from "./js-helpers";
 

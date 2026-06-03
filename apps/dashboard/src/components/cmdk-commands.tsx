@@ -8,8 +8,8 @@ import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { classifyClickHouseSqlVsPrompt } from "@/lib/classify-query";
 import { cn } from "@/lib/utils";
 import { ChartBarIcon, CheckIcon, CubeIcon, DownloadSimpleIcon, EnvelopeSimpleIcon, GearIcon, GlobeIcon, HardDriveIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, Palette, PlayIcon, PlusIcon, ShieldCheckIcon, SparkleIcon, UsersIcon } from "@phosphor-icons/react";
-import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import Image from "next/image";
 import React, { memo, useEffect, useMemo } from "react";
 import { AIChatPreview } from "./commands/ask-ai";
@@ -630,7 +630,7 @@ export function useCmdKCommands({
         id: "ai/ask",
         icon: <SparkleIcon className="h-3.5 w-3.5 text-purple-400" />,
         label: `Ask AI`,
-        description: "Get an AI-powered answer from Stack Auth docs",
+        description: "Get an AI-powered answer from Hexclave docs",
         keywords: ["ai", "assistant", "help", "question"],
         onAction: { type: "focus" },
         preview: AIChatPreview,

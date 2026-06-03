@@ -5,10 +5,10 @@ import { getPublicEnvVar } from '@/lib/env';
 import { getInternalProjectHeaders } from '@/lib/internal-project-headers';
 import { cn } from '@/lib/utils';
 import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
-import { useUser } from '@stackframe/stack';
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
-import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
+import { useUser } from '@hexclave/next';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { htmlToText } from '@hexclave/shared/dist/utils/html';
+import { runAsynchronously, runAsynchronouslyWithAlert } from '@hexclave/shared/dist/utils/promises';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -243,7 +243,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
   // Handle clicking on a feature request card to view it on Featurebase
   const handleFeatureRequestClick = (requestId: string) => {
     // Construct the Featurebase post URL using the post ID
-    const featureRequestUrl = `https://feedback.stack-auth.com/p/${requestId}`;
+    const featureRequestUrl = `https://feedback.hexclave.com/p/${requestId}`;
     const redirectTo = `/integrations/featurebase/sso?return_to=${encodeURIComponent(featureRequestUrl)}`;
 
     // Open in new tab to maintain the current Stack Companion session
@@ -259,7 +259,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
             Feature request submitted successfully!
           </p>
           <p className="text-xs text-green-600 dark:text-green-300 mt-1">
-            Thank you for helping us improve Stack Auth!
+            Thank you for helping us improve Hexclave!
           </p>
         </div>
       ) : showSubmitForm ? (

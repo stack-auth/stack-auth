@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE =
   "Environment configuration overrides cannot be changed in a development environment. Update this in your production deployment instead.";

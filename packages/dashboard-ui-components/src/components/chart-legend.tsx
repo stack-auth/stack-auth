@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
-import { cn } from "@stackframe/stack-ui";
+import { cn } from "@hexclave/ui";
 import { useDesignChart, getPayloadConfigFromPayload } from "./chart-container";
 
 export const DesignChartLegendContent = React.forwardRef<

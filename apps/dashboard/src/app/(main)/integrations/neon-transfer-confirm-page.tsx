@@ -4,9 +4,9 @@ import { Logo } from "@/components/logo";
 import { useRouter } from "@/components/router";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@/components/ui";
 import { buildTransferSignUpUrl, getStackAppInternals } from "@/lib/transfer-utils";
-import { useStackApp, useUser } from "@stackframe/stack";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { useStackApp, useUser } from "@hexclave/next";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -92,12 +92,12 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
         </h1>
         {state === "success" && <>
           <Typography className="text-sm">
-            {"Neon would like to transfer a Stack Auth project and link it to your own account. This will let you access the project from Stack Auth's dashboard."}
+            {"Neon would like to transfer a Hexclave project and link it to your own account. This will let you access the project from Hexclave's dashboard."}
           </Typography>
           {user ? (
             <>
               <Typography className="mb-3 text-sm">
-                {"Which Stack Auth account would you like to transfer the project to? (You'll still be able to access your project from Neon's dashboard.)"}
+                {"Which Hexclave account would you like to transfer the project to? (You'll still be able to access your project from Neon's dashboard.)"}
               </Typography>
               <Input type="text" disabled prefixItem={<Logo noLink width={15} height={15} />} value={`Signed in as ${user.primaryEmail || user.displayName || "Unnamed user"}`} />
               <Button
@@ -113,7 +113,7 @@ export default function NeonIntegrationProjectTransferConfirmPageClient() {
             </>
           ) : (
             <Typography className="text-sm">
-              To continue, please sign in or create a Stack Auth account.
+              To continue, please sign in or create a Hexclave account.
             </Typography>
           )}
         </>}

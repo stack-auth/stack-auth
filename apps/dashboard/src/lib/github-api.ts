@@ -7,7 +7,7 @@
  * dialog.
  */
 
-import type { OAuthConnection } from "@stackframe/stack";
+import type { OAuthConnection } from "@hexclave/next";
 
 export const GITHUB_SCOPE_REQUIREMENTS = ["repo", "workflow"];
 

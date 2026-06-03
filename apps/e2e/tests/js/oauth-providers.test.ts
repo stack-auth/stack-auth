@@ -1,4 +1,4 @@
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { describe } from "vitest";
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";

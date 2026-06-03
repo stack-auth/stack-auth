@@ -8,6 +8,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       testTimeout: 60000,
+      hookTimeout: 60000,
       env: {
         ...loadEnv('', process.cwd(), ''),
         ...loadEnv('development', process.cwd(), ''),

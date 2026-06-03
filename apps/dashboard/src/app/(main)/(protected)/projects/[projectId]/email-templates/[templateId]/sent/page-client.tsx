@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { AdminEmailOutbox } from "@stackframe/stack";
+import { AdminEmailOutbox } from "@hexclave/next";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";

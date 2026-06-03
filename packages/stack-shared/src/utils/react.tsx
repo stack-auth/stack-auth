@@ -67,7 +67,7 @@ export function getNodeText(node: React.ReactNode): string {
   if (Array.isArray(node)) {
     return node.map(getNodeText).join("");
   }
-  if (typeof node === "object" && "props" in node) {
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
     return getNodeText(node.props.children);
   }
   throw new Error(`Unknown node type: ${typeof node}`);
@@ -90,30 +90,18 @@ import.meta.vitest?.test("getNodeText", ({ expect }) => {
   // Test with mixed array
   expect(getNodeText(["hello", 42, null])).toBe("hello42");
 
-  // Test with React element (mocked)
-  const mockElement = {
-    props: {
-      children: "child text"
-    }
-  } as React.ReactElement;
+  // Test with React element
+  const mockElement = React.createElement("span", null, "child text");
   expect(getNodeText(mockElement)).toBe("child text");
 
   // Test with nested React elements
-  const nestedElement = {
-    props: {
-      children: {
-        props: {
-          children: "nested text"
-        }
-      } as React.ReactElement
-    }
-  } as React.ReactElement;
+  const nestedElement = React.createElement("div", null, React.createElement("span", null, "nested text"));
   expect(getNodeText(nestedElement)).toBe("nested text");
 
   // Test with array of React elements
   const arrayOfElements = [
-    { props: { children: "first" } } as React.ReactElement,
-    { props: { children: "second" } } as React.ReactElement
+    React.createElement("span", null, "first"),
+    React.createElement("span", null, "second"),
   ];
   expect(getNodeText(arrayOfElements)).toBe("firstsecond");
 });
@@ -273,7 +261,7 @@ export class NoSuspenseBoundaryError extends Error {
       
       4. You caught this error with try-catch or a custom error boundary. Fix this by rethrowing the error or not catching it in the first place.
 
-      5. Your version of Stack Auth is too old. Upgrade to the latest version to see if that fixes the issue.
+      5. Your version of Hexclave is too old. Upgrade to the latest version to see if that fixes the issue.
 
       See: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
 

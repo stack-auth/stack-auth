@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)

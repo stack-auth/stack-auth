@@ -2,9 +2,9 @@ import { Button } from "@/components/ui";
 import { SelectField } from "@/components/form-fields";
 import { getPublicEnvVar } from "@/lib/env";
 import { CheckCircleIcon, EnvelopeIcon, GithubLogoIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { useUser } from "@stackframe/stack";
-import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { useUser } from "@hexclave/next";
+import { emailSchema } from "@hexclave/shared/dist/schema-fields";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { useState } from "react";
 import { FaDiscord } from "react-icons/fa";
 import * as yup from "yup";
@@ -172,7 +172,7 @@ export function FeedbackForm() {
         </p>
         <div className="flex justify-center gap-4">
           <a
-            href="https://discord.stack-auth.com"
+            href="https://discord.hexclave.com"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors group"
@@ -181,14 +181,14 @@ export function FeedbackForm() {
             <FaDiscord className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
           </a>
           <a
-            href="mailto:team@stack-auth.com"
+            href="mailto:team@hexclave.com"
             className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors group"
             title="Email us"
           >
             <EnvelopeIcon className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
           </a>
           <a
-            href="https://github.com/hexclave/stack-auth"
+            href="https://github.com/hexclave/hexclave"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-muted transition-colors group"

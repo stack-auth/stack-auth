@@ -1,4 +1,4 @@
-import { SelectedTeamSwitcher } from '@stackframe/stack';
+import { SelectedTeamSwitcher } from '@hexclave/next';
 
 export default function Page() {
   return (

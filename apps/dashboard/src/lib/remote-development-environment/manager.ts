@@ -2,13 +2,12 @@ import "server-only";
 
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { AdminOwnedProject, StackClientApp } from "@stackframe/stack";
-import { Config, override } from "@stackframe/stack-shared/dist/config/format";
-import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
-import { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
-import { AccessToken } from "@stackframe/stack-shared/dist/sessions";
-import { errorToNiceString } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminOwnedProject, StackClientApp } from "@hexclave/next";
+import { Config, override } from "@hexclave/shared/dist/config/format";
+import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+import { AccessToken } from "@hexclave/shared/dist/sessions";
+import { errorToNiceString } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { watch, type FSWatcher } from "fs";
 import { basename, dirname } from "path";
@@ -31,6 +30,13 @@ const STARTUP_EMPTY_SESSION_GRACE_MS = 20_000;
 const SYNC_DEBOUNCE_MS = 500;
 const CONFIG_SYNC_FORMAT_VERSION = 2;
 const LOG_PREFIX = "[Stack RDE]";
+
+export class RemoteDevelopmentEnvironmentApiUnavailableError extends Error {
+  constructor(apiBaseUrl: string, cause: unknown) {
+    super(`Could not connect to the Hexclave API at ${apiBaseUrl}. Make sure the backend for this development environment is running and reachable.`, { cause });
+    this.name = "RemoteDevelopmentEnvironmentApiUnavailableError";
+  }
+}
 
 type ActiveSession = {
   configFilePath: string,
@@ -87,6 +93,24 @@ function warnRemoteDevelopmentEnvironment(message: string, details?: Record<stri
     return;
   }
   console.warn(`${LOG_PREFIX} ${message}`, details);
+}
+
+function errorLooksLikeApiConnectionFailure(error: unknown): boolean {
+  const message = errorToNiceString(error);
+  return (
+    message.includes("ECONNREFUSED")
+    || message.includes("ECONNRESET")
+    || message.includes("ETIMEDOUT")
+    || message.includes("ENOTFOUND")
+    || message.includes("fetch failed")
+  );
+}
+
+function throwApiUnavailableIfConnectionFailure(apiBaseUrl: string, error: unknown): never {
+  if (errorLooksLikeApiConnectionFailure(error)) {
+    throw new RemoteDevelopmentEnvironmentApiUnavailableError(apiBaseUrl, error);
+  }
+  throw error;
 }
 
 function isStackAppRequestInternals(value: unknown): value is StackAppRequestInternals {
@@ -227,22 +251,6 @@ async function getOrCreateProject(options: {
     teamId: team.id,
     isProductionMode: false,
     isDevelopmentEnvironment: true,
-    config: {
-      allowLocalhost: true,
-      signUpEnabled: true,
-      credentialEnabled: true,
-      magicLinkEnabled: true,
-      passkeyEnabled: true,
-      clientTeamCreationEnabled: true,
-      clientUserDeletionEnabled: true,
-      allowUserApiKeys: true,
-      allowTeamApiKeys: true,
-      createTeamOnSignUp: false,
-      emailTheme: DEFAULT_EMAIL_THEME_ID,
-      emailConfig: { type: "shared" },
-      domains: [],
-      oauthProviders: [],
-    },
   });
   const key = await project.app.createInternalApiKey({
     description: `Development environment key for ${label}`,
@@ -351,7 +359,7 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
     return undefined;
   }
 
-  const { config, showOnboarding } = readConfigFile(configFilePath);
+  const { config, showOnboarding } = await readConfigFile(configFilePath);
   const configHash = sha256String(JSON.stringify({ config, showOnboarding, syncFormatVersion: CONFIG_SYNC_FORMAT_VERSION }));
   const app = createInternalApp(project.apiBaseUrl, state.anonymousRefreshToken);
   const user = await app.getUser({ or: "anonymous" });
@@ -519,7 +527,7 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
       apiBaseUrl: options.apiBaseUrl,
       configFilePath,
       anonymousRefreshToken: state.anonymousRefreshToken,
-    });
+    }).catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
     const sessionId = randomUUID();
     getGlobals().sessions.set(sessionId, {
       configFilePath,
@@ -532,7 +540,8 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
       configFilePath,
     });
     ensureWatcher(configFilePath);
-    const onboardingStatus = await syncConfigToRemoteNow(configFilePath);
+    const onboardingStatus = await syncConfigToRemoteNow(configFilePath)
+      .catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
     return {
       sessionId,
       env: envVarsForProject(project),
@@ -637,7 +646,7 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       projectId: options.projectId,
       configFilePath,
     });
-    const currentConfig = readConfigFile(configFilePath).config;
+    const currentConfig = (await readConfigFile(configFilePath)).config;
     if (options.waitForSync === false) {
       writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
       scheduleSync(configFilePath);

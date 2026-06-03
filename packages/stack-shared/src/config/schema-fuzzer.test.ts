@@ -209,6 +209,10 @@ const environmentSchemaFuzzerConfig = [{
         isShared: [true, false],
         clientId: ["some-client-id"],
         clientSecret: ["some-client-secret"],
+        // Kept undefined: the schema forbids customCallbackUrl when isShared is
+        // true, and the fuzzer randomizes each field independently so it cannot
+        // honor that coupling. The accept path is covered by an e2e test.
+        customCallbackUrl: [undefined] as (string | undefined)[],
         facebookConfigId: ["some-facebook-config-id"],
         microsoftTenantId: ["some-microsoft-tenant-id"],
         appleBundles: [{ "some-bundle-id": [{ bundleId: ["com.example.app"] }] }],

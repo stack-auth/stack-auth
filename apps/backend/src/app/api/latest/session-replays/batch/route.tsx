@@ -4,11 +4,11 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
-import { getStackServerApp } from "@/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getHexclaveServerApp } from "@/stack";
+import { KnownErrors } from "@hexclave/shared";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { gzip as gzipCb } from "node:zlib";
@@ -109,7 +109,7 @@ export const POST = createSmartRouteHandler({
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
 
-    const app = getStackServerApp();
+    const app = getHexclaveServerApp();
 
     const isNewSession = recentSession == null;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);

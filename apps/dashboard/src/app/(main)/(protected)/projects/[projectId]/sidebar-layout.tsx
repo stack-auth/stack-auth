@@ -4,7 +4,7 @@ import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
-import { StackCompanion } from "@/components/stack-companion";
+import { HexclaveCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import {
   Button,
@@ -37,8 +37,8 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { UserButton } from "@stackframe/stack";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { UserButton } from "@hexclave/next";
+import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -769,7 +769,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
             {/* Stack Companion - overlay with reserved content gutter */}
             <div className="pointer-events-none absolute top-0 right-2 bottom-0 z-30 hidden lg:block">
-              <StackCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
+              <HexclaveCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
             </div>
           </div>
         </div>

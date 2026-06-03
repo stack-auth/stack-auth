@@ -6,9 +6,9 @@ import { SiteLoadingIndicatorDisplay } from "@/components/site-loading-indicator
 import { Toaster } from "@/components/ui";
 import { VersionAlerter } from "@/components/version-alerter";
 import { getPublicEnvVar } from "@/lib/env";
-import { stackClientApp } from "@/stack/client";
-import { StackProvider, StackTheme } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { hexclaveClientApp } from "@/stack/client";
+import { StackProvider, StackTheme } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import React, { useSyncExternalStore } from "react";
 import { BackgroundShine } from "./background-shine";
 import { ClientPolyfill } from "./client-polyfill";
@@ -16,12 +16,14 @@ import { DevelopmentPortDisplay } from "./development-port-display";
 import Loading from "./loading";
 import { UserIdentity } from "./providers";
 import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-environment-auth-gate";
+import { WrongAddressScreen } from "./wrong-address-screen";
 
 const DEV_ENVIRONMENT_HEALTHCHECK_INTERVAL_MS = 2_000;
 
 type DevEnvironmentHealthSnapshot =
   | { status: "checking" | "healthy" }
-  | { status: "unhealthy", restartCommand: string };
+  | { status: "unhealthy", restartCommand: string }
+  | { status: "wrong_address", suggestedUrl: string };
 
 const CHECKING_DEV_ENVIRONMENT_HEALTH_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "checking" };
 const HEALTHY_DEV_ENVIRONMENT_HEALTH_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "healthy" };
@@ -65,6 +67,18 @@ async function refreshDevEnvironmentHealth() {
       },
     });
     const body: unknown = await response.json();
+
+    // If the health endpoint returns a 403, the user is likely accessing via
+    // an unsupported address (e.g. localhost instead of 127.0.0.1). Extract
+    // the suggested URL from the error and show a dedicated screen.
+    if (response.status === 403 && body != null && typeof body === "object" && "error" in body && typeof body.error === "string") {
+      const match = body.error.match(/http:\/\/127\.0\.0\.1(?::\d+)?/);
+      if (match != null) {
+        setSnapshotIfCurrent({ status: "wrong_address", suggestedUrl: match[0] });
+        return;
+      }
+    }
+
     if (!isDevEnvironmentHealthResponse(body)) {
       throw new Error("Development environment health endpoint returned an invalid response.");
     }
@@ -124,7 +138,7 @@ function DevEnvironmentStoppedScreen(props: { restartCommand: string }) {
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">The dev environment is not currently running</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Your Stack Auth changes have been saved. The local Stack Auth development environment just is not active right now, so the dashboard has paused instead of showing stale project data.
+          Your Hexclave changes have been saved. The local Hexclave development environment just is not active right now, so the dashboard has paused instead of showing stale project data.
         </p>
         <p className="mt-4 text-sm leading-6 text-muted-foreground">
           Restart it from your terminal with:
@@ -149,6 +163,10 @@ function DevEnvironmentHealthGate(props: { children: React.ReactNode }) {
     return props.children;
   }
 
+  if (health.status === "wrong_address") {
+    return <WrongAddressScreen suggestedUrl={health.suggestedUrl} />;
+  }
+
   if (health.status === "unhealthy") {
     return <DevEnvironmentStoppedScreen restartCommand={health.restartCommand} />;
   }
@@ -166,7 +184,7 @@ export function LayoutClient(props: {
 }) {
   return (
     <>
-      <StackProvider app={stackClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
+      <StackProvider app={hexclaveClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
         <StackTheme>
           <ClientPolyfill />
           <DevEnvironmentHealthGate>

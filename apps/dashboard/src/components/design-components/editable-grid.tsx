@@ -10,12 +10,12 @@ import {
   Spinner,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowCounterClockwise, Check, FloppyDisk, X } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
-import { DesignButton, useDesignEditMode, DesignInput } from "@stackframe/dashboard-ui-components";
+import { DesignButton, useDesignEditMode, DesignInput } from "@hexclave/dashboard-ui-components";
 
 export type DesignEditableGridSize = "sm" | "md";
 

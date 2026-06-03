@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/dashboard-ui-components",
-  "version": "2.8.107",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "name": "@hexclave/dashboard-ui-components",
+  "version": "1.0.4",
+  "repository": "https://github.com/hexclave/hexclave",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,
@@ -17,6 +17,7 @@
   "files": [
     "README.md",
     "dist",
+    "src",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -55,8 +56,8 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.3",
     "@react-hook/resize-observer": "^2.0.2",
-    "@stackframe/stack-shared": "workspace:*",
-    "@stackframe/stack-ui": "workspace:*",
+    "@hexclave/shared": "workspace:*",
+    "@hexclave/ui": "workspace:*",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.0",
     "class-variance-authority": "^0.7.0"
@@ -70,5 +71,5 @@
     "recharts": "^2.14.1",
     "rimraf": "^5.0.10"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
-import { getEnvBoolean, getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { getEnvBoolean, getEnvVariable, getNextRuntime, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
 import "./polyfills";
 
 async function startRemoteDevelopmentEnvironmentLifecycleIfNeeded(): Promise<void> {
@@ -16,7 +16,7 @@ async function startRemoteDevelopmentEnvironmentLifecycleIfNeeded(): Promise<voi
 export async function register() {
   if (getNextRuntime() === "nodejs") {
     if (getEnvBoolean("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT")) {
-      globalThis.process.title = `Stack Auth — Development Server (port ${getEnvVariable("PORT", "?")})`;
+      globalThis.process.title = `Hexclave — Development Server (port ${getEnvVariable("PORT", "?")})`;
     } else {
       globalThis.process.title = `stack-dashboard:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")} (node/nextjs)`;
     }

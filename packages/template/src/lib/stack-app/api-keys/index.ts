@@ -1,6 +1,6 @@
-import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, userApiKeysCreateInputSchema } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { IfAndOnlyIf, PrettifyType } from "@stackframe/stack-shared/dist/utils/types";
+import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, userApiKeysCreateInputSchema } from "@hexclave/shared/dist/interface/crud/project-api-keys";
+import { filterUndefined } from "@hexclave/shared/dist/utils/objects";
+import { IfAndOnlyIf, PrettifyType } from "@hexclave/shared/dist/utils/types";
 import type * as yup from "yup";
 
 export type ApiKeyType = "user" | "team";

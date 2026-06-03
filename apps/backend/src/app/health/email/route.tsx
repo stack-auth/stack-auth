@@ -1,10 +1,10 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
-import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 
 type ResendEmail = {
   to: string[],
@@ -96,7 +96,7 @@ const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boo
   // Inbucket wraps emails in angle brackets like "<email@example.com>"
   const matchesRecipient = email.to.some(to => to.includes(testEmail));
   const matchesSubject = email.subject.toLowerCase().includes(EXPECTED_EMAIL_SUBJECT_CONTAINS.toLowerCase());
-  // Skip sender check - in dev it's example.com, in prod it's stackframe.co
+  // Skip sender check - in dev it's example.com, in prod it's sent-with-hexclave.com (formerly stackframe.co)
 
   return matchesRecipient && matchesSubject;
 };

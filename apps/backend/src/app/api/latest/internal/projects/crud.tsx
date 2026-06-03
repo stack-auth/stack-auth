@@ -4,12 +4,12 @@ import { ensureTeamMembershipExists } from "@/lib/request-checks";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { projectIdSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { isNotNull, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { KnownErrors } from "@hexclave/shared";
+import { adminUserProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { projectIdSchema, yupObject } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { isNotNull, typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHandlers(adminUserProjectsCrud, {
   paramsSchema: yupObject({

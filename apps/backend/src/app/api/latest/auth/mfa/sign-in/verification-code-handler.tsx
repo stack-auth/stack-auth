@@ -3,10 +3,10 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { verifyTOTP } from "@oslojs/otp";
 import { VerificationCodeType } from "@/generated/prisma/client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { signInResponseSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { signInResponseSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const mfaVerificationCodeHandler = createVerificationCodeHandler({
   metadata: {
@@ -55,10 +55,11 @@ export const mfaVerificationCodeHandler = createVerificationCodeHandler({
       throw new KnownErrors.InvalidTotpCode();
     }
   },
-  async handler(tenancy, {}, data, body) {
+  async handler(tenancy, {}, data, body, _user, apiUrl) {
     const { refreshToken, accessToken } = await createAuthTokens({
       tenancy,
       projectUserId: data.user_id,
+      apiUrl,
     });
 
     return {

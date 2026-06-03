@@ -1,5 +1,5 @@
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -25,7 +25,7 @@ it("cannot create sessions from the client", async ({ expect }) => {
             "admin",
           ],
         },
-        "error": "The x-stack-access-type header must be 'server' or 'admin', but was 'client'.",
+        "error": "The x-hexclave-access-type header must be 'server' or 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

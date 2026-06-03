@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { UserButton } from "@stackframe/react";
+import { UserButton } from "@hexclave/react";
 import { ArrowRight, Rocket, Shield, Sparkles, Zap } from "lucide-react";
 
 const Index = () => {

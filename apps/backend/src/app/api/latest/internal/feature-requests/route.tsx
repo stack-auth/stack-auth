@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getOrCreateFeaturebaseUserFromAuth, requireFeaturebaseApiKey } from "@/lib/featurebase";
-import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 // Typed subset of the Featurebase v2 API responses; fields we don't use are omitted.
 // The response schema validated by yup on output acts as the runtime safety net.
@@ -173,7 +173,7 @@ export const POST = createSmartRouteHandler({
       tags: body.tags || ['feature_request', 'dashboard'],
       commentsAllowed: body.commentsAllowed ?? true,
       email: featurebaseUser.email,
-      authorName: auth.user.display_name || 'Stack Auth User',
+      authorName: auth.user.display_name || 'Hexclave User',
       customInputValues: {
         // Using the actual field IDs from Featurebase
         "6872f858cc9682d29cf2e4c0": 'dashboard_companion', // source field

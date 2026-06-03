@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { PLAN_LIMITS } from "@hexclave/shared/dist/plans";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
@@ -666,7 +666,7 @@ it("non-admin access cannot call single session replay endpoint", async ({ expec
           "actual_access_type": "client",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -688,7 +688,7 @@ it("non-admin access cannot call single session replay endpoint", async ({ expec
           "actual_access_type": "server",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -898,7 +898,7 @@ it("non-admin access cannot call internal session replays endpoints", async ({ e
           "actual_access_type": "client",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -920,7 +920,7 @@ it("non-admin access cannot call internal session replays endpoints", async ({ e
           "actual_access_type": "server",
           "allowed_access_types": ["admin"],
         },
-        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+        "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
       },
       "headers": Headers {
         "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

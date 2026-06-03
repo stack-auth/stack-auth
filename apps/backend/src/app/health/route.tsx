@@ -1,5 +1,5 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {

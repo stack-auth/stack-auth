@@ -10,8 +10,8 @@ import {
   SparkleIcon,
   UserIcon,
 } from "@phosphor-icons/react";
-import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { usePathname } from "next/navigation";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCmdKCommands, type CmdKCommand } from "./cmdk-commands";
@@ -59,7 +59,7 @@ const FEATURE_HIGHLIGHTS = [
     iconBg: "bg-purple-500/10",
     iconColor: "text-purple-500",
     title: "Ask AI",
-    description: "Get answers from the Stack Auth documentation.",
+    description: "Get answers from the Hexclave documentation.",
     exampleQuery: "how do i set up password authentication?",
   },
   {

@@ -23,10 +23,10 @@ import {
   yupNumber,
   yupObject,
   yupString,
-} from "@stackframe/stack-shared/dist/schema-fields";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+} from "@hexclave/shared/dist/schema-fields";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import fs from "fs/promises";
 import * as path from "path";
 

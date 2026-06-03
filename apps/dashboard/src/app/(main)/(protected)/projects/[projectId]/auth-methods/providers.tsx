@@ -9,17 +9,18 @@ import {
   DesignCardTint,
   DesignInput,
   DesignPillToggle,
-} from "@stackframe/dashboard-ui-components";
-import { getPublicEnvVar } from '@/lib/env';
+} from "@hexclave/dashboard-ui-components";
 import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { AdminProject } from "@stackframe/stack";
-import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { AdminProject } from "@hexclave/next";
+import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useState, type ReactNode } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import * as yup from "yup";
+import { useAdminApp } from "../use-admin-app";
+import { resolveProviderCallbackUrl } from "./oauth-callback-url";
 
 export function ProviderIcon(props: { id: string, size?: "sm" | "md" | "lg" }) {
   const size = props.size ?? "md";
@@ -139,11 +140,13 @@ function PillToggleControl({
 }
 
 function RedirectInline({ providerId }: { providerId: string }) {
+  const config = useAdminApp().useProject().useConfig();
+  const redirectUrl = resolveProviderCallbackUrl(providerId, config.auth.oauth.providers[providerId]);
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
       <Typography type="footnote" className="break-all">
-        <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? ''}${urlString`/api/v1/auth/oauth/callback/${providerId}`}`}</InlineCode>
+        <InlineCode>{redirectUrl}</InlineCode>
       </Typography>
     </div>
   );
@@ -247,7 +250,7 @@ function GithubNoteInline() {
 function DocsTextLink({ providerId }: { providerId: string }) {
   return (
     <Link
-      href={urlString`https://docs.stack-auth.com/docs/concepts/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
+      href={urlString`https://docs.hexclave.com/guides/apps/authentication/auth-providers/${providerId === "x" ? "x-twitter" : providerId}`}
       target="_blank"
       className="inline-flex items-center gap-1 text-xs font-medium text-foreground/70 hover:text-foreground transition-colors"
     >

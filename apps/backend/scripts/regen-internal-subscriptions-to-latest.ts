@@ -1,5 +1,5 @@
 /**
- * Brings every active subscription on Stack Auth's own billing project up
+ * Brings every active subscription on Hexclave's own billing project up
  * to the latest version of its plan. Runs at deploy / db init time.
  *
  * Why we need it: each Subscription stores a frozen JSON copy of the plan
@@ -22,8 +22,8 @@ import { getStripeForAccount } from "@/lib/stripe";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import type Stripe from "stripe";
 
 // Page size for streaming teams. Big enough to amortise round-trips,

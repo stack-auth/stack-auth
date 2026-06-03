@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError, registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 import * as util from "util";
 import { getPublicEnvVar } from "./lib/env";
 
@@ -10,8 +10,8 @@ function expandStackPortPrefix(value?: string | null) {
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix as string) : value;
 }
 
-const sentryErrorSink = (location: string, error: unknown) => {
-  Sentry.captureException(error, { extra: { location } });
+const sentryErrorSink = (location: string, error: unknown, level: "error" | "warning") => {
+  Sentry.captureException(error, { extra: { location }, level });
 };
 
 export function ensurePolyfilled() {

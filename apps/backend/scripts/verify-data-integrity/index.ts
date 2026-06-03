@@ -4,12 +4,12 @@ import { syncExternalDatabases } from "@/lib/external-db-sync";
 import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import type { OrganizationRenderedConfig } from "@hexclave/shared/dist/config/schema";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { omit } from "@hexclave/shared/dist/utils/objects";
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import fs from "fs";
 
 import { createApiHelpers, loadOutputData, type OutputData } from "./api";

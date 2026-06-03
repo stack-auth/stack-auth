@@ -8,18 +8,18 @@ import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
-import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@hexclave/next";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { strictEmailSchema } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { deepPlainEquals } from "@hexclave/shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useEffect, useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -140,11 +140,11 @@ function EmailServerCard({ emailConfig, isDevelopmentEnvironment }: { emailConfi
   const serverType = emailConfig.isShared
     ? 'Shared'
     : emailConfig.provider === 'managed'
-      ? 'Managed By Stack Auth'
+      ? 'Managed By Hexclave'
       : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
   const senderEmail = emailConfig.isShared
-    ? 'noreply@stackframe.co'
+    ? 'noreply@sent-with-hexclave.com'
     : emailConfig.provider === 'managed' && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
       ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
       : emailConfig.senderEmail;
@@ -729,7 +729,7 @@ function EditEmailServerDialog(props: {
 
   async function testEmailAndUpdateConfig(emailConfig: AdminEmailConfig & { type: "standard" | "resend" }) {
     const testResult = await stackAdminApp.sendTestEmail({
-      recipientEmail: 'test-email-recipient@stackframe.co',
+      recipientEmail: 'test-email-recipient@sent-with-hexclave.com',
       emailConfig,
     });
 
@@ -834,7 +834,7 @@ function EditEmailServerDialog(props: {
           name="type"
           control={form.control}
           options={[
-            { label: "Shared (noreply@stackframe.co)", value: 'shared' },
+            { label: "Shared (noreply@sent-with-hexclave.com)", value: 'shared' },
             { label: "Managed (via managed domain setup)", value: 'managed' },
             { label: "Resend (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },

@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { StackHandler } from '@stackframe/react';
+import { StackHandler } from '@hexclave/react';
 import { useState, useEffect } from 'react';
 
 export const Route = createFileRoute('/handler/$')({

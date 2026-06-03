@@ -2,6 +2,8 @@ export {
   HexclaveClientApp,
   StackClientApp
 } from "./interfaces/client-app";
+// HexclaveClientApp / StackClientApp are exported above as classes (TS treats classes as
+// both value + type), so only the helper types need a separate type-only re-export here.
 export type {
   HexclaveClientAppConstructor,
   HexclaveClientAppConstructorOptions,

@@ -15,7 +15,7 @@ const headers = {
 };
 
 async function main() {
-  console.log("=== Stack Auth CLI Simulator ===\n");
+  console.log("=== Hexclave CLI Simulator ===\n");
   console.log(`API:     ${API_URL}`);
   console.log(`App:     ${APP_URL}\n`);
 
@@ -64,7 +64,7 @@ async function main() {
     if (result.status === "success") {
       console.log(`\nLogin successful! (after ${attempts} poll attempts)`);
       console.log(`Refresh token: ${result.refresh_token.slice(0, 20)}...`);
-      console.log("\nIn a real CLI, this token would be saved to ~/.config/stack-auth/credentials.json");
+      console.log("\nIn a real CLI, this token would be saved to ~/.config/hexclave/credentials.json");
       break;
     }
 

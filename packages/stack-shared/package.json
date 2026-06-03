@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/stack-shared",
-  "version": "2.8.107",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "name": "@hexclave/shared",
+  "version": "1.0.4",
+  "repository": "https://github.com/hexclave/hexclave",
   "scripts": {
     "build": "rimraf dist && tsdown",
     "typecheck": "tsc --noEmit",
@@ -13,6 +13,7 @@
   "files": [
     "README.md",
     "dist",
+    "src",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -96,5 +97,5 @@
     "react-dom": "^19.0.1",
     "rimraf": "^6.1.2"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

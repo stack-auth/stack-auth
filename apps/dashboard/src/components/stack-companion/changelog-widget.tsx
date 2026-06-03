@@ -3,10 +3,10 @@
 import { Button } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
 import { CalendarIcon, CaretDownIcon, CaretUpIcon, InfoIcon, XIcon } from '@phosphor-icons/react';
-import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { captureError } from '@hexclave/shared/dist/utils/errors';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -101,8 +101,8 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
         </div>
       </div>
     ),
-    img: ({ src, alt }: { src?: string, alt?: string }) => {
-      if (!src) return null;
+    img: ({ src, alt }: ComponentPropsWithoutRef<'img'>) => {
+      if (typeof src !== 'string') return null;
       return (
         <button
           type="button"
@@ -220,7 +220,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
         <div className="bg-muted/30 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold">Stack Auth releases</h3>
+              <h3 className="text-sm font-semibold">Hexclave releases</h3>
             </div>
           </div>
           {error && (

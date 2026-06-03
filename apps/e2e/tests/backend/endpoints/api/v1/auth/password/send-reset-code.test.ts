@@ -24,18 +24,18 @@ it("should send a password reset code per e-mail", async ({ expect }) => {
   await mailbox.waitForMessagesWithSubject("Reset your password");
   const messages = await mailbox.fetchMessages({ noBody: true });
   expect(messages.length).toBe(2);
-  expect(messages.find(m => m.subject.includes("Verify your email at Stack Dashboard"))).toMatchInlineSnapshot(`
+  expect(messages.find(m => m.subject.includes("Verify your email at Hexclave Dashboard"))).toMatchInlineSnapshot(`
     MailboxMessage {
-      "from": "Stack Dashboard <noreply@example.com>",
-      "subject": "Verify your email at Stack Dashboard",
+      "from": "Hexclave Dashboard <noreply@example.com>",
+      "subject": "Verify your email at Hexclave Dashboard",
       "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
       <some fields may have been hidden>,
     }
   `);
-  expect(messages.find(m => m.subject.includes("Reset your password at Stack Dashboard"))).toMatchInlineSnapshot(`
+  expect(messages.find(m => m.subject.includes("Reset your password at Hexclave Dashboard"))).toMatchInlineSnapshot(`
     MailboxMessage {
-      "from": "Stack Dashboard <noreply@example.com>",
-      "subject": "Reset your password at Stack Dashboard",
+      "from": "Hexclave Dashboard <noreply@example.com>",
+      "subject": "Reset your password at Hexclave Dashboard",
       "to": ["<default-mailbox--<stripped UUID>@stack-generated.example.com>"],
       <some fields may have been hidden>,
     }
@@ -100,7 +100,7 @@ it('should not send a password reset code if the redirect URL is invalid', async
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",

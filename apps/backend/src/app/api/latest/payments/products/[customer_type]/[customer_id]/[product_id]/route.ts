@@ -7,9 +7,9 @@ import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export const DELETE = createSmartRouteHandler({
   metadata: {
@@ -150,7 +150,7 @@ export const DELETE = createSmartRouteHandler({
       await bulldozerWriteSubscription(prisma, updatedSub);
     }
 
-    // Regrant the free plan if a Stack Auth billing team just lost their
+    // Regrant the free plan if a Hexclave billing team just lost their
     // only plans-line sub. Scoped to the internal tenancy — customer
     // projects' own sub cancellations are for their own products.
     if (auth.tenancy.project.id === "internal" && params.customer_type === "team") {

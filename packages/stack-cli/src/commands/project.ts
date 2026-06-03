@@ -45,9 +45,9 @@ export function registerProjectCommand(program: Command) {
 
   project
     .command("list")
-    .description("List your projects (defaults to both cloud and local emulator)")
+    .description("List your projects (defaults to both cloud and development-environment projects)")
     .option("--cloud", "Only list cloud projects")
-    .option("--dev", "Only list local emulator (dev) projects")
+    .option("--dev", "Only list development-environment projects")
     .action(async (opts: ProjectListFlags) => {
       const sources = resolveProjectListSources(opts);
       const results: ProjectListEntry[] = [];
@@ -75,7 +75,7 @@ export function registerProjectCommand(program: Command) {
             throw err;
           }
           const message = err instanceof Error ? err.message : String(err);
-          console.error(`warning: skipping dev projects — local emulator not reachable (${message}). Start it with \`stack emulator start\`.`);
+          console.error(`warning: skipping dev projects — development environment not reachable (${message}).`);
         }
       }
 
@@ -89,7 +89,7 @@ export function registerProjectCommand(program: Command) {
   project
     .command("create")
     .description("Create a new cloud project")
-    .option("--cloud", "Confirm that this creates a cloud (not local emulator) project")
+    .option("--cloud", "Confirm that this creates a cloud project")
     .option("--display-name <name>", "Project display name")
     .action(async (opts) => {
       if (!opts.cloud) {

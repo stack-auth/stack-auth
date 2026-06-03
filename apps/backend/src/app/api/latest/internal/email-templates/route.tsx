@@ -1,10 +1,10 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { defaultNewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { defaultNewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { adaptSchema, templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { filterUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 
 export const GET = createSmartRouteHandler({
   metadata: {

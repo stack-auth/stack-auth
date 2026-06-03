@@ -1,7 +1,7 @@
 {
-  "name": "@stackframe/stack-ui",
-  "version": "2.8.107",
-  "repository": "https://github.com/hexclave/stack-auth",
+  "name": "@hexclave/ui",
+  "version": "1.0.4",
+  "repository": "https://github.com/hexclave/hexclave",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,
@@ -15,6 +15,7 @@
   "files": [
     "README.md",
     "dist",
+    "src",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -77,7 +78,7 @@
     "@radix-ui/react-toggle": "^1.1.0",
     "@radix-ui/react-toggle-group": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.3",
-    "@stackframe/stack-shared": "workspace:*",
+    "@hexclave/shared": "workspace:*",
     "@tanstack/react-table": "^8.20.5",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -98,5 +99,5 @@
     "react-dom": "^19.0.1",
     "rimraf": "^6.1.2"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

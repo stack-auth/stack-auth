@@ -22,11 +22,11 @@ import {
 } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
-import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import { KnownErrors } from "@hexclave/shared";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useWatch } from "react-hook-form";
 import * as yup from "yup";

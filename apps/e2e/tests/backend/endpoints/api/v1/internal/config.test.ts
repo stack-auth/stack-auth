@@ -1,5 +1,5 @@
-import { DEFAULT_EMAIL_THEME_ID } from "@stackframe/stack-shared/dist/helpers/emails";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { DEFAULT_EMAIL_THEME_ID } from "@hexclave/shared/dist/helpers/emails";
+import { pick } from "@hexclave/shared/dist/utils/objects";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";
@@ -28,7 +28,7 @@ describe("access control", () => {
             "actual_access_type": "client",
             "allowed_access_types": ["admin"],
           },
-          "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+          "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -50,7 +50,7 @@ describe("access control", () => {
             "actual_access_type": "server",
             "allowed_access_types": ["admin"],
           },
-          "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+          "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
         },
         "headers": Headers {
           "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -425,6 +425,38 @@ describe("oauth config", () => {
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
+  });
+
+  it("accepts customCallbackUrl on a standard oauth provider", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    const setResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google': {
+            type: 'google',
+            isShared: false,
+            clientId: 'google-client-id',
+            clientSecret: 'google-client-secret',
+            customCallbackUrl: 'https://api.hexclave.com/api/v1/auth/oauth/callback/google',
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          },
+        }),
+      },
+    });
+    expect(setResponse.status).toBe(200);
+
+    const configResponse = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const config = JSON.parse(configResponse.body.config_string);
+    expect(config.auth.oauth.providers.google.customCallbackUrl).toBe('https://api.hexclave.com/api/v1/auth/oauth/callback/google');
   });
 });
 
@@ -1671,7 +1703,7 @@ describe("branch config source", () => {
               "actual_access_type": "client",
               "allowed_access_types": ["admin"],
             },
-            "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+            "error": "The x-hexclave-access-type header must be 'admin', but was 'client'. (The legacy x-stack-access-type header is also accepted.)",
           },
           "headers": Headers {
             "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
@@ -1698,7 +1730,7 @@ describe("branch config source", () => {
               "actual_access_type": "server",
               "allowed_access_types": ["admin"],
             },
-            "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+            "error": "The x-hexclave-access-type header must be 'admin', but was 'server'. (The legacy x-stack-access-type header is also accepted.)",
           },
           "headers": Headers {
             "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",

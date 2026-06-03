@@ -1,7 +1,7 @@
 'use client';
 
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { TooltipProvider } from "@stackframe/stack-ui";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
+import { TooltipProvider } from "@hexclave/ui";
 import Color from "color";
 import React from "react";
 import { globalCSS } from "../generated/global-css";
@@ -77,7 +77,7 @@ function convertColorsToCSS(theme: Theme) {
 }
 
 
-export function StackTheme({
+export function HexclaveTheme({
   theme,
   children,
   nonce,
@@ -109,3 +109,8 @@ export function StackTheme({
     </>
   );
 }
+
+/**
+ * @deprecated Use `HexclaveTheme` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration.
+ */
+export const StackTheme = HexclaveTheme;

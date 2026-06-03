@@ -1,5 +1,5 @@
-import { StackProvider, StackTheme } from "@stackframe/stack";
-import { stackServerApp } from "../stack";
+import { StackProvider, StackTheme } from "@hexclave/next";
+import { stackServerApp } from "../hexclave";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

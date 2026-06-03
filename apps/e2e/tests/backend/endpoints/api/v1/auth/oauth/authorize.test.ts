@@ -115,6 +115,56 @@ it("should be able to fetch the inner callback URL by following the OAuth provid
   expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
 });
 
+it("sends the original (default) redirect_uri for a provider configured before customCallbackUrl existed, and the configured one when set", async ({ expect }) => {
+  // Simulate an "old customer": a standard provider whose stored config predates
+  // this feature and therefore has no customCallbackUrl. Alongside it, a provider
+  // that opted into the new behavior with an explicit (different-brand) callback.
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    "auth.oauth.providers.github": {
+      type: "github",
+      isShared: false,
+      clientId: "legacy-client-id",
+      clientSecret: "legacy-client-secret",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+    "auth.oauth.providers.spotify": {
+      type: "spotify",
+      isShared: false,
+      clientId: "new-client-id",
+      clientSecret: "new-client-secret",
+      customCallbackUrl: "https://api.hexclave.com/api/v1/auth/oauth/callback/spotify",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+
+  // The redirect_uri we hand the provider is carried as a query param on the
+  // authorize redirect; read it without following the redirect to the provider.
+  const redirectUriFor = async (provider: string) => {
+    const response = await niceBackendFetch(`/api/v1/auth/oauth/authorize/${provider}`, {
+      redirect: "manual",
+      query: await Auth.OAuth.getAuthorizeQuery(),
+    });
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    return new URL(location!).searchParams.get("redirect_uri");
+  };
+
+  // Old customer: still gets the default deployment callback (locally the
+  // localhost API URL) — exactly what they already registered with the provider,
+  // and NOT the new hexclave-branded URL.
+  const githubRedirectUri = await redirectUriFor("github");
+  expect(new URL(githubRedirectUri!).origin).toBe(localhostUrl("02"));
+  expect(new URL(githubRedirectUri!).pathname).toBe("/api/v1/auth/oauth/callback/github");
+  expect(githubRedirectUri).not.toBe("https://api.hexclave.com/api/v1/auth/oauth/callback/github");
+
+  // Provider that opted in: the configured customCallbackUrl is sent verbatim.
+  expect(await redirectUriFor("spotify")).toBe("https://api.hexclave.com/api/v1/auth/oauth/callback/spotify");
+});
+
 it("should fail if an invalid client_id is provided", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     redirect: "manual",
@@ -281,7 +331,7 @@ it("should fail if an untrusted after_callback_redirect_url is provided", async 
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
-        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
         "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
@@ -293,7 +343,7 @@ it("should fail if an untrusted after_callback_redirect_url is provided", async 
 
 // Regression: provider_scope against a shared provider must be rejected on
 // every authorize path — not only when a link token is present. A malicious
-// client would otherwise request elevated scopes under Stack Auth's shared
+// client would otherwise request elevated scopes under Hexclave's shared
 // OAuth app on a plain sign-in.
 it("should reject provider_scope on shared provider for plain sign-in (no link token)", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {

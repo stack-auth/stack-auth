@@ -13,10 +13,10 @@ import {
 import { ActionDialog, Avatar, AvatarFallback, AvatarImage, SimpleTooltip, Switch, useToast } from "@/components/ui";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
-import type { PushedConfigSource } from "@stackframe/stack";
-import { TeamSwitcher } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { PushedConfigSource } from "@hexclave/next";
+import { TeamSwitcher } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowsLeftRightIcon, BuildingsIcon, GearIcon, GlobeHemisphereWestIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -221,7 +221,7 @@ export default function PageClient() {
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium text-foreground">JWKS URLs</p>
-              <SimpleTooltip type="info" tooltip="Use these URLs to allow other services to verify Stack Auth-issued sessions for this project.">
+              <SimpleTooltip type="info" tooltip="Use these URLs to allow other services to verify Hexclave-issued sessions for this project.">
                 <span className="sr-only">More info about JWKS URLs</span>
               </SimpleTooltip>
             </div>
@@ -533,7 +533,7 @@ export default function PageClient() {
             <div className="flex flex-col gap-2">
               <p className="text-sm font-semibold text-foreground">CLI</p>
               <p className="text-xs text-muted-foreground">
-                Your configuration was pushed via the Stack Auth CLI. Changes made on this dashboard will be overwritten when you push from the CLI again.
+                Your configuration was pushed via the Hexclave CLI. Changes made on this dashboard will be overwritten when you push from the CLI again.
               </p>
             </div>
             <div>

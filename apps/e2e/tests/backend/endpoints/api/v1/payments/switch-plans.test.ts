@@ -1,5 +1,5 @@
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 

@@ -4,10 +4,10 @@ import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import type { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import type { productSchema } from "@hexclave/shared/dist/schema-fields";
+import { typedIncludes } from "@hexclave/shared/dist/utils/arrays";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import Stripe from "stripe";
 import type * as yup from "yup";
 import { isLocalEmulatorEnabled } from "./local-emulator";
@@ -219,7 +219,7 @@ export const getStripeForAccount = async (options: { tenancy?: Tenancy, accountI
   }
 
   if (!accountId) {
-    throwErr(400, "Payments are not set up in this Stack Auth project. Please go to the Stack Auth dashboard and complete the Payments onboarding.");
+    throwErr(400, "Payments are not set up in this Hexclave project. Please go to the Hexclave dashboard and complete the Payments onboarding.");
   }
   return createStripeProxy(new Stripe(stripeSecretKey, { stripeAccount: accountId, ...stripeConfig }), overrides);
 };

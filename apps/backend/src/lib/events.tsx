@@ -1,16 +1,16 @@
 import withPostHog from "@/analytics";
 import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { globalPrismaClient } from "@/prisma-client";
-import { getStackServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/stack";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
-import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
-import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
+import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HTTP_METHODS } from "@hexclave/shared/dist/utils/http";
+import { filterUndefined, typedKeys } from "@hexclave/shared/dist/utils/objects";
+import { UnionToIntersection } from "@hexclave/shared/dist/utils/types";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as yup from "yup";
 import { getClickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
@@ -278,7 +278,7 @@ export async function logEvent<T extends EventType[]>(
     const billingTeamId = options.billingTeamId;
 
     if (billingTeamId != null && arePlanLimitsEnforced()) {
-      const app = getStackServerApp();
+      const app = getHexclaveServerApp();
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
       const isDebited = await eventsItem.tryDecreaseQuantity(1);
       if (!isDebited) {

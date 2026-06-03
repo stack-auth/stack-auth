@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { PrismaClientTransaction } from "@/prisma-client";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export type CacheGetOrSetOptions<T> = {
   namespace: string,

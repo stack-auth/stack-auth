@@ -6,9 +6,9 @@ import type { ProductSnapshot } from "@/lib/payments/schema/types";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
-import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { addInterval } from "@hexclave/shared/dist/utils/dates";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
 
 /**
  * Free/team/growth plans live on the internal tenancy; the "customer" is a
