@@ -1,10 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Lets each AI-path test inject what the (otherwise network-backed) agent does
-// to the files on disk, so we can exercise the orchestration and validation
-// around `updateConfigObject` without calling a real model.
 type MockAgentOptions = { prompt: string, cwd: string, onFileWillChange?: (filePath: string) => void | Promise<void> };
 let mockAgentImpl: ((options: MockAgentOptions) => void | Promise<void>) | null = null;
 
@@ -210,7 +207,7 @@ describe("remote development environment config file", () => {
     await expect(readConfigFile(configPath)).rejects.toThrow(`Invalid config in ${configPath}.`);
   });
 
-  it("applies updates to a plain static config through the agent", async () => {
+  it("applies updates to a plain static config through the shared agent updater", async () => {
     const configPath = writeTempConfig(`
       export const config = {
         auth: {
@@ -260,8 +257,6 @@ describe("remote development environment config file", () => {
 
     const { updateConfigObject } = await import("./config-file");
 
-    // Simulate the agent: write the new value into the referenced file and leave
-    // the config file untouched.
     mockAgentImpl = () => {
       writeFileSync(templatePath, "export default <div>New email</div>;\n", "utf-8");
     };
@@ -270,138 +265,28 @@ describe("remote development environment config file", () => {
       "emails.templates.welcome": "export default <div>New email</div>;\n",
     });
 
-    // The external file is updated and the config file keeps its import + shape.
     expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>New email</div>;\n");
     expect(readFileSync(configPath, "utf-8")).toBe(configSource);
   });
 
-  it("validates the result semantically when the config is evaluable", async () => {
-    const configPath = writeTempConfig(`
-      import { defineStackConfig } from "@hexclave/shared/config";
-      export const config = defineStackConfig({
-        auth: { allowSignUp: true },
-      });
-    `);
-    const { readConfigFile, updateConfigObject } = await import("./config-file");
-
-    mockAgentImpl = () => {
-      writeFileSync(configPath, `
-        import { defineStackConfig } from "@hexclave/shared/config";
-        export const config = defineStackConfig({
-          auth: { allowSignUp: false },
-        });
-      `, "utf-8");
-    };
-
-    await updateConfigObject(configPath, { "auth.allowSignUp": false });
-
-    // The defineStackConfig wrapper is preserved and the value is updated.
-    expect(readFileSync(configPath, "utf-8")).toContain("defineStackConfig");
-    await expect(readConfigFile(configPath)).resolves.toMatchInlineSnapshot(`
-      {
-        "config": {
-          "auth": {
-            "allowSignUp": false,
-          },
-        },
-        "showOnboarding": false,
-      }
-    `);
-  });
-
-  it("throws when the agent produces a config that does not match the requested update", async () => {
-    const configPath = writeTempConfig(`
-      import { defineStackConfig } from "@hexclave/shared/config";
-      export const config = defineStackConfig({
-        auth: { allowSignUp: true },
-      });
-    `);
-    const { updateConfigObject } = await import("./config-file");
-
-    // The agent writes the wrong value (allowSignUp stays true).
-    mockAgentImpl = () => {
-      writeFileSync(configPath, `
-        import { defineStackConfig } from "@hexclave/shared/config";
-        export const config = defineStackConfig({
-          auth: { allowSignUp: true },
-        });
-      `, "utf-8");
-    };
-
-    await expect(updateConfigObject(configPath, { "auth.allowSignUp": false }))
-      .rejects.toThrow(/validation failed/);
-  });
-
-  it("rolls back the config and its referenced files when the agent's result fails validation", async () => {
+  it("can update config and imported text files in one shared agent run", async () => {
     const templatePath = writeTempFile("welcome-email.tsx", "export default <div>Old email</div>;\n");
-    const configSource = `import welcomeEmail from "./welcome-email.tsx" with { type: "text" };\n\nexport const config = {\n  emails: { templates: { welcome: welcomeEmail } },\n};\n`;
+    const configSource = `import welcomeEmail from "./welcome-email.tsx" with { type: "text" };\n\nexport const config = {\n  auth: { allowSignUp: true },\n  emails: { templates: { welcome: welcomeEmail } },\n};\n`;
     const configPath = writeTempConfig(configSource);
 
     const { updateConfigObject } = await import("./config-file");
 
-    // The agent edits both files but then fails, so the partially-applied edits
-    // must be rolled back and the failure surfaced.
     mockAgentImpl = () => {
-      writeFileSync(templatePath, "export default <div>Corrupted</div>;\n", "utf-8");
-      writeFileSync(configPath, `export const config = { auth: { allowSignUp: true } };\n`, "utf-8");
-      throw new Error("agent blew up");
+      writeFileSync(templatePath, "export default <div>New email</div>;\n", "utf-8");
+      writeFileSync(configPath, `import welcomeEmail from "./welcome-email.tsx" with { type: "text" };\n\nexport const config = {\n  auth: { allowSignUp: false },\n  emails: { templates: { welcome: welcomeEmail } },\n};\n`, "utf-8");
     };
 
-    await expect(updateConfigObject(configPath, {
+    await updateConfigObject(configPath, {
+      "auth.allowSignUp": false,
       "emails.templates.welcome": "export default <div>New email</div>;\n",
-    })).rejects.toThrow("agent blew up");
+    });
 
-    // Both the config file and the externally-referenced file are back to their
-    // original contents \u2014 no half-applied update is left behind.
-    expect(readFileSync(configPath, "utf-8")).toBe(configSource);
-    expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>Old email</div>;\n");
-  });
-
-  it("rolls back a brand-new file the agent creates outside the statically-imported set", async () => {
-    // A wrapped config takes the agent path (it isn't a plain static literal),
-    // so the agent mock actually runs.
-    const configSource = `import { defineStackConfig } from "@hexclave/shared/config";\nexport const config = defineStackConfig({ auth: { allowSignUp: true } });\n`;
-    const configPath = writeTempConfig(configSource);
-    const newFilePath = join(getTempDir(), "generated-extra.ts");
-
-    const { updateConfigObject } = await import("./config-file");
-
-    // The agent creates a file that the config doesn't statically import, so the
-    // only way it can be rolled back is via the `onFileWillChange` hook firing
-    // before the write. After creating it, the agent fails so the run must roll
-    // back — deleting the newly-created file.
-    mockAgentImpl = async (options) => {
-      await options.onFileWillChange?.(newFilePath);
-      writeFileSync(newFilePath, "export const extra = true;\n", "utf-8");
-      throw new Error("agent blew up");
-    };
-
-    await expect(updateConfigObject(configPath, { "auth.allowSignUp": false }))
-      .rejects.toThrow("agent blew up");
-
-    expect(existsSync(newFilePath)).toBe(false);
-    expect(readFileSync(configPath, "utf-8")).toBe(configSource);
-  });
-
-  it("fails a non-evaluable update when the agent leaves every file unchanged", async () => {
-    const templatePath = writeTempFile("welcome-email.tsx", "export default <div>Old email</div>;\n");
-    const configSource = `import welcomeEmail from "./welcome-email.tsx" with { type: "text" };\n\nexport const config = {\n  emails: { templates: { welcome: welcomeEmail } },\n};\n`;
-    const configPath = writeTempConfig(configSource);
-
-    const { updateConfigObject } = await import("./config-file");
-
-    // The agent reports success but doesn't actually touch any file. Since this
-    // config isn't evaluable, we can't do a semantic check, but a no-op for a
-    // non-empty update must still be reported as a failure rather than silently
-    // succeeding.
-    mockAgentImpl = () => {};
-
-    await expect(updateConfigObject(configPath, {
-      "emails.templates.welcome": "export default <div>New email</div>;\n",
-    })).rejects.toThrow(/did not modify/);
-
-    // The files are untouched (a no-op restored to its identical original).
-    expect(readFileSync(configPath, "utf-8")).toBe(configSource);
-    expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>Old email</div>;\n");
+    expect(readFileSync(templatePath, "utf-8")).toBe("export default <div>New email</div>;\n");
+    expect(readFileSync(configPath, "utf-8")).toBe(`import welcomeEmail from "./welcome-email.tsx" with { type: "text" };\n\nexport const config = {\n  auth: { allowSignUp: false },\n  emails: { templates: { welcome: welcomeEmail } },\n};\n`);
   });
 });

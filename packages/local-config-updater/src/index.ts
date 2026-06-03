@@ -114,7 +114,7 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   const snapshots = snapshotConfigFiles(configFilePath, content);
   try {
     await runConfigUpdateAgent({
-      prompt: buildConfigUpdatePrompt(path.basename(configFilePath), configUpdate),
+      prompt: buildConfigUpdatePrompt(path.basename(configFilePath), configUpdate, baselineConfig),
       cwd: path.dirname(configFilePath),
       onFileWillChange: (filePath) => captureSnapshotIfAbsent(snapshots, filePath),
     });
@@ -283,11 +283,17 @@ function flattenConfigUpdate(update: Config): ConfigChange[] {
   return changes;
 }
 
-function buildConfigUpdatePrompt(configFileName: string, configUpdate: Config): string {
+function buildConfigUpdatePrompt(configFileName: string, configUpdate: Config, baselineConfig: Config | null): string {
   const changes = flattenConfigUpdate(configUpdate);
   const changeLines = changes.map(({ path: configPath, value }) => {
     return `- ${JSON.stringify(configPath)}: set to ${JSON.stringify(value)}`;
   }).join("\n");
+  const expectedConfig = baselineConfig == null ? null : canonicalizeConfig(override(baselineConfig, configUpdate));
+  const expectedConfigSection = expectedConfig == null ? "" : `
+After the edit, evaluating the exported \`config\` must produce this exact JSON value:
+
+${JSON.stringify(expectedConfig, null, 2)}
+`;
 
   return `You are editing a Hexclave / Stack Auth configuration file in place. Apply a set of configuration changes WITHOUT changing how the file is written.
 
@@ -301,6 +307,7 @@ The file exports a \`config\` object (it may be wrapped in a helper such as \`de
 Apply EXACTLY these changes. Paths use dot notation, so \`a.b.c\` refers to \`config.a.b.c\`:
 
 ${changeLines}
+${expectedConfigSection}
 
 Rules:
 - Change ONLY the config paths listed above. Leave every other part of the file byte-for-byte unchanged: imports, comments, formatting, helper wrappers, and any config fields not listed.

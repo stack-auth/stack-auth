@@ -1,4 +1,12 @@
 import { withSentryConfig } from "@sentry/nextjs";
+import { createRequire } from "module";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const localConfigUpdaterRequire = createRequire(path.join(__dirname, "../../packages/local-config-updater/package.json"));
+const claudeAgentSdkDir = path.dirname(localConfigUpdaterRequire.resolve("@anthropic-ai/claude-agent-sdk"));
+const claudeAgentSdkTraceDir = path.relative(__dirname, claudeAgentSdkDir);
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -48,13 +56,14 @@ const nextConfig = {
   // optionally set output to "standalone" for Docker builds
   // https://nextjs.org/docs/pages/api-reference/next-config-js/output
   output: process.env.NEXT_CONFIG_OUTPUT,
+  outputFileTracingRoot: path.join(__dirname, "../.."),
   outputFileTracingIncludes: {
-    "/*": [
-      "./node_modules/@anthropic-ai/claude-agent-sdk/cli.js",
-      "./node_modules/@anthropic-ai/claude-agent-sdk/manifest.json",
-      "./node_modules/@anthropic-ai/claude-agent-sdk/manifest.zst.json",
-      "./node_modules/@anthropic-ai/claude-agent-sdk/resvg.wasm",
-      "./node_modules/@anthropic-ai/claude-agent-sdk/vendor/**/*",
+    "/api/remote-development-environment/config/apply-update": [
+      path.join(claudeAgentSdkTraceDir, "cli.js"),
+      path.join(claudeAgentSdkTraceDir, "manifest.json"),
+      path.join(claudeAgentSdkTraceDir, "manifest.zst.json"),
+      path.join(claudeAgentSdkTraceDir, "resvg.wasm"),
+      path.join(claudeAgentSdkTraceDir, "vendor/**/*"),
     ],
   },
 

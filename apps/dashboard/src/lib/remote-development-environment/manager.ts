@@ -14,9 +14,10 @@ import { basename, dirname } from "path";
 import {
   ensureConfigFileExists,
   readConfigFile,
+  replaceConfigObject,
   resolveConfigFilePath,
   sha256String,
-  replaceConfigObject,
+  updateConfigObject,
 } from "./config-file";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 import {
@@ -653,7 +654,7 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
     } else {
       state.synchronouslyUpdatingConfigFiles.add(configFilePath);
       try {
-        await replaceConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+        await updateConfigObject(configFilePath, options.configUpdate);
       } finally {
         setTimeout(() => {
           state.synchronouslyUpdatingConfigFiles.delete(configFilePath);
