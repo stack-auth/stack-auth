@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAllowedRemoteDevelopmentEnvironmentApiBaseUrl } from "@/lib/remote-development-environment/api-base-url";
-import { registerRemoteDevelopmentEnvironmentSession } from "@/lib/remote-development-environment/manager";
+import { RemoteDevelopmentEnvironmentApiUnavailableError, registerRemoteDevelopmentEnvironmentSession } from "@/lib/remote-development-environment/manager";
 import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-development-environment/route-json";
 import { assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 
@@ -27,7 +27,15 @@ export async function POST(req: NextRequest) {
   const result = await registerRemoteDevelopmentEnvironmentSession({
     apiBaseUrl: body.api_base_url,
     configPath: body.config_path,
+  }).catch((error: unknown) => {
+    if (error instanceof RemoteDevelopmentEnvironmentApiUnavailableError) {
+      return error;
+    }
+    throw error;
   });
+  if (result instanceof RemoteDevelopmentEnvironmentApiUnavailableError) {
+    return NextResponse.json({ error: result.message }, { status: 503 });
+  }
   return NextResponse.json({
     session_id: result.sessionId,
     env: result.env,

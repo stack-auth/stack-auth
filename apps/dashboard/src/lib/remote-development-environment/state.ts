@@ -15,16 +15,18 @@ export type RemoteDevelopmentEnvironmentProject = {
   updatedAtMillis: number,
 };
 
+export type LocalDashboardState = {
+  port: number,
+  secret: string,
+  pid: number,
+  startedAtMillis: number,
+  logPath?: string,
+};
+
 export type RemoteDevelopmentEnvironmentState = {
   version: 1,
   anonymousRefreshToken?: string,
-  localDashboard?: {
-    port: number,
-    secret: string,
-    pid: number,
-    startedAtMillis: number,
-    logPath?: string,
-  },
+  localDashboardsByPort?: Partial<Record<string, LocalDashboardState>>,
   anonymousApiBaseUrl?: string,
   projectsByConfigPath: Partial<Record<string, RemoteDevelopmentEnvironmentProject>>,
 };
@@ -57,7 +59,7 @@ export function readRemoteDevelopmentEnvironmentState(): RemoteDevelopmentEnviro
     version: 1,
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
-    localDashboard: parsed.localDashboard,
+    localDashboardsByPort: parsed.localDashboardsByPort,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }

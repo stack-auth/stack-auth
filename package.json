@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/monorepo",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "private": true,
   "repository": "https://github.com/hexclave/hexclave",
   "scripts": {
@@ -12,7 +12,7 @@
     "typecheck": "pnpm pre && turbo typecheck --",
     "build:dev": "pnpm pre && NODE_ENV=development pnpm run build",
     "build": "pnpm pre && turbo build",
-    "cli": "pnpm pre && pnpm run --filter=@hexclave/cli build && pnpm run cli:no-build",
+    "cli": "pnpm pre && turbo run build --filter=@hexclave/cli && pnpm run cli:no-build",
     "cli:no-build": "pnpm pre && echo && echo && echo '[CLI output starts below]' && echo && echo && STACK_API_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02 STACK_DASHBOARD_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01 STACK_CLI_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only node packages/stack-cli/dist/index.js",
     "build:backend": "pnpm pre && turbo run build --filter=@hexclave/backend...",
     "build:dashboard": "pnpm pre && turbo run build --filter=@hexclave/dashboard...",
@@ -35,8 +35,8 @@
     "emulator:bench": "docker/local-emulator/qemu/run-emulator.sh bench",
     "stop-deps": "POSTGRES_DELAY_MS=0 pnpm run deps-compose kill && POSTGRES_DELAY_MS=0 pnpm run deps-compose down -v",
     "wait-until-postgres-is-ready:pg_isready": "until pg_isready -h localhost -p ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}28 && pg_isready -h localhost -p ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}34; do sleep 1; done",
-    "wait-until-postgres-is-ready": "command -v pg_isready >/dev/null 2>&1 && pnpm run wait-until-postgres-is-ready:pg_isready || sleep 10  # not everyone has pg_isready installed, so we fallback to sleeping",
-    "wait-until-clickhouse-is-ready": "pnpm exec wait-on http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}36/ping",
+    "wait-until-postgres-is-ready": "command -v pg_isready >/dev/null 2>&1 && pnpm run wait-until-postgres-is-ready:pg_isready || sleep 10",
+    "wait-until-clickhouse-is-ready": "echo 'Waiting for ClickHouse to be ready...' && pnpm exec wait-on -t 10000 -v http-get://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}36/ping || echo 'ClickHouse is not ready after 10 seconds (this is probably a problem with our wait-on setup TODO fix), continuing regardless...'",
     "start-deps:no-delay": "pnpm pre && pnpm run deps-compose up --detach --build && pnpm run wait-until-postgres-is-ready && pnpm run wait-until-clickhouse-is-ready && pnpm run db:init && echo \"\\nDependencies started in the background as Docker containers. 'pnpm run stop-deps' to stop them\"",
     "start-deps": "POSTGRES_DELAY_MS=${POSTGRES_DELAY_MS:-0} pnpm run start-deps:no-delay",
     "restart-deps": "pnpm pre && pnpm run stop-deps && pnpm run start-deps",
@@ -112,29 +112,10 @@
     "vitest": "^1.6.0",
     "wait-on": "^8.0.1"
   },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "^18.2.0",
-      "@types/react-dom": "^18.2.0",
-      "sharp": "^0.34.5"
-    },
-    "packageExtensions": {
-      "@mintlify/link-rot": {
-        "dependencies": {
-          "react": "*",
-          "react-dom": "*"
-        }
-      }
-    },
-    "patchedDependencies": {
-      "openid-client@5.6.4": "patches/openid-client@5.6.4.patch"
-    }
-  },
   "engines": {
-    "npm": ">=10.0.0",
-    "node": ">=20.0.0"
+    "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@10.23.0",
+  "packageManager": "pnpm@11.5.0+sha512.dbfcc4f81cf48597afd4bc391ffdf12c11f1a9fb83a395bfa6b0a2d9cc2fd8ffebafdb1ccbd529632153f793904c2615b7f09fe1a345473fd1c35845172a8eb1",
   "dependencies": {
     "commander": "^13.1.0",
     "tsx": "^4.19.3",

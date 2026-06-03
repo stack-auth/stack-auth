@@ -3,11 +3,11 @@
 import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import { Copy } from "lucide-react";
 import React from "react";
-import { Button, cn, useToast } from "..";
+import { Button, cn, type ButtonProps, useToast } from "..";
 
 const CopyButton = forwardRefIfNeeded<
-  React.ElementRef<typeof Button>,
-  React.ComponentProps<typeof Button> & { content: string }
+  HTMLButtonElement,
+  ButtonProps & { content: string }
 >((props, ref) => {
   const { toast } = useToast();
 

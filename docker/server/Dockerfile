@@ -10,10 +10,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists
 
 ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
+ENV PATH=$PNPM_HOME:$PNPM_HOME/bin:$PATH
 
 RUN corepack enable
-RUN corepack prepare pnpm@10.23.0 --activate
+RUN corepack prepare pnpm@11.5.0 --activate
 RUN pnpm add -g turbo
 RUN pnpm add -g tsx
 
@@ -33,6 +33,9 @@ RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/dashboard --docker
 # Build stage
 FROM base AS builder
 
+# Skip generate-sdks.ts in preinstall hook (file not available in pruned output)
+ENV STACK_SKIP_TEMPLATE_GENERATION=true
+
 # copy over package.json files and install dependencies
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml .
@@ -41,7 +44,7 @@ COPY pnpm-workspace.yaml .
 COPY turbo.json .
 COPY configs ./configs
 COPY --from=pruner /app/scripts/postinstall-patch-next-async-debug-info.mjs ./scripts/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # copy over the rest of the code for the build
 COPY --from=pruner /app/out/full/ .
@@ -53,10 +56,10 @@ COPY docs ./docs
 ENV NEXT_CONFIG_OUTPUT=standalone
 
 # Build the backend NextJS app
-RUN pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
 
 # Build the self-host seed script
-RUN cd apps/backend && pnpm build-self-host-migration-script
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store cd apps/backend && pnpm build-self-host-migration-script
 
 
 

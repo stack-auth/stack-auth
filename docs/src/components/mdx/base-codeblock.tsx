@@ -21,7 +21,7 @@ export type BaseCodeblockProps = {
   /** Custom key to force re-render when theme changes externally */
   themeKey?: string,
   /** Ref to attach to the code container div for measuring line positions */
-  codeContainerRef?: React.RefObject<HTMLDivElement>,
+  codeContainerRef?: React.RefObject<HTMLDivElement | null>,
 };
 
 /**
