@@ -179,8 +179,8 @@ const PROVIDERS: ProviderMeta[] = [
 ];
 
 function TestSendingDialog(props: { trigger: React.ReactNode }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
 
@@ -195,7 +195,7 @@ function TestSendingDialog(props: { trigger: React.ReactNode }) {
         if (emailConfig.type === "shared") {
           throwErr("Shared email server cannot be used for testing");
         }
-        const result = await stackAdminApp.sendTestEmail({ recipientEmail: values.email, emailConfig });
+        const result = await hexclaveAdminApp.sendTestEmail({ recipientEmail: values.email, emailConfig });
         if (result.status === "ok") {
           toast({ title: "Email sent", description: `Test email sent to ${values.email}. Check your inbox.`, variant: "success" });
         } else {
@@ -312,7 +312,7 @@ function ManagedDomainSetupDialog(props: {
   onCompleted: () => void,
   onApply: (domainId: string) => void,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const { toast } = useToast();
   const [stage, setStage] = useState<1 | 2 | 3>(props.initialState ? 2 : 1);
   const [subdomain, setSubdomain] = useState(props.initialState?.subdomain ?? "");
@@ -366,7 +366,7 @@ function ManagedDomainSetupDialog(props: {
     }
     setSubmitting(true);
     try {
-      const result = await stackAdminApp.setupManagedEmailProvider({
+      const result = await hexclaveAdminApp.setupManagedEmailProvider({
         subdomain: subdomain.trim(),
         senderLocalPart: senderLocalPart.trim(),
       });
@@ -385,14 +385,14 @@ function ManagedDomainSetupDialog(props: {
     } finally {
       setSubmitting(false);
     }
-  }, [subdomain, senderLocalPart, stackAdminApp, props]);
+  }, [subdomain, senderLocalPart, hexclaveAdminApp, props]);
 
   const handleCheck = useCallback(async () => {
     if (!setupState) return;
     setChecking(true);
     setError(null);
     try {
-      const result = await stackAdminApp.checkManagedEmailStatus({
+      const result = await hexclaveAdminApp.checkManagedEmailStatus({
         domainId: setupState.domainId,
         subdomain: setupState.subdomain,
         senderLocalPart: setupState.senderLocalPart,
@@ -415,7 +415,7 @@ function ManagedDomainSetupDialog(props: {
     } finally {
       setChecking(false);
     }
-  }, [setupState, stackAdminApp, toast, props]);
+  }, [setupState, hexclaveAdminApp, toast, props]);
 
   const handleApply = useCallback(() => {
     if (!setupState) return;
@@ -705,8 +705,8 @@ function ManagedDomainSetupDialog(props: {
 }
 
 export function DomainSettings() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
   const updateConfig = useUpdateConfig();
   const { toast } = useToast();
@@ -731,12 +731,12 @@ export function DomainSettings() {
   const refreshDomains = useCallback(async () => {
     setLoadingDomains(true);
     try {
-      const result = await stackAdminApp.listManagedEmailDomains();
+      const result = await hexclaveAdminApp.listManagedEmailDomains();
       setDomains(result);
     } finally {
       setLoadingDomains(false);
     }
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   useEffect(() => {
     if (serverType === "managed") {
@@ -809,7 +809,7 @@ export function DomainSettings() {
     try {
       if (serverType === "shared") {
         await updateConfig({
-          adminApp: stackAdminApp,
+          adminApp: hexclaveAdminApp,
           configUpdate: {
             "emails.server": { isShared: true } satisfies Partial<CompleteConfig["emails"]["server"]>,
           },
@@ -827,8 +827,8 @@ export function DomainSettings() {
         // missing required fields (password/senderName), which breaks every project read.
         // The empty updateConfig is a no-op write whose only purpose is to refresh the reactive
         // config cache (via _refreshProjectConfig) so the UI reflects the newly-active domain.
-        await stackAdminApp.applyManagedEmailProvider({ domainId });
-        await updateConfig({ adminApp: stackAdminApp, configUpdate: {}, pushable: false });
+        await hexclaveAdminApp.applyManagedEmailProvider({ domainId });
+        await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: {}, pushable: false });
         setDraftManagedDomainId(null);
         await refreshDomains();
         toast({ title: "Domain applied", description: `Sending emails from ${selected.senderLocalPart}@${selected.subdomain}.`, variant: "success" });
@@ -863,7 +863,7 @@ export function DomainSettings() {
           senderName: requireField("senderName", "Sender name"),
         };
 
-        const testResult = await stackAdminApp.sendTestEmail({
+        const testResult = await hexclaveAdminApp.sendTestEmail({
           recipientEmail: "test-email-recipient@sent-with-hexclave.com",
           emailConfig: emailConf,
         });
@@ -874,7 +874,7 @@ export function DomainSettings() {
         }
 
         await updateConfig({
-          adminApp: stackAdminApp,
+          adminApp: hexclaveAdminApp,
           configUpdate: {
             "emails.server": {
               isShared: false,
@@ -898,7 +898,7 @@ export function DomainSettings() {
     } finally {
       setSaving(false);
     }
-  }, [serverType, formValues, stackAdminApp, updateConfig, toast, draftManagedDomainId, domains, refreshDomains]);
+  }, [serverType, formValues, hexclaveAdminApp, updateConfig, toast, draftManagedDomainId, domains, refreshDomains]);
 
   if (isEmulator) {
     return (
@@ -1243,7 +1243,7 @@ export function DomainSettings() {
             if (!confirmDelete) return;
             const removed = confirmDelete;
             runAsynchronouslyWithAlert(async () => {
-              await stackAdminApp.deleteManagedEmailDomain({ resendDomainId: removed.domainId });
+              await hexclaveAdminApp.deleteManagedEmailDomain({ resendDomainId: removed.domainId });
               toast({ title: "Domain removed", description: `${removed.senderLocalPart}@${removed.subdomain} was removed.`, variant: "success" });
               if (draftManagedDomainId === removed.domainId) setDraftManagedDomainId(null);
               await refreshDomains();

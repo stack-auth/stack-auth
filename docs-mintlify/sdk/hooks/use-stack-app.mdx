@@ -14,8 +14,8 @@ The `useHexclaveApp` hook returns a `HexclaveClientApp` object from the one that
 import { useHexclaveApp } from "@hexclave/next";
 
 function MyComponent() {
-  const stackApp = useHexclaveApp();
-  return <div>Sign In URL: {stackApp.urls.signIn}</div>;
+  const hexclaveApp = useHexclaveApp();
+  return <div>Sign In URL: {hexclaveApp.urls.signIn}</div>;
 }
 ```
 

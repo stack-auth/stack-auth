@@ -19,12 +19,12 @@ export function AdminAppProvider(props: { children: React.ReactNode }) {
 }
 
 export function useAdminAppIfExists() {
-  const stackAdminApp = React.useContext(StackAdminAppContext);
-  if (!stackAdminApp) {
+  const hexclaveAdminApp = React.useContext(StackAdminAppContext);
+  if (!hexclaveAdminApp) {
     return null;
   }
 
-  return stackAdminApp;
+  return hexclaveAdminApp;
 }
 
 export function useAdminApp(projectId?: string) {

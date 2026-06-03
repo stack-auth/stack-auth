@@ -224,7 +224,7 @@ function renderComponent(props: {
 
 export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps> & { location?: string }) {
   // Use hooks to get app
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const clientOrigin = useClientOriginAfterHydration();
 
   // IF_PLATFORM next
@@ -233,16 +233,16 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const currentLocation = pathname;
   const searchParamsSource = searchParamsFromHook;
   /* ELSE_IF_PLATFORM react
-  const navigate = stackApp.useNavigate();
+  const navigate = hexclaveApp.useNavigate();
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
-  const currentLocation = props.location ?? (typeof window === "undefined" ? new URL(stackApp.urls.handler, placeholderOrigin).pathname : window.location.pathname);
+  const currentLocation = props.location ?? (typeof window === "undefined" ? new URL(hexclaveApp.urls.handler, placeholderOrigin).pathname : window.location.pathname);
   const searchParamsSource = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
   const redirectTargets: (string | undefined)[] = [];
   END_PLATFORM */
 
   const { path, searchParams, handlerPath } = useMemo(() => {
-    const handlerPath = new URL(stackApp.urls.handler, 'http://example.com').pathname;
+    const handlerPath = new URL(hexclaveApp.urls.handler, 'http://example.com').pathname;
     const relativePath = currentLocation.startsWith(handlerPath)
       ? currentLocation.slice(handlerPath.length).replace(/^\/+/, '')
       : currentLocation.replace(/^\/+/, '');
@@ -252,18 +252,18 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
       searchParams: Object.fromEntries(searchParamsSource.entries()),
       handlerPath,
     };
-  }, [currentLocation, searchParamsSource, stackApp.urls.handler]);
+  }, [currentLocation, searchParamsSource, hexclaveApp.urls.handler]);
 
   const getDefaultUnknownPathUrl = (unknownPath: string): string | null => {
     return resolveUnknownHandlerPathFallbackUrl({
-      defaultTarget: stackApp[stackAppInternalsSymbol].getConstructorOptions().urls?.default,
-      projectId: stackApp.projectId,
+      defaultTarget: hexclaveApp[stackAppInternalsSymbol].getConstructorOptions().urls?.default,
+      projectId: hexclaveApp.projectId,
       unknownPath,
     });
   };
 
   const shouldRedirectToPage = (name: keyof HandlerUrls): boolean => {
-    const url = stackApp.urls[name];
+    const url = hexclaveApp.urls[name];
     const isCrossDomainLocalOauthCallback = name === "oauthCallback" && searchParams.hexclave_cross_domain_auth === "1";
     if (isCrossDomainLocalOauthCallback) {
       return false;
@@ -291,14 +291,14 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
           title="Page does not exist"
           fullPage={props.fullPage}
           primaryButtonText="Go to Home"
-          primaryAction={() => stackApp.redirectToHome()}
+          primaryAction={() => hexclaveApp.redirectToHome()}
         >
           The page you are looking for could not be found. Please check the URL and try again.
         </MessageCard>
       )
       END_PLATFORM */
     ,
-    app: stackApp,
+    app: hexclaveApp,
   });
 
   const redirectToPage = (result != null && typeof result === 'object' && 'redirectToPage' in result) ? result.redirectToPage : undefined;
@@ -306,9 +306,9 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   useEffect(() => {
     if (redirectToPage == null) return;
     runAsynchronouslyWithAlert(
-      stackApp[stackAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true })
+      hexclaveApp[stackAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true })
     );
-  }, [redirectToPage, stackApp]);
+  }, [redirectToPage, hexclaveApp]);
 
   if (redirectToPage != null) {
     return (
@@ -326,7 +326,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
 
   /* IF_PLATFORM react
   const redirectTarget = redirectTargets[0];
-  const shouldRenderRedirectFallback = redirectTarget != null && stackApp[stackAppInternalsSymbol].getRedirectMethod() === "none";
+  const shouldRenderRedirectFallback = redirectTarget != null && hexclaveApp[stackAppInternalsSymbol].getRedirectMethod() === "none";
   useEffect(() => {
     if (redirectTarget == null || shouldRenderRedirectFallback) {
       return;

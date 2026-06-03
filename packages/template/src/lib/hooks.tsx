@@ -16,14 +16,14 @@ export function useUser(options: GetUserOptions & { or: 'redirect' | 'throw' }):
 export function useUser(options: GetUserOptions & { projectIdMustMatch: "internal" }): CurrentInternalUser | null;
 export function useUser(options?: GetUserOptions): CurrentUser | CurrentInternalUser | null;
 export function useUser(options: GetUserOptions = {}): CurrentUser | CurrentInternalUser | null {
-  const stackApp = useHexclaveApp(options);
-  if (options.projectIdMustMatch && stackApp.projectId !== options.projectIdMustMatch) {
-    throw new Error("Unexpected project ID in useHexclaveApp: " + stackApp.projectId);
+  const hexclaveApp = useHexclaveApp(options);
+  if (options.projectIdMustMatch && hexclaveApp.projectId !== options.projectIdMustMatch) {
+    throw new Error("Unexpected project ID in useHexclaveApp: " + hexclaveApp.projectId);
   }
   if (options.projectIdMustMatch === "internal") {
-    return stackApp.useUser(options) as CurrentInternalUser;
+    return hexclaveApp.useUser(options) as CurrentInternalUser;
   } else {
-    return stackApp.useUser(options) as CurrentUser;
+    return hexclaveApp.useUser(options) as CurrentUser;
   }
 }
 
@@ -40,11 +40,11 @@ export function useHexclaveApp<ProjectId extends string>(options: { projectIdMus
   if (context === null) {
     throw new Error("useHexclaveApp must be used within a HexclaveProvider");
   }
-  const stackApp = context.app;
-  if (options.projectIdMustMatch && stackApp.projectId !== options.projectIdMustMatch) {
-    throw new Error("Unexpected project ID in useHexclaveApp: " + stackApp.projectId);
+  const hexclaveApp = context.app;
+  if (options.projectIdMustMatch && hexclaveApp.projectId !== options.projectIdMustMatch) {
+    throw new Error("Unexpected project ID in useHexclaveApp: " + hexclaveApp.projectId);
   }
-  return stackApp as StackClientApp<true, ProjectId>;
+  return hexclaveApp as StackClientApp<true, ProjectId>;
 }
 
 /**

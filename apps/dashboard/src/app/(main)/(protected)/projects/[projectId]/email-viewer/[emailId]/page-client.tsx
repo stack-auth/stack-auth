@@ -158,7 +158,7 @@ function PropertyRow({
 }
 
 export default function PageClient({ emailId }: { emailId: string }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -184,7 +184,7 @@ export default function PageClient({ emailId }: { emailId: string }) {
     runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
-        const fetchedEmail = await stackAdminApp.getOutboxEmail(emailId);
+        const fetchedEmail = await hexclaveAdminApp.getOutboxEmail(emailId);
         setEmail(fetchedEmail);
         setScheduledAt(toLocalDatetimeString(fetchedEmail.scheduledAt));
         setIsPaused(isEmailPaused(fetchedEmail));
@@ -198,11 +198,11 @@ export default function PageClient({ emailId }: { emailId: string }) {
         setLoading(false);
       }
     });
-  }, [emailId, stackAdminApp, toast]);
+  }, [emailId, hexclaveAdminApp, toast]);
 
   const refreshEmail = useCallback(async () => {
     try {
-      const fetchedEmail = await stackAdminApp.getOutboxEmail(emailId);
+      const fetchedEmail = await hexclaveAdminApp.getOutboxEmail(emailId);
       setEmail(fetchedEmail);
       setScheduledAt(toLocalDatetimeString(fetchedEmail.scheduledAt));
       setIsPaused(isEmailPaused(fetchedEmail));
@@ -213,43 +213,43 @@ export default function PageClient({ emailId }: { emailId: string }) {
         variant: "destructive",
       });
     }
-  }, [emailId, stackAdminApp, toast]);
+  }, [emailId, hexclaveAdminApp, toast]);
 
   const enterEditMode = useCallback(async () => {
     if (!email) return;
     setCurrentCode(email.tsxSource);
     setSelectedThemeId(email.themeId ?? undefined);
     if (!isEmailPaused(email)) {
-      await stackAdminApp.pauseOutboxEmail(email.id);
+      await hexclaveAdminApp.pauseOutboxEmail(email.id);
       setAutoPausedByEditor(true);
       await refreshEmail();
     }
     setEditMode(true);
-  }, [email, stackAdminApp, refreshEmail]);
+  }, [email, hexclaveAdminApp, refreshEmail]);
 
   const handleEditorSave = useCallback(async () => {
     if (!email) return;
-    await stackAdminApp.updateOutboxEmail(email.id, {
+    await hexclaveAdminApp.updateOutboxEmail(email.id, {
       tsxSource: currentCode,
       themeId: selectedThemeId === false ? null : (selectedThemeId ?? null),
     });
     if (autoPausedByEditor) {
-      await stackAdminApp.unpauseOutboxEmail(email.id);
+      await hexclaveAdminApp.unpauseOutboxEmail(email.id);
       setAutoPausedByEditor(false);
     }
     setEditMode(false);
     await refreshEmail();
-  }, [email, stackAdminApp, currentCode, selectedThemeId, autoPausedByEditor, refreshEmail]);
+  }, [email, hexclaveAdminApp, currentCode, selectedThemeId, autoPausedByEditor, refreshEmail]);
 
   const handleEditorDiscard = useCallback(async () => {
     if (!email) return;
     if (autoPausedByEditor) {
-      await stackAdminApp.unpauseOutboxEmail(email.id);
+      await hexclaveAdminApp.unpauseOutboxEmail(email.id);
       setAutoPausedByEditor(false);
     }
     setEditMode(false);
     await refreshEmail();
-  }, [email, stackAdminApp, autoPausedByEditor, refreshEmail]);
+  }, [email, hexclaveAdminApp, autoPausedByEditor, refreshEmail]);
 
   const scheduledAtDirty = email ? scheduledAt !== toLocalDatetimeString(email.scheduledAt) : false;
 
@@ -262,7 +262,7 @@ export default function PageClient({ emailId }: { emailId: string }) {
     }
     setIsSaving(true);
     try {
-      await stackAdminApp.updateOutboxEmail(email.id, {
+      await hexclaveAdminApp.updateOutboxEmail(email.id, {
         scheduledAtMillis: parsedMillis,
       });
       toast({ title: "Schedule updated", variant: "success" });
@@ -283,7 +283,7 @@ export default function PageClient({ emailId }: { emailId: string }) {
   const handlePause = async () => {
     if (!email) return;
     try {
-      await stackAdminApp.pauseOutboxEmail(email.id);
+      await hexclaveAdminApp.pauseOutboxEmail(email.id);
       toast({
         title: "Email paused",
         description: "The email has been paused.",
@@ -302,7 +302,7 @@ export default function PageClient({ emailId }: { emailId: string }) {
   const handleUnpause = async () => {
     if (!email) return;
     try {
-      await stackAdminApp.unpauseOutboxEmail(email.id);
+      await hexclaveAdminApp.unpauseOutboxEmail(email.id);
       toast({
         title: "Email unpaused",
         description: "The email has been unpaused and will continue processing.",
@@ -321,7 +321,7 @@ export default function PageClient({ emailId }: { emailId: string }) {
   const handleCancel = async () => {
     if (!email) return;
     try {
-      await stackAdminApp.cancelOutboxEmail(email.id);
+      await hexclaveAdminApp.cancelOutboxEmail(email.id);
       toast({
         title: "Email cancelled",
         description: "The email has been cancelled and will not be sent.",

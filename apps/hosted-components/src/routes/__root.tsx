@@ -135,7 +135,7 @@ function RootComponent() {
 
   const isValidProjectId = projectId ? (projectId === "internal" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) : false;
 
-  const stackApp = useMemo(() => {
+  const hexclaveApp = useMemo(() => {
     if (!projectId || !isValidProjectId) return null;
     return new StackClientApp({
       projectId,
@@ -167,7 +167,7 @@ function RootComponent() {
 
   return (
     <ErrorBoundary>
-      <StackProvider app={stackApp!}>
+      <StackProvider app={hexclaveApp!}>
         <StackTheme>
           <Outlet />
         </StackTheme>

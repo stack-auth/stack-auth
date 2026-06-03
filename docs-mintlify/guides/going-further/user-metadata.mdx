@@ -30,7 +30,7 @@ console.log(user.clientMetadata);
 For sensitive information, use the `serverMetadata` field. This ensures the data is only accessible and modifiable by the server.
 
 ```tsx
-const user = await stackServerApp.getUser();
+const user = await hexclaveServerApp.getUser();
 await user.update({
   serverMetadata: {
     secretInfo: "This is a secret",
@@ -38,7 +38,7 @@ await user.update({
 });
 
 // To read:
-const user = await stackServerApp.getUser();
+const user = await hexclaveServerApp.getUser();
 console.log(user.serverMetadata);
 ```
 
@@ -48,7 +48,7 @@ Use `clientReadOnlyMetadata` for data that clients need to read but never modify
 
 ```tsx
 // On the server:
-const user = await stackServerApp.getUser();
+const user = await hexclaveServerApp.getUser();
 await user.update({
   clientReadOnlyMetadata: {
     subscriptionPlan: "premium",

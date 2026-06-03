@@ -219,7 +219,7 @@ const NEXT_CHECKS: CheckSpec[] = [
   fileExistsCheck("next.handler-route", "Handler route", [
     "app/handler/[...stack]/page.tsx", "app/handler/[...stack]/page.ts",
     "app/handler/[...stack]/page.jsx", "app/handler/[...stack]/page.js",
-  ], "Create app/handler/[...stack]/page.tsx that renders <StackHandler fullPage app={stackServerApp} routeProps={props} />."),
+  ], "Create app/handler/[...stack]/page.tsx that renders <StackHandler fullPage app={hexclaveServerApp} routeProps={props} />."),
   layoutWrapsStackProviderCheck(),
   envVarsCheck([
     { names: ["NEXT_PUBLIC_HEXCLAVE_PROJECT_ID", "NEXT_PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
@@ -353,7 +353,7 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
           label,
           status: "warn",
           detail: `${rel} imports StackProvider from @hexclave/next but does not render it.`,
-          hint: "Wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.",
+          hint: "Wrap {children} with <StackProvider app={hexclaveClientApp}>...</StackProvider>.",
         };
       }
       if (!importsStackProvider && wrapsJsx) {
@@ -370,7 +370,7 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
         label,
         status: "fail",
         detail: `${rel} does not import StackProvider from @hexclave/next.`,
-        hint: `Add: import { StackProvider } from "@hexclave/next"; and wrap {children} with <StackProvider app={stackClientApp}>...</StackProvider>.`,
+        hint: `Add: import { StackProvider } from "@hexclave/next"; and wrap {children} with <StackProvider app={hexclaveClientApp}>...</StackProvider>.`,
       };
     },
   };

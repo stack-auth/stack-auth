@@ -64,9 +64,9 @@ function ThemePreviewFrame({ children, className, active, activeLabel, style }: 
 
 export function ThemeSettings() {
   const router = useRouter();
-  const stackAdminApp = useAdminApp();
-  const config = stackAdminApp.useProject().useConfig();
-  const themes = stackAdminApp.useEmailThemes();
+  const hexclaveAdminApp = useAdminApp();
+  const config = hexclaveAdminApp.useProject().useConfig();
+  const themes = hexclaveAdminApp.useEmailThemes();
   const activeThemeId = config.emails.selectedThemeId;
   const activeTheme = themes.find(t => t.id === activeThemeId) ?? throwErr(`Unknown theme ${activeThemeId}`, { activeThemeId });
 

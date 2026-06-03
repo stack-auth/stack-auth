@@ -11,7 +11,7 @@ let _stackServerApp: InternalServerApp | undefined;
 export function getHexclaveServerApp(): InternalServerApp {
   if (!_stackServerApp) {
     if (isRemoteDevelopmentEnvironmentEnabled()) {
-      throw new HexclaveAssertionError("stackServerApp is not available in the local remote development environment dashboard.");
+      throw new HexclaveAssertionError("hexclaveServerApp is not available in the local remote development environment dashboard.");
     }
     _stackServerApp = new StackServerApp({
       inheritsFrom: hexclaveClientApp,

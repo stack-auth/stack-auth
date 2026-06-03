@@ -19,14 +19,14 @@ function OTP(props: {
   const { t } = useTranslation();
   const [otp, setOtp] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (otp.length === 6 && !submitting) {
       setSubmitting(true);
       // eslint-disable-next-line no-restricted-syntax
-      stackApp.signInWithMagicLink(otp + props.nonce)
+      hexclaveApp.signInWithMagicLink(otp + props.nonce)
         .then(result => {
           if (result.status === 'error') {
             if (KnownErrors.VerificationCodeError.isInstance(result.error)) {

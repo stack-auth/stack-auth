@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { stackServerApp } from "src/hexclave";
+import { hexclaveServerApp } from "src/hexclave";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -25,7 +25,7 @@ function readBody(value: unknown): { teamId: string, productId: "team" | "growth
 }
 
 export async function POST(request: Request) {
-  const user = await stackServerApp.getUser();
+  const user = await hexclaveServerApp.getUser();
   if (user == null) {
     return NextResponse.json({ error: "Sign in before creating a checkout URL." }, { status: 401 });
   }

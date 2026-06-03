@@ -2075,7 +2075,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     }
     header.appendChild(headerTop);
 
-    const redirectMethod = `stackApp.redirectTo${(page.key as string).charAt(0).toUpperCase()}${(page.key as string).slice(1)}()`;
+    const redirectMethod = `hexclaveApp.redirectTo${(page.key as string).charAt(0).toUpperCase()}${(page.key as string).slice(1)}()`;
     const codeRow = h('div', { className: 'sdt-pg-code-inline' });
     codeRow.appendChild(h('code', { className: 'sdt-pg-code' }, redirectMethod));
     const openBtn = h('button', { className: 'sdt-pg-copy-btn sdt-pg-open-btn' });

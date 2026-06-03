@@ -118,7 +118,7 @@ function buildFixPrompt(errorText: string): string {
     "",
     "Workflow (do all of these — do not skip steps):",
     "1. Read the files needed to understand the error: package.json, stack.config.ts if present, .env / .env.local, the file(s) referenced in the stack trace, app/layout.* or pages/_app.*, and any handler route (e.g. app/handler/[...stack]/page.tsx).",
-    "2. Diagnose the Hexclave root cause (e.g. missing HexclaveProvider wrapping, missing env vars, wrong handler route path, incorrect stack.config.ts, wrong import from @hexclave/* (or legacy @stackframe/*), missing API keys, missing `stackServerApp` instance, etc.).",
+    "2. Diagnose the Hexclave root cause (e.g. missing HexclaveProvider wrapping, missing env vars, wrong handler route path, incorrect stack.config.ts, wrong import from @hexclave/* (or legacy @stackframe/*), missing API keys, missing `hexclaveServerApp` instance, etc.).",
     "3. Apply the minimal fix using Edit/Write. Actually modify the files. If env vars are missing, instruct the user clearly (do not invent secret values).",
     "4. After editing, verify your change by re-reading the affected file(s).",
     "",

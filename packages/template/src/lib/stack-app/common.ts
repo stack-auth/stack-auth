@@ -150,7 +150,7 @@ export type AuthLike<ExtraOptions = {}> = {
    *
    * ```ts
    * // client
-   * const authorizationHeader = await stackApp.getAuthorizationHeader();
+   * const authorizationHeader = await hexclaveApp.getAuthorizationHeader();
    * const res = await fetch("https://api.example.com", {
    *   headers: {
    *     ...(authorizationHeader ? { Authorization: authorizationHeader } : {})
@@ -160,7 +160,7 @@ export type AuthLike<ExtraOptions = {}> = {
    *
    * // server
    * function handleRequest(req: Request) {
-   *   const user = await stackServerApp.getUser({ tokenStore: req });
+   *   const user = await hexclaveServerApp.getUser({ tokenStore: req });
    *   return new Response("Welcome, " + user.displayName);
    * }
    * ```
@@ -194,13 +194,13 @@ export type AuthLike<ExtraOptions = {}> = {
    * // client
    * const res = await rpcCall(rpcEndpoint, {
    *   data: {
-   *     auth: await stackApp.getAuthJson(),
+   *     auth: await hexclaveApp.getAuthJson(),
    *   },
    * });
    *
    * // server
    * function handleRequest(data) {
-   *   const user = await stackServerApp.getUser({ tokenStore: data.auth });
+   *   const user = await hexclaveServerApp.getUser({ tokenStore: data.auth });
    *   return new Response("Welcome, " + user.displayName);
    * }
    * ```

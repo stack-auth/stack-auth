@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { stackServerApp } from "src/hexclave";
+import { hexclaveServerApp } from "src/hexclave";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -21,12 +21,12 @@ function readCount(value: unknown): number {
 }
 
 export async function POST(request: Request) {
-  const user = await stackServerApp.getUser({ or: "throw" });
+  const user = await hexclaveServerApp.getUser({ or: "throw" });
   const body: unknown = await request.json();
   const count = readCount(body);
 
   for (let i = 0; i < count; i++) {
-    await stackServerApp.sendEmail({
+    await hexclaveServerApp.sendEmail({
       userIds: [user.id],
       subject: `Payments demo quota test ${i + 1}/${count}`,
       html: `<p>Payments demo quota test email ${i + 1} of ${count}.</p>`,

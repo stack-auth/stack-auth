@@ -1,6 +1,6 @@
 import { StackHandler } from "@hexclave/next"; 
-import { stackServerApp } from "../../../hexclave/server"; 
+import { hexclaveServerApp } from "../../../hexclave/server"; 
 
 export default function Handler(props: unknown) { 
-   return <StackHandler fullPage app = { stackServerApp } routeProps = { props } />; 
+   return <StackHandler fullPage app = { hexclaveServerApp } routeProps = { props } />; 
  } 

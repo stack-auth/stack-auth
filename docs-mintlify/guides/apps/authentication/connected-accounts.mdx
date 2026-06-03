@@ -88,10 +88,10 @@ export default function Page() {
 
 To avoid showing the authorization page twice, you can already request scopes during the sign-in flow. This approach is optional. Some applications may prefer to request extra permissions only when needed, while others might want to obtain all necessary permissions upfront.
 
-To do this, edit the `oauthScopesOnSignIn` setting of your `stackServerApp`:
+To do this, edit the `oauthScopesOnSignIn` setting of your `hexclaveServerApp`:
 
 ```jsx title="stack/server.ts"
-export const stackServerApp = new HexclaveServerApp({
+export const hexclaveServerApp = new HexclaveServerApp({
   // ...your other settings...
   oauthScopesOnSignIn: {
     google: ['https://www.googleapis.com/auth/drive.readonly']

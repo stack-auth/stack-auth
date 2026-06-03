@@ -4,7 +4,7 @@ description: "The most important object of your Stack project"
 sidebarTitle: "The StackApp Object"
 ---
 
-By now, you may have seen the `useHexclaveApp()` hook and the `stackServerApp` variable. Both return a `StackApp`, of type `HexclaveClientApp` and `HexclaveServerApp` respectively.
+By now, you may have seen the `useHexclaveApp()` hook and the `hexclaveServerApp` variable. Both return a `StackApp`, of type `HexclaveClientApp` and `HexclaveServerApp` respectively.
 
 Nearly all of Stack's functionality is on your `StackApp` object. Think of this object as the "connection" from your code to Stack's servers. Each app is always associated with one specific project ID (by default the one found in your environment variables).
 
@@ -19,7 +19,7 @@ Normally, you would choose between the two based on whether you are in a React S
 ```tsx
 // server-component.tsx
 async function ServerComponent() {
-  const app = stackServerApp;
+  const app = hexclaveServerApp;
   // returns a Promise, must be awaited
   const user = await app.getUser();
 

@@ -10,8 +10,8 @@ async function getServerApp() {
 
 export async function revokeInvitation(teamId: string, invitationId: string) {
   "use server";
-  const stackServerApp = await getServerApp();
-  const user = await stackServerApp.getUser();
+  const hexclaveServerApp = await getServerApp();
+  const user = await hexclaveServerApp.getUser();
   const team = await user?.getTeam(teamId);
   if (!team) {
     throw new Error("Team not found");
@@ -24,8 +24,8 @@ export async function revokeInvitation(teamId: string, invitationId: string) {
 }
 
 export async function listInvitations(teamId: string) {
-  const stackServerApp = await getServerApp();
-  const user = await stackServerApp.getUser();
+  const hexclaveServerApp = await getServerApp();
+  const user = await hexclaveServerApp.getUser();
   const team = await user?.getTeam(teamId);
   if (!team) {
     throw new Error("Team not found");
@@ -39,9 +39,9 @@ export async function listInvitations(teamId: string) {
 }
 
 export async function inviteUser(teamId: string, email: string, origin: string) {
-  const stackServerApp = await getServerApp();
-  const callbackUrl = new URL(stackServerApp.urls.teamInvitation, origin).toString();
-  const user = await stackServerApp.getUser();
+  const hexclaveServerApp = await getServerApp();
+  const callbackUrl = new URL(hexclaveServerApp.urls.teamInvitation, origin).toString();
+  const user = await hexclaveServerApp.getUser();
   const team = await user?.getTeam(teamId);
   if (!team) {
     throw new Error("Team not found");

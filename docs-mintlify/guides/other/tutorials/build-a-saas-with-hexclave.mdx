@@ -46,8 +46,8 @@ After `init`, you should see files similar to:
 - `app/handler/[...stack]/page.tsx` - hosted sign-in, sign-up, account settings, and more
 - `app/layout.tsx` - wraps the app with `HexclaveProvider` and `HexclaveTheme`
 - `app/loading.tsx` - Suspense boundary for Stackâ€™s async hooks
-- `stack/server.ts` - `stackServerApp` for server components, actions, and route handlers
-- `stack/client.ts` - `stackClientApp` when you need the client app object explicitly
+- `stack/server.ts` - `hexclaveServerApp` for server components, actions, and route handlers
+- `stack/client.ts` - `hexclaveClientApp` when you need the client app object explicitly
 
 If you ever need to align manually with the wizard output, the core pieces look like this:
 
@@ -57,7 +57,7 @@ If you ever need to align manually with the wizard output, the core pieces look 
     import "server-only";
     import { HexclaveServerApp } from "@hexclave/next";
 
-    export const stackServerApp = new HexclaveServerApp({
+    export const hexclaveServerApp = new HexclaveServerApp({
       tokenStore: "nextjs-cookie",
     });
     ```
@@ -66,7 +66,7 @@ If you ever need to align manually with the wizard output, the core pieces look 
     ```typescript title="stack/client.ts"
     import { HexclaveClientApp } from "@hexclave/next";
 
-    export const stackClientApp = new HexclaveClientApp({
+    export const hexclaveClientApp = new HexclaveClientApp({
       // Reads NEXT_PUBLIC_STACK_* from the environment by default
     });
     ```
@@ -74,23 +74,23 @@ If you ever need to align manually with the wizard output, the core pieces look 
   <Tab title="app/handler/[...stack]/page.tsx">
     ```tsx title="app/handler/[...stack]/page.tsx"
     import { HexclaveHandler } from "@hexclave/next";
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default function Handler(props: unknown) {
-      return <HexclaveHandler fullPage app={stackServerApp} routeProps={props} />;
+      return <HexclaveHandler fullPage app={hexclaveServerApp} routeProps={props} />;
     }
     ```
   </Tab>
   <Tab title="app/layout.tsx">
     ```tsx title="app/layout.tsx"
     import { HexclaveProvider, HexclaveTheme } from "@hexclave/next";
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default function RootLayout({ children }: { children: React.ReactNode }) {
       return (
         <html lang="en">
           <body>
-            <HexclaveProvider app={stackServerApp}>
+            <HexclaveProvider app={hexclaveServerApp}>
               <HexclaveTheme>{children}</HexclaveTheme>
             </HexclaveProvider>
           </body>
@@ -152,10 +152,10 @@ Almost every SaaS screen starts from the **current user**: profile, preferences,
 <Tabs>
   <Tab title="Server Component">
     ```tsx title="app/dashboard/page.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function DashboardPage() {
-      const user = await stackServerApp.getUser();
+      const user = await hexclaveServerApp.getUser();
 
       if (!user) {
         return <p>You are not signed in.</p>;
@@ -167,10 +167,10 @@ Almost every SaaS screen starts from the **current user**: profile, preferences,
   </Tab>
   <Tab title="Server Component (require auth)">
     ```tsx title="app/app/page.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function AppHomePage() {
-      const user = await stackServerApp.getUser({ or: "redirect" });
+      const user = await hexclaveServerApp.getUser({ or: "redirect" });
       return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
     }
     ```
@@ -213,10 +213,10 @@ Almost every SaaS screen starts from the **current user**: profile, preferences,
 ```tsx title="app/actions/onboarding.ts"
 "use server";
 
-import { stackServerApp } from "@/stack/server";
+import { hexclaveServerApp } from "@/stack/server";
 
 export async function completeOnboardingStepAction(formData: FormData) {
-  const user = await stackServerApp.getUser({ or: "throw" });
+  const user = await hexclaveServerApp.getUser({ or: "throw" });
   const step = String(formData.get("step") ?? "").trim();
   if (!step) {
     throw new Error("Step is required");
@@ -230,11 +230,11 @@ export async function completeOnboardingStepAction(formData: FormData) {
 ### Route Handler (App Router API)
 
 ```tsx title="app/api/me/route.ts"
-import { stackServerApp } from "@/stack/server";
+import { hexclaveServerApp } from "@/stack/server";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const user = await stackServerApp.getUser();
+  const user = await hexclaveServerApp.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -253,10 +253,10 @@ Match only the routes that should be gated, and **exclude** `/handler` so Stackâ
 
 ```tsx title="middleware.ts"
 import { NextRequest, NextResponse } from "next/server";
-import { stackServerApp } from "@/stack/server";
+import { hexclaveServerApp } from "@/stack/server";
 
 export async function middleware(request: NextRequest) {
-  const user = await stackServerApp.getUser();
+  const user = await hexclaveServerApp.getUser();
   if (!user) {
     return NextResponse.redirect(new URL("/handler/sign-in", request.url));
   }
@@ -278,7 +278,7 @@ More detail on protection patterns and sensitive HTML is in [User fundamentals](
 
 Stack gives you **users** and authentication primitives; **your** SaaS decides how rows and features map to customers.
 
-- **Single-user or simple B2C** - Often enough to key application data to `user.id` and enforce access in your API with the same user you resolved via `stackServerApp.getUser()`.
+- **Single-user or simple B2C** - Often enough to key application data to `user.id` and enforce access in your API with the same user you resolved via `hexclaveServerApp.getUser()`.
 - **Shared accounts, workspaces, or B2B orgs** - Use Stack **teams** as the customer boundary, **team selection** for the active workspace, and **RBAC** for roles and fine-grained actions. Walk through that shape in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app), with reference material in [Teams](/guides/apps/teams/overview), [Team selection](/guides/apps/teams/team-selection), and [RBAC](/guides/apps/rbac/overview).
 
 Non-JavaScript or custom frontends can use the [REST API](/api/overview) with the same project keys; the identity model you choose (user-only vs teams) stays consistent across clients.

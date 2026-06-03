@@ -1,7 +1,7 @@
 
 import { v } from "convex/values";
-import { stackClientApp } from "../hexclave/client";
-import { stackServerApp } from "../hexclave/server";
+import { hexclaveClientApp } from "../hexclave/client";
+import { hexclaveServerApp } from "../hexclave/server";
 import { action, mutation, query } from "./_generated/server";
 
 
@@ -11,7 +11,7 @@ import { action, mutation, query } from "./_generated/server";
 export const getUserInfo = query({
   handler: async (ctx, args) => {
 
-    const user = await stackServerApp.getPartialUser({ from: "convex", ctx });
+    const user = await hexclaveServerApp.getPartialUser({ from: "convex", ctx });
 
     if (!user) return "The user is not logged in";
     return "The user's name is: " + user.displayName;
@@ -36,7 +36,7 @@ export const listNumbers = query({
       .order("desc")
       .take(args.count);
 
-    const partialUser = await stackClientApp.getPartialUser({ from: "convex", ctx });
+    const partialUser = await hexclaveClientApp.getPartialUser({ from: "convex", ctx });
     return {
       viewer: partialUser?.primaryEmail ?? null,
       numbers: numbers.reverse().map((number) => number.value),

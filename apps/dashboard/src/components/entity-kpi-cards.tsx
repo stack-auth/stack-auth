@@ -60,8 +60,8 @@ function formatCompact(n: number): string {
 }
 
 function KpiGridContent({ source, labels }: { source: EntityKpiCardsProps["source"], labels: EntityKpiLabels }) {
-  const stackAdminApp = useAdminApp();
-  const metrics = useMetricsOrThrow(stackAdminApp, false);
+  const hexclaveAdminApp = useAdminApp();
+  const metrics = useMetricsOrThrow(hexclaveAdminApp, false);
   const { dailyNew, splitTotal, splitNew, totalCount } = source(metrics);
 
   const new7 = sumLast(dailyNew, 7);

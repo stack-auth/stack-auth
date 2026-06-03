@@ -114,7 +114,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const stackClientApp = new HexclaveClientApp({
+      const hexclaveClientApp = new HexclaveClientApp({
         tokenStore: "nextjs-cookie",
         baseUrl: "https://api.hexclave.com",
         projectId: "123",
@@ -129,7 +129,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
       "use client";
 
       function MyReactComponent() {
-        const stackClientApp = useHexclaveApp();
+        const hexclaveClientApp = useHexclaveApp();
       }
       ```
     </AsideSection>
@@ -139,7 +139,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
 ## User Management
 
-### `stackClientApp.getUser([options])`
+### `hexclaveClientApp.getUser([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -166,10 +166,10 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const userOrNull = await stackClientApp.getUser();
+      const userOrNull = await hexclaveClientApp.getUser();
       console.log(userOrNull);
 
-      const user = await stackClientApp.getUser({ or: "redirect" });
+      const user = await hexclaveClientApp.getUser({ or: "redirect" });
       console.log(user);
       ```
     </AsideSection>
@@ -177,7 +177,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
   </MethodAside>
 </MethodLayout>
 
-### `stackClientApp.useUser([options])`
+### `hexclaveClientApp.useUser([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -225,7 +225,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
   </MethodAside>
 </MethodLayout>
 
-### `stackClientApp.getProject()`
+### `hexclaveClientApp.getProject()`
 
 <MethodLayout>
   <MethodContent>
@@ -244,14 +244,14 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const project = await stackClientApp.getProject();
+      const project = await hexclaveClientApp.getProject();
       ```
     </AsideSection>
 
   </MethodAside>
 </MethodLayout>
 
-### `stackClientApp.useProject()`
+### `hexclaveClientApp.useProject()`
 
 <MethodLayout>
   <MethodContent>
@@ -281,7 +281,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
 ## Authentication
 
-### `stackClientApp.signInWithOAuth(provider)`
+### `hexclaveClientApp.signInWithOAuth(provider)`
 
 <MethodLayout>
   <MethodContent>
@@ -306,14 +306,14 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      await stackClientApp.signInWithOAuth("google");
+      await hexclaveClientApp.signInWithOAuth("google");
       ```
     </AsideSection>
 
   </MethodAside>
 </MethodLayout>
 
-### `stackClientApp.signInWithCredential([options])`
+### `hexclaveClientApp.signInWithCredential([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -350,7 +350,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const result = await stackClientApp.signInWithCredential({
+      const result = await hexclaveClientApp.signInWithCredential({
         email: "test@example.com",
         password: "password",
       });
@@ -364,7 +364,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
   </MethodAside>
 </MethodLayout>
 
-### `stackClientApp.signUpWithCredential([options])`
+### `hexclaveClientApp.signUpWithCredential([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -404,7 +404,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const result = await stackClientApp.signUpWithCredential({
+      const result = await hexclaveClientApp.signUpWithCredential({
         email: "test@example.com",
         password: "password",
       });
@@ -418,7 +418,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
   </MethodAside>
 </MethodLayout>
 
-### `stackClientApp.sendForgotPasswordEmail(email)`
+### `hexclaveClientApp.sendForgotPasswordEmail(email)`
 
 <MethodLayout>
   <MethodContent>
@@ -445,7 +445,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const result = await stackClientApp.sendForgotPasswordEmail("test@example.com");
+      const result = await hexclaveClientApp.sendForgotPasswordEmail("test@example.com");
 
       if (result.status === "success") {
         console.log("Forgot password email sent");
@@ -458,7 +458,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
   </MethodAside>
 </MethodLayout>
 
-### `stackClientApp.sendMagicLinkEmail(email)`
+### `hexclaveClientApp.sendMagicLinkEmail(email)`
 
 <MethodLayout>
   <MethodContent>
@@ -485,7 +485,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
 
     <AsideSection title="Examples">
       ```typescript
-      const result = await stackClientApp.sendMagicLinkEmail("test@example.com");
+      const result = await hexclaveClientApp.sendMagicLinkEmail("test@example.com");
       ```
     </AsideSection>
 
@@ -594,7 +594,7 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const stackServerApp = new HexclaveServerApp({
+      const hexclaveServerApp = new HexclaveServerApp({
         tokenStore: "nextjs-cookie",
         urls: {
           signIn: "/my-custom-sign-in-page",
@@ -608,7 +608,7 @@ Creates a new `HexclaveServerApp` instance.
 
 ## User Operations
 
-### `stackServerApp.getUser([id], [options])`
+### `hexclaveServerApp.getUser([id], [options])`
 
 <MethodLayout>
   <MethodContent>
@@ -633,10 +633,10 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const currentUser = await stackServerApp.getUser();
+      const currentUser = await hexclaveServerApp.getUser();
       console.log(currentUser);
 
-      const serverUser = await stackServerApp.getUser(
+      const serverUser = await hexclaveServerApp.getUser(
         "12345678-1234-1234-1234-123456789abc",
       );
       console.log(serverUser);
@@ -646,7 +646,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.useUser([id], [options])`
+### `hexclaveServerApp.useUser([id], [options])`
 
 <MethodLayout>
   <MethodContent>
@@ -670,7 +670,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.listUsers([options])`
+### `hexclaveServerApp.listUsers([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -717,11 +717,11 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const users = await stackServerApp.listUsers({ limit: 20 });
+      const users = await hexclaveServerApp.listUsers({ limit: 20 });
       console.log(users);
 
       if (users.nextCursor) {
-        const nextPageUsers = await stackServerApp.listUsers({
+        const nextPageUsers = await hexclaveServerApp.listUsers({
           cursor: users.nextCursor,
           limit: 20,
         });
@@ -733,7 +733,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.useUsers([options])`
+### `hexclaveServerApp.useUsers([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -758,7 +758,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.createUser([options])`
+### `hexclaveServerApp.createUser([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -810,13 +810,13 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const passwordUser = await stackServerApp.createUser({
+      const passwordUser = await hexclaveServerApp.createUser({
         primaryEmail: "test@example.com",
         primaryEmailAuthEnabled: true,
         password: "password123",
       });
 
-      const magicLinkUser = await stackServerApp.createUser({
+      const magicLinkUser = await hexclaveServerApp.createUser({
         primaryEmail: "test@example.com",
         primaryEmailVerified: true,
         primaryEmailAuthEnabled: true,
@@ -828,7 +828,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.sendEmail(options)`
+### `hexclaveServerApp.sendEmail(options)`
 
 <MethodLayout>
   <MethodContent>
@@ -857,7 +857,7 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const htmlResult = await stackServerApp.sendEmail({
+      const htmlResult = await hexclaveServerApp.sendEmail({
         userIds: ["user-1", "user-2"],
         subject: "Welcome to our platform!",
         html: "<h1>Welcome!</h1><p>Thanks for joining us.</p>",
@@ -869,7 +869,7 @@ Creates a new `HexclaveServerApp` instance.
       ```
 
       ```typescript
-      const templateResult = await stackServerApp.sendEmail({
+      const templateResult = await hexclaveServerApp.sendEmail({
         userIds: ["user-1"],
         templateId: "welcome-template",
         variables: {
@@ -885,7 +885,7 @@ Creates a new `HexclaveServerApp` instance.
 
 ## Team Management
 
-### `stackServerApp.getTeam(id)`
+### `hexclaveServerApp.getTeam(id)`
 
 <MethodLayout>
   <MethodContent>
@@ -910,14 +910,14 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const team = await stackServerApp.getTeam("team_id_123");
+      const team = await hexclaveServerApp.getTeam("team_id_123");
       ```
     </AsideSection>
 
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.useTeam(id)`
+### `hexclaveServerApp.useTeam(id)`
 
 <MethodLayout>
   <MethodContent>
@@ -936,7 +936,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.listTeams([options])`
+### `hexclaveServerApp.listTeams([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -970,7 +970,7 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const teams = await stackServerApp.listTeams();
+      const teams = await hexclaveServerApp.listTeams();
       console.log(teams);
       ```
     </AsideSection>
@@ -978,7 +978,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.useTeams([options])`
+### `hexclaveServerApp.useTeams([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -1000,7 +1000,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.listTeamsPaginated([options])`
+### `hexclaveServerApp.listTeamsPaginated([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -1047,11 +1047,11 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const teams = await stackServerApp.listTeamsPaginated({ limit: 20 });
+      const teams = await hexclaveServerApp.listTeamsPaginated({ limit: 20 });
       console.log(teams);
 
       if (teams.nextCursor) {
-        const nextPageTeams = await stackServerApp.listTeamsPaginated({
+        const nextPageTeams = await hexclaveServerApp.listTeamsPaginated({
           cursor: teams.nextCursor,
           limit: 20,
         });
@@ -1063,7 +1063,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.useTeamsPaginated([options])`
+### `hexclaveServerApp.useTeamsPaginated([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -1088,7 +1088,7 @@ Creates a new `HexclaveServerApp` instance.
   </MethodAside>
 </MethodLayout>
 
-### `stackServerApp.createTeam([options])`
+### `hexclaveServerApp.createTeam([options])`
 
 <MethodLayout>
   <MethodContent>
@@ -1120,7 +1120,7 @@ Creates a new `HexclaveServerApp` instance.
 
     <AsideSection title="Examples">
       ```typescript
-      const team = await stackServerApp.createTeam({
+      const team = await hexclaveServerApp.createTeam({
         displayName: "New Team",
         profileImageUrl: "https://example.com/profile.jpg",
       });

@@ -234,9 +234,9 @@ describe("Stack CLI", () => {
     expect(stdout.trim()).toBe("2");
   });
 
-  it("has stackServerApp object available", async ({ expect }) => {
+  it("has hexclaveServerApp object available", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud-project-id", createdProjectId, "return typeof stackServerApp"],
+      ["exec", "--cloud-project-id", createdProjectId, "return typeof hexclaveServerApp"],
     );
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe('"object"');
@@ -328,9 +328,9 @@ describe("Stack CLI", () => {
 
   let createdUserEmail: string;
 
-  it("can create user with stackServerApp", async ({ expect }) => {
+  it("can create user with hexclaveServerApp", async ({ expect }) => {
     createdUserEmail = `exec-test-${crypto.randomUUID()}@stack-generated.example.com`;
-    const code = `const u = await stackServerApp.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
+    const code = `const u = await hexclaveServerApp.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
     const { stdout, exitCode } = await runCli(
       ["exec", "--cloud-project-id", createdProjectId, code],
     );
@@ -340,11 +340,11 @@ describe("Stack CLI", () => {
     expect(parsed.email).toBe(createdUserEmail);
   });
 
-  it("can list users with stackServerApp", async ({ expect }) => {
+  it("can list users with hexclaveServerApp", async ({ expect }) => {
     expect(createdProjectId).toBeDefined();
     expect(createdUserEmail).toBeDefined();
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud-project-id", createdProjectId, "const users = await stackServerApp.listUsers(); return users.length"],
+      ["exec", "--cloud-project-id", createdProjectId, "const users = await hexclaveServerApp.listUsers(); return users.length"],
     );
     expect(exitCode).toBe(0);
     const count = JSON.parse(stdout);
@@ -731,8 +731,8 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
-      "stack/client.ts": "export const stackClientApp = {};\n",
-      "stack/server.ts": "export const stackServerApp = {};\n",
+      "stack/client.ts": "export const hexclaveClientApp = {};\n",
+      "stack/server.ts": "export const hexclaveServerApp = {};\n",
       "app/handler/[...stack]/page.tsx": "export default function Page() { return null; }\n",
       "app/layout.tsx":
         `import { StackProvider } from "@hexclave/next";\n` +
@@ -832,8 +832,8 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
-      "src/stack/client.ts": "export const stackClientApp = {};\n",
-      "src/stack/server.ts": "export const stackServerApp = {};\n",
+      "src/stack/client.ts": "export const hexclaveClientApp = {};\n",
+      "src/stack/server.ts": "export const hexclaveServerApp = {};\n",
       "src/app/handler/[...stack]/page.tsx": "export default function P() { return null; }\n",
       "src/app/layout.tsx":
         `import { StackProvider } from "@hexclave/next";\n` +
@@ -856,7 +856,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { react: "18.0.0", "@hexclave/react": "1.0.0" },
       }),
-      "stack/client.ts": "export const stackClientApp = {};\n",
+      "stack/client.ts": "export const hexclaveClientApp = {};\n",
       ".env.local":
         `VITE_STACK_PROJECT_ID=p\n` +
         `VITE_STACK_PUBLISHABLE_CLIENT_KEY=k\n`,
@@ -873,7 +873,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
-      "stack/server.ts": "export const stackServerApp = {};\n",
+      "stack/server.ts": "export const hexclaveServerApp = {};\n",
       ".env":
         `STACK_PROJECT_ID=p\n` +
         `STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
@@ -891,7 +891,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
-      "stack/client.ts": "export const stackClientApp = {};\n",
+      "stack/client.ts": "export const hexclaveClientApp = {};\n",
       ".env":
         `PUBLIC_STACK_PROJECT_ID=p\n` +
         `PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +

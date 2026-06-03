@@ -1,8 +1,8 @@
 const { StackHandler } = require("@hexclave/next");
-const { stackServerApp } = require("../../../hexclave");
+const { hexclaveServerApp } = require("../../../hexclave");
 
 function Handler(props) {
-  return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
+  return <StackHandler fullPage app={hexclaveServerApp} routeProps={props} />;
 }
 
 module.exports = Handler;

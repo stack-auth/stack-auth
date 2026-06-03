@@ -50,7 +50,7 @@ export function parseExecTarget(opts: ExecTargetOpts): ExecTarget {
 export function registerExecCommand(program: Command) {
   program
     .command("exec [javascript]")
-    .description("Execute JavaScript with a pre-configured StackServerApp as `stackServerApp`. Pass --cloud-project-id <id> for the cloud API, or --config-file <path> for the development environment.")
+    .description("Execute JavaScript with a pre-configured StackServerApp as `hexclaveServerApp`. Pass --cloud-project-id <id> for the cloud API, or --config-file <path> for the development environment.")
     .option("--cloud-project-id <id>", "Cloud project ID to run against (use --config-file instead for the development environment)")
     .option("--config-file <path>", "Path to a development-environment stack.config.ts (use --cloud-project-id instead for the cloud API)")
     .addHelpText("after", "\nFor available API methods, see: https://docs.hexclave.com/docs/sdk")
@@ -78,7 +78,7 @@ export function registerExecCommand(program: Command) {
       const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
       let fn;
       try {
-        fn = new AsyncFunction("stackServerApp", javascript);
+        fn = new AsyncFunction("hexclaveServerApp", javascript);
       } catch (err: unknown) {
         throw new CliError(`Syntax error in exec code: ${getErrorMessage(err)}`);
       }

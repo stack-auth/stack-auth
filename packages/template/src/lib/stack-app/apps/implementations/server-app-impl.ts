@@ -1307,7 +1307,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   async getServerUser(): Promise<ProjectCurrentServerUser<ProjectId> | null> {
-    console.warn("stackServerApp.getServerUser is deprecated; use stackServerApp.getUser instead");
+    console.warn("hexclaveServerApp.getServerUser is deprecated; use hexclaveServerApp.getUser instead");
     return await this.getUser();
   }
 
@@ -1624,7 +1624,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useEmailDeliveryStats(): EmailDeliveryInfo {
-    return useAsyncCache(this._emailDeliveryInfoCache, [], "stackServerApp.useEmailDeliveryStats()");
+    return useAsyncCache(this._emailDeliveryInfoCache, [], "hexclaveServerApp.useEmailDeliveryStats()");
   }
   // END_PLATFORM
 

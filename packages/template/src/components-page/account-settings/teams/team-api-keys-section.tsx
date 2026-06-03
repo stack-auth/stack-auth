@@ -13,8 +13,8 @@ import { Section } from "../section";
 export function TeamApiKeysSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const team = user.useTeam(props.team.id);
-  const stackApp = useStackApp();
-  const project = stackApp.useProject();
+  const hexclaveApp = useStackApp();
+  const project = hexclaveApp.useProject();
 
   if (!team) {
     throw new HexclaveAssertionError("Team not found");

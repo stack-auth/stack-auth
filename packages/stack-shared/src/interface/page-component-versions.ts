@@ -70,7 +70,7 @@ function createCustomPagePrompt(options: {
     When you're done, please update the file where the Stack app is configured with its URLs, to make sure it points to this page. For example, you may have an object declared like this:
 
     \`\`\`tsx
-    export const stackServerApp = new StackServerApp({
+    export const hexclaveServerApp = new StackServerApp({
       tokenStore: "nextjs-cookie",
       urls: {
         default: {
@@ -119,8 +119,8 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
   const otherAuthVerb = isSignIn ? "sign up" : "sign in";
 
   const credentialMethodCall = isSignIn
-    ? "stackApp.signInWithCredential({ email: form.email, password: form.password })"
-    : "stackApp.signUpWithCredential({ email: form.email, password: form.password })";
+    ? "hexclaveApp.signInWithCredential({ email: form.email, password: form.password })"
+    : "hexclaveApp.signUpWithCredential({ email: form.email, password: form.password })";
 
   const credentialResultType = isSignIn
     ? "Promise<Result<undefined, KnownErrors[\"EmailPasswordMismatch\"] | KnownErrors[\"InvalidTotpCode\"]>>"
@@ -131,45 +131,45 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
     title,
     minSdkVersion: "0.0.1",
     structure: deindent`
-      - If user is already signed in, regardless of whether restricted or not (ie. \`await stackApp.getUser({ includeRestricted: true }) !== null\`):
-        - If user is restricted, \`await stackApp.redirectToOnboarding({ replace: true })\`
-        - Otherwise, \`await stackApp.redirectToAfterSign${isSignIn ? "In" : "Up"}({ replace: true })\`
-        - While the redirect is happening, you may display a loading indicator, or a note that the user is being redirected. If necessary, or if preferable, you can also render a message card that shows a link to \`await stackApp.redirectToHome()\` and a sign out button.
+      - If user is already signed in, regardless of whether restricted or not (ie. \`await hexclaveApp.getUser({ includeRestricted: true }) !== null\`):
+        - If user is restricted, \`await hexclaveApp.redirectToOnboarding({ replace: true })\`
+        - Otherwise, \`await hexclaveApp.redirectToAfterSign${isSignIn ? "In" : "Up"}({ replace: true })\`
+        - While the redirect is happening, you may display a loading indicator, or a note that the user is being redirected. If necessary, or if preferable, you can also render a message card that shows a link to \`await hexclaveApp.redirectToHome()\` and a sign out button.
       - If user is not signed in:
         ${isSignIn
-          ? "- If sign-ups are enabled (\\`project = await stackApp.getProject(); project.config.signUpEnabled\\`), show a link to the sign-up page."
-          : "- If sign-ups are disabled (\\`project = await stackApp.getProject(); !project.config.signUpEnabled\\`), show a message that sign-up is disabled."}
+          ? "- If sign-ups are enabled (\\`project = await hexclaveApp.getProject(); project.config.signUpEnabled\\`), show a link to the sign-up page."
+          : "- If sign-ups are disabled (\\`project = await hexclaveApp.getProject(); !project.config.signUpEnabled\\`), show a message that sign-up is disabled."}
         - Show a ${authVerb} screen. The auth methods that should render:
-          - For each OAuth provider (\`project.config.oauthProviders: { readonly id: string }[]\`), render an OAuth button. Clicking the button calls \`await stackApp.signInWithOAuth("<providerId>")\`.
-          ${isSignIn ? "- If \\`project.config.passkeyEnabled\\`, render a passkey button. Clicking the button calls \\`await stackApp.signInWithPasskey()\\`." : ""}
+          - For each OAuth provider (\`project.config.oauthProviders: { readonly id: string }[]\`), render an OAuth button. Clicking the button calls \`await hexclaveApp.signInWithOAuth("<providerId>")\`.
+          ${isSignIn ? "- If \\`project.config.passkeyEnabled\\`, render a passkey button. Clicking the button calls \\`await hexclaveApp.signInWithPasskey()\\`." : ""}
           - If \`project.config.credentialEnabled\`, render a credential ${authVerb} form:
             - Email + password${isSignIn ? "" : " + repeat password"}
             ${isSignIn ? "" : "- Validate password strength with \\`getPasswordError()\\` and ensure repeated password matches"}
-            ${isSignIn ? "- \"Forgot password?\" link calling \\`await stackApp.redirectToForgotPassword()\\`" : ""}
+            ${isSignIn ? "- \"Forgot password?\" link calling \\`await hexclaveApp.redirectToForgotPassword()\\`" : ""}
             - Submit calls \`${credentialMethodCall}: ${credentialResultType}\`
             - On error, display the error message on the email field
           - If \`project.config.magicLinkEnabled\`, render a magic link form:
             - Email input (validated to be a correct email address) + "Send email" button
-            - Calls \`stackApp.sendMagicLinkEmail(email): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>>\`
+            - Calls \`hexclaveApp.sendMagicLinkEmail(email): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>>\`
             - After sending, switch to a 6-digit OTP input. User enters the code from their email
-            - Submit the OTP + nonce via \`stackApp.signInWithMagicLink(otp + nonce): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>\` (string concatenation)
+            - Submit the OTP + nonce via \`hexclaveApp.signInWithMagicLink(otp + nonce): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>>\` (string concatenation)
           - If both credential and magic-link are enabled, allow the user to choose which flow to use.
           - If none of the above auth methods are enabled, show a message explaining that no authentication methods are enabled.
-        - Show a link to the ${otherAuthVerb} page that calls \`await stackApp.redirectTo${isSignIn ? "SignUp" : "SignIn"}()\`.
+        - Show a link to the ${otherAuthVerb} page that calls \`await hexclaveApp.redirectTo${isSignIn ? "SignUp" : "SignIn"}()\`.
     `,
     reactExample: deindent`
       export default function Custom${isSignIn ? "SignIn" : "SignUp"}Page() {
-        const stackApp = useStackApp();
+        const hexclaveApp = useStackApp();
         const user = useUser({ includeRestricted: true });
-        const project = stackApp.useProject();
+        const project = hexclaveApp.useProject();
         const [otpState, setOtpState] = useState<null | { nonce: string }>(null);
 
         useEffect(() => {
           if (user) {
             if (user.isRestricted) {
-              void stackApp.redirectToOnboarding();
+              void hexclaveApp.redirectToOnboarding();
             } else {
-              void stackApp.redirectToAfterSign${isSignIn ? "In" : "Up"}();
+              void hexclaveApp.redirectToAfterSign${isSignIn ? "In" : "Up"}();
             }
           }
         }, [user]);
@@ -178,8 +178,8 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
           return (
             <div>
               <Typography>You are already signed in.</Typography>
-              <Button onClick={async () => await stackApp.redirectToSignOut()}>Sign out</Button>
-              <Button onClick={async () => await stackApp.redirectToHome()}>Go home</Button>
+              <Button onClick={async () => await hexclaveApp.redirectToSignOut()}>Sign out</Button>
+              <Button onClick={async () => await hexclaveApp.redirectToHome()}>Go home</Button>
             </div>
           );
         }
@@ -192,7 +192,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
         if (otpState) {
           return (
             <Form onSubmit={async (form) => {
-              const result = await stackApp.signInWithMagicLink(form.otp + otpState.nonce);
+              const result = await hexclaveApp.signInWithMagicLink(form.otp + otpState.nonce);
               if (result.status === "error") handleErrorNicely(...);
             }}>
               <Typography>Enter the code from your email</Typography>
@@ -218,10 +218,10 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
                 <Typography>
                   {"Don't have an account? "}
                   <a
-                    href={stackApp.urls.signUp}
+                    href={hexclaveApp.urls.signUp}
                     onClick={async (e) => {
                       e.preventDefault();
-                      await stackApp.redirectToSignUp();
+                      await hexclaveApp.redirectToSignUp();
                     }}
                   >
                     Sign up
@@ -231,10 +231,10 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
             }` : `<Typography>
               {"Already have an account? "}
               <a
-                href={stackApp.urls.signIn}
+                href={hexclaveApp.urls.signIn}
                 onClick={async (e) => {
                   e.preventDefault();
-                  await stackApp.redirectToSignIn();
+                  await hexclaveApp.redirectToSignIn();
                 }}
               >
                 Sign in
@@ -247,14 +247,14 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
                   <Button
                     key={provider.id}
                     onClick={async () => {
-                      await stackApp.signInWithOAuth(provider.id);
+                      await hexclaveApp.signInWithOAuth(provider.id);
                     }}
                   >
                     ${authVerbCapitalized} with {provider.id}
                   </Button>
                 ))}
                 ${isSignIn ? `{hasPasskey && (
-                  <Button onClick={async () => await stackApp.signInWithPasskey()}>
+                  <Button onClick={async () => await hexclaveApp.signInWithPasskey()}>
                     Sign in with passkey
                   </Button>
                 )}` : ""}
@@ -275,7 +275,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
                 </TabsList>
                 {hasMagicLink && <TabsContent value="magic-link">
                   <Form onSubmit={async (form) => {
-                    const result = await stackApp.sendMagicLinkEmail(form.email);
+                    const result = await hexclaveApp.sendMagicLinkEmail(form.email);
                     if (result.status === "error") handleErrorNicely(...);
                     else setOtpState({ nonce: result.data.nonce });
                   }}>
@@ -300,7 +300,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
                     <Label htmlFor="password">Password</Label>
                     <PasswordInput id="password" />
 
-                    ${isSignIn ? `<Button type="button" variant="link" onClick={async () => await stackApp.redirectToForgotPassword()}>
+                    ${isSignIn ? `<Button type="button" variant="link" onClick={async () => await hexclaveApp.redirectToForgotPassword()}>
                       Forgot password?
                     </Button>` : `<Label htmlFor="password-repeat">Repeat password</Label>
                     <PasswordInput id="password-repeat" />`}
@@ -347,7 +347,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
 
         export default function CustomSignOutPage() {
           const user = useUser({ or: "return-null" });
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
 
           if (user) {
             use(cacheSignOut(user));
@@ -358,7 +358,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               title="Signed out"
               primaryButtonText="Go home"
               primaryAction={async () => {
-                await stackApp.redirectToHome();
+                await hexclaveApp.redirectToHome();
               }}
             >
               You have been signed out successfully.
@@ -379,8 +379,8 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         - Read the verification code from URL params.
         - If the code is missing, show an invalid-link state.
         - If the code exists, show a confirmation step:
-          - Verify action calls \`stackApp.verifyEmail(code)\`.
-          - Cancel action calls \`stackApp.redirectToHome()\`.
+          - Verify action calls \`hexclaveApp.verifyEmail(code)\`.
+          - Cancel action calls \`hexclaveApp.redirectToHome()\`.
         - Handle verification result:
           - \`VerificationCodeNotFound\` => invalid-link state.
           - \`VerificationCodeExpired\` => expired-link state.
@@ -390,8 +390,8 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomEmailVerificationPage(props: { searchParams?: Record<string, string> }) {
-          const stackApp = useStackApp();
-          const [result, setResult] = useState<Awaited<ReturnType<typeof stackApp.verifyEmail>> | null>(null);
+          const hexclaveApp = useStackApp();
+          const [result, setResult] = useState<Awaited<ReturnType<typeof hexclaveApp.verifyEmail>> | null>(null);
           const code = props.searchParams?.code;
 
           if (!code) {
@@ -404,11 +404,11 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
                 title="Do you want to verify your email?"
                 primaryButtonText="Verify"
                 primaryAction={async () => {
-                  setResult(await stackApp.verifyEmail(code));
+                  setResult(await hexclaveApp.verifyEmail(code));
                 }}
                 secondaryButtonText="Cancel"
                 secondaryAction={async () => {
-                  await stackApp.redirectToHome();
+                  await hexclaveApp.redirectToHome();
                 }}
               />
             );
@@ -429,7 +429,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               title="Your email has been verified!"
               primaryButtonText="Go home"
               primaryAction={async () => {
-                await stackApp.redirectToHome();
+                await hexclaveApp.redirectToHome();
               }}
             />
           );
@@ -447,7 +447,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       structure: deindent`
         - Read the reset code from URL params.
         - If code is missing, show an invalid-link state.
-        - Before rendering the form, verify the code via \`stackApp.verifyPasswordResetCode(code)\`.
+        - Before rendering the form, verify the code via \`hexclaveApp.verifyPasswordResetCode(code)\`.
           - \`VerificationCodeNotFound\` => invalid-link state.
           - \`VerificationCodeExpired\` => expired-link state.
           - \`VerificationCodeAlreadyUsed\` => used-link state.
@@ -455,13 +455,13 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         - If code is valid, render reset form:
           - New password + repeated password.
           - Validate password strength and ensure repeated password matches.
-          - Submit calls \`stackApp.resetPassword({ password, code })\`.
+          - Submit calls \`hexclaveApp.resetPassword({ password, code })\`.
         - If reset succeeds, show success state.
         - If reset fails, show error state with guidance to request a new link.
       `,
       reactExample: deindent`
         export default function CustomPasswordResetPage(props: { searchParams: Record<string, string> }) {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const code = props.searchParams.code;
           const [password, setPassword] = useState("");
           const [passwordRepeat, setPasswordRepeat] = useState("");
@@ -477,7 +477,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
             return <MessageCard title="Invalid Password Reset Link" />;
           }
 
-          const verificationResult = use(cachedVerifyPasswordResetCode(stackApp, code));
+          const verificationResult = use(cachedVerifyPasswordResetCode(hexclaveApp, code));
           if (verificationResult.status === "error") {
             if (KnownErrors.VerificationCodeNotFound.isInstance(verificationResult.error)) return <MessageCard title="Invalid Password Reset Link" />;
             if (KnownErrors.VerificationCodeExpired.isInstance(verificationResult.error)) return <MessageCard title="Expired Password Reset Link" />;
@@ -498,7 +498,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
                 return;
               }
 
-              const result = await stackApp.resetPassword({ password, code });
+              const result = await hexclaveApp.resetPassword({ password, code });
               if (result.status === "error") setFailed(true);
               else setDone(true);
             }}>
@@ -527,13 +527,13 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         - If a user is already signed in, show a signed-in state instead of the reset form.
         - If user is signed out:
           - Render a forgot-password form with email input.
-          - Submit calls \`stackApp.sendForgotPasswordEmail(email)\`.
+          - Submit calls \`hexclaveApp.sendForgotPasswordEmail(email)\`.
           - On success, switch to an email-sent confirmation state.
         - Provide a link back to sign-in.
       `,
       reactExample: deindent`
         export default function CustomForgotPasswordPage() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "return-null" });
           const [email, setEmail] = useState("");
           const [sent, setSent] = useState(false);
@@ -552,7 +552,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               <Typography type="h2">Reset Your Password</Typography>
               <Typography>
                 {"Don't need to reset? "}
-                <a href={stackApp.urls.signIn}>Sign in</a>
+                <a href={hexclaveApp.urls.signIn}>Sign in</a>
               </Typography>
 
               <form onSubmit={async (e) => {
@@ -562,7 +562,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
                   setError("Please enter your email");
                   return;
                 }
-                await stackApp.sendForgotPasswordEmail(email);
+                await hexclaveApp.sendForgotPasswordEmail(email);
                 setSent(true);
               }}>
                 <Label htmlFor="email">Your Email</Label>
@@ -584,15 +584,15 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       title: "OAuth Callback",
       minSdkVersion: "0.0.1",
       structure: deindent`
-        - Trigger OAuth callback handling once when the page loads by calling \`stackApp.callOAuthCallback()\`.
+        - Trigger OAuth callback handling once when the page loads by calling \`hexclaveApp.callOAuthCallback()\`.
         - If callback handler already redirected, keep a neutral loading state.
-        - If callback handler did not redirect, redirect to sign-in with \`stackApp.redirectToSignIn({ noRedirectBack: true })\`.
+        - If callback handler did not redirect, redirect to sign-in with \`hexclaveApp.redirectToSignIn({ noRedirectBack: true })\`.
         - If callback processing throws, capture/show a useful error state.
         - Provide a fallback "click here" link in case automatic redirect does not happen.
       `,
       reactExample: deindent`
         export default function CustomOAuthCallbackPage() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const called = useRef(false);
           const [error, setError] = useState<unknown>(null);
           const [showRedirectLink, setShowRedirectLink] = useState(false);
@@ -602,9 +602,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
             void runAsynchronously(async () => {
               setTimeout(() => setShowRedirectLink(true), 3000);
               try {
-                const hasRedirected = await stackApp.callOAuthCallback();
+                const hasRedirected = await hexclaveApp.callOAuthCallback();
                 if (!hasRedirected) {
-                  await stackApp.redirectToSignIn({ noRedirectBack: true });
+                  await hexclaveApp.redirectToSignIn({ noRedirectBack: true });
                 }
               } catch (e) {
                 setError(e);
@@ -618,7 +618,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               {showRedirectLink ? (
                 <Typography>
                   {"If you are not redirected automatically, "}
-                  <a href={stackApp.urls.home}>click here</a>
+                  <a href={hexclaveApp.urls.home}>click here</a>
                 </Typography>
               ) : null}
               {error ? <pre>{JSON.stringify(error, null, 2)}</pre> : null}
@@ -640,8 +640,8 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         - Read the magic-link code from URL params.
         - If code is missing, show invalid-link state.
         - If code exists, show a confirmation step:
-          - Confirm action calls \`stackApp.signInWithMagicLink(code)\`.
-          - Cancel action calls \`stackApp.redirectToHome()\`.
+          - Confirm action calls \`hexclaveApp.signInWithMagicLink(code)\`.
+          - Cancel action calls \`hexclaveApp.redirectToHome()\`.
         - Handle callback result:
           - \`VerificationCodeNotFound\` => invalid-link state.
           - \`VerificationCodeExpired\` => expired-link state.
@@ -651,9 +651,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomMagicLinkCallbackPage(props: { searchParams?: Record<string, string> }) {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "return-null" });
-          const [result, setResult] = useState<Awaited<ReturnType<typeof stackApp.signInWithMagicLink>> | null>(null);
+          const [result, setResult] = useState<Awaited<ReturnType<typeof hexclaveApp.signInWithMagicLink>> | null>(null);
           const code = props.searchParams?.code;
 
           if (user) return <MessageCard title="You are already signed in." />;
@@ -664,9 +664,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               <MessageCard
                 title="Do you want to sign in?"
                 primaryButtonText="Sign in"
-                primaryAction={async () => setResult(await stackApp.signInWithMagicLink(code))}
+                primaryAction={async () => setResult(await hexclaveApp.signInWithMagicLink(code))}
                 secondaryButtonText="Cancel"
-                secondaryAction={async () => await stackApp.redirectToHome()}
+                secondaryAction={async () => await hexclaveApp.redirectToHome()}
               />
             );
           }
@@ -682,7 +682,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
             <MessageCard
               title="Signed in successfully!"
               primaryButtonText="Go home"
-              primaryAction={async () => await stackApp.redirectToHome()}
+              primaryAction={async () => await hexclaveApp.redirectToHome()}
             />
           );
         }
@@ -697,7 +697,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       title: "Account Settings",
       minSdkVersion: "0.0.1",
       structure: deindent`
-        - Require an authenticated user (\`useUser({ or: "redirect" })\`) and project config (\`stackApp.useProject()\`).
+        - Require an authenticated user (\`useUser({ or: "redirect" })\`) and project config (\`hexclaveApp.useProject()\`).
         - Render top-level pages in this order:
           - **My Profile**
           - **Emails & Auth**
@@ -830,9 +830,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function PasswordSection() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "redirect" });
-          const project = stackApp.useProject();
+          const project = hexclaveApp.useProject();
           const [oldPassword, setOldPassword] = useState("");
           const [newPassword, setNewPassword] = useState("");
           const [newPasswordRepeat, setNewPasswordRepeat] = useState("");
@@ -861,9 +861,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function PasskeySection() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "redirect" });
-          const project = stackApp.useProject();
+          const project = hexclaveApp.useProject();
           const hasVerifiedAuthEmail = user.useContactChannels().some((x) => x.type === "email" && x.isVerified && x.usedForAuth);
           const isOnlyAuthMethod = user.passkeyAuthEnabled && !user.hasPassword && user.oauthProviders.length === 0 && !user.otpAuthEnabled;
 
@@ -888,9 +888,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function OtpSection() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "redirect" });
-          const project = stackApp.useProject();
+          const project = hexclaveApp.useProject();
           const hasVerifiedAuthEmail = user.useContactChannels().some((x) => x.type === "email" && x.isVerified && x.usedForAuth);
           const isOnlyAuthMethod = user.otpAuthEnabled && !user.hasPassword && user.oauthProviders.length === 0 && !user.passkeyAuthEnabled;
 
@@ -1064,8 +1064,8 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
 
         function TeamSection(props: { team: { displayName: string } }) {
           const user = useUser({ or: "redirect" });
-          const stackApp = useStackApp();
-          const project = stackApp.useProject();
+          const hexclaveApp = useStackApp();
+          const project = hexclaveApp.useProject();
           const team = user.useTeam((props.team as any).id);
 
           if (!team) return null;
@@ -1148,10 +1148,10 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function CreateTeamSection() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "redirect" });
-          const project = stackApp.useProject();
-          const navigate = stackApp.useNavigate();
+          const project = hexclaveApp.useProject();
+          const navigate = hexclaveApp.useNavigate();
           const [displayName, setDisplayName] = useState("");
 
           if (!project.config.clientTeamCreationEnabled) {
@@ -1189,9 +1189,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         export default function CustomAccountSettingsPage(props: { extraItems?: { id: string, title: string, content: React.ReactNode }[] }) {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "redirect" });
-          const project = stackApp.useProject();
+          const project = hexclaveApp.useProject();
           const teams = user.useTeams();
           const [activeId, setActiveId] = useState("profile");
           const [selectedPaymentTeamId, setSelectedPaymentTeamId] = useState<string | null>(null);
@@ -1290,20 +1290,20 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         - Resolve current user with \`includeRestricted: true\`.
           - If user is signed out, show a sign-in prompt with cancel path.
           - If user is restricted, route user to onboarding first.
-        - Verify invitation code via \`stackApp.verifyTeamInvitationCode(code)\`:
+        - Verify invitation code via \`hexclaveApp.verifyTeamInvitationCode(code)\`:
           - Not found => invalid-link state.
           - Expired => expired-link state.
           - Already used => used-link state.
           - Other errors => throw.
-        - If code is valid, load invitation details via \`stackApp.getTeamInvitationDetails(code)\`.
+        - If code is valid, load invitation details via \`hexclaveApp.getTeamInvitationDetails(code)\`.
         - Render invitation actions:
-          - Join => \`stackApp.acceptTeamInvitation(code)\`.
-          - Ignore => \`stackApp.redirectToHome()\`.
+          - Join => \`hexclaveApp.acceptTeamInvitation(code)\`.
+          - Ignore => \`hexclaveApp.redirectToHome()\`.
         - On successful join, show success state and allow navigation home.
       `,
       reactExample: deindent`
         export default function CustomTeamInvitationPage(props: { searchParams: Record<string, string> }) {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "return-null", includeRestricted: true });
           const code = props.searchParams.code;
           const [accepted, setAccepted] = useState(false);
@@ -1317,9 +1317,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               <MessageCard
                 title="Team invitation"
                 primaryButtonText="Sign in"
-                primaryAction={async () => await stackApp.redirectToSignIn()}
+                primaryAction={async () => await hexclaveApp.redirectToSignIn()}
                 secondaryButtonText="Cancel"
-                secondaryAction={async () => await stackApp.redirectToHome()}
+                secondaryAction={async () => await hexclaveApp.redirectToHome()}
               />
             );
           }
@@ -1329,7 +1329,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               <MessageCard
                 title="Complete your account setup"
                 primaryButtonText="Complete setup"
-                primaryAction={async () => await stackApp.redirectToOnboarding()}
+                primaryAction={async () => await hexclaveApp.redirectToOnboarding()}
               />
             );
           }
@@ -1345,7 +1345,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
                 title="Team invitation"
                 primaryButtonText="Check invitation"
                 primaryAction={async () => {
-                  const verification = await stackApp.verifyTeamInvitationCode(code);
+                  const verification = await hexclaveApp.verifyTeamInvitationCode(code);
                   if (verification.status === "error") {
                     if (KnownErrors.VerificationCodeNotFound.isInstance(verification.error)) {
                       setPageError("invalid");
@@ -1362,7 +1362,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
                     throw verification.error;
                   }
 
-                  const invitationDetails = await stackApp.getTeamInvitationDetails(code);
+                  const invitationDetails = await hexclaveApp.getTeamInvitationDetails(code);
                   if (invitationDetails.status === "error") {
                     setPageError("unknown");
                     return;
@@ -1371,7 +1371,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
                   setDetails(invitationDetails.data);
                 }}
                 secondaryButtonText="Cancel"
-                secondaryAction={async () => await stackApp.redirectToHome()}
+                secondaryAction={async () => await hexclaveApp.redirectToHome()}
               >
                 We will verify your invitation before showing the join action.
               </MessageCard>
@@ -1387,12 +1387,12 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               title="Team invitation"
               primaryButtonText="Join"
               primaryAction={async () => {
-                const result = await stackApp.acceptTeamInvitation(code);
+                const result = await hexclaveApp.acceptTeamInvitation(code);
                 if (result.status === "ok") setAccepted(true);
                 else setPageError("unknown");
               }}
               secondaryButtonText="Ignore"
-              secondaryAction={async () => await stackApp.redirectToHome()}
+              secondaryAction={async () => await hexclaveApp.redirectToHome()}
             >
               You are invited to join {details.teamDisplayName}
             </MessageCard>
@@ -1464,7 +1464,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       structure: deindent`
         - Read the MFA attempt code from session storage.
         - Render OTP input for the one-time code.
-        - When OTP is complete, submit \`stackApp.signInWithMfa(otp, attemptCode, { noRedirect: true })\`.
+        - When OTP is complete, submit \`hexclaveApp.signInWithMfa(otp, attemptCode, { noRedirect: true })\`.
         - Handle result:
           - Success => clear stored attempt code, show success state, then redirect after sign-in.
           - \`InvalidTotpCode\` => show invalid-code error and allow retry.
@@ -1486,7 +1486,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         export default function CustomMfaPage() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const [otp, setOtp] = useState("");
           const [submitting, setSubmitting] = useState(false);
           const [error, setError] = useState<string | null>(null);
@@ -1500,13 +1500,13 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
             if (!attemptCode || otp.length !== 6 || submitting) return;
             setSubmitting(true);
             setError(null);
-            const result = await stackApp.signInWithMfa(otp, attemptCode, { noRedirect: true });
+            const result = await hexclaveApp.signInWithMfa(otp, attemptCode, { noRedirect: true });
             if (result.status === "ok") {
               // Hexclave rebrand: remove both the new and legacy MFA attempt code keys.
               window.sessionStorage.removeItem("hexclave_mfa_attempt_code");
               window.sessionStorage.removeItem("stack_mfa_attempt_code");
               setVerified(true);
-              await stackApp.redirectToAfterSignIn();
+              await hexclaveApp.redirectToAfterSignIn();
             } else if (KnownErrors.InvalidTotpCode.isInstance(result.error)) {
               setError("Invalid TOTP code");
               setOtp("");
@@ -1558,7 +1558,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomErrorPage(props: { searchParams: Record<string, string> }) {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const errorCode = props.searchParams.errorCode;
           const message = props.searchParams.message;
           const details = props.searchParams.details;
@@ -1579,11 +1579,11 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
           }
 
           if (KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)) {
-            return <MessageCard title="Failed to connect account" primaryButtonText="Go Home" primaryAction={() => stackApp.redirectToHome()} />;
+            return <MessageCard title="Failed to connect account" primaryButtonText="Go Home" primaryAction={() => hexclaveApp.redirectToHome()} />;
           }
 
           if (KnownErrors.UserAlreadyConnectedToAnotherOAuthConnection.isInstance(error)) {
-            return <MessageCard title="Failed to connect account" primaryButtonText="Go Home" primaryAction={() => stackApp.redirectToHome()} />;
+            return <MessageCard title="Failed to connect account" primaryButtonText="Go Home" primaryAction={() => hexclaveApp.redirectToHome()} />;
           }
 
           if (KnownErrors.OAuthProviderAccessDenied.isInstance(error)) {
@@ -1591,9 +1591,9 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               <MessageCard
                 title="OAuth provider access denied"
                 primaryButtonText="Sign in again"
-                primaryAction={() => stackApp.redirectToSignIn()}
+                primaryAction={() => hexclaveApp.redirectToSignIn()}
                 secondaryButtonText="Go Home"
-                secondaryAction={() => stackApp.redirectToHome()}
+                secondaryAction={() => hexclaveApp.redirectToHome()}
               />
             );
           }
@@ -1613,8 +1613,8 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       structure: deindent`
         - Resolve user with \`useUser({ or: "return-null", includeRestricted: true })\`.
         - Route by user state:
-          - Restricted user resolved to unrestricted => redirect to \`stackApp.redirectToAfterSignIn()\`.
-          - Missing/anonymous user => redirect to \`stackApp.redirectToSignIn()\`.
+          - Restricted user resolved to unrestricted => redirect to \`hexclaveApp.redirectToAfterSignIn()\`.
+          - Missing/anonymous user => redirect to \`hexclaveApp.redirectToSignIn()\`.
           - Restricted user => continue onboarding flow.
         - Handle restricted reasons:
           - \`email_not_verified\` and no primary email => ask user for email and call \`user.update({ primaryEmail })\`.
@@ -1624,18 +1624,18 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomOnboardingPage() {
-          const stackApp = useStackApp();
+          const hexclaveApp = useStackApp();
           const user = useUser({ or: "return-null", includeRestricted: true });
           const [email, setEmail] = useState("");
           const [changeEmail, setChangeEmail] = useState(false);
 
           if (user && !user.isRestricted) {
-            void runAsynchronously(stackApp.redirectToAfterSignIn());
+            void runAsynchronously(hexclaveApp.redirectToAfterSignIn());
             return null;
           }
 
           if (!user || user.isAnonymous) {
-            void runAsynchronously(stackApp.redirectToSignIn());
+            void runAsynchronously(hexclaveApp.redirectToSignIn());
             return null;
           }
 

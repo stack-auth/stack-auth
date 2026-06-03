@@ -449,9 +449,9 @@ function SidebarContent({
   isCollapsed?: boolean,
   onToggleCollapse?: () => void,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const pathname = usePathname();
-  const project = stackAdminApp.useProject();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
 
   // Memoize enabledApps to prevent recalculation on every render
@@ -630,8 +630,8 @@ function SidebarContent({
 }
 
 function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
@@ -642,11 +642,11 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
 
   const handleEnableApp = useCallback(async (appId: AppId) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { [`apps.installed.${appId}.enabled`]: true },
       pushable: true,
     });
-  }, [stackAdminApp, updateConfig]);
+  }, [hexclaveAdminApp, updateConfig]);
 
   return <CmdKSearch projectId={projectId} enabledApps={enabledApps} onEnableApp={handleEnableApp} />;
 }
