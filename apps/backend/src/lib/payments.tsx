@@ -376,16 +376,38 @@ export async function validatePurchaseSession(options: {
   const addOnBaseProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
   const isStackableSelfMatch = (pid: string) =>
     productId != null && pid === productId && product.stackable === true;
-  if (productLineId) {
-    const activeSubs = await prisma.subscription.findMany({
+
+  // Same-product duplicate guards. Step 4 reads bulldozer's lagged ownedProducts;
+  // a duplicate request during lag would slip past it and silently re-grant.
+  // We query Prisma directly so the sub guard is symmetric with the OTP guard
+  // and works for products with no productLineId.
+  const activeSubs = await prisma.subscription.findMany({
+    where: {
+      tenancyId,
+      customerType: typedToUppercase(customerType),
+      customerId,
+      status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+    },
+    select: { id: true, stripeSubscriptionId: true, productId: true, product: true },
+  });
+  if (productId != null && product.stackable !== true) {
+    const activeOtp = await prisma.oneTimePurchase.findFirst({
       where: {
         tenancyId,
         customerType: typedToUppercase(customerType),
         customerId,
-        status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+        productId,
+        revokedAt: null,
+        refundedAt: null,
       },
-      select: { id: true, stripeSubscriptionId: true, productId: true, product: true },
+      select: { id: true },
     });
+    if (activeOtp || activeSubs.some(s => s.productId === productId)) {
+      throw new KnownErrors.ProductAlreadyGranted(productId, customerId);
+    }
+  }
+
+  if (productLineId) {
     conflictingSubscriptions = activeSubs
       .filter(s =>
         (s.product as Product).productLineId === productLineId

@@ -469,13 +469,18 @@ it("should reject test-mode codes sent to the live purchase-session route", asyn
   expect(urlRes.status).toBe(200);
   const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
 
-  await expect(
-    niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
-      method: "POST",
-      accessType: "client",
-      body: { full_code: code, price_id: "monthly", quantity: 1 },
-    }),
-  ).rejects.toThrow(/no Stripe identifiers/);
+  const res = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: code, price_id: "monthly", quantity: 1 },
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This purchase link is no longer valid. Please request a new one and try again.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("creates subscription in test mode and increases included item quantity", async ({ expect }) => {
@@ -1280,6 +1285,141 @@ it("switches from an existing paid subscription to a $0 subscription in the same
       "status": 200,
       "body": { "success": true },
       "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a duplicate non-stackable subscription redeemed via test-mode-purchase-session even when create-purchase-url already issued the code", async ({ expect }) => {
+  // Pre-issue both codes BEFORE the first redemption so create-purchase-url's
+  // own duplicate check can't catch the second one. This forces the second
+  // redemption to rely on validatePurchaseSession's Prisma guard.
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        sub: {
+          displayName: "Sub",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const code1Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "sub" },
+  });
+  expect(code1Res.status).toBe(200);
+  const code1 = (code1Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+  const code2Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "sub" },
+  });
+  expect(code2Res.status).toBe(200);
+  const code2 = (code2Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const firstRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code1, price_id: "monthly", quantity: 1 },
+  });
+  expect(firstRedeem.status).toBe(200);
+
+  const secondRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code2, price_id: "monthly", quantity: 1 },
+  });
+  expect(secondRedeem).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "sub",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"sub\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("rejects a duplicate non-stackable one-time purchase redeemed via test-mode-purchase-session even when create-purchase-url already issued the code", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        ot: {
+          displayName: "One Time",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { one: { USD: "500" } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const code1Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "ot" },
+  });
+  expect(code1Res.status).toBe(200);
+  const code1 = (code1Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+  const code2Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "ot" },
+  });
+  expect(code2Res.status).toBe(200);
+  const code2 = (code2Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const firstRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code1, price_id: "one", quantity: 1 },
+  });
+  expect(firstRedeem.status).toBe(200);
+
+  const secondRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code2, price_id: "one", quantity: 1 },
+  });
+  expect(secondRedeem).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "ot",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"ot\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });

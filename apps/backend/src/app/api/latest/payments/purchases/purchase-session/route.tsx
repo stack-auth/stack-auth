@@ -65,17 +65,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.NewPurchasesBlocked();
     }
     if (data.stripeAccountId == null || data.stripeCustomerId == null) {
-      throw new HexclaveAssertionError(
-        "Live purchase-session called with a purchase code that has no Stripe identifiers. " +
-        "Test-mode codes should be routed to /internal/payments/test-mode-purchase-session instead.",
-        {
-          tenancyId: tenancy.id,
-          testMode: tenancy.config.payments.testMode === true,
-          customerId: data.customerId,
-          hasStripeAccountId: data.stripeAccountId != null,
-          hasStripeCustomerId: data.stripeCustomerId != null,
-        },
-      );
+      throw new StatusError(400, "This purchase link is no longer valid. Please request a new one and try again.");
     }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
