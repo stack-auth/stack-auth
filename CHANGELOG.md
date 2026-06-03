@@ -2,6 +2,13 @@
 
 ---
 
+## 5/29/26
+
+- Hexclave rebrand goes live: native @hexclave/* packages, updated branding, and backward-compatible migration layer.
+- Per-provider OAuth callback URLs with host-derived JWT issuer and redirect URIs.
+- New LLM metadata endpoints for documentation discovery.
+- Fixes for SSO dialog tab switching, client retry handling, and legacy cookie mixing.
+
 ## 5/22/26
 
 - Faster ClickHouse analytics for project metrics and previews.
