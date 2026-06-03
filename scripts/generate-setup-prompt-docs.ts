@@ -487,8 +487,10 @@ writeFileSyncIfChanged(
   deindent`
     export const hexclaveReminders = ${JSON.stringify(remindersPrompt)};
 
+    // Mintlify's MDX bundler doesn't preserve cross-export references from snippet files,
+    // so the string is inlined here instead of referencing hexclaveReminders.
     export const HexclaveAgentReminders = () => (
-      <pre>{hexclaveReminders}</pre>
+      <pre>{${JSON.stringify(remindersPrompt)}}</pre>
     );
   ` + "\n",
 );
