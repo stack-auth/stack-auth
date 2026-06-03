@@ -11,7 +11,7 @@ import { envVars } from "../../../lib/env";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import type { CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions } from "../../../lib/stack-app/customers";
+import type { CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions } from "../../../lib/hexclave-app/customers";
 
 type PaymentMethodSummary = {
   id: string,

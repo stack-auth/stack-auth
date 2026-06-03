@@ -2,7 +2,7 @@
 
 import React from "react";
 import { createGlobal } from "@hexclave/shared/dist/utils/globals";
-import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
+import type { StackClientApp } from "../lib/hexclave-app/apps/interfaces/client-app";
 
 type HexclaveContextValue = {
   app: StackClientApp<true>,

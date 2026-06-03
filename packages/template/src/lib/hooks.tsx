@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { HexclaveContext } from "../providers/hexclave-context";
-import type { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
+import type { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./hexclave-app";
 
 type GetUserOptions = AppGetUserOptions<true> & {
   projectIdMustMatch?: string,

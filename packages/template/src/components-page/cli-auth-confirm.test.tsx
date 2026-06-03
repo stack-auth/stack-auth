@@ -4,8 +4,8 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
-import { hexclaveAppInternalsSymbol } from "../lib/stack-app/common";
+import type { StackClientApp } from "../lib/hexclave-app/apps/interfaces/client-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
 import { HexclaveContext } from "../providers/hexclave-context";
 import { useCliAuthConfirmation } from "./cli-auth-confirm";
 

@@ -4,7 +4,7 @@ import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-us
 import { globalVar } from "@hexclave/shared/dist/utils/globals";
 import React, { useEffect } from "react";
 import { useStackApp } from "../lib/hooks";
-import { StackClientApp, StackClientAppJson, hexclaveAppInternalsSymbol } from "../lib/stack-app";
+import { StackClientApp, StackClientAppJson, hexclaveAppInternalsSymbol } from "../lib/hexclave-app";
 import { HexclaveContext } from "./hexclave-context";
 
 export function HexclaveProviderClient(props: {

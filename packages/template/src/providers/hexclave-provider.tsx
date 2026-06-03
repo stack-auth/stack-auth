@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { StackAdminApp, StackClientApp, StackServerApp, hexclaveAppInternalsSymbol } from '../lib/stack-app';
+import { StackAdminApp, StackClientApp, StackServerApp, hexclaveAppInternalsSymbol } from '../lib/hexclave-app';
 import { HexclaveProviderClient } from './hexclave-provider-client';
 import { TranslationProvider } from './translation-provider';
 

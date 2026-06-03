@@ -2,7 +2,7 @@
 import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@hexclave/ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
-import { ApiKey } from "../lib/stack-app/api-keys";
+import { ApiKey } from "../lib/hexclave-app/api-keys";
 
 type ExtendedApiKey = ApiKey & {
   status: 'valid' | 'expired' | 'revoked',

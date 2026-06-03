@@ -624,7 +624,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const resolvedOptions = resolveConstructorOptions(options);
 
     if (!_HexclaveClientAppImplIncomplete.LazyStackAdminAppImpl.value) {
-      throw new HexclaveAssertionError("Admin app implementation not initialized. Did you import the _HexclaveClientApp from stack-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyHexclaveAdminAppImpl for more details).");
+      throw new HexclaveAssertionError("Admin app implementation not initialized. Did you import the _HexclaveClientApp from hexclave-app/apps/implementations/index.ts? You can't import it directly from ./apps/implementations/client-app-impl.ts as that causes a circular dependency (see the comment at _LazyHexclaveAdminAppImpl for more details).");
     }
 
     this._options = resolvedOptions;

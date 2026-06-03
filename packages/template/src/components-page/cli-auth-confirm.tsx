@@ -5,8 +5,8 @@ import { Typography } from "@hexclave/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
-import { hexclaveAppInternalsSymbol } from "../lib/stack-app/common";
-import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
+import type { StackClientApp } from "../lib/hexclave-app/apps/interfaces/client-app";
 import { useStackApp } from "../lib/hooks";
 
 async function postCliAuthComplete(app: StackClientApp, body: Record<string, unknown>) {

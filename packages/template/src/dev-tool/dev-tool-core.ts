@@ -3,12 +3,12 @@
 import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
-import type { StackClientApp } from "../lib/stack-app";
+import type { StackClientApp } from "../lib/hexclave-app";
 import { envVars } from "../lib/env";
-import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
-import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
-import { hexclaveAppInternalsSymbol } from "../lib/stack-app/common";
-import { getPagePrompt } from "../lib/stack-app/url-targets";
+import { getBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
+import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/hexclave-app/common";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
+import { getPagePrompt } from "../lib/hexclave-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
 import type { TriggerCorner, TriggerPlacement } from "./dev-tool-trigger-position";
 import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPosition } from "./dev-tool-trigger-position";

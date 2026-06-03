@@ -11,8 +11,8 @@ import { useRef } from 'react';
 // END_PLATFORM */
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
-import { HandlerUrls, StackClientApp, hexclaveAppInternalsSymbol } from "../lib/stack-app";
-import { isLocalHandlerUrlTarget, resolveUnknownHandlerPathFallbackUrl } from "../lib/stack-app/url-targets";
+import { HandlerUrls, StackClientApp, hexclaveAppInternalsSymbol } from "../lib/hexclave-app";
+import { isLocalHandlerUrlTarget, resolveUnknownHandlerPathFallbackUrl } from "../lib/hexclave-app/url-targets";
 import { AccountSettings } from "./account-settings";
 import { CliAuthConfirmation } from "./cli-auth-confirm";
 import { EmailVerification } from "./email-verification";

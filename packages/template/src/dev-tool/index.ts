@@ -1,6 +1,6 @@
 // IF_PLATFORM js-like
 
-import type { StackClientApp } from "../lib/stack-app";
+import type { StackClientApp } from "../lib/hexclave-app";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";

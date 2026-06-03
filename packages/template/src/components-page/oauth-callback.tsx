@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { StyledLink } from "../components/link";
-import { hexclaveAppInternalsSymbol } from "../lib/stack-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app";
 import { useTranslation } from "../lib/translations";
 
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
