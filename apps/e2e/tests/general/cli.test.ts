@@ -624,9 +624,9 @@ describe("Stack CLI", () => {
 
     const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
     expect(envContent).toContain("# Hexclave");
-    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
-    expect(envContent).toContain("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=");
-    expect(envContent).toContain("STACK_SECRET_SERVER_KEY=");
+    expect(envContent).toContain(`NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${createdProjectId}`);
+    expect(envContent).toContain("NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY=");
+    expect(envContent).toContain("HEXCLAVE_SECRET_SERVER_KEY=");
   });
 
   it("init link-cloud appends to existing .env", async ({ expect }) => {
@@ -645,7 +645,7 @@ describe("Stack CLI", () => {
     const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
     expect(envContent).toContain("EXISTING_VAR=hello");
     expect(envContent).toContain("# Hexclave");
-    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
+    expect(envContent).toContain(`NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${createdProjectId}`);
   });
 
   it("init link-cloud fails with invalid project ID", async ({ expect }) => {
