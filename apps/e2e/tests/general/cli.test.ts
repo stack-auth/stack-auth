@@ -731,13 +731,13 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
-      "stack/client.ts": "export const hexclaveClientApp = {};\n",
-      "stack/server.ts": "export const hexclaveServerApp = {};\n",
-      "app/handler/[...stack]/page.tsx": "export default function Page() { return null; }\n",
+      "hexclave/client.ts": "export const hexclaveClientApp = {};\n",
+      "hexclave/server.ts": "export const hexclaveServerApp = {};\n",
+      "app/handler/[...hexclave]/page.tsx": "export default function Page() { return null; }\n",
       "app/layout.tsx":
-        `import { StackProvider } from "@hexclave/next";\n` +
+        `import { HexclaveProvider } from "@hexclave/next";\n` +
         `export default function RootLayout({ children }) {\n` +
-        `  return <StackProvider>{children}</StackProvider>;\n` +
+        `  return <HexclaveProvider>{children}</HexclaveProvider>;\n` +
         `}\n`,
       ".env.local":
         `NEXT_PUBLIC_STACK_PROJECT_ID=proj_test\n` +
@@ -827,17 +827,32 @@ describe("Stack CLI — Doctor", () => {
     expect(parsed.checks.every((c: any) => c.status === "pass")).toBe(true);
   });
 
+  it("Next.js legacy stack paths are still accepted", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["stack/client.ts"] = files["hexclave/client.ts"];
+    files["stack/server.ts"] = files["hexclave/server.ts"];
+    files["app/handler/[...stack]/page.tsx"] = files["app/handler/[...hexclave]/page.tsx"];
+    delete files["hexclave/client.ts"];
+    delete files["hexclave/server.ts"];
+    delete files["app/handler/[...hexclave]/page.tsx"];
+    const dir = makeProject("next-legacy-stack-paths", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.failed).toBe(0);
+  });
+
   it("Next.js applies src/ prefix when src/app exists", async ({ expect }) => {
     const dir = makeProject("next-src", {
       "package.json": pkg({
         dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
-      "src/stack/client.ts": "export const hexclaveClientApp = {};\n",
-      "src/stack/server.ts": "export const hexclaveServerApp = {};\n",
-      "src/app/handler/[...stack]/page.tsx": "export default function P() { return null; }\n",
+      "src/hexclave/client.ts": "export const hexclaveClientApp = {};\n",
+      "src/hexclave/server.ts": "export const hexclaveServerApp = {};\n",
+      "src/app/handler/[...hexclave]/page.tsx": "export default function P() { return null; }\n",
       "src/app/layout.tsx":
-        `import { StackProvider } from "@hexclave/next";\n` +
-        `export default function L({ children }) { return <StackProvider>{children}</StackProvider>; }\n`,
+        `import { HexclaveProvider } from "@hexclave/next";\n` +
+        `export default function L({ children }) { return <HexclaveProvider>{children}</HexclaveProvider>; }\n`,
       ".env.local":
         `NEXT_PUBLIC_STACK_PROJECT_ID=p\n` +
         `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
@@ -848,7 +863,7 @@ describe("Stack CLI — Doctor", () => {
     const parsed = JSON.parse(stdout);
     const clientCheck = parsed.checks.find((c: any) => c.id === "next.client-app");
     expect(clientCheck.status).toBe("pass");
-    expect(clientCheck.label).toContain("src/stack/client.ts");
+    expect(clientCheck.label).toContain("src/hexclave/client.ts");
   });
 
   it("React happy path passes all checks", async ({ expect }) => {
@@ -856,7 +871,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { react: "18.0.0", "@hexclave/react": "1.0.0" },
       }),
-      "stack/client.ts": "export const hexclaveClientApp = {};\n",
+      "hexclave/client.ts": "export const hexclaveClientApp = {};\n",
       ".env.local":
         `VITE_STACK_PROJECT_ID=p\n` +
         `VITE_STACK_PUBLISHABLE_CLIENT_KEY=k\n`,
@@ -873,7 +888,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
-      "stack/server.ts": "export const hexclaveServerApp = {};\n",
+      "hexclave/server.ts": "export const hexclaveServerApp = {};\n",
       ".env":
         `STACK_PROJECT_ID=p\n` +
         `STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
@@ -891,7 +906,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
-      "stack/client.ts": "export const hexclaveClientApp = {};\n",
+      "hexclave/client.ts": "export const hexclaveClientApp = {};\n",
       ".env":
         `PUBLIC_STACK_PROJECT_ID=p\n` +
         `PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
@@ -917,7 +932,7 @@ describe("Stack CLI — Doctor", () => {
 
   it("fails when client app file is missing", async ({ expect }) => {
     const files = nextHappyFiles();
-    delete files["stack/client.ts"];
+    delete files["hexclave/client.ts"];
     const dir = makeProject("no-client", files);
     const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
     expect(exitCode).toBe(1);
@@ -928,14 +943,14 @@ describe("Stack CLI — Doctor", () => {
 
   it("fails when handler route is missing", async ({ expect }) => {
     const files = nextHappyFiles();
-    delete files["app/handler/[...stack]/page.tsx"];
+    delete files["app/handler/[...hexclave]/page.tsx"];
     const dir = makeProject("no-handler", files);
     const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
     expect(exitCode).toBe(1);
     const parsed = JSON.parse(stdout);
     const check = parsed.checks.find((c: any) => c.id === "next.handler-route");
     expect(check.status).toBe("fail");
-    expect(check.hint).toContain("app/handler/[...stack]/page.tsx");
+    expect(check.hint).toContain("app/handler/[...hexclave]/page.tsx");
   });
 
   it("warns when layout imports StackProvider but does not render it", async ({ expect }) => {

@@ -210,16 +210,20 @@ function getChecks(framework: Framework): CheckSpec[] {
 
 const NEXT_CHECKS: CheckSpec[] = [
   packageInstalledCheck("next.package", "@hexclave/next"),
-  fileExistsCheck("next.client-app", "Stack client app instance", [
+  fileExistsCheck("next.client-app", "Hexclave client app instance", [
+    "hexclave/client.ts", "hexclave/client.tsx",
     "stack/client.ts", "stack/client.tsx",
   ]),
-  fileExistsCheck("next.server-app", "Stack server app instance", [
+  fileExistsCheck("next.server-app", "Hexclave server app instance", [
+    "hexclave/server.ts", "hexclave/server.tsx",
     "stack/server.ts", "stack/server.tsx",
   ]),
   fileExistsCheck("next.handler-route", "Handler route", [
+    "app/handler/[...hexclave]/page.tsx", "app/handler/[...hexclave]/page.ts",
+    "app/handler/[...hexclave]/page.jsx", "app/handler/[...hexclave]/page.js",
     "app/handler/[...stack]/page.tsx", "app/handler/[...stack]/page.ts",
     "app/handler/[...stack]/page.jsx", "app/handler/[...stack]/page.js",
-  ], "Create app/handler/[...stack]/page.tsx that renders <StackHandler fullPage app={hexclaveServerApp} routeProps={props} />."),
+  ], "Create app/handler/[...hexclave]/page.tsx that renders <HexclaveHandler fullPage />."),
   layoutWrapsStackProviderCheck(),
   envVarsCheck([
     { names: ["NEXT_PUBLIC_HEXCLAVE_PROJECT_ID", "NEXT_PUBLIC_STACK_PROJECT_ID"], severity: "fail" },
@@ -231,7 +235,8 @@ const NEXT_CHECKS: CheckSpec[] = [
 
 const REACT_CHECKS: CheckSpec[] = [
   packageInstalledCheck("react.package", "@hexclave/react"),
-  fileExistsCheck("react.client-app", "Stack client app instance", [
+  fileExistsCheck("react.client-app", "Hexclave client app instance", [
+    "hexclave/client.ts", "hexclave/client.tsx", "hexclave/client.js", "hexclave/client.jsx",
     "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
   ]),
   envVarsCheck([
@@ -243,7 +248,9 @@ const REACT_CHECKS: CheckSpec[] = [
 
 const JS_CHECKS: CheckSpec[] = [
   packageInstalledCheck("js.package", "@hexclave/js"),
-  fileExistsCheck("js.app", "Stack app instance", [
+  fileExistsCheck("js.app", "Hexclave app instance", [
+    "hexclave/client.ts", "hexclave/client.tsx", "hexclave/client.js", "hexclave/client.jsx",
+    "hexclave/server.ts", "hexclave/server.tsx", "hexclave/server.js", "hexclave/server.jsx",
     "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
     "stack/server.ts", "stack/server.tsx", "stack/server.js", "stack/server.jsx",
   ]),
@@ -310,7 +317,7 @@ function fileExistsCheck(id: string, label: string, candidates: string[], extraH
 
 function layoutWrapsStackProviderCheck(): CheckSpec {
   const id = "next.layout-provider";
-  const label = "Root layout wraps children in <StackProvider>";
+  const label = "Root layout wraps children in <HexclaveProvider>";
   const baseCandidates = [
     "app/layout.tsx", "app/layout.jsx", "app/layout.ts", "app/layout.js",
   ];
@@ -337,40 +344,40 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
       }
 
       const content = fs.readFileSync(foundPath, "utf-8");
-      // Accept the canonical @hexclave/next scope and the legacy @stackframe/stack
-      // scope (matches the dual-scope detection used elsewhere in the codebase).
-      const importsStackProvider =
-        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["'](?:@hexclave\/next|@stackframe\/stack)["']/.test(content);
-      const wrapsJsx = /<StackProvider\b/.test(content);
+      // Accept the Hexclave provider first and the legacy StackProvider alias
+      // so doctor works for newly generated and pre-rebrand projects.
+      const importsProvider =
+        /import\s*\{[^}]*\b(?:HexclaveProvider|StackProvider)\b[^}]*\}\s*from\s*["'](?:@hexclave\/next|@stackframe\/stack)["']/.test(content);
+      const wrapsJsx = /<(?:HexclaveProvider|StackProvider)\b/.test(content);
 
       const rel = path.relative(ctx.projectDir, foundPath);
-      if (importsStackProvider && wrapsJsx) {
+      if (importsProvider && wrapsJsx) {
         return { id, label, status: "pass" };
       }
-      if (importsStackProvider && !wrapsJsx) {
+      if (importsProvider && !wrapsJsx) {
         return {
           id,
           label,
           status: "warn",
-          detail: `${rel} imports StackProvider from @hexclave/next but does not render it.`,
-          hint: "Wrap {children} with <StackProvider app={hexclaveClientApp}>...</StackProvider>.",
+          detail: `${rel} imports HexclaveProvider from @hexclave/next but does not render it.`,
+          hint: "Wrap {children} with <HexclaveProvider app={hexclaveClientApp}>...</HexclaveProvider>.",
         };
       }
-      if (!importsStackProvider && wrapsJsx) {
+      if (!importsProvider && wrapsJsx) {
         return {
           id,
           label,
           status: "fail",
-          detail: `${rel} renders <StackProvider> but is missing the import from @hexclave/next.`,
-          hint: `Add: import { StackProvider } from "@hexclave/next";`,
+          detail: `${rel} renders <HexclaveProvider> but is missing the import from @hexclave/next.`,
+          hint: `Add: import { HexclaveProvider } from "@hexclave/next";`,
         };
       }
       return {
         id,
         label,
         status: "fail",
-        detail: `${rel} does not import StackProvider from @hexclave/next.`,
-        hint: `Add: import { StackProvider } from "@hexclave/next"; and wrap {children} with <StackProvider app={hexclaveClientApp}>...</StackProvider>.`,
+        detail: `${rel} does not import HexclaveProvider from @hexclave/next.`,
+        hint: `Add: import { HexclaveProvider } from "@hexclave/next"; and wrap {children} with <HexclaveProvider app={hexclaveClientApp}>...</HexclaveProvider>.`,
       };
     },
   };

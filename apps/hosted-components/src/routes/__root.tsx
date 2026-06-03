@@ -44,6 +44,10 @@ function useProjectIdFromHostname(): string | null | undefined {
   );
 }
 
+function getApiBaseUrlFromEnv(): string | undefined {
+  return import.meta.env.VITE_HEXCLAVE_API_URL ?? import.meta.env.VITE_STACK_API_URL ?? undefined;
+}
+
 function FullPageError({ title, message }: { title: string, message: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -140,7 +144,7 @@ function RootComponent() {
     return new StackClientApp({
       projectId,
       tokenStore: "cookie",
-      baseUrl: import.meta.env.VITE_STACK_API_URL || undefined,
+      baseUrl: getApiBaseUrlFromEnv(),
       urls: {
         handler: "/handler",
         signIn: "/handler/sign-in",
@@ -175,4 +179,3 @@ function RootComponent() {
     </ErrorBoundary>
   );
 }
-
