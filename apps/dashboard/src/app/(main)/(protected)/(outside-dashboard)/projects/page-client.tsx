@@ -122,11 +122,13 @@ function ProjectsListPage() {
       try {
         const response = await fetch("/api/remote-development-environment/active-projects");
         if (!response.ok) return;
-        const body = await response.json() as { project_ids?: unknown };
-        if (cancelled || !Array.isArray(body.project_ids) || !body.project_ids.every((id: unknown) => typeof id === "string")) return;
-        setActiveProjectIds(new Set(body.project_ids as string[]));
-      } catch {
-        // best-effort; don't surface errors for this
+        const body: unknown = await response.json();
+        if (cancelled || body == null || typeof body !== "object" || !("project_ids" in body)) return;
+        const projectIds = body.project_ids;
+        if (!Array.isArray(projectIds) || !projectIds.every((id): id is string => typeof id === "string")) return;
+        setActiveProjectIds(new Set(projectIds));
+      } catch (error) {
+        captureError("projects-page-active-projects-poll", error);
       }
     };
     runAsynchronously(poll);
