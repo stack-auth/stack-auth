@@ -614,7 +614,9 @@ export function getActiveRemoteDevelopmentEnvironmentProjectIds(): Set<string> {
   const state = getGlobals();
   const rdeState = readRemoteDevelopmentEnvironmentState();
   const activeProjectIds = new Set<string>();
+  const now = performance.now();
   for (const session of state.sessions.values()) {
+    if (now - session.lastHeartbeatMs > SESSION_TTL_MS) continue;
     const project = rdeState.projectsByConfigPath[session.configFilePath];
     if (project != null) {
       activeProjectIds.add(project.projectId);
