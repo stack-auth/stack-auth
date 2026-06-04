@@ -13,11 +13,11 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const emailConfig = config.emails.server;
-  const emailTemplates = stackAdminApp.useEmailTemplates();
+  const emailTemplates = hexclaveAdminApp.useEmailTemplates();
   const router = useRouter();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export default function PageClient() {
   const handleDelete = async (templateId: string) => {
     try {
       setDeleteError(null);
-      await stackAdminApp.deleteEmailTemplate(templateId);
+      await hexclaveAdminApp.deleteEmailTemplate(templateId);
       toast({ title: "Template deleted successfully", variant: "success" });
       setDeleteDialogOpen(null);
       return;
@@ -181,15 +181,15 @@ export default function PageClient() {
 }
 
 function NewTemplateButton() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const emailConfig = config.emails.server;
   const router = useRouter();
   const [showSharedWarning, setShowSharedWarning] = useState(false);
 
   const handleCreateNewTemplate = async (values: { name: string }) => {
-    const { id } = await stackAdminApp.createEmailTemplate(values.name);
+    const { id } = await hexclaveAdminApp.createEmailTemplate(values.name);
     router.push(`email-templates/${id}`);
   };
 

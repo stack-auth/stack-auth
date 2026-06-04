@@ -10,7 +10,7 @@ import { useForm } from 'react-hook-form';
 import * as yup from "yup";
 import { useUser } from '..';
 import { FormWarningText } from '../components/elements/form-warning';
-import { ApiKey, ApiKeyCreationOptions, ApiKeyType } from "../lib/stack-app/api-keys";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyType } from "../lib/hexclave-app/api-keys";
 import { useTranslation } from "../lib/translations";
 
 // Constants for expiration options

@@ -28,9 +28,9 @@ export default function PaymentsLayout({ children }: { children: React.ReactNode
 function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [bannerHasItems, setBannerHasItems] = useState(false);
-  const stackAdminApp = useAdminApp();
-  const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const stripeAccountInfo = hexclaveAdminApp.useStripeAccountInfo();
+  const project = hexclaveAdminApp.useProject();
   const paymentsConfig = project.useConfig().payments;
   const updateConfig = useUpdateConfig();
 
@@ -40,14 +40,14 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const isProductLinesOnboarding = pathname.endsWith('/product-lines') && !hasAnyProductsOrItems;
 
   const setupPayments = async () => {
-    const { url } = await stackAdminApp.setupPayments();
+    const { url } = await hexclaveAdminApp.setupPayments();
     window.location.href = url;
     await wait(2000);
   };
 
   const handleDisableTestMode = async () => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { "payments.testMode": false },
       pushable: false,
     });
@@ -55,7 +55,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
 
   const handleEnableTestMode = async () => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { "payments.testMode": true },
       pushable: false,
     });
@@ -254,7 +254,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
 }
 
 function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<void> }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [screen, setScreen] = useState<"country-select" | "us-selected" | "other-selected">("country-select");
   const [isOpen, setIsOpen] = useState(false);
 
@@ -276,7 +276,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
   };
 
   const handleDoThisLater = async () => {
-    await stackAdminApp.setupPayments();
+    await hexclaveAdminApp.setupPayments();
     window.location.reload();
     // Call setup endpoint but don't open URL
     setIsOpen(false);

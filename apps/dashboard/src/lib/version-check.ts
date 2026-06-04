@@ -39,7 +39,7 @@ export function shouldDisplayVersionResult(
 
 /**
  * Common utility function for checking version against Hexclave API
- * Used by both VersionAlerter and StackCompanion components
+ * Used by both VersionAlerter and HexclaveCompanion components
  */
 export function checkVersion(
   onResult: (result: VersionCheckResult) => void,

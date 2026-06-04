@@ -440,7 +440,7 @@ function parseDayFilterRange(dayFilter: string): { since: Date, until: Date } | 
 }
 
 export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: UserAnalyticsSectionProps) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [recent, setRecent] = useState<RecentEventsState>({ rows: [], hasMore: false, isLoadingMore: false });
   const recentContextRef = useRef<RecentFetchContext | null>(null);
@@ -503,7 +503,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
     };
 
     const runQuery = (query: string, params: Record<string, unknown>) =>
-      stackAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
+      hexclaveAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
 
     runAsynchronously(async () => {
       const [summaryRes, dailyRes, topPagesRes, topReferrersRes, recentRes] = await Promise.all([
@@ -548,7 +548,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
     return () => {
       token.cancelled = true;
     };
-  }, [stackAdminApp, user.id, filterRange]);
+  }, [hexclaveAdminApp, user.id, filterRange]);
 
   const onLoadMoreRecent = useCallback(() => {
     const current = recent;
@@ -558,7 +558,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
     const offset = current.rows.length;
     setRecent((p) => ({ ...p, isLoadingMore: true }));
     runAsynchronously(async () => {
-      const res = await stackAdminApp.queryAnalytics({
+      const res = await hexclaveAdminApp.queryAnalytics({
         query: RECENT_EVENTS_QUERY,
         params: { ...ctx.params, limit: RECENT_EVENTS_PAGE_SIZE, offset },
         timeout_ms: 30_000,
@@ -579,7 +579,7 @@ export function UserAnalyticsSection({ user, dayFilter, onClearDayFilter }: User
         setRecent((p) => ({ ...p, isLoadingMore: false, hasMore: false }));
       },
     });
-  }, [stackAdminApp, recent]);
+  }, [hexclaveAdminApp, recent]);
 
   return (
     <div className="flex flex-col gap-4">

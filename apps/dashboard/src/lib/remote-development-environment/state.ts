@@ -2,7 +2,7 @@ import "server-only";
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { stackDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
+import { hexclaveDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 
 export type RemoteDevelopmentEnvironmentProject = {
@@ -32,7 +32,7 @@ export type RemoteDevelopmentEnvironmentState = {
 };
 
 export function devEnvsStatePath(): string {
-  return stackDevEnvStatePath();
+  return hexclaveDevEnvStatePath();
 }
 
 export function emptyRemoteDevelopmentEnvironmentState(): RemoteDevelopmentEnvironmentState {

@@ -16,20 +16,20 @@ export function Onboarding(props: {
   fullPage?: boolean,
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const user = useUser({ or: "return-null", includeRestricted: true });
 
   // If user is not restricted anymore, redirect to the intended destination
   // redirectToAfterSignIn automatically checks for after_auth_return_to in the URL
   if (user && !user.isRestricted) {
-    runAsynchronously(stackApp.redirectToAfterSignIn());
+    runAsynchronously(hexclaveApp.redirectToAfterSignIn());
     // TODO: This should return a loading indicator, not just null
     return null;
   }
 
   // If user is anonymous or not logged in, redirect to sign-in
   if (!user || user.isAnonymous) {
-    runAsynchronously(stackApp.redirectToSignIn());
+    runAsynchronously(hexclaveApp.redirectToSignIn());
     // TODO: This should return a loading indicator, not just null
     return null;
   }
@@ -71,7 +71,7 @@ function AddEmailForm(props: {
 }) {
   const { t } = useTranslation();
   const user = useUser({ or: "throw", includeRestricted: true });
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [loading, setLoading] = useState(false);
 
   const emailSchema = yupObject({

@@ -22,8 +22,8 @@ type Props = {
 )
 
 export function CreateCheckoutDialog(props: Props) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const customer = props.user ?? props.team;

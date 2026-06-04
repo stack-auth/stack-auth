@@ -174,10 +174,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 4,
-      title: "Create stack/client.ts file",
+      title: "Create hexclave/client.ts file",
       content: <>
         <Typography>
-          Create a new file called <InlineCode>stack/client.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
+          Create a new file called <InlineCode>hexclave/client.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
         </Typography>
         <CodeBlock
           language="tsx"
@@ -194,7 +194,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               }
             });
           `}
-          title="stack/client.ts"
+          title="hexclave/client.ts"
           icon="code"
         />
       </>
@@ -213,7 +213,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             import { HexclaveHandler, HexclaveProvider, HexclaveTheme } from "@hexclave/react";
             import { Suspense } from "react";
             import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-            import { hexclaveClientApp } from "./stack/client";
+            import { hexclaveClientApp } from "./hexclave/client";
 
             function HandlerRoutes() {
               const location = useLocation();
@@ -289,10 +289,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     },
     {
       step: 4,
-      title: "Create stack/client.ts file",
+      title: "Create hexclave/client.ts file",
       content: <>
         <Typography>
-          Create a new file called <InlineCode>src/stack/client.ts</InlineCode> and initialize Hexclave with cookie storage.
+          Create a new file called <InlineCode>src/hexclave/client.ts</InlineCode> and initialize Hexclave with cookie storage.
         </Typography>
         <CodeBlock
           language="tsx"
@@ -305,7 +305,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               redirectMethod: "window",
             });
           `}
-          title="src/stack/client.ts"
+          title="src/hexclave/client.ts"
           icon="code"
         />
       </>
@@ -323,7 +323,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           content={deindent`
             import { HexclaveProvider, HexclaveTheme } from "@hexclave/tanstack-start";
             import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
-            import { hexclaveClientApp } from "../stack/client";
+            import { hexclaveClientApp } from "../hexclave/client";
 
             export const Route = createRootRoute({
               component: RootComponent,
@@ -423,7 +423,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       title: "Initialize the app",
       content: <>
         <Typography>
-          Create a new file for your Stack app initialization:
+          Create a new file for your Hexclave app initialization:
         </Typography>
         <Tabs defaultValue="server">
           <TabsList>
@@ -443,7 +443,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                   tokenStore: "memory",
                 });
               `}
-              title="stack/server.ts"
+              title="hexclave/server.ts"
               icon="code"
             />
           </TabsContent>
@@ -459,7 +459,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                   tokenStore: "cookie",
                 });
               `}
-              title="stack/client.ts"
+              title="hexclave/client.ts"
               icon="code"
             />
           </TabsContent>
@@ -479,7 +479,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             <CodeBlock
               language="typescript"
               content={deindent`
-                import { hexclaveServerApp } from "@/stack/server";
+                import { hexclaveServerApp } from "@/hexclave/server";
 
                 const user = await hexclaveServerApp.getUser("user_id");
 
@@ -501,7 +501,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             <CodeBlock
               language="typescript"
               content={deindent`
-                import { hexclaveClientApp } from "@/stack/client";
+                import { hexclaveClientApp } from "@/hexclave/client";
 
                 await hexclaveClientApp.signInWithCredential({
                   email: "test@example.com",

@@ -182,9 +182,9 @@ describe("remote development environment config file", () => {
     });
 
     expect(readFileSync(configPath, "utf-8")).toMatchInlineSnapshot(`
-      "import type { StackConfig } from "@hexclave/js";
+      "import type { HexclaveConfig } from "@hexclave/js";
 
-      export const config: StackConfig = {
+      export const config: HexclaveConfig = {
         "auth": {
           "allowSignUp": false
         },

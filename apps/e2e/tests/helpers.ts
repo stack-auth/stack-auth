@@ -293,14 +293,14 @@ export class MailboxMessage {
 }
 
 
-function expandStackPortPrefix(value?: string | null) {
+function expandHexclavePortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   const prefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 for (const [key, value] of Object.entries(process.env)) {
   if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
-    const replaced = expandStackPortPrefix(value ?? undefined);
+    const replaced = expandHexclavePortPrefix(value ?? undefined);
     if (replaced !== undefined) {
       // eslint-disable-next-line no-restricted-syntax
       process.env[key] = replaced;

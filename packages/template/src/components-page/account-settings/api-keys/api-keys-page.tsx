@@ -3,7 +3,7 @@ import { useState } from "react";
 import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../../components/api-key-dialogs";
 import { ApiKeyTable } from "../../../components/api-key-table";
 import { useUser } from "../../../lib/hooks";
-import { ApiKey, ApiKeyCreationOptions } from "../../../lib/stack-app/api-keys";
+import { ApiKey, ApiKeyCreationOptions } from "../../../lib/hexclave-app/api-keys";
 import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
 

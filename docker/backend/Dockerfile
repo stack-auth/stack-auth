@@ -39,7 +39,7 @@ RUN turbo prune --scope=@hexclave/backend --docker
 FROM base AS builder
 
 # Skip generate-sdks.ts in preinstall hook (file not available in pruned output)
-ENV STACK_SKIP_TEMPLATE_GENERATION=true
+ENV HEXCLAVE_SKIP_TEMPLATE_GENERATION=true
 
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml .

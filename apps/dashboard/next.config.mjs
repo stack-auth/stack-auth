@@ -61,6 +61,10 @@ const nextConfig = {
   },
 
   images: {
+    // Disable image optimization in standalone/RDE builds to avoid shipping
+    // the sharp native binary (~17 MB). The RDE runs locally so optimized
+    // images are not needed.
+    ...(process.env.NEXT_CONFIG_OUTPUT === "standalone" ? { unoptimized: true } : {}),
     remotePatterns: [
       {
         protocol: 'https',

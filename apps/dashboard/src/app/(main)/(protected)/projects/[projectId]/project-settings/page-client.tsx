@@ -53,8 +53,8 @@ function TeamMemberItem({ member }: { member: any }) {
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const productionModeErrors = project.useProductionModeErrors();
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
@@ -177,8 +177,8 @@ export default function PageClient() {
   // Memoize project delete callback
   const handleProjectDelete = useCallback(async () => {
     await project.delete();
-    await stackAdminApp.redirectToHome();
-  }, [project, stackAdminApp]);
+    await hexclaveAdminApp.redirectToHome();
+  }, [project, hexclaveAdminApp]);
 
   const productionModeItems: DesignEditableGridItem[] = [
     {

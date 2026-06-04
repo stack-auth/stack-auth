@@ -1,9 +1,9 @@
 // Theme-aware CSS for the dev tool indicator
 // Respects Stack theme (data-stack-theme attribute) and system prefers-color-scheme
-// Uses .stack-devtool scope to avoid conflicts with host app styles
+// Uses .hexclave-devtool scope to avoid conflicts with host app styles
 
 export const devToolCSS = `
-  .stack-devtool {
+  .hexclave-devtool {
     --sdt-bg: #0a0a0b;
     --sdt-bg-elevated: #141416;
     --sdt-bg-hover: #1c1c1f;
@@ -44,12 +44,12 @@ export const devToolCSS = `
     box-sizing: border-box;
   }
 
-  .stack-devtool *, .stack-devtool *::before, .stack-devtool *::after {
+  .hexclave-devtool *, .hexclave-devtool *::before, .hexclave-devtool *::after {
     box-sizing: border-box;
   }
 
   /* Trigger pill */
-  .stack-devtool .sdt-trigger {
+  .hexclave-devtool .sdt-trigger {
     position: fixed;
     z-index: 2147483647;
     display: flex;
@@ -68,21 +68,21 @@ export const devToolCSS = `
     touch-action: none;
   }
 
-  .stack-devtool .sdt-trigger-position-animated {
+  .hexclave-devtool .sdt-trigger-position-animated {
     transition: left 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
-  .stack-devtool .sdt-trigger:hover {
+  .hexclave-devtool .sdt-trigger:hover {
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-accent);
     box-shadow: var(--sdt-trigger-shadow), 0 0 0 1px var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-trigger:active {
+  .hexclave-devtool .sdt-trigger:active {
     cursor: grabbing;
   }
 
-  .stack-devtool .sdt-trigger-logo {
+  .hexclave-devtool .sdt-trigger-logo {
     width: 22px;
     height: 22px;
     border-radius: 6px;
@@ -95,7 +95,7 @@ export const devToolCSS = `
   }
 
   /* Panel overlay */
-  .stack-devtool .sdt-panel {
+  .hexclave-devtool .sdt-panel {
     position: fixed;
     bottom: 60px;
     right: 16px;
@@ -113,7 +113,7 @@ export const devToolCSS = `
     overflow: visible;
   }
 
-  .stack-devtool .sdt-panel-geometry-animated {
+  .hexclave-devtool .sdt-panel-geometry-animated {
     transition: width 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
                 height 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
                 right 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -122,7 +122,7 @@ export const devToolCSS = `
                 border-color 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
-  .stack-devtool .sdt-panel-fullscreen {
+  .hexclave-devtool .sdt-panel-fullscreen {
     right: 0;
     bottom: 0;
     width: 100vw;
@@ -133,7 +133,7 @@ export const devToolCSS = `
     border-radius: 0;
   }
 
-  .stack-devtool .sdt-panel-inner {
+  .hexclave-devtool .sdt-panel-inner {
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -143,11 +143,11 @@ export const devToolCSS = `
     animation: sdt-panel-enter 0.2s ease-out;
   }
 
-  .stack-devtool .sdt-panel-fullscreen .sdt-panel-inner {
+  .hexclave-devtool .sdt-panel-fullscreen .sdt-panel-inner {
     border-radius: 0;
   }
 
-  .stack-devtool .sdt-panel-fullscreen .sdt-resize-handle {
+  .hexclave-devtool .sdt-panel-fullscreen .sdt-resize-handle {
     display: none;
   }
 
@@ -162,7 +162,7 @@ export const devToolCSS = `
     }
   }
 
-  .stack-devtool .sdt-panel-exiting {
+  .hexclave-devtool .sdt-panel-exiting {
     animation: sdt-panel-exit 0.15s ease-in forwards;
   }
 
@@ -178,7 +178,7 @@ export const devToolCSS = `
   }
 
   /* Tab bar */
-  .stack-devtool .sdt-tabbar {
+  .hexclave-devtool .sdt-tabbar {
     position: relative;
     display: flex;
     align-items: center;
@@ -191,7 +191,7 @@ export const devToolCSS = `
     overflow-x: auto;
   }
 
-  .stack-devtool .sdt-panel-fullscreen .sdt-tabbar {
+  .hexclave-devtool .sdt-panel-fullscreen .sdt-tabbar {
     position: absolute;
     top: 8px;
     left: 8px;
@@ -203,7 +203,7 @@ export const devToolCSS = `
     box-shadow: var(--sdt-trigger-shadow);
   }
 
-  .stack-devtool .sdt-tab-indicator {
+  .hexclave-devtool .sdt-tab-indicator {
     position: absolute;
     top: 6px;
     left: 0;
@@ -216,7 +216,7 @@ export const devToolCSS = `
     z-index: 0;
   }
 
-  .stack-devtool .sdt-tab {
+  .hexclave-devtool .sdt-tab {
     position: relative;
     z-index: 1;
     display: flex;
@@ -237,15 +237,15 @@ export const devToolCSS = `
     outline: none;
   }
 
-  .stack-devtool .sdt-tab:hover {
+  .hexclave-devtool .sdt-tab:hover {
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-tab[data-active="true"] {
+  .hexclave-devtool .sdt-tab[data-active="true"] {
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-tab-icon {
+  .hexclave-devtool .sdt-tab-icon {
     width: 14px;
     height: 14px;
     display: flex;
@@ -254,18 +254,18 @@ export const devToolCSS = `
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-tabbar-spacer {
+  .hexclave-devtool .sdt-tabbar-spacer {
     flex: 1;
   }
 
-  .stack-devtool .sdt-tabbar-actions {
+  .hexclave-devtool .sdt-tabbar-actions {
     display: flex;
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-docs-link {
+  .hexclave-devtool .sdt-docs-link {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -282,19 +282,19 @@ export const devToolCSS = `
     transition: color 0.15s ease, background 0.15s ease;
   }
 
-  .stack-devtool .sdt-docs-link:hover {
+  .hexclave-devtool .sdt-docs-link:hover {
     color: var(--sdt-text);
     background: var(--sdt-bg-hover);
   }
 
-  .stack-devtool .sdt-docs-link-icon {
+  .hexclave-devtool .sdt-docs-link-icon {
     display: flex;
     width: 13px;
     height: 13px;
     line-height: 0;
   }
 
-  .stack-devtool .sdt-close-btn {
+  .hexclave-devtool .sdt-close-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -309,32 +309,32 @@ export const devToolCSS = `
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-close-btn:hover {
+  .hexclave-devtool .sdt-close-btn:hover {
     color: var(--sdt-text);
     background: var(--sdt-bg-hover);
   }
 
   /* Tab content area */
-  .stack-devtool .sdt-content {
+  .hexclave-devtool .sdt-content {
     flex: 1;
     position: relative;
     overflow: hidden;
     min-height: 0;
   }
 
-  .stack-devtool .sdt-panel-fullscreen .sdt-content {
+  .hexclave-devtool .sdt-panel-fullscreen .sdt-content {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
   }
 
-  .stack-devtool .sdt-tab-layers {
+  .hexclave-devtool .sdt-tab-layers {
     position: absolute;
     inset: 0;
   }
 
-  .stack-devtool .sdt-tab-pane {
+  .hexclave-devtool .sdt-tab-pane {
     position: absolute;
     inset: 0;
     overflow-y: auto;
@@ -344,12 +344,12 @@ export const devToolCSS = `
     pointer-events: none;
   }
 
-  .stack-devtool .sdt-tab-pane-iframe {
+  .hexclave-devtool .sdt-tab-pane-iframe {
     padding: 0;
     overflow: hidden;
   }
 
-  .stack-devtool .sdt-tab-pane-active {
+  .hexclave-devtool .sdt-tab-pane-active {
     visibility: visible;
     pointer-events: auto;
     animation: sdt-tab-fade-in 0.15s ease-out;
@@ -366,22 +366,22 @@ export const devToolCSS = `
     }
   }
 
-  .stack-devtool .sdt-tab-pane::-webkit-scrollbar {
+  .hexclave-devtool .sdt-tab-pane::-webkit-scrollbar {
     width: 6px;
   }
 
-  .stack-devtool .sdt-tab-pane::-webkit-scrollbar-track {
+  .hexclave-devtool .sdt-tab-pane::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .stack-devtool .sdt-tab-pane::-webkit-scrollbar-thumb {
+  .hexclave-devtool .sdt-tab-pane::-webkit-scrollbar-thumb {
     background: var(--sdt-border);
     border-radius: 3px;
   }
 
   /* ===== Overview tab — single column ===== */
 
-  .stack-devtool .sdt-ov {
+  .hexclave-devtool .sdt-ov {
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -390,7 +390,7 @@ export const devToolCSS = `
   }
 
   /* Card base */
-  .stack-devtool .sdt-ov-card {
+  .hexclave-devtool .sdt-ov-card {
     background: var(--sdt-bg-elevated);
     border: 1px solid var(--sdt-border-subtle);
     border-radius: 12px;
@@ -403,11 +403,11 @@ export const devToolCSS = `
     min-width: 0;
   }
 
-  .stack-devtool .sdt-ov-card-hero {
+  .hexclave-devtool .sdt-ov-card-hero {
     background: linear-gradient(135deg, rgba(99,102,241,0.04) 0%, transparent 50%), var(--sdt-bg-elevated);
   }
 
-  .stack-devtool .sdt-ov-label {
+  .hexclave-devtool .sdt-ov-label {
     font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
@@ -416,14 +416,14 @@ export const devToolCSS = `
     margin-bottom: 10px;
   }
 
-  .stack-devtool .sdt-ov-user-row {
+  .hexclave-devtool .sdt-ov-user-row {
     display: flex;
     align-items: center;
     gap: 14px;
     margin-bottom: 14px;
   }
 
-  .stack-devtool .sdt-ov-avatar {
+  .hexclave-devtool .sdt-ov-avatar {
     width: 52px;
     height: 52px;
     border-radius: 50%;
@@ -439,25 +439,25 @@ export const devToolCSS = `
     overflow: hidden;
   }
 
-  .stack-devtool .sdt-ov-avatar-active {
+  .hexclave-devtool .sdt-ov-avatar-active {
     background: var(--sdt-accent-muted);
     color: var(--sdt-accent);
     border-color: rgba(99,102,241,0.3);
   }
 
-  .stack-devtool .sdt-ov-avatar img {
+  .hexclave-devtool .sdt-ov-avatar img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     border-radius: 50%;
   }
 
-  .stack-devtool .sdt-ov-user-meta {
+  .hexclave-devtool .sdt-ov-user-meta {
     min-width: 0;
     flex: 1;
   }
 
-  .stack-devtool .sdt-ov-user-name {
+  .hexclave-devtool .sdt-ov-user-name {
     font-size: 16px;
     font-weight: 700;
     color: var(--sdt-text);
@@ -467,7 +467,7 @@ export const devToolCSS = `
     white-space: nowrap;
   }
 
-  .stack-devtool .sdt-ov-user-email {
+  .hexclave-devtool .sdt-ov-user-email {
     font-size: 12px;
     font-family: var(--sdt-font-mono);
     color: var(--sdt-text-secondary);
@@ -477,7 +477,7 @@ export const devToolCSS = `
     white-space: nowrap;
   }
 
-  .stack-devtool .sdt-ov-auth-indicator {
+  .hexclave-devtool .sdt-ov-auth-indicator {
     display: flex;
     align-items: center;
     gap: 5px;
@@ -487,7 +487,7 @@ export const devToolCSS = `
     color: var(--sdt-success);
   }
 
-  .stack-devtool .sdt-ov-auth-indicator::before {
+  .hexclave-devtool .sdt-ov-auth-indicator::before {
     content: '';
     width: 6px;
     height: 6px;
@@ -497,14 +497,14 @@ export const devToolCSS = `
   }
 
   /* Actions */
-  .stack-devtool .sdt-ov-actions {
+  .hexclave-devtool .sdt-ov-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 4px;
   }
 
-  .stack-devtool .sdt-ov-btn {
+  .hexclave-devtool .sdt-ov-btn {
     height: 30px;
     padding: 0 12px;
     border-radius: 6px;
@@ -516,30 +516,30 @@ export const devToolCSS = `
     transition: all 0.15s ease;
     white-space: nowrap;
   }
-  .stack-devtool .sdt-ov-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .hexclave-devtool .sdt-ov-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .stack-devtool .sdt-ov-btn-primary {
+  .hexclave-devtool .sdt-ov-btn-primary {
     background: var(--sdt-accent);
     color: #fff;
   }
-  .stack-devtool .sdt-ov-btn-primary:hover { background: var(--sdt-accent-hover); }
+  .hexclave-devtool .sdt-ov-btn-primary:hover { background: var(--sdt-accent-hover); }
 
-  .stack-devtool .sdt-ov-btn-secondary {
+  .hexclave-devtool .sdt-ov-btn-secondary {
     background: var(--sdt-bg-hover);
     color: var(--sdt-text);
   }
-  .stack-devtool .sdt-ov-btn-secondary:hover { background: var(--sdt-bg-active); }
+  .hexclave-devtool .sdt-ov-btn-secondary:hover { background: var(--sdt-bg-active); }
 
-  .stack-devtool .sdt-ov-btn-danger {
+  .hexclave-devtool .sdt-ov-btn-danger {
     background: var(--sdt-error-muted);
     color: var(--sdt-error);
     border: 1px solid rgba(239, 68, 68, 0.15);
   }
-  .stack-devtool .sdt-ov-btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+  .hexclave-devtool .sdt-ov-btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
 
-  .stack-devtool .sdt-ov-btn-wide { flex: 1; }
+  .hexclave-devtool .sdt-ov-btn-wide { flex: 1; }
 
-  .stack-devtool .sdt-ov-email-input {
+  .hexclave-devtool .sdt-ov-email-input {
     display: flex;
     flex: 1 1 180px;
     border: 1px solid var(--sdt-border-subtle);
@@ -548,11 +548,11 @@ export const devToolCSS = `
     background: var(--sdt-bg);
     transition: border-color 0.15s ease;
   }
-  .stack-devtool .sdt-ov-email-input:focus-within {
+  .hexclave-devtool .sdt-ov-email-input:focus-within {
     border-color: var(--sdt-accent);
     box-shadow: 0 0 0 2px var(--sdt-accent-muted);
   }
-  .stack-devtool .sdt-ov-email-input input {
+  .hexclave-devtool .sdt-ov-email-input input {
     flex: 1;
     height: 28px;
     padding: 0 8px;
@@ -564,8 +564,8 @@ export const devToolCSS = `
     outline: none;
     min-width: 0;
   }
-  .stack-devtool .sdt-ov-email-input input::placeholder { color: var(--sdt-text-tertiary); }
-  .stack-devtool .sdt-ov-email-input button {
+  .hexclave-devtool .sdt-ov-email-input input::placeholder { color: var(--sdt-text-tertiary); }
+  .hexclave-devtool .sdt-ov-email-input button {
     width: 28px;
     height: 28px;
     display: flex;
@@ -579,31 +579,31 @@ export const devToolCSS = `
     flex-shrink: 0;
     font-family: var(--sdt-font);
   }
-  .stack-devtool .sdt-ov-email-input button:hover { background: var(--sdt-accent-muted); }
-  .stack-devtool .sdt-ov-email-input button:disabled { opacity: 0.3; cursor: not-allowed; }
+  .hexclave-devtool .sdt-ov-email-input button:hover { background: var(--sdt-accent-muted); }
+  .hexclave-devtool .sdt-ov-email-input button:disabled { opacity: 0.3; cursor: not-allowed; }
 
-  .stack-devtool .sdt-ov-toast {
+  .hexclave-devtool .sdt-ov-toast {
     font-size: 11px;
     padding: 5px 10px;
     border-radius: 6px;
     margin-top: 8px;
     line-height: 1.4;
   }
-  .stack-devtool .sdt-ov-toast-success { background: var(--sdt-success-muted); color: var(--sdt-success); }
-  .stack-devtool .sdt-ov-toast-error { background: var(--sdt-error-muted); color: var(--sdt-error); }
+  .hexclave-devtool .sdt-ov-toast-success { background: var(--sdt-success-muted); color: var(--sdt-success); }
+  .hexclave-devtool .sdt-ov-toast-error { background: var(--sdt-error-muted); color: var(--sdt-error); }
 
   /* --- Auth methods card --- */
-  .stack-devtool .sdt-ov-card-auth {
+  .hexclave-devtool .sdt-ov-card-auth {
     padding: 14px 16px;
   }
 
-  .stack-devtool .sdt-ov-auth-grid {
+  .hexclave-devtool .sdt-ov-auth-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
   }
 
-  .stack-devtool .sdt-ov-method {
+  .hexclave-devtool .sdt-ov-method {
     display: flex;
     align-items: center;
     gap: 5px;
@@ -616,28 +616,28 @@ export const devToolCSS = `
     transition: all 0.15s ease;
   }
 
-  .stack-devtool .sdt-ov-method-on {
+  .hexclave-devtool .sdt-ov-method-on {
     color: var(--sdt-text);
     background: var(--sdt-success-muted);
     border-color: rgba(34, 197, 94, 0.12);
   }
 
-  .stack-devtool .sdt-ov-method-off {
+  .hexclave-devtool .sdt-ov-method-off {
     color: var(--sdt-text-tertiary);
     opacity: 0.5;
     border-style: dashed;
   }
 
-  .stack-devtool .sdt-ov-method-oauth {
+  .hexclave-devtool .sdt-ov-method-oauth {
     text-transform: capitalize;
   }
 
-  .stack-devtool .sdt-ov-method-warn {
+  .hexclave-devtool .sdt-ov-method-warn {
     color: var(--sdt-warning);
     border-color: rgba(234, 179, 8, 0.2);
   }
 
-  .stack-devtool .sdt-ov-skeleton-pill {
+  .hexclave-devtool .sdt-ov-skeleton-pill {
     width: 64px;
     height: 26px;
     border-radius: 6px;
@@ -652,12 +652,12 @@ export const devToolCSS = `
   }
 
   /* --- Setup checklist card (only shown when something is incomplete) --- */
-  .stack-devtool .sdt-ov-card-checks {
+  .hexclave-devtool .sdt-ov-card-checks {
     padding: 14px 16px;
     border-color: rgba(234, 179, 8, 0.25);
   }
 
-  .stack-devtool .sdt-ov-checks-header {
+  .hexclave-devtool .sdt-ov-checks-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -665,24 +665,24 @@ export const devToolCSS = `
     margin-bottom: 8px;
   }
 
-  .stack-devtool .sdt-ov-checks-badge {
+  .hexclave-devtool .sdt-ov-checks-badge {
     font-size: 10px;
     font-weight: 700;
     padding: 1px 6px;
     border-radius: 4px;
   }
 
-  .stack-devtool .sdt-ov-checks-badge-ok {
+  .hexclave-devtool .sdt-ov-checks-badge-ok {
     background: var(--sdt-success-muted);
     color: var(--sdt-success);
   }
 
-  .stack-devtool .sdt-ov-checks-badge-warn {
+  .hexclave-devtool .sdt-ov-checks-badge-warn {
     background: var(--sdt-warning-muted);
     color: var(--sdt-warning);
   }
 
-  .stack-devtool .sdt-ov-checks-bar {
+  .hexclave-devtool .sdt-ov-checks-bar {
     height: 3px;
     border-radius: 2px;
     background: var(--sdt-border-subtle);
@@ -690,14 +690,14 @@ export const devToolCSS = `
     overflow: hidden;
   }
 
-  .stack-devtool .sdt-ov-checks-bar-fill {
+  .hexclave-devtool .sdt-ov-checks-bar-fill {
     height: 100%;
     border-radius: 2px;
     background: var(--sdt-warning);
     transition: width 0.4s ease;
   }
 
-  .stack-devtool .sdt-ov-setup-row {
+  .hexclave-devtool .sdt-ov-setup-row {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -706,31 +706,31 @@ export const devToolCSS = `
     border-bottom: 1px solid var(--sdt-border-subtle);
   }
 
-  .stack-devtool .sdt-ov-setup-row:last-child { border-bottom: none; }
+  .hexclave-devtool .sdt-ov-setup-row:last-child { border-bottom: none; }
 
-  .stack-devtool .sdt-ov-setup-dot {
+  .hexclave-devtool .sdt-ov-setup-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-ov-setup-dot-ok { background: var(--sdt-success); }
-  .stack-devtool .sdt-ov-setup-dot-warn { background: var(--sdt-warning); }
+  .hexclave-devtool .sdt-ov-setup-dot-ok { background: var(--sdt-success); }
+  .hexclave-devtool .sdt-ov-setup-dot-warn { background: var(--sdt-warning); }
 
-  .stack-devtool .sdt-ov-setup-label {
+  .hexclave-devtool .sdt-ov-setup-label {
     color: var(--sdt-text);
     font-size: 12px;
   }
 
-  .stack-devtool .sdt-ov-setup-hint {
+  .hexclave-devtool .sdt-ov-setup-hint {
     margin-left: auto;
     font-size: 11px;
     color: var(--sdt-text-tertiary);
   }
 
   /* Status badges (shared across tabs) */
-  .stack-devtool .sdt-badge {
+  .hexclave-devtool .sdt-badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -739,21 +739,21 @@ export const devToolCSS = `
     font-size: 11px;
     font-weight: 500;
   }
-  .stack-devtool .sdt-badge-success { background: var(--sdt-success-muted); color: var(--sdt-success); }
-  .stack-devtool .sdt-badge-warning { background: var(--sdt-warning-muted); color: var(--sdt-warning); }
-  .stack-devtool .sdt-badge-error { background: var(--sdt-error-muted); color: var(--sdt-error); }
-  .stack-devtool .sdt-badge-info { background: var(--sdt-info-muted); color: var(--sdt-info); }
+  .hexclave-devtool .sdt-badge-success { background: var(--sdt-success-muted); color: var(--sdt-success); }
+  .hexclave-devtool .sdt-badge-warning { background: var(--sdt-warning-muted); color: var(--sdt-warning); }
+  .hexclave-devtool .sdt-badge-error { background: var(--sdt-error-muted); color: var(--sdt-error); }
+  .hexclave-devtool .sdt-badge-info { background: var(--sdt-info-muted); color: var(--sdt-info); }
 
   /* ===== Components / Pages tab ===== */
 
-  .stack-devtool .sdt-pg-layout {
+  .hexclave-devtool .sdt-pg-layout {
     display: flex;
     height: calc(100% + 32px);
     margin: -16px;
   }
 
   /* --- Sidebar --- */
-  .stack-devtool .sdt-pg-sidebar {
+  .hexclave-devtool .sdt-pg-sidebar {
     width: 250px;
     flex-shrink: 0;
     border-right: 1px solid var(--sdt-border);
@@ -762,7 +762,7 @@ export const devToolCSS = `
     overflow: hidden;
   }
 
-  .stack-devtool .sdt-pg-sidebar-head {
+  .hexclave-devtool .sdt-pg-sidebar-head {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -770,7 +770,7 @@ export const devToolCSS = `
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-pg-sidebar-title {
+  .hexclave-devtool .sdt-pg-sidebar-title {
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 1px;
@@ -778,7 +778,7 @@ export const devToolCSS = `
     color: var(--sdt-text-tertiary);
   }
 
-  .stack-devtool .sdt-pg-sidebar-count {
+  .hexclave-devtool .sdt-pg-sidebar-count {
     font-size: 10px;
     font-weight: 700;
     color: var(--sdt-text-tertiary);
@@ -788,7 +788,7 @@ export const devToolCSS = `
     line-height: 18px;
   }
 
-  .stack-devtool .sdt-pg-sidebar-warn {
+  .hexclave-devtool .sdt-pg-sidebar-warn {
     margin-left: auto;
     font-size: 10px;
     font-weight: 700;
@@ -799,14 +799,14 @@ export const devToolCSS = `
     line-height: 18px;
   }
 
-  .stack-devtool .sdt-pg-list {
+  .hexclave-devtool .sdt-pg-list {
     flex: 1;
     overflow-y: auto;
     padding: 0 6px 6px;
   }
 
   /* --- List item --- */
-  .stack-devtool .sdt-pg-item {
+  .hexclave-devtool .sdt-pg-item {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -819,33 +819,33 @@ export const devToolCSS = `
     position: relative;
   }
 
-  .stack-devtool .sdt-pg-item:hover {
+  .hexclave-devtool .sdt-pg-item:hover {
     background: var(--sdt-bg-hover);
   }
 
-  .stack-devtool .sdt-pg-item[data-selected="true"] {
+  .hexclave-devtool .sdt-pg-item[data-selected="true"] {
     background: var(--sdt-accent-muted);
   }
 
-  .stack-devtool .sdt-pg-item[data-selected="true"] .sdt-pg-item-label {
+  .hexclave-devtool .sdt-pg-item[data-selected="true"] .sdt-pg-item-label {
     color: var(--sdt-accent-hover);
     font-weight: 600;
   }
 
-  .stack-devtool .sdt-pg-item-dot {
+  .hexclave-devtool .sdt-pg-item-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .stack-devtool .sdt-pg-item-dot-handler { background: var(--sdt-info); }
-  .stack-devtool .sdt-pg-item-dot-custom { background: var(--sdt-success); }
-  .stack-devtool .sdt-pg-item-dot-warn {
+  .hexclave-devtool .sdt-pg-item-dot-handler { background: var(--sdt-info); }
+  .hexclave-devtool .sdt-pg-item-dot-custom { background: var(--sdt-success); }
+  .hexclave-devtool .sdt-pg-item-dot-warn {
     background: var(--sdt-warning);
     box-shadow: 0 0 6px rgba(234, 179, 8, 0.4);
   }
 
-  .stack-devtool .sdt-pg-item-label {
+  .hexclave-devtool .sdt-pg-item-label {
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -854,7 +854,7 @@ export const devToolCSS = `
   }
 
   /* --- Badges --- */
-  .stack-devtool .sdt-pg-badge {
+  .hexclave-devtool .sdt-pg-badge {
     display: inline-flex;
     align-items: center;
     height: 20px;
@@ -867,10 +867,10 @@ export const devToolCSS = `
     line-height: 1;
   }
 
-  .stack-devtool .sdt-pg-badge-outdated { background: var(--sdt-warning-muted); color: var(--sdt-warning); }
+  .hexclave-devtool .sdt-pg-badge-outdated { background: var(--sdt-warning-muted); color: var(--sdt-warning); }
 
   /* --- Empty state --- */
-  .stack-devtool .sdt-pg-empty {
+  .hexclave-devtool .sdt-pg-empty {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -880,25 +880,25 @@ export const devToolCSS = `
     text-align: center;
   }
 
-  .stack-devtool .sdt-pg-empty-icon {
+  .hexclave-devtool .sdt-pg-empty-icon {
     color: var(--sdt-text-tertiary);
     opacity: 0.35;
     margin-bottom: 4px;
   }
 
-  .stack-devtool .sdt-pg-empty-text {
+  .hexclave-devtool .sdt-pg-empty-text {
     font-size: 14px;
     font-weight: 600;
     color: var(--sdt-text-secondary);
   }
 
-  .stack-devtool .sdt-pg-empty-sub {
+  .hexclave-devtool .sdt-pg-empty-sub {
     font-size: 12px;
     color: var(--sdt-text-tertiary);
   }
 
   /* --- Main panel --- */
-  .stack-devtool .sdt-pg-main {
+  .hexclave-devtool .sdt-pg-main {
     flex: 1;
     overflow-y: auto;
     padding: 16px 18px;
@@ -907,34 +907,34 @@ export const devToolCSS = `
   }
 
   /* --- Detail view --- */
-  .stack-devtool .sdt-pg-detail {
+  .hexclave-devtool .sdt-pg-detail {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
 
   /* Header */
-  .stack-devtool .sdt-pg-header {
+  .hexclave-devtool .sdt-pg-header {
     display: flex;
     flex-direction: column;
     gap: 4px;
   }
 
-  .stack-devtool .sdt-pg-header-top {
+  .hexclave-devtool .sdt-pg-header-top {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
   }
 
-  .stack-devtool .sdt-pg-title {
+  .hexclave-devtool .sdt-pg-title {
     font-size: 15px;
     font-weight: 700;
     margin: 0;
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-pg-title-url {
+  .hexclave-devtool .sdt-pg-title-url {
     min-width: 0;
     max-width: 280px;
     color: var(--sdt-text-tertiary);
@@ -946,24 +946,24 @@ export const devToolCSS = `
     text-decoration: none;
   }
 
-  .stack-devtool .sdt-pg-title-url:hover {
+  .hexclave-devtool .sdt-pg-title-url:hover {
     color: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-pg-subtitle {
+  .hexclave-devtool .sdt-pg-subtitle {
     font-size: 12px;
     color: var(--sdt-text-secondary);
     line-height: 1.4;
   }
 
-  .stack-devtool .sdt-pg-code-inline {
+  .hexclave-devtool .sdt-pg-code-inline {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-top: 4px;
   }
 
-  .stack-devtool .sdt-pg-code {
+  .hexclave-devtool .sdt-pg-code {
     flex: 1;
     min-width: 0;
     font-family: var(--sdt-font-mono);
@@ -976,7 +976,7 @@ export const devToolCSS = `
   }
 
   /* --- Copy button --- */
-  .stack-devtool .sdt-pg-copy-btn {
+  .hexclave-devtool .sdt-pg-copy-btn {
     height: 26px;
     padding: 0 10px;
     border-radius: 6px;
@@ -992,7 +992,7 @@ export const devToolCSS = `
     white-space: nowrap;
   }
 
-  .stack-devtool .sdt-pg-open-btn {
+  .hexclave-devtool .sdt-pg-open-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1002,24 +1002,24 @@ export const devToolCSS = `
     font-size: 12px;
   }
 
-  .stack-devtool .sdt-pg-open-btn svg {
+  .hexclave-devtool .sdt-pg-open-btn svg {
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-pg-copy-btn:hover {
+  .hexclave-devtool .sdt-pg-copy-btn:hover {
     background: var(--sdt-bg-hover);
     color: var(--sdt-text);
     border-color: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-pg-copy-btn-ok {
+  .hexclave-devtool .sdt-pg-copy-btn-ok {
     border-color: rgba(34, 197, 94, 0.3);
     color: var(--sdt-success);
     background: var(--sdt-success-muted);
   }
 
   /* --- Update banner --- */
-  .stack-devtool .sdt-pg-update-banner {
+  .hexclave-devtool .sdt-pg-update-banner {
     display: flex;
     align-items: flex-start;
     gap: 10px;
@@ -1029,7 +1029,7 @@ export const devToolCSS = `
     border-radius: 10px;
   }
 
-  .stack-devtool .sdt-pg-update-banner-icon {
+  .hexclave-devtool .sdt-pg-update-banner-icon {
     width: 22px;
     height: 22px;
     border-radius: 50%;
@@ -1044,60 +1044,60 @@ export const devToolCSS = `
     margin-top: 1px;
   }
 
-  .stack-devtool .sdt-pg-update-banner-body {
+  .hexclave-devtool .sdt-pg-update-banner-body {
     flex: 1;
     min-width: 0;
   }
 
-  .stack-devtool .sdt-pg-update-banner-title {
+  .hexclave-devtool .sdt-pg-update-banner-title {
     font-size: 13px;
     font-weight: 700;
     color: var(--sdt-warning);
     margin-bottom: 2px;
   }
 
-  .stack-devtool .sdt-pg-update-banner-text {
+  .hexclave-devtool .sdt-pg-update-banner-text {
     font-size: 12px;
     color: var(--sdt-text-secondary);
     line-height: 1.5;
   }
 
-  .stack-devtool .sdt-pg-update-banner-text strong {
+  .hexclave-devtool .sdt-pg-update-banner-text strong {
     color: var(--sdt-text);
     font-weight: 600;
   }
 
   /* --- Sections (changelog, prompt) --- */
-  .stack-devtool .sdt-pg-section {
+  .hexclave-devtool .sdt-pg-section {
     border: 1px solid var(--sdt-border-subtle);
     border-radius: 10px;
     padding: 12px 14px;
     background: var(--sdt-bg-elevated);
   }
 
-  .stack-devtool .sdt-pg-section-warn {
+  .hexclave-devtool .sdt-pg-section-warn {
     border-color: rgba(234, 179, 8, 0.25);
     background: rgba(234, 179, 8, 0.03);
   }
 
-  .stack-devtool .sdt-pg-section-label {
+  .hexclave-devtool .sdt-pg-section-label {
     font-size: 12px;
     font-weight: 500;
     color: var(--sdt-text-secondary);
     margin-bottom: 8px;
   }
 
-  .stack-devtool .sdt-pg-section-warn .sdt-pg-section-label {
+  .hexclave-devtool .sdt-pg-section-warn .sdt-pg-section-label {
     color: var(--sdt-warning);
   }
 
-  .stack-devtool .sdt-pg-section-footer {
+  .hexclave-devtool .sdt-pg-section-footer {
     display: flex;
     margin-top: 8px;
   }
 
   /* Changelog list */
-  .stack-devtool .sdt-pg-changelog-list {
+  .hexclave-devtool .sdt-pg-changelog-list {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -1106,7 +1106,7 @@ export const devToolCSS = `
     gap: 4px;
   }
 
-  .stack-devtool .sdt-pg-changelog-item {
+  .hexclave-devtool .sdt-pg-changelog-item {
     display: flex;
     align-items: flex-start;
     gap: 8px;
@@ -1115,14 +1115,14 @@ export const devToolCSS = `
     line-height: 1.5;
   }
 
-  .stack-devtool .sdt-pg-changelog-bullet {
+  .hexclave-devtool .sdt-pg-changelog-bullet {
     flex-shrink: 0;
     font-size: 12px;
     line-height: 1.5;
   }
 
   /* Pre block */
-  .stack-devtool .sdt-pg-pre {
+  .hexclave-devtool .sdt-pg-pre {
     font-family: var(--sdt-font-mono);
     font-size: 11px;
     line-height: 1.6;
@@ -1138,32 +1138,32 @@ export const devToolCSS = `
     border: 1px solid var(--sdt-border-subtle);
   }
 
-  .stack-devtool .sdt-preview-loading,
-  .stack-devtool .sdt-preview-unavailable {
+  .hexclave-devtool .sdt-preview-loading,
+  .hexclave-devtool .sdt-preview-unavailable {
     font-size: 12px;
     color: var(--sdt-text-secondary);
     line-height: 1.5;
   }
 
-  .stack-devtool .sdt-preview-error {
+  .hexclave-devtool .sdt-preview-error {
     font-size: 12px;
     color: var(--sdt-error);
     line-height: 1.5;
   }
 
-  .stack-devtool .sdt-preview-code {
+  .hexclave-devtool .sdt-preview-code {
     font-family: var(--sdt-font-mono);
     font-size: 11px;
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-props-table {
+  .hexclave-devtool .sdt-props-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 12px;
   }
 
-  .stack-devtool .sdt-props-table th {
+  .hexclave-devtool .sdt-props-table th {
     text-align: left;
     font-weight: 600;
     color: var(--sdt-text-tertiary);
@@ -1174,24 +1174,24 @@ export const devToolCSS = `
     letter-spacing: 0.5px;
   }
 
-  .stack-devtool .sdt-props-table td {
+  .hexclave-devtool .sdt-props-table td {
     padding: 6px 8px;
     border-bottom: 1px solid var(--sdt-border-subtle);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-props-table td:first-child {
+  .hexclave-devtool .sdt-props-table td:first-child {
     font-family: var(--sdt-font-mono);
     color: var(--sdt-accent-hover);
   }
 
-  .stack-devtool .sdt-props-table td:last-child {
+  .hexclave-devtool .sdt-props-table td:last-child {
     font-family: var(--sdt-font-mono);
     color: var(--sdt-text-secondary);
   }
 
   /* Iframe tabs */
-  .stack-devtool .sdt-iframe-container {
+  .hexclave-devtool .sdt-iframe-container {
     position: relative;
     flex: 1;
     min-height: 0;
@@ -1201,7 +1201,7 @@ export const devToolCSS = `
     flex-direction: column;
   }
 
-  .stack-devtool .sdt-iframe-toolbar {
+  .hexclave-devtool .sdt-iframe-toolbar {
     position: absolute;
     top: 8px;
     right: 8px;
@@ -1214,12 +1214,12 @@ export const devToolCSS = `
     padding: 0;
   }
 
-  .stack-devtool .sdt-panel-fullscreen .sdt-iframe-toolbar {
+  .hexclave-devtool .sdt-panel-fullscreen .sdt-iframe-toolbar {
     top: 60px;
     right: 12px;
   }
 
-  .stack-devtool .sdt-iframe-open-link {
+  .hexclave-devtool .sdt-iframe-open-link {
     display: inline-flex;
     align-items: center;
     min-height: 28px;
@@ -1235,11 +1235,11 @@ export const devToolCSS = `
     text-decoration: none;
   }
 
-  .stack-devtool .sdt-iframe-open-link:hover {
+  .hexclave-devtool .sdt-iframe-open-link:hover {
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-iframe-container iframe {
+  .hexclave-devtool .sdt-iframe-container iframe {
     flex: 1;
     min-height: 0;
     width: 100%;
@@ -1249,7 +1249,7 @@ export const devToolCSS = `
     border-radius: 0;
   }
 
-  .stack-devtool .sdt-iframe-loading {
+  .hexclave-devtool .sdt-iframe-loading {
     flex: 1;
     display: flex;
     align-items: center;
@@ -1258,7 +1258,7 @@ export const devToolCSS = `
     font-size: 13px;
   }
 
-  .stack-devtool .sdt-iframe-error {
+  .hexclave-devtool .sdt-iframe-error {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -1269,7 +1269,7 @@ export const devToolCSS = `
     font-size: 13px;
   }
 
-  .stack-devtool .sdt-iframe-error-btn {
+  .hexclave-devtool .sdt-iframe-error-btn {
     padding: 6px 16px;
     background: var(--sdt-accent);
     color: white;
@@ -1282,24 +1282,24 @@ export const devToolCSS = `
     transition: background 0.15s ease;
   }
 
-  .stack-devtool .sdt-iframe-error-btn:hover {
+  .hexclave-devtool .sdt-iframe-error-btn:hover {
     background: var(--sdt-accent-hover);
   }
 
   /* Shared content fade animation */
-  .stack-devtool .sdt-tab-content-fade {
+  .hexclave-devtool .sdt-tab-content-fade {
     animation: sdt-tab-fade-in 0.15s ease-out;
   }
 
   /* Console tab */
-  .stack-devtool .sdt-console-panel {
+  .hexclave-devtool .sdt-console-panel {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
   }
 
-  .stack-devtool .sdt-console-header {
+  .hexclave-devtool .sdt-console-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1308,13 +1308,13 @@ export const devToolCSS = `
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-console-title {
+  .hexclave-devtool .sdt-console-title {
     color: var(--sdt-text);
     font-size: 13px;
     font-weight: 600;
   }
 
-  .stack-devtool .sdt-console-actions {
+  .hexclave-devtool .sdt-console-actions {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1322,7 +1322,7 @@ export const devToolCSS = `
     justify-content: flex-end;
   }
 
-  .stack-devtool .sdt-console-action-btn {
+  .hexclave-devtool .sdt-console-action-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1342,23 +1342,23 @@ export const devToolCSS = `
     white-space: nowrap;
   }
 
-  .stack-devtool .sdt-console-action-btn:hover {
+  .hexclave-devtool .sdt-console-action-btn:hover {
     color: var(--sdt-text);
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-border);
   }
 
-  .stack-devtool .sdt-console-action-btn svg {
+  .hexclave-devtool .sdt-console-action-btn svg {
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-console-log-scroll {
+  .hexclave-devtool .sdt-console-log-scroll {
     flex: 1;
     min-height: 0;
     overflow: auto;
   }
 
-  .stack-devtool .sdt-console-tabs {
+  .hexclave-devtool .sdt-console-tabs {
     position: relative;
     display: flex;
     flex: 1;
@@ -1368,7 +1368,7 @@ export const devToolCSS = `
     padding: 2px;
   }
 
-  .stack-devtool .sdt-console-tab-indicator {
+  .hexclave-devtool .sdt-console-tab-indicator {
     position: absolute;
     top: 2px;
     left: 0;
@@ -1380,7 +1380,7 @@ export const devToolCSS = `
     z-index: 0;
   }
 
-  .stack-devtool .sdt-console-tab {
+  .hexclave-devtool .sdt-console-tab {
     position: relative;
     z-index: 1;
     flex: 1;
@@ -1397,21 +1397,21 @@ export const devToolCSS = `
     text-align: center;
   }
 
-  .stack-devtool .sdt-console-tab:hover {
+  .hexclave-devtool .sdt-console-tab:hover {
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-console-tab[data-active="true"] {
+  .hexclave-devtool .sdt-console-tab[data-active="true"] {
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-log-list {
+  .hexclave-devtool .sdt-log-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
   }
 
-  .stack-devtool .sdt-log-load-hint {
+  .hexclave-devtool .sdt-log-load-hint {
     padding: 8px 10px;
     color: var(--sdt-text-tertiary);
     font-family: var(--sdt-font);
@@ -1419,7 +1419,7 @@ export const devToolCSS = `
     text-align: center;
   }
 
-  .stack-devtool .sdt-log-item {
+  .hexclave-devtool .sdt-log-item {
     display: flex;
     align-items: flex-start;
     gap: 8px;
@@ -1431,13 +1431,13 @@ export const devToolCSS = `
     font-family: var(--sdt-font-mono);
   }
 
-  .stack-devtool .sdt-log-time {
+  .hexclave-devtool .sdt-log-time {
     color: var(--sdt-text-tertiary);
     flex-shrink: 0;
     font-size: 11px;
   }
 
-  .stack-devtool .sdt-log-type {
+  .hexclave-devtool .sdt-log-type {
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 10px;
@@ -1446,13 +1446,13 @@ export const devToolCSS = `
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-log-message {
+  .hexclave-devtool .sdt-log-message {
     flex: 1;
     color: var(--sdt-text);
     word-break: break-all;
   }
 
-  .stack-devtool .sdt-log-method {
+  .hexclave-devtool .sdt-log-method {
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 10px;
@@ -1460,40 +1460,40 @@ export const devToolCSS = `
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-log-method-get {
+  .hexclave-devtool .sdt-log-method-get {
     background: var(--sdt-info-muted);
     color: var(--sdt-info);
   }
 
-  .stack-devtool .sdt-log-method-post {
+  .hexclave-devtool .sdt-log-method-post {
     background: var(--sdt-success-muted);
     color: var(--sdt-success);
   }
 
-  .stack-devtool .sdt-log-method-put, .stack-devtool .sdt-log-method-patch {
+  .hexclave-devtool .sdt-log-method-put, .hexclave-devtool .sdt-log-method-patch {
     background: var(--sdt-warning-muted);
     color: var(--sdt-warning);
   }
 
-  .stack-devtool .sdt-log-method-delete {
+  .hexclave-devtool .sdt-log-method-delete {
     background: var(--sdt-error-muted);
     color: var(--sdt-error);
   }
 
-  .stack-devtool .sdt-log-status {
+  .hexclave-devtool .sdt-log-status {
     font-size: 11px;
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-log-status-ok {
+  .hexclave-devtool .sdt-log-status-ok {
     color: var(--sdt-success);
   }
 
-  .stack-devtool .sdt-log-status-err {
+  .hexclave-devtool .sdt-log-status-err {
     color: var(--sdt-error);
   }
 
-  .stack-devtool .sdt-log-url {
+  .hexclave-devtool .sdt-log-url {
     flex: 1;
     color: var(--sdt-text);
     overflow: hidden;
@@ -1501,7 +1501,7 @@ export const devToolCSS = `
     white-space: nowrap;
   }
 
-  .stack-devtool .sdt-empty-state {
+  .hexclave-devtool .sdt-empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1514,54 +1514,54 @@ export const devToolCSS = `
     gap: 4px;
   }
 
-  .stack-devtool .sdt-empty-state-icon {
+  .hexclave-devtool .sdt-empty-state-icon {
     font-size: 24px;
     margin-bottom: 8px;
     opacity: 0.5;
   }
 
   /* Config info table */
-  .stack-devtool .sdt-config-table {
+  .hexclave-devtool .sdt-config-table {
     width: 100%;
     border-collapse: collapse;
   }
 
-  .stack-devtool .sdt-config-table td {
+  .hexclave-devtool .sdt-config-table td {
     padding: 8px 10px;
     border-bottom: 1px solid var(--sdt-border-subtle);
     font-size: 12px;
   }
 
-  .stack-devtool .sdt-config-table td:first-child {
+  .hexclave-devtool .sdt-config-table td:first-child {
     color: var(--sdt-text-secondary);
     width: 160px;
     font-weight: 500;
   }
 
-  .stack-devtool .sdt-config-table td:last-child {
+  .hexclave-devtool .sdt-config-table td:last-child {
     color: var(--sdt-text);
     font-family: var(--sdt-font-mono);
     word-break: break-all;
   }
 
-  .stack-devtool .sdt-config-table td .sdt-config-link {
+  .hexclave-devtool .sdt-config-table td .sdt-config-link {
     font-family: inherit;
     color: var(--sdt-accent);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
 
-  .stack-devtool .sdt-config-table td .sdt-config-link:hover {
+  .hexclave-devtool .sdt-config-table td .sdt-config-link:hover {
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-config-muted {
+  .hexclave-devtool .sdt-config-muted {
     color: var(--sdt-text-tertiary);
     font-style: italic;
   }
 
   /* Resize handle */
-  .stack-devtool .sdt-resize-handle {
+  .hexclave-devtool .sdt-resize-handle {
     position: absolute;
     top: 0;
     left: -4px;
@@ -1571,7 +1571,7 @@ export const devToolCSS = `
     z-index: 10;
   }
 
-  .stack-devtool .sdt-resize-handle::after {
+  .hexclave-devtool .sdt-resize-handle::after {
     content: '';
     position: absolute;
     top: 50%;
@@ -1584,12 +1584,12 @@ export const devToolCSS = `
     transition: background 0.15s ease;
   }
 
-  .stack-devtool .sdt-resize-handle:hover::after,
-  .stack-devtool .sdt-resize-handle:active::after {
+  .hexclave-devtool .sdt-resize-handle:hover::after,
+  .hexclave-devtool .sdt-resize-handle:active::after {
     background: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-resize-handle-top {
+  .hexclave-devtool .sdt-resize-handle-top {
     position: absolute;
     top: -4px;
     left: 0;
@@ -1599,7 +1599,7 @@ export const devToolCSS = `
     z-index: 10;
   }
 
-  .stack-devtool .sdt-resize-handle-top::after {
+  .hexclave-devtool .sdt-resize-handle-top::after {
     content: '';
     position: absolute;
     left: 50%;
@@ -1612,12 +1612,12 @@ export const devToolCSS = `
     transition: background 0.15s ease;
   }
 
-  .stack-devtool .sdt-resize-handle-top:hover::after,
-  .stack-devtool .sdt-resize-handle-top:active::after {
+  .hexclave-devtool .sdt-resize-handle-top:hover::after,
+  .hexclave-devtool .sdt-resize-handle-top:active::after {
     background: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-resize-handle-corner {
+  .hexclave-devtool .sdt-resize-handle-corner {
     position: absolute;
     top: -6px;
     left: -6px;
@@ -1627,7 +1627,7 @@ export const devToolCSS = `
     z-index: 11;
   }
 
-  .stack-devtool .sdt-resize-handle-corner::after {
+  .hexclave-devtool .sdt-resize-handle-corner::after {
     content: '';
     position: absolute;
     bottom: 4px;
@@ -1639,12 +1639,12 @@ export const devToolCSS = `
     transition: background 0.15s ease;
   }
 
-  .stack-devtool .sdt-resize-handle-corner:hover::after,
-  .stack-devtool .sdt-resize-handle-corner:active::after {
+  .hexclave-devtool .sdt-resize-handle-corner:hover::after,
+  .hexclave-devtool .sdt-resize-handle-corner:active::after {
     background: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-no-components {
+  .hexclave-devtool .sdt-no-components {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1657,33 +1657,33 @@ export const devToolCSS = `
   }
 
   /* Support tab */
-  .stack-devtool .sdt-support-tab {
+  .hexclave-devtool .sdt-support-tab {
     display: flex;
     flex-direction: column;
     height: calc(100% + 32px);
     margin: -16px;
   }
 
-  .stack-devtool .sdt-support-feedback-pane {
+  .hexclave-devtool .sdt-support-feedback-pane {
     padding: 20px;
     height: 100%;
     overflow-y: auto;
   }
 
   /* Form layout */
-  .stack-devtool .sdt-support-form {
+  .hexclave-devtool .sdt-support-form {
     display: flex;
     flex-direction: column;
     gap: 14px;
   }
 
   /* Type cards */
-  .stack-devtool .sdt-support-type-cards {
+  .hexclave-devtool .sdt-support-type-cards {
     display: flex;
     gap: 8px;
   }
 
-  .stack-devtool .sdt-support-type-card {
+  .hexclave-devtool .sdt-support-type-card {
     flex: 1;
     display: flex;
     align-items: center;
@@ -1701,41 +1701,41 @@ export const devToolCSS = `
     transition: all 0.15s ease;
   }
 
-  .stack-devtool .sdt-support-type-card svg {
+  .hexclave-devtool .sdt-support-type-card svg {
     flex-shrink: 0;
     opacity: 0.6;
     transition: opacity 0.15s ease;
   }
 
-  .stack-devtool .sdt-support-type-card:hover {
+  .hexclave-devtool .sdt-support-type-card:hover {
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-border);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-support-type-card:hover svg {
+  .hexclave-devtool .sdt-support-type-card:hover svg {
     opacity: 1;
   }
 
-  .stack-devtool .sdt-support-type-card-active {
+  .hexclave-devtool .sdt-support-type-card-active {
     border-color: var(--sdt-accent);
     background: var(--sdt-accent-muted);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-support-type-card-active svg {
+  .hexclave-devtool .sdt-support-type-card-active svg {
     opacity: 1;
     color: var(--sdt-accent);
   }
 
   /* Field group */
-  .stack-devtool .sdt-support-field {
+  .hexclave-devtool .sdt-support-field {
     display: flex;
     flex-direction: column;
     gap: 5px;
   }
 
-  .stack-devtool .sdt-support-label {
+  .hexclave-devtool .sdt-support-label {
     font-size: 11px;
     font-weight: 600;
     color: var(--sdt-text-secondary);
@@ -1746,7 +1746,7 @@ export const devToolCSS = `
     gap: 6px;
   }
 
-  .stack-devtool .sdt-support-optional {
+  .hexclave-devtool .sdt-support-optional {
     font-size: 10px;
     font-weight: 400;
     color: var(--sdt-text-tertiary);
@@ -1755,8 +1755,8 @@ export const devToolCSS = `
   }
 
   /* Inputs */
-  .stack-devtool .sdt-support-input,
-  .stack-devtool .sdt-support-textarea {
+  .hexclave-devtool .sdt-support-input,
+  .hexclave-devtool .sdt-support-textarea {
     width: 100%;
     padding: 9px 12px;
     background: var(--sdt-bg);
@@ -1769,25 +1769,25 @@ export const devToolCSS = `
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .stack-devtool .sdt-support-input::placeholder,
-  .stack-devtool .sdt-support-textarea::placeholder {
+  .hexclave-devtool .sdt-support-input::placeholder,
+  .hexclave-devtool .sdt-support-textarea::placeholder {
     color: var(--sdt-text-tertiary);
   }
 
-  .stack-devtool .sdt-support-input:focus,
-  .stack-devtool .sdt-support-textarea:focus {
+  .hexclave-devtool .sdt-support-input:focus,
+  .hexclave-devtool .sdt-support-textarea:focus {
     border-color: var(--sdt-accent);
     box-shadow: 0 0 0 3px var(--sdt-accent-muted);
   }
 
-  .stack-devtool .sdt-support-textarea {
+  .hexclave-devtool .sdt-support-textarea {
     resize: vertical;
     min-height: 100px;
     line-height: 1.6;
   }
 
   /* Submit button */
-  .stack-devtool .sdt-support-submit {
+  .hexclave-devtool .sdt-support-submit {
     width: 100%;
     display: inline-flex;
     align-items: center;
@@ -1807,24 +1807,24 @@ export const devToolCSS = `
     box-shadow: 0 1px 3px rgba(99, 102, 241, 0.3);
   }
 
-  .stack-devtool .sdt-support-submit:hover:not(:disabled) {
+  .hexclave-devtool .sdt-support-submit:hover:not(:disabled) {
     background: var(--sdt-accent-hover);
     box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
     transform: translateY(-1px);
   }
 
-  .stack-devtool .sdt-support-submit:active:not(:disabled) {
+  .hexclave-devtool .sdt-support-submit:active:not(:disabled) {
     transform: translateY(0);
     box-shadow: 0 1px 2px rgba(99, 102, 241, 0.2);
   }
 
-  .stack-devtool .sdt-support-submit:disabled {
+  .hexclave-devtool .sdt-support-submit:disabled {
     opacity: 0.4;
     cursor: not-allowed;
     box-shadow: none;
   }
 
-  .stack-devtool .sdt-support-submit svg {
+  .hexclave-devtool .sdt-support-submit svg {
     flex-shrink: 0;
   }
 
@@ -1832,12 +1832,12 @@ export const devToolCSS = `
     to { transform: rotate(360deg); }
   }
 
-  .stack-devtool .sdt-support-spinner {
+  .hexclave-devtool .sdt-support-spinner {
     animation: sdt-spin 1s linear infinite;
   }
 
   /* Status screens (success / error) */
-  .stack-devtool .sdt-support-status {
+  .hexclave-devtool .sdt-support-status {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1847,17 +1847,17 @@ export const devToolCSS = `
     gap: 6px;
   }
 
-  .stack-devtool .sdt-support-status-success {
+  .hexclave-devtool .sdt-support-status-success {
     background: linear-gradient(180deg, var(--sdt-success-muted), transparent 80%);
     border: 1px solid rgba(34, 197, 94, 0.15);
   }
 
-  .stack-devtool .sdt-support-status-error {
+  .hexclave-devtool .sdt-support-status-error {
     background: linear-gradient(180deg, var(--sdt-error-muted), transparent 80%);
     border: 1px solid rgba(239, 68, 68, 0.15);
   }
 
-  .stack-devtool .sdt-support-status-icon {
+  .hexclave-devtool .sdt-support-status-icon {
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -1867,25 +1867,25 @@ export const devToolCSS = `
     margin-bottom: 6px;
   }
 
-  .stack-devtool .sdt-support-status-success .sdt-support-status-icon {
+  .hexclave-devtool .sdt-support-status-success .sdt-support-status-icon {
     background: rgba(34, 197, 94, 0.15);
     color: var(--sdt-success);
     box-shadow: 0 0 20px rgba(34, 197, 94, 0.1);
   }
 
-  .stack-devtool .sdt-support-status-error .sdt-support-status-icon {
+  .hexclave-devtool .sdt-support-status-error .sdt-support-status-icon {
     background: rgba(239, 68, 68, 0.15);
     color: var(--sdt-error);
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.1);
   }
 
-  .stack-devtool .sdt-support-status-title {
+  .hexclave-devtool .sdt-support-status-title {
     font-size: 14px;
     font-weight: 600;
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-support-status-msg {
+  .hexclave-devtool .sdt-support-status-msg {
     font-size: 12px;
     color: var(--sdt-text-secondary);
     line-height: 1.5;
@@ -1893,12 +1893,12 @@ export const devToolCSS = `
   }
 
   /* Support channels */
-  .stack-devtool .sdt-support-channels {
+  .hexclave-devtool .sdt-support-channels {
     display: flex;
     gap: 8px;
   }
 
-  .stack-devtool .sdt-support-channel {
+  .hexclave-devtool .sdt-support-channel {
     flex: 1;
     display: flex;
     align-items: center;
@@ -1915,25 +1915,25 @@ export const devToolCSS = `
     transition: all 0.15s ease;
   }
 
-  .stack-devtool .sdt-support-channel:hover {
+  .hexclave-devtool .sdt-support-channel:hover {
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-border);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-support-channel svg {
+  .hexclave-devtool .sdt-support-channel svg {
     flex-shrink: 0;
     opacity: 0.6;
     transition: opacity 0.15s ease;
   }
 
-  .stack-devtool .sdt-support-channel:hover svg {
+  .hexclave-devtool .sdt-support-channel:hover svg {
     opacity: 1;
   }
 
   /* --- Light theme: system preference fallback --- */
   @media (prefers-color-scheme: light) {
-    .stack-devtool {
+    .hexclave-devtool {
       --sdt-bg: #ffffff;
       --sdt-bg-elevated: #f8f8fa;
       --sdt-bg-hover: #f0f0f3;
@@ -1962,7 +1962,7 @@ export const devToolCSS = `
   }
 
   /* Export dialog — positioned inside the dev tool panel */
-  .stack-devtool .sdt-share-overlay {
+  .hexclave-devtool .sdt-share-overlay {
     position: absolute;
     inset: 0;
     z-index: 20;
@@ -1974,7 +1974,7 @@ export const devToolCSS = `
     border-radius: var(--sdt-radius-lg);
   }
 
-  .stack-devtool .sdt-share-dialog {
+  .hexclave-devtool .sdt-share-dialog {
     width: 380px;
     max-width: calc(100% - 32px);
     background: var(--sdt-bg);
@@ -1987,19 +1987,19 @@ export const devToolCSS = `
     gap: 16px;
   }
 
-  .stack-devtool .sdt-share-header {
+  .hexclave-devtool .sdt-share-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
 
-  .stack-devtool .sdt-share-title {
+  .hexclave-devtool .sdt-share-title {
     font-size: 14px;
     font-weight: 600;
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-share-status {
+  .hexclave-devtool .sdt-share-status {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2009,19 +2009,19 @@ export const devToolCSS = `
     font-size: 13px;
   }
 
-  .stack-devtool .sdt-share-url-row {
+  .hexclave-devtool .sdt-share-url-row {
     display: flex;
     gap: 6px;
     align-items: center;
   }
 
-  .stack-devtool .sdt-share-url-row .sdt-support-input {
+  .hexclave-devtool .sdt-share-url-row .sdt-support-input {
     flex: 1;
     font-family: var(--sdt-font-mono);
     font-size: 12px;
   }
 
-  .stack-devtool .sdt-share-copy-btn {
+  .hexclave-devtool .sdt-share-copy-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2036,17 +2036,17 @@ export const devToolCSS = `
     transition: all 0.15s ease;
   }
 
-  .stack-devtool .sdt-share-copy-btn:hover {
+  .hexclave-devtool .sdt-share-copy-btn:hover {
     background: var(--sdt-bg-hover);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-share-actions {
+  .hexclave-devtool .sdt-share-actions {
     display: flex;
     gap: 8px;
   }
 
-  .stack-devtool .sdt-share-action-btn {
+  .hexclave-devtool .sdt-share-action-btn {
     flex: 1;
     display: flex;
     align-items: center;
@@ -2065,47 +2065,47 @@ export const devToolCSS = `
     transition: all 0.15s ease;
   }
 
-  .stack-devtool .sdt-share-action-btn:hover {
+  .hexclave-devtool .sdt-share-action-btn:hover {
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-border);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-share-action-btn svg {
+  .hexclave-devtool .sdt-share-action-btn svg {
     flex-shrink: 0;
     opacity: 0.7;
   }
 
-  .stack-devtool .sdt-share-action-btn:hover svg {
+  .hexclave-devtool .sdt-share-action-btn:hover svg {
     opacity: 1;
   }
 
-  .stack-devtool .sdt-share-action-btn-accent {
+  .hexclave-devtool .sdt-share-action-btn-accent {
     background: var(--sdt-accent);
     border-color: var(--sdt-accent);
     color: white;
   }
 
-  .stack-devtool .sdt-share-action-btn-accent:hover {
+  .hexclave-devtool .sdt-share-action-btn-accent:hover {
     background: var(--sdt-accent-hover);
     border-color: var(--sdt-accent-hover);
     color: white;
   }
 
-  .stack-devtool .sdt-share-action-btn-accent svg {
+  .hexclave-devtool .sdt-share-action-btn-accent svg {
     opacity: 1;
   }
 
   /* --- AI Chat tab --- */
 
-  .stack-devtool .sdt-ai-container {
+  .hexclave-devtool .sdt-ai-container {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden;
   }
 
-  .stack-devtool .sdt-ai-messages {
+  .hexclave-devtool .sdt-ai-messages {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
@@ -2113,7 +2113,7 @@ export const devToolCSS = `
     scroll-behavior: smooth;
   }
 
-  .stack-devtool .sdt-ai-message-list {
+  .hexclave-devtool .sdt-ai-message-list {
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -2121,7 +2121,7 @@ export const devToolCSS = `
 
   /* --- Empty state --- */
 
-  .stack-devtool .sdt-ai-empty {
+  .hexclave-devtool .sdt-ai-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -2132,7 +2132,7 @@ export const devToolCSS = `
     text-align: center;
   }
 
-  .stack-devtool .sdt-ai-empty-icon {
+  .hexclave-devtool .sdt-ai-empty-icon {
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -2144,20 +2144,20 @@ export const devToolCSS = `
     margin-bottom: 4px;
   }
 
-  .stack-devtool .sdt-ai-empty-title {
+  .hexclave-devtool .sdt-ai-empty-title {
     font-size: 16px;
     font-weight: 600;
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-ai-empty-desc {
+  .hexclave-devtool .sdt-ai-empty-desc {
     font-size: 12px;
     color: var(--sdt-text-secondary);
     max-width: 320px;
     line-height: 1.5;
   }
 
-  .stack-devtool .sdt-ai-suggestions {
+  .hexclave-devtool .sdt-ai-suggestions {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -2166,7 +2166,7 @@ export const devToolCSS = `
     max-width: 340px;
   }
 
-  .stack-devtool .sdt-ai-suggestion {
+  .hexclave-devtool .sdt-ai-suggestion {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -2183,34 +2183,34 @@ export const devToolCSS = `
     line-height: 1.4;
   }
 
-  .stack-devtool .sdt-ai-suggestion:hover {
+  .hexclave-devtool .sdt-ai-suggestion:hover {
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-border);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-ai-suggestion-icon {
+  .hexclave-devtool .sdt-ai-suggestion-icon {
     font-size: 14px;
     flex-shrink: 0;
   }
 
   /* --- Messages --- */
 
-  .stack-devtool .sdt-ai-msg {
+  .hexclave-devtool .sdt-ai-msg {
     display: flex;
     gap: 10px;
     align-items: flex-start;
   }
 
-  .stack-devtool .sdt-ai-msg-user {
+  .hexclave-devtool .sdt-ai-msg-user {
     justify-content: flex-end;
   }
 
-  .stack-devtool .sdt-ai-msg-assistant {
+  .hexclave-devtool .sdt-ai-msg-assistant {
     justify-content: flex-start;
   }
 
-  .stack-devtool .sdt-ai-avatar {
+  .hexclave-devtool .sdt-ai-avatar {
     width: 26px;
     height: 26px;
     border-radius: 50%;
@@ -2221,30 +2221,30 @@ export const devToolCSS = `
     margin-top: 2px;
   }
 
-  .stack-devtool .sdt-ai-avatar-user {
+  .hexclave-devtool .sdt-ai-avatar-user {
     background: var(--sdt-info-muted);
     color: var(--sdt-info);
     order: 2;
   }
 
-  .stack-devtool .sdt-ai-avatar-assistant {
+  .hexclave-devtool .sdt-ai-avatar-assistant {
     background: var(--sdt-accent-muted);
     color: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-ai-bubble {
+  .hexclave-devtool .sdt-ai-bubble {
     min-width: 0;
     max-width: 85%;
     border-radius: var(--sdt-radius-lg);
     padding: 10px 14px;
   }
 
-  .stack-devtool .sdt-ai-bubble-user {
+  .hexclave-devtool .sdt-ai-bubble-user {
     background: var(--sdt-info-muted);
     border: 1px solid rgba(59, 130, 246, 0.1);
   }
 
-  .stack-devtool .sdt-ai-bubble-user p {
+  .hexclave-devtool .sdt-ai-bubble-user p {
     font-size: 13px;
     line-height: 1.55;
     color: var(--sdt-text);
@@ -2252,21 +2252,21 @@ export const devToolCSS = `
     word-break: break-word;
   }
 
-  .stack-devtool .sdt-ai-bubble-assistant {
+  .hexclave-devtool .sdt-ai-bubble-assistant {
     background: var(--sdt-bg-elevated);
     border: 1px solid var(--sdt-border-subtle);
   }
 
   /* --- Thinking dots --- */
 
-  .stack-devtool .sdt-ai-thinking {
+  .hexclave-devtool .sdt-ai-thinking {
     display: flex;
     align-items: center;
     gap: 4px;
     padding: 4px 0;
   }
 
-  .stack-devtool .sdt-ai-thinking-dot {
+  .hexclave-devtool .sdt-ai-thinking-dot {
     width: 5px;
     height: 5px;
     border-radius: 50%;
@@ -2275,15 +2275,15 @@ export const devToolCSS = `
     animation: sdt-ai-pulse 1.2s ease-in-out infinite;
   }
 
-  .stack-devtool .sdt-ai-thinking-dot:nth-child(2) { animation-delay: 0.15s; }
-  .stack-devtool .sdt-ai-thinking-dot:nth-child(3) { animation-delay: 0.3s; }
+  .hexclave-devtool .sdt-ai-thinking-dot:nth-child(2) { animation-delay: 0.15s; }
+  .hexclave-devtool .sdt-ai-thinking-dot:nth-child(3) { animation-delay: 0.3s; }
 
   @keyframes sdt-ai-pulse {
     0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
     40% { opacity: 1; transform: scale(1.1); }
   }
 
-  .stack-devtool .sdt-ai-streaming-indicator {
+  .hexclave-devtool .sdt-ai-streaming-indicator {
     display: flex;
     align-items: center;
     gap: 3px;
@@ -2292,7 +2292,7 @@ export const devToolCSS = `
 
   /* --- Markdown content inside assistant bubble --- */
 
-  .stack-devtool .sdt-ai-paragraph {
+  .hexclave-devtool .sdt-ai-paragraph {
     font-size: 13px;
     line-height: 1.6;
     color: var(--sdt-text);
@@ -2300,14 +2300,14 @@ export const devToolCSS = `
     word-break: break-word;
   }
 
-  .stack-devtool .sdt-ai-paragraph:last-child { margin-bottom: 0; }
+  .hexclave-devtool .sdt-ai-paragraph:last-child { margin-bottom: 0; }
 
-  .stack-devtool .sdt-ai-bold {
+  .hexclave-devtool .sdt-ai-bold {
     font-weight: 600;
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-ai-inline-code {
+  .hexclave-devtool .sdt-ai-inline-code {
     display: inline;
     padding: 1.5px 5px;
     border-radius: 4px;
@@ -2318,32 +2318,32 @@ export const devToolCSS = `
     border: 1px solid var(--sdt-border-subtle);
   }
 
-  .stack-devtool .sdt-ai-link {
+  .hexclave-devtool .sdt-ai-link {
     color: var(--sdt-info);
     text-decoration: none;
     transition: color 0.1s;
   }
 
-  .stack-devtool .sdt-ai-link:hover {
+  .hexclave-devtool .sdt-ai-link:hover {
     color: var(--sdt-accent-hover);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
 
-  .stack-devtool .sdt-ai-heading {
+  .hexclave-devtool .sdt-ai-heading {
     font-weight: 600;
     color: var(--sdt-text);
     margin: 12px 0 6px;
     line-height: 1.35;
   }
 
-  .stack-devtool .sdt-ai-heading:first-child { margin-top: 0; }
+  .hexclave-devtool .sdt-ai-heading:first-child { margin-top: 0; }
 
-  .stack-devtool .sdt-ai-bubble-assistant h1.sdt-ai-heading { font-size: 15px; }
-  .stack-devtool .sdt-ai-bubble-assistant h2.sdt-ai-heading { font-size: 13.5px; }
-  .stack-devtool .sdt-ai-bubble-assistant h3.sdt-ai-heading { font-size: 13px; }
+  .hexclave-devtool .sdt-ai-bubble-assistant h1.sdt-ai-heading { font-size: 15px; }
+  .hexclave-devtool .sdt-ai-bubble-assistant h2.sdt-ai-heading { font-size: 13.5px; }
+  .hexclave-devtool .sdt-ai-bubble-assistant h3.sdt-ai-heading { font-size: 13px; }
 
-  .stack-devtool .sdt-ai-list {
+  .hexclave-devtool .sdt-ai-list {
     font-size: 13px;
     line-height: 1.6;
     color: var(--sdt-text);
@@ -2351,40 +2351,40 @@ export const devToolCSS = `
     padding-left: 20px;
   }
 
-  .stack-devtool .sdt-ai-list:last-child { margin-bottom: 0; }
+  .hexclave-devtool .sdt-ai-list:last-child { margin-bottom: 0; }
 
-  .stack-devtool .sdt-ai-list li {
+  .hexclave-devtool .sdt-ai-list li {
     margin-bottom: 3px;
     padding-left: 2px;
   }
 
-  .stack-devtool .sdt-ai-list li::marker {
+  .hexclave-devtool .sdt-ai-list li::marker {
     color: var(--sdt-text-tertiary);
   }
 
-  .stack-devtool .sdt-ai-list-ordered {
+  .hexclave-devtool .sdt-ai-list-ordered {
     list-style-type: decimal;
   }
 
-  .stack-devtool .sdt-ai-tools {
+  .hexclave-devtool .sdt-ai-tools {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin: 6px 0;
   }
 
-  .stack-devtool .sdt-ai-part-text {
+  .hexclave-devtool .sdt-ai-part-text {
     margin: 6px 0;
   }
 
-  .stack-devtool .sdt-ai-tool-card {
+  .hexclave-devtool .sdt-ai-tool-card {
     border: 1px solid var(--sdt-border-subtle);
     border-radius: var(--sdt-radius);
     background: var(--sdt-bg-subtle);
     overflow: hidden;
   }
 
-  .stack-devtool .sdt-ai-tool-header {
+  .hexclave-devtool .sdt-ai-tool-header {
     width: 100%;
     border: none;
     background: transparent;
@@ -2398,39 +2398,39 @@ export const devToolCSS = `
     font-family: var(--sdt-font);
   }
 
-  .stack-devtool .sdt-ai-tool-header:hover {
+  .hexclave-devtool .sdt-ai-tool-header:hover {
     background: var(--sdt-bg-hover);
   }
 
-  .stack-devtool .sdt-ai-tool-name {
+  .hexclave-devtool .sdt-ai-tool-name {
     font-size: 12px;
     font-weight: 600;
     color: var(--sdt-text);
     flex: 1;
   }
 
-  .stack-devtool .sdt-ai-tool-status {
+  .hexclave-devtool .sdt-ai-tool-status {
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     font-weight: 600;
   }
 
-  .stack-devtool .sdt-ai-tool-status-running { color: var(--sdt-warning); }
-  .stack-devtool .sdt-ai-tool-status-success { color: var(--sdt-success); }
-  .stack-devtool .sdt-ai-tool-status-error { color: var(--sdt-error); }
+  .hexclave-devtool .sdt-ai-tool-status-running { color: var(--sdt-warning); }
+  .hexclave-devtool .sdt-ai-tool-status-success { color: var(--sdt-success); }
+  .hexclave-devtool .sdt-ai-tool-status-error { color: var(--sdt-error); }
 
-  .stack-devtool .sdt-ai-tool-chevron {
+  .hexclave-devtool .sdt-ai-tool-chevron {
     color: var(--sdt-text-tertiary);
     font-size: 10px;
     transition: transform 0.15s ease;
   }
 
-  .stack-devtool .sdt-ai-tool-chevron-open {
+  .hexclave-devtool .sdt-ai-tool-chevron-open {
     transform: rotate(180deg);
   }
 
-  .stack-devtool .sdt-ai-tool-body {
+  .hexclave-devtool .sdt-ai-tool-body {
     border-top: 1px solid var(--sdt-border-subtle);
     padding: 8px 10px;
     display: flex;
@@ -2438,7 +2438,7 @@ export const devToolCSS = `
     gap: 6px;
   }
 
-  .stack-devtool .sdt-ai-tool-label {
+  .hexclave-devtool .sdt-ai-tool-label {
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
@@ -2446,7 +2446,7 @@ export const devToolCSS = `
     font-weight: 600;
   }
 
-  .stack-devtool .sdt-ai-tool-pre {
+  .hexclave-devtool .sdt-ai-tool-pre {
     margin: 0;
     padding: 8px;
     border: 1px solid var(--sdt-border-subtle);
@@ -2461,12 +2461,12 @@ export const devToolCSS = `
     word-break: break-word;
   }
 
-  .stack-devtool .sdt-ai-tool-running {
+  .hexclave-devtool .sdt-ai-tool-running {
     font-size: 11px;
     color: var(--sdt-text-secondary);
   }
 
-  .stack-devtool .sdt-ai-blockquote {
+  .hexclave-devtool .sdt-ai-blockquote {
     border-left: 3px solid var(--sdt-accent);
     padding-left: 12px;
     margin: 8px 0;
@@ -2475,7 +2475,7 @@ export const devToolCSS = `
     font-style: italic;
   }
 
-  .stack-devtool .sdt-ai-hr {
+  .hexclave-devtool .sdt-ai-hr {
     border: none;
     border-top: 1px solid var(--sdt-border-subtle);
     margin: 12px 0;
@@ -2483,7 +2483,7 @@ export const devToolCSS = `
 
   /* --- Code blocks --- */
 
-  .stack-devtool .sdt-ai-code-block {
+  .hexclave-devtool .sdt-ai-code-block {
     border-radius: var(--sdt-radius);
     overflow: hidden;
     margin: 8px 0;
@@ -2491,9 +2491,9 @@ export const devToolCSS = `
     background: var(--sdt-bg-subtle);
   }
 
-  .stack-devtool .sdt-ai-code-block:last-child { margin-bottom: 0; }
+  .hexclave-devtool .sdt-ai-code-block:last-child { margin-bottom: 0; }
 
-  .stack-devtool .sdt-ai-code-header {
+  .hexclave-devtool .sdt-ai-code-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2502,7 +2502,7 @@ export const devToolCSS = `
     background: var(--sdt-bg);
   }
 
-  .stack-devtool .sdt-ai-code-lang {
+  .hexclave-devtool .sdt-ai-code-lang {
     font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
@@ -2511,7 +2511,7 @@ export const devToolCSS = `
     font-family: var(--sdt-font);
   }
 
-  .stack-devtool .sdt-ai-copy-btn {
+  .hexclave-devtool .sdt-ai-copy-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2527,16 +2527,16 @@ export const devToolCSS = `
     transition: all 0.15s ease;
   }
 
-  .stack-devtool .sdt-ai-copy-btn:hover {
+  .hexclave-devtool .sdt-ai-copy-btn:hover {
     background: var(--sdt-bg-hover);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-ai-copy-btn-copied {
+  .hexclave-devtool .sdt-ai-copy-btn-copied {
     color: var(--sdt-success) !important;
   }
 
-  .stack-devtool .sdt-ai-code-pre {
+  .hexclave-devtool .sdt-ai-code-pre {
     margin: 0;
     padding: 10px 12px;
     overflow-x: auto;
@@ -2546,7 +2546,7 @@ export const devToolCSS = `
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-ai-code-pre code {
+  .hexclave-devtool .sdt-ai-code-pre code {
     font-family: inherit;
     background: none;
     border: none;
@@ -2555,7 +2555,7 @@ export const devToolCSS = `
 
   /* --- Error --- */
 
-  .stack-devtool .sdt-ai-error {
+  .hexclave-devtool .sdt-ai-error {
     display: flex;
     align-items: flex-start;
     gap: 8px;
@@ -2571,7 +2571,7 @@ export const devToolCSS = `
 
   /* --- Input area --- */
 
-  .stack-devtool .sdt-ai-input-area {
+  .hexclave-devtool .sdt-ai-input-area {
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -2581,7 +2581,7 @@ export const devToolCSS = `
     background: var(--sdt-bg);
   }
 
-  .stack-devtool .sdt-ai-new-chat {
+  .hexclave-devtool .sdt-ai-new-chat {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2597,13 +2597,13 @@ export const devToolCSS = `
     font-family: var(--sdt-font);
   }
 
-  .stack-devtool .sdt-ai-new-chat:hover {
+  .hexclave-devtool .sdt-ai-new-chat:hover {
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-border);
     color: var(--sdt-text);
   }
 
-  .stack-devtool .sdt-ai-input-wrapper {
+  .hexclave-devtool .sdt-ai-input-wrapper {
     flex: 1;
     display: flex;
     align-items: center;
@@ -2615,12 +2615,12 @@ export const devToolCSS = `
     transition: border-color 0.15s ease;
   }
 
-  .stack-devtool .sdt-ai-input-wrapper:focus-within {
+  .hexclave-devtool .sdt-ai-input-wrapper:focus-within {
     border-color: var(--sdt-accent);
     box-shadow: 0 0 0 2px var(--sdt-accent-muted);
   }
 
-  .stack-devtool .sdt-ai-input {
+  .hexclave-devtool .sdt-ai-input {
     flex: 1;
     background: transparent;
     border: none;
@@ -2632,15 +2632,15 @@ export const devToolCSS = `
     min-width: 0;
   }
 
-  .stack-devtool .sdt-ai-input::placeholder {
+  .hexclave-devtool .sdt-ai-input::placeholder {
     color: var(--sdt-text-tertiary);
   }
 
-  .stack-devtool .sdt-ai-input:disabled {
+  .hexclave-devtool .sdt-ai-input:disabled {
     opacity: 0.5;
   }
 
-  .stack-devtool .sdt-ai-send-btn {
+  .hexclave-devtool .sdt-ai-send-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2656,24 +2656,24 @@ export const devToolCSS = `
     font-family: var(--sdt-font);
   }
 
-  .stack-devtool .sdt-ai-send-btn-active {
+  .hexclave-devtool .sdt-ai-send-btn-active {
     background: var(--sdt-accent);
     color: white;
     cursor: pointer;
   }
 
-  .stack-devtool .sdt-ai-send-btn-active:hover {
+  .hexclave-devtool .sdt-ai-send-btn-active:hover {
     background: var(--sdt-accent-hover);
   }
 
-  .stack-devtool .sdt-ai-stop-btn,
-  .stack-devtool .sdt-ai-stop-btn:hover {
+  .hexclave-devtool .sdt-ai-stop-btn,
+  .hexclave-devtool .sdt-ai-stop-btn:hover {
     background: var(--sdt-error);
     color: white;
   }
 
   /* Accessible focus indicator for keyboard navigation */
-  .stack-devtool .sdt-tab:focus-visible {
+  .hexclave-devtool .sdt-tab:focus-visible {
     outline: 2px solid var(--sdt-accent);
     outline-offset: -2px;
     border-radius: var(--sdt-radius);
@@ -2681,24 +2681,24 @@ export const devToolCSS = `
 
   /* Reduced motion: disable animations for users who prefer it */
   @media (prefers-reduced-motion: reduce) {
-    .stack-devtool .sdt-panel-inner,
-    .stack-devtool .sdt-panel-exiting,
-    .stack-devtool .sdt-tab-content,
-    .stack-devtool .sdt-ov-pulse-dot,
-    .stack-devtool .sdt-ov-skeleton-pill,
-    .stack-devtool .sdt-support-spinner,
-    .stack-devtool .sdt-ai-thinking-dot {
+    .hexclave-devtool .sdt-panel-inner,
+    .hexclave-devtool .sdt-panel-exiting,
+    .hexclave-devtool .sdt-tab-content,
+    .hexclave-devtool .sdt-ov-pulse-dot,
+    .hexclave-devtool .sdt-ov-skeleton-pill,
+    .hexclave-devtool .sdt-support-spinner,
+    .hexclave-devtool .sdt-ai-thinking-dot {
       animation: none !important;
     }
 
-    .stack-devtool .sdt-tab-indicator,
-    .stack-devtool .sdt-tab {
+    .hexclave-devtool .sdt-tab-indicator,
+    .hexclave-devtool .sdt-tab {
       transition: none !important;
     }
   }
 
   /* --- Stack theme explicit overrides (take priority over system preference) --- */
-  html:has(head > [data-stack-theme="light"]) .stack-devtool {
+  html:has(head > [data-stack-theme="light"]) .hexclave-devtool {
     --sdt-bg: #ffffff;
     --sdt-bg-elevated: #f8f8fa;
     --sdt-bg-hover: #f0f0f3;
@@ -2725,7 +2725,7 @@ export const devToolCSS = `
     --sdt-trigger-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
   }
 
-  html:has(head > [data-stack-theme="dark"]) .stack-devtool {
+  html:has(head > [data-stack-theme="dark"]) .hexclave-devtool {
     --sdt-bg: #0a0a0b;
     --sdt-bg-elevated: #141416;
     --sdt-bg-hover: #1c1c1f;

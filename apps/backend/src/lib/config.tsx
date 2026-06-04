@@ -32,7 +32,7 @@ const DEVELOPMENT_ENVIRONMENT_CONFIG_OVERRIDE = migrateConfigOverride("environme
 // ---------------------------------------------------------------------------------------------------------------------
 // returns the same object as the incomplete config, although with a restricted type so we don't accidentally use the
 // fields that may still be overridden by other layers
-// see packages/stack-shared/src/config/README.md for more details
+// see packages/shared/src/config/README.md for more details
 // TODO actually strip the fields that are not part of the type
 
 export function getRenderedProjectConfigQuery(options: ProjectOptions): RawQuery<Promise<ProjectRenderedConfig>> {

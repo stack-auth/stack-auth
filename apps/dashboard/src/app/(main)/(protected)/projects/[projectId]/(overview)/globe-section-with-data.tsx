@@ -1,6 +1,6 @@
 'use client';
 
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { cn } from "@/lib/utils";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
@@ -32,7 +32,7 @@ function GlobeErrorComponent(props: { error: Error }) {
 
 function GlobeSectionWithMetrics({ includeAnonymous }: { includeAnonymous: boolean }) {
   const adminApp = useAdminApp();
-  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
+  const data = (adminApp as any)[hexclaveAppInternalsSymbol].useMetrics(includeAnonymous);
 
   return (
     <>

@@ -258,7 +258,7 @@ function densifyDau(dau: DauRow[], range: { startUtc: Date, endUtcInclusive: Dat
 }
 
 export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const members = team.useUsers();
   const memberIds = useMemo(() => members.map((m) => m.id), [members]);
   const memberIdsKey = useMemo(() => memberIds.join(","), [memberIds]);
@@ -302,7 +302,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
     };
 
     const runQuery = (query: string, params: Record<string, unknown>) =>
-      stackAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
+      hexclaveAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
 
     const emptySummary: SummaryRow = {
       total_events: 0,
@@ -368,7 +368,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
       token.cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dependency on serialized member IDs, not referential equality
-  }, [stackAdminApp, team.id, memberIdsKey]);
+  }, [hexclaveAdminApp, team.id, memberIdsKey]);
 
   return (
     <div className="flex flex-col gap-4">

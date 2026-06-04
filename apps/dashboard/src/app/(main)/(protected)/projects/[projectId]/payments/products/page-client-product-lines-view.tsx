@@ -660,7 +660,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
 
     prompt += `## Implementation Notes\n\n`;
     if (product.serverOnly) {
-      prompt += `- This product can only be purchased from server-side code. Use \`stackServerApp\` instead of \`stackClientApp\`.\n`;
+      prompt += `- This product can only be purchased from server-side code. Use \`hexclaveServerApp\` instead of \`hexclaveClientApp\`.\n`;
     }
     if (product.stackable) {
       prompt += `- This product is stackable, meaning customers can purchase it multiple times and quantities will accumulate.\n`;
@@ -684,19 +684,19 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       prompt += `\`\`\`typescript\n`;
       if (product.customerType === 'user') {
         prompt += `// Get a user and their item\n`;
-        prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
+        prompt += `const user = await hexclaveServerApp.getUser({ userId: "user_123" });\n`;
         prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
         prompt += `console.log(\`Current quantity: \${item.quantity}\`);\n`;
         prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
       } else if (product.customerType === 'team') {
         prompt += `// Get a team and their item\n`;
-        prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
+        prompt += `const team = await hexclaveServerApp.getTeam({ teamId: "team_123" });\n`;
         prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
         prompt += `console.log(\`Current quantity: \${item.quantity}\`);\n`;
         prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
       } else {
         prompt += `// Get a custom customer and their item\n`;
-        prompt += `const customer = await stackServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
+        prompt += `const customer = await hexclaveServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
         prompt += `const item = await customer.getItem("${itemsList[0][0]}");\n`;
         prompt += `console.log(\`Current quantity: \${item.quantity}\`);\n`;
         prompt += `console.log(\`Display name: \${item.displayName}\`);\n`;
@@ -729,17 +729,17 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       prompt += `**Increase quantity** (add credits/resources):\n\n`;
       prompt += `\`\`\`typescript\n`;
       if (product.customerType === 'user') {
-        prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
+        prompt += `const user = await hexclaveServerApp.getUser({ userId: "user_123" });\n`;
         prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Add 100 units\n`;
         prompt += `await item.increaseQuantity(100);\n`;
       } else if (product.customerType === 'team') {
-        prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
+        prompt += `const team = await hexclaveServerApp.getTeam({ teamId: "team_123" });\n`;
         prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Add 100 units\n`;
         prompt += `await item.increaseQuantity(100);\n`;
       } else {
-        prompt += `const customer = await stackServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
+        prompt += `const customer = await hexclaveServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
         prompt += `const item = await customer.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Add 100 units\n`;
         prompt += `await item.increaseQuantity(100);\n`;
@@ -749,7 +749,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       prompt += `**Decrease quantity** (consume credits/resources):\n\n`;
       prompt += `\`\`\`typescript\n`;
       if (product.customerType === 'user') {
-        prompt += `const user = await stackServerApp.getUser({ userId: "user_123" });\n`;
+        prompt += `const user = await hexclaveServerApp.getUser({ userId: "user_123" });\n`;
         prompt += `const item = await user.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Consume 50 units (allows negative balance)\n`;
         prompt += `await item.decreaseQuantity(50);\n`;
@@ -761,7 +761,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
         prompt += `  throw new Error("Insufficient credits");\n`;
         prompt += `}\n`;
       } else if (product.customerType === 'team') {
-        prompt += `const team = await stackServerApp.getTeam({ teamId: "team_123" });\n`;
+        prompt += `const team = await hexclaveServerApp.getTeam({ teamId: "team_123" });\n`;
         prompt += `const item = await team.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Consume 50 units\n`;
         prompt += `await item.decreaseQuantity(50);\n`;
@@ -772,7 +772,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
         prompt += `  throw new Error("Insufficient quantity");\n`;
         prompt += `}\n`;
       } else {
-        prompt += `const customer = await stackServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
+        prompt += `const customer = await hexclaveServerApp.getCustomCustomer({ customCustomerId: "customer_123" });\n`;
         prompt += `const item = await customer.getItem("${itemsList[0][0]}");\n`;
         prompt += `// Consume 50 units\n`;
         prompt += `await item.decreaseQuantity(50);\n`;
@@ -1779,8 +1779,8 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const [editingItem, setEditingItem] = useState<{ id: string, displayName: string, customerType: 'user' | 'team' | 'custom' } | null>(null);
   const [newItemCustomerType, setNewItemCustomerType] = useState<'user' | 'team' | 'custom' | undefined>(undefined);
   const [refreshKey, setRefreshKey] = useState(0);
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
@@ -1882,7 +1882,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
   // Handler for saving product
   const handleSaveProduct = async (productId: string, product: Product) => {
-    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
+    const success = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
     if (success) {
       setShowProductDialog(false);
       toast({ title: editingProduct ? "Product updated" : "Product created" });
@@ -1891,7 +1891,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
   // Handler for saving item
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
-    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
+    const success = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
     if (success) {
       setShowItemDialog(false);
       setEditingItem(null);
@@ -1920,7 +1920,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   }));
 
   const handleInlineSaveProduct = async (productId: string, product: Product) => {
-    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
+    const success = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
     if (success) {
       toast({ title: "Product updated" });
     }
@@ -1952,7 +1952,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         typedEntries(paymentsConfig.productLines)
           .filter(([id]) => id !== productLineId)
       );
-      success = await updateConfig({ adminApp: stackAdminApp, configUpdate: {
+      success = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: {
         "payments.products": updatedProducts,
         "payments.productLines": updatedProductLines,
       }, pushable: true });
@@ -1960,7 +1960,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         toast({ title: "Product and empty product line deleted" });
       }
     } else {
-      success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
+      success = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
       if (success) {
         toast({ title: "Product deleted" });
       }
@@ -1986,7 +1986,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           setShowProductDialog(true);
         }}
         onSaveProductWithGroup={async (productLineId, productId, product) => {
-          const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: {
+          const success = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: {
             [`payments.products.${productId}`]: product,
           }, pushable: true });
           if (success) {
@@ -1994,13 +1994,13 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           }
         }}
         onCreateProductLine={async (productLineId, displayName, customerType) => {
-          await updateConfig({ adminApp: stackAdminApp, configUpdate: {
+          await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: {
             [`payments.productLines.${productLineId}`]: { displayName, customerType },
           }, pushable: true });
         }}
         onUpdateProductLine={async (productLineId, displayName) => {
           await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate: { [`payments.productLines.${productLineId}.displayName`]: displayName },
             pushable: true,
           });
@@ -2029,7 +2029,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           }
 
           await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate: configUpdateObj as any,
             pushable: true,
           });
@@ -2044,7 +2044,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           // Update the entire product object with the new productLineId
           // Using undefined instead of null to properly clear the value
           await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate: {
               [`payments.products.${productId}`]: {
                 ...currentProduct,

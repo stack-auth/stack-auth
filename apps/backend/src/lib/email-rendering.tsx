@@ -334,8 +334,8 @@ export function findComponentValue(element, targetStackComponent) {
     const isTarget =
       type &&
       typeof type === "function" &&
-      "__stackComponent" in type &&
-      type.__stackComponent === targetStackComponent;
+      "__hexclaveComponent" in type &&
+      type.__hexclaveComponent === targetStackComponent;
 
     if (isTarget) {
       matches.push(node);
@@ -376,9 +376,9 @@ const stackframeEmailsPackage = deindent`
   import React from 'react';
   import { Img } from '@react-email/components';
   export const Subject = (props) => null;
-  Subject.__stackComponent = "Subject";
+  Subject.__hexclaveComponent = "Subject";
   export const NotificationCategory = (props) => null;
-  NotificationCategory.__stackComponent = "NotificationCategory";
+  NotificationCategory.__hexclaveComponent = "NotificationCategory";
 
   export function Logo(props) {
     return React.createElement(

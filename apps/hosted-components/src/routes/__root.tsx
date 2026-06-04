@@ -8,7 +8,7 @@ import {
   useNavigate
 } from '@tanstack/react-router';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Component, useEffect, useMemo, useState } from 'react';
+import { Component, useMemo, useSyncExternalStore } from 'react';
 
 
 export function getProjectId(): string | null {
@@ -23,12 +23,61 @@ export function getProjectId(): string | null {
   return null;
 }
 
+function getProjectIdSnapshot(): string | null | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return getProjectId();
+}
+
+function subscribeToProjectIdSnapshot(onStoreChange: () => void) {
+  const timeoutId = window.setTimeout(onStoreChange, 0);
+  return () => window.clearTimeout(timeoutId);
+}
+
+function useProjectIdFromHostname(): string | null | undefined {
+  return useSyncExternalStore(
+    subscribeToProjectIdSnapshot,
+    getProjectIdSnapshot,
+    () => undefined,
+  );
+}
+
+function getApiBaseUrlFromEnv(): string | undefined {
+  return import.meta.env.VITE_HEXCLAVE_API_URL ?? import.meta.env.VITE_STACK_API_URL ?? undefined;
+}
+
 function FullPageError({ title, message }: { title: string, message: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
       <div style={{ textAlign: 'center', maxWidth: 480, padding: 24 }}>
         <h1 style={{ fontSize: 24, marginBottom: 8 }}>{title}</h1>
         <p style={{ color: '#666' }}>{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function FullPageLoadingSkeleton() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 24 }}>
+      <div
+        aria-label="Loading"
+        aria-busy="true"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          width: '100%',
+          maxWidth: 380,
+        }}
+      >
+        <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f0f0' }} />
+        <div style={{ width: '60%', height: 20, borderRadius: 999, background: '#f0f0f0' }} />
+        <div style={{ width: '82%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
+        <div style={{ width: '70%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
       </div>
     </div>
   );
@@ -86,20 +135,16 @@ function RootDocument({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const [projectId, setProjectId] = useState<string | null | undefined>("internal");
-
-  useEffect(() => {
-    setProjectId(getProjectId());
-  }, []);
+  const projectId = useProjectIdFromHostname();
 
   const isValidProjectId = projectId ? (projectId === "internal" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) : false;
 
-  const stackApp = useMemo(() => {
+  const hexclaveApp = useMemo(() => {
     if (!projectId || !isValidProjectId) return null;
     return new StackClientApp({
       projectId,
       tokenStore: "cookie",
-      baseUrl: import.meta.env.VITE_STACK_API_URL || undefined,
+      baseUrl: getApiBaseUrlFromEnv(),
       urls: {
         handler: "/handler",
         signIn: "/handler/sign-in",
@@ -110,10 +155,10 @@ function RootComponent() {
       },
       redirectMethod: { useNavigate: useNavigate as any }
     });
-  }, [projectId]);
+  }, [isValidProjectId, projectId]);
 
   if (projectId === undefined) {
-    return <></>;
+    return <FullPageLoadingSkeleton />;
   }
 
   if (!projectId) {
@@ -126,7 +171,7 @@ function RootComponent() {
 
   return (
     <ErrorBoundary>
-      <StackProvider app={stackApp!}>
+      <StackProvider app={hexclaveApp!}>
         <StackTheme>
           <Outlet />
         </StackTheme>
@@ -134,4 +179,3 @@ function RootComponent() {
     </ErrorBoundary>
   );
 }
-
