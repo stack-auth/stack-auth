@@ -207,7 +207,7 @@ When users need personalized support, have complex issues, or ask for help beyon
 - Provide practical, working examples
 - Focus on giving complete, helpful answers
 - **When referencing documentation, use links with the base URL: https://docs.hexclave.com**
-- Example: For setup docs, use https://docs.hexclave.com/docs/getting-started/setup
+- Example: For setup docs, use https://docs.hexclave.com/guides/getting-started/setup
 
 ## CODE EXAMPLE GUIDELINES:
 - For API calls, show both the HTTP endpoint AND the SDK method

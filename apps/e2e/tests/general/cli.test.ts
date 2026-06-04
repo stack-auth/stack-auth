@@ -245,7 +245,7 @@ describe("Stack CLI", () => {
   it("exec help mentions docs URL", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(["exec", "--help"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("https://docs.hexclave.com/docs/sdk");
+    expect(stdout).toContain("https://docs.hexclave.com/sdk/overview");
   });
 
   it("exec help mentions --cloud-project-id and --config-file", async ({ expect }) => {

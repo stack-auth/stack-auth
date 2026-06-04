@@ -333,6 +333,198 @@ export const cliSetupPrompt = deindent`
   </Steps>
 `;
 
+function getRestBackendSetupPrompt(kind: "python" | "rest-api") {
+  const isPython = kind === "python";
+  const title = isPython ? "Python Backend Setup" : "Other Backend Setup (REST API)";
+  const intro = isPython
+    ? "Follow these instructions to authenticate requests to a Python backend with Hexclave."
+    : "Follow these instructions to authenticate requests from any backend language using Hexclave's REST API.";
+  const useCase = isPython
+    ? "This setup is for Python backends that do not use the JavaScript SDK."
+    : "Use this option when your backend is not JavaScript/TypeScript or Python, or when you want to call Hexclave over plain HTTP.";
+  const dependencyStep = isPython ? deindent`
+    <Step title="Install backend dependencies">
+      Install \`requests\` for REST API verification. If you want to use JWT verification, also install \`PyJWT[crypto]\`.
+
+      \`\`\`sh
+      pip install requests PyJWT[crypto]
+      \`\`\`
+    </Step>
+  ` : "";
+  const jwtVerification = isPython ? deindent`
+    \`\`\`python
+    import os
+    import jwt
+    from jwt import PyJWKClient
+    from jwt.exceptions import InvalidTokenError
+
+    jwks_client = PyJWKClient(
+        f"https://api.hexclave.com/api/v1/projects/{os.environ['HEXCLAVE_PROJECT_ID']}/.well-known/jwks.json"
+    )
+
+    def get_current_user_id_from_jwt(request):
+        access_token = request.headers.get("x-stack-access-token")
+        if not access_token:
+            return None
+
+        try:
+            signing_key = jwks_client.get_signing_key_from_jwt(access_token)
+            payload = jwt.decode(
+                access_token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience=os.environ["HEXCLAVE_PROJECT_ID"],
+            )
+            return payload["sub"]
+        except InvalidTokenError:
+            return None
+    \`\`\`
+  ` : deindent`
+    \`\`\`text
+    1. Read the access token from the \`x-stack-access-token\` header.
+    2. Fetch the JWKS from:
+       https://api.hexclave.com/api/v1/projects/<your-project-id>/.well-known/jwks.json
+    3. Verify the JWT signature with an ES256-capable JWT library.
+    4. Verify the token audience is your Hexclave project ID.
+    5. Use the \`sub\` claim as the authenticated user ID.
+    6. Reject the request if any verification step fails.
+    \`\`\`
+  `;
+  const restVerification = isPython ? deindent`
+    \`\`\`python
+    import os
+    import requests
+
+    def get_current_hexclave_user(request):
+        access_token = request.headers.get("x-stack-access-token")
+        if not access_token:
+            return None
+
+        response = requests.get(
+            "https://api.hexclave.com/api/v1/users/me",
+            headers={
+                "x-stack-access-type": "server",
+                "x-stack-project-id": os.environ["HEXCLAVE_PROJECT_ID"],
+                "x-stack-secret-server-key": os.environ["HEXCLAVE_SECRET_SERVER_KEY"],
+                "x-stack-access-token": access_token,
+            },
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            return response.json()
+
+        return None
+    \`\`\`
+  ` : deindent`
+    \`\`\`sh
+    curl https://api.hexclave.com/api/v1/users/me \\
+      -H "x-stack-access-type: server" \\
+      -H "x-stack-project-id: $HEXCLAVE_PROJECT_ID" \\
+      -H "x-stack-secret-server-key: $HEXCLAVE_SECRET_SERVER_KEY" \\
+      -H "x-stack-access-token: <access-token-from-request>"
+    \`\`\`
+  `;
+
+  return deindent`
+    ## ${title}
+
+    ${intro}
+
+    ${useCase} The backend flow is: your frontend sends the user's access token to your backend, and your backend verifies it before serving protected data.
+
+    <Steps titleSize="h3">
+      <Step title="Choose a project setup">
+        You can use either a development environment with the local dashboard or a Hexclave Cloud project.
+
+        <AccordionGroup>
+          <Accordion title="Option 1: Local dashboard (recommended)" defaultOpen>
+            If this project already has a \`hexclave.config.ts\` file for another frontend or backend, reuse that same file so the whole project shares one Hexclave config. Otherwise, create a new \`hexclave.config.ts\` file in your workspace:
+
+            \`\`\`ts hexclave.config.ts
+            import type { HexclaveConfig } from "@hexclave/js";
+
+            export const config: HexclaveConfig = "show-onboarding";
+            \`\`\`
+
+            Run your backend through the Hexclave CLI so it starts the local dashboard and injects the Hexclave environment variables:
+
+            \`\`\`json package.json
+            {
+              "scripts": {
+                "dev": "hexclave dev --config-file ./hexclave.config.ts -- <your-backend-dev-command>"
+              }
+            }
+            \`\`\`
+
+            Your backend should read \`HEXCLAVE_PROJECT_ID\` and \`HEXCLAVE_SECRET_SERVER_KEY\` from the environment.
+          </Accordion>
+
+          <Accordion title="Option 2: Hexclave Cloud project">
+            Create or select a project on [app.hexclave.com](https://app.hexclave.com). Then copy the project ID and a secret server key into your backend environment:
+
+            \`\`\`.env .env
+            HEXCLAVE_PROJECT_ID=<your-project-id>
+            HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
+            \`\`\`
+
+            The secret server key must only be available to your backend. Never expose it to browser code, mobile clients, logs, or public repositories.
+          </Accordion>
+        </AccordionGroup>
+      </Step>
+
+      ${dependencyStep}
+
+      <Step title="Send the user's access token to your backend">
+        From your frontend, get the current user's access token and pass it to your backend endpoint.
+
+        \`\`\`ts
+        // this is your frontend's code!
+        const { accessToken } = await user.getAuthJson();
+        const response = await fetch("<your-backend-endpoint>", {
+          headers: {
+            "x-stack-access-token": accessToken,
+          },
+        });
+        \`\`\`
+      </Step>
+
+      <Step title="Verify the token">
+        Hexclave supports two backend verification approaches. JWT verification is faster and local to your backend. REST endpoint verification asks Hexclave to validate the token and return the current user object.
+
+        <AccordionGroup>
+          <Accordion title="Verify with JWT" defaultOpen>
+            JWT verification validates the token locally in your backend. It does not require a request to Hexclave on every call, but it only gives you the information contained in the token, such as the user ID.
+
+            ${jwtVerification}
+          </Accordion>
+
+          <Accordion title="Verify with the Hexclave REST endpoint">
+            REST endpoint verification asks Hexclave to validate the token and returns the current user object. Use this when you want the complete, up-to-date user profile or do not want to implement JWT verification yourself.
+
+            ${restVerification}
+
+            If the response is \`200 OK\`, the user is authenticated. If the response is not \`200 OK\`, treat the request as unauthenticated.
+          </Accordion>
+        </AccordionGroup>
+      </Step>
+
+      <Step title="Protect authenticated endpoints">
+        Wrap your protected endpoints with a helper that extracts \`x-stack-access-token\`, verifies it with either JWT verification or REST API verification, and returns \`401 Unauthorized\` when verification fails.
+
+        <Note>
+          Disable HTTP caching for authenticated responses with a header like \`Cache-Control: private, no-store\`.
+        </Note>
+      </Step>
+
+      <Step title="Done!" />
+    </Steps>
+  `;
+}
+
+export const pythonBackendSetupPrompt = getRestBackendSetupPrompt("python");
+export const restApiBackendSetupPrompt = getRestBackendSetupPrompt("rest-api");
+
 export const aiAgentConfigPreparationPrompt = deindent`
   ## AI Agent Configuration
 
@@ -411,6 +603,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     ## ${typeLabel ? `${typeLabel} SDK Setup Instructions` : "SDK Setup Instructions"}
 
     Follow these instructions in order to set up and get started with the Hexclave SDK ${typeLabel ? `for ${typeLabel} ` : "in various languages"}.
+
+    Note: These instructions are for setting up the Hexclave SDK to build your own CLIs. If you're looking to use the Hexclave CLI instead, see the [CLI documentation](https://docs.hexclave.com/guides/going-further/cli).
 
     ${isAiPrompt ? "Not all steps are applicable to every type of application; for example, React apps have some extra steps that are not needed with other frameworks." : ""}
 
@@ -840,6 +1034,10 @@ export const aiSetupPrompt = deindent`
   ${convexSetupPrompt}
 
   ${supabaseSetupPrompt}
+
+  ${pythonBackendSetupPrompt}
+
+  ${restApiBackendSetupPrompt}
 
   ${cliSetupPrompt}
 

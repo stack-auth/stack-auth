@@ -77,7 +77,6 @@ const docsJson = {
           {
             "group": "Going Further",
             "pages": [
-              "guides/going-further/backend-integration",
               "guides/going-further/cli",
               "guides/going-further/local-vs-cloud-dashboard",
               "guides/going-further/hexclave-config"
