@@ -120,7 +120,7 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   // Fast path: if the config is a plain static literal (no imports, no helpers),
   // apply the update deterministically without invoking the AI agent.
   const staticConfig = tryParseHexclaveConfigFileContent(content, configFilePath);
-  if (staticConfig != null && typeof staticConfig === "object" && isValidConfig(staticConfig)) {
+  if (staticConfig != null && isValidConfig(staticConfig)) {
     const merged = override(staticConfig, configUpdate);
     if (!isValidConfig(merged)) {
       throw new Error(`${LOG_PREFIX} Merged config is invalid after applying update to ${configFilePath}`);
@@ -132,12 +132,12 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   // Agent path: config has custom structure (imports, helpers, external files)
   // that must be preserved — delegate to the AI agent.
   const baselineConfig = await tryReadConfigForValidation(configFilePath);
-  const snapshots = snapshotConfigFiles(configFilePath, content);
+  const { snapshots, seen } = snapshotConfigFiles(configFilePath, content);
   try {
     await runConfigUpdateAgent({
       prompt: buildConfigUpdatePrompt(path.basename(configFilePath), configUpdate, baselineConfig),
       cwd: path.dirname(configFilePath),
-      onFileWillChange: (filePath) => captureSnapshotIfAbsent(snapshots, filePath),
+      onFileWillChange: (filePath) => captureSnapshotIfAbsent(snapshots, filePath, seen),
     });
     await validateAgentUpdate(configFilePath, baselineConfig, configUpdate, snapshots);
   } catch (error) {
@@ -213,21 +213,24 @@ function parseAgentTimeoutMs(): number {
   return parsed;
 }
 
-function captureSnapshotIfAbsent(snapshots: ConfigFileSnapshot[], filePath: string): void {
+function captureSnapshotIfAbsent(snapshots: ConfigFileSnapshot[], filePath: string, seen: Set<string>): void {
   const resolved = path.resolve(filePath);
-  if (snapshots.some((snapshot) => snapshot.path === resolved)) return;
+  if (seen.has(resolved)) return;
+  seen.add(resolved);
   snapshots.push({ path: resolved, content: existsSync(resolved) ? readFileSync(resolved, "utf-8") : null });
 }
 
-function snapshotConfigFiles(configFilePath: string, configContent: string): ConfigFileSnapshot[] {
+function snapshotConfigFiles(configFilePath: string, configContent: string): { snapshots: ConfigFileSnapshot[]; seen: Set<string> } {
   const dir = path.dirname(configFilePath);
-  const snapshots: ConfigFileSnapshot[] = [{ path: path.resolve(configFilePath), content: configContent }];
+  const resolvedConfig = path.resolve(configFilePath);
+  const snapshots: ConfigFileSnapshot[] = [{ path: resolvedConfig, content: configContent }];
+  const seen = new Set<string>([resolvedConfig]);
   for (const specifier of getRelativeImportSpecifiers(configContent)) {
     const resolved = path.resolve(dir, specifier);
     if (!isPathInsideDir(dir, resolved)) continue;
-    captureSnapshotIfAbsent(snapshots, resolved);
+    captureSnapshotIfAbsent(snapshots, resolved, seen);
   }
-  return snapshots;
+  return { snapshots, seen };
 }
 
 function restoreConfigFiles(snapshots: ConfigFileSnapshot[]): void {
