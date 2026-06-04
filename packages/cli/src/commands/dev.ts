@@ -437,12 +437,16 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   const url = dashboardUrl(options.port);
   if (await isDashboardReachable(url, options.secret)) {
     const currentVersion = cliVersion();
-    const runningVersion = readDevEnvState().localDashboardsByPort?.[String(options.port)]?.version;
+    const runningDashboard = readDevEnvState().localDashboardsByPort?.[String(options.port)];
+    const runningVersion = runningDashboard?.version;
     if (shouldRestartDashboard(currentVersion, runningVersion)) {
       logDev(`Existing Hexclave dashboard is ${runningVersion}; restarting with ${currentVersion}...`);
       await killLocalDashboard(url, options.port);
     } else {
       logDev(`Using existing Hexclave dashboard on ${url}.`);
+      if (runningDashboard?.logPath != null) {
+        logDev(`Dashboard logs: ${runningDashboard.logPath}`);
+      }
       return;
     }
   }
@@ -486,6 +490,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
       throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
     }
     recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+    logDev(`Dashboard logs: ${logPath}`);
     child.unref();
 
     const startedAt = performance.now();
@@ -595,6 +600,42 @@ function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
     : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
 }
 
+function pendingBrowserSecretConfirmationCodeFromState(port: number): HeartbeatResponse | null {
+  const pending = readDevEnvState().pendingBrowserSecretConfirmationCodesByPort?.[String(port)];
+  if (pending == null || pending.expiresAtMillis <= Date.now()) {
+    return null;
+  }
+  return {
+    ok: true,
+    browser_secret_confirmation_code: pending.code,
+    browser_secret_confirmation_code_expires_at_millis: pending.expiresAtMillis,
+  };
+}
+
+function maybeLogPendingBrowserSecretConfirmationCodeFromState(port: number, lastLoggedConfirmationCode: string | null): string | null {
+  const pending = pendingBrowserSecretConfirmationCodeFromState(port);
+  const code = pending?.browser_secret_confirmation_code;
+  if (code == null || code === lastLoggedConfirmationCode) {
+    return lastLoggedConfirmationCode;
+  }
+  if (pending == null) {
+    return lastLoggedConfirmationCode;
+  }
+  logBrowserSecretConfirmationCode(pending);
+  return code;
+}
+
+async function logPendingBrowserSecretConfirmationCodesUntilStopped(options: {
+  port: number,
+  shouldStop: () => boolean,
+}): Promise<void> {
+  let lastLoggedConfirmationCode: string | null = null;
+  while (!options.shouldStop()) {
+    lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
+    await wait(1_000);
+  }
+}
+
 async function createRemoteDevelopmentEnvironmentSession(options: {
   apiBaseUrl: string,
   configFilePath: string,
@@ -621,10 +662,110 @@ async function createRemoteDevelopmentEnvironmentSession(options: {
   return body;
 }
 
+const APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND_PARENT_PID";
+const APP_COMMAND_WRAPPER_COMMAND_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND";
+const APP_COMMAND_WRAPPER_ARGS_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON";
+
+const APP_COMMAND_WRAPPER_SCRIPT = String.raw`
+const { spawn } = require("node:child_process");
+
+const parentPid = Number(process.env.HEXCLAVE_DEV_APP_COMMAND_PARENT_PID);
+const command = process.env.HEXCLAVE_DEV_APP_COMMAND;
+const rawArgs = process.env.HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON ?? "[]";
+if (!Number.isSafeInteger(parentPid) || parentPid <= 0 || !command) {
+  console.error("[Hexclave] Invalid app-command wrapper configuration.");
+  process.exit(1);
+}
+
+let args;
+try {
+  args = JSON.parse(rawArgs);
+} catch (error) {
+  console.error("[Hexclave] Invalid app-command argument payload.", error);
+  process.exit(1);
+}
+if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) {
+  console.error("[Hexclave] Invalid app-command arguments.");
+  process.exit(1);
+}
+
+const childEnv = { ...process.env };
+delete childEnv.HEXCLAVE_DEV_APP_COMMAND_PARENT_PID;
+delete childEnv.HEXCLAVE_DEV_APP_COMMAND;
+delete childEnv.HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON;
+
+const child = spawn(command, args, {
+  env: childEnv,
+  stdio: "inherit",
+});
+
+let stopping = false;
+let forceKillTimer;
+
+function signalOwnProcessGroup(signal) {
+  try {
+    process.kill(-process.pid, signal);
+  } catch {
+    // best-effort
+  }
+}
+
+function stopProcessGroup(signal) {
+  if (stopping) return;
+  stopping = true;
+  signalOwnProcessGroup(signal);
+  forceKillTimer = setTimeout(() => signalOwnProcessGroup("SIGKILL"), 5000);
+  forceKillTimer.unref();
+}
+
+process.on("SIGINT", () => stopProcessGroup("SIGINT"));
+process.on("SIGTERM", () => stopProcessGroup("SIGTERM"));
+
+const parentWatch = setInterval(() => {
+  try {
+    process.kill(parentPid, 0);
+  } catch {
+    stopProcessGroup("SIGTERM");
+  }
+}, 1000);
+parentWatch.unref();
+
+child.on("close", (code, signal) => {
+  clearInterval(parentWatch);
+  if (forceKillTimer != null) clearTimeout(forceKillTimer);
+  if (code != null) {
+    process.exit(code);
+  }
+  if (signal === "SIGINT") process.exit(130);
+  if (signal === "SIGTERM") process.exit(143);
+  if (signal === "SIGKILL") process.exit(137);
+  process.exit(1);
+});
+
+child.on("error", (error) => {
+  console.error("[Hexclave] Failed to run app command:", error);
+  process.exit(1);
+});
+`;
+
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command.command, command.args, { stdio: "inherit", env });
-    const cleanup = forwardSignals(child);
+    const child = process.platform === "win32"
+      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
+        detached: true,
+        stdio: "inherit",
+        env: {
+          ...env,
+          [APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR]: String(process.pid),
+          [APP_COMMAND_WRAPPER_COMMAND_ENV_VAR]: command.command,
+          [APP_COMMAND_WRAPPER_ARGS_ENV_VAR]: JSON.stringify(command.args),
+        },
+      });
+    const cleanup = forwardSignals(child, {
+      forceKillAfterMs: 5_000,
+      processGroup: process.platform !== "win32",
+    });
     child.on("close", (code) => {
       cleanup();
       resolvePromise(code ?? 1);
@@ -676,8 +817,13 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
   shouldStop: () => boolean,
 }): Promise<void> {
   let lastLoggedConfirmationCode: string | null = null;
+  let heartbeatAttempt = 0;
   while (!options.shouldStop()) {
-    if (await waitForHeartbeatIntervalOrStop(options.shouldStop)) return;
+    if (await waitForHeartbeatIntervalOrStop(options.shouldStop)) {
+      return;
+    }
+    lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
+    heartbeatAttempt += 1;
 
     let response: Response;
     const controller = new AbortController();
@@ -691,7 +837,8 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
         method: "POST",
         signal: controller.signal,
       }, options.secret, options.port);
-    } catch {
+    } catch (error) {
+      lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
       if (options.shouldStop()) return;
       sessionState.session = await restartDashboardForHeartbeat({
         apiBaseUrl: options.apiBaseUrl,
@@ -806,6 +953,10 @@ export function registerDevCommand(program: Command) {
         secret,
         shouldStop: () => stopped,
       });
+      const browserSecretCodePolling = logPendingBrowserSecretConfirmationCodesUntilStopped({
+        port,
+        shouldStop: () => stopped,
+      });
       let exitCode = 1;
       try {
         exitCode = await runChildProcess(childCommand, {
@@ -814,7 +965,7 @@ export function registerDevCommand(program: Command) {
         });
       } finally {
         stopped = true;
-        await heartbeat;
+        await Promise.all([heartbeat, browserSecretCodePolling]);
         await closeSession(sessionState.session.session_id, secret, port);
       }
       process.exit(exitCode);

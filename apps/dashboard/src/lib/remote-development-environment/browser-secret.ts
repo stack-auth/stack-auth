@@ -34,7 +34,7 @@ import {
   REMOTE_DEVELOPMENT_ENVIRONMENT_BROWSER_SECRET_INVALID_ERROR_CODE,
 } from "./browser-secret-common";
 import { isRemoteDevelopmentEnvironmentEnabled } from "./env";
-import { readRemoteDevelopmentEnvironmentState } from "./state";
+import { readRemoteDevelopmentEnvironmentState, updateRemoteDevelopmentEnvironmentState } from "./state";
 
 const BROWSER_SECRET_RATE_LIMIT_MAX_REQUESTS = 50;
 const BROWSER_SECRET_RATE_LIMIT_WINDOW_MS = 10_000;
@@ -128,6 +128,13 @@ function requestHostOrigin(req: NextRequest): string | null {
   const host = requestHost(req);
   if (host == null) return null;
   return `${requestProtocol(req)}://${host}`;
+}
+
+function requestHostPort(req: NextRequest): string | null {
+  const host = requestHost(req);
+  if (host == null) return null;
+  const parsed = createUrlIfValid(`http://${host}`);
+  return parsed?.port.length ? parsed.port : null;
 }
 
 function urlOrigin(value: string | null): string | null {
@@ -250,6 +257,27 @@ function issueBrowserSecret(target: { host: string, origin: string }): string {
   return secret;
 }
 
+function updatePendingConfirmationCodeForCli(req: NextRequest, code: ConfirmationCodeState | undefined): void {
+  const port = requestHostPort(req);
+  if (port == null) return;
+  updateRemoteDevelopmentEnvironmentState((state) => {
+    const nextPending = { ...state.pendingBrowserSecretConfirmationCodesByPort };
+    if (code == null || unixNowMs() > code.expiresAtMs) {
+      delete nextPending[port];
+    } else {
+      nextPending[port] = {
+        code: code.code,
+        expiresAtMillis: code.expiresAtMs,
+        updatedAtMillis: unixNowMs(),
+      };
+    }
+    return {
+      ...state,
+      pendingBrowserSecretConfirmationCodesByPort: nextPending,
+    };
+  });
+}
+
 function browserSecretCookieIsSecure(req: NextRequest): boolean {
   return requestProtocol(req) === "https";
 }
@@ -323,8 +351,9 @@ export async function startRemoteDevelopmentEnvironmentBrowserSecretLocalboundSe
 
     const parsedUrl = createUrlIfValid(request.url ?? "", "http://127.0.0.1");
     const requestToken = parsedUrl?.searchParams.get("token");
+    const rateLimitAllowed = takeRemoteDevelopmentEnvironmentBrowserSecretRateLimitSlot();
     const allowed = (
-      takeRemoteDevelopmentEnvironmentBrowserSecretRateLimitSlot() &&
+      rateLimitAllowed &&
       request.method === "GET" &&
       parsedUrl?.pathname === "/browser-secret" &&
       allowCors &&
@@ -404,6 +433,7 @@ export function initRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(re
     existing.targetHost === targetHost &&
     existing.targetOrigin === targetOrigin
   ) {
+    updatePendingConfirmationCodeForCli(req, existing);
     return NextResponse.json({ expires_at_millis: existing.expiresAtMs });
   }
 
@@ -417,6 +447,7 @@ export function initRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(re
     attempts: 0,
     shownByCli: false,
   };
+  updatePendingConfirmationCodeForCli(req, getGlobals().confirmationCode);
   return NextResponse.json({ expires_at_millis: expiresAtMs });
 }
 
@@ -447,6 +478,7 @@ export function submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(
   }
 
   getGlobals().confirmationCode = undefined;
+  updatePendingConfirmationCodeForCli(req, undefined);
   return NextResponse.json({
     browser_secret: issueBrowserSecret({ host: confirmationCode.targetHost, origin: confirmationCode.targetOrigin }),
   });

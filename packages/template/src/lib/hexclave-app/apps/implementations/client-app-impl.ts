@@ -705,7 +705,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._eventTracker.start();
     }
 
-    if (isBrowserLike() && this._isOAuthCallbackUrlHosted() && this._currentUrlLooksLikeHexclaveOAuthCallback()) {
+    if (
+      isBrowserLike()
+      && (this._isOAuthCallbackUrlHosted() || this._currentUrlLooksLikeNestedCrossDomainOAuthCallback())
+      && this._currentUrlLooksLikeHexclaveOAuthCallback()
+    ) {
       this._trackPendingAuthResolution(async () => {
         if (isBrowserLike()) {
           await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
@@ -814,7 +818,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (!currentUrl.searchParams.has("code") || state == null) {
       return false;
     }
-    return getCookieClient(`stack-oauth-outer-${state}`) != null;
+    return getCookieClient(`stack-oauth-outer-${state}`) != null
+      || currentUrl.searchParams.has(nestedCrossDomainAuthQueryParams.refreshTokenId);
+  }
+
+  protected _currentUrlLooksLikeNestedCrossDomainOAuthCallback(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const currentUrl = new URL(window.location.href);
+    return currentUrl.searchParams.has("code")
+      && currentUrl.searchParams.has("state")
+      && currentUrl.searchParams.has(nestedCrossDomainAuthQueryParams.refreshTokenId);
   }
 
   protected _getOAuthCallbackRedirectUri(): string {
@@ -947,22 +962,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const afterCallbackRedirectUrl = new URL(currentUrl);
     afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.refreshTokenId);
     afterCallbackRedirectUrl.searchParams.delete(nestedCrossDomainAuthQueryParams.callbackUrl);
-    const { state: newState, codeChallenge: newCodeChallenge } = await this._getNestedCrossDomainAuthParamsForRedirect();
-    const nestedRedirectUri = new URL(this._getOAuthCallbackRedirectUri(), currentUrl);
-    nestedRedirectUri.searchParams.delete(nestedCrossDomainAuthQueryParams.refreshTokenId);
-    nestedRedirectUri.searchParams.delete(nestedCrossDomainAuthQueryParams.callbackUrl);
-    for (const param of [
-      "after_auth_return_to",
-      crossDomainAuthQueryParams.marker,
-      crossDomainAuthQueryParams.state,
-      crossDomainAuthQueryParams.codeChallenge,
-      crossDomainAuthQueryParams.afterCallbackRedirectUrl,
-    ]) {
-      const value = currentUrl.searchParams.get(param);
-      if (value != null && !nestedRedirectUri.searchParams.has(param)) {
-        nestedRedirectUri.searchParams.set(param, value);
-      }
-    }
+    const nestedHandoffSourceUrl = new URL(currentUrl);
+    nestedHandoffSourceUrl.searchParams.delete(crossDomainAuthQueryParams.state);
+    nestedHandoffSourceUrl.searchParams.delete(crossDomainAuthQueryParams.codeChallenge);
+    const { state: newState, codeChallenge: newCodeChallenge } = await this._getCrossDomainHandoffParamsForRedirect(nestedHandoffSourceUrl);
+    const nestedRedirectUri = new URL(currentUrl);
 
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.refreshTokenId, refreshTokenId);
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.redirectUri, nestedRedirectUri.toString());
@@ -972,10 +976,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     callbackUrl.searchParams.set(nestedCrossDomainAuthQueryParams.afterCallbackRedirectUrl, afterCallbackRedirectUrl.toString());
     await this._redirectTo({ url: callbackUrl, replace: true });
     return true;
-  }
-
-  protected async _getNestedCrossDomainAuthParamsForRedirect(): Promise<CrossDomainHandoffParams> {
-    return await saveVerifierAndState();
   }
 
   /**
@@ -3755,7 +3755,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     let oauthCallbackRedirectUri = this._getOAuthCallbackRedirectUri();
     const currentUrl = new URL(window.location.href);
-    if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1") {
+    if (
+      currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1"
+      || currentUrl.searchParams.has(nestedCrossDomainAuthQueryParams.refreshTokenId)
+    ) {
       currentUrl.searchParams.delete("code");
       currentUrl.searchParams.delete("state");
       oauthCallbackRedirectUri = currentUrl.toString();

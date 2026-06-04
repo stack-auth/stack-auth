@@ -88,8 +88,8 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           headers: Object.fromEntries(req.headers),
         });
 
-        // During development, don't trash the console with logs from E2E tests
-        const disableExtendedLogging = getNodeEnvironment().includes('dev') && !!req.headers.get("x-stack-development-disable-extended-logging");
+        // During development, don't trash the console with logs
+        const disableExtendedLogging = getNodeEnvironment().includes('dev');
 
         let hasRequestFinished = false;
         try {

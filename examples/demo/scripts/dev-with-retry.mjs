@@ -8,7 +8,7 @@
 // package dev watchers that the root dev server is already running.
 //
 // Instead, run the CLI from TypeScript source and ask it to launch the dashboard
-// through the dashboard package's dev command. The CLI still owns the
+// through the dashboard package's RDE production command. The CLI still owns the
 // development-environment env vars, so this stays close to the packaged path.
 
 import { spawn } from "node:child_process";
@@ -26,6 +26,7 @@ const RETRY_TIMEOUT_MS = 5_000;
 const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
 
 let cliChild;
+let shutdownTimer;
 
 function log(message) {
   console.error(`${LOG_PREFIX}${message}`);
@@ -50,9 +51,10 @@ function runCliDev() {
       "--",
       "pnpm", "--dir", "examples/demo", "run", "dev:inner",
     ], {
+      detached: process.platform !== "win32",
       env: {
         ...process.env,
-        HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "pnpm --dir apps/dashboard run dev",
+        HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "pnpm --dir apps/dashboard run dev:rde-production",
         STACK_API_URL: `http://localhost:${portPrefix}02`,
         STACK_DASHBOARD_URL: `http://localhost:${portPrefix}01`,
         STACK_CLI_PUBLISHABLE_CLIENT_KEY: "this-publishable-client-key-is-for-local-development-only",
@@ -124,15 +126,27 @@ async function main() {
 
 function stopChildren(signal) {
   if (cliChild != null && !cliChild.killed) {
-    cliChild.kill(signal);
+    try {
+      if (cliChild.pid != null && process.platform !== "win32") {
+        process.kill(-cliChild.pid, signal);
+      } else {
+        cliChild.kill(signal);
+      }
+    } catch {
+      // best-effort
+    }
   }
 }
 
 process.on("SIGINT", () => {
   stopChildren("SIGINT");
+  shutdownTimer ??= setTimeout(() => process.exit(130), 5_000);
+  shutdownTimer.unref();
 });
 process.on("SIGTERM", () => {
   stopChildren("SIGTERM");
+  shutdownTimer ??= setTimeout(() => process.exit(143), 5_000);
+  shutdownTimer.unref();
 });
 
 main().catch((err) => {

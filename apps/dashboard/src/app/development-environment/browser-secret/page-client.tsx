@@ -23,6 +23,19 @@ function parseSubmitResponse(value: unknown): { browserSecret: string } {
   return { browserSecret: value.browser_secret };
 }
 
+async function requestConfirmationCode(): Promise<{ expiresAtMillis: number }> {
+  const response = await fetch("/api/development-environment/browser-secret/init-confirmation-code", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create development environment confirmation code (${response.status}): ${await response.text()}`);
+  }
+  return parseInitResponse(await response.json());
+}
+
 function sameOriginReturnTo(searchParams: URLSearchParams): string {
   const returnTo = searchParams.get("return_to");
   if (returnTo == null) return "/";
@@ -40,23 +53,29 @@ export function BrowserSecretConfirmationPageClient() {
   const [expiresAtMillis, setExpiresAtMillis] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resendingCode, setResendingCode] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [returnTo, setReturnTo] = useState("/");
 
   useEffect(() => {
     setReturnTo(sameOriginReturnTo(new URLSearchParams(window.location.search)));
     runAsynchronouslyWithAlert((async () => {
-      const response = await fetch("/api/development-environment/browser-secret/init-confirmation-code", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to create development environment confirmation code (${response.status}): ${await response.text()}`);
-      }
-      setExpiresAtMillis(parseInitResponse(await response.json()).expiresAtMillis);
+      setExpiresAtMillis((await requestConfirmationCode()).expiresAtMillis);
     })());
   }, []);
+
+  const resendCode = async () => {
+    setResendingCode(true);
+    setErrorMessage(null);
+    setResendMessage(null);
+    try {
+      setCode("");
+      setExpiresAtMillis((await requestConfirmationCode()).expiresAtMillis);
+      setResendMessage("Code resent. Check the running CLI for the new code.");
+    } finally {
+      setResendingCode(false);
+    }
+  };
 
   const submitCode = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -118,12 +137,23 @@ export function BrowserSecretConfirmationPageClient() {
           {errorMessage != null && (
             <p className="text-sm text-destructive">{errorMessage}</p>
           )}
+          {resendMessage != null && (
+            <p className="text-sm text-muted-foreground">{resendMessage}</p>
+          )}
           <button
             type="submit"
             disabled={submitting || code.length !== 6}
             className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Authorizing..." : "Authorize browser"}
+          </button>
+          <button
+            type="button"
+            disabled={resendingCode || submitting}
+            onClick={() => runAsynchronouslyWithAlert(resendCode())}
+            className="w-full rounded-lg border border-black/[0.10] dark:border-white/[0.10] px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {resendingCode ? "Resending code..." : "Resend code"}
           </button>
         </form>
       </div>
