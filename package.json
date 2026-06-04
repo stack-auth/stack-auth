@@ -19,7 +19,7 @@
     "build:demo": "pnpm pre && turbo run build --filter=@hexclave/example-demo-app...",
     "build:docs": "pnpm run build:packages && pnpm run codegen && pnpm run build:backend && turbo run build --filter=@hexclave/docs-mintlify",
     "build:packages": "pnpm pre && turbo run build --filter=./packages/*",
-    "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules && rimraf node_modules",
+    "clean": "pnpm pre-no-codegen && turbo run --concurrency 1 clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules && rimraf node_modules",
     "uff-cutie": "pnpm clean && pnpm i && (pnpm build || true) && pnpm codegen",
     "fml": "pnpm uff-cutie && pnpm restart-deps",
     "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks && pnpm run generate-setup-prompt-docs",

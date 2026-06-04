@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, grantProductToCustomer, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
@@ -147,9 +147,8 @@ export const POST = createSmartRouteHandler({
     if (!existingSub && !fromIsFreePlan) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
-    // Server-granted subscriptions (no stripeSubscriptionId) are immutable via this endpoint;
-    // they must be cancelled through admin tooling before the customer switches plans.
-    if (existingSub && !existingSub.stripeSubscriptionId) {
+    const testMode = auth.tenancy.config.payments.testMode === true;
+    if (existingSub != null && existingSub.stripeSubscriptionId == null && !testMode) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
     // Free-plan fallthrough: if the customer claims to be switching "from" a free product
@@ -190,6 +189,30 @@ export const POST = createSmartRouteHandler({
     const quantity = body.quantity ?? existingSub?.quantity ?? 1;
     if (body.quantity !== undefined && quantity !== 1 && toProduct.stackable !== true) {
       throw new StatusError(400, "This product is not stackable; quantity must be 1");
+    }
+
+    if (testMode && (existingSub == null || existingSub.stripeSubscriptionId == null)) {
+      await grantProductToCustomer({
+        prisma,
+        tenancy: auth.tenancy,
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+        product: toProduct,
+        productId: body.to_product_id,
+        priceId: selectedPriceId,
+        quantity,
+        creationSource: "TEST_MODE",
+      });
+      return { statusCode: 200, bodyType: "json", body: { success: true } };
+    }
+
+    // For now, we don't allow switching out of a Stripe-backed subscription while the project is in test mode.
+    if (testMode && existingSub != null && existingSub.stripeSubscriptionId != null) {
+      throw new StatusError(
+        400,
+        "Cannot switch a live subscription while the project is in test mode. " +
+        "Cancel the live subscription first, or disable test mode before switching.",
+      );
     }
 
     const stripe = await getStripeForAccount({ tenancy: auth.tenancy });

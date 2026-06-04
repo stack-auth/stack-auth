@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckoutForm } from "@/components/payments/checkout";
+import { CheckoutForm, TestModeBypassForm } from "@/components/payments/checkout";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
 import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
@@ -14,13 +14,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
-  stripe_account_id: string,
+  stripe_account_id: string | null,
   project_id: string,
   project_logo_url: string | null,
   already_bought_non_stackable?: boolean,
   conflicting_products?: { product_id: string, display_name: string }[],
   test_mode: boolean,
-  charges_enabled: boolean,
+  charges_enabled: boolean | null,
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
@@ -393,22 +393,35 @@ export default function PageClient({ code }: { code: string }) {
       <div className="w-full md:w-1/2 flex flex-grow items-center justify-center bg-gradient-to-br from-primary/5 via-primary/3 to-background p-6 md:p-12">
         {data && (
           <div className="w-full max-w-lg">
-            <StripeElementsProvider
-              stripeAccountId={data.stripe_account_id}
-              amount={elementsAmountCents}
-              mode={elementsMode}
-            >
-              <CheckoutForm
-                fullCode={code}
-                stripeAccountId={data.stripe_account_id}
-                setupSubscription={setupSubscription}
-                returnUrl={returnUrl ?? undefined}
+            {data.test_mode ? (
+              <TestModeBypassForm
+                onBypass={handleBypass}
                 disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
-                chargesEnabled={data.charges_enabled}
-                onTestModeBypass={data.test_mode ? handleBypass : undefined}
-                isFree={isFreeSelected}
               />
-            </StripeElementsProvider>
+            ) : data.stripe_account_id == null ? (
+              <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
+                <Typography type="h3" variant="destructive">Payments not enabled</Typography>
+                <p className="text-sm text-muted-foreground">
+                  This project does not have payments enabled yet. Please contact the app developer to finish setting up payments.
+                </p>
+              </div>
+            ) : (
+              <StripeElementsProvider
+                stripeAccountId={data.stripe_account_id}
+                amount={elementsAmountCents}
+                mode={elementsMode}
+              >
+                <CheckoutForm
+                  fullCode={code}
+                  stripeAccountId={data.stripe_account_id}
+                  setupSubscription={setupSubscription}
+                  returnUrl={returnUrl ?? undefined}
+                  disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
+                  chargesEnabled={data.charges_enabled ?? false}
+                  isFree={isFreeSelected}
+                />
+              </StripeElementsProvider>
+            )}
           </div>
         )}
       </div>

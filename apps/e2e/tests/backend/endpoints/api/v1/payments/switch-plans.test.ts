@@ -1,4 +1,5 @@
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -7,6 +8,7 @@ async function setupProducts(products: Record<string, any>, productLines?: Recor
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: false,
       productLines,
       products,
     },
@@ -188,7 +190,7 @@ it("successfully switches a Stripe-backed subscription to another product", asyn
   expect(switchResponse.body).toEqual({ success: true });
 }, { timeout: 60_000 });
 
-it("does not block subscription switch with OTP guard (non-Stripe sub)", async ({ expect }) => {
+it("does not block subscription switch with OTP guard (non-Stripe sub, live mode)", async ({ expect }) => {
   await setupProducts({
     basic: {
       displayName: "Basic",
@@ -211,6 +213,7 @@ it("does not block subscription switch with OTP guard (non-Stripe sub)", async (
   }, {
     plans: { displayName: "Plans" },
   });
+  await Project.updateConfig({ "payments.testMode": false });
 
   const { userId } = await Auth.fastSignUp();
 
@@ -222,7 +225,7 @@ it("does not block subscription switch with OTP guard (non-Stripe sub)", async (
   });
   expect(grantResponse.status).toBe(200);
 
-  // Switch fails because no stripeSubscriptionId — but crucially, it does NOT
+  // Switch fails because no stripeSubscriptionId in live mode — but crucially, it does NOT
   // fail with "one-time purchase in this product line" (the OTP guard regression).
   const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
     method: "POST",
@@ -284,4 +287,242 @@ it("blocks switch when customer has a one-time purchase in the product line", as
     },
   });
   expect(switchResponse.status).toBe(400);
+}, { timeout: 30_000 });
+
+it("switches in test mode from a free plan without Stripe onboarding", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        free: {
+          displayName: "Free",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: {},
+          includedItems: {},
+        },
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      from_product_id: "free",
+      to_product_id: "pro",
+    },
+  });
+  expect(switchResponse.status).toBe(200);
+  expect(switchResponse.body).toEqual({ success: true });
+}, { timeout: 30_000 });
+
+it("switches in test mode from an existing test-mode grant", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        basic: {
+          displayName: "Basic",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "2000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  // Mint a test-mode grant for "basic" via the create-purchase-url + test-mode-purchase-session flow
+  const createUrl = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "basic" },
+  });
+  expect(createUrl.status).toBe(200);
+  const fullCode = (createUrl.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(fullCode).toBeDefined();
+  if (!fullCode) {
+    throw new Error("Expected full purchase code");
+  }
+
+  const purchaseResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      full_code: fullCode,
+      price_id: "monthly",
+      quantity: 1,
+    },
+  });
+  expect(purchaseResponse.status).toBe(200);
+
+  // Now switch from basic → pro. Should succeed via the test-mode short-circuit.
+  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      from_product_id: "basic",
+      to_product_id: "pro",
+    },
+  });
+  expect(switchResponse.status).toBe(200);
+  expect(switchResponse.body).toEqual({ success: true });
+}, { timeout: 30_000 });
+
+it("rejects switch in live mode without Stripe onboarding", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        free: {
+          displayName: "Free",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: {},
+          includedItems: {},
+        },
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      from_product_id: "free",
+      to_product_id: "pro",
+    },
+  });
+  expect(switchResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Payments are not set up in this Hexclave project. Please go to the Hexclave dashboard and complete the Payments onboarding.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+}, { timeout: 30_000 });
+
+it("two rapid sequential test-mode switches in the same product line leave only the latest sub active", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    payments: {
+      productLines: { plans: { displayName: "Plans" } },
+      products: {
+        basic: {
+          displayName: "Basic",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "2000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+        elite: {
+          displayName: "Elite",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          productLineId: "plans",
+          prices: { monthly: { USD: "3000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  // Seed a test-mode grant for "basic"
+  const createUrl = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "basic" },
+  });
+  expect(createUrl.status).toBe(200);
+  const fullCode = (createUrl.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  if (!fullCode) throw new Error("Expected full purchase code");
+  const seed = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: fullCode, price_id: "monthly", quantity: 1 },
+  });
+  expect(seed.status).toBe(200);
+
+  const switchToPro = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: { from_product_id: "basic", to_product_id: "pro" },
+  });
+  expect(switchToPro.status).toBe(200);
+
+  const switchToElite = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: { from_product_id: "pro", to_product_id: "elite" },
+  });
+  expect(switchToElite.status).toBe(200);
+
+  const owned = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(owned.status).toBe(200);
+  const activeIds = ((owned.body as { items: Array<{ id: string | null, quantity: number }> }).items)
+    .filter(i => i.quantity > 0)
+    .map(i => i.id)
+    .sort((a, b) => stringCompare(a ?? "", b ?? ""));
+  expect(activeIds).toEqual(["elite"]);
 }, { timeout: 30_000 });
