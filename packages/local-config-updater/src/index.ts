@@ -2,7 +2,7 @@ import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
-import { getRelativeImportSpecifiers, hexclaveConfigFileExportsConfig } from "@hexclave/shared/dist/hexclave-config-file";
+import { getRelativeImportSpecifiers, hexclaveConfigFileExportsConfig, tryParseHexclaveConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
@@ -111,6 +111,21 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   if (flattenConfigUpdate(configUpdate).length === 0) return;
 
   const content = readFileSync(configFilePath, "utf-8");
+
+  // Fast path: if the config is a plain static literal (no imports, no helpers),
+  // apply the update deterministically without invoking the AI agent.
+  const staticConfig = tryParseHexclaveConfigFileContent(content, configFilePath);
+  if (staticConfig != null && typeof staticConfig === "object" && isValidConfig(staticConfig)) {
+    const merged = override(staticConfig, configUpdate);
+    if (!isValidConfig(merged)) {
+      throw new Error(`${LOG_PREFIX} Merged config is invalid after applying update to ${configFilePath}`);
+    }
+    renderConfigObjectToFile(configFilePath, merged);
+    return;
+  }
+
+  // Agent path: config has custom structure (imports, helpers, external files)
+  // that must be preserved — delegate to the AI agent.
   const baselineConfig = await tryReadConfigForValidation(configFilePath);
   const snapshots = snapshotConfigFiles(configFilePath, content);
   try {
