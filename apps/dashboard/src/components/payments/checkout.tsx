@@ -23,10 +23,35 @@ type Props = {
   fullCode: string,
   returnUrl?: string,
   disabled?: boolean,
-  onTestModeBypass?: () => Promise<void>,
   chargesEnabled: boolean,
   isFree: boolean,
 };
+
+export function TestModeBypassForm({
+  onBypass,
+  disabled,
+}: {
+  onBypass: () => Promise<void>,
+  disabled?: boolean,
+}) {
+  return (
+    <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
+      <div className="space-y-1">
+        <Typography type="h3">Test mode active</Typography>
+        <p className="text-sm text-muted-foreground">
+          This project is in test mode. Use the bypass button to simulate a purchase.
+        </p>
+      </div>
+      <Button
+        disabled={disabled}
+        onClick={onBypass}
+        className="mt-2"
+      >
+        Complete test purchase
+      </Button>
+    </div>
+  );
+}
 
 export function CheckoutForm({
   setupSubscription,
@@ -34,7 +59,6 @@ export function CheckoutForm({
   fullCode,
   returnUrl,
   disabled,
-  onTestModeBypass,
   chargesEnabled,
   isFree,
 }: Props) {
@@ -87,29 +111,6 @@ export function CheckoutForm({
       setMessage("An unexpected error occurred.");
     }
   };
-
-  if (onTestModeBypass) {
-    return (
-      <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
-        <div className="space-y-1">
-          <Typography type="h3">Test mode active</Typography>
-          <p className="text-sm text-muted-foreground">
-            This project is in test mode. Use the bypass button to simulate a purchase.
-          </p>
-        </div>
-        <Button
-          disabled={disabled}
-          onClick={onTestModeBypass}
-          className="mt-2"
-        >
-          Complete test purchase
-        </Button>
-        {message && (
-          <div className="text-destructive text-sm">{message}</div>
-        )}
-      </div>
-    );
-  }
 
   if (!chargesEnabled) {
     return (

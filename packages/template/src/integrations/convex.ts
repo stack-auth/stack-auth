@@ -1,5 +1,5 @@
 import { urlString } from "@hexclave/shared/dist/utils/urls";
-import { defaultBaseUrl } from "../lib/stack-app/apps/implementations/common";
+import { defaultBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
 
 export function getConvexProvidersConfig(options: {
   baseUrl?: string,

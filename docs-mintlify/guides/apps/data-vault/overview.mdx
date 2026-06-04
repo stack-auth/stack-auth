@@ -38,7 +38,7 @@ STACK_DATA_VAULT_SECRET=your-randomly-generated-secret-here
 Data Vault is accessed through the **server app** only — it requires your secret server key.
 
 ```typescript title="server-example.ts"
-const store = await stackServerApp.getDataVaultStore("my-store-id");
+const store = await hexclaveServerApp.getDataVaultStore("my-store-id");
 
 const key = user.id;
 
@@ -61,7 +61,7 @@ const value = await store.getValue(key, {
 Returns a `DataVaultStore` object for the given store ID. The store must already exist in your project config (created via the dashboard).
 
 ```typescript
-const store = await stackServerApp.getDataVaultStore("my-store-id");
+const store = await hexclaveServerApp.getDataVaultStore("my-store-id");
 ```
 
 ### `store.getValue(key, { secret })`

@@ -140,10 +140,10 @@ export function UserProfile() {
 On the server side, you can access the JWT and its claims through the Hexclave API:
 
 ```typescript
-import { stackServerApp } from '@/stack';
+import { hexclaveServerApp } from '@/stack';
 
 export async function GET() {
-  const user = await stackServerApp.getUser();
+  const user = await hexclaveServerApp.getUser();
   
   if (!user) {
     return new Response('Unauthorized', { status: 401 });

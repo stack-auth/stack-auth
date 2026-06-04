@@ -1,7 +1,7 @@
-import { stackServerApp } from "src/hexclave";
+import { hexclaveServerApp } from "src/hexclave";
 
 export default async function Page() {
-  const user = await stackServerApp.getUser({ or: 'redirect' });
+  const user = await hexclaveServerApp.getUser({ or: 'redirect' });
   const connection = await user.getConnectedAccount('spotify', { or: 'redirect' });
   const tokens = await connection.getAccessToken();
 

@@ -39,10 +39,10 @@ function RootDocument({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const stackApp = useMemo(() => createStackApp(), []);
+  const hexclaveApp = useMemo(() => createStackApp(), []);
 
   return (
-    <StackProvider app={stackApp}>
+    <StackProvider app={hexclaveApp}>
       <StackTheme>
         <AppShell>
           <Suspense fallback={<RouteLoadingState />}>

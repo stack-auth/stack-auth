@@ -16,8 +16,8 @@ function selectStringToThemeId(value: string): string | undefined | false {
 }
 
 export function EmailThemeSelector({ selectedThemeId, onThemeChange, className }: EmailThemeSelectorProps) {
-  const stackAdminApp = useAdminApp();
-  const themes = stackAdminApp.useEmailThemes();
+  const hexclaveAdminApp = useAdminApp();
+  const themes = hexclaveAdminApp.useEmailThemes();
   return (
     <Select
       value={themeIdToSelectString(selectedThemeId)}

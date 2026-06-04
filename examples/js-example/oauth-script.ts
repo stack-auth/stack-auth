@@ -1,7 +1,7 @@
-import { stackClientApp } from "./hexclave";
+import { hexclaveClientApp } from "./hexclave";
 
 // Check if user is already signed in
-stackClientApp.getUser().then((user) => {
+hexclaveClientApp.getUser().then((user) => {
   if (user) {
     window.location.href = "/";
   }
@@ -10,7 +10,7 @@ stackClientApp.getUser().then((user) => {
 // Handle Google Sign In
 document.getElementById("googleSignIn")?.addEventListener("click", async () => {
   try {
-    await stackClientApp.signInWithOAuth('google');
+    await hexclaveClientApp.signInWithOAuth('google');
   } catch (error) {
     console.error("Google sign in failed:", error);
     alert("Failed to initialize Google sign in");
@@ -25,7 +25,7 @@ window.addEventListener("load", async () => {
     const state = params.get("state");
     
     if (code && state) {
-      const user = await stackClientApp.callOAuthCallback();
+      const user = await hexclaveClientApp.callOAuthCallback();
       if (user) {
         window.location.href = "/";
       }

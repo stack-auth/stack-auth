@@ -62,8 +62,8 @@ function getItemDisplay(itemId: string, item: IncludedItem, existingItems: Array
 export default function PageClient({ productId }: { productId: string }) {
   const projectId = useProjectId();
   const router = useRouter();
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
@@ -90,8 +90,8 @@ export default function PageClient({ productId }: { productId: string }) {
 function EditProductForm({ productId, existingProduct }: { productId: string, existingProduct: Product }) {
   const projectId = useProjectId();
   const router = useRouter();
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
   const updateConfig = useUpdateConfig();
@@ -163,7 +163,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
 
   const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
     const success = await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`payments.productLines.${productLine.id}`]: {
           displayName: productLine.displayName || null,
@@ -226,7 +226,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
       };
 
       const success = await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { [`payments.products.${productId}`]: product },
         pushable: true,
       });
@@ -702,7 +702,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         onOpenChange={setShowNewItemDialog}
         onSave={async (item) => {
           const success = await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
             pushable: true,
           });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
+import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { Config, isValidConfig } from "@hexclave/shared/dist/config/format";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { createHash } from "crypto";
@@ -68,7 +68,7 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
   }
 
   const config = configModule.config;
-  if (config === showOnboardingStackConfigValue) {
+  if (config === showOnboardingHexclaveConfigValue) {
     return {
       config: {},
       showOnboarding: true,

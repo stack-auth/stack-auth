@@ -20,17 +20,17 @@ If you are still wiring Stack into your app, complete [Build a SaaS with Hexclav
 You typically combine **one or more** of:
 
 1. **Middleware** — cheap gate when the URL alone tells you the area is private (for example everything under `/app`).
-2. **Server Components / server loaders** — `await stackServerApp.getUser({ or: "redirect" })` (or handle `null`) on the route that renders sensitive UI.
+2. **Server Components / server loaders** — `await hexclaveServerApp.getUser({ or: "redirect" })` (or handle `null`) on the route that renders sensitive UI.
 3. **Client Components** — `useUser({ or: "redirect" })` for UX; **never** the only layer for authorization.
 
 <Tabs>
   <Tab title="Middleware (route prefix)">
     ```tsx title="middleware.ts"
     import { NextRequest, NextResponse } from "next/server";
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export async function middleware(request: NextRequest) {
-      const user = await stackServerApp.getUser();
+      const user = await hexclaveServerApp.getUser();
       if (!user) {
         return NextResponse.redirect(new URL("/handler/sign-in", request.url));
       }
@@ -44,14 +44,14 @@ You typically combine **one or more** of:
 
     Match **only** prefixes that should be gated. Do **not** blanket-match `/` or you can block static assets and Stack’s **`/handler`** routes (sign-in, sign-up, callbacks).
 
-    If your project uses **custom handler base paths**, use the sign-in URL from `stackServerApp.urls.signIn` as the redirect target instead of hard-coding `/handler/sign-in` (it may be an absolute URL depending on configuration—`NextResponse.redirect` accepts that).
+    If your project uses **custom handler base paths**, use the sign-in URL from `hexclaveServerApp.urls.signIn` as the redirect target instead of hard-coding `/handler/sign-in` (it may be an absolute URL depending on configuration—`NextResponse.redirect` accepts that).
   </Tab>
   <Tab title="Server Component">
     ```tsx title="app/app/dashboard/page.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function DashboardPage() {
-      await stackServerApp.getUser({ or: "redirect" });
+      await hexclaveServerApp.getUser({ or: "redirect" });
       return <h1>Dashboard</h1>;
     }
     ```
@@ -76,12 +76,12 @@ You typically combine **one or more** of:
 - **`{ or: "throw" }`** — use in **server actions**, **route handlers**, and other places where redirecting would be wrong; map errors to `401`/`403` responses yourself.
 
 ```tsx title="app/api/me/route.ts"
-import { stackServerApp } from "@/stack/server";
+import { hexclaveServerApp } from "@/stack/server";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const user = await stackServerApp.getUser({ or: "throw" });
+    const user = await hexclaveServerApp.getUser({ or: "throw" });
     return NextResponse.json({ id: user.id });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -106,7 +106,7 @@ Read the full discussion in [User fundamentals — Protecting a page](/guides/ge
 ## 2. Secrets, keys, and environments
 
 <Warning>
-  **`STACK_SECRET_SERVER_KEY`** (or `ssk_...`) must **only** exist in server-side environments (SSR, route handlers, server actions, your backend). Never prefix it with `NEXT_PUBLIC_`, never import it from code that runs in the browser, and never log it. See the [StackApp SDK reference](/sdk/objects/stack-app) and the [REST API overview](/api/overview).
+  **`STACK_SECRET_SERVER_KEY`** (or `ssk_...`) must **only** exist in server-side environments (SSR, route handlers, server actions, your backend). Never prefix it with `NEXT_PUBLIC_`, never import it from code that runs in the browser, and never log it. See the [HexclaveApp SDK reference](/sdk/objects/hexclave-app) and the [REST API overview](/api/overview).
 </Warning>
 
 Practical split:
@@ -156,7 +156,7 @@ If you consume Stack webhooks, **verify every payload** (for example with Svix a
 | First integration | [Build a SaaS with Hexclave](/guides/other/tutorials/build-a-saas-with-hexclave) |
 | Page protection details | [User fundamentals](/guides/getting-started/user-fundamentals) |
 | Domains, OAuth, email, prod mode | [Launch checklist](/guides/apps/launch-checklist/overview) |
-| `HexclaveServerApp` and keys | [StackApp SDK reference](/sdk/objects/stack-app) |
+| `HexclaveServerApp` and keys | [HexclaveApp SDK reference](/sdk/objects/hexclave-app) |
 | Webhook verification | [Webhooks](/guides/apps/webhooks/overview) |
 | REST from your backend | [API overview](/api/overview) |
 

@@ -8,8 +8,8 @@ import { useAdminApp } from "../../../use-admin-app";
 import { SentEmailsView } from "../../../email-sent/sent-emails-view";
 
 export default function PageClient({ templateId }: { templateId: string }) {
-  const stackAdminApp = useAdminApp();
-  const templates = stackAdminApp.useEmailTemplates();
+  const hexclaveAdminApp = useAdminApp();
+  const templates = hexclaveAdminApp.useEmailTemplates();
   const template = useMemo(() => templates.find(t => t.id === templateId), [templates, templateId]);
   const templateName = template?.displayName ?? `Template (${templateId.slice(0, 8)}...)`;
 

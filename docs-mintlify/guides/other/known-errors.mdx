@@ -25,7 +25,7 @@ At runtime, known errors include a stable `errorCode` value. In the REST API, th
 When using SDK methods that return `Result`, check `result.status` and inspect `result.error`.
 
 ```ts
-const result = await stackClientApp.signInWithCredential({
+const result = await hexclaveClientApp.signInWithCredential({
   email,
   password,
 });
@@ -54,22 +54,22 @@ For REST API calls, read the `code` field from the JSON response body.
 
 | Public TypeScript type | Runtime `errorCode` | Returned by |
 | --- | --- | --- |
-| `KnownErrors["EmailPasswordMismatch"]` | `EMAIL_PASSWORD_MISMATCH` | `stackClientApp.signInWithCredential()` |
-| `KnownErrors["InvalidTotpCode"]` | `INVALID_TOTP_CODE` | `stackClientApp.signInWithCredential()`, `stackClientApp.signInWithMagicLink()`, `stackClientApp.signInWithMfa()`, `stackClientApp.signInWithPasskey()` |
-| `KnownErrors["UserWithEmailAlreadyExists"]` | `USER_EMAIL_ALREADY_EXISTS` | `stackClientApp.signUpWithCredential()` |
-| `KnownErrors["PasswordRequirementsNotMet"]` | `PASSWORD_REQUIREMENTS_NOT_MET` | `stackClientApp.signUpWithCredential()`, `user.updatePassword()`, `user.setPassword()` |
-| `KnownErrors["BotChallengeFailed"]` | `BOT_CHALLENGE_FAILED` | `stackClientApp.signUpWithCredential()`, `stackClientApp.sendMagicLinkEmail()` |
-| `KnownErrors["PasskeyAuthenticationFailed"]` | `PASSKEY_AUTHENTICATION_FAILED` | `stackClientApp.signInWithPasskey()` |
+| `KnownErrors["EmailPasswordMismatch"]` | `EMAIL_PASSWORD_MISMATCH` | `hexclaveClientApp.signInWithCredential()` |
+| `KnownErrors["InvalidTotpCode"]` | `INVALID_TOTP_CODE` | `hexclaveClientApp.signInWithCredential()`, `hexclaveClientApp.signInWithMagicLink()`, `hexclaveClientApp.signInWithMfa()`, `hexclaveClientApp.signInWithPasskey()` |
+| `KnownErrors["UserWithEmailAlreadyExists"]` | `USER_EMAIL_ALREADY_EXISTS` | `hexclaveClientApp.signUpWithCredential()` |
+| `KnownErrors["PasswordRequirementsNotMet"]` | `PASSWORD_REQUIREMENTS_NOT_MET` | `hexclaveClientApp.signUpWithCredential()`, `user.updatePassword()`, `user.setPassword()` |
+| `KnownErrors["BotChallengeFailed"]` | `BOT_CHALLENGE_FAILED` | `hexclaveClientApp.signUpWithCredential()`, `hexclaveClientApp.sendMagicLinkEmail()` |
+| `KnownErrors["PasskeyAuthenticationFailed"]` | `PASSKEY_AUTHENTICATION_FAILED` | `hexclaveClientApp.signInWithPasskey()` |
 | `KnownErrors["PasskeyRegistrationFailed"]` | `PASSKEY_REGISTRATION_FAILED` | `user.registerPasskey()` |
-| `KnownErrors["PasskeyWebAuthnError"]` | `PASSKEY_WEBAUTHN_ERROR` | `stackClientApp.signInWithPasskey()`, `user.registerPasskey()` |
-| `KnownErrors["CliAuthError"]` | `CLI_AUTH_ERROR` | `stackClientApp.promptCliLogin()` |
-| `KnownErrors["CliAuthExpiredError"]` | `CLI_AUTH_EXPIRED_ERROR` | `stackClientApp.promptCliLogin()` |
-| `KnownErrors["CliAuthUsedError"]` | `CLI_AUTH_USED_ERROR` | `stackClientApp.promptCliLogin()` |
-| `KnownErrors["UserNotFound"]` | `USER_NOT_FOUND` | `stackClientApp.sendForgotPasswordEmail()` |
-| `KnownErrors["RedirectUrlNotWhitelisted"]` | `REDIRECT_URL_NOT_WHITELISTED` | `stackClientApp.sendMagicLinkEmail()` |
-| `KnownErrors["VerificationCodeError"]` | `VERIFICATION_ERROR` | `stackClientApp.resetPassword()`, `stackClientApp.verifyPasswordResetCode()`, `stackClientApp.verifyTeamInvitationCode()`, `stackClientApp.acceptTeamInvitation()`, `stackClientApp.getTeamInvitationDetails()`, `stackClientApp.verifyEmail()`, `stackClientApp.signInWithMagicLink()`, `stackClientApp.signInWithMfa()` |
+| `KnownErrors["PasskeyWebAuthnError"]` | `PASSKEY_WEBAUTHN_ERROR` | `hexclaveClientApp.signInWithPasskey()`, `user.registerPasskey()` |
+| `KnownErrors["CliAuthError"]` | `CLI_AUTH_ERROR` | `hexclaveClientApp.promptCliLogin()` |
+| `KnownErrors["CliAuthExpiredError"]` | `CLI_AUTH_EXPIRED_ERROR` | `hexclaveClientApp.promptCliLogin()` |
+| `KnownErrors["CliAuthUsedError"]` | `CLI_AUTH_USED_ERROR` | `hexclaveClientApp.promptCliLogin()` |
+| `KnownErrors["UserNotFound"]` | `USER_NOT_FOUND` | `hexclaveClientApp.sendForgotPasswordEmail()` |
+| `KnownErrors["RedirectUrlNotWhitelisted"]` | `REDIRECT_URL_NOT_WHITELISTED` | `hexclaveClientApp.sendMagicLinkEmail()` |
+| `KnownErrors["VerificationCodeError"]` | `VERIFICATION_ERROR` | `hexclaveClientApp.resetPassword()`, `hexclaveClientApp.verifyPasswordResetCode()`, `hexclaveClientApp.verifyTeamInvitationCode()`, `hexclaveClientApp.acceptTeamInvitation()`, `hexclaveClientApp.getTeamInvitationDetails()`, `hexclaveClientApp.verifyEmail()`, `hexclaveClientApp.signInWithMagicLink()`, `hexclaveClientApp.signInWithMfa()` |
 | `KnownErrors["OAuthAccessTokenNotAvailable"]` | `OAUTH_ACCESS_TOKEN_NOT_AVAILABLE` | `connectedAccount.getAccessToken()`, `connectedAccount.useAccessToken()` |
-| `KnownErrors["OAuthProviderAccountIdAlreadyUsedForSignIn"]` | `OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN` | `oauthProvider.update()`, `serverOAuthProvider.update()`, `stackServerApp.createOAuthProvider()` |
+| `KnownErrors["OAuthProviderAccountIdAlreadyUsedForSignIn"]` | `OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN` | `oauthProvider.update()`, `serverOAuthProvider.update()`, `hexclaveServerApp.createOAuthProvider()` |
 | `KnownErrors["EmailAlreadyVerified"]` | `EMAIL_ALREADY_VERIFIED` | `user.sendVerificationEmail()` |
 | `KnownErrors["PasswordConfirmationMismatch"]` | `PASSWORD_CONFIRMATION_MISMATCH` | `user.updatePassword()` |
 

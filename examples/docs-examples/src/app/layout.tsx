@@ -2,7 +2,7 @@ import { StackProvider } from "@hexclave/next";
 import { Metadata } from "next";
 import { Inter } from 'next/font/google';
 import Provider from "src/components/provider";
-import { stackServerApp } from "src/hexclave";
+import { hexclaveServerApp } from "src/hexclave";
 import './global.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -22,7 +22,7 @@ export default function RootLayout({
       <head />
       <body>
         <StackProvider
-          app={stackServerApp}
+          app={hexclaveServerApp}
         >
           <Provider>
             {children}

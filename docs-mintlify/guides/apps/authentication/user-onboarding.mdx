@@ -74,11 +74,11 @@ Next, we can create a hook/function to check if the user has completed onboardin
   </Tab>
   <Tab title="Server Component">
     ```jsx
-    import { stackServerApp } from '@/stack/server';
+    import { hexclaveServerApp } from '@/stack/server';
     import { redirect } from 'next/navigation';
 
     export async function ensureOnboarded() {
-      const user = await stackServerApp.getUser();
+      const user = await hexclaveServerApp.getUser();
       if (!user.clientReadOnlyMetadata.onboarded) {
         redirect('/onboarding');
       }
@@ -108,11 +108,11 @@ You can then use these functions wherever onboarding is required:
   <Tab title="Server Component">
     ```jsx
     import { ensureOnboarding } from '@/app/onboarding-functions';
-    import { stackServerApp } from '@/stack/server';
+    import { hexclaveServerApp } from '@/stack/server';
 
     export default async function HomePage() {
       await ensureOnboarding();
-      const user = await stackServerApp.getUser();
+      const user = await hexclaveServerApp.getUser();
 
       return (
         <div>Welcome to the app, {user.displayName}</div>

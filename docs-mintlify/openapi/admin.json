@@ -6912,12 +6912,10 @@
                     }
                   },
                   "required": [
-                    "stripe_account_id",
                     "project_id",
                     "already_bought_non_stackable",
                     "conflicting_products",
-                    "test_mode",
-                    "charges_enabled"
+                    "test_mode"
                   ]
                 }
               }
@@ -6929,7 +6927,7 @@
     "/project-permission-definitions": {
       "get": {
         "summary": "List project permission definitions",
-        "description": "Query and filter project permission definitions (the equivalent of listing permissions on the Stack dashboard)",
+        "description": "Query and filter project permission definitions (the equivalent of listing permissions on the Hexclave dashboard)",
         "parameters": [],
         "tags": [
           "Permissions"
@@ -7000,7 +6998,7 @@
       },
       "post": {
         "summary": "Create a new project permission definition",
-        "description": "Create a new project permission definition (the equivalent of creating a new permission on the Stack dashboard)",
+        "description": "Create a new project permission definition (the equivalent of creating a new permission on the Hexclave dashboard)",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -7095,7 +7093,7 @@
     "/project-permission-definitions/{permission_id}": {
       "delete": {
         "summary": "Delete a project permission definition",
-        "description": "Delete a project permission definition (the equivalent of deleting a permission on the Stack dashboard)",
+        "description": "Delete a project permission definition (the equivalent of deleting a permission on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "permission_id",
@@ -7138,7 +7136,7 @@
       },
       "patch": {
         "summary": "Update a project permission definition",
-        "description": "Update a project permission definition (the equivalent of updating a permission on the Stack dashboard)",
+        "description": "Update a project permission definition (the equivalent of updating a permission on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "permission_id",
@@ -7341,7 +7339,7 @@
     "/project-permissions/{user_id}/{permission_id}": {
       "post": {
         "summary": "Grant a global permission to a user",
-        "description": "Grant a global permission to a user (the permission must be created first on the Stack dashboard)",
+        "description": "Grant a global permission to a user (the permission must be created first on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "user_id",
@@ -7469,7 +7467,7 @@
     "/team-permission-definitions": {
       "get": {
         "summary": "List team permission definitions",
-        "description": "Query and filter the permission with team_id, user_id, and permission_id (the equivalent of listing permissions on the Stack dashboard)",
+        "description": "Query and filter the permission with team_id, user_id, and permission_id (the equivalent of listing permissions on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "limit",
@@ -7571,7 +7569,7 @@
       },
       "post": {
         "summary": "Create a new team permission definition",
-        "description": "Create a new permission definition (the equivalent of creating a new permission on the Stack dashboard)",
+        "description": "Create a new permission definition (the equivalent of creating a new permission on the Hexclave dashboard)",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -7666,7 +7664,7 @@
     "/team-permission-definitions/{permission_id}": {
       "delete": {
         "summary": "Delete a team permission definition",
-        "description": "Delete a permission definition (the equivalent of deleting a permission on the Stack dashboard)",
+        "description": "Delete a permission definition (the equivalent of deleting a permission on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "permission_id",
@@ -7709,7 +7707,7 @@
       },
       "patch": {
         "summary": "Update a team permission definition",
-        "description": "Update a permission definition (the equivalent of updating a permission on the Stack dashboard)",
+        "description": "Update a permission definition (the equivalent of updating a permission on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "permission_id",
@@ -7929,7 +7927,7 @@
     "/team-permissions/{team_id}/{user_id}/{permission_id}": {
       "post": {
         "summary": "Grant a team permission to a user",
-        "description": "Grant a team permission to a user (the team permission must be created first on the Stack dashboard)",
+        "description": "Grant a team permission to a user (the team permission must be created first on the Hexclave dashboard)",
         "parameters": [
           {
             "name": "team_id",

@@ -10,7 +10,7 @@ import { z } from "zod";
  */
 export function updateDashboardTool(auth: SmartRequestAuth | null) {
   return tool({
-    description: "Update the dashboard with new source code. The source code must define a React functional component named 'Dashboard' (no props). It runs inside a sandboxed iframe with React, Recharts, DashboardUI, and stackServerApp available as globals. No imports, exports, or require statements.",
+    description: "Update the dashboard with new source code. The source code must define a React functional component named 'Dashboard' (no props). It runs inside a sandboxed iframe with React, Recharts, DashboardUI, and hexclaveServerApp available as globals. No imports, exports, or require statements.",
     inputSchema: z.object({
       content: z.string().describe("The complete updated JSX source code for the Dashboard component"),
     }),

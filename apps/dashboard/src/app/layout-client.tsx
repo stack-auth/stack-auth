@@ -6,7 +6,7 @@ import { SiteLoadingIndicatorDisplay } from "@/components/site-loading-indicator
 import { Toaster } from "@/components/ui";
 import { VersionAlerter } from "@/components/version-alerter";
 import { getPublicEnvVar } from "@/lib/env";
-import { hexclaveClientApp } from "@/stack/client";
+import { hexclaveClientApp } from "@/hexclave/client";
 import { StackProvider, StackTheme } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import React, { useSyncExternalStore } from "react";

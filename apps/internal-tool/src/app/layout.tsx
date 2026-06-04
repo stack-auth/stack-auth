@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { StackProvider, StackTheme } from "@hexclave/next";
-import { hexclaveClientApp } from "../stack";
+import { hexclaveClientApp } from "../hexclave";
 import Loading from "./loading";
 import "./globals.css";
 

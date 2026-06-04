@@ -139,10 +139,10 @@ When running in GitHub Actions, `config push` records `GITHUB_REPOSITORY`, `GITH
 
 ## Execute admin JavaScript
 
-`stack exec` runs JavaScript with a preconfigured `HexclaveServerApp` available as `stackServerApp`.
+`stack exec` runs JavaScript with a preconfigured `HexclaveServerApp` available as `hexclaveServerApp`.
 
 ```sh title="Terminal"
-stack --project-id <project-id> exec "return await stackServerApp.listUsers()"
+stack --project-id <project-id> exec "return await hexclaveServerApp.listUsers()"
 ```
 
 The JavaScript is executed as an async function. Return values are printed as formatted JSON; `undefined` prints nothing.

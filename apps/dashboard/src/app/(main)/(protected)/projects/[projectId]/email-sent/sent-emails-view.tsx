@@ -74,7 +74,7 @@ type SentEmailsViewProps = {
 };
 
 export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const projectId = useProjectId();
   const router = useRouter();
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
@@ -89,12 +89,12 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   const refreshEmails = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await stackAdminApp.listOutboxEmails();
+      const result = await hexclaveAdminApp.listOutboxEmails();
       setEmails(result.items);
     } finally {
       setLoading(false);
     }
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   useEffect(() => {
     let cancelled = false;
