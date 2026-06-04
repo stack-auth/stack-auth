@@ -1,4 +1,4 @@
-import { stackClientApp } from "./stack";
+import { stackClientApp } from "./hexclave";
 
 // Check if user is already signed in
 stackClientApp.getUser().then((user) => {

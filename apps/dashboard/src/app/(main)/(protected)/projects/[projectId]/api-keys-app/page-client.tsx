@@ -109,7 +109,7 @@ export default function PageClient() {
             <br /><br />
             If you are looking to create or manage keys for your Hexclave project, head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> settings.
             <br /><br />
-            For more information, see the <StyledLink href="https://docs.hexclave.com/docs/apps/api-keys">API Keys docs</StyledLink>.
+            For more information, see the <StyledLink href="https://docs.hexclave.com/guides/apps/api-keys/overview">API Keys docs</StyledLink>.
           </>}
         />
 

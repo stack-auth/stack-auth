@@ -1199,7 +1199,7 @@ it("listing owned products should require authentication", async ({ expect }) =>
           "error": deindent\`
             You must specify an access level for this Hexclave project. Make sure project API keys are provided (eg. x-hexclave-publishable-client-key) and you set the x-hexclave-access-type header to 'client', 'server', or 'admin'. (The legacy x-stack-* equivalents are also accepted.)
             
-            For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
+            For more information, see the docs on REST API authentication: https://docs.hexclave.com/api/overview#authentication
           \`,
         },
         "headers": Headers {

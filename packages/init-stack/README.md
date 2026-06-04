@@ -41,4 +41,4 @@ Initialize Hexclave in a JavaScript project with npm:
 npx init-stack --js --npm
 ```
 
-For more information, please visit [Hexclave Documentation](https://docs.hexclave.com/getting-started/setup).
+For more information, please visit [Hexclave Documentation](https://docs.hexclave.com/guides/getting-started/setup).

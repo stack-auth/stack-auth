@@ -12,7 +12,7 @@
 import type { PushedConfigSource } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { isValidConfig, override } from "@hexclave/shared/dist/config/format";
-import { parseStackConfigFileContent, renderConfigFileContent, showOnboardingStackConfigValue } from "@hexclave/shared/dist/stack-config-file";
+import { parseStackConfigFileContent, renderConfigFileContent, showOnboardingStackConfigValue } from "@hexclave/shared/dist/hexclave-config-file";
 
 import {
   commitFile,

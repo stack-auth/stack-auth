@@ -1,7 +1,7 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
-import { getStackServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/stack";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -118,7 +118,7 @@ export const POST = createSmartRouteHandler({
     const refreshTokenId = auth.refreshTokenId;
     const tenancyId = auth.tenancy.id;
 
-    const app = getStackServerApp();
+    const app = getHexclaveServerApp();
 
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (billingTeamId != null && arePlanLimitsEnforced()) {

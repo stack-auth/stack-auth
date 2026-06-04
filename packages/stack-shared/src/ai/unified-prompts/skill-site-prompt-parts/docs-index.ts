@@ -26,6 +26,9 @@ function humanize(slug: string): string {
 }
 
 function docUrl(slug: string): string {
+  if (slug === "index") {
+    return DOCS_BASE;
+  }
   const encoded = slug.split("/").map(encodeURIComponent).join("/");
   return `${DOCS_BASE}/${encoded}`;
 }

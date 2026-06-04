@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import { stackClientApp } from "./stack/client";
+import { stackClientApp } from "./hexclave/client";
 
 
 const queryClient = new QueryClient();

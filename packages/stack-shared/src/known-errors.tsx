@@ -270,7 +270,7 @@ const AccessTypeWithoutProjectId = createKnownErrorConstructor(
     deindent`
       The x-hexclave-access-type header was '${accessType}', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
       
-      For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
+      For more information, see the docs on REST API authentication: https://docs.hexclave.com/api/overview#authentication
     `,
     {
       request_type: accessType,
@@ -287,7 +287,7 @@ const AccessTypeRequired = createKnownErrorConstructor(
     deindent`
       You must specify an access level for this Hexclave project. Make sure project API keys are provided (eg. x-hexclave-publishable-client-key) and you set the x-hexclave-access-type header to 'client', 'server', or 'admin'. (The legacy x-stack-* equivalents are also accepted.)
       
-      For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
+      For more information, see the docs on REST API authentication: https://docs.hexclave.com/api/overview#authentication
     `,
   ] as const,
   () => [] as const,

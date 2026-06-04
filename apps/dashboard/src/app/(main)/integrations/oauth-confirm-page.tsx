@@ -1,4 +1,4 @@
-import { getStackServerApp } from "@/stack/server";
+import { getHexclaveServerApp } from "@/stack/server";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { redirect } from "next/navigation";
@@ -18,7 +18,7 @@ export default async function IntegrationConfirmPage(props: {
   const onContinue = async (options: { projectId: string, projectName?: string }) => {
     "use server";
 
-    const user = await getStackServerApp().getUser();
+    const user = await getHexclaveServerApp().getUser();
     if (!user) {
       return { error: "unauthorized" };
     }

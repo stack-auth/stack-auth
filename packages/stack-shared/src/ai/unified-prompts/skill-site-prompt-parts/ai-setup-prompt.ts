@@ -45,7 +45,7 @@ export const convexSetupPrompt = deindent`
 
       export default {
         providers: getConvexProvidersConfig({
-          projectId: process.env.STACK_PROJECT_ID, // or process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+          projectId: process.env.HEXCLAVE_PROJECT_ID, // or process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID
         }),
       };
       \`\`\`
@@ -78,7 +78,7 @@ export const convexSetupPrompt = deindent`
 
       \`\`\`ts convex/myFunctions.ts
       import { query } from "./_generated/server";
-      import { hexclaveServerApp } from "../src/stack/server";
+      import { hexclaveServerApp } from "../src/hexclave/server";
 
       export const myQuery = query({
         handler: async (ctx, args) => {
@@ -135,8 +135,8 @@ export const supabaseSetupPrompt = deindent`
       If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Hexclave:
 
       \`\`\`sh
-      npx create-next-app@latest -e with-supabase stack-supabase
-      cd stack-supabase
+      npx create-next-app@latest -e with-supabase hexclave-supabase
+      cd hexclave-supabase
       npx @hexclave/cli@latest init
       \`\`\`
 
@@ -152,10 +152,10 @@ export const supabaseSetupPrompt = deindent`
 
       \`\`\`.env .env.local
       # The project ID is the only client-exposed Hexclave variable; in Next.js it must
-      # be prefixed with NEXT_PUBLIC_. STACK_SECRET_SERVER_KEY is server-only and must
+      # be prefixed with NEXT_PUBLIC_. HEXCLAVE_SECRET_SERVER_KEY is server-only and must
       # NEVER be prefixed or exposed to the client.
-      NEXT_PUBLIC_STACK_PROJECT_ID=<your-stack-project-id>
-      STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+      NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=<your-hexclave-project-id>
+      HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
       \`\`\`
     </Step>
 
@@ -165,7 +165,7 @@ export const supabaseSetupPrompt = deindent`
       \`\`\`tsx utils/actions.ts
       'use server';
 
-      import { hexclaveServerApp } from "@/stack/server";
+      import { hexclaveServerApp } from "@/hexclave/server";
       import * as jose from "jose";
 
       export const getSupabaseJwt = async () => {
@@ -333,6 +333,198 @@ export const cliSetupPrompt = deindent`
   </Steps>
 `;
 
+function getRestBackendSetupPrompt(kind: "python" | "rest-api") {
+  const isPython = kind === "python";
+  const title = isPython ? "Python Backend Setup" : "Other Backend Setup (REST API)";
+  const intro = isPython
+    ? "Follow these instructions to authenticate requests to a Python backend with Hexclave."
+    : "Follow these instructions to authenticate requests from any backend language using Hexclave's REST API.";
+  const useCase = isPython
+    ? "This setup is for Python backends that do not use the JavaScript SDK."
+    : "Use this option when your backend is not JavaScript/TypeScript or Python, or when you want to call Hexclave over plain HTTP.";
+  const dependencyStep = isPython ? deindent`
+    <Step title="Install backend dependencies">
+      Install \`requests\` for REST API verification. If you want to use JWT verification, also install \`PyJWT[crypto]\`.
+
+      \`\`\`sh
+      pip install requests PyJWT[crypto]
+      \`\`\`
+    </Step>
+  ` : "";
+  const jwtVerification = isPython ? deindent`
+    \`\`\`python
+    import os
+    import jwt
+    from jwt import PyJWKClient
+    from jwt.exceptions import InvalidTokenError
+
+    jwks_client = PyJWKClient(
+        f"https://api.hexclave.com/api/v1/projects/{os.environ['HEXCLAVE_PROJECT_ID']}/.well-known/jwks.json"
+    )
+
+    def get_current_user_id_from_jwt(request):
+        access_token = request.headers.get("x-stack-access-token")
+        if not access_token:
+            return None
+
+        try:
+            signing_key = jwks_client.get_signing_key_from_jwt(access_token)
+            payload = jwt.decode(
+                access_token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience=os.environ["HEXCLAVE_PROJECT_ID"],
+            )
+            return payload["sub"]
+        except InvalidTokenError:
+            return None
+    \`\`\`
+  ` : deindent`
+    \`\`\`text
+    1. Read the access token from the \`x-stack-access-token\` header.
+    2. Fetch the JWKS from:
+       https://api.hexclave.com/api/v1/projects/<your-project-id>/.well-known/jwks.json
+    3. Verify the JWT signature with an ES256-capable JWT library.
+    4. Verify the token audience is your Hexclave project ID.
+    5. Use the \`sub\` claim as the authenticated user ID.
+    6. Reject the request if any verification step fails.
+    \`\`\`
+  `;
+  const restVerification = isPython ? deindent`
+    \`\`\`python
+    import os
+    import requests
+
+    def get_current_hexclave_user(request):
+        access_token = request.headers.get("x-stack-access-token")
+        if not access_token:
+            return None
+
+        response = requests.get(
+            "https://api.hexclave.com/api/v1/users/me",
+            headers={
+                "x-stack-access-type": "server",
+                "x-stack-project-id": os.environ["HEXCLAVE_PROJECT_ID"],
+                "x-stack-secret-server-key": os.environ["HEXCLAVE_SECRET_SERVER_KEY"],
+                "x-stack-access-token": access_token,
+            },
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            return response.json()
+
+        return None
+    \`\`\`
+  ` : deindent`
+    \`\`\`sh
+    curl https://api.hexclave.com/api/v1/users/me \\
+      -H "x-stack-access-type: server" \\
+      -H "x-stack-project-id: $HEXCLAVE_PROJECT_ID" \\
+      -H "x-stack-secret-server-key: $HEXCLAVE_SECRET_SERVER_KEY" \\
+      -H "x-stack-access-token: <access-token-from-request>"
+    \`\`\`
+  `;
+
+  return deindent`
+    ## ${title}
+
+    ${intro}
+
+    ${useCase} The backend flow is: your frontend sends the user's access token to your backend, and your backend verifies it before serving protected data.
+
+    <Steps titleSize="h3">
+      <Step title="Choose a project setup">
+        You can use either a development environment with the local dashboard or a Hexclave Cloud project.
+
+        <AccordionGroup>
+          <Accordion title="Option 1: Local dashboard (recommended)" defaultOpen>
+            If this project already has a \`hexclave.config.ts\` file for another frontend or backend, reuse that same file so the whole project shares one Hexclave config. Otherwise, create a new \`hexclave.config.ts\` file in your workspace:
+
+            \`\`\`ts hexclave.config.ts
+            import type { HexclaveConfig } from "@hexclave/js";
+
+            export const config: HexclaveConfig = "show-onboarding";
+            \`\`\`
+
+            Run your backend through the Hexclave CLI so it starts the local dashboard and injects the Hexclave environment variables:
+
+            \`\`\`json package.json
+            {
+              "scripts": {
+                "dev": "hexclave dev --config-file ./hexclave.config.ts -- <your-backend-dev-command>"
+              }
+            }
+            \`\`\`
+
+            Your backend should read \`HEXCLAVE_PROJECT_ID\` and \`HEXCLAVE_SECRET_SERVER_KEY\` from the environment.
+          </Accordion>
+
+          <Accordion title="Option 2: Hexclave Cloud project">
+            Create or select a project on [app.hexclave.com](https://app.hexclave.com). Then copy the project ID and a secret server key into your backend environment:
+
+            \`\`\`.env .env
+            HEXCLAVE_PROJECT_ID=<your-project-id>
+            HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
+            \`\`\`
+
+            The secret server key must only be available to your backend. Never expose it to browser code, mobile clients, logs, or public repositories.
+          </Accordion>
+        </AccordionGroup>
+      </Step>
+
+      ${dependencyStep}
+
+      <Step title="Send the user's access token to your backend">
+        From your frontend, get the current user's access token and pass it to your backend endpoint.
+
+        \`\`\`ts
+        // this is your frontend's code!
+        const { accessToken } = await user.getAuthJson();
+        const response = await fetch("<your-backend-endpoint>", {
+          headers: {
+            "x-stack-access-token": accessToken,
+          },
+        });
+        \`\`\`
+      </Step>
+
+      <Step title="Verify the token">
+        Hexclave supports two backend verification approaches. JWT verification is faster and local to your backend. REST endpoint verification asks Hexclave to validate the token and return the current user object.
+
+        <AccordionGroup>
+          <Accordion title="Verify with JWT" defaultOpen>
+            JWT verification validates the token locally in your backend. It does not require a request to Hexclave on every call, but it only gives you the information contained in the token, such as the user ID.
+
+            ${jwtVerification}
+          </Accordion>
+
+          <Accordion title="Verify with the Hexclave REST endpoint">
+            REST endpoint verification asks Hexclave to validate the token and returns the current user object. Use this when you want the complete, up-to-date user profile or do not want to implement JWT verification yourself.
+
+            ${restVerification}
+
+            If the response is \`200 OK\`, the user is authenticated. If the response is not \`200 OK\`, treat the request as unauthenticated.
+          </Accordion>
+        </AccordionGroup>
+      </Step>
+
+      <Step title="Protect authenticated endpoints">
+        Wrap your protected endpoints with a helper that extracts \`x-stack-access-token\`, verifies it with either JWT verification or REST API verification, and returns \`401 Unauthorized\` when verification fails.
+
+        <Note>
+          Disable HTTP caching for authenticated responses with a header like \`Cache-Control: private, no-store\`.
+        </Note>
+      </Step>
+
+      <Step title="Done!" />
+    </Steps>
+  `;
+}
+
+export const pythonBackendSetupPrompt = getRestBackendSetupPrompt("python");
+export const restApiBackendSetupPrompt = getRestBackendSetupPrompt("rest-api");
+
 export const aiAgentConfigPreparationPrompt = deindent`
   ## AI Agent Configuration
 
@@ -412,6 +604,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
     Follow these instructions in order to set up and get started with the Hexclave SDK ${typeLabel ? `for ${typeLabel} ` : "in various languages"}.
 
+    Note: These instructions are for setting up the Hexclave SDK to build your own CLIs. If you're looking to use the Hexclave CLI instead, see the [CLI documentation](https://docs.hexclave.com/guides/going-further/cli).
+
     ${isAiPrompt ? "Not all steps are applicable to every type of application; for example, React apps have some extra steps that are not needed with other frameworks." : ""}
 
     ${isAiPrompt ? deindent`
@@ -450,13 +644,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           \`\`\`
       </Step>
 
-      <Step title="Initializing the Stack App">
-        Next, let us create the Stack App object for your project. This is the most important object in a Hexclave project.
+      <Step title="Initializing the Hexclave App">
+        Next, let us create the Hexclave App object for your project. This is the most important object in a Hexclave project.
 
         ${isMaybeFrontend ? deindent`
           In a frontend where you cannot keep a secret key safe, you would use the \`HexclaveClientApp\` constructor:
 
-          \`\`\`ts src/stack/client.ts
+          \`\`\`ts src/hexclave/client.ts
           import { HexclaveClientApp } from "${packageName}";
 
           export const hexclaveClientApp = new HexclaveClientApp({
@@ -474,7 +668,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           In a backend where you can keep a secret key safe, you can use the \`HexclaveServerApp\`, which provides access to more sensitive APIs compared to \`HexclaveClientApp\`:
 
           ${!isDefinitelyFrontend ? deindent`
-            \`\`\`ts src/stack/server.ts
+            \`\`\`ts src/hexclave/server.ts
             import { HexclaveServerApp } from "${packageName}";
 
             export const hexclaveServerApp = new HexclaveServerApp({
@@ -493,7 +687,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isMaybeFrontend ? deindent`
-            \`\`\`ts src/stack/server.ts
+            \`\`\`ts src/hexclave/server.ts
             import { HexclaveServerApp } from "${packageName}";
             import { hexclaveClientApp } from "./client";
 
@@ -520,11 +714,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
         <AccordionGroup>
           <Accordion title="Option 1: Running Hexclave's dashboard locally (recommended)" defaultOpen>
-            ${isAiPrompt ? "This is the strongly recommended option unless the user has explicitly said otherwise, as it allows usage of \`stack.config.ts\` files and does not require the user to get project IDs or API keys from the dashboard." : ""}
-            
-            First, create a \`stack.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
+            ${isAiPrompt ? "This is the strongly recommended option unless the user has explicitly said otherwise, as it allows usage of \`hexclave.config.ts\` files and does not require the user to get project IDs or API keys from the dashboard." : ""}
 
-            \`\`\`ts stack.config.ts
+            First, create a \`hexclave.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
+
+            \`\`\`ts hexclave.config.ts
             import type { HexclaveConfig } from "${packageName}";
 
             // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
@@ -545,8 +739,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
               // ...
               "scripts": {
                 // ...
-                "dev": "stack dev --config-file ./stack.config.ts -- npm run dev:without-stack-auth",
-                "dev:without-stack-auth": "<your-existing-dev-script>"
+                "dev": "hexclave dev --config-file ./hexclave.config.ts -- npm run dev:without-hexclave",
+                "dev:without-hexclave": "<your-existing-dev-script>"
               }
             }
             \`\`\`
@@ -568,12 +762,12 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>
+            HEXCLAVE_PROJECT_ID=<your-project-id>
             \`\`\`
 
-            Alternatively, you can also just set the project ID in the \`stack/client.ts\` file:
+            Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
 
-            \`\`\`ts src/stack/client.ts
+            \`\`\`ts src/hexclave/client.ts
             export const hexclaveClientApp = new HexclaveClientApp({
               // ...
               projectId: "your-project-id",
@@ -590,8 +784,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Hexclave on a server.
             `}\n\n` : ""}\`\`\`.env .env.local
-            STACK_PROJECT_ID=<your-project-id>
-            STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+            HEXCLAVE_PROJECT_ID=<your-project-id>
+            HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 
             They'll automatically be picked up by the \`HexclaveServerApp\` constructor.
@@ -608,7 +802,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
             \`\`\`tsx src/App.tsx
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
-            import { hexclaveClientApp } from "./stack/client";
+            import { hexclaveClientApp } from "./hexclave/client";
 
             export default function App() {
               return (
@@ -628,7 +822,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             \`\`\`tsx src/app/layout.tsx
             import { Suspense } from "react";
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
-            import { hexclaveServerApp } from "@/stack/server";
+            import { hexclaveServerApp } from "@/hexclave/server";
 
             export default function RootLayout({ children }: { children: React.ReactNode }) {
               return (
@@ -649,7 +843,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             import { HexclaveProvider, HexclaveTheme } from "${isDefinitelyTanstackStart ? packageName : "@hexclave/tanstack-start"}";
             import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
             import type { ReactNode } from "react";
-            import { hexclaveClientApp } from "../stack/client";
+            import { hexclaveClientApp } from "../hexclave/client";
 
             export const Route = createRootRoute({
               shellComponent: RootDocument,
@@ -696,7 +890,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             \`\`\`tsx src/App.tsx
             import { Suspense } from "react";
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
-            import { hexclaveClientApp } from "./stack/client";
+            import { hexclaveClientApp } from "./hexclave/client";
 
             export default function App() {
               return (
@@ -744,12 +938,12 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isAiPrompt ? deindent`
-            Note: If you are an AI agent, make sure to make the loading indicator visually appealing and match the design of your app, instead of the example that just says "Loading...".
+            Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Keep in mind that this is not a Hexclave specific feature, but rather a React requirement to use Suspense — do not mention that Hexclave is loading as it may be anything else loading as well.
           ` : ""}
         </Step>
 
         ${isMaybeTanstackStart ? deindent`
-          <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Stack handler route">
+          <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Hexclave handler route">
             Hexclave's auth flows (sign-in, sign-up, OAuth callbacks, password reset, etc.) are rendered by a single \`HexclaveHandler\` component mounted at \`/handler/*\`. In TanStack Start, expose it as a splat file route at \`src/routes/handler/$.tsx\`:
 
             \`\`\`tsx src/routes/handler/$.tsx
@@ -840,6 +1034,10 @@ export const aiSetupPrompt = deindent`
   ${convexSetupPrompt}
 
   ${supabaseSetupPrompt}
+
+  ${pythonBackendSetupPrompt}
+
+  ${restApiBackendSetupPrompt}
 
   ${cliSetupPrompt}
 
