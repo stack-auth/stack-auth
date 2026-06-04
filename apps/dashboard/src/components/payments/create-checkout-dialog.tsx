@@ -41,7 +41,7 @@ export function CreateCheckoutDialog(props: Props) {
   const customer = props.user ?? props.team;
   const products = config.payments.products;
   const customerType = props.user ? "user" : "team";
-  const createProductHref = urlString`/projects/${stackAdminApp.projectId}/payments/products/new?customerType=${customerType}`;
+  const createProductHref = urlString`/projects/${hexclaveAdminApp.projectId}/payments/products/new?customerType=${customerType}`;
 
   const productOptions = useMemo(() => {
     return Object.entries(products)
