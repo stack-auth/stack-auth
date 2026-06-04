@@ -8,6 +8,10 @@ import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/obje
 import { deindent, stringCompare } from '@hexclave/shared/dist/utils/strings';
 import * as yup from 'yup';
 
+function isInternalApiPath(path: string) {
+  return path === '/internal' || path.startsWith('/internal/');
+}
+
 export function parseOpenAPI(options: {
   endpoints: Map<string, Map<HttpMethod, SmartRouteHandler>>,
   audience: 'client' | 'server' | 'admin',
@@ -25,6 +29,11 @@ export function parseOpenAPI(options: {
     }],
     paths: Object.fromEntries(
       [...options.endpoints]
+        // `/internal/*` routes are scoped to the internal Hexclave project (project.id === "internal")
+        // and are not part of the public API. Many of them use a permissive auth.type (e.g. adaptSchema),
+        // so the per-audience heuristic below does not exclude them; filter them out explicitly here so
+        // they never leak into the public API reference, regardless of their individual route metadata.
+        .filter(([path]) => !isInternalApiPath(path))
         .map(([path, handlersByMethod]) => (
           [path, Object.fromEntries(
             [...handlersByMethod]

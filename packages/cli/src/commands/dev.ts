@@ -4,9 +4,12 @@ import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirS
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
+import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import { devEnvStatePath, ensureLocalDashboardSecret, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
+import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
+import { cliVersion } from "../lib/own-package.js";
+import { maybeReexecToLatest } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -15,6 +18,7 @@ type ChildCommand = {
 
 type DevOptions = {
   configFile?: string,
+  autoUpdate?: boolean,
 };
 
 type SessionResponse = {
@@ -30,6 +34,8 @@ const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DEFAULT_DASHBOARD_PORT = 26700;
 const DASHBOARD_PORT_ENV_VAR = "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT";
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
+const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
+const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
@@ -72,7 +78,7 @@ function errorMessage(error: unknown): string {
 
 function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
   if (commandArgs.length === 0) {
-    throw new CliError("Missing command. Usage: stack dev --config-file <path> -- <command> [args...]");
+    throw new CliError("Missing command. Usage: hexclave dev --config-file <path> -- <command> [args...]");
   }
   const command = commandArgs[0];
   return { command, args: commandArgs.slice(1) };
@@ -179,7 +185,7 @@ function assertBundledDashboardExists(): void {
   if (!existsSync(serverPath)) {
     throw new CliError([
       "This stack-cli build does not include the bundled development-environment dashboard.",
-      "Build the CLI package with the dashboard standalone assets before running `stack dev`.",
+      "Build the CLI package with the dashboard standalone assets before running `hexclave dev`.",
     ].join(" "));
   }
 }
@@ -267,11 +273,119 @@ async function isDashboardReachable(url: string): Promise<boolean> {
   }
 }
 
+type ParsedVersion = {
+  core: [number, number, number],
+  hasPrerelease: boolean,
+};
+
+function parseVersionCore(version: string): ParsedVersion | null {
+  const trimmed = version.trim();
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(trimmed);
+  if (!match) return null;
+  return {
+    core: [Number(match[1]), Number(match[2]), Number(match[3])],
+    // A `-` immediately after the core marks a semver prerelease (e.g.
+    // 2.8.109-beta.1). `.test()` returns a plain boolean, sidestepping the
+    // optional-capture-group typing.
+    hasPrerelease: /^v?\d+\.\d+\.\d+-/.test(trimmed),
+  };
+}
+
+// Returns true only when `candidate` is strictly newer than `current`. Unknown
+// or unparseable versions return false so we never act on a version we can't
+// reason about (and never downgrade). Prerelease identifiers beyond the
+// "release beats same-core prerelease" rule are intentionally not ordered. Only
+// the dashboard restart check below needs this; the CLI re-exec just always runs
+// `@latest`. Exported for unit testing.
+export function isVersionNewer(candidate: string, current: string): boolean {
+  const a = parseVersionCore(candidate);
+  const b = parseVersionCore(current);
+  if (a == null || b == null) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a.core[i] !== b.core[i]) {
+      return a.core[i] > b.core[i];
+    }
+  }
+  // Same x.y.z: a final release outranks a prerelease of the same core.
+  return !a.hasPrerelease && b.hasPrerelease;
+}
+
+// Restart the running dashboard only when ours is strictly newer; this is how a
+// re-exec'd `npx @latest` rolls out a fresh dashboard without a reinstall.
+// Equal/older/unknown versions (e.g. a dashboard recorded by a pre-feature CLI
+// with no version field) are reused as-is. Exported for unit testing.
+export function shouldRestartDashboard(currentVersion: string | undefined, runningVersion: string | undefined): boolean {
+  return currentVersion != null && runningVersion != null && isVersionNewer(currentVersion, runningVersion);
+}
+
+// Whether `pid` refers to a live process. EPERM means it exists but is owned by
+// another user — i.e. the pid was recycled onto something that isn't ours.
+export function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+// Terminate the background dashboard recorded for `port` in dev-env state and
+// wait until the port stops answering, so a fresh (newer) dashboard can rebind
+// without EADDRINUSE.
+export async function killLocalDashboard(url: string, port: number): Promise<void> {
+  const pid = readDevEnvState().localDashboardsByPort?.[String(port)]?.pid;
+  if (pid == null || pid <= 0) return;
+  if (!processExists(pid)) return;
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // ESRCH: already gone. EPERM: the pid was recycled onto a process we don't
+    // own, so it isn't our dashboard — don't wait on it or escalate to SIGKILL.
+    if (code === "ESRCH" || code === "EPERM") return;
+    throw error;
+  }
+
+  // Wait for the port to be released — that's the property that actually lets
+  // the replacement bind. Don't gate on the pid: once the dashboard exits its
+  // pid can be recycled onto an unrelated same-user process, which a pid probe
+  // would misreport as "still alive" (spinning the full timeout and then
+  // mis-targeting the SIGKILL below). isDashboardReachable only succeeds while
+  // the listener is up, so an unreachable port reliably means it's gone.
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < DASHBOARD_STOP_TIMEOUT_MS) {
+    if (!(await isDashboardReachable(url))) return;
+    await wait(200);
+  }
+
+  // Still listening after the grace period — the process is genuinely hung and
+  // still holding the port, so the recorded pid is necessarily still valid;
+  // force it down, then wait for the socket to be released.
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // best-effort
+  }
+  const killDeadline = performance.now() + DASHBOARD_FORCE_STOP_TIMEOUT_MS;
+  while (performance.now() < killDeadline) {
+    if (!(await isDashboardReachable(url))) return;
+    await wait(200);
+  }
+}
+
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number }): Promise<void> {
   const url = dashboardUrl(options.port);
   if (await isDashboardReachable(url)) {
-    logDev(`Using existing Hexclave dashboard on ${url}.`);
-    return;
+    const currentVersion = cliVersion();
+    const runningVersion = readDevEnvState().localDashboardsByPort?.[String(options.port)]?.version;
+    if (shouldRestartDashboard(currentVersion, runningVersion)) {
+      logDev(`Existing Hexclave dashboard is ${runningVersion}; restarting with ${currentVersion}...`);
+      await killLocalDashboard(url, options.port);
+    } else {
+      logDev(`Using existing Hexclave dashboard on ${url}.`);
+      return;
+    }
   }
 
   const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
@@ -316,7 +430,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     if (child.pid == null) {
       throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
     }
-    recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath);
+    recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
     child.unref();
 
     const startedAt = performance.now();
@@ -426,15 +540,7 @@ async function createRemoteDevelopmentEnvironmentSession(options: {
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command.command, command.args, { stdio: "inherit", env });
-    const forward = (signal: NodeJS.Signals) => () => child.kill(signal);
-    const onSigint = forward("SIGINT");
-    const onSigterm = forward("SIGTERM");
-    const cleanup = () => {
-      process.off("SIGINT", onSigint);
-      process.off("SIGTERM", onSigterm);
-    };
-    process.on("SIGINT", onSigint);
-    process.on("SIGTERM", onSigterm);
+    const cleanup = forwardSignals(child);
     child.on("close", (code) => {
       cleanup();
       resolvePromise(code ?? 1);
@@ -552,10 +658,20 @@ export function registerDevCommand(program: Command) {
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Hexclave development-environment credentials")
     .requiredOption("--config-file <path>", "Path to stack.config.ts")
+    .option("--no-auto-update", "Don't re-run the latest published CLI via npx before starting")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {
         throw new CliError("--config-file is required.");
+      }
+
+      // Before doing any work, re-exec through `npx <pkg>@latest` when a newer
+      // CLI is published so users get the latest dashboard without reinstalling.
+      // No-ops (and returns) when already latest, offline, in CI, or opted out.
+      if (opts.autoUpdate !== false) {
+        await maybeReexecToLatest({
+          forwardArgs: ["dev", "--config-file", opts.configFile, "--", ...commandArgs],
+        });
       }
 
       const childCommand = splitDevCommandArgs(commandArgs);
