@@ -14,7 +14,11 @@ export default function PageClient() {
 
   return (
     <AppEnabledGuard appId="emails">
-      <PageLayout title="Sent: No Template/Draft">
+      {/* allowContentOverflow: SentEmailsView renders a `fillHeight={false}`
+          DataGrid inside an `overflow-hidden` DesignCard, which the default
+          `flex-1 min-h-0` clamp would shrink and clip at the bottom on tall
+          lists. Matches the main email-sent page. */}
+      <PageLayout title="Sent: No Template/Draft" allowContentOverflow>
         <SentEmailsView filterFn={filterFn} />
       </PageLayout>
     </AppEnabledGuard>
