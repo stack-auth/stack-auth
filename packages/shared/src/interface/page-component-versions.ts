@@ -67,10 +67,10 @@ function createCustomPagePrompt(options: {
     ${options.reactExample}
     \`\`\`
 
-    When you're done, please update the file where the Stack app is configured with its URLs, to make sure it points to this page. For example, you may have an object declared like this:
+    When you're done, please update the file where the Hexclave app is configured with its URLs, to make sure it points to this page. For example, you may have an object declared like this:
 
     \`\`\`tsx
-    export const hexclaveServerApp = new StackServerApp({
+    export const hexclaveServerApp = new HexclaveServerApp({
       tokenStore: "nextjs-cookie",
       urls: {
         default: {
@@ -159,7 +159,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
     `,
     reactExample: deindent`
       export default function Custom${isSignIn ? "SignIn" : "SignUp"}Page() {
-        const hexclaveApp = useStackApp();
+        const hexclaveApp = useHexclaveApp();
         const user = useUser({ includeRestricted: true });
         const project = hexclaveApp.useProject();
         const [otpState, setOtpState] = useState<null | { nonce: string }>(null);
@@ -347,7 +347,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
 
         export default function CustomSignOutPage() {
           const user = useUser({ or: "return-null" });
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
 
           if (user) {
             use(cacheSignOut(user));
@@ -390,7 +390,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomEmailVerificationPage(props: { searchParams?: Record<string, string> }) {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const [result, setResult] = useState<Awaited<ReturnType<typeof hexclaveApp.verifyEmail>> | null>(null);
           const code = props.searchParams?.code;
 
@@ -461,7 +461,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomPasswordResetPage(props: { searchParams: Record<string, string> }) {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const code = props.searchParams.code;
           const [password, setPassword] = useState("");
           const [passwordRepeat, setPasswordRepeat] = useState("");
@@ -469,7 +469,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
           const [failed, setFailed] = useState(false);
           const [formError, setFormError] = useState<string | null>(null);
 
-          const cachedVerifyPasswordResetCode = cacheFunction(async (app: StackClientApp<true>, codeToVerify: string) => {
+          const cachedVerifyPasswordResetCode = cacheFunction(async (app: HexclaveClientApp<true>, codeToVerify: string) => {
             return await app.verifyPasswordResetCode(codeToVerify);
           });
 
@@ -533,7 +533,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomForgotPasswordPage() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "return-null" });
           const [email, setEmail] = useState("");
           const [sent, setSent] = useState(false);
@@ -592,7 +592,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomOAuthCallbackPage() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const called = useRef(false);
           const [error, setError] = useState<unknown>(null);
           const [showRedirectLink, setShowRedirectLink] = useState(false);
@@ -651,7 +651,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomMagicLinkCallbackPage(props: { searchParams?: Record<string, string> }) {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "return-null" });
           const [result, setResult] = useState<Awaited<ReturnType<typeof hexclaveApp.signInWithMagicLink>> | null>(null);
           const code = props.searchParams?.code;
@@ -830,7 +830,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function PasswordSection() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "redirect" });
           const project = hexclaveApp.useProject();
           const [oldPassword, setOldPassword] = useState("");
@@ -861,7 +861,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function PasskeySection() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "redirect" });
           const project = hexclaveApp.useProject();
           const hasVerifiedAuthEmail = user.useContactChannels().some((x) => x.type === "email" && x.isVerified && x.usedForAuth);
@@ -888,7 +888,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function OtpSection() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "redirect" });
           const project = hexclaveApp.useProject();
           const hasVerifiedAuthEmail = user.useContactChannels().some((x) => x.type === "email" && x.isVerified && x.usedForAuth);
@@ -1039,7 +1039,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
                   <Typography>{product.displayName}</Typography>
                   {product.subscription?.isCancelable ? (
                     <Button variant="secondary" onClick={async () => {
-                      await useStackApp().cancelSubscription({
+                      await useHexclaveApp().cancelSubscription({
                         ...(props.customerType === "team" ? { teamId: props.customer.id } : {}),
                         productId: product.id ?? "",
                         subscriptionId: product.subscription?.subscriptionId ?? undefined,
@@ -1064,7 +1064,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
 
         function TeamSection(props: { team: { displayName: string } }) {
           const user = useUser({ or: "redirect" });
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const project = hexclaveApp.useProject();
           const team = user.useTeam((props.team as any).id);
 
@@ -1148,7 +1148,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         function CreateTeamSection() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "redirect" });
           const project = hexclaveApp.useProject();
           const navigate = hexclaveApp.useNavigate();
@@ -1180,7 +1180,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               <Button onClick={async () => await user.signOut()}>Sign out</Button>
               <Button variant="destructive" onClick={async () => {
                 await user.delete();
-                await useStackApp().redirectToHome();
+                await useHexclaveApp().redirectToHome();
               }}>
                 Delete account
               </Button>
@@ -1189,7 +1189,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         export default function CustomAccountSettingsPage(props: { extraItems?: { id: string, title: string, content: React.ReactNode }[] }) {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "redirect" });
           const project = hexclaveApp.useProject();
           const teams = user.useTeams();
@@ -1303,7 +1303,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomTeamInvitationPage(props: { searchParams: Record<string, string> }) {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "return-null", includeRestricted: true });
           const code = props.searchParams.code;
           const [accepted, setAccepted] = useState(false);
@@ -1486,7 +1486,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
         }
 
         export default function CustomMfaPage() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const [otp, setOtp] = useState("");
           const [submitting, setSubmitting] = useState(false);
           const [error, setError] = useState<string | null>(null);
@@ -1558,7 +1558,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomErrorPage(props: { searchParams: Record<string, string> }) {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const errorCode = props.searchParams.errorCode;
           const message = props.searchParams.message;
           const details = props.searchParams.details;
@@ -1624,7 +1624,7 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       reactExample: deindent`
         export default function CustomOnboardingPage() {
-          const hexclaveApp = useStackApp();
+          const hexclaveApp = useHexclaveApp();
           const user = useUser({ or: "return-null", includeRestricted: true });
           const [email, setEmail] = useState("");
           const [changeEmail, setChangeEmail] = useState(false);

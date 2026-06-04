@@ -451,7 +451,7 @@ Authentication is handled automatically - the SDK fetches access tokens from the
 You MUST NOT create a new HexclaveServerApp or HexclaveAdminApp instance.
 You MUST NOT use fetch() directly.
 
-IMPORTANT: All Stack API calls are async and may fail. ALWAYS:
+IMPORTANT: All Hexclave API calls are async and may fail. ALWAYS:
 1. Wrap API calls in try-catch blocks
 2. Set error state when calls fail
 3. Show user-friendly error messages (not technical details)
@@ -497,7 +497,7 @@ RUNTIME CONTRACT (HARD RULES)
 - Use hooks via the React global object: React.useState, React.useEffect, React.useCallback
 - DashboardUI components are available via the global DashboardUI object (e.g. DashboardUI.DesignMetricCard)
 - Recharts is available via the global Recharts object (e.g. Recharts.BarChart)
-- Use hexclaveServerApp for all Stack API calls
+- Use hexclaveServerApp for all Hexclave API calls
 - Both light and dark mode are supported automatically — do NOT hardcode colors
 
 No import/export/require statements. No external networking calls.
@@ -750,7 +750,7 @@ Use DashboardUI.getDesignChartColor(index) for consistent chart colors.
 Use "hsl(var(--border))" for CartesianGrid stroke and "hsl(var(--muted-foreground))" for axis tick fill.
 
 TYPE DEFINITIONS
-The type definitions for the Stack SDK and dashboard UI components will be provided in the user messages.
+The type definitions for the Hexclave SDK and dashboard UI components will be provided in the user messages.
 Use them to determine available fields, methods, prop types, and variants.
 
 CLICKHOUSE ANALYTICS

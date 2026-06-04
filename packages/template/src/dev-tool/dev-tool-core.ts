@@ -1120,7 +1120,7 @@ function createConsoleTab(logStore: LogStore): TabResult {
   exportBtn.addEventListener('click', () => {
     const blob = new Blob([formatLogsForExport()], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const link = h('a', { href: url, download: `stack-auth-dev-tool-logs-${new Date().toISOString()}.txt` });
+    const link = h('a', { href: url, download: `hexclave-dev-tool-logs-${new Date().toISOString()}.txt` });
     document.body.appendChild(link);
     link.click();
     link.remove();

@@ -21,7 +21,7 @@ export const remindersPrompt = deindent`
       - The \`Result<T, E>\` type is \`{ status: "ok", data: T } | { status: "error", error: E }\`.
       - \`KnownErrors[KNOWN_ERROR_CODE]\` refers to a specific known error type. Each KnownError may have its own properties, but they all inherit from \`Error & { statusCode: number, humanReadableMessage: string, details?: Json }\`.
       - React & Next.js:
-        - Almost all \`getXyz\` and \`listXyz\` functions on the Stack App have corresponding \`useXyz\` hooks that suspend the current component until the data is available. Make sure there is a Suspense boundary in place if you're using this pattern. The parameter and return types are identical except that the hooks don't return promises.
-        - There is a \`useStackApp()\` hook as a named export from the package itself that serves as a shortcut to get the current Stack App object from the React context. Similarly, the \`useUser(...args)\` named export is short for \`useStackApp().useUser(...args)\`.
+        - Almost all \`getXyz\` and \`listXyz\` functions on the Hexclave App have corresponding \`useXyz\` hooks that suspend the current component until the data is available. Make sure there is a Suspense boundary in place if you're using this pattern. The parameter and return types are identical except that the hooks don't return promises.
+        - There is a \`useHexclaveApp()\` hook as a named export from the package itself that serves as a shortcut to get the current Hexclave App object from the React context. Similarly, the \`useUser(...args)\` named export is short for \`useHexclaveApp().useUser(...args)\`.
   - Hexclave was formerly known as Stack Auth. You may still see reference to it as Stack Auth in some places.
 `;
