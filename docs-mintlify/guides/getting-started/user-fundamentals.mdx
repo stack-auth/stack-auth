@@ -110,13 +110,15 @@ export default function MyClientComponent() {
 
 ### Custom metadata
 
-Beyond built-in fields like `displayName` and `primaryEmail`, you'll often need to store your own data on a user. Hexclave provides three metadata fields for this:
+Beyond built-in fields like `displayName` and `primaryEmail`, you can store your own JSON-like data on a user. Hexclave provides three metadata fields, each with different read and write permissions:
 
-- **`clientMetadata`** — Readable and writable from both the client and the server. Use this for non-sensitive user preferences like theme, locale, or UI state.
-- **`serverMetadata`** — Readable and writable only from the server. Use this for sensitive or internal data like internal flags, or anything users shouldn't be able to see or modify.
-- **`clientReadOnlyMetadata`** — Readable from the client, writable only from the server. Use this for data the client needs to display but shouldn't be able to change, like subscription plans or role labels.
+| Field | Client access | Server access | Use for |
+| --- | --- | --- | --- |
+| `clientMetadata` | Read and write | Read and write | Non-sensitive user preferences, such as theme, locale, onboarding form drafts, or UI state. |
+| `serverMetadata` | No access | Read and write | Sensitive or internal data that users should not be able to see or modify. |
+| `clientReadOnlyMetadata` | Read only | Read and write | Server-authoritative data that the client should display, such as subscription plans, role labels, or validated onboarding state. |
 
-For example, storing a user's theme preference in `clientMetadata`:
+Use `clientMetadata` for information that is safe for the browser to read and change. For example, a user can store their own theme preference:
 
 <CodeGroup dropdown>
 ```ts my-app.ts
@@ -154,10 +156,10 @@ export default function ThemeToggle() {
 ```
 </CodeGroup>
 
-And storing sensitive data in `serverMetadata` (server-side only):
+Use `serverMetadata` for sensitive or internal data. It is only available through [`HexclaveServerApp`](/sdk/objects/stack-app#hexclaveserverapp):
 
 <CodeGroup dropdown>
-```ts my-app.ts
+```ts my-server-file.ts
 import { hexclaveServerApp } from "../src/stack/server";
 
 const user = await hexclaveServerApp.getUser();
@@ -166,10 +168,42 @@ await user.update({
     internalFlag: true,
   },
 });
+
+console.log(user.serverMetadata);
 ```
 </CodeGroup>
 
-For more details, see the [User Metadata](/guides/going-further/user-metadata) documentation.
+Use `clientReadOnlyMetadata` when the client needs to read a value but only your server should decide it. A common example is storing a validated onboarding or subscription state:
+
+<CodeGroup dropdown>
+```ts my-server-file.ts
+import { hexclaveServerApp } from "../src/stack/server";
+
+const user = await hexclaveServerApp.getUser({ or: "throw" });
+await user.update({
+  clientReadOnlyMetadata: {
+    subscriptionPlan: "premium",
+    onboarded: true,
+  },
+});
+```
+
+```tsx my-client-component.tsx
+'use client';
+import { useUser } from "@hexclave/next";
+
+export default function SubscriptionBadge() {
+  const user = useUser({ or: "redirect" });
+  const plan = user.clientReadOnlyMetadata?.subscriptionPlan ?? "free";
+
+  return <div>Current plan: {plan}</div>;
+}
+```
+</CodeGroup>
+
+<Warning>
+  Do not put secrets or trusted authorization decisions in `clientMetadata`. Users can read and modify it from client-side code. If the value affects access control, validate it on your server and store it in `serverMetadata` or `clientReadOnlyMetadata`.
+</Warning>
 
 ## Signing out
 

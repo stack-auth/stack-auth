@@ -6427,12 +6427,10 @@
                     }
                   },
                   "required": [
-                    "stripe_account_id",
                     "project_id",
                     "already_bought_non_stackable",
                     "conflicting_products",
-                    "test_mode",
-                    "charges_enabled"
+                    "test_mode"
                   ]
                 }
               }

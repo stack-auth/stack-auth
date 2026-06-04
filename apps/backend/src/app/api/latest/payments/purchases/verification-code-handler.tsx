@@ -10,9 +10,9 @@ export const purchaseUrlVerificationCodeHandler = createVerificationCodeHandler(
     customerId: yupString().defined(),
     productId: yupString(),
     product: productSchema,
-    stripeCustomerId: yupString().defined(),
-    stripeAccountId: yupString().defined(),
-    chargesEnabled: yupBoolean().defined(),
+    stripeCustomerId: yupString().optional(),
+    stripeAccountId: yupString().optional(),
+    chargesEnabled: yupBoolean().optional(),
   }),
   // @ts-ignore TODO: fix this
   async handler(_, __, data) {

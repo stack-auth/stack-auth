@@ -77,10 +77,9 @@ const docsJson = {
           {
             "group": "Going Further",
             "pages": [
-              "guides/going-further/stack-app",
-              "guides/going-further/backend-integration",
               "guides/going-further/cli",
-              "guides/going-further/user-metadata"
+              "guides/going-further/local-vs-cloud-dashboard",
+              "guides/going-further/hexclave-config"
             ]
           },
           {
@@ -255,53 +254,7 @@ const docsJson = {
       "/apps-sidebar-filter.js",
       "/code-language-labels.js"
     ]
-  },
-  "redirects": [
-    {
-      "source": "/rest-api/overview",
-      "destination": "/api/overview"
-    },
-    {
-      "source": "/getting-started/setup",
-      "destination": "/guides/getting-started/setup"
-    },
-    {
-      "source": "/docs/getting-started/setup",
-      "destination": "/guides/getting-started/setup"
-    },
-    {
-      "source": "/docs/next/getting-started/setup",
-      "destination": "/guides/getting-started/setup"
-    },
-    {
-      "source": "/docs/sdk",
-      "destination": "/sdk/overview"
-    },
-    {
-      "source": "/docs/apps/analytics",
-      "destination": "/guides/apps/analytics/overview"
-    },
-    {
-      "source": "/docs/apps/api-keys",
-      "destination": "/guides/apps/api-keys/overview"
-    },
-    {
-      "source": "/docs/others/convex",
-      "destination": "/guides/integrations/convex/overview"
-    },
-    {
-      "source": "/docs/concepts/teams",
-      "destination": "/guides/apps/teams/overview"
-    },
-    {
-      "source": "/docs/concepts/custom-user-data",
-      "destination": "/guides/going-further/user-metadata"
-    },
-    {
-      "source": "/others/js-client",
-      "destination": "/guides/going-further/stack-app"
-    }
-  ]
+  }
 } as const;
 
 export default docsJson;

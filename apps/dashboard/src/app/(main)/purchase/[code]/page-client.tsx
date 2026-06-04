@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckoutForm } from "@/components/payments/checkout";
+import { CheckoutForm, PaymentsNotEnabledCard, TestModeBypassForm } from "@/components/payments/checkout";
 import { PurchasePriceOption } from "@/components/payments/purchase-price-option";
 import { PurchaseQuantitySelector } from "@/components/payments/purchase-quantity-selector";
 import { isFreePrice, shortenedInterval } from "@/components/payments/purchase-utils";
@@ -20,13 +20,13 @@ import * as yup from "yup";
 
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
-  stripe_account_id: string,
+  stripe_account_id: string | null,
   project_id: string,
   project_logo_url: string | null,
   already_bought_non_stackable?: boolean,
   conflicting_products?: { product_id: string, display_name: string }[],
   test_mode: boolean,
-  charges_enabled: boolean,
+  charges_enabled: boolean | null,
 };
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
@@ -163,19 +163,21 @@ export default function PageClient({ code }: { code: string }) {
     window.location.assign(url.toString());
   }, [code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
+  const checkoutDisabled = quantityNumber < 1 || isTooLarge || data?.already_bought_non_stackable === true;
+
   return (
     <div className="relative min-h-screen bg-white dark:bg-zinc-950">
       <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
         {/* Left Panel: Product & Pricing Selection */}
-        <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:border-b-0 lg:border-r lg:w-1/2">
+        <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:w-1/2 lg:border-b-0 lg:border-r">
           <div className="mx-auto w-full max-w-md px-6 pb-12 pt-16 lg:pt-20">
             {loading ? (
               <div className="space-y-5">
                 <Skeleton className="size-12 rounded-full" />
-                <Skeleton className="h-10 w-2/3 mt-4" />
-                <Skeleton className="h-5 w-full mt-2" />
-                <Skeleton className="h-20 w-full rounded-xl mt-8" />
-                <Skeleton className="h-24 w-full rounded-xl mt-4" />
+                <Skeleton className="mt-4 h-10 w-2/3" />
+                <Skeleton className="mt-2 h-5 w-full" />
+                <Skeleton className="mt-8 h-20 w-full rounded-xl" />
+                <Skeleton className="mt-4 h-24 w-full rounded-xl" />
               </div>
             ) : error ? (
               <div className="pt-8 text-center">
@@ -201,7 +203,7 @@ export default function PageClient({ code }: { code: string }) {
                     <Image
                       src={data.project_logo_url}
                       alt="Project logo"
-                      className="size-12 rounded-full border border-border/40 object-contain p-1 bg-white dark:bg-zinc-950 shadow-sm"
+                      className="size-12 rounded-full border border-border/40 bg-white p-1 object-contain shadow-sm dark:bg-zinc-950"
                       width={48}
                       height={48}
                       unoptimized
@@ -218,7 +220,7 @@ export default function PageClient({ code }: { code: string }) {
                 {selectedPriceData && (
                   <div className="py-2">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-5xl font-bold tracking-tight text-foreground tabular-nums">
+                      <span className="text-5xl font-bold tabular-nums tracking-tight text-foreground">
                         ${selectedPriceData.USD ?? "0.00"}
                       </span>
                       {selectedPriceData.interval && (
@@ -301,22 +303,30 @@ export default function PageClient({ code }: { code: string }) {
               </div>
             ) : data && !error ? (
               <div className="space-y-4">
-                <StripeElementsProvider
-                  stripeAccountId={data.stripe_account_id}
-                  amount={elementsAmountCents}
-                  mode={elementsMode}
-                >
-                  <CheckoutForm
-                    fullCode={code}
-                    stripeAccountId={data.stripe_account_id}
-                    setupSubscription={setupSubscription}
-                    returnUrl={returnUrl ?? undefined}
-                    disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
-                    chargesEnabled={data.charges_enabled}
-                    onTestModeBypass={data.test_mode ? handleBypass : undefined}
-                    isFree={isFreeSelected}
+                {data.test_mode ? (
+                  <TestModeBypassForm
+                    onBypass={handleBypass}
+                    disabled={checkoutDisabled}
                   />
-                </StripeElementsProvider>
+                ) : data.stripe_account_id == null ? (
+                  <PaymentsNotEnabledCard />
+                ) : (
+                  <StripeElementsProvider
+                    stripeAccountId={data.stripe_account_id}
+                    amount={elementsAmountCents}
+                    mode={elementsMode}
+                  >
+                    <CheckoutForm
+                      fullCode={code}
+                      stripeAccountId={data.stripe_account_id}
+                      setupSubscription={setupSubscription}
+                      returnUrl={returnUrl ?? undefined}
+                      disabled={checkoutDisabled}
+                      chargesEnabled={data.charges_enabled ?? false}
+                      isFree={isFreeSelected}
+                    />
+                  </StripeElementsProvider>
+                )}
               </div>
             ) : null}
           </div>

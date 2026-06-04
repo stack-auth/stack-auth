@@ -72,12 +72,16 @@ describe("localEmulatorReadyTimeoutMs", () => {
 
 describe("resolveProjectId", () => {
   const SAVED = process.env.STACK_PROJECT_ID;
+  const SAVED_HEXCLAVE = process.env.HEXCLAVE_PROJECT_ID;
   beforeEach(() => {
     delete process.env.STACK_PROJECT_ID;
+    delete process.env.HEXCLAVE_PROJECT_ID;
   });
   afterEach(() => {
     if (SAVED === undefined) delete process.env.STACK_PROJECT_ID;
     else process.env.STACK_PROJECT_ID = SAVED;
+    if (SAVED_HEXCLAVE === undefined) delete process.env.HEXCLAVE_PROJECT_ID;
+    else process.env.HEXCLAVE_PROJECT_ID = SAVED_HEXCLAVE;
   });
 
   it("uses the --cloud-project-id option when provided", () => {
@@ -100,6 +104,6 @@ describe("resolveProjectId", () => {
   });
 
   it("throws a CliError with help text when neither is provided", () => {
-    expect(() => resolveProjectId(undefined)).toThrow(/STACK_PROJECT_ID/);
+    expect(() => resolveProjectId(undefined)).toThrow(/HEXCLAVE_PROJECT_ID/);
   });
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

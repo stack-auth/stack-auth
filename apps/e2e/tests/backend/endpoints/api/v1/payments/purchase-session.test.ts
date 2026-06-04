@@ -136,6 +136,7 @@ it("should return client secret for one-time price (no interval)", async ({ expe
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: false,
       products: {
         "ot-product": {
           displayName: "One Time Product",
@@ -184,6 +185,7 @@ it("should error on one-time price quantity > 1 when product is not stackable", 
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: false,
       products: {
         "ot-non-stack": {
           displayName: "One Time Non-Stackable",
@@ -281,6 +283,9 @@ it("should return client secret for one-time price even if a conflicting group s
   });
   expect(testModeRes.status).toBe(200);
 
+  // Flip to live mode for the next purchase. Path notation preserves products/productLines.
+  await Project.updateConfig({ "payments.testMode": false });
+
   // Now purchase one-time product in same group; should succeed and return client secret
   const createUrlRespB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -373,6 +378,7 @@ it("should create purchase URL, validate code, and create purchase session", asy
 it("should create purchase URL with inline product, validate code, and create purchase session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
+  await Project.updateConfig({ "payments.testMode": false });
 
   const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -433,6 +439,48 @@ it("should error when test mode is not enabled", async ({ expect }) => {
 
   expect(response.status).toBe(403);
   expect(response.body).toBe("Test mode is not enabled for this project");
+});
+
+it("should reject test-mode codes sent to the live purchase-session route", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "test-product" },
+  });
+  expect(urlRes.status).toBe(200);
+  const code = (urlRes.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const res = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: code, price_id: "monthly", quantity: 1 },
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This purchase link is no longer valid. Please request a new one and try again.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("creates subscription in test mode and increases included item quantity", async ({ expect }) => {
@@ -713,7 +761,7 @@ it("should update existing stripe subscription when switching products within a 
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      testMode: true,
+      testMode: false,
       productLines: {
         grp: { displayName: "Test Group" },
       },
@@ -884,6 +932,9 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   });
   expect(testModeRes.status).toBe(200);
 
+  // Flip to live mode so the next purchase exercises the Stripe path.
+  await Project.updateConfig({ "payments.testMode": false });
+
   // Now purchase productB in non test-mode; should cancel DB-only sub and create Stripe subscription
   const resUrlB = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -1036,9 +1087,9 @@ it("should block one-time purchase in same group after prior one-time purchase i
   const codeB = (urlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
   expect(codeB).toBeDefined();
 
-  const resB = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+  const resB = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     method: "POST",
-    accessType: "client",
+    accessType: "admin",
     body: { full_code: codeB, price_id: "one", quantity: 1 },
   });
   expect(resB.status).toBe(400);
@@ -1224,16 +1275,151 @@ it("switches from an existing paid subscription to a $0 subscription in the same
   expect(createUrlFree.status).toBe(200);
   const codeFree = (createUrlFree.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
 
-  const switchRes = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+  const switchRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     method: "POST",
-    accessType: "client",
+    accessType: "admin",
     body: { full_code: codeFree, price_id: "monthly", quantity: 1 },
   });
   expect(switchRes).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {},
+      "body": { "success": true },
       "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a duplicate non-stackable subscription redeemed via test-mode-purchase-session even when create-purchase-url already issued the code", async ({ expect }) => {
+  // Pre-issue both codes BEFORE the first redemption so create-purchase-url's
+  // own duplicate check can't catch the second one. This forces the second
+  // redemption to rely on validatePurchaseSession's Prisma guard.
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        sub: {
+          displayName: "Sub",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const code1Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "sub" },
+  });
+  expect(code1Res.status).toBe(200);
+  const code1 = (code1Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+  const code2Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "sub" },
+  });
+  expect(code2Res.status).toBe(200);
+  const code2 = (code2Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const firstRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code1, price_id: "monthly", quantity: 1 },
+  });
+  expect(firstRedeem.status).toBe(200);
+
+  const secondRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code2, price_id: "monthly", quantity: 1 },
+  });
+  expect(secondRedeem).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "sub",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"sub\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("rejects a duplicate non-stackable one-time purchase redeemed via test-mode-purchase-session even when create-purchase-url already issued the code", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: true,
+      products: {
+        ot: {
+          displayName: "One Time",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: { one: { USD: "500" } },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const code1Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "ot" },
+  });
+  expect(code1Res.status).toBe(200);
+  const code1 = (code1Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+  const code2Res = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: { customer_type: "user", customer_id: userId, product_id: "ot" },
+  });
+  expect(code2Res.status).toBe(200);
+  const code2 = (code2Res.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
+  const firstRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code1, price_id: "one", quantity: 1 },
+  });
+  expect(firstRedeem.status).toBe(200);
+
+  const secondRedeem = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
+    method: "POST",
+    accessType: "admin",
+    body: { full_code: code2, price_id: "one", quantity: 1 },
+  });
+  expect(secondRedeem).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "PRODUCT_ALREADY_GRANTED",
+        "details": {
+          "customer_id": "<stripped UUID>",
+          "product_id": "ot",
+        },
+        "error": "Customer with ID \\"<stripped UUID>\\" already owns product \\"ot\\".",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PRODUCT_ALREADY_GRANTED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });

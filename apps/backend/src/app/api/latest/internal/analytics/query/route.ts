@@ -2,7 +2,7 @@ import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getStackServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/stack";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -43,7 +43,7 @@ export const POST = createSmartRouteHandler({
     let effectiveTimeoutMs = body.timeout_ms;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (billingTeamId != null && arePlanLimitsEnforced()) {
-      const app = getStackServerApp();
+      const app = getHexclaveServerApp();
       const timeoutItem = await app.getItem({ itemId: ITEM_IDS.analyticsTimeoutSeconds, teamId: billingTeamId });
       // clickHouse treats max_execution_time=0 as
       // "unlimited", so a customer with zero timeout entitlement (no active

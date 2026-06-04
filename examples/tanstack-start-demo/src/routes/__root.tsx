@@ -6,7 +6,7 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import type { ReactNode } from "react";
 import { Suspense, useMemo } from "react";
 import { Header } from "~/components/header";
-import { createStackApp } from "~/stack";
+import { createStackApp } from "~/hexclave";
 
 export const Route = createRootRoute({
   head: () => ({

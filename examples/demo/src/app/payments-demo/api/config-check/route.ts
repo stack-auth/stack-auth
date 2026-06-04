@@ -1,7 +1,7 @@
 import { branchConfigSchema, getConfigOverrideErrors } from "@hexclave/shared/dist/config/schema";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { NextResponse } from "next/server";
-import { stackServerApp } from "src/stack";
+import { stackServerApp } from "src/hexclave";
 
 function readValidationResult(result: Awaited<ReturnType<typeof getConfigOverrideErrors>>) {
   if (result.status === "ok") {

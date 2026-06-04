@@ -28,10 +28,62 @@ type Props = {
   fullCode: string,
   returnUrl?: string,
   disabled?: boolean,
-  onTestModeBypass?: () => Promise<void>,
   chargesEnabled: boolean,
   isFree: boolean,
 };
+
+export function PaymentsNotEnabledCard() {
+  return (
+    <DesignCard glassmorphic contentClassName="space-y-4 p-5 sm:p-6">
+      <div className="flex items-start gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+          <WarningCircleIcon className="size-4" weight="fill" />
+        </div>
+        <div className="space-y-1">
+          <Typography type="h3" className="text-base font-semibold text-destructive">
+            Payments not enabled
+          </Typography>
+          <Typography type="p" variant="secondary" className="text-sm">
+            This project does not have payments enabled yet. Please contact the app developer to finish setting up payments.
+          </Typography>
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
+export function TestModeBypassForm({
+  onBypass,
+  disabled,
+}: {
+  onBypass: () => Promise<void>,
+  disabled?: boolean,
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center space-y-6 py-8 text-center">
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.05)]">
+        <FlaskIcon className="size-5" weight="fill" />
+      </div>
+
+      <div className="max-w-xs space-y-2">
+        <Typography type="h3" className="text-lg font-semibold text-foreground">
+          Test mode active
+        </Typography>
+        <Typography type="p" variant="secondary" className="text-sm leading-relaxed text-muted-foreground">
+          This project is in test mode. Use the bypass button to simulate a purchase.
+        </Typography>
+      </div>
+
+      <DesignButton
+        disabled={disabled}
+        onClick={onBypass}
+        className="h-11 w-full max-w-xs rounded-xl text-sm font-semibold"
+      >
+        Complete test purchase
+      </DesignButton>
+    </div>
+  );
+}
 
 export function CheckoutForm({
   setupSubscription,
@@ -39,7 +91,6 @@ export function CheckoutForm({
   fullCode,
   returnUrl,
   disabled,
-  onTestModeBypass,
   chargesEnabled,
   isFree,
 }: Props) {
@@ -93,60 +144,8 @@ export function CheckoutForm({
     }
   };
 
-  if (onTestModeBypass) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center space-y-6 py-8">
-        {/* Centered Beaker Icon */}
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.05)]">
-          <FlaskIcon className="size-5" weight="fill" />
-        </div>
-
-        {/* Text Details */}
-        <div className="space-y-2 max-w-xs">
-          <Typography type="h3" className="text-lg font-semibold text-foreground">
-            Test mode active
-          </Typography>
-          <Typography type="p" variant="secondary" className="text-sm text-muted-foreground leading-relaxed">
-            This project is in test mode. Use the bypass button to simulate a purchase.
-          </Typography>
-        </div>
-
-        {/* Centered Action Button */}
-        <DesignButton
-          disabled={disabled}
-          onClick={onTestModeBypass}
-          className="w-full max-w-xs h-11 text-sm font-semibold rounded-xl"
-        >
-          Complete test purchase
-        </DesignButton>
-
-        {message && (
-          <Typography type="p" variant="destructive" className="text-sm">
-            {message}
-          </Typography>
-        )}
-      </div>
-    );
-  }
-
   if (!chargesEnabled) {
-    return (
-      <DesignCard glassmorphic contentClassName="space-y-4 p-5 sm:p-6">
-        <div className="flex items-start gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
-            <WarningCircleIcon className="size-4" weight="fill" />
-          </div>
-          <div className="space-y-1">
-            <Typography type="h3" className="text-base font-semibold text-destructive">
-              Payments not enabled
-            </Typography>
-            <Typography type="p" variant="secondary" className="text-sm">
-              This project does not have payments enabled yet. Please contact the app developer to finish setting up payments.
-            </Typography>
-          </div>
-        </div>
-      </DesignCard>
-    );
+    return <PaymentsNotEnabledCard />;
   }
 
   return (

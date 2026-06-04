@@ -1,0 +1,112 @@
+---
+title: "Local vs. Cloud Dashboard"
+description: "Understand when to use a Hexclave development environment and when to use the hosted cloud dashboard."
+sidebarTitle: "Local vs. Cloud"
+---
+
+Hexclave has two common ways to work with a project:
+
+| Option | Best for | How it is configured |
+| --- | --- | --- |
+| Local dashboard | Development | A local `hexclave.config.ts` file plus `stack dev --config-file ...`. |
+| Cloud dashboard | Production | A hosted project on [app.hexclave.com](https://app.hexclave.com) with project ID and keys in your app environment. |
+
+## Development Environment
+
+A development environment starts Hexclave for the project you are currently building. It is the recommended default while integrating Hexclave because your project config can live next to your app code in `hexclave.config.ts`.
+
+Use a development environment when you want to:
+
+- Keep app setup, auth settings, RBAC permissions, email templates, payment products, and similar config in source control.
+- Let teammates review config changes in pull requests.
+- Try Hexclave apps before creating or connecting a cloud project.
+- Run your app with environment variables provided by the Hexclave CLI.
+
+The usual setup looks like this:
+
+```ts title="hexclave.config.ts"
+import type { HexclaveConfig } from "@hexclave/js";
+
+export const config: HexclaveConfig = "show-onboarding";
+```
+
+```json title="package.json"
+{
+  "scripts": {
+    "dev": "stack dev --config-file ./hexclave.config.ts -- npm run dev:without-hexclave",
+    "dev:without-hexclave": "<your-existing-dev-script>"
+  }
+}
+```
+
+For the full config file reference, see [`hexclave.config.ts`](/guides/going-further/hexclave-config). For CLI details, see [Stack CLI](/guides/going-further/cli).
+
+## Cloud Dashboard
+
+The cloud dashboard is the hosted Hexclave app at [app.hexclave.com](https://app.hexclave.com). Use it for projects that should live in Hexclave Cloud, especially production projects and projects shared with a team.
+
+Use the cloud dashboard when you want to:
+
+- Manage a real Hexclave Cloud project.
+- Generate production project keys.
+- Configure environment-specific settings that should not live in `hexclave.config.ts`, such as secrets, sender credentials, trusted domains, and payment test mode.
+- Let non-developers manage project settings through the hosted dashboard.
+
+For a frontend-only app, connect to a cloud project with the project ID:
+
+```env title=".env.local"
+STACK_PROJECT_ID=<your-project-id>
+```
+
+For a backend, or an app that has both frontend and backend code, also add a secret server key:
+
+```env title=".env.local"
+STACK_PROJECT_ID=<your-project-id>
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+```
+
+You can get these values from the cloud dashboard. The project ID appears in the project URL, and server keys are generated from the Project Keys page.
+
+## Moving Between Them
+
+To start with a development environment, run the setup wizard and choose the config-file flow:
+
+```sh title="Terminal"
+stack init --mode create
+```
+
+If you already have a config file, link it instead:
+
+```sh title="Terminal"
+stack init --mode link-config --config-file ./hexclave.config.ts
+```
+
+To start with a cloud project, create one from the CLI:
+
+```sh title="Terminal"
+stack init --mode create-cloud
+```
+
+Or link an existing cloud project:
+
+```sh title="Terminal"
+stack init --mode link-cloud --select-project-id <project-id>
+```
+
+You can also copy config between the two styles. Pull cloud branch config into a local config file:
+
+```sh title="Terminal"
+stack --project-id <project-id> config pull --config-file ./hexclave.config.ts
+```
+
+Push local config-file changes back to a cloud project:
+
+```sh title="Terminal"
+stack --project-id <project-id> config push --config-file ./hexclave.config.ts
+```
+
+<Info>
+  `config pull` requires `stack login`. `config push` supports either `stack login` or `STACK_SECRET_SERVER_KEY`.
+</Info>
+
+For the full setup flow by framework, see [Setup](/guides/getting-started/setup).

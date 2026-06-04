@@ -1,7 +1,7 @@
 "use node"
 
 import { v } from "convex/values";
-import { stackServerApp } from "../stack/server";
+import { stackServerApp } from "../hexclave/server";
 import { action } from "./_generated/server";
 
 

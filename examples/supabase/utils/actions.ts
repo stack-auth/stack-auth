@@ -1,6 +1,6 @@
 'use server';
 
-import { stackServerApp } from "@/stack";
+import { stackServerApp } from "@/hexclave";
 import * as jose from "jose";
 
 /*

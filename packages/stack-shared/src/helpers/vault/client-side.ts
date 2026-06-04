@@ -1,6 +1,9 @@
 import { decodeBase64, encodeBase64 } from "../../utils/bytes";
 import { decrypt, encrypt, hash, iteratedHash } from "../../utils/crypto";
 
+// NOTE (Hexclave rebrand): do NOT rename these "stack-*" purpose tags. They are mixed into the
+// vault's key derivation and value encryption; renaming any of them would make every
+// previously-stored vault value undecryptable. Internal constants, never user-visible.
 const hashPurpose = "stack-data-vault-client-side-encryption-key-hash";
 const encryptionSecretPurpose = "stack-data-vault-client-side-encryption-value-encryption-key-hash";
 const encryptionValuePurpose = "stack-data-vault-client-side-encryption-value-encryption-value-encryption";
