@@ -489,14 +489,6 @@ function FilterMenu({
   );
 }
 
-function countryRowsToFilterOptions(usersByCountry: Record<string, number>): FilterOption[] {
-  return Object.entries(usersByCountry)
-    .filter(([code, count]) => code.length > 0 && Number.isFinite(count) && count > 0)
-    .sort((a, b) => b[1] - a[1] || stringCompare(a[0], b[0]))
-    .slice(0, 15)
-    .map(([code]) => ({ value: code.toUpperCase(), label: code.toUpperCase() }));
-}
-
 function FilterMenuContent({
   filters,
   onSelect,
@@ -511,12 +503,12 @@ function FilterMenuContent({
   const analytics = data.analytics_overview;
 
   const dimensions = useMemo<FilterDimensionConfig[]>(() => [
-    { key: "country_code", label: "Country", options: countryRowsToFilterOptions(data.users_by_country) },
+    { key: "country_code", label: "Country", options: analytics.top_regions.slice(0, 15).map((r) => ({ value: r.country_code.toUpperCase(), label: r.country_code.toUpperCase() })) },
     { key: "referrer", label: "Referrer", options: analytics.top_referrers.slice(0, 15).map((r) => ({ value: r.referrer, label: r.referrer || "(direct)" })) },
     { key: "browser", label: "Browser", options: analytics.top_browsers.slice(0, 15).map((b) => ({ value: b.name, label: b.name })) },
     { key: "os", label: "OS", options: analytics.top_operating_systems.slice(0, 15).map((o) => ({ value: o.name, label: o.name })) },
     { key: "device", label: "Device", options: analytics.top_devices.slice(0, 15).map((d) => ({ value: d.name, label: d.name })) },
-  ], [analytics.top_browsers, analytics.top_devices, analytics.top_operating_systems, analytics.top_referrers, data.users_by_country]);
+  ], [analytics.top_browsers, analytics.top_devices, analytics.top_operating_systems, analytics.top_referrers, analytics.top_regions]);
 
   const firstAvailableDimension = dimensions.find((dimension) => dimension.options.length > 0)?.key ?? "country_code";
   const [selectedDimension, setSelectedDimension] = useState<keyof AnalyticsOverviewFilters>(firstAvailableDimension);
