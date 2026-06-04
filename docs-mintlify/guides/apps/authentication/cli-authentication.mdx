@@ -7,7 +7,7 @@ sidebarTitle: CLI App Authentication
 If you're building your own command-line application, you can use Hexclave to let users log in from a terminal.
 
 <Info>
-  This page is about adding authentication to your own CLI app. For the official `stack` command, see the [Stack CLI guide](/guides/going-further/cli).
+  This page is about adding authentication to your own CLI app. For the official `hexclave` command, see the [Hexclave CLI guide](/guides/going-further/cli).
 </Info>
 
 To do so, we provide a Python template that you can use as a starting point. [Download it here](https://github.com/hexclave/hexclave/tree/main/docs/public/stack-auth-cli-template.py) and copy it into your project, for example:
@@ -37,27 +37,27 @@ if refresh_token is None:
 # you can also store the refresh token in a file, and only prompt the user to log in if the file doesn't exist
 
 # you can now use the REST API with the refresh token
-def stack_auth_request(method, endpoint, **kwargs):
+def hexclave_auth_request(method, endpoint, **kwargs):
   # ... see the REST API overview for required Hexclave headers
   # https://docs.hexclave.com/api/overview
 
 def get_access_token(refresh_token):
-  access_token_response = stack_auth_request(
+  access_token_response = hexclave_auth_request(
     'post',
     '/api/v1/auth/sessions/current/refresh',
     headers={
-      'x-stack-refresh-token': refresh_token,
+      'x-hexclave-refresh-token': refresh_token,
     }
   )
 
   return access_token_response['access_token']
 
 def get_user_object(access_token):
-  return stack_auth_request(
+  return hexclave_auth_request(
     'get',
     '/api/v1/users/me',
     headers={
-      'x-stack-access-token': access_token,
+      'x-hexclave-access-token': access_token,
     }
   )
 

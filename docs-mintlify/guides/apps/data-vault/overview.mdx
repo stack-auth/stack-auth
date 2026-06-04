@@ -58,7 +58,7 @@ Click any store in the **Stores** list to open its detail page. From there you c
 Your secret can be any string, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. Store it as an environment variable:
 
 ```bash title=".env"
-STACK_DATA_VAULT_SECRET=your-randomly-generated-secret-here
+HEXCLAVE_DATA_VAULT_SECRET=your-randomly-generated-secret-here
 ```
 
 ### 3. Use the SDK
@@ -66,18 +66,20 @@ STACK_DATA_VAULT_SECRET=your-randomly-generated-secret-here
 Data Vault is accessed through the **server app** only — it requires your secret server key.
 
 ```typescript title="server-example.ts"
-const store = await stackServerApp.getDataVaultStore("my-store-id");
+import { hexclaveServerApp } from "@/hexclave/server";
+
+const store = await hexclaveServerApp.getDataVaultStore("my-store-id");
 
 const key = user.id;
 
 // Store a value
 await store.setValue(key, "my-sensitive-value", {
-  secret: process.env.STACK_DATA_VAULT_SECRET,
+  secret: process.env.HEXCLAVE_DATA_VAULT_SECRET,
 });
 
 // Retrieve a value
 const value = await store.getValue(key, {
-  secret: process.env.STACK_DATA_VAULT_SECRET,
+  secret: process.env.HEXCLAVE_DATA_VAULT_SECRET,
 });
 // value is the decrypted string, or null if the key doesn't exist
 ```
@@ -89,7 +91,7 @@ const value = await store.getValue(key, {
 Returns a `DataVaultStore` object for the given store ID. The store must already exist in your project config (created via the dashboard).
 
 ```typescript
-const store = await stackServerApp.getDataVaultStore("my-store-id");
+const store = await hexclaveServerApp.getDataVaultStore("my-store-id");
 ```
 
 ### `store.getValue(key, { secret })`
@@ -98,7 +100,7 @@ Retrieves the decrypted value for the given key, or `null` if the key doesn't ex
 
 ```typescript
 const value = await store.getValue("some-key", {
-  secret: process.env.STACK_DATA_VAULT_SECRET,
+  secret: process.env.HEXCLAVE_DATA_VAULT_SECRET,
 });
 ```
 
@@ -108,7 +110,7 @@ Stores an encrypted value for the given key. If the key already exists, it is ov
 
 ```typescript
 await store.setValue("some-key", "some-value", {
-  secret: process.env.STACK_DATA_VAULT_SECRET,
+  secret: process.env.HEXCLAVE_DATA_VAULT_SECRET,
 });
 ```
 

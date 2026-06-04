@@ -140,10 +140,10 @@ export function UserProfile() {
 On the server side, you can access the JWT and its claims through the Hexclave API:
 
 ```typescript
-import { stackServerApp } from '@/stack';
+import { hexclaveServerApp } from '@/hexclave/server';
 
 export async function GET() {
-  const user = await stackServerApp.getUser();
+  const user = await hexclaveServerApp.getUser();
   
   if (!user) {
     return new Response('Unauthorized', { status: 401 });
@@ -225,7 +225,7 @@ const { payload } = await jose.jwtVerify(token, jwks, {
 
 ### Signing Keys
 
-* Private keys are deterministically derived from your project ID, optional anonymous audience, and the `STACK_SERVER_SECRET` environment variable. This means no key material is ever stored in the database.
+* Private keys are deterministically derived from your project ID, optional anonymous audience, and the `HEXCLAVE_SERVER_SECRET` environment variable. This means no key material is ever stored in the database.
 * The JWKS currently exposes both the latest key pair and a legacy compatibility key. Verification libraries automatically pick the correct key by matching the `kid` provided in the JWT header.
 * Tokens are always signed server-side; client SDKs never receive the private keys.
 
@@ -239,7 +239,7 @@ const { payload } = await jose.jwtVerify(token, jwks, {
 
 ### Token Expiration
 
-* JWTs have a limited lifetime (default is 10 minutes via `STACK_ACCESS_TOKEN_EXPIRATION_TIME`)
+* JWTs have a limited lifetime (default is 10 minutes via `HEXCLAVE_ACCESS_TOKEN_EXPIRATION_TIME`)
 * Hexclave automatically refreshes tokens before they expire
 * Always check the `exp` claim when manually handling JWTs
 

@@ -36,7 +36,7 @@ There are two categories of email:
 When sending, specify the category:
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id'],
   html: '<p>Check out our new feature!</p>',
   subject: 'Product Updates',
@@ -48,12 +48,12 @@ If a user has unsubscribed from Marketing emails, the email will be automaticall
 
 ## Sending emails
 
-Emails are sent from your server using `stackServerApp.sendEmail()`. You must provide the content (HTML, a template, or a draft) and the recipients.
+Emails are sent from your server using `hexclaveServerApp.sendEmail()`. You must provide the content (HTML, a template, or a draft) and the recipients.
 
 ### Send to specific users
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id-1', 'user-id-2'],
   subject: 'Welcome to our platform!',
   html: '<h1>Welcome!</h1><p>Thanks for joining us.</p>',
@@ -63,7 +63,7 @@ await stackServerApp.sendEmail({
 ### Send to all users
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   allUsers: true,
   templateId: 'your-template-id',
   subject: 'We just shipped a big update',
@@ -78,7 +78,7 @@ await stackServerApp.sendEmail({
 If you've composed an email in the dashboard's draft editor, you can trigger it programmatically. See [Drafts](/guides/dashboard-references/emails/drafts) for the full workflow.
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id'],
   draftId: 'your-draft-id',
 });
@@ -87,7 +87,7 @@ await stackServerApp.sendEmail({
 ### Full options
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   // Recipients  - exactly one of these is required:
   userIds: ['user-id-1'],     // specific users
   // allUsers: true,           // or all users in your project
@@ -136,11 +136,11 @@ type SendEmailOptions = {
 `sendEmail` resolves once the email has been queued. If validation fails, the user IDs do not exist, or the project is still using the shared email server, it throws a Hexclave known error with a stable `errorCode`:
 
 ```typescript
-import { stackServerApp } from '@/stack/server';
+import { hexclaveServerApp } from '@/hexclave/server';
 
 export async function sendTestEmail(userId: string) {
   try {
-    await stackServerApp.sendEmail({
+    await hexclaveServerApp.sendEmail({
       userIds: [userId],
       html: '<p>Hello!</p>',
       subject: 'Test Email',
@@ -180,7 +180,7 @@ Common errors are:
 Pass a `scheduledAt` date to delay delivery. The email enters the pipeline immediately but won't be sent until the scheduled time.
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id'],
   html: '<p>Happy New Year!</p>',
   subject: 'Happy New Year!',
@@ -197,10 +197,10 @@ Emails integrate with Hexclave UI components automatically (for example verifica
 For custom flows, trigger `sendEmail` from your server code:
 
 ```typescript
-import { stackServerApp } from '@hexclave/next';
+import { hexclaveServerApp } from '@/hexclave/server';
 
 export async function inviteUser(userId: string) {
-  const result = await stackServerApp.sendEmail({
+  const result = await hexclaveServerApp.sendEmail({
     userIds: [userId],
     templateId: 'invitation-template',
     subject: "You're invited!",

@@ -19,7 +19,7 @@ Every sign-up attempt is scored with the following fields. They're always availa
 | Field | Type | Operators | Description |
 |---|---|---|---|
 | `countryCode` | string (ISO-3166-1 alpha-2) | `equals`, `not_equals`, `in_list` | Geo-IP country of the request (e.g. `"US"`, `"DE"`, `"NG"`). Empty if it can't be resolved. |
-| `riskScores.bot` | number (0-100) | `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal` | Confidence that the sign-up is automated. Higher = more likely a bot. Stack Auth uses signals like the Cloudflare Turnstile verdict to compute this score. |
+| `riskScores.bot` | number (0-100) | `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal` | Confidence that the sign-up is automated. Higher = more likely a bot. Hexclave uses signals like the Cloudflare Turnstile verdict to compute this score. |
 | `riskScores.free_trial_abuse` | number (0-100) | same as `riskScores.bot` | Confidence that the user is attempting to abuse a free-trial / new-account incentive (multi-accounting, disposable infra, etc.). |
 
 The rule tester additionally exposes a **Turnstile** override (`ok` / `invalid` / `error`) so you can simulate how a given Turnstile verdict affects the resulting bot score.

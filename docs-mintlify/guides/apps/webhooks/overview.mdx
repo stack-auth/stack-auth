@@ -1,16 +1,16 @@
 ---
 title: "Webhooks"
-description: "Receive real-time updates when events occur in your Stack project"
+description: "Receive real-time updates when events occur in your Hexclave project"
 icon: "/images/app-icons/webhooks.svg"
 ---
 
-Webhooks are a powerful way to keep your backend in sync with Stack. They allow you to receive real-time updates when events occur in your Stack project, such as when a user or team is created, updated, or deleted.
+Webhooks are a powerful way to keep your backend in sync with Hexclave. They allow you to receive real-time updates when events occur in your Hexclave project, such as when a user or team is created, updated, or deleted.
 
 For payload schemas and generated webhook event references, see the [webhook API reference](/api/webhooks/users/usercreated).
 
 ## Setting up webhooks
 
-In the Stack dashboard, you can create a webhook endpoint in the "Webhooks" section. After creating this endpoint with your server URL, you will start receiving POST requests with a JSON payload at that endpoint. The event payload will look something like this:
+In the Hexclave dashboard, you can create a webhook endpoint in the "Webhooks" section. After creating this endpoint with your server URL, you will start receiving POST requests with a JSON payload at that endpoint. The event payload will look something like this:
 
 ```json
 {
@@ -39,7 +39,7 @@ The **Webhooks** dashboard page embeds the endpoint manager where you create end
 
 The main Webhooks page shows your webhook endpoints. Each endpoint includes:
 
-- **Endpoint URL** - The URL Stack sends events to.
+- **Endpoint URL** - The URL Hexclave sends events to.
 - **Description** - Optional label for your own reference.
 - **Status** - **Active** or **Disabled**.
 - **Actions** - View details, test, edit, or delete the endpoint.
@@ -69,11 +69,15 @@ Endpoint rows have a **Test** action, and newly-created endpoints can be tested 
 {
   "type": "stack.test",
   "data": {
-    "message": "Stack webhook test event triggered from the Stack dashboard.",
+    "message": "Hexclave webhook test event triggered from the Hexclave dashboard.",
     "endpointUrl": "https://example.com/api/webhooks/stack"
   }
 }
 ```
+
+<Info>
+  Test events still use the legacy `stack.test` event type for backward compatibility. In your own integration code, prefer `HEXCLAVE_WEBHOOK_SECRET` and the current Hexclave naming — but legacy `STACK_WEBHOOK_SECRET`, `x-stack-*` request headers, and other Stack Auth-era identifiers remain accepted by the API. See [Migrating from Stack Auth to Hexclave](/migration).
+</Info>
 
 Click **Send test event** to send it. On success, the dashboard confirms that the event was sent and the endpoint is ready. On failure, it shows the delivery error returned by the webhook service.
 
@@ -94,7 +98,7 @@ The endpoint detail page shows:
 - **Description** - The saved description, or `-` when empty.
 - **Verification Secret** - The endpoint signing secret, with a copy button.
 
-Use the verification secret as `STACK_WEBHOOK_SECRET` (or your own secret environment variable name) in your webhook receiver. Do not expose it to the browser.
+Use the verification secret as `HEXCLAVE_WEBHOOK_SECRET` (or your own secret environment variable name) in your webhook receiver. Do not expose it to the browser.
 
 ### Event history
 
@@ -112,9 +116,9 @@ You can use services like [Svix Playground](https://www.svix.com/play/) or [Webh
 
 ## Verifying webhooks
 
-To ensure the webhook is coming from Stack (and not from a malicious actor) and is not prone to replay attacks, you should verify the request.
+To ensure the webhook is coming from Hexclave (and not from a malicious actor) and is not prone to replay attacks, you should verify the request.
 
-Stack signs the webhook payload with a secret key that you can find in the endpoint details on the dashboard. You can verify the signature using the Svix client library. Check out the [Svix documentation](https://docs.svix.com/receiving/verifying-payloads/how) for instructions on how to verify the signature in JavaScript, Python, Ruby, and other languages. Here are example handlers across the supported frameworks:
+Hexclave signs the webhook payload with a secret key that you can find in the endpoint details on the dashboard. You can verify the signature using the Svix client library. Check out the [Svix documentation](https://docs.svix.com/receiving/verifying-payloads/how) for instructions on how to verify the signature in JavaScript, Python, Ruby, and other languages. Here are example handlers across the supported frameworks:
 
 <CodeGroup dropdown>
 ```tsx Next.js
@@ -122,7 +126,7 @@ Stack signs the webhook payload with a secret key that you can find in the endpo
 import { Webhook } from "svix";
 
 export async function POST(request: Request) {
-  const secret = process.env.STACK_WEBHOOK_SECRET!;
+  const secret = process.env.HEXCLAVE_WEBHOOK_SECRET!;
   const payload = await request.text();
   const headers = {
     "svix-id": request.headers.get("svix-id") ?? "",
@@ -148,7 +152,7 @@ const app = express();
 app.use("/api/webhooks/stack", express.text({ type: "application/json" }));
 
 app.post("/api/webhooks/stack", (req, res) => {
-  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET!);
+  const wh = new Webhook(process.env.HEXCLAVE_WEBHOOK_SECRET!);
   const verifiedPayload = wh.verify(req.body, {
     "svix-id": req.header("svix-id") ?? "",
     "svix-timestamp": req.header("svix-timestamp") ?? "",
@@ -167,7 +171,7 @@ const app = express();
 app.use("/api/webhooks/stack", express.text({ type: "application/json" }));
 
 app.post("/api/webhooks/stack", (req, res) => {
-  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET);
+  const wh = new Webhook(process.env.HEXCLAVE_WEBHOOK_SECRET);
   const verifiedPayload = wh.verify(req.body, {
     "svix-id": req.header("svix-id") ?? "",
     "svix-timestamp": req.header("svix-timestamp") ?? "",
@@ -198,7 +202,7 @@ createServer(async (req, res) => {
     req.on("error", reject);
   });
 
-  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET);
+  const wh = new Webhook(process.env.HEXCLAVE_WEBHOOK_SECRET);
   const verifiedPayload = wh.verify(payload, {
     "svix-id": req.headers["svix-id"] ?? "",
     "svix-timestamp": req.headers["svix-timestamp"] ?? "",
@@ -232,7 +236,7 @@ createServer(async (req, res) => {
     req.on("error", reject);
   });
 
-  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET);
+  const wh = new Webhook(process.env.HEXCLAVE_WEBHOOK_SECRET);
   const verifiedPayload = wh.verify(payload, {
     "svix-id": req.headers["svix-id"] ?? "",
     "svix-timestamp": req.headers["svix-timestamp"] ?? "",
@@ -252,8 +256,8 @@ from svix.webhooks import Webhook
 
 
 @csrf_exempt
-def stack_webhook(request):
-    wh = Webhook(settings.STACK_WEBHOOK_SECRET)
+def hexclave_webhook(request):
+    wh = Webhook(settings.HEXCLAVE_WEBHOOK_SECRET)
     verified_payload = wh.verify(
         request.body.decode("utf-8"),
         {
@@ -273,13 +277,13 @@ from fastapi import FastAPI, Request
 from svix.webhooks import Webhook
 
 app = FastAPI()
-STACK_WEBHOOK_SECRET = os.environ["STACK_WEBHOOK_SECRET"]
+HEXCLAVE_WEBHOOK_SECRET = os.environ["HEXCLAVE_WEBHOOK_SECRET"]
 
 
 @app.post("/api/webhooks/stack")
-async def stack_webhook(request: Request):
+async def hexclave_webhook(request: Request):
     payload = await request.body()
-    wh = Webhook(STACK_WEBHOOK_SECRET)
+    wh = Webhook(HEXCLAVE_WEBHOOK_SECRET)
     verified_payload = wh.verify(
         payload.decode("utf-8"),
         {
@@ -299,12 +303,12 @@ from flask import Flask, jsonify, request
 from svix.webhooks import Webhook
 
 app = Flask(__name__)
-STACK_WEBHOOK_SECRET = os.environ["STACK_WEBHOOK_SECRET"]
+HEXCLAVE_WEBHOOK_SECRET = os.environ["HEXCLAVE_WEBHOOK_SECRET"]
 
 
 @app.post("/api/webhooks/stack")
-def stack_webhook():
-    wh = Webhook(STACK_WEBHOOK_SECRET)
+def hexclave_webhook():
+    wh = Webhook(HEXCLAVE_WEBHOOK_SECRET)
     verified_payload = wh.verify(
         request.get_data(as_text=True),
         {
