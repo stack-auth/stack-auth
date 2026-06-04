@@ -13,6 +13,7 @@ export { parseHexclaveConfigFileContent, renderConfigFileContent };
 const CONFIG_IMPORT_PACKAGES = [
   "@hexclave/next",
   "@hexclave/react",
+  "@hexclave/tanstack-start",
   "@hexclave/js",
   "@hexclave/template",
   "@stackframe/stack",
@@ -139,6 +140,7 @@ import.meta.vitest?.test("detectConfigImportPackage picks first matching package
   expect(detectConfigImportPackage(["@hexclave/next", "@hexclave/js"])).toBe("@hexclave/next");
   expect(detectConfigImportPackage(["@hexclave/react", "@hexclave/js"])).toBe("@hexclave/react");
   expect(detectConfigImportPackage(["@hexclave/js"])).toBe("@hexclave/js");
+  expect(detectConfigImportPackage(["@hexclave/tanstack-start"])).toBe("@hexclave/tanstack-start");
   // Hexclave names take priority over legacy stackframe names when both appear.
   expect(detectConfigImportPackage(["@stackframe/stack", "@hexclave/next"])).toBe("@hexclave/next");
   // Legacy fallback still works for projects pinned to the last @stackframe/* release.
