@@ -33,3 +33,7 @@ A: Commands such as `pnpm --dir examples/demo run dev:inner` spawn the real serv
 ## Q: What should the RDE debug page show?
 
 A: `/rde-debug` should be RDE-only and browser-secret authenticated, but it should bypass the development-environment health gate so it remains reachable when the dashboard would otherwise show the paused/unhealthy screen. Keep it server-rendered in the Node runtime and show compact live process state: active sessions and heartbeat ages/TTLs, config file watchers, pending sync timers, sync errors, synchronous update locks, local dashboard process/log entries, pending browser confirmation code metadata, and project/config mappings. Do not expose long-lived secrets.
+
+## Q: How should hosted cross-domain sign-out return to the initiating app?
+
+A: The redirect planner already preserves `after_auth_return_to` when sending a user to a cross-domain `signOut` handler, but the sign-out page must also consume that parameter. Pass the handler's parsed search params into `SignOut` and call `user.signOut({ redirectUrl: after_auth_return_to })`. If there is no user on the handler domain, treat sign-out as already complete and replace the browser location with `after_auth_return_to` instead of falling through to the handler domain's default signed-out/sign-in flow.
