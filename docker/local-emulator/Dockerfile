@@ -36,7 +36,7 @@ RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/dashboard --docker
 FROM node-base AS builder
 
 # Skip generate-sdks.ts in preinstall hook (file not available in pruned output)
-ENV STACK_SKIP_TEMPLATE_GENERATION=true
+ENV HEXCLAVE_SKIP_TEMPLATE_GENERATION=true
 
 # copy over package.json files and install dependencies
 COPY --from=pruner /app/out/json/ .

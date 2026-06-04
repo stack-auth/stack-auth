@@ -1,7 +1,7 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
 import { listPermissions } from "@/lib/permissions";
-import { getStackStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
+import { getHexclaveStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
@@ -111,7 +111,7 @@ const buildChargebackMessage = (options: {
 };
 
 async function getTenancyForStripeAccountId(accountId: string, mockData?: StripeOverridesMap) {
-  const stripe = getStackStripe(mockData);
+  const stripe = getHexclaveStripe(mockData);
   const account = await stripe.accounts.retrieve(accountId);
   const tenancyId = account.metadata?.tenancyId;
   if (!tenancyId) {
@@ -452,7 +452,7 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async (req, fullReq) => {
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
     let event: Stripe.Event;
     try {
       const signature = req.headers["stripe-signature"][0];

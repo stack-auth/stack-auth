@@ -5,7 +5,7 @@ import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
-import { useMetricsUserCountsOrThrow } from "@/lib/stack-app-internals";
+import { useMetricsUserCountsOrThrow } from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
@@ -26,8 +26,8 @@ function captureUsersMetricsErrorOnce(error: Error) {
 }
 
 function TotalUsersDisplay() {
-  const stackAdminApp = useAdminApp();
-  const metrics = useMetricsUserCountsOrThrow(stackAdminApp);
+  const hexclaveAdminApp = useAdminApp();
+  const metrics = useMetricsUserCountsOrThrow(hexclaveAdminApp);
 
   const anonymousUsersCount = metrics.anonymous_users;
   const nonAnonymousUsersCount = metrics.total_users - anonymousUsersCount;
@@ -57,8 +57,8 @@ function TotalUsersErrorComponent(props: { error: Error }) {
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const firstUserPage = stackAdminApp.useUsers({ limit: 1 });
+  const hexclaveAdminApp = useAdminApp();
+  const firstUserPage = hexclaveAdminApp.useUsers({ limit: 1 });
   const [exportOptions, setExportOptions] = useState<{
     search?: string,
     includeRestricted: boolean,
@@ -68,7 +68,7 @@ export default function PageClient() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = async () => {
-    await (stackAdminApp as any)._refreshUsers();
+    await (hexclaveAdminApp as any)._refreshUsers();
     setRefreshKey((k) => k + 1);
   };
 

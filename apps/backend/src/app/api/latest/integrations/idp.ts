@@ -165,7 +165,7 @@ function createPrismaAdapter(idpId: string) {
 export async function createOidcProvider(options: { id: string, baseUrl: string, clientInteractionUrl: string }) {
   // NOTE: this `audience` string is an OPAQUE key-derivation salt mixed into the
   // SHA-256 that produces the per-audience signing secret + kid in
-  // `getPrivateJwks` (see packages/stack-shared/src/utils/jwt.tsx:114-115). It is
+  // `getPrivateJwks` (see packages/shared/src/utils/jwt.tsx:114-115). It is
   // never exposed to OIDC clients (the actual OIDC `aud` claim is set elsewhere).
   // Changing this string rotates ALL outstanding JWT signing keys and invalidates
   // every cached client JWKS — so it is intentionally pinned to the pre-rebrand

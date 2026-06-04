@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       product: inlineProductSchema,
-      stripe_account_id: yupString().defined(),
+      stripe_account_id: yupString().nullable().defined(),
       project_id: yupString().defined(),
       project_logo_url: yupString().nullable().defined(),
       already_bought_non_stackable: yupBoolean().defined(),
@@ -46,7 +46,7 @@ export const POST = createSmartRouteHandler({
         display_name: yupString().defined(),
       }).defined()).defined(),
       test_mode: yupBoolean().defined(),
-      charges_enabled: yupBoolean().defined(),
+      charges_enabled: yupBoolean().nullable().defined(),
     }).defined(),
   }),
   async handler({ body }) {
@@ -98,13 +98,13 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: {
         product: productToInlineProduct(product),
-        stripe_account_id: verificationCode.data.stripeAccountId,
+        stripe_account_id: verificationCode.data.stripeAccountId ?? null,
         project_id: tenancy.project.id,
         project_logo_url: tenancy.project.logo_url ?? null,
         already_bought_non_stackable: alreadyBoughtNonStackable,
         conflicting_products: conflictingProductLineProducts,
         test_mode: tenancy.config.payments.testMode === true,
-        charges_enabled: verificationCode.data.chargesEnabled,
+        charges_enabled: verificationCode.data.chargesEnabled ?? null,
       },
     };
   },

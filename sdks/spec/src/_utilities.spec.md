@@ -22,8 +22,8 @@ x-stack-publishable-client-key: <publishableClientKey>
   - Note that this argument is optional, although if this is not given then the backend will return a PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT error if requirePublishableClientKey is true on the project and you should panic.
 x-stack-client-version: "<sdk-name>@<version>" (e.g., "python@1.0.0", "go@0.1.0")
 x-stack-access-type: "client" | "server" | "admin"
-  - "client" for StackClientApp
-  - "server" for StackServerApp (also include server key header)
+  - "client" for HexclaveClientApp
+  - "server" for HexclaveServerApp (also include server key header)
 x-stack-override-error-status: "true"
   - Tells server to return 4xx errors as 200 with x-stack-actual-status header
   - This works around some platforms that intercept non-200 responses
@@ -54,7 +54,7 @@ On 401 response with code="invalid_access_token":
 ### [server-only] - Server Key Required
 
 Include header: x-stack-secret-server-key: <secretServerKey>
-Only available in StackServerApp.
+Only available in HexclaveServerApp.
 
 
 ### Retry Logic
@@ -287,7 +287,7 @@ For "keychain" and "memory" token stores, SDKs must ensure that all uses with th
 same projectId share the same underlying token store instance. This is important
 because:
 
-1. Multiple StackClientApp instances for the same project should share tokens
+1. Multiple HexclaveClientApp instances for the same project should share tokens
 2. Token store overrides (e.g., `getUser(tokenStore: .keychain)`) must use the
    same instance as the constructor's default store
 3. The refresh lock must be shared to prevent concurrent refresh operations

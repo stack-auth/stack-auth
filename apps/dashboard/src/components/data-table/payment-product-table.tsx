@@ -115,8 +115,8 @@ export function PaymentProductTable({ products }: { products: Record<string, Bra
 function ActionsCell({ product }: { product: PaymentProduct }) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const updateConfig = useUpdateConfig();
 
   return (
@@ -158,7 +158,7 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
                 .filter(([productId]) => productId !== product.id)
             );
             await updateConfig({
-              adminApp: stackAdminApp,
+              adminApp: hexclaveAdminApp,
               configUpdate: { "payments.products": updatedProducts },
               pushable: true,
             });

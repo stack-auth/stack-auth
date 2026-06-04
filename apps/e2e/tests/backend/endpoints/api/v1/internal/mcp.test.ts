@@ -26,7 +26,7 @@ function parseMcpBody(body: unknown): unknown {
   return JSON.parse(dataLine.slice("data: ".length));
 }
 
-it("internal MCP endpoint should expose the Stack Auth docs assistant tool", async ({ expect }) => {
+it("internal MCP endpoint should expose the Hexclave docs assistant tool", async ({ expect }) => {
   const response = await mcpRequest({
     jsonrpc: "2.0",
     id: 1,
@@ -80,7 +80,7 @@ it("internal MCP endpoint should expose the Stack Auth docs assistant tool", asy
   `);
 });
 
-it("public MCP endpoint should expose the Stack Auth docs assistant tool", async ({ expect }) => {
+it("public MCP endpoint should expose the Hexclave docs assistant tool", async ({ expect }) => {
   const response = await mcpRequest({
     jsonrpc: "2.0",
     id: 1,

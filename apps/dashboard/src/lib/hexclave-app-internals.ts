@@ -1,0 +1,84 @@
+import {
+  type MetricsResponse,
+  type MetricsUserCounts,
+  type UserActivityResponse,
+} from "@hexclave/shared/dist/interface/admin-metrics";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+
+export const hexclaveAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
+
+// Re-export the metrics response type tree from the shared package so dashboard
+// code can read these types without having to know where the schemas live.
+export type {
+  MetricsActivitySplit,
+  MetricsAnalyticsOverview,
+  MetricsAuthOverview,
+  MetricsDailyEmailStatusBreakdown,
+  MetricsDailyRevenuePoint,
+  MetricsDataPoint,
+  MetricsEmailOverview,
+  MetricsLoginMethodEntry,
+  MetricsPaymentsOverview,
+  MetricsRecentEmail,
+  MetricsResponse,
+  MetricsTopReferrer,
+  MetricsTopRegion,
+  MetricsUserCounts,
+  UserActivityResponse,
+} from "@hexclave/shared/dist/interface/admin-metrics";
+
+/**
+ * Pulls the typed `useMetrics` hook out of the admin app via the internals
+ * symbol. Throws as a programming error if the symbol is missing or malformed
+ * — this should never happen at runtime in a correctly-built admin app.
+ *
+ * Returns the typed `MetricsResponse` shape derived from the same yup schemas
+ * the backend route uses, so dashboard call sites do not need `as ...` casts.
+ */
+export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): MetricsResponse {
+  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
+  if (typeof internals !== "object" || internals == null || !("useMetrics" in internals)) {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetrics");
+  }
+
+  const useMetrics = internals.useMetrics;
+  if (typeof useMetrics !== "function") {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: useMetrics is not callable");
+  }
+
+  return useMetrics(includeAnonymous) as MetricsResponse;
+}
+
+/**
+ * Pulls the typed `useUserActivity` hook out of the admin app via the internals
+ * symbol. Returns the daily event counts for a single user (backed by
+ * `GET /internal/user-activity`) in the same `{ date, activity }` shape the
+ * metrics endpoints use.
+ */
+export function useUserActivityOrThrow(adminApp: object, userId: string): UserActivityResponse {
+  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
+  if (typeof internals !== "object" || internals == null || !("useUserActivity" in internals)) {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useUserActivity");
+  }
+
+  const useUserActivity = internals.useUserActivity;
+  if (typeof useUserActivity !== "function") {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: useUserActivity is not callable");
+  }
+
+  return useUserActivity(userId) as UserActivityResponse;
+}
+
+export function useMetricsUserCountsOrThrow(adminApp: object): MetricsUserCounts {
+  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
+  if (typeof internals !== "object" || internals == null || !("useMetricsUserCounts" in internals)) {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetricsUserCounts");
+  }
+
+  const useMetricsUserCounts = internals.useMetricsUserCounts;
+  if (typeof useMetricsUserCounts !== "function") {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: useMetricsUserCounts is not callable");
+  }
+
+  return useMetricsUserCounts() as MetricsUserCounts;
+}

@@ -1,13 +1,15 @@
-# StackServerApp
+# HexclaveServerApp
 
-Extends StackClientApp with server-side capabilities. Requires secretServerKey.
+Extends HexclaveClientApp with server-side capabilities. Requires secretServerKey.
+
+Deprecated alias: StackServerApp.
 
 
 ## Constructor
 
-StackServerApp(options)
+HexclaveServerApp(options)
 
-Extends StackClientApp constructor options with:
+Extends HexclaveClientApp constructor options with:
 
 Required:
   secretServerKey: string - from Hexclave dashboard
@@ -72,7 +74,7 @@ Does not error.
 ## getPartialUser(options)
 
 Get minimal user info without a full API call.
-Same as StackClientApp.getPartialUser but returns server user info.
+Same as HexclaveClientApp.getPartialUser but returns server user info.
 
 Arguments:
   options.from: "token" | "convex"
@@ -84,7 +86,7 @@ Arguments:
 
 Returns: TokenPartialUser | null
 
-See StackClientApp.getPartialUser for implementation details.
+See HexclaveClientApp.getPartialUser for implementation details.
 
 Does not error.
 

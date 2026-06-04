@@ -62,8 +62,8 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
 }
 
 // Cloud Run sends SIGTERM before shutdown; drain background tasks and close DB connections.
-if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registered) {
-  globalVar.__stack_prisma_sigterm_registered = true;
+if (!getEnvVariable("VERCEL", "") && !globalVar.__hexclave_prisma_sigterm_registered) {
+  globalVar.__hexclave_prisma_sigterm_registered = true;
   process.on("SIGTERM", () => {
     const keepAlive = setTimeout(() => {}, 10_000);
     runAsynchronously(async () => {
@@ -121,8 +121,8 @@ async function resolveConnectionStringWithOrbStack(connectionString: string): Pr
   return connectionString;
 }
 
-let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
-let actualReplicaConnectionString: string = globalVar.__stack_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
+let actualGlobalConnectionString: string = globalVar.__hexclave_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
+let actualReplicaConnectionString: string = globalVar.__hexclave_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
 
 export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omit<T, "$on"> & {
   $replica: () => Omit<T, "$on">,

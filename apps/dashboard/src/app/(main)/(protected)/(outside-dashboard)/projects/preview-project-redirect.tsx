@@ -2,7 +2,7 @@
 
 import Loading from "@/app/loading";
 import { useRouter } from "@/components/router";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { useStackApp, useUser } from "@hexclave/next";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
@@ -13,7 +13,7 @@ export default function PreviewProjectRedirect() {
   const user = useUser();
   const router = useRouter();
   const appInternals = useMemo(() => {
-    const internals = Reflect.get(app as any, stackAppInternalsSymbol);
+    const internals = Reflect.get(app as any, hexclaveAppInternalsSymbol);
     if (
       !internals ||
       typeof internals.sendRequest !== "function" ||

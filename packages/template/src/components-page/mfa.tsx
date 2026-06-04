@@ -21,7 +21,7 @@ function MfaForm({ onSuccess, onCancel }: {
   onSuccess?: () => void,
   onCancel?: () => void,
 }) {
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const { t } = useTranslation();
   const [otp, setOtp] = useState<string>("");
   const formRef = useRef<HTMLFormElement>(null);
@@ -60,7 +60,7 @@ function MfaForm({ onSuccess, onCancel }: {
       setError(null);
 
       if (attemptCode) {
-        stackApp
+        hexclaveApp
           .signInWithMfa(otp, attemptCode, { noRedirect: true })
           .then(async (result) => {
             if (result.status === "ok") {
@@ -76,7 +76,7 @@ function MfaForm({ onSuccess, onCancel }: {
               if (onSuccess) {
                 onSuccess();
               } else {
-                await stackApp.redirectToAfterSignIn();
+                await hexclaveApp.redirectToAfterSignIn();
               }
             } else {
               throw result.error;
@@ -105,7 +105,7 @@ function MfaForm({ onSuccess, onCancel }: {
     if (otp.length !== 0 && otp.length !== 6) {
       setError(null);
     }
-  }, [otp, submitting, onSuccess, attemptCode, stackApp, t, verified]);
+  }, [otp, submitting, onSuccess, attemptCode, hexclaveApp, t, verified]);
 
 
   const inputStyleClass = useMemo(() => {

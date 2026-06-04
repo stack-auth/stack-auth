@@ -13,14 +13,14 @@ export function PasskeyButton({
   type: 'sign-in' | 'sign-up',
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const styleId = useId().replaceAll(':', '-');
 
 
   return (
     <>
       <Button
-        onClick={async () => { await stackApp.signInWithPasskey(); }}
+        onClick={async () => { await hexclaveApp.signInWithPasskey(); }}
         className={`stack-oauth-button-${styleId} stack-scope`}
       >
         <div className='flex items-center w-full gap-4'>

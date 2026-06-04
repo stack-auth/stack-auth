@@ -156,7 +156,7 @@ function parseRouteHandler(options: {
       `);
     }
 
-    const responseSchemaInfo = overload.response.meta()?.stackSchemaInfo;
+    const responseSchemaInfo = overload.response.meta()?.hexclaveSchemaInfo;
     const responseSchemas: yup.AnySchema[] = responseSchemaInfo?.type === "union" ? responseSchemaInfo.items : [overload.response];
 
     result = parseOverload({

@@ -188,7 +188,7 @@ withGeneratorLock(async () => {
 
   generateFromTemplate({
     src: srcDir,
-    dest: path.resolve(baseDir, "stack"),
+    dest: path.resolve(baseDir, "next"),
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["next"] });
     },

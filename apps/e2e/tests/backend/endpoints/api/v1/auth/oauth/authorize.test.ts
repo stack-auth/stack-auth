@@ -358,7 +358,7 @@ it("should reject provider_scope on shared provider for plain sign-in (no link t
       "status": 400,
       "body": {
         "code": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
-        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes.",
+        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Hexclave dashboard to use extra scopes.",
       },
       "headers": Headers {
         "x-stack-known-error": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
@@ -383,7 +383,7 @@ it("should reject provider_scope on shared provider for account-link flow", asyn
       "status": 400,
       "body": {
         "code": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
-        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes.",
+        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Hexclave dashboard to use extra scopes.",
       },
       "headers": Headers {
         "x-stack-known-error": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
