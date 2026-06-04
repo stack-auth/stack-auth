@@ -9,6 +9,26 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+/**
+ * @dashboardReference rbac/project-permissions
+ * @dashboardReferenceDescription Define project-scoped permission IDs and compose them into roles.
+ *
+ * ## Header
+ *
+ * **Create Permission** opens a dialog with **ID** (lowercase, numbers, `_`, `:`), **Description**, and **Contained permissions** (inherit other project permissions).
+ *
+ * ## Permissions table (`DataGrid`)
+ *
+ * Paginated, searchable list of project permission definitions. Row actions:
+ *
+ * - **Edit** — update description and contained permissions (ID is read-only)
+ * - **Delete** — remove the permission definition
+ *
+ * Permission IDs map directly to `$permission_id` checks in the SDK (`user.hasPermission`, etc.).
+ *
+ * Public guide: [RBAC](https://docs.hexclave.com/docs/apps/rbac).
+ */
+
 export default function PageClient() {
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);
   const [tableVersion, setTableVersion] = React.useState(0);

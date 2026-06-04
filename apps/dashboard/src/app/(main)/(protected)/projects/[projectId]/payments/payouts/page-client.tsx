@@ -7,6 +7,17 @@ import { PageLayout } from "../../page-layout";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
 import { useAdminApp } from "../../use-admin-app";
 
+/**
+ * @dashboardReference payments/payouts
+ * @dashboardReferenceDescription Stripe Connect payouts for connected accounts.
+ *
+ * ## Availability
+ *
+ * Hidden in **development environments** and **preview deployments** (alert explains why). In production, renders Stripe **ConnectPayouts** inside `StripeConnectProvider` after Stripe is linked on **Settings**.
+ *
+ * Operators manage payout schedules and balances here; connect Stripe first under **Payments → Settings**.
+ */
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();

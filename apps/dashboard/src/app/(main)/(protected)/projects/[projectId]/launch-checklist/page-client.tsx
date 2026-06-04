@@ -23,6 +23,46 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+/**
+ * @dashboardReference launch-checklist/launch-checklist
+ * @dashboardReferenceDescription Pre-launch checklist before enabling production mode.
+ *
+ * ## Progress card (top)
+ *
+ * - Title shows `N/M Checks Completed` or **Everything is ready to launch.**
+ * - Progress bar (animated) across all sub-checks
+ * - **Up next** + rainbow **Go to {section}** button when work remains (jumps to that section’s primary CTA)
+ * - When all checks pass, message to enable production mode below
+ *
+ * Incomplete task sections are sorted **above** completed ones. Only one section expanded at a time (auto-opens the “up next” section).
+ *
+ * ## Task sections (expandable cards)
+ *
+ * Each card: title, subtitle, checklist rows (green check / empty circle), footer CTA, optional extra content. Click header to expand/collapse.
+ *
+ * ### 1. Domains & callbacks → **Open domain settings** (Domains)
+ *
+ * - Production domain saved (shows up to three `InlineCode` domains)
+ * - **Localhost callbacks disabled** (`allowLocalhost` off)
+ *
+ * ### 2. OAuth providers → **Configure providers** (Auth Methods)
+ *
+ * - **Custom client IDs and secrets** — no providers on shared dev keys (orange badges list offenders)
+ * - Expand **View guides**: provider tabs (Google, GitHub, …), external docs link, **Callback URL** `https://api.hexclave.com/api/v1/auth/oauth/callback/{provider}`
+ *
+ * ### 3. Email server → **Configure email server** (Emails)
+ *
+ * - **Custom SMTP or Resend in use** (not shared `sent-with-hexclave` sender)
+ * - Expand **View steps**: verify domain, switch SMTP/Resend, send test email
+ *
+ * ### 4. Production mode
+ *
+ * - **Automated checks passing** — lists `productionModeErrors` with **open setting** links if blocked
+ * - **Production mode enabled** — inline **Enable production mode** switch (disabled until checks pass); confetti when turned on
+ * - Footer **Open project settings** / **Review settings**
+ *
+ * Enable production mode only after domains, OAuth, and email sections are green. See [Launch checklist](https://docs.hexclave.com/docs/apps/launch-checklist).
+ */
 type ProviderGuide = {
   label: string,
   docsUrl: string,

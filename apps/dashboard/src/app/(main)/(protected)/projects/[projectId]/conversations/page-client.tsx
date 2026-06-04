@@ -895,6 +895,21 @@ function SupportComposer(props: {
   );
 }
 
+/**
+ * @dashboardReference support/conversations
+ * @dashboardReferenceDescription Support inbox: threads, replies, internal notes, and SLA hints.
+ *
+ * ## Inbox (no thread selected)
+ *
+ * Search by subject/message/email, **status tabs** (All / Open / Pending / Closed), optional **userId** filter from URL. **New Conversation** picks a user and opens a thread.
+ *
+ * ## Thread view
+ *
+ * Message timeline (customer vs team), composer for public replies, **internal notes** (team-only). Sidebar/sheet: assignee, priority, status, tags, SLA urgency badge, link to user profile.
+ *
+ * URL params: `conversationId` (or legacy `threadId`), `userId`. Refreshes via `listConversations` / `getConversation` API helpers.
+ */
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const currentUser = useUser({ or: "redirect", projectIdMustMatch: "internal" });

@@ -251,6 +251,22 @@ function EmptyState({
   );
 }
 
+/**
+ * @dashboardReference emails/drafts
+ * @dashboardReferenceDescription Compose one-off emails and send them from the dashboard.
+ *
+ * ## Sections
+ *
+ * - **Active drafts** — cards with open/delete; click opens `email-drafts/[draftId]` editor
+ * - **History** — drafts that were sent (`sentAt` set); opens editor in read-only **sent** stage
+ *
+ * ## Header actions
+ *
+ * **New draft** dropdown: create blank draft or start from an existing **template** (blocked with warning dialog when using shared SMTP).
+ *
+ * Draft editor supports HTML preview, recipients, schedule/send, and duplicate-from-template flows on the child route.
+ */
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();

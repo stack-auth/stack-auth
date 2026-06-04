@@ -1757,6 +1757,33 @@ function OrderChangeActions({
 // Page client — owns all state; passes handlers to PageBody
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * @dashboardReference authentication/sign-up-rules
+ * @dashboardReferenceDescription Fraud-protection sign-up rules (CEL conditions, ordered evaluation).
+ *
+ * ## Rule list
+ *
+ * Rules stored in `auth.signUpRules`, sorted by **priority** (top = first match). Drag-and-drop reorder with **Save order** / **Discard** when `pendingOrder` is set. Each row: enable toggle, action badge (Allow / Reject / Restrict / Log), sparkline + trigger counts, menu **Edit** / **Delete**.
+ *
+ * ## Default outcome
+ *
+ * **If no rules match** → configurable **Allow** or **Reject** (`auth.signUpRulesDefaultAction`).
+ *
+ * ## Rule editor (inline)
+ *
+ * Three steps: name, **When** (visual CEL condition builder), **Then** (action + message). Conditions can reference email domain, country, auth method, OAuth provider, Turnstile, risk scores.
+ *
+ * ## Trigger history
+ *
+ * Per-rule dialog queries ClickHouse `$sign-up-rule-trigger` events (paginated).
+ *
+ * ## Test rules
+ *
+ * **Test rules** card simulates a sign-up payload against current rules without affecting production (email, auth method, overrides for country/Turnstile/risk).
+ *
+ * Also available as the **Fraud Protection** sub-app (same page, `sign-up-rules` route).
+ */
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();

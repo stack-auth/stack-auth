@@ -27,7 +27,41 @@ import {
   type DataGridColumnDef,
 } from "@hexclave/dashboard-ui-components";
 
-
+/**
+ * @dashboardReference webhooks/webhooks
+ * @dashboardReferenceDescription Manage Svix webhook endpoints for user and team events.
+ *
+ * Syncs user/team lifecycle events to your servers. Page subtitle explains purpose.
+ *
+ * ## Modes
+ *
+ * - **Preview deployments** — info alert only; webhooks unavailable
+ * - **AppPortal URL** — full embedded Svix UI (replaces inline grid)
+ * - **Default** — inline **Endpoints** card below (Svix React SDK)
+ *
+ * ## Endpoints card
+ *
+ * Subtitle warns endpoints receive sensitive data — must be URLs you control.
+ *
+ * - **Add new endpoint** — dialog: URL (validated), optional description, HTTP warning for `http://`; on success offers **Test endpoint** or close
+ * - **DataGrid** (client-side list, quick search, URL state prefix `webhooks`)
+ *
+ * | Column | Notes |
+ * | --- | --- |
+ * | **Endpoint URL** | Destination |
+ * | **Description** | Optional label |
+ * | **Status** | Active / Disabled badge |
+ * | **Actions** | Row menu |
+ *
+ * ### Row menu
+ *
+ * - **View Details** → `/projects/…/webhooks/[endpointId]` (secrets, delivery attempt history)
+ * - **Test** — sends sample test event; dialog shows payload preview and delivery result
+ * - **Edit** — update description only (URL fixed)
+ * - **Delete** — confirm removal from Svix
+ *
+ * Verify payloads server-side with your webhook secret — [Webhooks](https://docs.hexclave.com/docs/apps/webhooks).
+ */
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const svixToken = stackAdminApp.useSvixToken();

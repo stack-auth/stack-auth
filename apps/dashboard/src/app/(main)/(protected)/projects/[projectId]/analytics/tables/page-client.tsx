@@ -224,6 +224,21 @@ function TableContent({ tableId }: { tableId: TableId }) {
   );
 }
 
+/**
+ * @dashboardReference analytics/tables
+ * @dashboardReferenceDescription Browse ClickHouse analytics tables with optional AI SQL.
+ *
+ * ## Sidebar
+ *
+ * Fixed table list (desktop): Events, Users, Contact Channels, Teams, Team Member Profiles, Team Permissions, Team Invitations, Email Outboxes, Project Permissions, Notification Preferences, Refresh Tokens, Connected Accounts. Link to **Queries** for ad-hoc SQL.
+ *
+ * ## Table view
+ *
+ * Per table: `QueryDataGrid` runs the default `SELECT * FROM default.<table>` with pagination, quick search, sort, export, and refresh. **AI query bar** can replace the query with a natural-language-generated ClickHouse statement (one-shot mode disables default sort/search).
+ *
+ * `AnalyticsEventLimitBanner` warns when event ingestion limits apply.
+ */
+
 export default function PageClient() {
   const [selectedTable, setSelectedTable] = useState<TableId | null>("events");
 

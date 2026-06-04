@@ -16,6 +16,26 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+/**
+ * @dashboardReference teams/team-settings
+ * @dashboardReferenceDescription Control team creation behavior and default RBAC grants.
+ *
+ * ## Team Creation card
+ *
+ * Deferred-save editable grid (toggle → **Save** / **Discard**):
+ *
+ * | Toggle | Config | Effect |
+ * | --- | --- | --- |
+ * | **Client Team Creation** | `teams.allowClientTeamCreation` | Users can create teams from account settings / team switcher |
+ * | **Personal Team on Sign-up** | `teams.createPersonalTeamOnSignUp` | Auto-creates a personal team for each new user (not retroactive) |
+ *
+ * ## Default permissions cards
+ *
+ * Two cards — **Team Creator** and **Team Member** — show badges for permissions in `rbac.defaultPermissions.teamCreator` / `teamMember`. **Edit** opens a checkbox dialog over the team permission graph (inheritance shown inline).
+ *
+ * Changes push to project config immediately on save.
+ */
+
 function PermissionSelectDialog(props: {
   trigger: React.ReactNode,
   type: "creator" | "member",

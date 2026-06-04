@@ -814,6 +814,21 @@ function OnboardingSlideshow() {
   );
 }
 
+/**
+ * @dashboardReference payments/product-lines
+ * @dashboardReferenceDescription Group products into mutually exclusive product lines.
+ *
+ * ## Empty state
+ *
+ * If the project has no products or items yet, shows an onboarding slideshow ending with **Create Your First Product** (links to `payments/products/new`).
+ *
+ * ## Product lines view
+ *
+ * When catalog exists, lists product lines from config. Each line is a set of products where a customer may hold at most one active product from that line. Create, rename, and assign products via `PageClientProductLinesView`.
+ *
+ * Configure lines before scaling the catalog — they enforce exclusivity at checkout and grant time.
+ */
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const paymentsConfig = adminApp.useProject().useConfig().payments;

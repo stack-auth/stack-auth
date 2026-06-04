@@ -181,6 +181,24 @@ function EmailSendDataTable() {
   );
 }
 
+/**
+ * @dashboardReference emails/sent
+ * @dashboardReferenceDescription Outbox delivery log and sending-domain reputation.
+ *
+ * ## Email log card
+ *
+ * **DesignPillToggle** switches views:
+ *
+ * - **List all** — paginated `DataGrid` (recipient, subject, time, status badge). Row click opens **email-viewer/[emailId]**
+ * - **Group by template/draft** — `GroupedEmailTable` clusters sends by source template or draft
+ *
+ * Status labels cover scheduled, sent, failed, etc. (`email-status-utils`).
+ *
+ * ## Domain reputation
+ *
+ * Right column (`DomainReputationCard`) shows DNS/SPF/DKIM health for configured sending domains.
+ */
+
 export default function PageClient() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
 

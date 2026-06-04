@@ -49,6 +49,25 @@ const LEGACY_PLAYER_SPEED_STORAGE_KEY = "stack.session-replay.speed";
 type RrwebEventWithTime = import("rrweb/typings/types").eventWithTime;
 type RrwebReplayer = InstanceType<typeof import("rrweb").Replayer>;
 
+/**
+ * @dashboardReference analytics/replays
+ * @dashboardReferenceDescription Watch rrweb session recordings tied to users and teams.
+ *
+ * ## Layout
+ *
+ * Split view: session list (left) + player (right). Standalone `/session-replays/[id]` deep-links one replay with back link.
+ *
+ * ## Session list
+ *
+ * Infinite scroll (`PAGE_SIZE` 50), filters for user, team, duration, last active, click count. Each row shows user, duration, event/chunk counts, relative time.
+ *
+ * ## Player
+ *
+ * rrweb replayer with play/pause, speed, skip inactive, timeline scrubber, multi-tab streams, and event inspector. Settings persist in `localStorage`.
+ *
+ * Embedded mode hides chrome when opened from a user profile. `SessionReplayLimitBanner` when replay quota applies.
+ */
+
 type RecordingRow = {
   id: string,
   projectUser: {

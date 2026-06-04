@@ -12,6 +12,21 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+/**
+ * @dashboardReference emails/templates
+ * @dashboardReferenceDescription Transactional email templates (HTML + variables).
+ *
+ * ## Template list
+ *
+ * Card per template with display name. **Open** navigates to `email-templates/[templateId]` editor. Row menu: **Delete** (blocked with error if template is in use).
+ *
+ * ## Warnings
+ *
+ * Orange alert when `emails.server` uses the **shared** SMTP server — custom templates require your own SMTP (**Email Settings**).
+ *
+ * **New Template** creates a template via dialog (requires non-shared SMTP).
+ */
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();

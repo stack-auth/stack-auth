@@ -835,6 +835,21 @@ function FolderItem({
   );
 }
 
+/**
+ * @dashboardReference analytics/queries
+ * @dashboardReferenceDescription Saved ClickHouse queries and SQL editor.
+ *
+ * ## Sidebar
+ *
+ * Folder tree of saved queries (`config` analytics query folders). Create/rename/delete folders and queries; drag-free hierarchy with expand/collapse.
+ *
+ * ## Editor
+ *
+ * SQL textarea, **Run** executes against ClickHouse, results in `VirtualizedFlatTable`. States: empty prompt, loading, no rows, error display. **Save** persists SQL into the selected folder; **Save as** creates a new entry.
+ *
+ * Row click opens `RowDetailDialog` for JSON inspection. `AnalyticsEventLimitBanner` at top when limits apply.
+ */
+
 export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">

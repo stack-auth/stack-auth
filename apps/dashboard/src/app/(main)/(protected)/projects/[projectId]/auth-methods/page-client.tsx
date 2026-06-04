@@ -49,6 +49,42 @@ type OAuthAccountMergeStrategy = 'link_method' | 'raise_error' | 'allow_duplicat
 
 const SHARED_TOOLTIP = "Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.\n\nYou should replace these before you go into production.";
 
+/**
+ * @dashboardReference authentication/auth-methods
+ * @dashboardReferenceDescription Configure sign-in methods, OAuth SSO, sign-up, and account deletion.
+ *
+ * Four stacked configuration areas. Most cards use **Save** / **Discard** after local edits.
+ *
+ * ## Sign-in methods + SSO (left card, wide)
+ *
+ * **Sign-in methods** toggles (`auth.password.allowSignIn`, `auth.otp.allowSignIn`, `auth.passkey.allowSignIn`):
+ *
+ * - Email/password authentication
+ * - Magic link (Email OTP)
+ * - Passkey
+ *
+ * **SSO Providers** list — one row per enabled provider (icon, name). **Shared keys** badge (orange) = dev credentials; replace before production. Row **⋮** menu: **Configure** (client ID/secret, callback URL), **Turn off**.
+ *
+ * - **Add SSO providers** — searchable dialog **Add New Auth Method**; pick providers to enable/configure
+ * - Empty state alert when none enabled
+ *
+ * ## Live preview (right card, large screens)
+ *
+ * Browser-frame mock of the hosted **sign-in** page reflecting current toggles and enabled providers (non-interactive).
+ *
+ * ## Sign-up card
+ *
+ * - **Allow new user sign-ups** (`auth.allowSignUp`) — confirm dialogs when enabling/disabling
+ * - **Require email verification** (`onboarding.requireEmailVerification`) — may preview affected users before enable (same as Onboarding app)
+ * - **Same-email social login policy** dropdown (`auth.oauth.accountMergeStrategy`): Link accounts / Create new account / Block sign-up
+ *
+ * ## User deletion card
+ *
+ * - **Allow users to delete their own accounts on the client-side** (`users.allowClientUserDeletion`) — adds delete control to account settings
+ *
+ * Production hardening: **Launch Checklist** for domains, custom OAuth keys, email. Guide: [Auth providers](https://docs.hexclave.com/docs/apps/authentication/auth-providers).
+ */
+
 // ─── Confirmation dialogs ─────────────────────────────────────────────────
 
 function ConfirmSignUpEnabledDialog(props: {

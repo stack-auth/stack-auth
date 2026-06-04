@@ -137,6 +137,32 @@ function EnableEmailVerificationDialog({
   );
 }
 
+/**
+ * @dashboardReference onboarding/onboarding
+ * @dashboardReferenceDescription Gate app access until users verify their email.
+ *
+ * Single-setting page for the **Onboarding** app (separate from Auth Methods, though Auth Methods also exposes the same config toggle).
+ *
+ * ## Require email verification
+ *
+ * Compact settings row:
+ *
+ * - Label **Require email verification**
+ * - Description: verified primary email required before users continue after sign-up
+ * - **Switch** — maps to `onboarding.requireEmailVerification` (immediate save, loading state on toggle)
+ *
+ * ## Enabling (on → true)
+ *
+ * If existing unverified users would be affected, a confirmation dialog opens first:
+ *
+ * - Title **Enable email verification?**
+ * - Count + sample list of affected accounts (Unverified / Anonymous badges)
+ * - **Cancel** or **Enable** — then config updates
+ *
+ * Turning **off** applies immediately with no preview.
+ *
+ * Restricted users are filtered from normal API responses until they complete verification. Same field also appears under **Auth Methods → Sign-up** card.
+ */
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();

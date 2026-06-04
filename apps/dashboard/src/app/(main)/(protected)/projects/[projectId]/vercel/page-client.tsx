@@ -55,6 +55,25 @@ const STATUS_META: Record<
   },
 };
 
+/**
+ * @dashboardReference vercel/setup
+ * @dashboardReferenceDescription Step-by-step checklist to deploy Hexclave on Vercel.
+ *
+ * ## Progress card
+ *
+ * Accordion steps with manual checkboxes (stored in local UI state). Progress bar and confetti when all items are marked done.
+ *
+ * | Step | Tasks |
+ * | --- | --- |
+ * | **Project** | Confirm Hexclave project |
+ * | **Keys** | Generate publishable + secret keys (`createInternalApiKey`) |
+ * | **Env vars** | Copy `EnvKeys` snippet into Vercel |
+ * | **Deploy** | Trigger redeploy on preview + production |
+ * | **Verify** | Test `/handler/signup` on deployed URL |
+ *
+ * Keys display once — copy before navigating away. Requires **Vercel** app enabled.
+ */
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();

@@ -16,6 +16,39 @@ import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
+/**
+ * @dashboardReference data-vault/data-vault
+ * @dashboardReferenceDescription List and create Data Vault stores.
+ *
+ * Encrypted key-value namespaces for secrets your app stores via the SDK. Keys are hashed — you cannot list keys, only get/set by known key.
+ *
+ * ## Header
+ *
+ * - **Create Store** (page action) — same dialog as empty state CTA
+ *
+ * ## Empty state
+ *
+ * When no stores: icon, copy, **Create Your First Store** button.
+ *
+ * ## Store list
+ *
+ * Each **DesignListItemRow**: store ID (title), display name (subtitle). Click row → store detail (`/projects/…/data-vault/stores/[storeId]`).
+ *
+ * ## Create Store dialog
+ *
+ * - **Store ID** (required) — sanitized live; immutable after create; `dataVault.stores.<id>` in config
+ * - **Display Name** (optional) — defaults to `Store <id>` if blank
+ * - Validation alerts for invalid ID format or duplicate ID
+ *
+ * ## Store detail page (separate route)
+ *
+ * - **Store ID** with copy button
+ * - **Display Name** — deferred save grid
+ * - **Delete Store** — must type store ID to confirm; irreversible
+ * - Info alert + code sample for `getDataVaultStore`, `getValue` / `setValue` with `STACK_DATA_VAULT_SECRET` / `HEXCLAVE_DATA_VAULT_SECRET`
+ *
+ * [Data Vault](https://docs.hexclave.com/docs/apps/data-vault)
+ */
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();

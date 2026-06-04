@@ -9,6 +9,20 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+/**
+ * @dashboardReference rbac/team-permissions
+ * @dashboardReferenceDescription Define team-scoped permission IDs used in team membership checks.
+ *
+ * ## Header
+ *
+ * **Create Permission** — same shape as project permissions: unique **ID**, **Description**, optional **Contained permissions** from existing team permissions.
+ *
+ * ## Permissions table (`DataGrid`)
+ *
+ * Lists team permission definitions with search, pagination, **Edit**, and **Delete**. Team permission IDs are referenced in team settings defaults and in SDK team-scoped authorization.
+ *
+ * Pair with **Teams → Team Settings** for default creator/member grants.
+ */
 
 export default function PageClient() {
   const [createPermissionModalOpen, setCreatePermissionModalOpen] = React.useState(false);

@@ -13,6 +13,20 @@ import { PaymentMethods } from "./payment-methods";
 import { StripeConnectionCheck } from "./stripe-connection-check";
 import { TestModeToggle } from "./test-mode-toggle";
 
+/**
+ * @dashboardReference payments/settings
+ * @dashboardReferenceDescription Stripe connection, test mode, payment methods, and checkout guardrails.
+ *
+ * ## Sections (top to bottom)
+ *
+ * - **Stripe connection** — link or view Connect account status (`StripeConnectionCheck`)
+ * - **Test mode** — toggle sandbox vs live charges (`TestModeToggle`)
+ * - **Payment methods** — enable/disable card and other methods (`PaymentMethods`)
+ * - **Checkout controls** — **Block new purchases** toggle (`payments.blockNewPurchases`); stops new checkouts while keeping existing subscriptions
+ *
+ * All toggles save to project config with optimistic UI on the block-purchases switch.
+ */
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();

@@ -45,6 +45,26 @@ type SelectedCustomer = {
 
 type ProductEntry = [string, CompleteConfig["payments"]["products"][string]];
 
+/**
+ * @dashboardReference payments/customers
+ * @dashboardReferenceDescription Grant products to users or teams and inspect entitlements.
+ *
+ * ## Customer picker
+ *
+ * Toggle **User** vs **Team**, then search and select a customer. Until selected, grant actions are disabled.
+ *
+ * ## Entitlements table
+ *
+ * `DataGrid` of active product grants for the selected customer: product, item/price, status, period end. Row actions can revoke or adjust grants (via config updates).
+ *
+ * ## Actions
+ *
+ * - **Grant product** — pick product + item, optional trial/discount fields
+ * - **Add item** — shortcut to create a new price in config (`ItemDialog`)
+ *
+ * URL state tracks customer type and selection for shareable support links.
+ */
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
