@@ -6,8 +6,7 @@
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "hexclave": "./dist/index.js",
-    "stack": "./dist/index.js"
+    "hexclave": "./dist/index.js"
   },
   "scripts": {
     "clean": "rimraf node_modules && rimraf dist",

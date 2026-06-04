@@ -74,6 +74,87 @@ describe("dev env state", () => {
     });
   });
 
+  it("records the CLI version that started the dashboard", () => {
+    useTempStateFile();
+    const secret = ensureLocalDashboardSecret(26700);
+    recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]?.version).toBe("2.8.110");
+  });
+
+  it("preserves a previously recorded dashboard version when ensuring the secret", () => {
+    useTempStateFile();
+    const secret = ensureLocalDashboardSecret(26700);
+    recordLocalDashboardProcess(26700, secret, 12345, "/tmp/stack-rde-dashboard.log", "2.8.110");
+    ensureLocalDashboardSecret(26700);
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]?.version).toBe("2.8.110");
+  });
+
+  it("does not clobber projectsByConfigPath or anonymousRefreshToken across writes", () => {
+    useTempStateFile();
+    writeDevEnvState({
+      version: 1,
+      anonymousRefreshToken: "rt-123",
+      projectsByConfigPath: {
+        "/a/stack.config.ts": {
+          projectId: "p", teamId: "t", publishableClientKey: "pk",
+          secretServerKey: "sk", apiBaseUrl: "http://x", updatedAtMillis: 1,
+        },
+      },
+    });
+    ensureLocalDashboardSecret(26700);
+    const state = readDevEnvState();
+    expect(state.anonymousRefreshToken).toBe("rt-123");
+    expect(state.projectsByConfigPath["/a/stack.config.ts"]?.projectId).toBe("p");
+  });
+
+  it("reads a recorded dashboard without a version field as version undefined", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      localDashboardsByPort: { "26700": { port: 26700, secret: "s", pid: 999, startedAtMillis: 1 } },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    const state = readDevEnvState();
+    expect(state.localDashboardsByPort?.["26700"]?.pid).toBe(999);
+    expect(state.localDashboardsByPort?.["26700"]?.version).toBeUndefined();
+  });
+
+  it("drops a per-port dashboard whose version is a non-string", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    // A hand-edited / cross-version file with a non-string version would
+    // otherwise reach parseVersionCore (version.trim()) and throw, crashing
+    // `stack dev` outside the auto-update fail-open guard. Drop the entry.
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      localDashboardsByPort: { "26700": { port: 26700, secret: "s", pid: 999, startedAtMillis: 1, version: 2 } },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]).toBeUndefined();
+  });
+
+  it("drops a structurally malformed per-port dashboard on read", () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    // Missing secret + non-numeric pid: not a usable dashboard record.
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      localDashboardsByPort: { "26700": { port: 26700, pid: "nope", startedAtMillis: 1 } },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    expect(readDevEnvState().localDashboardsByPort?.["26700"]).toBeUndefined();
+  });
+
   it("writes state as owner-readable JSON", () => {
     useTempStateFile();
     writeDevEnvState({

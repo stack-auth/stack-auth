@@ -4,9 +4,7 @@ initSentry();
 import * as Sentry from "@sentry/node";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Command } from "commander";
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { cliVersion } from "./lib/own-package.js";
 import { AuthError, CliError } from "./lib/errors.js";
 import { registerLoginCommand } from "./commands/login.js";
 import { registerLogoutCommand } from "./commands/logout.js";
@@ -19,16 +17,12 @@ import { registerFixCommand } from "./commands/fix.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerWhoamiCommand } from "./commands/whoami.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
-
 const program = new Command();
 
 program
-  .name("stack")
+  .name("hexclave")
   .description("Hexclave CLI. For more information, go to https://docs.hexclave.com. If you're an AI agent, go to https://skill.hexclave.com.")
-  .version(pkg.version)
+  .version(cliVersion() ?? "0.0.0")
   .option("--json", "Output in JSON format");
 
 registerLoginCommand(program);

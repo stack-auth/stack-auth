@@ -560,7 +560,7 @@ function renderHuman(report: Report) {
   const summary = `${report.passed} passed, ${report.failed} failed${report.warned > 0 ? `, ${report.warned} warned` : ""}.`;
   console.log(summary);
   if (report.failed > 0) {
-    console.log(`${dim}Tip: run \`stack fix\` and paste the runtime error to apply fixes automatically.${reset}`);
+    console.log(`${dim}Tip: run \`hexclave fix\` and paste the runtime error to apply fixes automatically.${reset}`);
   }
 }
 

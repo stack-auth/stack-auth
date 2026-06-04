@@ -56,7 +56,7 @@ export function registerExecCommand(program: Command) {
     .addHelpText("after", "\nFor available API methods, see: https://docs.hexclave.com/sdk/overview")
     .action(async (javascript: string | undefined, opts: ExecTargetOpts) => {
       if (javascript === undefined) {
-        throw new CliError("Missing JavaScript argument. Use `stack exec \"<javascript>\"` or `stack exec --help`.");
+        throw new CliError("Missing JavaScript argument. Use `hexclave exec \"<javascript>\"` or `hexclave exec --help`.");
       }
 
       const target = parseExecTarget(opts);
@@ -64,7 +64,7 @@ export function registerExecCommand(program: Command) {
       if (target.kind === "cloud") {
         const cloudAuth = resolveAuth(target.projectId);
         if (!isProjectAuthWithRefreshToken(cloudAuth)) {
-          throw new CliError("`stack exec --cloud-project-id` requires `stack login`. Remove STACK_SECRET_SERVER_KEY and try again.");
+          throw new CliError("`hexclave exec --cloud-project-id` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
         }
         auth = cloudAuth;
       } else {
