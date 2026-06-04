@@ -3,7 +3,7 @@ export default {
   darkMode: ["selector", 'html:has(head > [data-stack-theme="dark"])'],
   content: [
     "./src/**/*.{js,ts,jsx,tsx}",
-    "../../packages/stack-ui/src/**/*.{ts,tsx}",
+    "../../packages/ui/src/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {},

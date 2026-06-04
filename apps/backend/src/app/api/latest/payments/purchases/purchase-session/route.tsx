@@ -64,6 +64,9 @@ export const POST = createSmartRouteHandler({
     if (tenancy.config.payments.blockNewPurchases) {
       throw new KnownErrors.NewPurchasesBlocked();
     }
+    if (data.stripeAccountId == null || data.stripeCustomerId == null) {
+      throw new StatusError(400, "This purchase link is no longer valid. Please request a new one and try again.");
+    }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
     const { selectedPrice, conflictingSubscriptions } = await validatePurchaseSession({

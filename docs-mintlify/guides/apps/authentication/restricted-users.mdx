@@ -6,7 +6,7 @@ sidebarTitle: "Restricted Users"
 
 Restricted users are signed-in users whose account exists, but has not been granted normal application access yet. Stack marks these users with `user.isRestricted === true` and provides a `user.restrictedReason` explaining why.
 
-By default, Stack Auth treats restricted users like unauthenticated users in most SDK calls. This prevents accounts that still need verification, review, or conversion from accidentally getting access to protected product flows.
+By default, Hexclave treats restricted users like unauthenticated users in most SDK calls. This prevents accounts that still need verification, review, or conversion from accidentally getting access to protected product flows.
 
 ## When users are restricted
 
@@ -19,9 +19,9 @@ Users can be restricted for a few reasons:
 You can inspect the reason from the SDK:
 
 ```ts my-app.ts
-import { stackServerApp } from "../src/stack/server";
+import { hexclaveServerApp } from "../src/stack/server";
 
-const user = await stackServerApp.getUser({ includeRestricted: true });
+const user = await hexclaveServerApp.getUser({ includeRestricted: true });
 
 if (user?.isRestricted) {
   console.log(user.restrictedReason?.type);
@@ -42,9 +42,9 @@ Most calls exclude restricted users unless you explicitly opt in. Use `includeRe
 
 <CodeGroup dropdown>
 ```ts my-app.ts
-import { stackServerApp } from "../src/stack/server";
+import { hexclaveServerApp } from "../src/stack/server";
 
-const user = await stackServerApp.getUser({ includeRestricted: true });
+const user = await hexclaveServerApp.getUser({ includeRestricted: true });
 
 if (user?.isRestricted) {
   console.log("Needs onboarding:", user.restrictedReason?.type);
@@ -53,10 +53,10 @@ if (user?.isRestricted) {
 
 ```tsx my-react-component.tsx
 "use client";
-import { stackClientApp } from "../src/stack/client";
+import { hexclaveClientApp } from "../src/stack/client";
 
 export default function OnboardingGate() {
-  const user = stackClientApp.useUser({ includeRestricted: true });
+  const user = hexclaveClientApp.useUser({ includeRestricted: true });
 
   if (!user) {
     return <a href="/handler/sign-in">Sign in</a>;
@@ -97,9 +97,9 @@ For API routes or backend actions, keep using the default behavior unless the en
 
 ## Restricted users in JWTs
 
-Restricted users receive tokens with `is_restricted` and `restricted_reason` claims. If your backend verifies Stack Auth JWTs directly, make sure you reject restricted users unless the endpoint intentionally supports them.
+Restricted users receive tokens with `is_restricted` and `restricted_reason` claims. If your backend verifies Hexclave JWTs directly, make sure you reject restricted users unless the endpoint intentionally supports them.
 
-When fetching Stack Auth's JWKS, restricted-user signing keys are excluded by default. Include them only for services that intentionally accept restricted users:
+When fetching Hexclave's JWKS, restricted-user signing keys are excluded by default. Include them only for services that intentionally accept restricted users:
 
 ```txt jwks-url.txt
 /.well-known/jwks.json?include_restricted=true

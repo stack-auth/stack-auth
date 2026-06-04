@@ -78,8 +78,8 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Store Quetzal API key in packages/stack/.env.local to prepare for code gen
-        run: echo "QUETZAL_API_KEY=${{ secrets.QUETZAL_API_KEY }}" > packages/stack/.env.local
+      - name: Store Quetzal API key in packages/next/.env.local to prepare for code gen
+        run: echo "QUETZAL_API_KEY=${{ secrets.QUETZAL_API_KEY }}" > packages/next/.env.local
 
       - name: Run code gen  # so we can check for uncommitted changes afterwards; `build` doesn't regenerate some committed files, eg. Quetzal
         run: pnpm codegen

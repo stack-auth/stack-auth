@@ -43,9 +43,9 @@ function CreateDialog(props: {
   onOpenChange: (open: boolean) => void,
   onCreated?: () => void,
 }) {
-  const stackAdminApp = useAdminApp();
-  const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
-  const combinedPermissions = [...stackAdminApp.useTeamPermissionDefinitions(), ...projectPermissions];
+  const hexclaveAdminApp = useAdminApp();
+  const projectPermissions = hexclaveAdminApp.useProjectPermissionDefinitions();
+  const combinedPermissions = [...hexclaveAdminApp.useTeamPermissionDefinitions(), ...projectPermissions];
 
   const formSchema = yup.object({
     id: yup.string().defined()
@@ -67,7 +67,7 @@ function CreateDialog(props: {
     formSchema={formSchema}
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
-      await stackAdminApp.createProjectPermissionDefinition({
+      await hexclaveAdminApp.createProjectPermissionDefinition({
         id: values.id,
         description: values.description,
         containedPermissionIds: values.containedPermissionIds,

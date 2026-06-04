@@ -1,11 +1,13 @@
-# StackClientApp
+# HexclaveClientApp
 
 The main client-side SDK class.
+
+Deprecated alias: StackClientApp.
 
 
 ## Constructor
 
-StackClientApp(options)
+HexclaveClientApp(options)
 
 Required:
   projectId: string - from Hexclave dashboard

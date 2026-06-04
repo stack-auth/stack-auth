@@ -129,10 +129,11 @@ it("should error for invalid customer_id", async ({ expect }) => {
   `);
 });
 
-it("should error for no connected stripe account", async ({ expect }) => {
+it("should error for no connected stripe account in live mode", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({
     payments: {
+      testMode: false,
       products: {
         "test-offer": {
           displayName: "Test Offer",
@@ -158,7 +159,7 @@ it("should error for no connected stripe account", async ({ expect }) => {
     body: {
       customer_type: "user",
       customer_id: userId,
-      product_id: "test-product",
+      product_id: "test-offer",
     },
   });
   expect(response).toMatchInlineSnapshot(`

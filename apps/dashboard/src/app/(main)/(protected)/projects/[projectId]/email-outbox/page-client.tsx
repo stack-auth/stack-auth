@@ -89,7 +89,7 @@ function EmailActions({
   email: AdminEmailOutbox,
   onRefresh: () => Promise<void>,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const { toast } = useToast();
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
@@ -99,7 +99,7 @@ function EmailActions({
 
   const handlePause = () => {
     runAsynchronouslyWithAlert(async () => {
-      await stackAdminApp.pauseOutboxEmail(email.id);
+      await hexclaveAdminApp.pauseOutboxEmail(email.id);
       toast({
         title: "Email paused",
         description: "The email has been paused and will not be sent until unpaused.",
@@ -111,7 +111,7 @@ function EmailActions({
 
   const handleUnpause = () => {
     runAsynchronouslyWithAlert(async () => {
-      await stackAdminApp.unpauseOutboxEmail(email.id);
+      await hexclaveAdminApp.unpauseOutboxEmail(email.id);
       toast({
         title: "Email unpaused",
         description: "The email will continue processing.",
@@ -122,7 +122,7 @@ function EmailActions({
   };
 
   const handleCancel = async () => {
-    await stackAdminApp.cancelOutboxEmail(email.id);
+    await hexclaveAdminApp.cancelOutboxEmail(email.id);
     toast({
       title: "Email cancelled",
       description: "The email has been cancelled and will not be sent.",
@@ -281,7 +281,7 @@ function EmailDetailSheet({
   onOpenChange: (open: boolean) => void,
   onRefresh: () => Promise<void>,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const { toast } = useToast();
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -322,7 +322,7 @@ function EmailDetailSheet({
         updates.scheduledAtMillis = newScheduledAt.getTime();
       }
       if (Object.keys(updates).length > 0) {
-        await stackAdminApp.updateOutboxEmail(email.id, updates);
+        await hexclaveAdminApp.updateOutboxEmail(email.id, updates);
         toast({
           title: "Email updated",
           description: "The email has been updated successfully.",
@@ -343,7 +343,7 @@ function EmailDetailSheet({
   };
 
   const handleCancel = async () => {
-    await stackAdminApp.cancelOutboxEmail(email.id);
+    await hexclaveAdminApp.cancelOutboxEmail(email.id);
     toast({
       title: "Email cancelled",
       description: "The email has been cancelled and will not be sent.",
@@ -590,7 +590,7 @@ function EmailDetailSheet({
 const EMAIL_PAGE_SIZE = 50;
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [simpleStatusFilter, setSimpleStatusFilter] = useState<string>("all");
   const [selectedEmail, setSelectedEmail] = useState<AdminEmailOutbox | null>(null);
@@ -608,14 +608,14 @@ export default function PageClient() {
       if (statusFilter !== "all") options.status = statusFilter;
       if (simpleStatusFilter !== "all") options.simpleStatus = simpleStatusFilter;
       if (typeof params.cursor === "string") options.cursor = params.cursor;
-      const result = await stackAdminApp.listOutboxEmails(options);
+      const result = await hexclaveAdminApp.listOutboxEmails(options);
       yield {
         rows: result.items,
         hasMore: result.nextCursor != null,
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    [stackAdminApp, statusFilter, simpleStatusFilter],
+    [hexclaveAdminApp, statusFilter, simpleStatusFilter],
   );
 
   const handleFilterChange = (newStatusFilter: string, newSimpleStatusFilter: string) => {

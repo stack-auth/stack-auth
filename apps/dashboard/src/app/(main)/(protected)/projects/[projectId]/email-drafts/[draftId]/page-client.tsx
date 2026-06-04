@@ -44,7 +44,7 @@ function isValidStage(stage: string | null): stage is DraftStage {
 }
 
 export default function PageClient({ draftId }: { draftId: string }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const router = useRouter();
@@ -56,7 +56,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
     description?: string,
   } | null>(null);
 
-  const drafts = stackAdminApp.useEmailDrafts();
+  const drafts = hexclaveAdminApp.useEmailDrafts();
   const draft = useMemo(() => drafts.find((d) => d.id === draftId), [drafts, draftId]);
 
   // Determine initial stage from URL or draft state
@@ -115,7 +115,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const handleSave = async () => {
     setSaveAlert(null);
     try {
-      await stackAdminApp.updateEmailDraft(draftId, {
+      await hexclaveAdminApp.updateEmailDraft(draftId, {
         tsxSource: currentCode,
         themeId: selectedThemeId,
       });
@@ -137,7 +137,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
     setSaveAlert(null);
 
     try {
-      await stackAdminApp.updateEmailDraft(draftId, {
+      await hexclaveAdminApp.updateEmailDraft(draftId, {
         tsxSource: currentCode,
         themeId: selectedThemeId,
       });
@@ -246,7 +246,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
                 }
                 chatComponent={
                   <AssistantChat
-                    historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
+                    historyAdapter={createHistoryAdapter(hexclaveAdminApp, draftId)}
                     chatAdapter={createChatAdapter(backendBaseUrl, "email-draft", handleToolUpdate, () => currentCode, currentUser, handleRunStart, handleRunEnd)}
                     toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                     useOffWhiteLightMode
@@ -419,7 +419,7 @@ type ScheduleStageProps = {
 };
 
 function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStageProps) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const { flowState, updateSchedule, resetFlowState } = useDraftFlow();
   const { scope, selectedUsers } = flowState.recipients;
   const { mode: scheduleMode, date: scheduledDate, time: scheduledTime } = flowState.schedule;
@@ -452,12 +452,12 @@ function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStagePr
         : undefined;
 
       if (scope === "users") {
-        await stackAdminApp.sendEmail({ draftId, userIds: selectedUserIds, scheduledAt });
+        await hexclaveAdminApp.sendEmail({ draftId, userIds: selectedUserIds, scheduledAt });
       } else {
-        await stackAdminApp.sendEmail({ draftId, allUsers: true, scheduledAt });
+        await hexclaveAdminApp.sendEmail({ draftId, allUsers: true, scheduledAt });
       }
 
-      await stackAdminApp.refreshEmailDrafts();
+      await hexclaveAdminApp.refreshEmailDrafts();
       resetFlowState();
       onSent();
     } catch (error) {
@@ -574,7 +574,7 @@ const CANCELLABLE_STATUSES: Set<AdminEmailOutboxStatus> = new Set([
 ]);
 
 function SentStage({ draftId }: { draftId: string }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const filterFn = useCallback((email: AdminEmailOutbox) => email.emailDraftId === draftId, [draftId]);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelContext, setCancelContext] = useState<{ count: number, emails: AdminEmailOutbox[], refresh: () => Promise<void> } | null>(null);
@@ -612,7 +612,7 @@ function SentStage({ draftId }: { draftId: string }) {
                 className="hover:bg-accent"
                 onClick={async () => {
                   setBulkAlert(null);
-                  const results = await Promise.allSettled(pausable.map(e => stackAdminApp.pauseOutboxEmail(e.id)));
+                  const results = await Promise.allSettled(pausable.map(e => hexclaveAdminApp.pauseOutboxEmail(e.id)));
                   const failed = results.filter(r => r.status === "rejected").length;
                   if (failed > 0) {
                     setBulkAlert({ variant: "destructive", title: `Failed to pause ${failed} of ${pausable.length} emails` });
@@ -631,7 +631,7 @@ function SentStage({ draftId }: { draftId: string }) {
                 className="hover:bg-accent"
                 onClick={async () => {
                   setBulkAlert(null);
-                  const results = await Promise.allSettled(paused.map(e => stackAdminApp.unpauseOutboxEmail(e.id)));
+                  const results = await Promise.allSettled(paused.map(e => hexclaveAdminApp.unpauseOutboxEmail(e.id)));
                   const failed = results.filter(r => r.status === "rejected").length;
                   if (failed > 0) {
                     setBulkAlert({ variant: "destructive", title: `Failed to resume ${failed} of ${paused.length} emails` });
@@ -660,7 +660,7 @@ function SentStage({ draftId }: { draftId: string }) {
         )}
       </div>
     );
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-4">
@@ -686,7 +686,7 @@ function SentStage({ draftId }: { draftId: string }) {
           onClick: async () => {
             if (!cancelContext) return;
             setBulkAlert(null);
-            const results = await Promise.allSettled(cancelContext.emails.map(e => stackAdminApp.cancelOutboxEmail(e.id)));
+            const results = await Promise.allSettled(cancelContext.emails.map(e => hexclaveAdminApp.cancelOutboxEmail(e.id)));
             const failed = results.filter(r => r.status === "rejected").length;
             setCancelDialogOpen(false);
             if (failed > 0) {

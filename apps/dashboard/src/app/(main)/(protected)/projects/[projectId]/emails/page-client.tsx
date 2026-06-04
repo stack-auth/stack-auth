@@ -62,8 +62,8 @@ function StatusBadge({ status, error }: { status: 'sent' | 'failed', error?: str
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
@@ -276,7 +276,7 @@ const managedEmailSetupSchema = yup.object({
 function ManagedEmailSetupDialog(props: {
   trigger: React.ReactNode,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [open, setOpen] = useState(false);
   const [setupState, setSetupState] = useState<{
     domainId: string,
@@ -298,7 +298,7 @@ function ManagedEmailSetupDialog(props: {
   const refreshDomains = async () => {
     setLoadingDomains(true);
     try {
-      const result = await stackAdminApp.listManagedEmailDomains();
+      const result = await hexclaveAdminApp.listManagedEmailDomains();
       setDomains(result);
     } finally {
       setLoadingDomains(false);
@@ -331,7 +331,7 @@ function ManagedEmailSetupDialog(props: {
       okButton={setupState ? false : { label: "Start Setup" }}
       cancelButton
       onSubmit={async (values) => {
-        const setupResult = await stackAdminApp.setupManagedEmailProvider({
+        const setupResult = await hexclaveAdminApp.setupManagedEmailProvider({
           subdomain: values.subdomain,
           senderLocalPart: values.senderLocalPart,
         });
@@ -385,7 +385,7 @@ function ManagedEmailSetupDialog(props: {
               <Button
                 variant="secondary"
                 onClick={() => runAsynchronouslyWithAlert(async () => {
-                  const result = await stackAdminApp.checkManagedEmailStatus({
+                  const result = await hexclaveAdminApp.checkManagedEmailStatus({
                     domainId: setupState.domainId,
                     subdomain: setupState.subdomain,
                     senderLocalPart: setupState.senderLocalPart,
@@ -403,7 +403,7 @@ function ManagedEmailSetupDialog(props: {
                 variant="default"
                 disabled={setupState.status !== "verified"}
                 onClick={() => runAsynchronouslyWithAlert(async () => {
-                  await stackAdminApp.applyManagedEmailProvider({
+                  await hexclaveAdminApp.applyManagedEmailProvider({
                     domainId: setupState.domainId,
                   });
                   setOpen(false);
@@ -432,7 +432,7 @@ function ManagedEmailSetupDialog(props: {
                       variant="secondary"
                       disabled={domain.status !== "verified"}
                       onClick={() => runAsynchronouslyWithAlert(async () => {
-                        await stackAdminApp.applyManagedEmailProvider({
+                        await hexclaveAdminApp.applyManagedEmailProvider({
                           domainId: domain.domainId,
                         });
                         await refreshDomains();
@@ -454,7 +454,7 @@ function ManagedEmailSetupDialog(props: {
 }
 
 function EmailLogCard() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -482,7 +482,7 @@ function EmailLogCard() {
     runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       setError(null);
-      const emails = await stackAdminApp.listSentEmails();
+      const emails = await hexclaveAdminApp.listSentEmails();
       if (cancelled) return;
       setEmailLogs(emails);
       setLoading(false);
@@ -496,7 +496,7 @@ function EmailLogCard() {
     return () => {
       cancelled = true;
     };
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   if (loading) {
     return (
@@ -718,8 +718,8 @@ function InputFieldWithInfo({
 function EditEmailServerDialog(props: {
   trigger: React.ReactNode,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [error, setError] = useState<string | null>(null);
@@ -728,7 +728,7 @@ function EditEmailServerDialog(props: {
   const { toast } = useToast();
 
   async function testEmailAndUpdateConfig(emailConfig: AdminEmailConfig & { type: "standard" | "resend" }) {
-    const testResult = await stackAdminApp.sendTestEmail({
+    const testResult = await hexclaveAdminApp.sendTestEmail({
       recipientEmail: 'test-email-recipient@sent-with-hexclave.com',
       emailConfig,
     });
@@ -739,7 +739,7 @@ function EditEmailServerDialog(props: {
     }
     setError(null);
     const didUpdate = await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         "emails.server": {
           isShared: false,
@@ -776,7 +776,7 @@ function EditEmailServerDialog(props: {
     onSubmit={async (values) => {
       if (values.type === 'shared') {
         await updateConfig({
-          adminApp: stackAdminApp,
+          adminApp: hexclaveAdminApp,
           configUpdate: {
             "emails.server": {
               isShared: true,
@@ -953,8 +953,8 @@ function EditEmailServerDialog(props: {
 function TestSendingDialog(props: {
   trigger: React.ReactNode,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
@@ -1016,7 +1016,7 @@ function TestSendingDialog(props: {
         senderEmail: emailServerConfig.senderEmail ?? throwErr("Email sender email is missing"),
       };
 
-      const result = await stackAdminApp.sendTestEmail({
+      const result = await hexclaveAdminApp.sendTestEmail({
         recipientEmail: values.email,
         emailConfig: emailConfig,
       });
@@ -1091,7 +1091,7 @@ function SendEmailDialog(props: {
   trigger: React.ReactNode,
   emailConfig: CompleteConfig['emails']['server'],
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [sharedSmtpDialogOpen, setSharedSmtpDialogOpen] = useState(false);
@@ -1104,7 +1104,7 @@ function SendEmailDialog(props: {
       throwErr("Missing required fields", { formData });
     }
 
-    await stackAdminApp.sendEmail({
+    await hexclaveAdminApp.sendEmail({
       userIds: selectedUsers.map(user => user.id),
       subject: formData.subject,
       html: formData.content,

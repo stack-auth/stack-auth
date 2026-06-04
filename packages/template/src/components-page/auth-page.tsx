@@ -62,19 +62,19 @@ function Fallback(props: Props) {
 }
 
 function Inner(props: Props) {
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const user = useUser({ includeRestricted: true });
-  const projectFromHook = stackApp.useProject();
+  const projectFromHook = hexclaveApp.useProject();
   const project = props.mockProject || projectFromHook;
   const { t } = useTranslation();
 
   if (props.automaticRedirect && user && !props.mockProject) {
     runAsynchronously(
       user.isRestricted
-        ? stackApp.redirectToOnboarding({ replace: true })
+        ? hexclaveApp.redirectToOnboarding({ replace: true })
         : props.type === 'sign-in'
-          ? stackApp.redirectToAfterSignIn({ replace: true })
-          : stackApp.redirectToAfterSignUp({ replace: true })
+          ? hexclaveApp.redirectToAfterSignIn({ replace: true })
+          : hexclaveApp.redirectToAfterSignUp({ replace: true })
     );
     return null;
   }
@@ -102,8 +102,8 @@ function Inner(props: Props) {
             project.config.signUpEnabled && (
               <Typography>
                 {t("Don't have an account?")}{" "}
-                <StyledLink href={stackApp.urls.signUp} onClick={(e) => {
-                  runAsynchronously(stackApp.redirectToSignUp());
+                <StyledLink href={hexclaveApp.urls.signUp} onClick={(e) => {
+                  runAsynchronously(hexclaveApp.redirectToSignUp());
                   e.preventDefault();
                 }}>{t("Sign up")}</StyledLink>
               </Typography>
@@ -111,8 +111,8 @@ function Inner(props: Props) {
           ) : (
             <Typography>
               {t("Already have an account?")}{" "}
-              <StyledLink href={stackApp.urls.signIn} onClick={(e) => {
-                runAsynchronously(stackApp.redirectToSignIn());
+              <StyledLink href={hexclaveApp.urls.signIn} onClick={(e) => {
+                runAsynchronously(hexclaveApp.redirectToSignIn());
                 e.preventDefault();
               }}>{t("Sign in")}</StyledLink>
             </Typography>

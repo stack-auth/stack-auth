@@ -20,7 +20,7 @@ import {
   type MetricsEmailOverview,
   type MetricsRecentEmail,
   useMetricsOrThrow,
-} from "@/lib/stack-app-internals";
+} from "@/lib/hexclave-app-internals";
 import {
   ChartLineIcon,
   CompassIcon,

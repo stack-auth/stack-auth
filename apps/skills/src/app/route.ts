@@ -1,4 +1,4 @@
-import { skillSitePrompt } from "../../../../packages/stack-shared/src/ai/unified-prompts/skill-site-prompt";
+import { skillSitePrompt } from "../../../../packages/shared/src/ai/unified-prompts/skill-site-prompt";
 
 const SKILL_MD = skillSitePrompt;
 
