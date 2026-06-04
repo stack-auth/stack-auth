@@ -98,7 +98,12 @@ function writeFileAtomic(configFilePath: string, content: string): void {
   mkdirSync(dir, { recursive: true });
   const tempPath = path.join(dir, `.stack.config.${Math.random().toString(36).slice(2)}.tmp`);
   writeFileSync(tempPath, content, "utf-8");
-  renameSync(tempPath, configFilePath);
+  try {
+    renameSync(tempPath, configFilePath);
+  } catch (error) {
+    try { rmSync(tempPath); } catch { /* best-effort cleanup */ }
+    throw error;
+  }
 }
 
 function renderConfigObjectToFile(configFilePath: string, config: Config): void {
