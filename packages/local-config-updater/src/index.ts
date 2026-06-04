@@ -1,8 +1,8 @@
-import { showOnboardingStackConfigValue } from "@hexclave/shared/dist/config-authoring";
+import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
-import { getRelativeImportSpecifiers, stackConfigFileExportsConfig } from "@hexclave/shared/dist/hexclave-config-file";
+import { getRelativeImportSpecifiers, hexclaveConfigFileExportsConfig } from "@hexclave/shared/dist/hexclave-config-file";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
@@ -73,7 +73,7 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
   }
 
   const config = configModule.config;
-  if (config === showOnboardingStackConfigValue) {
+  if (config === showOnboardingHexclaveConfigValue) {
     return {
       config: {},
       showOnboarding: true,
@@ -255,7 +255,7 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
   }
 
   const content = readFileSync(configFilePath, "utf-8");
-  if (!stackConfigFileExportsConfig(content, configFilePath)) {
+  if (!hexclaveConfigFileExportsConfig(content, configFilePath)) {
     throw new Error(`Config update validation failed for ${configFilePath}: the updated file no longer exports a valid \`config\`.`);
   }
 }

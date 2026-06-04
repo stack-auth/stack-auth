@@ -1,4 +1,4 @@
-import { stackClientApp } from "./hexclave";
+import { hexclaveClientApp } from "./hexclave";
 
 const updateUIState = (user: any | null) => {
   const authOptions = document.getElementById("authOptions");
@@ -16,11 +16,11 @@ const updateUIState = (user: any | null) => {
 };
 
 // Check if user is already signed in
-stackClientApp.getUser().then(updateUIState);
+hexclaveClientApp.getUser().then(updateUIState);
 
 // Handle Sign Out
 document.getElementById("signOut")?.addEventListener("click", async () => {
-  const user = await stackClientApp.getUser();
+  const user = await hexclaveClientApp.getUser();
   if (user) {
     await user.signOut();
     updateUIState(null);

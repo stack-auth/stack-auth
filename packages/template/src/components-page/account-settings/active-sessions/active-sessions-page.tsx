@@ -4,7 +4,7 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { ActionCell, Badge, Button, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@hexclave/ui";
 import { useEffect, useState } from "react";
 import { useUser } from "../../../lib/hooks";
-import { ActiveSession } from "../../../lib/stack-app/users";
+import { ActiveSession } from "../../../lib/hexclave-app/users";
 import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
 

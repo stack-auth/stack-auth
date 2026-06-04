@@ -1,6 +1,6 @@
 import { ServerTeam, ServerUser } from "@hexclave/next";
 import { NextResponse } from "next/server";
-import { stackServerApp } from "src/hexclave";
+import { hexclaveServerApp } from "src/hexclave";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -24,14 +24,14 @@ export async function POST(request: Request) {
 
 
     try {
-      user = await stackServerApp.getUser({ apiKey });
+      user = await hexclaveServerApp.getUser({ apiKey });
       api_keys = await user?.listApiKeys();
     } catch (error) {
       userError = error.message;
     }
 
     try {
-      team = await stackServerApp.getTeam({ apiKey });
+      team = await hexclaveServerApp.getTeam({ apiKey });
       api_keys = await team?.listApiKeys();
     } catch (error) {
       teamError = error.message;

@@ -1,11 +1,11 @@
 import { ServerUser } from "@hexclave/next";
 import { Shop } from "@/shop";
-import { stackServerApp } from "@/hexclave";
+import { hexclaveServerApp } from "@/hexclave";
 
 export default async function Home() {
-  const users = await stackServerApp.listUsers();
+  const users = await hexclaveServerApp.listUsers();
   const shops: [ServerUser, Shop][] = users.map(user => [user, (user.serverMetadata as any)?.eCommerceExample?.shop] as any).filter(([_, shop]) => shop);
-  const currentUser = await stackServerApp.getUser();
+  const currentUser = await hexclaveServerApp.getUser();
 
   return (
     <>

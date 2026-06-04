@@ -1,7 +1,7 @@
-import { stackClientApp } from "./hexclave";
+import { hexclaveClientApp } from "./hexclave";
 
 // Check if user is already signed in
-stackClientApp.getUser().then((user) => {
+hexclaveClientApp.getUser().then((user) => {
   if (user) {
     window.location.href = "/";
   }
@@ -23,7 +23,7 @@ document.getElementById("signIn")?.addEventListener("click", async () => {
   const emailInput = document.getElementById("emailInput") as HTMLInputElement;
   const passwordInput = document.getElementById("passwordInput") as HTMLInputElement;
 
-  const result = await stackClientApp.signInWithCredential({
+  const result = await hexclaveClientApp.signInWithCredential({
     email: emailInput.value,
     password: passwordInput.value,
   });
@@ -39,7 +39,7 @@ document.getElementById("signUp")?.addEventListener("click", async () => {
   const emailInput = document.getElementById("signUpEmail") as HTMLInputElement;
   const passwordInput = document.getElementById("signUpPassword") as HTMLInputElement;
 
-  const result = await stackClientApp.signUpWithCredential({
+  const result = await hexclaveClientApp.signUpWithCredential({
     email: emailInput.value,
     password: passwordInput.value,
   });
@@ -49,7 +49,7 @@ document.getElementById("signUp")?.addEventListener("click", async () => {
     return;
   }
 
-  const signInResult = await stackClientApp.signInWithCredential({
+  const signInResult = await hexclaveClientApp.signInWithCredential({
     email: emailInput.value,
     password: passwordInput.value,
   });

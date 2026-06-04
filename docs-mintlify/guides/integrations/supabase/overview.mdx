@@ -63,11 +63,11 @@ Let's create a sample table and some RLS policies to demonstrate how to integrat
     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
     - `SUPABASE_JWT_SECRET`
 
-    Copy environment variables from the Stack dashboard to the `.env.local` file.
+    Copy environment variables from the Hexclave dashboard to the `.env.local` file.
 
-    - `NEXT_PUBLIC_STACK_PROJECT_ID`
-    - `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
-    - `STACK_SECRET_SERVER_KEY`
+    - `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID`
+    - `NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY`
+    - `HEXCLAVE_SECRET_SERVER_KEY`
   </Step>
 
   <Step title="Set up Supabase client">
@@ -76,11 +76,11 @@ Let's create a sample table and some RLS policies to demonstrate how to integrat
     ```tsx title="/utils/actions.ts"
     'use server';
 
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/hexclave/server";
     import * as jose from "jose";
 
     export const getSupabaseJwt = async () => {
-      const user = await stackServerApp.getUser();
+      const user = await hexclaveServerApp.getUser();
 
       if (!user) {
         return null;

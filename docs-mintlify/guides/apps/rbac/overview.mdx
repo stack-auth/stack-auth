@@ -56,11 +56,11 @@ To check whether a user has a specific permission, use the `getPermission` metho
   </Tab>
   <Tab title="Server Component">
     ```tsx title="Check user permission on the server"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function CheckUserPermission() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
-      const team = await stackServerApp.getTeam('some-team-id');
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
+      const team = await hexclaveServerApp.getTeam('some-team-id');
       const permission = await user.getPermission(team, 'read');
 
       // This is a server-side check, so it's secure.
@@ -100,10 +100,10 @@ To get a list of all permissions a user has, use the `listPermissions` method or
   </Tab>
   <Tab title="Server Component">
     ```tsx title="List user permissions on the server"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function DisplayUserPermissions() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
       const permissions = await user.listPermissions();
 
       return (
@@ -123,8 +123,8 @@ To get a list of all permissions a user has, use the `listPermissions` method or
 To grant a permission to a user, use the `grantPermission` method on the `ServerUser`. Here's an example:
 
 ```tsx
-const team = await stackServerApp.getTeam('teamId');
-const user = await stackServerApp.getUser();
+const team = await hexclaveServerApp.getTeam('teamId');
+const user = await hexclaveServerApp.getUser();
 await user.grantPermission(team, 'read');
 ```
 
@@ -133,8 +133,8 @@ await user.grantPermission(team, 'read');
 To revoke a permission from a user, use the `revokePermission` method on the `ServerUser`. Here's an example:
 
 ```tsx
-const team = await stackServerApp.getTeam('teamId');
-const user = await stackServerApp.getUser();
+const team = await hexclaveServerApp.getTeam('teamId');
+const user = await hexclaveServerApp.getUser();
 await user.revokePermission(team, 'read');
 ```
 
@@ -170,10 +170,10 @@ To check whether a user has a specific project permission, use the `getPermissio
   </Tab>
   <Tab title="Server Component">
     ```tsx title="Check user permission on the server"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function CheckGlobalPermission() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
       const permission = await user.getPermission('access_admin_dashboard');
 
       return (
@@ -212,10 +212,10 @@ To get a list of all global permissions a user has, use the `listPermissions` me
   </Tab>
   <Tab title="Server Component">
     ```tsx title="List global permissions on the server"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function DisplayGlobalPermissions() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
       const permissions = await user.listPermissions();
 
       return (
@@ -235,7 +235,7 @@ To get a list of all global permissions a user has, use the `listPermissions` me
 To grant a global permission to a user, use the `grantPermission` method:
 
 ```tsx
-const user = await stackServerApp.getUser();
+const user = await hexclaveServerApp.getUser();
 await user.grantPermission('access_admin_dashboard');
 ```
 
@@ -244,7 +244,7 @@ await user.grantPermission('access_admin_dashboard');
 To revoke a global permission from a user, use the `revokePermission` method:
 
 ```tsx
-const user = await stackServerApp.getUser();
+const user = await hexclaveServerApp.getUser();
 await user.revokePermission('access_admin_dashboard');
 ```
 

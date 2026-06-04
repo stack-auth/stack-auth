@@ -129,10 +129,11 @@ it("should error for invalid customer_id", async ({ expect }) => {
   `);
 });
 
-it("should error for no connected stripe account", async ({ expect }) => {
+it("should error for no connected stripe account in live mode", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({
     payments: {
+      testMode: false,
       products: {
         "test-product": {
           displayName: "Test Product",
@@ -168,6 +169,43 @@ it("should error for no connected stripe account", async ({ expect }) => {
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
+});
+
+it("should create purchase URL in test mode without Stripe onboarding", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(response.status).toBe(200);
+  const body = response.body as { url: string };
+  expect(body.url).toMatch(new RegExp(`^https?:\/\/localhost:${withPortPrefix("01")}\/purchase\/[a-z0-9-_]+$`));
 });
 
 
@@ -327,7 +365,7 @@ it("should return inline product metadata when validating purchase code", async 
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "charges_enabled": false,
+        "charges_enabled": null,
         "conflicting_products": [],
         "product": {
           "client_metadata": null,
@@ -356,7 +394,7 @@ it("should return inline product metadata when validating purchase code", async 
         },
         "project_id": "<stripped UUID>",
         "project_logo_url": null,
-        "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "stripe_account_id": null,
         "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },

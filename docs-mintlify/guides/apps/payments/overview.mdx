@@ -93,10 +93,10 @@ To sell a product, generate a checkout URL and redirect the user to it. The `cre
   </Tab>
   <Tab title="Server Component">
     ```typescript title="app/purchase/page.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function PurchasePage() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
 
       const checkoutUrl = await user.createCheckoutUrl({
         productId: "prod_premium_monthly",
@@ -183,10 +183,10 @@ export default function CreditsWidget() {
 When your app needs to consume credits (e.g. when a user sends an AI request), use `tryDecreaseQuantity` on the server. It's atomic and race-condition-safe - it will return `false` and do nothing if the balance would go negative.
 
 ```typescript title="lib/credits.ts"
-import { stackServerApp } from "@/stack/server";
+import { hexclaveServerApp } from "@/stack/server";
 
 export async function consumeCredits(userId: string, amount: number) {
-  const user = await stackServerApp.getUser(userId);
+  const user = await hexclaveServerApp.getUser(userId);
   if (!user) throw new Error("User not found");
 
   const credits = await user.getItem("credits");
@@ -261,10 +261,10 @@ export default function UpgradeButton() {
   <Tab title="Server">
     ```typescript
     // Cancel for the current user
-    await stackServerApp.cancelSubscription({ productId: "prod_pro" });
+    await hexclaveServerApp.cancelSubscription({ productId: "prod_pro" });
 
     // Cancel for a team
-    await stackServerApp.cancelSubscription({
+    await hexclaveServerApp.cancelSubscription({
       productId: "prod_team_plan",
       teamId: "team-id",
     });
@@ -336,19 +336,19 @@ Sometimes you need to give a customer a product without going through checkout -
 
 ```typescript
 // Grant a pre-configured product to a user
-await stackServerApp.grantProduct({
+await hexclaveServerApp.grantProduct({
   userId: "user-id",
   productId: "prod_premium",
 });
 
 // Grant to a team
-await stackServerApp.grantProduct({
+await hexclaveServerApp.grantProduct({
   teamId: "team-id",
   productId: "prod_team_plan",
 });
 
 // Grant to a custom customer
-await stackServerApp.grantProduct({
+await hexclaveServerApp.grantProduct({
   customCustomerId: "external-org-123",
   productId: "prod_enterprise",
 });
@@ -357,7 +357,7 @@ await stackServerApp.grantProduct({
 You can also grant products with an **inline definition** - no pre-configured product needed. This is useful for one-off grants like bonus credits:
 
 ```typescript
-await stackServerApp.grantProduct({
+await hexclaveServerApp.grantProduct({
   userId: "user-id",
   product: {
     display_name: "Bonus Credits",
@@ -384,7 +384,7 @@ Hexclave supports three types of payment customers:
 - **Teams** - Team or organization accounts. Team admins can create checkouts, switch plans, and cancel subscriptions for their team.
 - **Custom customers** - External entities identified by an arbitrary string ID. Useful for integrations with external systems. Custom customers can only be managed via the server SDK and do not support billing or invoices.
 
-All payment methods (`createCheckoutUrl`, `useProducts`, `useItem`, `switchSubscription`, `useBilling`, `useInvoices`, etc.) are available on both user and team objects. For custom customers, use the top-level `stackServerApp` methods with `customCustomerId`.
+All payment methods (`createCheckoutUrl`, `useProducts`, `useItem`, `switchSubscription`, `useBilling`, `useInvoices`, etc.) are available on both user and team objects. For custom customers, use the top-level `hexclaveServerApp` methods with `customCustomerId`.
 
 ## Dashboard
 

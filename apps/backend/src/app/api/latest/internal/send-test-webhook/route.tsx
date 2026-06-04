@@ -52,7 +52,7 @@ export const POST = createSmartRouteHandler({
         payload: {
           type: "stack.test",
           data: {
-            message: "Stack webhook test event triggered from the Stack dashboard.",
+            message: "Hexclave webhook test event triggered from the Hexclave dashboard.",
             endpointUrl: endpoint.url,
           },
         },

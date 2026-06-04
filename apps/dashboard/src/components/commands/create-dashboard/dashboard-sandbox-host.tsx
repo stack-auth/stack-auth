@@ -458,7 +458,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           throw new Error("Stack SDK failed to load. The SDK should expose window.StackAdminApp.");
         }
 
-        const stackServerApp = new window.StackAdminApp({
+        const hexclaveServerApp = new window.StackAdminApp({
           projectId: STACK_CONFIG.projectId,
           baseUrl: STACK_CONFIG.baseUrl,
           projectOwnerSession: async () => {
@@ -469,10 +469,10 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         // Expose under both names. AI-generated dashboards (post-PR2 prompt)
         // reference hexclaveServerApp; pre-rebrand saved dashboards still
         // reference stackServerApp. Both must resolve at runtime.
-        window.stackServerApp = stackServerApp;
-        window.hexclaveServerApp = stackServerApp;
+        window.hexclaveServerApp = hexclaveServerApp;
+        window.stackServerApp = hexclaveServerApp;
 
-        return stackServerApp;
+        return hexclaveServerApp;
       }
 
       // Uncaught runtime errors and unhandled rejections are forwarded by the
@@ -577,8 +577,8 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           return;
         }
         // eslint-disable-next-line no-new-func
-        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'stackServerApp', compiledSource + '\\nreturn Dashboard;')(
-          React, ReactDOM, DashboardUI, Recharts, window.stackServerApp,
+        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'hexclaveServerApp', compiledSource + '\\nreturn Dashboard;')(
+          React, ReactDOM, DashboardUI, Recharts, window.hexclaveServerApp,
         );
         
         if (typeof Dashboard !== 'function') {

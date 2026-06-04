@@ -12,7 +12,7 @@ type ServiceCheck = {
 
 const SERVICES: ServiceCheck[] = [
   {
-    name: 'Stack Dashboard',
+    name: 'Hexclave Dashboard',
     description: 'Dashboard UI',
     port: 26700,
     protocol: 'http',

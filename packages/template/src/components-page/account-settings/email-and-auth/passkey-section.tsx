@@ -26,8 +26,8 @@ export function PasskeySection(props?: {
   if (!user) {
     return null; // This shouldn't happen in non-mock mode due to throw
   }
-  const stackApp = useStackApp();
-  const project = stackApp.useProject();
+  const hexclaveApp = useStackApp();
+  const project = hexclaveApp.useProject();
   const contactChannels = user.useContactChannels();
 
 

@@ -1,10 +1,10 @@
-import { stackServerApp } from "src/hexclave";
+import { hexclaveServerApp } from "src/hexclave";
 import { FallbackTestClient } from "./client";
 
 export default async function FallbackTestPage() {
   const serverStart = Date.now();
-  const user = await stackServerApp.getUser();
-  const project = await stackServerApp.getProject();
+  const user = await hexclaveServerApp.getUser();
+  const project = await hexclaveServerApp.getProject();
   const serverDuration = Date.now() - serverStart;
 
   return (

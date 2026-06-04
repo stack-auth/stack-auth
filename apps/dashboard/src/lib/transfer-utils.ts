@@ -1,4 +1,4 @@
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export function buildTransferSignUpUrl(): string {
@@ -11,7 +11,7 @@ export function buildTransferSignUpUrl(): string {
   return signUpUrl.pathname + signUpUrl.search;
 }
 
-type StackAppInternals = {
+type HexclaveAppInternals = {
   sendRequest: (
     path: string,
     requestOptions: RequestInit,
@@ -19,13 +19,13 @@ type StackAppInternals = {
   ) => Promise<Response>,
 };
 
-export function getStackAppInternals(app: unknown): StackAppInternals {
+export function getStackAppInternals(app: unknown): HexclaveAppInternals {
   if (typeof app !== "object" || app === null) {
     throw new HexclaveAssertionError("getStackAppInternals: expected an app object", { app });
   }
-  const internals = (app as Record<symbol, unknown>)[stackAppInternalsSymbol];
-  if (internals == null || typeof (internals as StackAppInternals).sendRequest !== "function") {
-    throw new HexclaveAssertionError("getStackAppInternals: app is missing stackAppInternalsSymbol or sendRequest", { app });
+  const internals = (app as Record<symbol, unknown>)[hexclaveAppInternalsSymbol];
+  if (internals == null || typeof (internals as HexclaveAppInternals).sendRequest !== "function") {
+    throw new HexclaveAssertionError("getStackAppInternals: app is missing hexclaveAppInternalsSymbol or sendRequest", { app });
   }
-  return internals as StackAppInternals;
+  return internals as HexclaveAppInternals;
 }

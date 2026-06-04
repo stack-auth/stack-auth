@@ -16,8 +16,8 @@ export function OAuthButtonGroup({
     },
   },
 }) {
-  const stackApp = useStackApp();
-  const project = mockProject || stackApp.useProject();
+  const hexclaveApp = useStackApp();
+  const project = mockProject || hexclaveApp.useProject();
   return (
     <div className='gap-4 flex flex-col items-stretch stack-scope'>
       {project.config.oauthProviders.map(p => (

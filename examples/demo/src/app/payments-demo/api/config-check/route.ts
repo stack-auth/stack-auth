@@ -1,7 +1,7 @@
 import { branchConfigSchema, getConfigOverrideErrors } from "@hexclave/shared/dist/config/schema";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { NextResponse } from "next/server";
-import { stackServerApp } from "src/hexclave";
+import { hexclaveServerApp } from "src/hexclave";
 
 function readValidationResult(result: Awaited<ReturnType<typeof getConfigOverrideErrors>>) {
   if (result.status === "ok") {
@@ -17,7 +17,7 @@ function readValidationResult(result: Awaited<ReturnType<typeof getConfigOverrid
 }
 
 export async function GET() {
-  const project = await stackServerApp.getProject();
+  const project = await hexclaveServerApp.getProject();
   const includeByDefaultValidation = await getConfigOverrideErrors(branchConfigSchema, {
     "payments.products.paymentsDemoInvalidFree.prices": "include-by-default",
   });

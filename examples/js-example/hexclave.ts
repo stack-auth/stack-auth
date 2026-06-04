@@ -2,7 +2,7 @@
 
 import { StackClientApp } from "@hexclave/js";
 
-export const stackClientApp = new StackClientApp({
+export const hexclaveClientApp = new StackClientApp({
   baseUrl: import.meta.env.VITE_STACK_API_URL,
   projectId: import.meta.env.VITE_STACK_PROJECT_ID,
   publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,

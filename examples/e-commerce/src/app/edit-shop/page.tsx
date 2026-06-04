@@ -3,16 +3,16 @@ import "server-only";
 import Link from 'next/link';
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
-import { stackServerApp } from '@/hexclave';
+import { hexclaveServerApp } from '@/hexclave';
 import { Product, Shop } from "@/shop";
 
 export default async function EditShop() {
-  const user = await stackServerApp.getUser({ or: "redirect" });
+  const user = await hexclaveServerApp.getUser({ or: "redirect" });
   const shop: Shop | undefined = user.serverMetadata?.eCommerceExample?.shop ?? undefined;
 
   async function createShop(formData: FormData) {
     "use server";
-    await (await stackServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
+    await (await hexclaveServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
       // TODO this should be more like a transaction
       ...user.serverMetadata,
       eCommerceExample: {
@@ -34,7 +34,7 @@ export default async function EditShop() {
 
   async function deleteShop(formData: FormData) {
     "use server";
-    await (await stackServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
+    await (await hexclaveServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
       // TODO this should be more like a transaction
       ...user.serverMetadata,
       eCommerceExample: {
@@ -59,7 +59,7 @@ export default async function EditShop() {
         dollarPrice: Number(formData.get(`product${i}DollarPrice`)),
       });
     }
-    await (await stackServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
+    await (await hexclaveServerApp.listUsers()).find(u => u.id === user.id)!.setServerMetadata({
       // TODO this should be more like a transaction
       ...user.serverMetadata,
       eCommerceExample: {

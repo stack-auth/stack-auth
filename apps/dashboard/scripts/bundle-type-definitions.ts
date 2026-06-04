@@ -12,15 +12,15 @@ async function main() {
   console.log('[Bundle Type Definitions] Finding Stack SDK type definition files...');
   
   const rootPath = path.resolve(process.cwd(), '../..');
-  const stackAppPath = path.join(rootPath, 'packages/template/src/lib/stack-app');
+  const hexclaveAppPath = path.join(rootPath, 'packages/template/src/lib/hexclave-app');
   const outputPath = path.join(rootPath, 'apps/dashboard/src/generated/bundled-type-definitions.ts');
   
-  const files = await glob(`${stackAppPath}/**/*.ts`, {
+  const files = await glob(`${hexclaveAppPath}/**/*.ts`, {
     ignore: [
-      `${stackAppPath}/**/implementations/**`,
-      `${stackAppPath}/**/utils/**`,
-      `${stackAppPath}/**/*.d.ts`,
-      `${stackAppPath}/**/global.css`,
+      `${hexclaveAppPath}/**/implementations/**`,
+      `${hexclaveAppPath}/**/utils/**`,
+      `${hexclaveAppPath}/**/*.d.ts`,
+      `${hexclaveAppPath}/**/global.css`,
     ],
   });
   files.sort();
@@ -30,7 +30,7 @@ async function main() {
   const bundledFiles: TypeDefinitionFile[] = [];
   
   for (const filePath of files) {
-    const relativePath = path.relative(stackAppPath, filePath);
+    const relativePath = path.relative(hexclaveAppPath, filePath);
     const content = await fs.readFile(filePath, 'utf8');
     
     bundledFiles.push({

@@ -44,6 +44,10 @@ function useProjectIdFromHostname(): string | null | undefined {
   );
 }
 
+function getApiBaseUrlFromEnv(): string | undefined {
+  return import.meta.env.VITE_HEXCLAVE_API_URL ?? import.meta.env.VITE_STACK_API_URL ?? undefined;
+}
+
 function FullPageError({ title, message }: { title: string, message: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -135,12 +139,12 @@ function RootComponent() {
 
   const isValidProjectId = projectId ? (projectId === "internal" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) : false;
 
-  const stackApp = useMemo(() => {
+  const hexclaveApp = useMemo(() => {
     if (!projectId || !isValidProjectId) return null;
     return new StackClientApp({
       projectId,
       tokenStore: "cookie",
-      baseUrl: import.meta.env.VITE_STACK_API_URL || undefined,
+      baseUrl: getApiBaseUrlFromEnv(),
       urls: {
         handler: "/handler",
         signIn: "/handler/sign-in",
@@ -167,7 +171,7 @@ function RootComponent() {
 
   return (
     <ErrorBoundary>
-      <StackProvider app={stackApp!}>
+      <StackProvider app={hexclaveApp!}>
         <StackTheme>
           <Outlet />
         </StackTheme>
@@ -175,4 +179,3 @@ function RootComponent() {
     </ErrorBoundary>
   );
 }
-
