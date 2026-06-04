@@ -113,8 +113,8 @@ export function AddUserDialog(props: {
 }
 
 export default function PageClient(props: { teamId: string }) {
-  const stackAdminApp = useAdminApp();
-  const team = stackAdminApp.useTeam(props.teamId);
+  const hexclaveAdminApp = useAdminApp();
+  const team = hexclaveAdminApp.useTeam(props.teamId);
 
   if (!team) {
     return notFound();
@@ -193,8 +193,8 @@ function TabContentSkeleton({ sections }: { sections: number }) {
 const TEAM_PAGE_TAB_PARAM = "tab";
 
 function TeamPage({ team }: { team: ServerTeam }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const router = useRouter();
   const pathname = usePathname();
@@ -252,7 +252,7 @@ function TeamPage({ team }: { team: ServerTeam }) {
                 className="h-8 justify-center gap-1.5 rounded-lg bg-transparent px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none"
               >
                 <Link
-                  href={`/projects/${encodeURIComponent(stackAdminApp.projectId)}/apps`}
+                  href={`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/apps`}
                   className="inline-flex items-center justify-center"
                 >
                   <PlusIcon className="h-3.5 w-3.5" />

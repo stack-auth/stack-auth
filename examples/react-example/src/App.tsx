@@ -1,13 +1,13 @@
 import { StackHandler, StackProvider, StackTheme } from "@hexclave/react";
 import { Suspense } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-import { stackClientApp } from "./hexclave";
+import { hexclaveClientApp } from "./hexclave";
 
 function HandlerRoutes() {
   const location = useLocation();
   
   return (
-    <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+    <StackHandler app={hexclaveClientApp} location={location.pathname} fullPage />
   );
 }
 
@@ -15,7 +15,7 @@ function App() {
   return (
     <Suspense fallback={null}>
       <BrowserRouter>
-        <StackProvider app={stackClientApp}>
+        <StackProvider app={hexclaveClientApp}>
           <StackTheme>
             <Routes>
               <Route path="/handler/*" element={<HandlerRoutes />} />

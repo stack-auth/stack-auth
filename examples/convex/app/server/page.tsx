@@ -2,7 +2,7 @@ import Home from "./inner";
 import { preloadQuery, preloadedQueryResult } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { ConvexHttpClient } from "convex/browser";
-import { stackServerApp } from "@/hexclave/server";
+import { hexclaveServerApp } from "@/hexclave/server";
 
 export default async function ServerPage() {
   const preloaded = await preloadQuery(api.myFunctions.listNumbers, {
@@ -12,7 +12,7 @@ export default async function ServerPage() {
   const data = preloadedQueryResult(preloaded);
 
   const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-  const token = await stackServerApp.getConvexHttpClientAuth({ tokenStore: "nextjs-cookie" });
+  const token = await hexclaveServerApp.getConvexHttpClientAuth({ tokenStore: "nextjs-cookie" });
   convex.setAuth(token);
   const userInfo = await convex.query(api.myFunctions.getUserInfo, {});
 

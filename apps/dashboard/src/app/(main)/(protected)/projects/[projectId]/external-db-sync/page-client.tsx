@@ -21,7 +21,7 @@ import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notFound } from "next/navigation";
 
-const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
+const hexclaveAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 const AUTO_REFRESH_INTERVAL_MS = 5000;
 
 type SequenceStats = {
@@ -153,7 +153,7 @@ type AdminAppInternals = {
 };
 
 type AdminAppWithInternals = ReturnType<typeof useAdminApp> & {
-  [stackAppInternalsSymbol]: AdminAppInternals,
+  [hexclaveAppInternalsSymbol]: AdminAppInternals,
 };
 
 function formatBigInt(value: string | null) {
@@ -439,7 +439,7 @@ export default function PageClient() {
     setLoading(true);
 
     const result = await Result.fromPromise((async () => {
-      const response = await adminApp[stackAppInternalsSymbol].sendRequest(
+      const response = await adminApp[hexclaveAppInternalsSymbol].sendRequest(
         "/internal/external-db-sync/status?scope=all",
         { method: "GET" },
         "admin",
@@ -468,7 +468,7 @@ export default function PageClient() {
 
   const loadFusebox = useCallback(async () => {
     const result = await Result.fromPromise((async () => {
-      const response = await adminApp[stackAppInternalsSymbol].sendRequest(
+      const response = await adminApp[hexclaveAppInternalsSymbol].sendRequest(
         urlString`/internal/external-db-sync/fusebox`,
         { method: "GET" },
         "admin",
@@ -500,7 +500,7 @@ export default function PageClient() {
     if (!fusebox) return;
     setSavingFusebox(true);
     const result = await Result.fromPromise((async () => {
-      const response = await adminApp[stackAppInternalsSymbol].sendRequest(
+      const response = await adminApp[hexclaveAppInternalsSymbol].sendRequest(
         urlString`/internal/external-db-sync/fusebox`,
         {
           method: "POST",
@@ -550,7 +550,7 @@ export default function PageClient() {
         "/internal/external-db-sync/poller",
       ];
       await Promise.all(endpoints.map(async (endpoint) => {
-        const response = await adminApp[stackAppInternalsSymbol].sendRequest(
+        const response = await adminApp[hexclaveAppInternalsSymbol].sendRequest(
           endpoint,
           { method: "GET", signal: abortController.signal },
           "admin",

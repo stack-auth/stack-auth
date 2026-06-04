@@ -1,6 +1,6 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY UNLESS YOU ALSO EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
-  "name": "@stackframe/template",
+  "name": "@hexclave/template",
   "private": true,
   "version": "1.0.5",
   "repository": "https://github.com/hexclave/hexclave",

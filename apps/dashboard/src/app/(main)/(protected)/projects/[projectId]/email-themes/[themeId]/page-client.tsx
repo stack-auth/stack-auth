@@ -31,10 +31,10 @@ import { useAdminApp } from "../../use-admin-app";
 
 
 export default function PageClient({ themeId }: { themeId: string }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
-  const theme = stackAdminApp.useEmailTheme(themeId);
+  const theme = hexclaveAdminApp.useEmailTheme(themeId);
   const { setNeedConfirm } = useRouterConfirm();
   const [currentCode, setCurrentCode] = useState(theme.tsxSource);
   const [viewport, setViewport] = useState<ViewportMode>('edit');
@@ -78,7 +78,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
   const handleSaveTheme = async () => {
     setSaveAlert(null);
     try {
-      await stackAdminApp.updateEmailTheme(themeId, currentCode);
+      await hexclaveAdminApp.updateEmailTheme(themeId, currentCode);
       setSaveAlert({ variant: "success", title: "Theme saved" });
     } catch (error) {
       if (error instanceof KnownErrors.EmailRenderingError) {
@@ -146,7 +146,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
             chatComponent={
               <AssistantChat
                 chatAdapter={createChatAdapter(backendBaseUrl, "email-theme", handleThemeUpdate, () => currentCode, currentUser, handleRunStart, handleRunEnd)}
-                historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
+                historyAdapter={createHistoryAdapter(hexclaveAdminApp, themeId)}
                 toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode
                 runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}

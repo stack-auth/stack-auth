@@ -1,7 +1,7 @@
-import { createStackMcpHandler } from "@/mcp-handler";
+import { createHexclaveMcpHandler } from "@/mcp-handler";
 import { renderSetupPageHtml } from "@/setup-page";
 
-const handler = createStackMcpHandler({
+const handler = createHexclaveMcpHandler({
   streamableHttpEndpoint: "/mcp",
 });
 

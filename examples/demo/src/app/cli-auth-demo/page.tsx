@@ -7,7 +7,7 @@
  * This page is a manual test harness for the CLI auth flow, not a reference
  * implementation. Do NOT copy patterns from this file into a real app:
  *
- *  - It reaches into `app[stackAppInternalsSymbol]`, which is private SDK surface.
+ *  - It reaches into `app[hexclaveAppInternalsSymbol]`, which is private SDK surface.
  *  - It stores the CLI refresh token in sessionStorage for debugging only;
  *    real CLIs should use OS-specific secure storage (e.g. a credentials file
  *    with 0600 perms, or the system keychain).
@@ -15,11 +15,11 @@
  *    real integrations should use the SDK.
  *  - Polling has no retry/backoff — fine for a debug page, bad for prod.
  *
- * For a real CLI login integration, see `packages/stack-cli/src/commands/login.ts`.
+ * For a real CLI login integration, see `packages/cli/src/commands/login.ts`.
  * =============================================================================
  */
 
-import { StackClientApp, useStackApp, useUser, stackAppInternalsSymbol } from '@hexclave/next';
+import { StackClientApp, useStackApp, useUser, hexclaveAppInternalsSymbol } from '@hexclave/next';
 import { runAsynchronouslyWithAlert } from '@hexclave/shared/dist/utils/promises';
 import { Button, Card, CardContent, CardHeader, Typography } from '@hexclave/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -35,7 +35,7 @@ type CliState = {
 const CLI_STORAGE_KEY = 'stack-cli-demo-state';
 
 function getStackInternals(app: unknown) {
-  return (app as any)[stackAppInternalsSymbol];
+  return (app as any)[hexclaveAppInternalsSymbol];
 }
 
 type RefreshCliSessionResult =

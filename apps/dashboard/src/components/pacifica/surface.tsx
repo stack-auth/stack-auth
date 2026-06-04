@@ -1,5 +1,5 @@
 import { componentWrapper } from "@hexclave/shared/dist/utils/react";
-import { cn } from "../../../../../packages/stack-ui/dist/lib/utils";
+import { cn } from "../../../../../packages/ui/dist/lib/utils";
 
 export const PacificaSurface = componentWrapper<
   "div",

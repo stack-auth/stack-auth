@@ -80,9 +80,9 @@ function EmailPreviewContent({
   templateId?: string,
   templateTsxSource?: string,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
 
-  const previewHtml = stackAdminApp.useEmailPreview({
+  const previewHtml = hexclaveAdminApp.useEmailPreview({
     themeId,
     themeTsxSource,
     templateId,
@@ -603,11 +603,11 @@ function EmailPreviewEditableContent({
   onDebugInfoChange?: (info: EmailPreviewDebugInfo) => void,
   onWysiwygEditCommit?: OnWysiwygEditCommit,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Fetch preview with editable markers - this will include STACK_EDITABLE comments in the HTML
-  const { html: previewHtml, editableRegions } = stackAdminApp.useEmailPreviewWithEditableMarkers({
+  const { html: previewHtml, editableRegions } = hexclaveAdminApp.useEmailPreviewWithEditableMarkers({
     themeId,
     themeTsxSource,
     templateId,

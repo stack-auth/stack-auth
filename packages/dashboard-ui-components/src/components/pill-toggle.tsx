@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { cn, Spinner, Tooltip, TooltipContent, TooltipTrigger } from "@hexclave/ui";
+import { cn, Spinner, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@hexclave/ui";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
@@ -82,76 +82,78 @@ export function DesignPillToggle({
   };
 
   return (
-    <div
-      className={cn(
-        "inline-flex items-center gap-1 p-1 rounded-xl",
-        glassmorphic
-          ? "bg-foreground/[0.04] backdrop-blur-sm"
-          : "bg-black/[0.08] dark:bg-white/[0.04]",
-        className
-      )}
-    >
-      {options.map((option) => {
-        const isActive = selected === option.id;
-        const Icon = option.icon;
+    <TooltipProvider>
+      <div
+        className={cn(
+          "inline-flex items-center gap-1 p-1 rounded-xl",
+          glassmorphic
+            ? "bg-foreground/[0.04] backdrop-blur-sm"
+            : "bg-black/[0.08] dark:bg-white/[0.04]",
+          className
+        )}
+      >
+        {options.map((option) => {
+          const isActive = selected === option.id;
+          const Icon = option.icon;
 
-        const pill = (
-          <button
-            type="button"
-            key={option.id}
-            onClick={() => handleClick(option.id)}
-            disabled={loadingOptionId !== null}
-            className={cn(
-              "relative flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
-              sizeClass.button,
-              isActive
-                ? cn(
-                  "bg-background text-foreground shadow-sm ring-1",
-                  glassmorphic
-                    ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:text-[hsl(240,71%,90%)] dark:ring-[hsl(240,71%,70%)]/20"
-                    : activeRingClass
-                )
-                : cn(
-                  "text-muted-foreground hover:text-foreground",
-                  glassmorphic
-                    ? "hover:bg-background/50"
-                    : "hover:bg-black/[0.06] dark:hover:bg-white/[0.04]"
-                )
-            )}
-          >
-            {loadingOptionId === option.id && (
-              <Spinner
-                size={12}
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-              />
-            )}
-            <span className={cn(
-              "flex items-center gap-2",
-              loadingOptionId === option.id && "invisible"
-            )}>
-              {Icon && <Icon className={sizeClass.icon} />}
-              {showLabels && option.label}
-            </span>
-          </button>
-        );
-
-        if (!showLabels) {
-          return (
-            <Tooltip key={option.id} delayDuration={0}>
-              <TooltipTrigger asChild>
-                {pill}
-              </TooltipTrigger>
-              <TooltipPortal>
-                <TooltipContent side="top">
-                  {option.label}
-                </TooltipContent>
-              </TooltipPortal>
-            </Tooltip>
+          const pill = (
+            <button
+              type="button"
+              key={option.id}
+              onClick={() => handleClick(option.id)}
+              disabled={loadingOptionId !== null}
+              className={cn(
+                "relative flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
+                sizeClass.button,
+                isActive
+                  ? cn(
+                    "bg-background text-foreground shadow-sm ring-1",
+                    glassmorphic
+                      ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:text-[hsl(240,71%,90%)] dark:ring-[hsl(240,71%,70%)]/20"
+                      : activeRingClass
+                  )
+                  : cn(
+                    "text-muted-foreground hover:text-foreground",
+                    glassmorphic
+                      ? "hover:bg-background/50"
+                      : "hover:bg-black/[0.06] dark:hover:bg-white/[0.04]"
+                  )
+              )}
+            >
+              {loadingOptionId === option.id && (
+                <Spinner
+                  size={12}
+                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                />
+              )}
+              <span className={cn(
+                "flex items-center gap-2",
+                loadingOptionId === option.id && "invisible"
+              )}>
+                {Icon && <Icon className={sizeClass.icon} />}
+                {showLabels && option.label}
+              </span>
+            </button>
           );
-        }
 
-        return pill;
-      })}
-    </div>
+          if (!showLabels) {
+            return (
+              <Tooltip key={option.id} delayDuration={0}>
+                <TooltipTrigger asChild>
+                  {pill}
+                </TooltipTrigger>
+                <TooltipPortal>
+                  <TooltipContent side="top">
+                    {option.label}
+                  </TooltipContent>
+                </TooltipPortal>
+              </Tooltip>
+            );
+          }
+
+          return pill;
+        })}
+      </div>
+    </TooltipProvider>
   );
 }

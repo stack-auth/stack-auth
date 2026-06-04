@@ -752,9 +752,9 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
 
 # `ServerTeam`
 
-Like [`Team`](#team), but with server permissions through [`HexclaveServerApp`](/sdk/objects/stack-app#hexclaveserverapp). Has full read and write access to everything.
+Like [`Team`](#team), but with server permissions through [`HexclaveServerApp`](/sdk/objects/hexclave-app#hexclaveserverapp). Has full read and write access to everything.
 
-Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `ServerTeam` objects if the user is a [`ServerUser`](/sdk/types/user#serveruser). Alternatively, you can call `stackServerApp.getTeam('team_id_123')` or `stackServerApp.listTeams()` to query all teams of the project.
+Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `ServerTeam` objects if the user is a [`ServerUser`](/sdk/types/user#serveruser). Alternatively, you can call `hexclaveServerApp.getTeam('team_id_123')` or `hexclaveServerApp.listTeams()` to query all teams of the project.
 
 `ServerTeam` extends the `Team` object, providing additional functions and properties. While the `Team` object's functions may require specific user permissions, the corresponding functions in `ServerTeam` can be executed without these permission checks.
 

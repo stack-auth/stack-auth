@@ -12,9 +12,9 @@ export function EmailVerification(props: {
   fullPage?: boolean,
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const user = useUser();
-  const [result, setResult] = React.useState<Awaited<ReturnType<typeof stackApp.verifyEmail>> | null>(null);
+  const [result, setResult] = React.useState<Awaited<ReturnType<typeof hexclaveApp.verifyEmail>> | null>(null);
 
   const invalidJsx = (
     <MessageCard title={t("Invalid Verification Link")} fullPage={!!props.fullPage}>
@@ -38,12 +38,12 @@ export function EmailVerification(props: {
       fullPage={!!props.fullPage}
       primaryButtonText={t("Verify")}
       primaryAction={async () => {
-        const result = await stackApp.verifyEmail(props.searchParams?.code || throwErr("No verification code provided"));
+        const result = await hexclaveApp.verifyEmail(props.searchParams?.code || throwErr("No verification code provided"));
         setResult(result);
       }}
       secondaryButtonText={t("Cancel")}
       secondaryAction={async () => {
-        await stackApp.redirectToHome();
+        await hexclaveApp.redirectToHome();
       }}
     />;
   } else {
@@ -64,7 +64,7 @@ export function EmailVerification(props: {
       fullPage={!!props.fullPage}
       primaryButtonText={t("Go home")}
       primaryAction={async () => {
-        await stackApp.redirectToHome();
+        await hexclaveApp.redirectToHome();
       }}
     />;
   }

@@ -112,7 +112,7 @@ const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
 const OUTBOX_PAGE_SIZE = 50;
 
 function EmailSendDataTable() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
 
   const [gridState, setGridState] = useDataGridUrlState(emailTableColumns, {
@@ -123,7 +123,7 @@ function EmailSendDataTable() {
   const dataSource = useMemo<DataGridDataSource<AdminEmailOutbox>>(
     () => async function* (params) {
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
-      const result = await stackAdminApp.listOutboxEmails({
+      const result = await hexclaveAdminApp.listOutboxEmails({
         limit: OUTBOX_PAGE_SIZE,
         cursor,
       });
@@ -133,7 +133,7 @@ function EmailSendDataTable() {
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    [stackAdminApp],
+    [hexclaveAdminApp],
   );
 
   const getRowId = useCallback((row: AdminEmailOutbox) => row.id, []);

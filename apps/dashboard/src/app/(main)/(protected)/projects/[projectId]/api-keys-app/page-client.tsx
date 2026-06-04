@@ -15,8 +15,8 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
@@ -44,7 +44,7 @@ export default function PageClient() {
       configUpdate['apiKeys.enabled.team'] = localTeamApiKeys;
     }
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate,
       pushable: true,
     });

@@ -2,7 +2,7 @@ import { CustomerType } from "@/generated/prisma/client";
 import { customerOwnsProduct, ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct } from "@/lib/payments";
 import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { getStackStripe, getStripeForAccount } from "@/lib/stripe";
+import { getHexclaveStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
@@ -127,7 +127,7 @@ export const POST = createSmartRouteHandler({
         select: { stripeAccountId: true },
       });
       stripeAccountId = project?.stripeAccountId ?? throwErr("Stripe account not configured");
-      const stackStripe = getStackStripe();
+      const stackStripe = getHexclaveStripe();
       const connectedAccount = await stackStripe.accounts.retrieve(stripeAccountId);
       stripeCustomerId = stripeCustomer.id;
       chargesEnabled = connectedAccount.charges_enabled;

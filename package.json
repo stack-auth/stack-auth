@@ -5,7 +5,7 @@
   "repository": "https://github.com/hexclave/hexclave",
   "scripts": {
     "pre-no-codegen": "pnpm exec only-allow pnpm",
-    "pre-preinstall": "pnpx only-allow@1.2.2 pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('pnpm exec tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",
+    "pre-preinstall": "pnpx only-allow@1.2.2 pnpm && node -e \"if(process.env.HEXCLAVE_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('pnpm exec tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",
     "pre": "pnpm pre-preinstall",
     "preinstall": "pnpm pre-preinstall",
     "postinstall": "node ./scripts/postinstall-patch-next-async-debug-info.mjs",
@@ -13,7 +13,7 @@
     "build:dev": "pnpm pre && NODE_ENV=development pnpm run build",
     "build": "pnpm pre && turbo build",
     "cli": "pnpm pre && turbo run build --filter=@hexclave/cli && pnpm run cli:no-build",
-    "cli:no-build": "pnpm pre && echo && echo && echo '[CLI output starts below]' && echo && echo && STACK_API_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02 STACK_DASHBOARD_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01 STACK_CLI_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only node packages/stack-cli/dist/index.js",
+    "cli:no-build": "pnpm pre && echo && echo && echo '[CLI output starts below]' && echo && echo && STACK_API_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}02 STACK_DASHBOARD_URL=http://localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01 STACK_CLI_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only node packages/cli/dist/index.js",
     "build:backend": "pnpm pre && turbo run build --filter=@hexclave/backend...",
     "build:dashboard": "pnpm pre && turbo run build --filter=@hexclave/dashboard...",
     "build:demo": "pnpm pre && turbo run build --filter=@hexclave/example-demo-app...",
@@ -80,8 +80,8 @@
     "generate-sdks": "pnpm exec tsx ./scripts/generate-sdks.ts",
     "generate-setup-prompt-docs": "pnpm exec tsx ./scripts/generate-setup-prompt-docs.ts",
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
-    "generate-openapi-docs:watch": "pnpm exec tsx ./scripts/wait-for-dev-package-imports.ts && pnpm run --filter=@hexclave/backend codegen-docs && chokidar --silent -c 'pnpm run --filter=@hexclave/backend codegen-docs' './apps/backend/src/app/api/latest/**/route.{js,jsx,ts,tsx}' './apps/backend/src/lib/openapi.ts' './packages/stack-shared/src/interface/webhooks.ts' --throttle 2000",
-    "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './docs-mintlify/docs.json' './packages/stack-shared/src/ai/unified-prompts/**/*.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000"
+    "generate-openapi-docs:watch": "pnpm exec tsx ./scripts/wait-for-dev-package-imports.ts && pnpm run --filter=@hexclave/backend codegen-docs && chokidar --silent -c 'pnpm run --filter=@hexclave/backend codegen-docs' './apps/backend/src/app/api/latest/**/route.{js,jsx,ts,tsx}' './apps/backend/src/lib/openapi.ts' './packages/shared/src/interface/webhooks.ts' --throttle 2000",
+    "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './docs-mintlify/docs.json' './packages/shared/src/ai/unified-prompts/**/*.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",

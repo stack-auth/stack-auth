@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { StackProvider, StackTheme } from "@hexclave/next";
-import { stackServerApp } from "../hexclave";
+import { hexclaveServerApp } from "../hexclave";
 import { Inter } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -20,7 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <StackProvider app={stackServerApp}>
+        <StackProvider app={hexclaveServerApp}>
           <StackTheme>
             {children}
           </StackTheme>

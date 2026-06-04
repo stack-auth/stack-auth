@@ -44,7 +44,7 @@ export async function selectRelevantFiles(
 
   const systemPromptText = `You are a code assistant helping to generate dashboard code for Hexclave.
 
-Your task is to select which Stack SDK type definition files you'll need to generate the requested dashboard.
+Your task is to select which Hexclave SDK type definition files you'll need to generate the requested dashboard.
 
 IMPORTANT GUIDELINES:
 - DO NOT be conservative in file selection - when in doubt, INCLUDE the file
@@ -129,7 +129,7 @@ ${stripComments(file.content)}
 
   return `
 Complete Hexclave SDK Type Definitions (Selected Files):
-These files show the available methods, types, and interfaces for the Stack SDK.
+These files show the available methods, types, and interfaces for the Hexclave SDK.
 ${fileContents.join('\n')}
   `.trim();
 }
@@ -184,7 +184,7 @@ export async function buildDashboardMessages(
   } else {
     contextMessages.push({
       role: "user",
-      content: `Here are the type definitions for the Stack SDK:\n${typeDefinitions}\n\n${dashboardUiDocsHeader}\n${BUNDLED_DASHBOARD_UI_TYPES}${availableRoutes}`,
+      content: `Here are the type definitions for the Hexclave SDK:\n${typeDefinitions}\n\n${dashboardUiDocsHeader}\n${BUNDLED_DASHBOARD_UI_TYPES}${availableRoutes}`,
     });
     contextMessages.push({
       role: "assistant",

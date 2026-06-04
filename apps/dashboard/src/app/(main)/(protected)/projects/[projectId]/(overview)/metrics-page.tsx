@@ -12,7 +12,7 @@ import {
   type MetricsRecentEmail,
   type MetricsTopReferrer,
   useMetricsOrThrow,
-} from "@/lib/stack-app-internals";
+} from "@/lib/hexclave-app-internals";
 import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@hexclave/next";

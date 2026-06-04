@@ -1,7 +1,7 @@
 import withPostHog from "@/analytics";
 import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
 import { globalPrismaClient } from "@/prisma-client";
-import { getHexclaveServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/hexclave";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";

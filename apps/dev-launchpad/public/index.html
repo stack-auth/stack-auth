@@ -109,16 +109,16 @@
         if (!port || port.length < 2) return "81";
         return port.slice(0, -2);
       };
-      const stackPortPrefix = window.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || derivePrefixFromLocation();
-      window.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX = stackPortPrefix;
-      const withPrefix = (suffix) => `${stackPortPrefix}${suffix}`;
+      const hexclavePortPrefix = window.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX || derivePrefixFromLocation();
+      window.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX = hexclavePortPrefix;
+      const withPrefix = (suffix) => `${hexclavePortPrefix}${suffix}`;
 
       // Depending on the port prefix, set the color to light grey (port 91), light purple (port 92), papyrus yellow (port 93), or default otherwise
       const color = {
         "91": "#f8f8f8",
         "92": "#fff8e0",
         "93": "#e0e0ff",
-      }[stackPortPrefix] || undefined;
+      }[hexclavePortPrefix] || undefined;
       document.body.style.backgroundColor = color;
 
       const backgroundServices = [
@@ -441,7 +441,7 @@
           if ((app.importance ?? 0) === importance) {
             // TODO escape HTML
             appContainer.innerHTML += `
-              <a href="http://${app.portSuffix === "42" ? "127.0.0.1" : (`${stackPortPrefix}` === "81" ? "localhost" : `p${stackPortPrefix}.localhost`)}:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
+              <a href="http://${app.portSuffix === "42" ? "127.0.0.1" : (`${hexclavePortPrefix}` === "81" ? "localhost" : `p${hexclavePortPrefix}.localhost`)}:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
                 <div class="port">:${withPrefix(app.portSuffix)}</div>
                 <div>
                   <img src=${app.img || `//localhost:${withPrefix(app.portSuffix)}/favicon.ico`} />

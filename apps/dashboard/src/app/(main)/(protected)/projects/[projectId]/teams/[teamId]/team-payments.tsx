@@ -111,15 +111,15 @@ function TeamPaymentsLoading() {
 }
 
 function TeamPaymentsContent({ team }: { team: ServerTeam }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
 
   // Pull a wider window of transactions so lifetime metrics are accurate for
   // teams with non-trivial history. The previous 100-row limit silently
   // truncated lifetime spend / subscription / product totals for any team
   // with more than 100 transactions.
-  const { transactions: teamTransactions, nextCursor: metricsNextCursor } = stackAdminApp.useTransactions({
+  const { transactions: teamTransactions, nextCursor: metricsNextCursor } = hexclaveAdminApp.useTransactions({
     limit: METRICS_TRANSACTION_CAP,
     customerType: "team",
     customerId: team.id,
@@ -524,8 +524,8 @@ function ItemsCard({ teamId, itemIds }: { teamId: string, itemIds: string[] }) {
 }
 
 function ItemBalanceRow({ teamId, itemId }: { teamId: string, itemId: string }) {
-  const stackAdminApp = useAdminApp();
-  const item = stackAdminApp.useItem({ teamId, itemId });
+  const hexclaveAdminApp = useAdminApp();
+  const item = hexclaveAdminApp.useItem({ teamId, itemId });
   const isNegative = item.quantity < 0;
 
   return (

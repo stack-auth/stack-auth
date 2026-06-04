@@ -2,6 +2,6 @@ require("server-only");
 
 const { StackServerApp } = require("@hexclave/next");
 
-export const stackServerApp = new StackServerApp({
+export const hexclaveServerApp = new StackServerApp({
   tokenStore: "nextjs-cookie",
 });

@@ -1,7 +1,7 @@
 import { isSecureEmailPort, lowLevelSendEmailDirectWithoutRetries } from "@/lib/emails-low-level";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getHexclaveServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import * as schemaFields from "@hexclave/shared/dist/schema-fields";

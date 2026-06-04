@@ -3,10 +3,10 @@ import express from 'express';
 import handlebars from 'handlebars';
 import Provider, { errors } from 'oidc-provider';
 
-const stackPortPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
-const defaultMockOAuthPort = Number(`${stackPortPrefix}14`);
+const hexclavePortPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
+const defaultMockOAuthPort = Number(`${hexclavePortPrefix}14`);
 const port = Number(process.env.STACK_OAUTH_MOCK_PORT ?? process.env.PORT ?? defaultMockOAuthPort);
-const backendPortForRedirects = `${stackPortPrefix}02`;
+const backendPortForRedirects = `${hexclavePortPrefix}02`;
 const emulatorBackendPort = process.env.STACK_EMULATOR_BACKEND_PORT ?? "32102";
 const providerIds = [
   'github',

@@ -1,6 +1,6 @@
-import { createStackMcpHandler } from "@/mcp-handler";
+import { createHexclaveMcpHandler } from "@/mcp-handler";
 
-const handler = createStackMcpHandler({
+const handler = createHexclaveMcpHandler({
   streamableHttpEndpoint: "/api/internal/mcp",
 });
 
