@@ -172,6 +172,7 @@ function EmailSendDataTable() {
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
       fillHeight={false}
+      stickyTop={0}
       footer={false}
 
       onRowClick={(row) => {
@@ -189,6 +190,11 @@ export default function PageClient() {
       <PageLayout
         title="Sent"
         description="View email logs and domain reputation"
+        // The email log uses a `fillHeight={false}` DataGrid inside an
+        // `overflow-hidden` DesignCard. Without this, PageLayout's default
+        // `flex-1 min-h-0` clamp shrinks the card to the viewport height and
+        // the card clips the bottom rows. Let content grow + page scroll.
+        allowContentOverflow
       >
         <div data-walkthrough="emails-sent" className="flex flex-col lg:flex-row gap-6">
           {/* Left side: Email Log with toggle inside card */}

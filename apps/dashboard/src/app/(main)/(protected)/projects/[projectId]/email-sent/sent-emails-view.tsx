@@ -168,6 +168,7 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
               state={gridState}
               onChange={setGridState}
               fillHeight={false}
+              stickyTop={0}
               onRowClick={(row) => {
                 router.push(`/projects/${projectId}/email-viewer/${row.id}`);
               }}
