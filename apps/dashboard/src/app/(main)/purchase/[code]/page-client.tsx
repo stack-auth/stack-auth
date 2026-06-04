@@ -164,6 +164,29 @@ export default function PageClient({ code }: { code: string }) {
   }, [code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
   const checkoutDisabled = quantityNumber < 1 || isTooLarge || data?.already_bought_non_stackable === true;
+  const showInvalidPurchaseCode = !loading && error != null;
+
+  if (showInvalidPurchaseCode) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
+        <div className="w-full max-w-md text-center">
+          <DesignCard glassmorphic contentClassName="flex flex-col items-center gap-4 p-8">
+            <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
+              <XCircleIcon className="size-6 text-destructive" weight="fill" />
+            </div>
+            <div className="space-y-2">
+              <Typography type="h2" className="mb-2 text-xl font-semibold text-foreground">
+                Invalid Purchase Code
+              </Typography>
+              <Typography type="p" variant="secondary" className="text-sm">
+                The purchase code is invalid or has expired. Please check your link and try again.
+              </Typography>
+            </div>
+          </DesignCard>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-white dark:bg-zinc-950">
@@ -178,22 +201,6 @@ export default function PageClient({ code }: { code: string }) {
                 <Skeleton className="mt-2 h-5 w-full" />
                 <Skeleton className="mt-8 h-20 w-full rounded-xl" />
                 <Skeleton className="mt-4 h-24 w-full rounded-xl" />
-              </div>
-            ) : error ? (
-              <div className="pt-8 text-center">
-                <DesignCard glassmorphic contentClassName="flex max-w-md flex-col items-center gap-4 p-8">
-                  <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
-                    <XCircleIcon className="size-6 text-destructive" weight="fill" />
-                  </div>
-                  <div className="space-y-2">
-                    <Typography type="h2" className="mb-2 text-xl font-semibold text-foreground">
-                      Invalid Purchase Code
-                    </Typography>
-                    <Typography type="p" variant="secondary" className="max-w-md text-sm">
-                      The purchase code is invalid or has expired. Please check your link and try again.
-                    </Typography>
-                  </div>
-                </DesignCard>
               </div>
             ) : (
               <div className="space-y-8">
@@ -301,7 +308,7 @@ export default function PageClient({ code }: { code: string }) {
               <div className="space-y-4">
                 <Skeleton className="h-64 w-full rounded-2xl" />
               </div>
-            ) : data && !error ? (
+            ) : data ? (
               <div className="space-y-4">
                 {data.test_mode ? (
                   <TestModeBypassForm
