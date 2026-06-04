@@ -106,6 +106,7 @@ function ProjectsListPage() {
   const [projectDailySignups, setProjectDailySignups] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
   const [loadingProjectMetrics, setLoadingProjectMetrics] = useState(true);
   const [projectMetricsError, setProjectMetricsError] = useState(false);
+  const [activeProjectIds, setActiveProjectIds] = useState<Set<string> | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -113,6 +114,30 @@ function ProjectsListPage() {
       router.push('/new-project');
     }
   }, [isLocalEmulator, isRemoteDevelopmentEnvironment, router, rawProjects]);
+
+  useEffect(() => {
+    if (!isRemoteDevelopmentEnvironment) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await fetch("/api/remote-development-environment/active-projects");
+        if (!response.ok) return;
+        const body = await response.json() as { project_ids?: unknown };
+        if (cancelled || !Array.isArray(body.project_ids)) return;
+        setActiveProjectIds(new Set(body.project_ids as string[]));
+      } catch {
+        // best-effort; don't surface errors for this
+      }
+    };
+    runAsynchronously(poll);
+    const interval = setInterval(() => {
+      runAsynchronously(poll);
+    }, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isRemoteDevelopmentEnvironment]);
 
   useEffect(() => {
     let cancelled = false;
@@ -536,12 +561,17 @@ function ProjectsListPage() {
                   ? `/projects/${encodeURIComponent(project.id)}`
                   : `/new-project?project_id=${encodeURIComponent(project.id)}`;
 
+                const isStale = isRemoteDevelopmentEnvironment
+                  && activeProjectIds != null
+                  && !activeProjectIds.has(project.id);
+
                 return (
                   <ProjectCard
                     key={project.id}
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
+                    showStaleBadge={isStale}
                     totalUsers={projectTotalUsers.get(project.id)}
                     dailySignups={projectDailySignups.get(project.id)}
                     metricsLoading={loadingProjectMetrics}
