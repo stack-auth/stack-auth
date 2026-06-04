@@ -2,6 +2,7 @@
 
 import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret, RemoteDevelopmentEnvironmentBrowserSecretRedirectingError } from "@/app/remote-development-environment-browser-secret-client";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@hexclave/next";
@@ -491,21 +492,29 @@ function GithubPushBody({
 async function updateRemoteDevelopmentEnvironmentConfigFile(
   adminApp: StackAdminApp<false>,
   configUpdate: EnvironmentConfigOverrideOverride,
-): Promise<void> {
-  const response = await fetch("/api/remote-development-environment/config/apply-update", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      project_id: adminApp.projectId,
-      config_update: configUpdate,
-      wait_for_sync: false,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to update local development environment config (${response.status}): ${await response.text()}`);
+): Promise<"updated" | "redirecting"> {
+  try {
+    const response = await fetchWithRemoteDevelopmentEnvironmentBrowserSecret("/api/remote-development-environment/config/apply-update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        project_id: adminApp.projectId,
+        config_update: configUpdate,
+        wait_for_sync: false,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update local development environment config (${response.status}): ${await response.text()}`);
+    }
+    return "updated";
+  } catch (error) {
+    if (error instanceof RemoteDevelopmentEnvironmentBrowserSecretRedirectingError) {
+      return "redirecting";
+    }
+    throw error;
   }
 }
 
@@ -570,7 +579,9 @@ export function useUpdateConfig() {
       }
 
       const project = await adminApp.getProject();
-      await updateRemoteDevelopmentEnvironmentConfigFile(adminApp, configUpdate);
+      if (await updateRemoteDevelopmentEnvironmentConfigFile(adminApp, configUpdate) === "redirecting") {
+        return false;
+      }
       // Update the remote project immediately so the dashboard reads the new value before the file sync lands.
       await project.updatePushedConfig(configUpdate);
       return true;

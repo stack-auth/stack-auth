@@ -138,6 +138,7 @@ function renderComponent(props: {
     case availablePaths.signOut: {
       if (shouldRedirectToPage?.('signOut')) return { redirectToPage: 'signOut' as const };
       return <SignOut
+        searchParams={searchParams}
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.SignOut)}
       />;

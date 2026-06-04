@@ -225,7 +225,11 @@ See [Emails](/guides/apps/emails/overview) for sending emails from your applicat
 
 ## Payments
 
-Payments config is where you define what customers can buy and what entitlements those purchases grant. Supported currency fields are `USD`, `EUR`, `GBP`, `JPY`, `INR`, `AUD`, and `CAD`. Money amounts are strings, such as `"9.99"` or `"1000"`.
+Payments config is where you define what customers can buy and what entitlements those purchases grant. Supported currency fields are `USD`, `EUR`, `GBP`, `JPY`, `INR`, `AUD`, and `CAD`.
+
+<Warning>
+  All currency/price amounts are **decimal strings** like `"9.99"` or `"1000"` — **not** cent integers or minor-unit numbers. For example, nine dollars and ninety-nine cents is `"9.99"`, not `999`.
+</Warning>
 
 For more information on products, product lines, prices, items, checkout, and entitlement checks, see the [Payments app docs](/guides/apps/payments/overview). For the SDK shapes returned by entitlement APIs, see the [`Customer` SDK type](/sdk/types/customer) and [`Item` SDK type](/sdk/types/item).
 
@@ -258,11 +262,11 @@ For more information on how product lines, add-ons, and switching plans work tog
 
 ### Prices
 
-Each price must include at least one supported currency.
+Each price must include at least one supported currency. Currency amounts are decimal strings in `"<integer>"` or `"<integer>.<decimals>"` format (e.g. `"9.99"`, `"0.01"`, `"1000"`). Do **not** use cent integers — to represent $9.99, write `"9.99"`, not `999`.
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `payments.products.<productId>.prices.<priceId>` | `{ USD?: string, EUR?: string, GBP?: string, JPY?: string, INR?: string, AUD?: string, CAD?: string, interval?: DayInterval, serverOnly?: boolean, freeTrial?: DayInterval }` | `{ serverOnly: false }` | Defines one price. Include at least one currency amount. `interval` makes it recurring; leave it unset for a one-time price. `serverOnly` hides the price from client SDK responses. `freeTrial` applies to this specific price. JPY amounts cannot have decimals. |
+| `payments.products.<productId>.prices.<priceId>` | `{ USD?: string, EUR?: string, GBP?: string, JPY?: string, INR?: string, AUD?: string, CAD?: string, interval?: DayInterval, serverOnly?: boolean, freeTrial?: DayInterval }` | `{ serverOnly: false }` | Defines one price. Each currency value is a decimal string like `"9.99"` (not cents). Include at least one currency amount. `interval` makes it recurring; leave it unset for a one-time price. `serverOnly` hides the price from client SDK responses. `freeTrial` applies to this specific price. JPY amounts cannot have decimals. |
 
 ### Included Items And Standalone Items
 

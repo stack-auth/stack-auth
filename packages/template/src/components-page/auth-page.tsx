@@ -1,14 +1,19 @@
 'use client';
 
+import { KnownError } from '@hexclave/shared';
+import { captureError } from '@hexclave/shared/dist/utils/errors';
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { use } from '@hexclave/shared/dist/utils/react';
 import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from '@hexclave/ui';
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
 import { useStackApp, useUser } from '..';
 import { CredentialSignIn } from '../components/credential-sign-in';
 import { CredentialSignUp } from '../components/credential-sign-up';
 import { MaybeFullPage } from '../components/elements/maybe-full-page';
 import { SeparatorWithText } from '../components/elements/separator-with-text';
 import { StyledLink } from '../components/link';
+import { KnownErrorMessageCard } from '../components/message-cards/known-error-message-card';
+import { MessageCard } from '../components/message-cards/message-card';
 import { MagicLinkSignIn } from '../components/magic-link-sign-in';
 import { PredefinedMessageCard } from '../components/message-cards/predefined-message-card';
 import { OAuthButtonGroup } from '../components/oauth-button-group';
@@ -34,6 +39,11 @@ type Props = {
     },
   },
 }
+
+type AutomaticRedirectResult =
+  | { status: "success" }
+  | { status: "known-error", error: KnownError }
+  | { status: "unknown-error" };
 
 export function AuthPage(props: Props) {
   return <Suspense fallback={<Fallback {...props} />}>
@@ -61,6 +71,42 @@ function Fallback(props: Props) {
   );
 }
 
+function AutomaticRedirect(props: {
+  fullPage?: boolean,
+  isRestricted: boolean,
+  type: 'sign-in' | 'sign-up',
+}) {
+  const hexclaveApp = useStackApp();
+  const { t } = useTranslation();
+  const redirectResultPromise = useMemo(async (): Promise<AutomaticRedirectResult> => {
+    try {
+      await (
+        props.isRestricted
+          ? hexclaveApp.redirectToOnboarding({ replace: true })
+          : props.type === 'sign-in'
+            ? hexclaveApp.redirectToAfterSignIn({ replace: true })
+            : hexclaveApp.redirectToAfterSignUp({ replace: true })
+      );
+      return { status: "success" };
+    } catch (e) {
+      if (KnownError.isKnownError(e)) {
+        return { status: "known-error", error: e };
+      }
+      captureError("<AuthPage automaticRedirect />", e);
+      return { status: "unknown-error" };
+    }
+  }, [hexclaveApp, props.isRestricted, props.type]);
+
+  const redirectResult = use(redirectResultPromise);
+  if (redirectResult.status === "known-error") {
+    return <KnownErrorMessageCard error={redirectResult.error} fullPage={props.fullPage} />;
+  }
+  if (redirectResult.status === "unknown-error") {
+    return <PredefinedMessageCard type='unknownError' fullPage={props.fullPage} />;
+  }
+  return <MessageCard title={t("Redirecting...")} fullPage={props.fullPage} />;
+}
+
 function Inner(props: Props) {
   const hexclaveApp = useStackApp();
   const user = useUser({ includeRestricted: true });
@@ -69,14 +115,9 @@ function Inner(props: Props) {
   const { t } = useTranslation();
 
   if (props.automaticRedirect && user && !props.mockProject) {
-    runAsynchronously(
-      user.isRestricted
-        ? hexclaveApp.redirectToOnboarding({ replace: true })
-        : props.type === 'sign-in'
-          ? hexclaveApp.redirectToAfterSignIn({ replace: true })
-          : hexclaveApp.redirectToAfterSignUp({ replace: true })
-    );
-    return null;
+    return <Suspense fallback={<MessageCard title={t("Redirecting...")} fullPage={props.fullPage} />}>
+      <AutomaticRedirect fullPage={props.fullPage} isRestricted={user.isRestricted} type={props.type} />
+    </Suspense>;
   }
 
   if (user && !props.mockProject && !props.automaticRedirect) {
