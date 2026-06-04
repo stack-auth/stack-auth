@@ -120,7 +120,9 @@ function ProjectsListPage() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const response = await fetch("/api/remote-development-environment/active-projects");
+        const response = await fetch("/api/remote-development-environment/active-projects", {
+          cache: "no-store",
+        });
         if (!response.ok) return;
         const body: unknown = await response.json();
         if (cancelled || body == null || typeof body !== "object" || !("project_ids" in body)) return;
