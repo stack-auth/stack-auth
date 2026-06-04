@@ -11,6 +11,7 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { randomUUID } from "crypto";
 import { watch, type FSWatcher } from "fs";
 import { basename, dirname } from "path";
+import { peekRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli } from "./browser-secret";
 import {
   ensureConfigFileExists,
   readConfigFile,
@@ -26,6 +27,7 @@ import {
 } from "./state";
 
 const SESSION_TTL_MS = 25_000;
+const FIRST_HEARTBEAT_TTL_MS = 5 * 60_000;
 const STARTUP_EMPTY_SESSION_GRACE_MS = 20_000;
 const SYNC_DEBOUNCE_MS = 500;
 const CONFIG_SYNC_FORMAT_VERSION = 2;
@@ -41,6 +43,48 @@ export class RemoteDevelopmentEnvironmentApiUnavailableError extends Error {
 type ActiveSession = {
   configFilePath: string,
   lastHeartbeatMs: number,
+  receivedFirstHeartbeat: boolean,
+};
+
+type RemoteDevelopmentEnvironmentDebugSession = {
+  sessionId: string,
+  configFilePath: string,
+  lastHeartbeatAgeMs: number,
+  ttlMs: number,
+  expiresInMs: number,
+  receivedFirstHeartbeat: boolean,
+};
+
+type RemoteDevelopmentEnvironmentDebugSnapshot = {
+  uptimeMs: number,
+  shutdownTimerStarted: boolean,
+  activeOperations: number,
+  hasClosedSession: boolean,
+  sessions: RemoteDevelopmentEnvironmentDebugSession[],
+  watchedConfigFiles: string[],
+  pendingSyncConfigFiles: string[],
+  syncErrors: { configFilePath: string, error: string }[],
+  synchronouslyUpdatingConfigFiles: string[],
+  localDashboards: {
+    port: number,
+    pid: number,
+    startedAgoMs: number,
+    logPath?: string,
+  }[],
+  pendingBrowserSecretConfirmationCodes: {
+    port: string,
+    code: string,
+    expiresInMs: number,
+    updatedAgoMs: number,
+  }[],
+  projects: {
+    configFilePath: string,
+    projectId: string,
+    teamId: string,
+    apiBaseUrl: string,
+    updatedAgoMs: number,
+    hasLastSyncedConfigHash: boolean,
+  }[],
 };
 
 type RemoteDevelopmentEnvironmentGlobals = {
@@ -475,11 +519,13 @@ function ensureShutdownTimer(): void {
   const timer = setInterval(() => {
     const now = performance.now();
     for (const [id, session] of state.sessions.entries()) {
-      if (now - session.lastHeartbeatMs > SESSION_TTL_MS) {
+      const ttlMs = session.receivedFirstHeartbeat ? SESSION_TTL_MS : FIRST_HEARTBEAT_TTL_MS;
+      if (now - session.lastHeartbeatMs > ttlMs) {
         warnRemoteDevelopmentEnvironment("Expiring stale session", {
           sessionId: id,
           ageMs: Math.round(now - session.lastHeartbeatMs),
           activeSessionsBeforeExpire: state.sessions.size,
+          receivedFirstHeartbeat: session.receivedFirstHeartbeat,
         });
         state.sessions.delete(id);
       }
@@ -502,6 +548,7 @@ function ensureShutdownTimer(): void {
 
 export function startRemoteDevelopmentEnvironmentLifecycle(): void {
   assertRemoteDevelopmentEnvironmentEnabled();
+  if (getGlobals().shutdownTimerStarted) return;
   logRemoteDevelopmentEnvironment("Starting local dashboard lifecycle");
   ensureShutdownTimer();
 }
@@ -511,6 +558,7 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
   configPath: string,
 }): Promise<{ sessionId: string, env: Record<string, string>, projectId: string, onboardingOutstanding: boolean }> {
   assertRemoteDevelopmentEnvironmentEnabled();
+  startRemoteDevelopmentEnvironmentLifecycle();
   const configFilePath = resolveConfigFilePath(options.configPath);
   const endOperation = beginRemoteDevelopmentEnvironmentOperation("session registration", {
     apiBaseUrl: options.apiBaseUrl,
@@ -528,10 +576,14 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
       configFilePath,
       anonymousRefreshToken: state.anonymousRefreshToken,
     }).catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
+    ensureWatcher(configFilePath);
+    const onboardingStatus = await syncConfigToRemoteNow(configFilePath)
+      .catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
     const sessionId = randomUUID();
     getGlobals().sessions.set(sessionId, {
       configFilePath,
       lastHeartbeatMs: performance.now(),
+      receivedFirstHeartbeat: false,
     });
     logRemoteDevelopmentEnvironment("Registered CLI session", {
       sessionId,
@@ -539,9 +591,6 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
       activeSessions: getGlobals().sessions.size,
       configFilePath,
     });
-    ensureWatcher(configFilePath);
-    const onboardingStatus = await syncConfigToRemoteNow(configFilePath)
-      .catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
     return {
       sessionId,
       env: envVarsForProject(project),
@@ -563,7 +612,13 @@ export function heartbeatRemoteDevelopmentEnvironmentSession(sessionId: string):
     return false;
   }
   session.lastHeartbeatMs = performance.now();
+  session.receivedFirstHeartbeat = true;
   return true;
+}
+
+export function getPendingRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(): { code: string, expiresAtMillis: number } | null {
+  assertRemoteDevelopmentEnvironmentEnabled();
+  return peekRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli();
 }
 
 export function closeRemoteDevelopmentEnvironmentSession(sessionId: string): void {
@@ -606,6 +661,63 @@ export function getRemoteDevelopmentEnvironmentHealth(): {
   return {
     healthy: false,
     configFilePath,
+  };
+}
+
+export function getRemoteDevelopmentEnvironmentDebugSnapshot(): RemoteDevelopmentEnvironmentDebugSnapshot {
+  assertRemoteDevelopmentEnvironmentEnabled();
+  const globals = getGlobals();
+  const now = performance.now();
+  const unixNow = Date.now();
+  const state = readRemoteDevelopmentEnvironmentState();
+  return {
+    uptimeMs: Math.round(now - globals.startedAtMs),
+    shutdownTimerStarted: globals.shutdownTimerStarted,
+    activeOperations: globals.activeOperations,
+    hasClosedSession: globals.hasClosedSession,
+    sessions: [...globals.sessions.entries()].map(([sessionId, session]) => {
+      const ttlMs = session.receivedFirstHeartbeat ? SESSION_TTL_MS : FIRST_HEARTBEAT_TTL_MS;
+      const lastHeartbeatAgeMs = Math.round(now - session.lastHeartbeatMs);
+      return {
+        sessionId,
+        configFilePath: session.configFilePath,
+        lastHeartbeatAgeMs,
+        ttlMs,
+        expiresInMs: Math.max(0, ttlMs - lastHeartbeatAgeMs),
+        receivedFirstHeartbeat: session.receivedFirstHeartbeat,
+      };
+    }),
+    watchedConfigFiles: [...globals.watchers.keys()],
+    pendingSyncConfigFiles: [...globals.syncTimers.keys()],
+    syncErrors: [...globals.syncErrors.entries()].map(([configFilePath, error]) => ({
+      configFilePath,
+      error: errorToNiceString(error),
+    })),
+    synchronouslyUpdatingConfigFiles: [...globals.synchronouslyUpdatingConfigFiles],
+    localDashboards: Object.values(state.localDashboardsByPort ?? {})
+      .filter((dashboard) => dashboard != null)
+      .map((dashboard) => ({
+        port: dashboard.port,
+        pid: dashboard.pid,
+        startedAgoMs: Math.max(0, unixNow - dashboard.startedAtMillis),
+        logPath: dashboard.logPath,
+      })),
+    pendingBrowserSecretConfirmationCodes: Object.entries(state.pendingBrowserSecretConfirmationCodesByPort ?? {})
+      .flatMap(([port, code]) => code == null ? [] : [{
+        port,
+        code: code.code,
+        expiresInMs: Math.max(0, code.expiresAtMillis - unixNow),
+        updatedAgoMs: Math.max(0, unixNow - code.updatedAtMillis),
+      }]),
+    projects: Object.entries(state.projectsByConfigPath)
+      .flatMap(([configFilePath, project]) => project == null ? [] : [{
+        configFilePath,
+        projectId: project.projectId,
+        teamId: project.teamId,
+        apiBaseUrl: project.apiBaseUrl,
+        updatedAgoMs: Math.max(0, unixNow - project.updatedAtMillis),
+        hasLastSyncedConfigHash: project.lastSyncedConfigHash != null,
+      }]),
   };
 }
 

@@ -1,3 +1,9 @@
+/**
+ * A decimal string representing a monetary amount, e.g. `"9.99"`, `"0.01"`, or `"1000"`.
+ *
+ * This is NOT an integer in cents/minor units — it is always a human-readable decimal string.
+ * For example, nine dollars and ninety-nine cents is `"9.99"`, not `999`.
+ */
 export type MoneyAmount = `${number}` | `${number}.${number}`;
 
 export type Currency = {

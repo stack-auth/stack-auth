@@ -102,7 +102,7 @@ describe("StackClientApp cross-domain auth", () => {
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
     vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
-    vi.spyOn(clientApp as any, "_getNestedCrossDomainAuthParamsForRedirect").mockResolvedValue({
+    vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
       state: "fresh-nested-state",
       codeChallenge: "fresh-nested-code-challenge",
     });
