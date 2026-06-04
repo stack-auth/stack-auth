@@ -2081,38 +2081,38 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                       )}
                     </div>
                   </div>
-              ) : (
-                <div className="flex-1 grid place-items-center">
-                  {loadingInitial ? (
-                    <div className="text-center space-y-2 p-6">
-                      <Skeleton className="h-2 w-48 mx-auto" />
-                      <Typography className="text-sm text-muted-foreground">
-                        Loading replay...
-                      </Typography>
-                    </div>
-                  ) : (
-                    <div className="text-center p-6 max-w-md mx-auto">
-                      <MonitorPlayIcon className="h-12 w-12 text-muted-foreground/40 mx-auto" />
-                      <Typography className="mt-3 text-sm font-medium">
-                        No session replays yet
-                      </Typography>
-                      <Typography className="mt-2 text-sm text-muted-foreground">
-                        Session replays let you watch how users interact with your app. For info on enabling replays,{" "}
-                        <StyledLink
-                          href="https://docs.hexclave.com/guides/apps/analytics/overview"
-                          target="_blank"
-                        >
-                          look here
-                        </StyledLink>
-                        .
-                      </Typography>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </Panel>
-        </PanelGroup>
+                ) : (
+                  <div className="flex-1 grid place-items-center">
+                    {loadingInitial ? (
+                      <div className="text-center space-y-2 p-6">
+                        <Skeleton className="h-2 w-48 mx-auto" />
+                        <Typography className="text-sm text-muted-foreground">
+                          Loading replay...
+                        </Typography>
+                      </div>
+                    ) : (
+                      <div className="text-center p-6 max-w-md mx-auto">
+                        <MonitorPlayIcon className="h-12 w-12 text-muted-foreground/40 mx-auto" />
+                        <Typography className="mt-3 text-sm font-medium">
+                          No session replays yet
+                        </Typography>
+                        <Typography className="mt-2 text-sm text-muted-foreground">
+                          Session replays let you watch how users interact with your app. For info on enabling replays,{" "}
+                          <StyledLink
+                            href="https://docs.hexclave.com/guides/apps/analytics/overview"
+                            target="_blank"
+                          >
+                            look here
+                          </StyledLink>
+                          .
+                        </Typography>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Panel>
+          </PanelGroup>
         </div>
       </PageLayout>
     </AppEnabledGuard>
