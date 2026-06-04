@@ -11,7 +11,7 @@ import { useTranslation } from "../lib/translations";
 
 export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<string, string> }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const errorCode = props.searchParams.errorCode;
   const message = props.searchParams.message;
   const details = props.searchParams.details;
@@ -37,7 +37,7 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
         title={t("Failed to connect account")}
         fullPage={!!props.fullPage}
         primaryButtonText={t("Go Home")}
-        primaryAction={() => stackApp.redirectToHome()}
+        primaryAction={() => hexclaveApp.redirectToHome()}
       >
         <Typography>
           {t("This account is already connected to another user. Please connect a different account.")}
@@ -53,7 +53,7 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
         title={t("Failed to connect account")}
         fullPage={!!props.fullPage}
         primaryButtonText={t("Go Home")}
-        primaryAction={() => stackApp.redirectToHome()}
+        primaryAction={() => hexclaveApp.redirectToHome()}
       >
         <Typography>
           {t("The user is already connected to another OAuth account. Did you maybe selected the wrong account on the OAuth provider page?")}
@@ -68,9 +68,9 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
         title={t("OAuth provider access denied")}
         fullPage={!!props.fullPage}
         primaryButtonText={t("Sign in again")}
-        primaryAction={() => stackApp.redirectToSignIn()}
+        primaryAction={() => hexclaveApp.redirectToSignIn()}
         secondaryButtonText={t("Go Home")}
-        secondaryAction={() => stackApp.redirectToHome()}
+        secondaryAction={() => hexclaveApp.redirectToHome()}
       >
         <Typography>
           {t("The sign-in operation has been cancelled or denied. Please try again.")}
@@ -85,9 +85,9 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
         title={t("OAuth provider is temporarily unavailable")}
         fullPage={!!props.fullPage}
         primaryButtonText={t("Try again")}
-        primaryAction={() => stackApp.redirectToSignIn()}
+        primaryAction={() => hexclaveApp.redirectToSignIn()}
         secondaryButtonText={t("Go Home")}
-        secondaryAction={() => stackApp.redirectToHome()}
+        secondaryAction={() => hexclaveApp.redirectToHome()}
       >
         <Typography>
           {t("The OAuth provider could not complete sign-in right now. Please try again in a moment.")}

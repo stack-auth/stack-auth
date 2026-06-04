@@ -4,7 +4,7 @@ import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/em
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
-import { getHexclaveServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/hexclave";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";

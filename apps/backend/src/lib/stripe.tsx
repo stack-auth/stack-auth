@@ -16,8 +16,8 @@ import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 export const useStripeMock = isLocalEmulatorEnabled()
   || (stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment()));
-const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
-const stripeMockPort = Number(getEnvVariable("STACK_STRIPE_MOCK_PORT", "") || `${stackPortPrefix}23`);
+const hexclavePortPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
+const stripeMockPort = Number(getEnvVariable("STACK_STRIPE_MOCK_PORT", "") || `${hexclavePortPrefix}23`);
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
   host: "localhost",
@@ -187,7 +187,7 @@ import.meta.vitest?.describe("resolveProductFromStripeMetadata", (test) => {
     });
   });
 });
-export const getStackStripe = (overrides?: StripeOverridesMap) => {
+export const getHexclaveStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
     throw new HexclaveAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
   }

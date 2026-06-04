@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { StackProvider, StackTheme } from "@hexclave/next";
 import { Inter } from "next/font/google";
-import { stackServerApp } from "../hexclave";
+import { hexclaveServerApp } from "../hexclave";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}><StackProvider app={stackServerApp}><StackTheme>
+      <body className={inter.className}><StackProvider app={hexclaveServerApp}><StackTheme>
         <main style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "stretch" }}>
           <h1>Hexclave - E-Commerce Example</h1>
           {children}

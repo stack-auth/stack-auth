@@ -71,7 +71,7 @@ async function fetchSkill(): Promise<string> {
   return await res.text();
 }
 
-export function createStackMcpHandler(config: { streamableHttpEndpoint: string }) {
+export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: string }) {
   return createMcpHandler(
     async (server) => {
       server.resource(

@@ -24,8 +24,8 @@ type PageClientProps = {
 };
 
 export default function PageClient({ storeId }: PageClientProps) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const router = useRouter();
   const updateConfig = useUpdateConfig();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -60,7 +60,7 @@ export default function PageClient({ storeId }: PageClientProps) {
   const handleSaveDisplayName = async () => {
     if (localDisplayName !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: {
           [`dataVault.stores.${storeId}.displayName`]: localDisplayName.trim() || store.displayName,
         },
@@ -86,7 +86,7 @@ export default function PageClient({ storeId }: PageClientProps) {
     }
 
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { [`dataVault.stores.${storeId}`]: null },
       pushable: true,
     });
@@ -139,7 +139,7 @@ export default function PageClient({ storeId }: PageClientProps) {
     // In your .env file or environment variables:
     // STACK_DATA_VAULT_SECRET=insert-a-randomly-generated-secret-here
 
-    const store = await stackServerApp.getDataVaultStore(${JSON.stringify(storeId)});
+    const store = await hexclaveServerApp.getDataVaultStore(${JSON.stringify(storeId)});
 
     // Each store is a key-value store. You can use any string as a key, for example user IDs
     const key = user.id;

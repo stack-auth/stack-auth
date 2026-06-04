@@ -27,7 +27,7 @@ export default function App() {
           <p className="text-sm text-gray-500 mb-4">
             Sign in to the{" "}
             <a href={process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL} className="text-blue-600 underline" target="_blank" rel="noreferrer">
-              Stack Dashboard
+              Hexclave Dashboard
             </a>
             {" "}first, then reload this page.
           </p>

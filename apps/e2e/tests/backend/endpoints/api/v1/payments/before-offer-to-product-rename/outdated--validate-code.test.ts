@@ -217,7 +217,7 @@ it("should include conflicting_group_offers when switching within the same group
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "charges_enabled": false,
+        "charges_enabled": null,
         "conflicting_products": [
           {
             "display_name": "Offer A",
@@ -245,7 +245,7 @@ it("should include conflicting_group_offers when switching within the same group
         },
         "project_id": "<stripped UUID>",
         "project_logo_url": null,
-        "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "stripe_account_id": null,
         "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },

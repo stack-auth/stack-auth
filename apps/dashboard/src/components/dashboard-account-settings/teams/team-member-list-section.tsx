@@ -15,9 +15,8 @@ import { User } from "@phosphor-icons/react";
 export function TeamMemberListSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const readMemberPermission = user.usePermission(props.team, '$read_members');
-  const inviteMemberPermission = user.usePermission(props.team, '$invite_members');
 
-  if (!readMemberPermission && !inviteMemberPermission) {
+  if (!readMemberPermission) {
     return null;
   }
 

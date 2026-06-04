@@ -20,10 +20,10 @@ function PermissionSelectDialog(props: {
   trigger: React.ReactNode,
   type: "creator" | "member",
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
+  const permissions = hexclaveAdminApp.useTeamPermissionDefinitions();
   const updateConfig = useUpdateConfig();
 
   const [open, setOpen] = useState(false);
@@ -70,7 +70,7 @@ function PermissionSelectDialog(props: {
       : 'rbac.defaultPermissions.teamMember';
 
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [configKey]: permissionsMap,
       },
@@ -132,8 +132,8 @@ function PermissionSelectDialog(props: {
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
@@ -161,7 +161,7 @@ export default function PageClient() {
       configUpdate['teams.createPersonalTeamOnSignUp'] = localPersonalTeamOnSignUp;
     }
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate,
       pushable: true,
     });

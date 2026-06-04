@@ -45,7 +45,7 @@ import {
   type RuleNode,
 } from "@/lib/cel-visual-parser";
 import { useUpdateConfig } from "@/lib/config-update";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -403,7 +403,7 @@ function RuleTriggerHistoryDialog({
   timespanHours: number,
   isSparklineLoading: boolean,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [open, setOpen] = useState(false);
   const [triggers, setTriggers] = useState<RuleTriggerListItem[]>([]);
   const [hasMore, setHasMore] = useState(true);
@@ -430,7 +430,7 @@ function RuleTriggerHistoryDialog({
     }
 
     try {
-      const response = await stackAdminApp.queryAnalytics({
+      const response = await hexclaveAdminApp.queryAnalytics({
         query: RULE_TRIGGER_EVENTS_QUERY,
         params: {
           rule_id: ruleId,
@@ -1008,7 +1008,7 @@ const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
 
 // Shared hook used by every TestRulesCard variant - encapsulates all the state
 // and the API call so the variants can focus purely on the UI.
-function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
+function useTestRulesState(hexclaveAdminApp: ReturnType<typeof useAdminApp>) {
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
@@ -1036,7 +1036,7 @@ function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
       throw new Error("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
     }
 
-    const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+    const response = await (hexclaveAdminApp as any)[hexclaveAppInternalsSymbol].sendRequest(
       '/internal/sign-up-rules-test',
       {
         method: 'POST',
@@ -1070,7 +1070,7 @@ function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
 
     const data = await response.json();
     setResult(data);
-  }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp, turnstileResultOverride]);
+  }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, hexclaveAdminApp, turnstileResultOverride]);
 
   return {
     email, setEmail,
@@ -1471,13 +1471,13 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
 }
 
 function TestRulesDialog({
-  stackAdminApp,
+  hexclaveAdminApp,
   trigger,
 }: {
-  stackAdminApp: ReturnType<typeof useAdminApp>,
+  hexclaveAdminApp: ReturnType<typeof useAdminApp>,
   trigger: React.ReactElement,
 }) {
-  const state = useTestRulesState(stackAdminApp);
+  const state = useTestRulesState(hexclaveAdminApp);
 
   return (
     <DesignDialog
@@ -1497,7 +1497,7 @@ function TestRulesDialog({
   );
 }
 
-function TestRulesPanel({ stackAdminApp }: { stackAdminApp: ReturnType<typeof useAdminApp> }) {
+function TestRulesPanel({ hexclaveAdminApp }: { hexclaveAdminApp: ReturnType<typeof useAdminApp> }) {
   const triggerButton = (
     <DesignButton size="sm" variant="secondary">
       <FlaskIcon className="h-4 w-4 mr-1.5" />
@@ -1511,7 +1511,7 @@ function TestRulesPanel({ stackAdminApp }: { stackAdminApp: ReturnType<typeof us
         <Typography variant="secondary" className="text-xs">
           Run a simulated sign-up against your current ruleset and see the outcome.
         </Typography>
-        <TestRulesDialog stackAdminApp={stackAdminApp} trigger={triggerButton} />
+        <TestRulesDialog hexclaveAdminApp={hexclaveAdminApp} trigger={triggerButton} />
       </div>
     </DesignCard>
   );
@@ -1556,7 +1556,7 @@ function DeleteRuleDialog({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function useSignUpRulesAnalytics() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [analytics, setAnalytics] = useState<Map<string, RuleAnalytics>>(new Map());
   const [timespanHours, setTimespanHours] = useState(48);
   const [isLoading, setIsLoading] = useState(true);
@@ -1567,7 +1567,7 @@ function useSignUpRulesAnalytics() {
 
     const fetchAnalytics = async () => {
       try {
-        const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+        const response = await (hexclaveAdminApp as any)[hexclaveAppInternalsSymbol].sendRequest(
           '/internal/sign-up-rules-stats',
           { method: 'GET' },
           'admin'
@@ -1603,7 +1603,7 @@ function useSignUpRulesAnalytics() {
     return () => {
       cancelled = true;
     };
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   return { analytics, timespanHours, isLoading };
 }
@@ -1633,7 +1633,7 @@ type PageBodyProps = {
   onDragEnd: (event: DragEndEvent) => void,
   onSaveOrder: () => Promise<void>,
   onDiscardOrder: () => void,
-  stackAdminApp: ReturnType<typeof useAdminApp>,
+  hexclaveAdminApp: ReturnType<typeof useAdminApp>,
 };
 
 function PageBody(props: PageBodyProps) {
@@ -1717,7 +1717,7 @@ function PageBody(props: PageBodyProps) {
         />
 
         <div className="pt-10">
-          <TestRulesPanel stackAdminApp={props.stackAdminApp} />
+          <TestRulesPanel hexclaveAdminApp={props.hexclaveAdminApp} />
         </div>
 
         <div className="pt-5" aria-hidden />
@@ -1767,8 +1767,8 @@ function OrderChangeActions({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
@@ -1834,7 +1834,7 @@ export default function PageClient() {
       : rule;
 
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.signUpRules.${ruleId}`]: ruleToSave,
       },
@@ -1854,7 +1854,7 @@ export default function PageClient() {
   const handleDeleteRule = async () => {
     if (!ruleToDelete) return;
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.signUpRules.${ruleToDelete.id}`]: null,
       },
@@ -1869,7 +1869,7 @@ export default function PageClient() {
 
   const handleToggleEnabled = async (ruleId: string, enabled: boolean) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.signUpRules.${ruleId}.enabled`]: enabled,
       },
@@ -1879,7 +1879,7 @@ export default function PageClient() {
 
   const handleDefaultActionChange = async (value: 'allow' | 'reject') => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         'auth.signUpRulesDefaultAction': value,
       },
@@ -1896,7 +1896,7 @@ export default function PageClient() {
     });
 
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate,
       pushable: true,
     });
@@ -1952,7 +1952,7 @@ export default function PageClient() {
           onDragEnd={handleDragEnd}
           onSaveOrder={handleSaveOrderAsync}
           onDiscardOrder={handleDiscardOrder}
-          stackAdminApp={stackAdminApp}
+          hexclaveAdminApp={hexclaveAdminApp}
         />
 
         <DeleteRuleDialog

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getPublicEnvVar } from "@/lib/env";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { AdminOwnedProject, StackClientApp } from "@hexclave/next";
 import { Config, override } from "@hexclave/shared/dist/config/format";
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
@@ -55,7 +55,7 @@ type RemoteDevelopmentEnvironmentGlobals = {
   hasClosedSession: boolean,
 };
 
-type StackAppRequestInternals = {
+type HexclaveAppRequestInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
 };
 
@@ -113,7 +113,7 @@ function throwApiUnavailableIfConnectionFailure(apiBaseUrl: string, error: unkno
   throw error;
 }
 
-function isStackAppRequestInternals(value: unknown): value is StackAppRequestInternals {
+function isStackAppRequestInternals(value: unknown): value is HexclaveAppRequestInternals {
   return (
     value != null &&
     typeof value === "object" &&
@@ -122,12 +122,12 @@ function isStackAppRequestInternals(value: unknown): value is StackAppRequestInt
   );
 }
 
-function getStackAppRequestInternals(appValue: unknown): StackAppRequestInternals {
+function getStackAppRequestInternals(appValue: unknown): HexclaveAppRequestInternals {
   if (appValue == null || typeof appValue !== "object") {
     throw new Error("The Stack app instance is unavailable.");
   }
 
-  const internals = Reflect.get(appValue, stackAppInternalsSymbol);
+  const internals = Reflect.get(appValue, hexclaveAppInternalsSymbol);
   if (!isStackAppRequestInternals(internals)) {
     throw new Error("The Stack app cannot send remote development environment onboarding updates.");
   }

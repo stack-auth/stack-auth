@@ -4,7 +4,7 @@ import { captureError, registerErrorSink } from "@hexclave/shared/dist/utils/err
 import * as util from "util";
 import { getPublicEnvVar } from "./lib/env";
 
-function expandStackPortPrefix(value?: string | null) {
+function expandHexclavePortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   const prefix = getPublicEnvVar("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX") ?? "81";
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix as string) : value;
@@ -17,7 +17,7 @@ const sentryErrorSink = (location: string, error: unknown, level: "error" | "war
 export function ensurePolyfilled() {
   for (const [key, value] of Object.entries(process.env)) {
     if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
-      const replaced = expandStackPortPrefix(value ?? undefined);
+      const replaced = expandHexclavePortPrefix(value ?? undefined);
       if (replaced !== undefined) {
         process.env[key] = replaced;
       }

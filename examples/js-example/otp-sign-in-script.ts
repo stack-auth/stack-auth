@@ -1,7 +1,7 @@
-import { stackClientApp } from "./hexclave";
+import { hexclaveClientApp } from "./hexclave";
 
 // Check if user is already signed in
-stackClientApp.getUser().then((user) => {
+hexclaveClientApp.getUser().then((user) => {
   if (user) {
     window.location.href = "/";
   }
@@ -14,7 +14,7 @@ document.getElementById("sendCode")?.addEventListener("click", async () => {
   email = emailInput.value;
 
   try {
-    const result = await stackClientApp.sendMagicLinkEmail(email, {
+    const result = await hexclaveClientApp.sendMagicLinkEmail(email, {
       callbackUrl: window.location.origin + "/otp-sign-in",
     });
 
@@ -41,7 +41,7 @@ document.getElementById("verifyCode")?.addEventListener("click", async () => {
   const nonce = localStorage.getItem('magicLinkNonce');
   
   try {
-    const result = await stackClientApp.signInWithMagicLink(`${codeInput.value}${nonce}`);
+    const result = await hexclaveClientApp.signInWithMagicLink(`${codeInput.value}${nonce}`);
 
     if (result.status === "error") {
       alert("Invalid code. Please try again.");
@@ -63,7 +63,7 @@ const code = urlParams.get('code');
 if (code) {
   (async () => {
     try {
-      const result = await stackClientApp.signInWithMagicLink(code);
+      const result = await hexclaveClientApp.signInWithMagicLink(code);
       if (result.status === "error") {
         alert("This magic link is invalid or has expired. Please request a new one.");
       } else {

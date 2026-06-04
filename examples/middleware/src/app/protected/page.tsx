@@ -1,4 +1,4 @@
-import { stackServerApp } from "@/hexclave";
+import { hexclaveServerApp } from "@/hexclave";
 import Link from "next/link";
 
 export default function Home() {

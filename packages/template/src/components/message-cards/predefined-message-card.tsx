@@ -12,7 +12,7 @@ export function PredefinedMessageCard({
   type: 'signedIn' | 'signedOut' | 'emailSent' | 'passwordReset' | 'unknownError' | 'signUpDisabled',
   fullPage?: boolean,
 }) {
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const { t } = useTranslation();
 
   let title: string;
@@ -25,22 +25,22 @@ export function PredefinedMessageCard({
   switch (type) {
     case 'signedIn': {
       title = t("You are already signed in");
-      primaryAction = () => stackApp.redirectToHome();
-      secondaryAction = () => stackApp.redirectToSignOut();
+      primaryAction = () => hexclaveApp.redirectToHome();
+      secondaryAction = () => hexclaveApp.redirectToSignOut();
       primaryButton = t("Go home");
       secondaryButton = t("Sign out");
       break;
     }
     case 'signedOut': {
       title = t("You are not currently signed in.");
-      primaryAction = () => stackApp.redirectToSignIn();
+      primaryAction = () => hexclaveApp.redirectToSignIn();
       primaryButton = t("Sign in");
       break;
     }
     case 'signUpDisabled': {
       title = t("Sign up for new users is not enabled at the moment.");
-      primaryAction = () => stackApp.redirectToHome();
-      secondaryAction = () => stackApp.redirectToSignIn();
+      primaryAction = () => hexclaveApp.redirectToHome();
+      secondaryAction = () => hexclaveApp.redirectToSignIn();
       primaryButton = t("Go home");
       secondaryButton = t("Sign in");
       break;
@@ -48,21 +48,21 @@ export function PredefinedMessageCard({
     case 'emailSent': {
       title = t("Email sent!");
       message = t("If the user with this e-mail address exists, an e-mail was sent to your inbox. Make sure to check your spam folder.");
-      primaryAction = () => stackApp.redirectToHome();
+      primaryAction = () => hexclaveApp.redirectToHome();
       primaryButton = t("Go home");
       break;
     }
     case 'passwordReset': {
       title = t("Password reset successfully!");
       message = t("Your password has been reset. You can now sign in with your new password.");
-      primaryAction = () => stackApp.redirectToSignIn({ noRedirectBack: true });
+      primaryAction = () => hexclaveApp.redirectToSignIn({ noRedirectBack: true });
       primaryButton = t("Sign in");
       break;
     }
     case 'unknownError': {
       title = t("An unknown error occurred");
       message = t("Please try again and if the problem persists, contact support.");
-      primaryAction = () => stackApp.redirectToHome();
+      primaryAction = () => hexclaveApp.redirectToHome();
       primaryButton = t("Go home");
       break;
     }

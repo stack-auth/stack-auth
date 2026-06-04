@@ -9,7 +9,7 @@ import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
-import { StackAdaptSentinel, yupValidate } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAdaptSentinel, yupValidate } from "@hexclave/shared/dist/schema-fields";
 import { groupBy, typedIncludes } from "@hexclave/shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -31,7 +31,7 @@ export type SmartRequestAuth = {
 
 export type DeepPartialSmartRequestWithSentinel<T = SmartRequest> = (T extends object ? {
   [P in keyof T]?: DeepPartialSmartRequestWithSentinel<T[P]>
-} : T) | StackAdaptSentinel;
+} : T) | HexclaveAdaptSentinel;
 
 export type SmartRequest = {
   auth: SmartRequestAuth | null,
@@ -50,8 +50,8 @@ export type SmartRequest = {
 };
 
 export type MergeSmartRequest<T, MSQ = SmartRequest> =
-  StackAdaptSentinel extends T
-  ? NonNullable<MSQ> | (MSQ & Exclude<T, StackAdaptSentinel>)
+  HexclaveAdaptSentinel extends T
+  ? NonNullable<MSQ> | (MSQ & Exclude<T, HexclaveAdaptSentinel>)
   : (
     T extends (infer U)[]
     ? (

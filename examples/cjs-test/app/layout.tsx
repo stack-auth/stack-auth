@@ -1,5 +1,5 @@
 const { StackProvider, StackTheme } = require("@hexclave/next");
-const { stackServerApp } = require("../hexclave");
+const { hexclaveServerApp } = require("../hexclave");
 require("./globals.css");
 
 
@@ -8,7 +8,7 @@ function RootLayout({
 }: any) {
   return (
     <html lang="en">
-      <body><StackProvider app={stackServerApp}><StackTheme>{children}</StackTheme></StackProvider></body>
+      <body><StackProvider app={hexclaveServerApp}><StackTheme>{children}</StackTheme></StackProvider></body>
     </html>
   );
 }

@@ -215,8 +215,8 @@ function BoostCountdownTimer({ expiresAt, onExpire }: { expiresAt: Date, onExpir
 }
 
 export function DomainReputationCard() {
-  const stackAdminApp = useAdminApp();
-  const deliveryInfo = stackAdminApp.useEmailDeliveryStats();
+  const hexclaveAdminApp = useAdminApp();
+  const deliveryInfo = hexclaveAdminApp.useEmailDeliveryStats();
 
   const isBoostActive = deliveryInfo.capacity.is_boost_active;
   const boostExpiresAt = deliveryInfo.capacity.boost_expires_at
@@ -240,7 +240,7 @@ export function DomainReputationCard() {
   const maxSpamRate = 0.1; // 0.1% max acceptable
 
   const handleActivateBoost = async () => {
-    await stackAdminApp.activateEmailCapacityBoost();
+    await hexclaveAdminApp.activateEmailCapacityBoost();
   };
 
   // Capacity label with strikethrough when boosted
@@ -295,7 +295,7 @@ export function DomainReputationCard() {
           {isBoostActive && boostExpiresAt ? (
             <BoostCountdownTimer
               expiresAt={boostExpiresAt}
-              onExpire={() => runAsynchronouslyWithAlert(stackAdminApp.getEmailDeliveryStats())}
+              onExpire={() => runAsynchronouslyWithAlert(hexclaveAdminApp.getEmailDeliveryStats())}
             />
           ) : (
             <div className="flex justify-center mt-3">
