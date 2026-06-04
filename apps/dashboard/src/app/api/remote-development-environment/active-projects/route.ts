@@ -4,7 +4,7 @@ import { assertRemoteDevelopmentEnvironmentBrowserRequest } from "@/lib/remote-d
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest) {
+export function GET(req: NextRequest) {
   const securityResponse = assertRemoteDevelopmentEnvironmentBrowserRequest(req);
   if (securityResponse != null) return securityResponse;
 
