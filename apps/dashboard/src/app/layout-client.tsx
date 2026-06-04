@@ -3,7 +3,7 @@
 import { DevErrorNotifier } from "@/components/dev-error-notifier";
 import { RouterProvider } from "@/components/router";
 import { SiteLoadingIndicatorDisplay } from "@/components/site-loading-indicator";
-import { Toaster } from "@/components/ui";
+import { Toaster, TooltipProvider } from "@/components/ui";
 import { VersionAlerter } from "@/components/version-alerter";
 import { getPublicEnvVar } from "@/lib/env";
 import { hexclaveClientApp } from "@/hexclave/client";
@@ -194,18 +194,20 @@ export function LayoutClient(props: {
     <>
       <StackProvider app={hexclaveClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
         <StackTheme>
-          <ClientPolyfill />
-          <DevEnvironmentHealthGate disabled={isBrowserSecretAuthorizationPage}>
-            <RemoteDevelopmentEnvironmentAuthGate disabled={isBrowserSecretAuthorizationPage}>
-              <RouterProvider>
-                <UserIdentity />
-                <VersionAlerter />
-                <BackgroundShine />
-                {props.children}
-                <DevelopmentPortDisplay />
-              </RouterProvider>
-            </RemoteDevelopmentEnvironmentAuthGate>
-          </DevEnvironmentHealthGate>
+          <TooltipProvider>
+            <ClientPolyfill />
+            <DevEnvironmentHealthGate disabled={isBrowserSecretAuthorizationPage}>
+              <RemoteDevelopmentEnvironmentAuthGate disabled={isBrowserSecretAuthorizationPage}>
+                <RouterProvider>
+                  <UserIdentity />
+                  <VersionAlerter />
+                  <BackgroundShine />
+                  {props.children}
+                  <DevelopmentPortDisplay />
+                </RouterProvider>
+              </RemoteDevelopmentEnvironmentAuthGate>
+            </DevEnvironmentHealthGate>
+          </TooltipProvider>
         </StackTheme>
       </StackProvider>
       <DevErrorNotifier />
