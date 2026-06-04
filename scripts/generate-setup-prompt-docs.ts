@@ -1,6 +1,6 @@
 import path from "path";
 import { readFileSync } from "fs";
-import { aiSetupPrompt, cliSetupPrompt, convexSetupPrompt, getSdkSetupPrompt, supabaseSetupPrompt } from "../packages/stack-shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt";
+import { aiSetupPrompt, cliSetupPrompt, convexSetupPrompt, getSdkSetupPrompt, pythonBackendSetupPrompt, restApiBackendSetupPrompt, supabaseSetupPrompt } from "../packages/stack-shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt";
 import { deindent } from "../packages/stack-shared/src/utils/strings";
 import { writeFileSyncIfChanged } from "./utils";
 import { remindersPrompt } from "../packages/stack-shared/src/ai/unified-prompts/reminders";
@@ -11,6 +11,7 @@ type SdkSetupToolCategory = "frontend" | "backend" | "database" | "other";
 type SdkSetupTool = {
   label: string,
   where: SdkSetupToolCategory[],
+  filterGroups: ("js" | "python" | "other")[],
   imageUrl: string,
   monochromeLogo: boolean,
   tabs: { label: string, mdContent: string }[],
@@ -25,6 +26,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   nextjs: {
     label: "Next.js",
     where: ["frontend", "backend"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/nextjs.svg",
     monochromeLogo: true,
     tabs: [{
@@ -36,6 +38,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   react: {
     label: "React",
     where: ["frontend"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/react.svg",
     monochromeLogo: false,
     tabs: [{
@@ -47,6 +50,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   js: {
     label: "Other JS/TS",
     where: ["frontend"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/javascript.svg",
     monochromeLogo: false,
     tabs: [{
@@ -58,6 +62,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   "tanstack-start": {
     label: "Tanstack Start",
     where: ["frontend"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/tanstack.svg",
     monochromeLogo: true,
     tabs: [{
@@ -69,6 +74,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   "tanstack-query": {
     label: "Tanstack Query",
     where: ["frontend"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/tanstack.svg",
     monochromeLogo: true,
     tabs: [],
@@ -77,6 +83,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   nodejs: {
     label: "Node.js",
     where: ["backend"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/nodejs.svg",
     monochromeLogo: false,
     tabs: [{
@@ -88,6 +95,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   bun: {
     label: "Bun",
     where: ["backend"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/bun.svg",
     monochromeLogo: false,
     tabs: [{
@@ -96,9 +104,34 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
     }],
     extraFeatures: [],
   },
+  python: {
+    label: "Python",
+    where: ["backend"],
+    filterGroups: ["python"],
+    imageUrl: "/images/setup-tools/python.svg",
+    monochromeLogo: false,
+    tabs: [{
+      label: "Python",
+      mdContent: pythonBackendSetupPrompt,
+    }],
+    extraFeatures: [],
+  },
+  "rest-api": {
+    label: "Other (REST API)",
+    where: ["backend"],
+    filterGroups: ["other"],
+    imageUrl: "/images/setup-tools/cli.svg",
+    monochromeLogo: true,
+    tabs: [{
+      label: "Other (REST API)",
+      mdContent: restApiBackendSetupPrompt,
+    }],
+    extraFeatures: [],
+  },
   convex: {
     label: "Convex",
     where: ["backend", "database"],
+    filterGroups: ["js"],
     imageUrl: "/images/setup-tools/convex.svg",
     monochromeLogo: false,
     tabs: [{
@@ -110,6 +143,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   supabase: {
     label: "Supabase",
     where: ["database"],
+    filterGroups: ["other"],
     imageUrl: "/images/setup-tools/supabase.svg",
     monochromeLogo: false,
     tabs: [{
@@ -121,6 +155,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   cli: {
     label: "CLI",
     where: ["other"],
+    filterGroups: ["other"],
     imageUrl: "/images/setup-tools/cli.svg",
     monochromeLogo: true,
     tabs: [{
@@ -132,6 +167,7 @@ const sdkSetupTools: Record<string, SdkSetupTool> = {
   /*mcp: {
     label: "MCP",
     where: ["other"],
+    filterGroups: ["other"],
     imageUrl: "/images/setup-tools/mcp.svg",
     monochromeLogo: true,
     tabs: [{
@@ -201,6 +237,7 @@ function renderToolCards(category: SdkSetupToolCategory) {
         data-tool-label="${tool.label}"
         data-tool-has-tabs="${hasTabs ? "true" : "false"}"
         data-tool-extra-features="${tool.extraFeatures.join(",")}"
+        data-tool-filter-groups="${tool.filterGroups.join(",")}"
         onClick={onSetupToolClick}
         className="group flex flex-col items-center gap-1 rounded-xl px-1 py-1 text-center transition-colors duration-150 hover:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 aria-pressed:bg-white/60 aria-pressed:ring-2 aria-pressed:ring-[#6b5df7] dark:aria-pressed:bg-white/10"
         title="${tool.label}"
@@ -222,12 +259,27 @@ function renderToolCards(category: SdkSetupToolCategory) {
 
 function renderToolCategory(category: SdkSetupToolCategory) {
   return deindent`
-    <section className="grid gap-3 sm:grid-cols-[6rem_1fr] sm:items-start">
+    <section data-setup-tool-category="true" className="grid gap-3 sm:grid-cols-[6rem_1fr] sm:items-start">
       <h3 className="pt-1 text-sm font-semibold text-[#2e446f] dark:text-[#d8e7ff]">${categoryLabels.get(category)}</h3>
       <div className="grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4 sm:gap-x-3 sm:gap-y-3 lg:grid-cols-6">
         ${renderToolCards(category)}
       </div>
     </section>
+  `;
+}
+
+function renderSetupFilterButton(filterId: string, label: string) {
+  return deindent`
+    <button
+      type="button"
+      aria-pressed="true"
+      data-setup-filter-button="true"
+      data-filter-id="${filterId}"
+      onClick={onSetupFilterClick}
+      className="inline-flex items-center justify-center rounded-full px-2.5 py-1 text-xs font-medium text-[#526994] transition-colors duration-150 hover:transition-none hover:bg-white/45 hover:text-[#2a4272] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 aria-pressed:bg-white/70 aria-pressed:text-[#243d70] aria-pressed:shadow-sm dark:text-[#9eb3d8] dark:hover:bg-white/10 dark:hover:text-white dark:aria-pressed:bg-white/14 dark:aria-pressed:text-white"
+    >
+      ${label}
+    </button>
   `;
 }
 
@@ -366,8 +418,28 @@ writeFileSyncIfChanged(
     };
 
     export const updateSetupBuilder = (root, syncUrl = true) => {
+      const activeFilterIds = new Set(
+        Array.from(root.querySelectorAll("[data-setup-filter-button='true'][aria-pressed='true']"))
+          .map((button) => button.getAttribute("data-filter-id"))
+          .filter((filterId) => filterId != null)
+      );
+      for (const toolCard of root.querySelectorAll("[data-setup-tool-card='true']")) {
+        const filterGroups = (toolCard.getAttribute("data-tool-filter-groups") ?? "")
+          .split(",")
+          .filter((filterGroup) => filterGroup.length > 0);
+        const shouldShow = filterGroups.some((filterGroup) => activeFilterIds.has(filterGroup));
+        toolCard.hidden = !shouldShow;
+        toolCard.style.display = shouldShow ? "" : "none";
+      }
+      for (const toolCategory of root.querySelectorAll("[data-setup-tool-category='true']")) {
+        const hasVisibleCard = Array.from(toolCategory.querySelectorAll("[data-setup-tool-card='true']"))
+          .some((toolCard) => !toolCard.hidden);
+        toolCategory.hidden = !hasVisibleCard;
+        toolCategory.style.display = hasVisibleCard ? "" : "none";
+      }
       const selectedToolIds = new Set(
         Array.from(root.querySelectorAll("[data-setup-tool-card='true'][aria-pressed='true']"))
+          .filter((card) => !card.hidden)
           .map((card) => card.getAttribute("data-tool-id"))
           .filter((toolId) => toolId != null)
       );
@@ -436,6 +508,21 @@ writeFileSyncIfChanged(
       updateSetupBuilder(root);
     };
 
+    export const onSetupFilterClick = (event) => {
+      const button = event.currentTarget;
+      const root = button.closest("[data-setup-builder='true']");
+      if (root == null) {
+        return;
+      }
+      const nextPressed = button.getAttribute("aria-pressed") !== "true";
+      const currentlyPressedFilters = root.querySelectorAll("[data-setup-filter-button='true'][aria-pressed='true']").length;
+      if (!nextPressed && currentlyPressedFilters <= 1) {
+        return;
+      }
+      button.setAttribute("aria-pressed", nextPressed ? "true" : "false");
+      updateSetupBuilder(root);
+    };
+
     <Visibility for="agents">
     {hexclaveAgentRemindersText}
     </Visibility>
@@ -461,6 +548,14 @@ writeFileSyncIfChanged(
       </div>
 
       <div className="not-prose mt-5 space-y-4 rounded-2xl border border-[#d6e4ff] bg-gradient-to-b from-[#f7faff] to-[#eaf2ff] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_30px_-24px_rgba(47,79,140,0.35)] dark:border-[#1f2d45] dark:from-[#11203a] dark:to-[#070f1f] dark:shadow-[inset_0_1px_0_rgba(112,152,224,0.18),0_16px_34px_-24px_rgba(2,8,20,0.85)] sm:p-4">
+        <div className="flex flex-col gap-2 border-b border-[#d6e4ff]/80 pb-3 dark:border-[#263a5f] sm:flex-row sm:items-center">
+          <span className="text-sm font-medium text-[#526994] dark:text-[#9eb3d8]">Filter:</span>
+          <div className="flex flex-wrap gap-2">
+            ${renderSetupFilterButton("js", "JS")}
+            ${renderSetupFilterButton("python", "Python")}
+            ${renderSetupFilterButton("other", "Other")}
+          </div>
+        </div>
         ${renderToolCategory("frontend")}
         ${renderToolCategory("backend")}
         ${renderToolCategory("database")}

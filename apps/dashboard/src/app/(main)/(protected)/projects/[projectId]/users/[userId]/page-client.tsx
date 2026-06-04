@@ -81,7 +81,7 @@ const SessionReplaysPageClient = dynamic(
   },
 );
 
-const userMetadataDocsUrl = "https://docs.hexclave.com/docs/concepts/custom-user-data";
+const userMetadataDocsUrl = "https://docs.hexclave.com/guides/getting-started/user-fundamentals#custom-metadata";
 
 export default function PageClient({ userId }: { userId: string }) {
   const stackAdminApp = useAdminApp();
