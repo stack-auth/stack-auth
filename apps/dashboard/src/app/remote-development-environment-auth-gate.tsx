@@ -6,7 +6,7 @@ import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { useStackApp } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
-import { WrongAddressScreen } from "./wrong-address-screen";
+import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret, RemoteDevelopmentEnvironmentBrowserSecretRedirectingError } from "./remote-development-environment-browser-secret-client";
 
 const RDE_ACCESS_TOKEN_MIN_EXPIRATION_MS = 30_000;
 const RDE_ACCESS_TOKEN_MAX_AGE_MS = 60_000;
@@ -88,42 +88,14 @@ function shouldRefreshAccessToken(token: RemoteDevelopmentEnvironmentAccessToken
   );
 }
 
-class LoopbackAddressError extends Error {
-  constructor(message: string, public readonly suggestedUrl: string) {
-    super(message);
-  }
-}
-
-function extractLoopbackSuggestedUrl(errorMessage: string): string | null {
-  const match = errorMessage.match(/http:\/\/127\.0\.0\.1(?::\d+)?/);
-  return match?.[0] ?? null;
-}
-
 async function getRemoteDevelopmentEnvironmentAccessToken(): Promise<RemoteDevelopmentEnvironmentAccessTokenResponse> {
-  const response = await fetch("/api/remote-development-environment/auth", {
+  const response = await fetchWithRemoteDevelopmentEnvironmentBrowserSecret("/api/remote-development-environment/auth", {
     headers: {
       Accept: "application/json",
     },
   });
   if (!response.ok) {
-    const responseText = await response.text();
-    // For 403 errors (e.g. accessing via 'localhost' instead of 127.0.0.1),
-    // throw a LoopbackAddressError so the auth gate can show a dedicated screen
-    if (response.status === 403) {
-      try {
-        const errorMessage = JSON.parse(responseText)?.error;
-        if (typeof errorMessage === "string") {
-          const suggestedUrl = extractLoopbackSuggestedUrl(errorMessage);
-          if (suggestedUrl != null) {
-            throw new LoopbackAddressError(errorMessage, suggestedUrl);
-          }
-          throw new Error(errorMessage);
-        }
-      } catch (e) {
-        if (!(e instanceof SyntaxError)) throw e;
-      }
-    }
-    throw new Error(`Failed to authenticate local remote development environment dashboard (${response.status}): ${responseText}`);
+    throw new Error(`Failed to authenticate local remote development environment dashboard (${response.status}): ${await response.text()}`);
   }
 
   return parseRemoteDevelopmentEnvironmentAccessTokenResponse(await response.json());
@@ -141,7 +113,6 @@ async function installRemoteDevelopmentEnvironmentAccessToken(app: unknown): Pro
 function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.ReactNode }) {
   const app = useStackApp();
   const [accessTokenInstalled, setAccessTokenInstalled] = useState(false);
-  const [loopbackError, setLoopbackError] = useState<{ suggestedUrl: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,10 +138,7 @@ function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.Reac
           requestRefresh();
         }, getRefreshInMillis(token));
       } catch (e) {
-        if (e instanceof LoopbackAddressError) {
-          if (!cancelled) {
-            setLoopbackError({ suggestedUrl: e.suggestedUrl });
-          }
+        if (e instanceof RemoteDevelopmentEnvironmentBrowserSecretRedirectingError) {
           return;
         }
         throw e;
@@ -210,10 +178,6 @@ function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.Reac
     };
   }, [app]);
 
-  if (loopbackError != null) {
-    return <WrongAddressScreen suggestedUrl={loopbackError.suggestedUrl} />;
-  }
-
   if (!accessTokenInstalled) {
     return <Loading />;
   }
@@ -221,9 +185,9 @@ function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.Reac
   return props.children;
 }
 
-export function RemoteDevelopmentEnvironmentAuthGate(props: { children: React.ReactNode }) {
+export function RemoteDevelopmentEnvironmentAuthGate(props: { children: React.ReactNode, disabled?: boolean }) {
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  if (!isRemoteDevelopmentEnvironment) {
+  if (!isRemoteDevelopmentEnvironment || props.disabled === true) {
     return props.children;
   }
 

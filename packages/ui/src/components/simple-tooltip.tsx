@@ -1,6 +1,6 @@
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { CircleAlert, Info } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger, cn } from "..";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, cn } from "..";
 
 export function SimpleTooltip(props: {
   tooltip: React.ReactNode,
@@ -22,25 +22,27 @@ export function SimpleTooltip(props: {
   );
 
   return (
-    <Tooltip open={props.disabled ? false : undefined}>
-      <TooltipTrigger asChild>
-        {props.inline ? (
-          <span className={cn(props.className)}>
-            {trigger}
-          </span>
-        ) : (
-          <div className={cn("flex items-center gap-1", props.className)}>
-            {trigger}
-          </div>
-        )}
-      </TooltipTrigger>
-      {props.tooltip && <TooltipPortal>
-        <TooltipContent>
-          <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
-            {props.tooltip}
-          </div>
-        </TooltipContent>
-      </TooltipPortal>}
-    </Tooltip>
+    <TooltipProvider>
+      <Tooltip open={props.disabled ? false : undefined}>
+        <TooltipTrigger asChild>
+          {props.inline ? (
+            <span className={cn(props.className)}>
+              {trigger}
+            </span>
+          ) : (
+            <div className={cn("flex items-center gap-1", props.className)}>
+              {trigger}
+            </div>
+          )}
+        </TooltipTrigger>
+        {props.tooltip && <TooltipPortal>
+          <TooltipContent>
+            <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
+              {props.tooltip}
+            </div>
+          </TooltipContent>
+        </TooltipPortal>}
+      </Tooltip>
+    </TooltipProvider>
   );
 }
