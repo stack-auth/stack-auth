@@ -12,6 +12,7 @@ export function ProjectCard(props: {
   project: AdminProject,
   href?: string,
   showIncompleteBadge?: boolean,
+  showStaleBadge?: boolean,
   totalUsers?: number,
   dailySignups?: { date: string, activity: number }[],
   metricsLoading?: boolean,
@@ -39,6 +40,8 @@ export function ProjectCard(props: {
               </h3>
               {props.showIncompleteBadge ? (
                 <DesignBadge label="Setup incomplete" color="orange" size="sm" />
+              ) : props.showStaleBadge ? (
+                <DesignBadge label="Stale" color="red" size="sm" />
               ) : (
                 <span className="shrink-0 text-[10px] text-muted-foreground/80 whitespace-nowrap">
                   {createdAt}

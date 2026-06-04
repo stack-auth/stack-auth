@@ -609,6 +609,20 @@ export function getRemoteDevelopmentEnvironmentHealth(): {
   };
 }
 
+export function getActiveRemoteDevelopmentEnvironmentProjectIds(): Set<string> {
+  assertRemoteDevelopmentEnvironmentEnabled();
+  const state = getGlobals();
+  const rdeState = readRemoteDevelopmentEnvironmentState();
+  const activeProjectIds = new Set<string>();
+  for (const session of state.sessions.values()) {
+    const project = rdeState.projectsByConfigPath[session.configFilePath];
+    if (project != null) {
+      activeProjectIds.add(project.projectId);
+    }
+  }
+  return activeProjectIds;
+}
+
 export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
   sessionId?: string,
   projectId?: string,
