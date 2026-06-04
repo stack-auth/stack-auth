@@ -616,7 +616,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
         secret: options.secret,
       });
       sessionState.dashboardReachableSinceMs = performance.now();
-      logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}`);
+      logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}/projects/${encodeURIComponent(sessionState.session.project_id)}`);
       continue;
     } finally {
       clearInterval(abortOnStop);
@@ -632,7 +632,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
         secret: options.secret,
       });
       sessionState.dashboardReachableSinceMs = performance.now();
-      logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}`);
+      logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}/projects/${encodeURIComponent(sessionState.session.project_id)}`);
     }
   }
 }
@@ -691,7 +691,7 @@ export function registerDevCommand(program: Command) {
         }),
         dashboardReachableSinceMs: performance.now(),
       };
-      logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
+      logDev(`Hexclave dashboard running at ${localDashboardUrl}/projects/${encodeURIComponent(sessionState.session.project_id)}`);
       maybeOpenOnboardingPage(sessionState.session, port);
 
       let stopped = false;
