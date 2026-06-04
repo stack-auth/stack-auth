@@ -214,9 +214,9 @@ it("only treats hosted OAuth callback URLs as Stack callbacks when the matching 
     } as any;
 
     try {
-      expect((clientApp as any)._currentUrlLooksLikeStackOAuthCallback()).toBe(false);
+      expect((clientApp as any)._currentUrlLooksLikeHexclaveOAuthCallback()).toBe(false);
       globalThis.document.cookie = "stack-oauth-outer-oauth-state=verifier";
-      expect((clientApp as any)._currentUrlLooksLikeStackOAuthCallback()).toBe(true);
+      expect((clientApp as any)._currentUrlLooksLikeHexclaveOAuthCallback()).toBe(true);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;

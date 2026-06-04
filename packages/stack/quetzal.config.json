@@ -1,0 +1,5 @@
+{
+  "paths": [
+    "src/**/*.{js,jsx,ts,tsx}"
+  ]
+}

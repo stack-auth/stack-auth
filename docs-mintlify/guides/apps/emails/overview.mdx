@@ -190,6 +190,128 @@ await hexclaveServerApp.sendEmail({
 
 If `scheduledAt` is omitted, the email is sent as soon as possible.
 
+## Email pipeline
+
+Emails are processed asynchronously through a multi-stage pipeline:
+
+1. **Enqueue**  - The email is saved to the outbox with its template, recipients, and scheduling metadata.
+2. **Render**  - The template TSX is compiled into HTML, subject, and plain text.
+3. **Queue**  - Rendered emails whose scheduled time has passed are queued for delivery, respecting your project's sending capacity.
+4. **Send**  - Emails are delivered, honoring notification preferences and skipping users who have unsubscribed.
+5. **Track**  - Delivery events (sent, opened, clicked, bounced, marked as spam) are recorded.
+
+You can monitor every email's status in the dashboard under **Emails → Sent**.
+
+## Templates
+
+Templates are React Email components written in TSX. Each template receives the current `user`, `project`, and any custom `variables` you pass when sending.
+
+```tsx
+import { type } from "arktype";
+import { Container } from "@react-email/components";
+import { Subject, NotificationCategory, Props } from "@hexclave/emails";
+
+export const variablesSchema = type({
+  featureName: "string",
+});
+
+export function EmailTemplate({
+  user,
+  project,
+  variables,
+}: Props<typeof variablesSchema.infer>) {
+  return (
+    <Container>
+      <Subject value={`New feature: ${variables.featureName}`} />
+      <NotificationCategory value="Transactional" />
+      <p>Hi {user.displayName}, check out {variables.featureName}!</p>
+    </Container>
+  );
+}
+
+EmailTemplate.PreviewVariables = {
+  featureName: "Dark mode",
+} satisfies typeof variablesSchema.infer;
+```
+
+Key concepts:
+
+- **`variablesSchema`**  - Define the shape of your template variables using [arktype](https://arktype.io). Hexclave validates variables against this schema at render time.
+- **`<Subject>`**  - Sets the email subject line from inside the template.
+- **`<NotificationCategory>`**  - Declares whether this is a `"Transactional"` or `"Marketing"` email.
+- **`PreviewVariables`**  - Sample data used for the live preview in the dashboard editor.
+
+### Built-in templates
+
+Hexclave ships with templates for common auth flows. These are used automatically by the built-in authentication components:
+
+| Template | Trigger |
+|---|---|
+| **Email Verification** | User signs up or changes their email |
+| **Password Reset** | User requests a password reset |
+| **Magic Link / OTP** | User signs in with magic link or one-time password |
+| **Team Invitation** | User is invited to join a team |
+| **Sign-in Invitation** | User is invited to create an account |
+| **Payment Receipt** | A payment succeeds (one-time or subscription) |
+| **Payment Failed** | A payment fails |
+
+You can customize any built-in template from the dashboard under **Emails → Templates**.
+
+## Themes
+
+Themes wrap your email content in a consistent layout  - header, footer, background, branding. Hexclave includes three built-in themes:
+
+- **Default Light**  - Clean white background with subtle shadow
+- **Default Dark**  - Dark background with light text
+- **Default Colorful**  - Light purple background with an accent border
+
+You can create custom themes in the dashboard under **Emails → Email Settings → Themes**. Themes are also TSX components:
+
+```tsx
+import { Html, Head, Tailwind, Body, Container } from "@react-email/components";
+import { ThemeProps, ProjectLogo } from "@hexclave/emails";
+
+export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
+  return (
+    <Html>
+      <Head />
+      <Tailwind>
+        <Body className="bg-white font-sans m-0 p-0">
+          <Container className="max-w-[600px] mx-auto p-8">
+            <ProjectLogo data={projectLogos} mode="light" />
+            {children}
+          </Container>
+          {unsubscribeLink && (
+            <p className="text-center text-xs opacity-60">
+              <a href={unsubscribeLink}>Unsubscribe</a>
+            </p>
+          )}
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}
+```
+
+Set a default theme for your project in the dashboard. You can also override the theme per-email with the `themeId` option, or pass `themeId: false` to send without any theme.
+
+## Notification preferences
+
+Emails are categorized as either **Transactional** or **Marketing**. Users can opt out of Marketing emails but not Transactional ones.
+
+When sending, specify the category:
+
+```typescript
+await hexclaveServerApp.sendEmail({
+  userIds: ['user-id'],
+  html: '<p>Check out our new feature!</p>',
+  subject: 'Product Updates',
+  notificationCategoryName: 'Marketing',
+});
+```
+
+If a user has unsubscribed from Marketing emails, the email will be automatically skipped during delivery. Marketing emails always include an unsubscribe link.
+
 ## React components integration
 
 Emails integrate with Hexclave UI components automatically (for example verification, password reset, and magic-link flows). Each of those flows uses a built-in template that you can customize in the dashboard under **Emails → Templates**.
@@ -212,3 +334,70 @@ export async function inviteUser(userId: string) {
   return result;
 }
 ```
+
+## Email server configuration
+
+Configure your email server in the dashboard under **Emails → Email Settings**. There are four options:
+
+### Shared (development only)
+
+The default for new projects. Emails are sent from `noreply@sent-with-hexclave.com` using Hexclave's shared infrastructure. Good for development  - not suitable for production.
+
+### Custom SMTP
+
+Connect any SMTP provider. Configure:
+
+- **Host**  - e.g. `smtp.sendgrid.net`
+- **Port**  - typically 587 (STARTTLS) or 465 (implicit TLS)
+- **Username** and **Password**
+- **Sender email** and **Sender name**
+
+### Resend
+
+Connect your [Resend](https://resend.com) account by entering your API key. Hexclave configures the SMTP connection automatically.
+
+### Managed
+
+Let Hexclave manage your email domain. Hexclave handles DNS configuration and deliverability for you. Set up requires:
+
+1. Choose a subdomain (e.g. `mail.yourapp.com`)
+2. Add the DNS records Hexclave provides
+3. Verify the domain in the dashboard
+
+<Info>
+  The dashboard tests your email configuration automatically when you save it by sending a test email.
+</Info>
+
+## Delivery stats
+
+Hexclave tracks delivery metrics across multiple time windows (hour, day, week, month):
+
+- **Sent**  - Successfully delivered
+- **Bounced**  - Rejected by the recipient's mail server
+- **Marked as spam**  - Recipient flagged the email
+
+Access these programmatically:
+
+```typescript
+const info = await hexclaveServerApp.getEmailDeliveryStats();
+// info.stats.day.sent, info.stats.day.bounced, etc.
+// info.capacity.rate_per_second, info.capacity.is_boost_active, etc.
+```
+
+Delivery capacity is managed automatically based on your sending reputation. If you need to temporarily increase throughput, you can activate a capacity boost:
+
+```typescript
+await hexclaveServerApp.activateEmailCapacityBoost();
+```
+
+## Drafts
+
+The dashboard includes a full draft editor where you can compose emails visually before sending. Drafts support:
+
+- TSX source editing with live preview
+- Theme selection
+- Recipient picker (specific users or all users)
+- Scheduling
+- Send history per draft
+
+Once a draft is sent, it's marked as sent and its delivery can be tracked in the outbox.

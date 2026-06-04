@@ -1,0 +1,158 @@
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
+import { isVersionNewer, killLocalDashboard, processExists, shouldRestartDashboard } from "./dev.js";
+
+describe("isVersionNewer", () => {
+  it("compares core versions numerically", () => {
+    expect(isVersionNewer("2.8.110", "2.8.109")).toBe(true);
+    expect(isVersionNewer("2.9.0", "2.8.999")).toBe(true);
+    expect(isVersionNewer("3.0.0", "2.999.999")).toBe(true);
+    expect(isVersionNewer("2.8.109", "2.8.109")).toBe(false);
+    expect(isVersionNewer("2.8.108", "2.8.109")).toBe(false);
+  });
+
+  it("does not treat double-digit segments as strings", () => {
+    expect(isVersionNewer("2.8.10", "2.8.9")).toBe(true);
+  });
+
+  it("ranks a final release above a prerelease of the same core", () => {
+    expect(isVersionNewer("2.8.109", "2.8.109-beta.1")).toBe(true);
+    expect(isVersionNewer("2.8.109-beta.1", "2.8.109")).toBe(false);
+  });
+
+  it("returns false for unparseable versions (never downgrade or guess)", () => {
+    expect(isVersionNewer("garbage", "2.8.109")).toBe(false);
+    expect(isVersionNewer("2.8.110", "garbage")).toBe(false);
+  });
+
+  it("tolerates a leading v and surrounding whitespace on either side", () => {
+    expect(isVersionNewer("v2.8.110", "2.8.109")).toBe(true);
+    expect(isVersionNewer("2.8.110", "v2.8.109")).toBe(true);
+    expect(isVersionNewer("  2.8.110  ", "2.8.109")).toBe(true);
+    expect(isVersionNewer("v2.8.110", "v2.8.110")).toBe(false);
+  });
+
+  it("treats a two-segment version (x.y) as unparseable", () => {
+    expect(isVersionNewer("2.8", "2.8.109")).toBe(false);
+    expect(isVersionNewer("2.8.109", "2.8")).toBe(false);
+  });
+
+  it("ignores prerelease identifiers when both cores are equal prereleases", () => {
+    // Only "release beats prerelease" is modeled; beta.2 is NOT newer than beta.1.
+    expect(isVersionNewer("2.8.109-beta.2", "2.8.109-beta.1")).toBe(false);
+    expect(isVersionNewer("2.8.109-beta.1", "2.8.109-beta.2")).toBe(false);
+  });
+
+  it("compares very large numeric segments correctly", () => {
+    expect(isVersionNewer("2.8.1000000000", "2.8.999999999")).toBe(true);
+    expect(isVersionNewer("10000000000.0.0", "9999999999.0.0")).toBe(true);
+  });
+});
+
+describe("shouldRestartDashboard", () => {
+  it("restarts only when ours is strictly newer than the running dashboard", () => {
+    expect(shouldRestartDashboard("2.8.110", "2.8.109")).toBe(true);
+    expect(shouldRestartDashboard("2.8.109", "2.8.109")).toBe(false);
+    expect(shouldRestartDashboard("2.8.108", "2.8.109")).toBe(false);
+  });
+
+  it("reuses (does not restart) when either version is unknown", () => {
+    // A dashboard recorded by a pre-feature CLI has no version field.
+    expect(shouldRestartDashboard("2.8.110", undefined)).toBe(false);
+    expect(shouldRestartDashboard(undefined, "2.8.109")).toBe(false);
+    expect(shouldRestartDashboard(undefined, undefined)).toBe(false);
+  });
+});
+
+describe("processExists", () => {
+  it("returns true for the current process and false for an impossible pid", () => {
+    expect(processExists(process.pid)).toBe(true);
+    // pid 1 always exists; a huge pid effectively never does.
+    expect(processExists(2_147_483_646)).toBe(false);
+  });
+});
+
+describe("killLocalDashboard", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "dev-kill-"));
+    process.env.STACK_DEV_ENVS_PATH = join(tempDir, "dev-envs.json");
+  });
+
+  afterEach(() => {
+    delete process.env.STACK_DEV_ENVS_PATH;
+    rmSync(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("does nothing when no dashboard pid is recorded", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    // Filter to our own signals: the worker-thread runtime may call
+    // process.kill for its own bookkeeping, which isn't what we're asserting.
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
+    // No recorded pid → return before probing the process or polling the port.
+    expect(fetchMock).not.toHaveBeenCalled();
+    const targetedCalls = killSpy.mock.calls.filter(([, sig]) => sig === "SIGTERM" || sig === "SIGKILL");
+    expect(targetedCalls).toHaveLength(0);
+  });
+
+  it("returns immediately without a wait loop when the process is already gone (ESRCH)", async () => {
+    recordLocalDashboardProcess(26700, "s", 4242, "/tmp/x.log", "2.8.110");
+    // processExists(0-probe) throws ESRCH → treated as not alive → early return.
+    vi.spyOn(process, "kill").mockImplementation(() => {
+      const e = new Error("no such process") as NodeJS.ErrnoException;
+      e.code = "ESRCH";
+      throw e;
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not wait on or escalate a pid owned by another process (EPERM)", async () => {
+    recordLocalDashboardProcess(26700, "s", 4242, "/tmp/x.log", "2.8.110");
+    const killSpy = vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
+      // signal 0 (existence probe) → EPERM means "exists but not ours".
+      // SIGTERM → also EPERM; we must bail without looping.
+      const e = new Error("operation not permitted") as NodeJS.ErrnoException;
+      e.code = "EPERM";
+      throw e;
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
+    // processExists sees EPERM → alive; SIGTERM throws EPERM → early return.
+    // We never poll /health, and never send SIGKILL.
+    expect(fetchMock).not.toHaveBeenCalled();
+    const sigkillCalls = killSpy.mock.calls.filter(([, sig]) => sig === "SIGKILL");
+    expect(sigkillCalls).toHaveLength(0);
+  });
+
+  it("returns once the port is free without SIGKILL, even if the pid still resolves (recycled pid)", async () => {
+    recordLocalDashboardProcess(26700, "s", 4242, "/tmp/x.log", "2.8.110");
+    // Every process.kill (including the `0` probe) succeeds, so processExists
+    // always reports the pid as alive — simulating a pid recycled onto another
+    // live same-user process after our dashboard exited.
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    // Port is already free (connection refused), so the dashboard is gone.
+    const fetchMock = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await killLocalDashboard("http://127.0.0.1:26700", 26700);
+
+    // SIGTERM is sent once; we must return as soon as the port frees up and
+    // never escalate to SIGKILL against the (possibly recycled) pid.
+    const sigterm = killSpy.mock.calls.filter(([, sig]) => sig === "SIGTERM");
+    const sigkill = killSpy.mock.calls.filter(([, sig]) => sig === "SIGKILL");
+    expect(sigterm).toHaveLength(1);
+    expect(sigkill).toHaveLength(0);
+  });
+});

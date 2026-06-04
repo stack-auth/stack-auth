@@ -25,7 +25,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 export function UserPickerTable(props: {
   action: (user: ServerUser) => React.ReactNode,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const actionRef = useRef(props.action);
   actionRef.current = props.action;
 
@@ -104,7 +104,7 @@ export function UserPickerTable(props: {
         ? params.quickSearch.trim()
         : undefined;
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
-      const result = await stackAdminApp.listUsers({
+      const result = await hexclaveAdminApp.listUsers({
         limit: PAGE_SIZE,
         query,
         cursor,
@@ -115,7 +115,7 @@ export function UserPickerTable(props: {
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    [stackAdminApp],
+    [hexclaveAdminApp],
   );
 
   const getRowId = useCallback((row: ServerUser) => row.id, []);

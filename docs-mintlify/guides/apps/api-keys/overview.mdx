@@ -658,7 +658,11 @@ Requires the `$manage_api_keys` team permission.
 
     export default async function CreateTeamApiKey({ teamId }: { teamId: string }) {
       const team = await hexclaveServerApp.getTeam(teamId);
-      if (!team) return <div>Team not found</div>;
+
+      if (!team) {
+        return <div>Team not found</div>;
+      }
+
 
       const teamApiKey = await team.createApiKey({
         description: "Admin-provisioned team API key",

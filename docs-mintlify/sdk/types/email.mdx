@@ -183,7 +183,7 @@ Choose a content method (`html`, `templateId`, or `draftId`) and a recipient met
     Provide custom HTML directly:
 
     ```typescript
-    await stackServerApp.sendEmail({
+    await hexclaveServerApp.sendEmail({
       userIds: ["user-id-1"],
       subject: "Hello!",
       html: "<h1>Welcome</h1><p>Thanks for signing up!</p>",
@@ -195,7 +195,7 @@ Choose a content method (`html`, `templateId`, or `draftId`) and a recipient met
     Use a template with variable substitution:
 
     ```typescript
-    await stackServerApp.sendEmail({
+    await hexclaveServerApp.sendEmail({
       userIds: ["user-id-1"],
       templateId: "welcome-template",
       variables: {
@@ -210,7 +210,7 @@ Choose a content method (`html`, `templateId`, or `draftId`) and a recipient met
     Send from a saved email draft:
 
     ```typescript
-    await stackServerApp.sendEmail({
+    await hexclaveServerApp.sendEmail({
       allUsers: true,
       draftId: "my-draft-id",
     });
@@ -221,7 +221,7 @@ Choose a content method (`html`, `templateId`, or `draftId`) and a recipient met
     Schedule an email for later delivery:
 
     ```typescript
-    await stackServerApp.sendEmail({
+    await hexclaveServerApp.sendEmail({
       userIds: ["user-id-1"],
       templateId: "weekly-digest",
       scheduledAt: new Date("2025-01-15T09:00:00Z"),

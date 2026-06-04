@@ -5,7 +5,7 @@ import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
 import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@hexclave/next";
 import { isPaidPlan } from "@hexclave/shared/dist/plans";
@@ -21,14 +21,14 @@ import { inviteUser, listInvitations, revokeInvitation } from "./actions";
 import Footer from "./footer";
 import PreviewProjectRedirect from "./preview-project-redirect";
 
-type StackAppInternals = {
+type HexclaveAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
   refreshOwnedProjects: () => Promise<void>,
 };
 
 const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
-function isStackAppInternals(value: unknown): value is StackAppInternals {
+function isStackAppInternals(value: unknown): value is HexclaveAppInternals {
   return (
     value != null &&
     typeof value === "object" &&
@@ -39,12 +39,12 @@ function isStackAppInternals(value: unknown): value is StackAppInternals {
   );
 }
 
-function getStackAppInternals(appValue: unknown): StackAppInternals {
+function getStackAppInternals(appValue: unknown): HexclaveAppInternals {
   if (appValue == null || typeof appValue !== "object") {
     throw new Error("The Stack app instance is unavailable.");
   }
 
-  const internals = Reflect.get(appValue, stackAppInternalsSymbol);
+  const internals = Reflect.get(appValue, hexclaveAppInternalsSymbol);
   if (!isStackAppInternals(internals)) {
     throw new Error("The Stack client app cannot send internal requests.");
   }

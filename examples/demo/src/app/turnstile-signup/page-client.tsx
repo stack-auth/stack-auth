@@ -1,7 +1,7 @@
 'use client';
 
 import { KnownErrors } from "@hexclave/shared";
-import { stackAppInternalsSymbol, useStackApp, useUser } from "@hexclave/next";
+import { hexclaveAppInternalsSymbol, useStackApp, useUser } from "@hexclave/next";
 import { turnstileDevelopmentKeys } from "@hexclave/shared/dist/utils/turnstile";
 import { publishableClientKeyNotNecessarySentinel } from "@hexclave/shared/dist/utils/oauth";
 import { executeTurnstileInvisible, showTurnstileVisibleChallenge, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
@@ -48,7 +48,7 @@ function getDebugInternals(app: ReturnType<typeof useStackApp>): {
   sendRequest: (path: string, init: RequestInit) => Promise<Response>,
   signInWithTokens: (tokens: { accessToken: string, refreshToken: string }) => Promise<void>,
 } {
-  const candidate = app[stackAppInternalsSymbol];
+  const candidate = app[hexclaveAppInternalsSymbol];
   const sendRequest = Reflect.get(candidate, "sendRequest");
   const signInWithTokens = Reflect.get(candidate, "signInWithTokens");
 
@@ -300,7 +300,7 @@ export default function TurnstileSignupPageClient() {
   const sendRequest = internals.sendRequest;
   const signInWithTokens = internals.signInWithTokens;
   const apiUrl = getDemoApiUrl();
-  const oauthClientSecret = app[stackAppInternalsSymbol].toClientJson().publishableClientKey
+  const oauthClientSecret = app[hexclaveAppInternalsSymbol].toClientJson().publishableClientKey
     ?? process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
     ?? process.env.STACK_PUBLISHABLE_CLIENT_KEY
     ?? publishableClientKeyNotNecessarySentinel;

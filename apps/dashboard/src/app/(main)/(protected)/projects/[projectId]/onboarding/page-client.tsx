@@ -164,8 +164,8 @@ function EnableEmailVerificationDialog({
  * Restricted users are filtered from normal API responses until they complete verification. Same field also appears under **Auth Methods → Sign-up** card.
  */
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const projectConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
@@ -177,7 +177,7 @@ export default function PageClient() {
     try {
       if (checked && !projectConfig.onboarding.requireEmailVerification) {
         // any cast needed: previewAffectedUsersByOnboardingChange is a dynamically-typed admin API method
-        const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
+        const preview = await (hexclaveAdminApp as any).previewAffectedUsersByOnboardingChange(
           { requireEmailVerification: true },
           10,
         );
@@ -188,7 +188,7 @@ export default function PageClient() {
             totalAffectedCount: preview.totalAffectedCount,
             onConfirm: async () => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: { "onboarding.requireEmailVerification": true },
                 pushable: true,
               });
@@ -200,7 +200,7 @@ export default function PageClient() {
       }
 
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { "onboarding.requireEmailVerification": checked },
         pushable: true,
       });

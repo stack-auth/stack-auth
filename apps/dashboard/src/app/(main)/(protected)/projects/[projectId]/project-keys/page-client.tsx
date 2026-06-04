@@ -15,11 +15,11 @@ import { useAdminApp } from "../use-admin-app";
 
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const requirePublishableClientKey = config.project.requirePublishableClientKey;
-  const apiKeySets = stackAdminApp.useInternalApiKeys();
+  const apiKeySets = hexclaveAdminApp.useInternalApiKeys();
   const params = useSearchParams();
   const create = params.get("create") === "true";
 
@@ -82,7 +82,7 @@ function CreateDialog(props: {
   onKeyCreated?: (key: InternalApiKeyFirstView) => void,
   requirePublishableClientKey: boolean,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const params = useSearchParams();
   const defaultDescription = params.get("description");
 
@@ -103,7 +103,7 @@ function CreateDialog(props: {
     okButton={{ label: "Create" }}
     onSubmit={async (values) => {
       const expiresIn = parseInt(values.expiresIn);
-      const newKey = await stackAdminApp.createInternalApiKey({
+      const newKey = await hexclaveAdminApp.createInternalApiKey({
         hasPublishableClientKey: props.requirePublishableClientKey,
         hasSecretServerKey: true,
         hasSuperSecretAdminKey: false,
@@ -120,8 +120,8 @@ function ShowKeyDialog(props: {
   apiKey?: InternalApiKeyFirstView,
   onClose?: () => void,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   if (!props.apiKey) return null;
 
 

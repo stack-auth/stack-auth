@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  @apply border-border;
+  .hide-password-toggle::-ms-reveal,
+  .hide-password-toggle::-ms-clear {
+    visibility: hidden;
+    pointer-events: none;
+    display: none;
+  }
+}

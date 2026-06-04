@@ -277,10 +277,10 @@ jobs:
         run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
           EMULATOR_READY_TIMEOUT=600 \
-            node packages/stack-cli/dist/index.js emulator start
+            node packages/cli/dist/index.js emulator start
 
       - name: Verify services are healthy
-        run: node packages/stack-cli/dist/index.js emulator status
+        run: node packages/cli/dist/index.js emulator status
 
       - name: Smoke test — backend health
         run: curl -sf http://localhost:26701/health?db=1
@@ -296,7 +296,7 @@ jobs:
 
       - name: Stop emulator
         if: always()
-        run: node packages/stack-cli/dist/index.js emulator stop
+        run: node packages/cli/dist/index.js emulator stop
 
       - name: Print serial log on failure
         if: failure()

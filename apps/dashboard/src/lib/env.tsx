@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 
 
-export function expandStackPortPrefix(value?: string | null) {
+export function expandHexclavePortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   // Hexclave rebrand: port-prefix var renamed outright (no dual-read).
   const prefix = getPublicEnvVar("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX") ?? "81";
@@ -93,5 +93,5 @@ export function getPublicEnvVar(name: keyof typeof _inlineEnvVars): string | und
     return undefined;
   }
 
-  return name.startsWith('NEXT_PUBLIC_STACK_') ? expandStackPortPrefix(value) : value;
+  return name.startsWith('NEXT_PUBLIC_STACK_') ? expandHexclavePortPrefix(value) : value;
 }

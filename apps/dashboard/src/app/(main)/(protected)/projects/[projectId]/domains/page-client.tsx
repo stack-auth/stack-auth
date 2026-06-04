@@ -40,7 +40,7 @@ function EditDialog(props: {
     defaultHandlerPath: string,
   }
 )) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const updateConfig = useUpdateConfig();
 
   const domainFormSchema = yup.object({
@@ -148,14 +148,14 @@ function EditDialog(props: {
 
           // Domains are environment-level (contain URLs that may differ per environment)
           await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate,
             pushable: false,
           });
         } else {
           // Update existing domain
           await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate: {
               [`domains.trustedDomains.${props.editId}`]: {
                 baseUrl,
@@ -250,7 +250,7 @@ function DeleteDialog(props: {
   domainId: string,
   baseUrl: string,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const updateConfig = useUpdateConfig();
 
   return (
@@ -263,7 +263,7 @@ function DeleteDialog(props: {
         label: "Delete",
         onClick: async () => {
           await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate: {
               [`domains.trustedDomains.${props.domainId}`]: null,
             },
@@ -360,8 +360,8 @@ function DomainDataGrid({ domains }: { domains: DomainEntry[] }) {
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
@@ -373,7 +373,7 @@ export default function PageClient() {
   const handleLocalhostSave = async () => {
     if (localAllowLocalhost !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: {
           'domains.allowLocalhost': localAllowLocalhost,
         },

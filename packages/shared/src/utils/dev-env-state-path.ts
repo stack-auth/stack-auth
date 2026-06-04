@@ -1,0 +1,14 @@
+import { homedir } from "os";
+import { join } from "path";
+
+export function defaultHexclaveDevEnvStatePath(): string {
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local");
+    return join(localAppData, "Hexclave", "dev-envs.json");
+  }
+  return join(homedir(), ".stack", "dev-envs.json");
+}
+
+export function hexclaveDevEnvStatePath(): string {
+  return process.env.STACK_DEV_ENVS_PATH ?? defaultHexclaveDevEnvStatePath();
+}

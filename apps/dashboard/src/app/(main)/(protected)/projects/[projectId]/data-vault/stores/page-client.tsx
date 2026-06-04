@@ -50,8 +50,8 @@ import { useAdminApp } from "../../use-admin-app";
  * [Data Vault](https://docs.hexclave.com/docs/apps/data-vault)
  */
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const router = useRouter();
   const updateConfig = useUpdateConfig();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -79,7 +79,7 @@ export default function PageClient() {
     }
 
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`dataVault.stores.${newStoreId}`]: {
           displayName: newStoreDisplayName.trim() || `Store ${newStoreId}`,

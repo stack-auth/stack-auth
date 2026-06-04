@@ -1,6 +1,6 @@
 // IF_PLATFORM js-like
 
-import type { StackClientApp } from "../lib/stack-app";
+import type { StackClientApp } from "../lib/hexclave-app";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
@@ -86,9 +86,9 @@ function tryMount() {
  * - Returns a cleanup function to unmount
  *
  * Console commands (also work in production):
- *   StackDevTool.enable()  — force-show the dev tool
- *   StackDevTool.disable() — force-hide the dev tool
- *   StackDevTool.reset()   — revert to default (localhost-only)
+ *   HexclaveDevTool.enable()  — force-show the dev tool
+ *   HexclaveDevTool.disable() — force-hide the dev tool
+ *   HexclaveDevTool.reset()   — revert to default (localhost-only)
  */
 export function mountDevTool(app: StackClientApp<true>): () => void {
   activeApp = app;
@@ -108,10 +108,10 @@ export function mountDevTool(app: StackClientApp<true>): () => void {
   };
 }
 
-// Expose console commands: StackDevTool.enable() / .disable() / .reset()
+// Expose console commands: HexclaveDevTool.enable() / .disable() / .reset()
 if (typeof window !== 'undefined') {
   // Hexclave rebrand: expose under both the legacy and new global names.
-  (window as any).HexclaveDevTool = (window as any).StackDevTool = {
+  (window as any).HexclaveDevTool = (window as any).HexclaveDevTool = {
     enable() {
       try {
         localStorage.setItem(OVERRIDE_KEY, 'true');

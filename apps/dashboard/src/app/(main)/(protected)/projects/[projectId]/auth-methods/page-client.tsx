@@ -189,8 +189,8 @@ function adminProviderToConfigProvider(
 }
 
 function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const oauthProviders = project.config.oauthProviders;
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
@@ -224,7 +224,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             provider={provider}
             updateProvider={async (provider) => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: {
                   [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, config.auth.oauth.providers[provider.id]),
                 },
@@ -233,7 +233,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             }}
             deleteProvider={async (id) => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: {
                   [`auth.oauth.providers.${id}`]: null,
                 },
@@ -254,15 +254,15 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
 // ─── Provider action menu (dots) ──────────────────────────────────────────
 
 function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
-  const stackAdminApp = useAdminApp();
-  const completeConfig = stackAdminApp.useProject().useConfig();
+  const hexclaveAdminApp = useAdminApp();
+  const completeConfig = hexclaveAdminApp.useProject().useConfig();
   const updateConfig = useUpdateConfig();
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
   const updateProvider = async (provider: AdminOAuthProviderConfig) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, completeConfig.auth.oauth.providers[provider.id]),
       },
@@ -272,7 +272,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
 
   const deleteProvider = async (id: string) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.oauth.providers.${id}`]: null,
       },
@@ -453,8 +453,8 @@ type PendingChange = {
 };
 
 function useEmailVerificationToggle() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const projectConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
@@ -464,7 +464,7 @@ function useEmailVerificationToggle() {
   const handleChange = async (next: boolean) => {
     if (next && !projectConfig.onboarding.requireEmailVerification) {
       // any cast needed: previewAffectedUsersByOnboardingChange is a dynamically-typed admin API method
-      const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
+      const preview = await (hexclaveAdminApp as any).previewAffectedUsersByOnboardingChange(
         { requireEmailVerification: true },
         10,
       );
@@ -474,7 +474,7 @@ function useEmailVerificationToggle() {
           totalAffectedCount: preview.totalAffectedCount,
           onConfirm: async () => {
             await updateConfig({
-              adminApp: stackAdminApp,
+              adminApp: hexclaveAdminApp,
               configUpdate: { "onboarding.requireEmailVerification": true },
               pushable: true,
             });
@@ -485,7 +485,7 @@ function useEmailVerificationToggle() {
       }
     }
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { "onboarding.requireEmailVerification": next },
       pushable: true,
     });
@@ -567,8 +567,8 @@ function useEmailVerificationToggle() {
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const oauthProviders = project.config.oauthProviders;
   const updateConfig = useUpdateConfig();
@@ -602,7 +602,7 @@ export default function PageClient() {
     if (localPasskeyEnabled !== undefined) {
       configUpdate['auth.passkey.allowSignIn'] = localPasskeyEnabled;
     }
-    await updateConfig({ adminApp: stackAdminApp, configUpdate, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     setLocalPasswordEnabled(undefined);
     setLocalOtpEnabled(undefined);
     setLocalPasskeyEnabled(undefined);
@@ -637,7 +637,7 @@ export default function PageClient() {
 
     if (localMergeStrategy !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { 'auth.oauth.accountMergeStrategy': localMergeStrategy },
         pushable: true,
       });
@@ -656,7 +656,7 @@ export default function PageClient() {
     if (localMergeStrategy !== undefined) {
       configUpdate['auth.oauth.accountMergeStrategy'] = localMergeStrategy;
     }
-    await updateConfig({ adminApp: stackAdminApp, configUpdate, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     setLocalAllowSignUp(undefined);
     setLocalMergeStrategy(undefined);
   };
@@ -669,7 +669,7 @@ export default function PageClient() {
   const handleUserDeletionSave = async () => {
     if (localAllowClientDeletion !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { 'users.allowClientUserDeletion': localAllowClientDeletion },
         pushable: true,
       });

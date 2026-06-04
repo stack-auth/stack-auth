@@ -5,12 +5,12 @@ import { Typography } from "@hexclave/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
-import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
+import type { StackClientApp } from "../lib/hexclave-app/apps/interfaces/client-app";
 import { useStackApp } from "../lib/hooks";
 
 async function postCliAuthComplete(app: StackClientApp, body: Record<string, unknown>) {
-  return await app[stackAppInternalsSymbol].sendRequest("/auth/cli/complete", {
+  return await app[hexclaveAppInternalsSymbol].sendRequest("/auth/cli/complete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -165,7 +165,7 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
         if (!accessToken || !refreshToken) {
           throw new Error("Anonymous CLI session claim did not return tokens");
         }
-        await app[stackAppInternalsSymbol].signInWithTokens({
+        await app[hexclaveAppInternalsSymbol].signInWithTokens({
           accessToken,
           refreshToken,
         });

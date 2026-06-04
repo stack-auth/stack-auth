@@ -34,11 +34,11 @@ function EditDialog(props: {
   selectedPermissionId: string,
   permissionType: PermissionType,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const refetchPermissions = useContext(RefetchPermissionsContext);
   const permissions = props.permissionType === 'project'
-    ? stackAdminApp.useProjectPermissionDefinitions()
-    : stackAdminApp.useTeamPermissionDefinitions();
+    ? hexclaveAdminApp.useProjectPermissionDefinitions()
+    : hexclaveAdminApp.useTeamPermissionDefinitions();
 
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
@@ -81,9 +81,9 @@ function EditDialog(props: {
     okButton={{ label: "Save" }}
     onSubmit={async (values) => {
       if (props.permissionType === 'project') {
-        await stackAdminApp.updateProjectPermissionDefinition(props.selectedPermissionId, values);
+        await hexclaveAdminApp.updateProjectPermissionDefinition(props.selectedPermissionId, values);
       } else {
-        await stackAdminApp.updateTeamPermissionDefinition(props.selectedPermissionId, values);
+        await hexclaveAdminApp.updateTeamPermissionDefinition(props.selectedPermissionId, values);
       }
       refetchPermissions();
     }}
@@ -97,7 +97,7 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
   onOpenChange: (open: boolean) => void,
   permissionType: PermissionType,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const refetchPermissions = useContext(RefetchPermissionsContext);
 
   return <ActionDialog
@@ -108,9 +108,9 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
     cancelButton
     okButton={{ label: "Delete Permission", onClick: async () => {
       if (props.permissionType === 'project') {
-        await stackAdminApp.deleteProjectPermissionDefinition(props.permission.id);
+        await hexclaveAdminApp.deleteProjectPermissionDefinition(props.permission.id);
       } else {
-        await stackAdminApp.deleteTeamPermissionDefinition(props.permission.id);
+        await hexclaveAdminApp.deleteTeamPermissionDefinition(props.permission.id);
       }
       refetchPermissions();
     } }}
@@ -226,7 +226,7 @@ export function PermissionTable(props: {
   permissionType: PermissionType,
   version?: number,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const columns = useMemo(
     () => createColumns<AdminPermissionDefinition>(props.permissionType),
     [props.permissionType],
@@ -251,7 +251,7 @@ export function PermissionTable(props: {
       if (props.permissionType === 'project') {
         // Project permission definitions are expected to be a small set, so we
         // fetch them all and filter on the client.
-        const all = await stackAdminApp.listProjectPermissionDefinitions();
+        const all = await hexclaveAdminApp.listProjectPermissionDefinitions();
         const filtered = search
           ? all.filter((p) => {
             const haystack = `${p.id} ${p.description ?? ""}`.toLowerCase();
@@ -262,7 +262,7 @@ export function PermissionTable(props: {
         return;
       }
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
-      const result = await stackAdminApp.listTeamPermissionDefinitionsPaginated({ limit: PAGE_SIZE, cursor, query: search });
+      const result = await hexclaveAdminApp.listTeamPermissionDefinitionsPaginated({ limit: PAGE_SIZE, cursor, query: search });
       yield {
         rows: result.items,
         hasMore: result.nextCursor != null,
@@ -270,7 +270,7 @@ export function PermissionTable(props: {
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetchKey resets pagination after mutations
-    [stackAdminApp, props.permissionType, refetchKey],
+    [hexclaveAdminApp, props.permissionType, refetchKey],
   );
 
   const getRowId = useCallback((row: AdminPermissionDefinition) => row.id, []);

@@ -65,8 +65,8 @@ function getDateMeta(value: Date | string | null | undefined, emptyLabel: string
 
 function TeamMemberUserCell(props: { user: ExtendedServerUserForTeam }) {
   const { user } = props;
-  const stackAdminApp = useAdminApp();
-  const profileUrl = `/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
+  const hexclaveAdminApp = useAdminApp();
+  const profileUrl = `/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
   const fallback = user.displayName?.charAt(0) ?? user.primaryEmail?.charAt(0) ?? "?";
   const displayName = user.displayName ?? user.primaryEmail ?? "Unnamed user";
 
@@ -185,8 +185,8 @@ function EditPermissionDialog(props: {
   onOpenChange: (open: boolean) => void,
   onSubmit: () => void,
 }) {
-  const stackAdminApp = useAdminApp();
-  const permissions = stackAdminApp.useTeamPermissionDefinitions();
+  const hexclaveAdminApp = useAdminApp();
+  const permissions = hexclaveAdminApp.useTeamPermissionDefinitions();
 
   const currentPermissions = props.user.permissions ?? [];
   const formSchema = yup.object({
@@ -286,7 +286,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 export function TeamMemberTable(props: { team: ServerTeam }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [updateCounter, setUpdateCounter] = useState(0);
   const [permissions, setPermissions] = useState<Map<string, string[] | null>>(new Map());
   const permissionRequestIdRef = useRef(0);
@@ -404,7 +404,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
       // out in parallel — they're independent and the bulk fetch is
       // cached across pages of the same team.
       const [result, permsResult] = await Promise.allSettled([
-        stackAdminApp.listUsers({
+        hexclaveAdminApp.listUsers({
           limit: PAGE_SIZE,
           teamId: props.team.id,
           orderBy: "lastActiveAt",
@@ -415,7 +415,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
           includeRestricted: true,
         }),
         withTimeout(
-          stackAdminApp.listTeamMemberPermissions(props.team.id, { recursive: false }),
+          hexclaveAdminApp.listTeamMemberPermissions(props.team.id, { recursive: false }),
           PERMISSION_FETCH_TIMEOUT_MS,
           `listTeamMemberPermissions(${props.team.id})`,
         ),
@@ -456,7 +456,7 @@ export function TeamMemberTable(props: { team: ServerTeam }) {
       };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- updateCounter forces refetch after permission edits
-    [stackAdminApp, props.team, updateCounter],
+    [hexclaveAdminApp, props.team, updateCounter],
   );
 
   const getRowId = useCallback((row: ExtendedServerUserForTeam) => row.id, []);

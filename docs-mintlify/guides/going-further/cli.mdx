@@ -1,18 +1,20 @@
 ---
-title: "Stack CLI"
+title: "Hexclave CLI"
 description: "Use the Hexclave CLI to initialize projects, manage config, and run admin scripts"
-sidebarTitle: "Stack CLI"
+sidebarTitle: "Hexclave CLI"
 ---
 
-import { HexclaveAgentReminders } from "/snippets/hexclave-agent-reminders.jsx";
+import { hexclaveAgentRemindersText } from "/snippets/hexclave-agent-reminders.jsx";
 
-<HexclaveAgentReminders />
+<Visibility for="agents">
+{hexclaveAgentRemindersText}
+</Visibility>
 
-The Hexclave CLI is published as `@hexclave/cli` and exposes the `stack` command. Use it for project setup, branch config workflows, and quick admin scripts.
+The Hexclave CLI is published as `@hexclave/cli` and exposes the `hexclave` command. Use it for project setup, branch config workflows, and quick admin scripts.
 
 ## Install
 
-Install the CLI globally to use the `stack` command from any project:
+Install the CLI globally to use the `hexclave` command from any project:
 
 ```sh title="Terminal"
 npm install -g @hexclave/cli@latest
@@ -21,7 +23,7 @@ npm install -g @hexclave/cli@latest
 Then check that it is available:
 
 ```sh title="Terminal"
-stack --help
+hexclave --help
 ```
 
 You can also run any command without installing globally by prefixing it with `npx @hexclave/cli@latest`, for example:
@@ -47,19 +49,19 @@ The CLI reads Hexclave endpoints from `STACK_API_URL` and `STACK_DASHBOARD_URL`.
 Log in with a browser:
 
 ```sh title="Terminal"
-stack login
+hexclave login
 ```
 
 This stores `STACK_CLI_REFRESH_TOKEN` in the CLI credentials file. You can also provide it through the environment, which is useful in CI.
 
 ```sh title="Terminal"
-STACK_CLI_REFRESH_TOKEN=<refresh-token> stack project list
+STACK_CLI_REFRESH_TOKEN=<refresh-token> hexclave project list
 ```
 
 Log out by removing the saved refresh token:
 
 ```sh title="Terminal"
-stack logout
+hexclave logout
 ```
 
 If you have an anonymous CLI session that should be linked during login, set `STACK_CLI_ANON_REFRESH_TOKEN` before running `login`.
@@ -69,7 +71,7 @@ If you have an anonymous CLI session that should be linked during login, set `ST
 Run the interactive setup wizard:
 
 ```sh title="Terminal"
-stack init
+hexclave init
 ```
 
 The wizard can create a cloud project, create a local config file, or link an existing project. In interactive terminals, it can run an agent to apply the setup changes to your app. Use `--no-agent` to print manual setup instructions instead.
@@ -80,10 +82,10 @@ Use `--mode` to skip prompts:
 
 | Command | What it does |
 | --- | --- |
-| `stack init --mode create --apps authentication,teams` | Create `stack.config.ts` for local config-driven development. |
-| `stack init --mode create-cloud` | Create a new Hexclave Cloud project and write keys to `.env`. |
-| `stack init --mode link-config --config-file ./stack.config.ts` | Link setup instructions to an existing local config file. |
-| `stack init --mode link-cloud --select-project-id <id>` | Write keys for an existing cloud project to `.env`. |
+| `hexclave init --mode create --apps authentication,teams` | Create `stack.config.ts` for local config-driven development. |
+| `hexclave init --mode create-cloud` | Create a new Hexclave Cloud project and write keys to `.env`. |
+| `hexclave init --mode link-config --config-file ./stack.config.ts` | Link setup instructions to an existing local config file. |
+| `hexclave init --mode link-cloud --select-project-id <id>` | Write keys for an existing cloud project to `.env`. |
 
 Other useful flags:
 
@@ -100,19 +102,19 @@ Other useful flags:
 List projects owned by the logged-in user:
 
 ```sh title="Terminal"
-stack project list
+hexclave project list
 ```
 
 Create a project:
 
 ```sh title="Terminal"
-stack project create --display-name "My App"
+hexclave project create --display-name "My App"
 ```
 
 Use `--json` when you want machine-readable output:
 
 ```sh title="Terminal"
-stack --json project list
+hexclave --json project list
 ```
 
 ## Config commands
@@ -120,7 +122,7 @@ stack --json project list
 Pull branch config into a local TypeScript config file:
 
 ```sh title="Terminal"
-stack --project-id <project-id> config pull --config-file ./stack.config.ts
+hexclave --project-id <project-id> config pull --config-file ./stack.config.ts
 ```
 
 By default, `config pull` refuses to overwrite an existing file. Add `--overwrite` when that is intended.
@@ -128,23 +130,23 @@ By default, `config pull` refuses to overwrite an existing file. Add `--overwrit
 Push a local config file to branch config:
 
 ```sh title="Terminal"
-stack --project-id <project-id> config push --config-file ./stack.config.ts
+hexclave --project-id <project-id> config push --config-file ./stack.config.ts
 ```
 
-`config pull` requires `stack login`. `config push` supports either `stack login` or `STACK_SECRET_SERVER_KEY`.
+`config pull` requires `hexclave login`. `config push` supports either `hexclave login` or `STACK_SECRET_SERVER_KEY`.
 
 When running in GitHub Actions, `config push` records `GITHUB_REPOSITORY`, `GITHUB_REF_NAME`, `GITHUB_SHA`, and the config file path as the config source when those environment variables are available.
 
 ## Execute admin JavaScript
 
-`stack exec` runs JavaScript with a preconfigured `HexclaveServerApp` available as `stackServerApp`.
+`hexclave exec` runs JavaScript with a preconfigured `HexclaveServerApp` available as `hexclaveServerApp`.
 
 ```sh title="Terminal"
-stack --project-id <project-id> exec "return await stackServerApp.listUsers()"
+hexclave --project-id <project-id> exec "return await hexclaveServerApp.listUsers()"
 ```
 
 The JavaScript is executed as an async function. Return values are printed as formatted JSON; `undefined` prints nothing.
 
 <Warning>
-  `stack exec` has server-level access to the selected project. It requires `stack login` and intentionally rejects `STACK_SECRET_SERVER_KEY` auth.
+  `hexclave exec` has server-level access to the selected project. It requires `hexclave login` and intentionally rejects `STACK_SECRET_SERVER_KEY` auth.
 </Warning>

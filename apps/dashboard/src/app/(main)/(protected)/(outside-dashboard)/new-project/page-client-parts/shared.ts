@@ -1,4 +1,4 @@
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { AdminOwnedProject } from "@hexclave/next";
 import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
@@ -37,7 +37,7 @@ export type ProjectOnboardingState = {
   selected_payments_country: OnboardingPaymentsCountry,
 };
 
-export type StackAppInternals = {
+export type HexclaveAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
   refreshOwnedProjects: () => Promise<void>,
 };
@@ -125,7 +125,7 @@ export function createProjectOnboardingState(options: {
   }, { developmentEnvironment: options.developmentEnvironment });
 }
 
-export function isStackAppInternals(value: unknown): value is StackAppInternals {
+export function isStackAppInternals(value: unknown): value is HexclaveAppInternals {
   return (
     value != null
     && typeof value === "object"
@@ -136,12 +136,12 @@ export function isStackAppInternals(value: unknown): value is StackAppInternals 
   );
 }
 
-export function getStackAppInternals(appValue: unknown): StackAppInternals {
+export function getStackAppInternals(appValue: unknown): HexclaveAppInternals {
   if (appValue == null || typeof appValue !== "object") {
     throw new Error("The Stack app instance is unavailable.");
   }
 
-  const internals = Reflect.get(appValue, stackAppInternalsSymbol);
+  const internals = Reflect.get(appValue, hexclaveAppInternalsSymbol);
   if (!isStackAppInternals(internals)) {
     throw new Error("The Stack client app cannot send internal requests.");
   }

@@ -64,7 +64,7 @@ export function ExportUsersDialog(props: {
   exportOptions?: ExportOptions,
 }) {
   const { trigger, exportOptions } = props;
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [scope, setScope] = useState<ExportScope>("all");
@@ -102,7 +102,7 @@ export function ExportUsersDialog(props: {
     try {
       // Fetch all users
       const allUsers = await fetchAllUsers(
-        stackAdminApp,
+        hexclaveAdminApp,
         scope === "filtered" ? exportOptions : undefined
       );
 
@@ -262,7 +262,7 @@ export function ExportUsersDialog(props: {
 }
 
 async function fetchAllUsers(
-  stackAdminApp: ReturnType<typeof useAdminApp>,
+  hexclaveAdminApp: ReturnType<typeof useAdminApp>,
   options?: ExportOptions
 ): Promise<ServerUser[]> {
   const allUsers: ServerUser[] = [];
@@ -270,7 +270,7 @@ async function fetchAllUsers(
   const limit = 100; // Fetch in batches of 100
 
   do {
-    const listUsersOptions: Parameters<typeof stackAdminApp.listUsers>[0] = {
+    const listUsersOptions: Parameters<typeof hexclaveAdminApp.listUsers>[0] = {
       limit,
       cursor,
       query: options?.search,
@@ -281,7 +281,7 @@ async function fetchAllUsers(
     if (options?.onlyAnonymous) {
       Object.assign(listUsersOptions, { onlyAnonymous: true });
     }
-    const batch = await stackAdminApp.listUsers(listUsersOptions);
+    const batch = await hexclaveAdminApp.listUsers(listUsersOptions);
 
     allUsers.push(...batch);
     cursor = batch.nextCursor ?? undefined;

@@ -63,8 +63,8 @@ import {
  * Verify payloads server-side with your webhook secret — [Webhooks](https://docs.hexclave.com/docs/apps/webhooks).
  */
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const svixToken = stackAdminApp.useSvixToken();
+  const hexclaveAdminApp = useAdminApp();
+  const svixToken = hexclaveAdminApp.useSvixToken();
   const { resolvedTheme } = useTheme();
   const [updateCounter, setUpdateCounter] = useState(0);
   const [testDialogEndpoint, setTestDialogEndpoint] = useState<Endpoint | null>(null);
@@ -90,7 +90,7 @@ export default function PageClient() {
           <SvixProvider
             key={updateCounter}
             token={svixToken.token}
-            appId={stackAdminApp.projectId}
+            appId={hexclaveAdminApp.projectId}
             options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
           >
             <Endpoints
@@ -314,14 +314,14 @@ function DeleteDialog(props: {
 }
 
 function TestEndpointDialog(props: { endpoint: Endpoint, open: boolean, onOpenChange: (open: boolean) => void }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const previewPayload = useMemo(() => JSON.stringify({
     type: "stack.test",
     data: {
-      message: "Stack webhook test event triggered from the Stack dashboard.",
+      message: "Hexclave webhook test event triggered from the Hexclave dashboard.",
       endpointUrl: props.endpoint.url,
     },
   }, null, 2), [props.endpoint.url]);
@@ -335,7 +335,7 @@ function TestEndpointDialog(props: { endpoint: Endpoint, open: boolean, onOpenCh
     setStatus('sending');
     setErrorMessage(null);
 
-    const result = await stackAdminApp.sendTestWebhook({ endpointId: props.endpoint.id });
+    const result = await hexclaveAdminApp.sendTestWebhook({ endpointId: props.endpoint.id });
     if (result.status === 'ok') {
       setStatus('success');
       return;

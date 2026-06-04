@@ -10,20 +10,20 @@ import { MessageCard, StackClientApp, useStackApp, useUser } from "..";
 import { PredefinedMessageCard } from "../components/message-cards/predefined-message-card";
 import { useTranslation } from "../lib/translations";
 
-const cachedVerifyInvitation = cacheFunction(async (stackApp: StackClientApp<true>, code: string) => {
-  return await stackApp.verifyTeamInvitationCode(code);
+const cachedVerifyInvitation = cacheFunction(async (hexclaveApp: StackClientApp<true>, code: string) => {
+  return await hexclaveApp.verifyTeamInvitationCode(code);
 });
 
-const cachedGetInvitationDetails = cacheFunction(async (stackApp: StackClientApp<true>, code: string) => {
-  return await stackApp.getTeamInvitationDetails(code);
+const cachedGetInvitationDetails = cacheFunction(async (hexclaveApp: StackClientApp<true>, code: string) => {
+  return await hexclaveApp.getTeamInvitationDetails(code);
 });
 
 function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<string, string> }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [success, setSuccess] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-  const details = use(cachedGetInvitationDetails(stackApp, props.searchParams.code || ''));
+  const details = use(cachedGetInvitationDetails(hexclaveApp, props.searchParams.code || ''));
 
   if (errorMessage || details.status === 'error') {
     return (
@@ -37,7 +37,7 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
         title={t('Team invitation')}
         fullPage={props.fullPage}
         primaryButtonText="Go home"
-        primaryAction={() => stackApp.redirectToHome()}
+        primaryAction={() => hexclaveApp.redirectToHome()}
       >
         <Typography>You have successfully joined {details.data.teamDisplayName}</Typography>
       </MessageCard>
@@ -51,7 +51,7 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
       fullPage={props.fullPage}
       primaryButtonText={t('Join')}
       primaryAction={() => runAsynchronouslyWithAlert(async () => {
-        const result = await stackApp.acceptTeamInvitation(props.searchParams.code || '');
+        const result = await hexclaveApp.acceptTeamInvitation(props.searchParams.code || '');
         if (result.status === 'error') {
         setErrorMessage(result.error.message);
         } else {
@@ -59,7 +59,7 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
         }
       })}
       secondaryButtonText={t('Ignore')}
-      secondaryAction={() => stackApp.redirectToHome()}
+      secondaryAction={() => hexclaveApp.redirectToHome()}
     >
       <Typography>You are invited to join {details.data.teamDisplayName}</Typography>
     </MessageCard>
@@ -70,7 +70,7 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
   const { t } = useTranslation();
   // Include restricted users to detect if user needs to complete onboarding
   const user = useUser({ includeRestricted: true });
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
 
   const invalidJsx = (
     <MessageCard title={t('Invalid Team Invitation Link')} fullPage={fullPage}>
@@ -101,9 +101,9 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
         title={t('Team invitation')}
         fullPage={fullPage}
         primaryButtonText={t('Sign in')}
-        primaryAction={() => stackApp.redirectToSignIn()}
+        primaryAction={() => hexclaveApp.redirectToSignIn()}
         secondaryButtonText={t('Cancel')}
-        secondaryAction={() => stackApp.redirectToHome()}
+        secondaryAction={() => hexclaveApp.redirectToHome()}
       >
         <Typography>{t('Sign in or create an account to join the team.')}</Typography>
       </MessageCard>
@@ -117,16 +117,16 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
         title={t('Complete your account setup')}
         fullPage={fullPage}
         primaryButtonText={t('Complete setup')}
-        primaryAction={() => stackApp.redirectToOnboarding()}
+        primaryAction={() => hexclaveApp.redirectToOnboarding()}
         secondaryButtonText={t('Cancel')}
-        secondaryAction={() => stackApp.redirectToHome()}
+        secondaryAction={() => hexclaveApp.redirectToHome()}
       >
         <Typography>{t('Please complete your account setup before joining teams.')}</Typography>
       </MessageCard>
     );
   }
 
-  const verificationResult = use(cachedVerifyInvitation(stackApp, searchParams.code || ''));
+  const verificationResult = use(cachedVerifyInvitation(hexclaveApp, searchParams.code || ''));
 
   if (verificationResult.status === 'error') {
     const error = verificationResult.error;
