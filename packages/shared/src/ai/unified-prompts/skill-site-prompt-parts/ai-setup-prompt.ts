@@ -817,7 +817,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isMaybeNextjs ? deindent`
-            ${!isDefinitelyNextjs ? "For Next.js specifically: " : ""}You can do this in the \`layout.tsx\` file in the \`app\` directory. The root layout must render the \`<html>\` and \`<body>\` tags, and \`HexclaveProvider\`/\`HexclaveTheme\` must go *inside* \`<body>\` — do not wrap the \`<html>\` tag with them, or the theme's hoisted \`<style>\` will render outside the document and React will throw:
+            ${!isDefinitelyNextjs ? "For Next.js specifically: " : ""}You can do this in the \`layout.tsx\` file in the \`app\` directory. The root layout must render the \`<html>\` and \`<body>\` tags, and \`HexclaveProvider\`/\`HexclaveTheme\` must go *inside* \`<body>\` — do not wrap the \`<html>\` tag with them, or the theme's hoisted \`<style>\` will render outside the document and React will throw an error. Here is the correct setup:
 
             \`\`\`tsx src/app/layout.tsx
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
