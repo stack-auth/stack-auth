@@ -490,6 +490,7 @@ export function sanitizeUserSpecifiedId(input: string): string {
 }
 
 export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(USER_SPECIFIED_ID_MAX_LENGTH).matches(USER_SPECIFIED_ID_PATTERN, getUserSpecifiedIdErrorMessage(idName));
+
 /**
  * Validates that a value is a decimal string like `"9.99"` or `"1000"` (see `MoneyAmount`).
  *
