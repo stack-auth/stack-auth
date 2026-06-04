@@ -9,7 +9,7 @@ sidebarTitle: "hexclave.config.ts"
 The file exports a static `config` object:
 
 ```ts title="hexclave.config.ts"
-import type { HexclaveConfig } from "@hexclave/js";
+import type { HexclaveConfig } from "@hexclave/js/config";
 
 export const config: HexclaveConfig = {
   auth: {
@@ -26,6 +26,22 @@ export const config: HexclaveConfig = {
     },
   },
 };
+```
+
+<Note>
+  Always import config helpers from the package's lightweight `/config` entrypoint (e.g. `@hexclave/js/config`, `@hexclave/next/config`) rather than the package root. The `/config` entrypoint contains no framework runtime code, so tooling such as the local dashboard can load your config file in a plain Node context. Importing `defineHexclaveConfig` (or the `HexclaveConfig` type) from the package root instead would pull in the entire SDK and fail to load.
+</Note>
+
+To get type-checking and editor autocomplete for your config object, wrap it with `defineHexclaveConfig`:
+
+```ts title="hexclave.config.ts"
+import { defineHexclaveConfig } from "@hexclave/js/config";
+
+export const config = defineHexclaveConfig({
+  auth: {
+    allowSignUp: true,
+  },
+});
 ```
 
 If you are running Hexclave with a [local dashboard](/guides/going-further/local-vs-cloud-dashboard), you already have a `hexclave.config.ts` file, and any changes you make on the dashboard will automatically be synced to the config file.

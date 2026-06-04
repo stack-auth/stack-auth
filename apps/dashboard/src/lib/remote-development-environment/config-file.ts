@@ -62,7 +62,15 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
     };
   }
 
-  const configModule = await jiti.import<unknown>(configFilePath);
+  let configModule: unknown;
+  try {
+    configModule = await jiti.import<unknown>(configFilePath);
+  } catch (error) {
+    throw new Error(
+      `Failed to load config file ${configFilePath}. If your config imports a value (e.g. defineHexclaveConfig) from a framework package such as "@hexclave/next", import it from that package's lightweight "/config" entrypoint instead, which doesn't load the framework runtime:\n\n  import { defineHexclaveConfig } from "@hexclave/next/config";\n`,
+      { cause: error },
+    );
+  }
   if (!isConfigModule(configModule)) {
     throw new Error(`Invalid config in ${configFilePath}. The file must export a plain \`config\` object or "show-onboarding".`);
   }
