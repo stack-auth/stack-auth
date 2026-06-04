@@ -23,6 +23,7 @@ const repoRoot = resolve(demoRoot, "../..");
 const LOG_PREFIX = "[Hexclave dev-retry] ";
 const RETRY_DEBOUNCE_MS = 2_000;
 const RETRY_TIMEOUT_MS = 5_000;
+const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
 
 let cliChild;
 
@@ -52,6 +53,9 @@ function runCliDev() {
       env: {
         ...process.env,
         HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "pnpm --dir apps/dashboard run dev",
+        STACK_API_URL: `http://localhost:${portPrefix}02`,
+        STACK_DASHBOARD_URL: `http://localhost:${portPrefix}01`,
+        STACK_CLI_PUBLISHABLE_CLIENT_KEY: "this-publishable-client-key-is-for-local-development-only",
         STACK_CLI_NO_AUTO_UPDATE: "1",
       },
     });
