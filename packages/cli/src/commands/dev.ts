@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "child_process";
+import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
@@ -43,6 +43,8 @@ const DASHBOARD_START_TIMEOUT_MS = 60_000;
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
+const DEV_DASHBOARD_COMMAND_ENV_VAR = "HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND";
+const DEV_DASHBOARD_DIST_DIR_ENV_VAR = "HEXCLAVE_DASHBOARD_NEXT_DIST_DIR";
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
@@ -107,6 +109,11 @@ function dashboardPort(): number {
 
 function dashboardUrl(port = dashboardPort()): string {
   return `http://127.0.0.1:${port}`;
+}
+
+export function devDashboardCommandFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  const command = env[DEV_DASHBOARD_COMMAND_ENV_VAR]?.trim();
+  return command == null || command.length === 0 ? undefined : command;
 }
 
 function normalizeApiBaseUrl(apiBaseUrl: string): string {
@@ -340,6 +347,47 @@ export function processExists(pid: number): boolean {
   }
 }
 
+function signalDashboardProcess(pid: number, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-pid, signal);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+        throw error;
+      }
+    }
+  }
+
+  process.kill(pid, signal);
+}
+
+function startDashboardProcess(options: {
+  dashboardEnv: NodeJS.ProcessEnv,
+  logFd: number,
+  port: number,
+}): ChildProcess {
+  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
+  if (devDashboardCommand != null) {
+    writeSync(options.logFd, `Using ${DEV_DASHBOARD_COMMAND_ENV_VAR}: ${devDashboardCommand}\n`);
+    return spawn(devDashboardCommand, {
+      cwd: process.cwd(),
+      detached: true,
+      env: options.dashboardEnv,
+      shell: true,
+      stdio: ["ignore", options.logFd, options.logFd],
+    });
+  }
+
+  const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port);
+  return spawn(process.execPath, [dashboardServerPath], {
+    cwd: resolve(dirname(dashboardServerPath), "../.."),
+    detached: true,
+    stdio: ["ignore", options.logFd, options.logFd],
+    env: options.dashboardEnv,
+  });
+}
+
 // Terminate the background dashboard recorded for `port` in dev-env state and
 // wait until the port stops answering, so a fresh (newer) dashboard can rebind
 // without EADDRINUSE.
@@ -349,7 +397,7 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   if (!processExists(pid)) return;
 
   try {
-    process.kill(pid, "SIGTERM");
+    signalDashboardProcess(pid, "SIGTERM");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     // ESRCH: already gone. EPERM: the pid was recycled onto a process we don't
@@ -374,7 +422,7 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   // still holding the port, so the recorded pid is necessarily still valid;
   // force it down, then wait for the socket to be released.
   try {
-    process.kill(pid, "SIGKILL");
+    signalDashboardProcess(pid, "SIGKILL");
   } catch {
     // best-effort
   }
@@ -400,11 +448,13 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   }
 
   const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
+  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   const dashboardEnv = {
     ...process.env,
-    NODE_ENV: "production",
+    NODE_ENV: devDashboardCommand == null ? "production" : "development",
     PORT: String(options.port),
     HOSTNAME: "0.0.0.0",
+    [DEV_DASHBOARD_DIST_DIR_ENV_VAR]: process.env[DEV_DASHBOARD_DIST_DIR_ENV_VAR] ?? ".next-development-environment",
     STACK_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_STACK_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_BROWSER_STACK_API_URL: options.apiBaseUrl,
@@ -420,7 +470,6 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     [DASHBOARD_PORT_ENV_VAR]: String(options.port),
   };
   try {
-    const dashboardServerPath = prepareDashboardRuntime(dashboardEnv, options.port);
     const logPath = dashboardLogPath(options.port);
     mkdirSync(dirname(logPath), { recursive: true });
     const logFd = openSync(logPath, "a", 0o600);
@@ -428,12 +477,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     writeSync(logFd, `\n[${new Date().toISOString()}] Starting Hexclave development-environment dashboard on ${url}\n`);
     const child = (() => {
       try {
-        return spawn(process.execPath, [dashboardServerPath], {
-          cwd: resolve(dirname(dashboardServerPath), "../.."),
-          detached: true,
-          stdio: ["ignore", logFd, logFd],
-          env: dashboardEnv,
-        });
+        return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
       } finally {
         closeSync(logFd);
       }
