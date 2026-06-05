@@ -243,7 +243,7 @@ export function createVerificationCodeHandler<
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
       if (callbackUrl !== undefined && !validateRedirectUrl(callbackUrl, tenancy)) {
-        throw new KnownErrors.RedirectUrlNotWhitelisted(callbackUrl);
+        throw new KnownErrors.RedirectUrlNotWhitelisted(callbackUrl.toString());
       }
 
       const verificationCodePrisma = await globalPrismaClient.verificationCode.create({

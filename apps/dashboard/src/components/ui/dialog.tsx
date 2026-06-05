@@ -6,6 +6,10 @@ import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import React from "react";
 
 import { cn } from "@/lib/utils";
+import {
+  designDialogGlassmorphicOverlayClass,
+  designDialogGlassmorphicSurfaceClass,
+} from "@hexclave/dashboard-ui-components";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -22,7 +26,7 @@ const DialogOverlay = forwardRefIfNeeded<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "stack-scope fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
+      "stack-scope fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
       className
     )}
     {...props}
@@ -42,7 +46,8 @@ const DialogContent = forwardRefIfNeeded<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "stack-scope fixed left-[50%] top-[50%] max-h-screen z-50 flex flex-col w-full max-w-lg translate-x-[-50%] translate-y-[-50%] border bg-background p-6 shadow-lg duration-100 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        "stack-scope fixed left-[50%] top-[50%] max-h-screen z-50 flex flex-col w-full max-w-lg translate-x-[-50%] translate-y-[-50%] p-6 duration-100 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+        designDialogGlassmorphicSurfaceClass,
         className
       )}
       {...props}

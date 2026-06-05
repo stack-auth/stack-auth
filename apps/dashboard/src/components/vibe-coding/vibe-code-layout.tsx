@@ -127,7 +127,11 @@ export default function VibeCodeLayout({
     });
   };
 
-  const lightModeChromeBackgroundClass = useOffWhiteLightChrome ? "bg-slate-50/90" : "bg-background/60";
+  const lightModeChromeBackgroundClass = useOffWhiteLightChrome ? "bg-white/90" : "bg-white/80";
+  const activeViewportButtonClass =
+    "bg-white text-foreground shadow-sm ring-1 ring-black/[0.06] dark:bg-background dark:ring-foreground/[0.06]";
+  const inactiveViewportButtonClass =
+    "text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-background/50";
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -154,8 +158,8 @@ export default function VibeCodeLayout({
                       className={cn(
                         "p-1 rounded transition-all duration-150 hover:transition-none",
                         currentViewport === 'edit'
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground"
+                          ? activeViewportButtonClass
+                          : inactiveViewportButtonClass
                       )}
                       aria-label="Edit mode"
                     >
@@ -169,8 +173,8 @@ export default function VibeCodeLayout({
                   className={cn(
                     "p-1 rounded transition-all duration-150 hover:transition-none",
                     currentViewport === 'desktop'
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground"
+                      ? activeViewportButtonClass
+                      : inactiveViewportButtonClass
                   )}
                   aria-label="Desktop view"
                 >
@@ -181,8 +185,8 @@ export default function VibeCodeLayout({
                   className={cn(
                     "p-1 rounded transition-all duration-150 hover:transition-none",
                     currentViewport === 'tablet'
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground"
+                      ? activeViewportButtonClass
+                      : inactiveViewportButtonClass
                   )}
                   aria-label="Tablet view"
                 >
@@ -193,8 +197,8 @@ export default function VibeCodeLayout({
                   className={cn(
                     "p-1 rounded transition-all duration-150 hover:transition-none",
                     currentViewport === 'phone'
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground"
+                      ? activeViewportButtonClass
+                      : inactiveViewportButtonClass
                   )}
                   aria-label="Phone view"
                 >
@@ -379,8 +383,8 @@ export default function VibeCodeLayout({
                           className={cn(
                             "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
                             currentViewport === 'edit'
-                              ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                              ? activeViewportButtonClass
+                              : inactiveViewportButtonClass
                           )}
                         >
                           <PencilSimple size={16} weight={currentViewport === 'edit' ? 'fill' : 'regular'} />
@@ -398,8 +402,8 @@ export default function VibeCodeLayout({
                       className={cn(
                         "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
                         currentViewport === 'desktop'
-                          ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                          ? activeViewportButtonClass
+                          : inactiveViewportButtonClass
                       )}
                     >
                       <Laptop size={16} weight={currentViewport === 'desktop' ? 'fill' : 'regular'} />
@@ -414,8 +418,8 @@ export default function VibeCodeLayout({
                       className={cn(
                         "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
                         currentViewport === 'tablet'
-                          ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                          ? activeViewportButtonClass
+                          : inactiveViewportButtonClass
                       )}
                     >
                       <DeviceTablet size={16} weight={currentViewport === 'tablet' ? 'fill' : 'regular'} />
@@ -430,8 +434,8 @@ export default function VibeCodeLayout({
                       className={cn(
                         "p-1.5 rounded-md transition-all duration-150 hover:transition-none",
                         currentViewport === 'phone'
-                          ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                          ? activeViewportButtonClass
+                          : inactiveViewportButtonClass
                       )}
                     >
                       <DeviceMobile size={16} weight={currentViewport === 'phone' ? 'fill' : 'regular'} />

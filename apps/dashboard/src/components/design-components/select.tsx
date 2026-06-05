@@ -27,6 +27,7 @@ export type DesignSelectorDropdownProps = {
   className?: string,
   triggerClassName?: string,
   contentClassName?: string,
+  triggerId?: string,
 };
 
 const triggerSizeClasses = new Map<DesignSelectorSize, string>([
@@ -53,13 +54,14 @@ export function DesignSelectorDropdown({
   className,
   triggerClassName,
   contentClassName,
+  triggerId,
 }: DesignSelectorDropdownProps) {
   const triggerSizeClass = getMapValueOrThrow(triggerSizeClasses, size, "triggerSizeClasses");
 
   return (
     <div className={className}>
       <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-        <SelectTrigger className={cn(triggerSizeClass, triggerClassName)}>
+        <SelectTrigger id={triggerId} className={cn(triggerSizeClass, triggerClassName)}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent className={contentClassName}>

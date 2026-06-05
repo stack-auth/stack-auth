@@ -1,13 +1,13 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { DesignInput } from "@/components/design-components";
 import {
   FormControl,
   FormField,
   FormItem,
   FormMessage,
-  Input,
 } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { FieldLabel } from "@/components/form-fields";
 import { useEffect, useState } from "react";
 import { Control, FieldValues, Path } from "react-hook-form";
@@ -34,7 +34,7 @@ export function CountryCodeInput({
   }, [value]);
 
   return (
-    <Input
+    <DesignInput
       value={draftValue}
       onChange={(e) => {
         const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
@@ -44,6 +44,7 @@ export function CountryCodeInput({
       placeholder={placeholder}
       disabled={disabled}
       maxLength={2}
+      size="sm"
       className={cn("font-mono", className)}
     />
   );

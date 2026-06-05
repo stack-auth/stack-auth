@@ -142,20 +142,16 @@ type LaunchTask = {
 const STATUS_META: Record<
   LaunchTaskStatus,
   {
-    cardClass: string,
     inactiveIcon: string,
   }
 > = {
   done: {
-    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-emerald-500 dark:text-emerald-400",
   },
   action: {
-    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
   },
   blocked: {
-    cardClass: "border-primary/30 bg-background transition-all duration-300 hover:shadow-lg dark:border-primary/40 dark:shadow-primary/5",
     inactiveIcon: "text-muted-foreground",
   },
 };
@@ -191,17 +187,16 @@ function TaskCard(props: {
   isExpanded: boolean,
   onToggle: () => void,
 }) {
-  const meta = STATUS_META[props.task.status];
   const allItemsDone = props.task.items.every((item) => item.done);
 
   return (
     <DesignCard
       glassmorphic
+      gradient="default"
       contentClassName="p-0"
       className={cn(
-        "transition-all duration-300",
-        meta.cardClass,
-        allItemsDone && "border-emerald-500/30 bg-emerald-500/5 dark:border-emerald-500/40 dark:bg-emerald-500/10"
+        "transition-all duration-150 hover:transition-none",
+        allItemsDone && "bg-emerald-50/80 ring-emerald-500/20 dark:bg-emerald-500/10 dark:ring-emerald-500/30",
       )}
     >
       <div
@@ -239,7 +234,7 @@ function TaskCard(props: {
               e.stopPropagation();
               props.onToggle();
             }}
-            className="flex shrink-0 items-center justify-center rounded-md p-1.5 transition-colors hover:bg-accent"
+            className="flex shrink-0 items-center justify-center rounded-md p-1.5 transition-colors duration-150 hover:transition-none hover:bg-zinc-100 dark:hover:bg-foreground/[0.06]"
             aria-label={props.isExpanded ? "Collapse section" : "Expand section"}
           >
             {props.isExpanded ? (
@@ -616,8 +611,9 @@ export default function PageClient() {
                 selectedCategory={selectedProviderTab}
                 onSelect={setSelectedProviderTab}
                 showBadge={false}
+                size="sm"
                 gradient="default"
-                className="!border-0 !bg-transparent !p-0"
+                glassmorphic
               />
               {selectedProviderGuide && (
                 <div className="space-y-2.5">
@@ -744,13 +740,10 @@ export default function PageClient() {
       >
         <DesignCard
           glassmorphic
-          className="group relative overflow-hidden border border-sky-400/40 ring-1 ring-sky-400/20 transition-all duration-300 hover:shadow-md dark:border-sky-500/40 dark:ring-sky-500/30"
+          gradient="default"
           contentClassName="p-7"
         >
-          {/* Subtle blue glow on bottom border */}
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-sky-400/30 to-transparent blur-[2px] dark:via-sky-500/40" />
-
-          <div className="relative space-y-6">
+          <div className="space-y-6">
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-4">
               <h2 className="text-2xl font-semibold tracking-tight text-foreground">
