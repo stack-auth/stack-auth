@@ -3,12 +3,12 @@ import { DashboardAccountSettingsPage } from "@/components/dashboard-account-set
 import { StackHandler } from "@hexclave/next";
 
 export default async function Handler(props: {
-  params: Promise<{ stack?: string[] }>,
+  params: Promise<{ hexclave?: string[]}>,
 }) {
   const params = await props.params;
-  const stack = params.stack || [];
+  const hexclave = params.hexclave || [];
 
-  if (stack.join("/") === "account-settings") {
+  if (hexclave.join("/") === "account-settings") {
     return <DashboardAccountSettingsPage />;
   }
 
