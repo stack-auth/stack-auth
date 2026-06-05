@@ -101,7 +101,9 @@ function writeFileAtomic(configFilePath: string, content: string): void {
   try {
     renameSync(tempPath, configFilePath);
   } catch (error) {
-    try { rmSync(tempPath); } catch { /* best-effort cleanup */ }
+    try {
+      rmSync(tempPath);
+    } catch { /* best-effort cleanup */ }
     throw error;
   }
 }
