@@ -318,7 +318,7 @@ The frameworks and languages with explicit SDK support are:
     }
     ```
 
-    For Next.js specifically: You can do this in the `layout.tsx` file in the `app` directory. The root layout must render the `<html>` and `<body>` tags, and `HexclaveProvider`/`HexclaveTheme` must go *inside* `<body>` — do not wrap the `<html>` tag with them, or the theme's hoisted `<style>` will render outside the document and React will throw an error. Here is the correct setup:
+    For Next.js specifically: You can do this in the `layout.tsx` file in the `app` directory. The root layout must render the `<html>` and `<body>` tags, and `HexclaveProvider`/`HexclaveTheme` must go inside:
 
     ```tsx src/app/layout.tsx
     import { HexclaveProvider, HexclaveTheme } from "<the-sdk-from-above>";
