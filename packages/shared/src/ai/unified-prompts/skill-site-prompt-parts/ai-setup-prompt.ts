@@ -599,10 +599,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     bun: "@hexclave/js",
   }[mainType];
   // The browser-visible env var that holds the project ID differs by bundler: Next.js inlines
-  // `process.env.NEXT_PUBLIC_*`, while Vite (incl. TanStack Start) only exposes `import.meta.env.VITE_*`.
+  // `process.env.NEXT_PUBLIC_*`, Vite (incl. TanStack Start) only exposes `import.meta.env.VITE_*`,
+  // and everything else falls back to plain `process.env.HEXCLAVE_PROJECT_ID`.
   const projectIdEnvExpr = isDefinitelyNextjs
     ? "process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID"
-    : "import.meta.env.VITE_HEXCLAVE_PROJECT_ID";
+    : isDefinitelyTanstackStart
+      ? "import.meta.env.VITE_HEXCLAVE_PROJECT_ID"
+      : "process.env.HEXCLAVE_PROJECT_ID";
 
   return deindent`
     ## ${typeLabel ? `${typeLabel} SDK Setup Instructions` : "SDK Setup Instructions"}
@@ -771,7 +774,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
-            ${isDefinitelyTanstackStart ? "VITE_HEXCLAVE_PROJECT_ID" : "HEXCLAVE_PROJECT_ID"}=<your-project-id>
+            HEXCLAVE_PROJECT_ID=<your-project-id>
             \`\`\`
 
             Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
