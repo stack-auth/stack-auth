@@ -153,7 +153,7 @@ export const POST = createSmartRouteHandler({
     const url = new URL(`/purchase/${fullCode}`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
     if (req.body.return_url) {
       if (!validateRedirectUrl(req.body.return_url, tenancy)) {
-        throw new KnownErrors.RedirectUrlNotWhitelisted();
+        throw new KnownErrors.RedirectUrlNotWhitelisted(req.body.return_url);
       }
       url.searchParams.set("return_url", req.body.return_url);
     }
