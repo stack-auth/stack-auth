@@ -4,7 +4,6 @@ import { useHash } from '@hexclave/shared/dist/hooks/use-hash';
 import { Button, Typography, cn } from '@hexclave/ui';
 import { XIcon } from 'lucide-react';
 import React, { ReactNode } from 'react';
-import { useStackApp } from '../..';
 
 export type SidebarItem = {
   title: React.ReactNode,
@@ -31,11 +30,11 @@ export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, 
   );
 }
 
+function navigateToSidebarItem(itemId: string | null) {
+  window.location.hash = itemId ?? "";
+}
+
 function Items(props: { items: SidebarItem[], selectedIndex: number }) {
-  const app = useStackApp();
-  const navigate = app.useNavigate();
-
-
   const activeItemIndex = props.selectedIndex === -1 ? 0 : props.selectedIndex;
 
   return props.items.map((item, index) => (
@@ -50,7 +49,7 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
         )}
         onClick={() => {
           if (item.id) {
-            navigate('#' + item.id);
+            navigateToSidebarItem(item.id);
           }
         }}
       >
@@ -93,8 +92,6 @@ function DesktopLayout(props: { items: SidebarItem[], title?: ReactNode, selecte
 
 function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selectedIndex: number }) {
   const selectedItem = props.items[props.selectedIndex];
-  const app = useStackApp();
-  const navigate = app.useNavigate();
 
   if (props.selectedIndex === -1) {
     return (
@@ -115,7 +112,7 @@ function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selected
             <Button
               variant='ghost'
               size='icon'
-              onClick={() => { navigate('#'); }}
+              onClick={() => { navigateToSidebarItem(null); }}
             >
               <XIcon className='h-5 w-5' />
             </Button>
