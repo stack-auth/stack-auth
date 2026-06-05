@@ -650,18 +650,42 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         ${isMaybeFrontend ? deindent`
           In a frontend where you cannot keep a secret key safe, you would use the \`HexclaveClientApp\` constructor:
 
-          \`\`\`ts src/hexclave/client.ts
-          import { HexclaveClientApp } from "${packageName}";
+          ${isDefinitelyTanstackStart ? deindent`
+            \`\`\`ts src/hexclave/client.ts
+            import { HexclaveClientApp } from "${packageName}";
 
-          export const hexclaveClientApp = new HexclaveClientApp({
-            tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
-            urls: {
-              default: {
-                type: "hosted",
-              }
-            },
-          });
-          \`\`\`
+            export const hexclaveClientApp = new HexclaveClientApp({
+              tokenStore: "cookie",
+              // Vite (and therefore TanStack Start) only exposes \`VITE_\`-prefixed variables to the
+              // browser, and the SDK's automatic project ID detection reads \`process.env\`, which is
+              // undefined in the browser. Pass the project ID explicitly from \`import.meta.env\`:
+              projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID,
+              urls: {
+                default: {
+                  type: "hosted",
+                }
+              },
+            });
+            \`\`\`
+          ` : deindent`
+            \`\`\`ts src/hexclave/client.ts
+            import { HexclaveClientApp } from "${packageName}";
+
+            export const hexclaveClientApp = new HexclaveClientApp({
+              tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
+              urls: {
+                default: {
+                  type: "hosted",
+                }
+              },
+            });
+            \`\`\`
+          `}
+          ${isAiPrompt ? deindent`
+            <Note>
+              For Vite-based frameworks such as TanStack Start, \`process.env\` is not available in the browser, so the SDK cannot auto-detect your project ID. Pass it explicitly with \`projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID\` and make sure the variable is set with the \`VITE_\` prefix.
+            </Note>
+          ` : ""}
         ` : ""}
 
         ${isMaybeBackend ? deindent`
@@ -762,15 +786,20 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
-            HEXCLAVE_PROJECT_ID=<your-project-id>
+            ${isDefinitelyTanstackStart ? "VITE_HEXCLAVE_PROJECT_ID" : "HEXCLAVE_PROJECT_ID"}=<your-project-id>
             \`\`\`
+            ${isAiPrompt ? deindent`
 
+              <Note>
+                For Vite-based frameworks such as TanStack Start, name the variable \`VITE_HEXCLAVE_PROJECT_ID\` (only \`VITE_\`-prefixed variables reach the browser) and pass it explicitly to the constructor, since the SDK's auto-detection reads \`process.env\`, which isn't available in the browser.
+              </Note>
+            ` : ""}
             Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
 
             \`\`\`ts src/hexclave/client.ts
             export const hexclaveClientApp = new HexclaveClientApp({
               // ...
-              projectId: "your-project-id",
+              projectId: ${isDefinitelyTanstackStart ? "import.meta.env.VITE_HEXCLAVE_PROJECT_ID" : `"your-project-id"`},
             });
             \`\`\`
 

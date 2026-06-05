@@ -219,15 +219,32 @@ function createInternalApp(apiBaseUrl: string, anonymousRefreshToken?: string) {
 
 function envVarsForProject(project: RemoteDevelopmentEnvironmentProject): Record<string, string> {
   return {
+    // Hexclave rebrand: inject both the new HEXCLAVE_-prefixed names and the legacy STACK_-prefixed
+    // names so apps on either naming convention pick them up. Each is emitted with every framework
+    // prefix family (plain for backends/SSR, NEXT_PUBLIC_ for Next.js, VITE_ for Vite/TanStack Start,
+    // EXPO_PUBLIC_ for Expo) since each framework's browser bundle only sees its own prefix.
+    HEXCLAVE_PROJECT_ID: project.projectId,
+    NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: project.projectId,
+    VITE_HEXCLAVE_PROJECT_ID: project.projectId,
+    EXPO_PUBLIC_HEXCLAVE_PROJECT_ID: project.projectId,
     STACK_PROJECT_ID: project.projectId,
     NEXT_PUBLIC_STACK_PROJECT_ID: project.projectId,
     VITE_STACK_PROJECT_ID: project.projectId,
     EXPO_PUBLIC_STACK_PROJECT_ID: project.projectId,
+    HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    VITE_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    EXPO_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
     STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
     VITE_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
     EXPO_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    HEXCLAVE_SECRET_SERVER_KEY: project.secretServerKey,
     STACK_SECRET_SERVER_KEY: project.secretServerKey,
+    HEXCLAVE_API_URL: project.apiBaseUrl,
+    NEXT_PUBLIC_HEXCLAVE_API_URL: project.apiBaseUrl,
+    VITE_HEXCLAVE_API_URL: project.apiBaseUrl,
+    EXPO_PUBLIC_HEXCLAVE_API_URL: project.apiBaseUrl,
     STACK_API_URL: project.apiBaseUrl,
     NEXT_PUBLIC_STACK_API_URL: project.apiBaseUrl,
     VITE_STACK_API_URL: project.apiBaseUrl,
