@@ -107,7 +107,7 @@ export const GET = createSmartRouteHandler({
       && !validateRedirectUrl(query.after_callback_redirect_url, tenancy)
       && !isAcceptedNativeAppUrl(query.after_callback_redirect_url)
     ) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(query.after_callback_redirect_url);
     }
 
     const { turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(query, "oauth_authenticate", tenancy);

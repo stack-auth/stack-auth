@@ -35,7 +35,7 @@ import { Store, storeLock } from "@hexclave/shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
-import { createUrlIfValid, isRelative } from "@hexclave/shared/dist/utils/urls";
+import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
@@ -946,6 +946,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // shape; a.com will verify the source session and issue the one-time code.
     const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
     if (currentRefreshTokenId === refreshTokenId) return false;
+    if (currentRefreshTokenId != null) {
+      const session = await this._getSession(undefined, { awaitPendingAuthResolutions: false });
+      session.markInvalid();
+    }
     const callbackUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.callbackUrl);
     if (callbackUrlString == null) {
       throw new HexclaveAssertionError("Nested cross-domain auth URL is missing callback URL");
@@ -1481,17 +1485,17 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       accessToken: tokenObj.accessToken,
     });
     session.onAccessTokenChange((newAccessToken) => {
-      tokenStore.update((old) => ({
+      tokenStore.update((old) => InternalSession.calculateSessionKey(old) === sessionKey ? {
         ...old,
         accessToken: newAccessToken?.token ?? null
-      }));
+      } : old);
     });
     session.onInvalidate(() => {
-      tokenStore.update((old) => ({
+      tokenStore.update((old) => InternalSession.calculateSessionKey(old) === sessionKey ? {
         ...old,
         accessToken: null,
         refreshToken: null,
-      }));
+      } : old);
     });
 
     let sessionsBySessionKey = this._sessionsByTokenStoreAndSessionKey.get(tokenStore) ?? new Map();
@@ -3010,7 +3014,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async redirectToSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("signIn", options); }
   async redirectToSignUp(options?: RedirectToOptions) { return await this._redirectToHandler("signUp", options); }
-  async redirectToSignOut(options?: RedirectToOptions) { return await this._redirectToHandler("signOut", options); }
+  async redirectToSignOut(options?: RedirectToOptions) {
+    const configuredSignOutTarget = this._urlOptions.signOut ?? this._urlOptions.default;
+    if (typeof configuredSignOutTarget !== "string" && configuredSignOutTarget?.type === "hosted") {
+      return await this.signOut();
+    }
+    return await this._redirectToHandler("signOut", options);
+  }
   async redirectToEmailVerification(options?: RedirectToOptions) { return await this._redirectToHandler("emailVerification", options); }
   async redirectToPasswordReset(options?: RedirectToOptions) { return await this._redirectToHandler("passwordReset", options); }
   async redirectToForgotPassword(options?: RedirectToOptions) { return await this._redirectToHandler("forgotPassword", options); }
@@ -3811,9 +3821,28 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if (options?.redirectUrl) {
         await this._redirectTo({ url: options.redirectUrl, replace: true });
       } else {
-        await this.redirectToAfterSignOut();
+        await this._redirectToDefaultAfterSignOut();
       }
     });
+  }
+
+  protected async _redirectToDefaultAfterSignOut(): Promise<void> {
+    if (this._urlOptions.afterSignOut != null) {
+      await this.redirectToAfterSignOut({ replace: true });
+      return;
+    }
+
+    if (this._urlOptions.home != null) {
+      await this.redirectToHome({ replace: true });
+      return;
+    }
+
+    if (this._urlOptions.default?.type === "hosted" && typeof window !== "undefined") {
+      await this._redirectTo({ url: getRelativePart(new URL(window.location.href)), replace: true });
+      return;
+    }
+
+    await this.redirectToAfterSignOut({ replace: true });
   }
 
   async signOut(options?: { redirectUrl?: URL | string, tokenStore?: TokenStoreInit }): Promise<void> {

@@ -120,6 +120,12 @@ const isRelativeUrlString = (url: string): boolean => {
   return !schemePrefixRegex.test(url);
 };
 
+const nonHostedHandlerNames = new Set<keyof HandlerUrls>([
+  "afterSignIn",
+  "afterSignUp",
+  "afterSignOut",
+]);
+
 export const isLocalHandlerUrlTarget = (options: {
   targetUrl: string,
   handlerPath: string,
@@ -155,6 +161,9 @@ const resolveUrlTarget = (options: {
       return options.fallbackPath;
     }
     case "hosted": {
+      if (nonHostedHandlerNames.has(options.handlerName)) {
+        return options.fallbackPath;
+      }
       return getHostedHandlerUrl({
         projectId: options.projectId,
         pagePath: getHostedPagePathForHandlerName(options.handlerName),
@@ -202,15 +211,24 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
     });
   }
 
+  const homeTarget = configuredUrls?.home ?? defaultTarget;
+  const localHome = resolveUrlTarget({
+    target: typeof homeTarget !== "string" && homeTarget.type === "hosted"
+      ? { type: "handler-component" }
+      : homeTarget,
+    fallbackPath: "/",
+    handlerName: "home",
+    projectId: options.projectId,
+  });
   const home = resolveUrlTarget({
-    target: configuredUrls?.home ?? defaultTarget,
+    target: homeTarget,
     fallbackPath: "/",
     handlerName: "home",
     projectId: options.projectId,
   });
   const afterSignIn = resolveUrlTarget({
     target: configuredUrls?.afterSignIn ?? defaultTarget,
-    fallbackPath: home,
+    fallbackPath: localHome,
     handlerName: "afterSignIn",
     projectId: options.projectId,
   });
@@ -249,7 +267,7 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
     }),
     afterSignOut: resolveUrlTarget({
       target: configuredUrls?.afterSignOut ?? defaultTarget,
-      fallbackPath: home,
+      fallbackPath: localHome,
       handlerName: "afterSignOut",
       projectId: options.projectId,
     }),
