@@ -2,14 +2,14 @@
 
 // Resilient wrapper for the demo dev command.
 //
-// The demo dev flow runs `pnpm -w run cli`, which internally builds the CLI
-// package (and its dependency, dashboard build:rde-standalone). If that build
-// fails, this process would normally exit, and because the root dev script uses
-// `concurrently -k`, the entire dev server would die.
+// The demo runs through the CLI because it needs development-environment
+// credentials, but it must not call `pnpm -w run cli`: that route invokes Turbo
+// builds, and several package builds start by removing dist/, racing with the
+// package dev watchers that the root dev server is already running.
 //
-// This wrapper catches non-zero exits and watches for file changes in the
-// dashboard and packages directories before retrying, so a transient build
-// failure doesn't tear down the whole dev server.
+// Instead, run the CLI from TypeScript source and ask it to launch the dashboard
+// through the dashboard package's RDE production command. The CLI still owns the
+// development-environment env vars, so this stays close to the packaged path.
 
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
@@ -22,39 +22,52 @@ const repoRoot = resolve(demoRoot, "../..");
 
 const LOG_PREFIX = "[Hexclave dev-retry] ";
 const RETRY_DEBOUNCE_MS = 2_000;
+const RETRY_TIMEOUT_MS = 5_000;
+const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
+
+let cliChild;
+let shutdownTimer;
 
 function log(message) {
   console.error(`${LOG_PREFIX}${message}`);
 }
 
+function spawnFromRepo(command, args, options = {}) {
+  return spawn(command, args, {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: process.env,
+    ...options,
+  });
+}
+
 function runCliDev() {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn("pnpm", [
-      "-w", "run", "cli", "--",
+    cliChild = spawnFromRepo("pnpm", [
+      "exec", "tsx", "packages/cli/src/index.ts",
       "dev",
+      "--no-auto-update",
       "--config-file=./hexclave.config.ts",
       "--",
       "pnpm", "--dir", "examples/demo", "run", "dev:inner",
     ], {
-      stdio: "inherit",
-      env: process.env,
+      detached: process.platform !== "win32",
+      env: {
+        ...process.env,
+        HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "pnpm --dir apps/dashboard run dev:rde-production",
+        STACK_API_URL: `http://localhost:${portPrefix}02`,
+        STACK_DASHBOARD_URL: `http://localhost:${portPrefix}01`,
+        STACK_CLI_PUBLISHABLE_CLIENT_KEY: "this-publishable-client-key-is-for-local-development-only",
+        STACK_CLI_NO_AUTO_UPDATE: "1",
+      },
     });
 
-    let signalled = false;
-
-    const forwardSigint = () => { signalled = true; child.kill("SIGINT"); };
-    const forwardSigterm = () => { signalled = true; child.kill("SIGTERM"); };
-    process.on("SIGINT", forwardSigint);
-    process.on("SIGTERM", forwardSigterm);
-
-    child.on("close", (code) => {
-      process.off("SIGINT", forwardSigint);
-      process.off("SIGTERM", forwardSigterm);
-      resolvePromise({ code: code ?? 1, signalled });
+    cliChild.on("close", (code, signal) => {
+      cliChild = undefined;
+      resolvePromise({ code: code ?? 1, signalled: signal != null });
     });
-    child.on("error", (err) => {
-      process.off("SIGINT", forwardSigint);
-      process.off("SIGTERM", forwardSigterm);
+    cliChild.on("error", (err) => {
+      cliChild = undefined;
       reject(err);
     });
   });
@@ -88,12 +101,9 @@ function waitForFileChanges() {
       }
     }
 
-    // Fallback: if no watchers could be set up, resolve after a timeout so we
-    // don't block forever.
-    if (watchers.length === 0) {
-      log("Could not set up file watchers. Will retry after a delay.");
-      setTimeout(done, 10_000);
-    }
+    // Dashboard startup can complete without a source-file change after the CLI
+    // has already failed its first health check, so always keep a timed retry.
+    setTimeout(done, RETRY_TIMEOUT_MS);
   });
 }
 
@@ -103,17 +113,44 @@ async function main() {
     const { code, signalled } = await runCliDev();
 
     if (signalled || code === 0) {
+      stopChildren("SIGTERM");
       process.exit(code);
     }
 
     log(`Dev command exited with code ${code}. Watching for file changes before retrying...`);
     await waitForFileChanges();
-    log(`Change detected. Retrying in ${RETRY_DEBOUNCE_MS / 1000}s...`);
+    log(`Retrying in ${RETRY_DEBOUNCE_MS / 1000}s...`);
     await sleep(RETRY_DEBOUNCE_MS);
   }
 }
 
+function stopChildren(signal) {
+  if (cliChild != null && !cliChild.killed) {
+    try {
+      if (cliChild.pid != null && process.platform !== "win32") {
+        process.kill(-cliChild.pid, signal);
+      } else {
+        cliChild.kill(signal);
+      }
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+process.on("SIGINT", () => {
+  stopChildren("SIGINT");
+  shutdownTimer ??= setTimeout(() => process.exit(130), 5_000);
+  shutdownTimer.unref();
+});
+process.on("SIGTERM", () => {
+  stopChildren("SIGTERM");
+  shutdownTimer ??= setTimeout(() => process.exit(143), 5_000);
+  shutdownTimer.unref();
+});
+
 main().catch((err) => {
   console.error(err);
+  stopChildren("SIGTERM");
   process.exit(1);
 });

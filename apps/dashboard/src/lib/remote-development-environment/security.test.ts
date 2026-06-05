@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 vi.mock("server-only", () => ({}));
 
@@ -27,8 +28,8 @@ function useTempStateFile(secret = "secret") {
   chmodSync(process.env.STACK_DEV_ENVS_PATH, 0o600);
 }
 
-function request(headers: Record<string, string>) {
-  return new Request("http://127.0.0.1:26700/api/remote-development-environment/sessions", { headers }) as any;
+function request(headers: Record<string, string>, url = "http://127.0.0.1:26700/api/remote-development-environment/sessions") {
+  return new NextRequest(url, { headers });
 }
 
 afterEach(() => {
@@ -38,6 +39,9 @@ afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
     tempDir = undefined;
   }
+  // Reset process-global browser-secret state so tests don't leak into each other.
+  delete (globalThis as Record<string, unknown>).__stackRemoteDevelopmentEnvironmentBrowserSecret;
+  vi.resetModules();
 });
 
 describe("remote development environment security", () => {
@@ -72,7 +76,7 @@ describe("remote development environment security", () => {
     expect(badHost?.status).toBe(403);
   });
 
-  it("allows same-origin browser auth without exposing the CLI bearer token", async () => {
+  it("requires a browser secret for same-origin browser auth", async () => {
     useTempStateFile();
     const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");
     const response = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
@@ -80,7 +84,8 @@ describe("remote development environment security", () => {
       origin: "http://127.0.0.1:26700",
       "sec-fetch-site": "same-origin",
     }));
-    expect(response).toBeNull();
+    expect(response?.status).toBe(401);
+    expect(response?.headers.get("x-hexclave-development-environment-browser-secret-error")).toBe("invalid_browser_secret");
   });
 
   it("rejects browser auth without an active local dashboard", async () => {
@@ -94,25 +99,105 @@ describe("remote development environment security", () => {
     expect(response?.status).toBe(404);
   });
 
-  it("rejects browser auth from arbitrary localhost origins", async () => {
+  it("rejects browser auth without the pinned browser secret", async () => {
     useTempStateFile();
     const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");
     const response = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
-      host: "127.0.0.1:26700",
-      origin: "http://evil.localhost:26700",
+      host: "preview.example.test",
+      origin: "http://preview.example.test",
       "sec-fetch-site": "same-origin",
     }));
-    expect(response?.status).toBe(403);
+    expect(response?.status).toBe(401);
   });
 
-  it("rejects cross-site browser auth navigation", async () => {
+  it("accepts browser auth with a confirmation-code-issued host-pinned secret", async () => {
     useTempStateFile();
+    const {
+      initRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode,
+      storeRemoteDevelopmentEnvironmentBrowserSecret,
+      submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode,
+    } = await import("./browser-secret");
+    const { getPendingRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode } = await import("./manager");
     const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");
-    const response = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
-      host: "127.0.0.1:26700",
-      "sec-fetch-site": "cross-site",
+
+    const hostPinnedRequest = request({
+      host: "preview.example.test",
+      origin: "http://preview.example.test",
+      "sec-fetch-site": "same-origin",
+    });
+    expect(initRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(hostPinnedRequest).status).toBe(200);
+    const confirmationCode = getPendingRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode();
+    expect(confirmationCode?.code).toMatch(/^[A-Z0-9]{6}$/);
+    if (confirmationCode == null) {
+      throw new Error("Confirmation code should have been created.");
+    }
+
+    const submitResponse = submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(hostPinnedRequest, confirmationCode.code);
+    expect(submitResponse.status).toBe(200);
+    const submitBody = await submitResponse.json();
+    if (
+      submitBody == null ||
+      typeof submitBody !== "object" ||
+      !("browser_secret" in submitBody) ||
+      typeof submitBody.browser_secret !== "string"
+    ) {
+      throw new Error("Expected submit response to include browser_secret.");
+    }
+
+    const storeResponse = storeRemoteDevelopmentEnvironmentBrowserSecret(hostPinnedRequest, submitBody.browser_secret);
+    const cookie = storeResponse.headers.get("set-cookie");
+    expect(storeResponse.status).toBe(200);
+    expect(cookie).toContain("hexclave-rde-browser-secret=");
+
+    const browserResponse = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
+      host: "preview.example.test",
+      origin: "http://preview.example.test",
+      "sec-fetch-site": "same-origin",
+      cookie: cookie ?? "",
     }));
-    expect(response?.status).toBe(403);
+    expect(browserResponse).toBeNull();
+  });
+
+  it("rejects browser secrets replayed on another host", async () => {
+    useTempStateFile();
+    const {
+      initRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode,
+      storeRemoteDevelopmentEnvironmentBrowserSecret,
+      submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode,
+    } = await import("./browser-secret");
+    const { getPendingRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode } = await import("./manager");
+    const { assertRemoteDevelopmentEnvironmentBrowserRequest } = await import("./security");
+
+    const hostPinnedRequest = request({
+      host: "preview.example.test",
+      origin: "http://preview.example.test",
+      "sec-fetch-site": "same-origin",
+    });
+    initRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(hostPinnedRequest);
+    const confirmationCode = getPendingRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode();
+    if (confirmationCode == null) {
+      throw new Error("Confirmation code should have been created.");
+    }
+    const submitResponse = submitRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode(hostPinnedRequest, confirmationCode.code);
+    const submitBody = await submitResponse.json();
+    if (
+      submitBody == null ||
+      typeof submitBody !== "object" ||
+      !("browser_secret" in submitBody) ||
+      typeof submitBody.browser_secret !== "string"
+    ) {
+      throw new Error("Expected submit response to include browser_secret.");
+    }
+    const storeResponse = storeRemoteDevelopmentEnvironmentBrowserSecret(hostPinnedRequest, submitBody.browser_secret);
+    const cookie = storeResponse.headers.get("set-cookie");
+
+    const browserResponse = assertRemoteDevelopmentEnvironmentBrowserRequest(request({
+      host: "attacker.example.test",
+      origin: "http://attacker.example.test",
+      "sec-fetch-site": "same-origin",
+      cookie: cookie ?? "",
+    }, "http://attacker.example.test/api/remote-development-environment/sessions"));
+    expect(browserResponse?.status).toBe(401);
   });
 
   it("accepts CLI bearer requests from loopback without trusting arbitrary origins", async () => {
@@ -153,19 +238,19 @@ describe("remote development environment security", () => {
     chmodSync(statePath, 0o600);
 
     const { assertRemoteDevelopmentEnvironmentBrowserRequest, assertRemoteDevelopmentEnvironmentRequest } = await import("./security");
-    expect(assertRemoteDevelopmentEnvironmentRequest(new Request("http://127.0.0.1:26701/api/remote-development-environment/sessions", {
+    expect(assertRemoteDevelopmentEnvironmentRequest(new NextRequest("http://127.0.0.1:26701/api/remote-development-environment/sessions", {
       headers: {
         host: "127.0.0.1:26701",
         authorization: "Bearer second-secret",
       },
-    }) as any)).toBeNull();
-    expect(assertRemoteDevelopmentEnvironmentBrowserRequest(new Request("http://127.0.0.1:26701/api/remote-development-environment/sessions", {
+    }))).toBeNull();
+    expect(assertRemoteDevelopmentEnvironmentBrowserRequest(new NextRequest("http://127.0.0.1:26701/api/remote-development-environment/sessions", {
       headers: {
         host: "127.0.0.1:26701",
         origin: "http://127.0.0.1:26701",
         "sec-fetch-site": "same-origin",
       },
-    }) as any)).toBeNull();
+    }))?.status).toBe(401);
   });
 
   it("rejects config writes without an active session", async () => {
