@@ -56,7 +56,7 @@ export const POST = createSmartRouteHandler({
       throw new HexclaveAssertionError(`No tenancy found for given tenancyId`);
     }
     if (body.return_url && !validateRedirectUrl(body.return_url, tenancy)) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(body.return_url);
     }
     const product = verificationCode.data.product;
 
@@ -138,7 +138,7 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.VerificationCodeNotFound();
     }
     if (query.return_url && !validateRedirectUrl(query.return_url, tenancy)) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(query.return_url);
     }
     return {
       statusCode: 200,

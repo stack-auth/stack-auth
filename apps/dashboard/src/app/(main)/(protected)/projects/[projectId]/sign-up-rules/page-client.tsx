@@ -86,6 +86,11 @@ import { useAdminApp } from "../use-admin-app";
 import { validateRiskScore } from "@/lib/risk-score-utils";
 import { parseClickHouseDate } from "../analytics/shared";
 
+const ruleCardSurfaceClass =
+  "bg-white/90 dark:bg-background/60 backdrop-blur-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]";
+const ruleCardMutedSurfaceClass =
+  "bg-white/90 dark:bg-background/60 shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,8 +201,8 @@ const ACTION_BADGE_COLOR: Record<ActionType, "green" | "red" | "orange" | "blue"
 
 function ActionBadge({ type, dim = false, size = "sm" }: { type: ActionType, dim?: boolean, size?: "sm" | "md" }) {
   return (
-    <span className={cn(dim && "opacity-50")}>
-      <DesignBadge label={ACTION_LABELS[type]} color={ACTION_BADGE_COLOR[type]} size={size} />
+    <span className={cn("inline-flex items-center", dim && "opacity-50")}>
+      <DesignBadge label={ACTION_LABELS[type]} color={ACTION_BADGE_COLOR[type]} size={size} contentMode="text" />
     </span>
   );
 }
@@ -286,7 +291,7 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
 
 function TriggerStatTile({ label, value, hint }: { label: string, value: React.ReactNode, hint?: string }) {
   return (
-    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.06] px-3 py-2.5 min-w-0">
+    <div className={cn("rounded-xl px-3 py-2.5 min-w-0", ruleCardMutedSurfaceClass)}>
       <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
         {label}
       </div>
@@ -304,7 +309,7 @@ function TriggerHistoryChart({ data }: { data: { hour: string, count: number }[]
   const chartData = data.length >= 2 ? data : [{ hour: '0', count: 0 }, { hour: '1', count: 0 }];
   const maxCount = Math.max(1, ...chartData.map(d => d.count));
   return (
-    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.06] px-3 py-2 h-full flex flex-col justify-between min-w-0">
+    <div className={cn("rounded-xl px-3 py-2 h-full flex flex-col justify-between min-w-0", ruleCardMutedSurfaceClass)}>
       <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         <span>Activity</span>
         <PulseIcon className="h-3 w-3 text-muted-foreground/70" />
@@ -498,17 +503,20 @@ function RuleTriggerHistoryDialog({
         </button>
       )}
       headerContent={(
-        <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
+        <div className={cn("rounded-xl p-3 space-y-3", ruleCardMutedSurfaceClass)}>
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <Typography type="div" className="text-sm font-semibold leading-none truncate min-w-0" title={ruleDisplayName}>
               {ruleDisplayName}
             </Typography>
-            <ActionBadge type={ruleActionType} />
-            <DesignBadge
-              label={ruleEnabled ? "Enabled" : "Disabled"}
-              color={ruleEnabled ? "green" : "orange"}
-              size="sm"
-            />
+            <div className="flex items-center gap-2 shrink-0">
+              <ActionBadge type={ruleActionType} />
+              <DesignBadge
+                label={ruleEnabled ? "Enabled" : "Disabled"}
+                color={ruleEnabled ? "green" : "orange"}
+                size="sm"
+                contentMode="text"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <TriggerStatTile
@@ -548,7 +556,7 @@ function RuleTriggerHistoryDialog({
         ) : null}
 
         <div
-          className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
+          className={cn("max-h-[360px] overflow-auto rounded-xl", ruleCardMutedSurfaceClass)}
           onScroll={handleScroll}
         >
           {isInitialLoading ? (
@@ -734,7 +742,7 @@ function SaveCancelButtons({ state, size = "sm" }: { state: RuleEditorState, siz
 
 function ConditionsPanel({ state }: { state: RuleEditorState }) {
   return (
-    <div className="p-3 rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.04]">
+    <div className={cn("p-3 rounded-xl", ruleCardMutedSurfaceClass)}>
       <ConditionBuilder value={state.conditionTree} onChange={state.setConditionTree} />
     </div>
   );
@@ -764,7 +772,7 @@ function RuleEditor(props: {
   const state = useRuleEditorState(props);
 
   return (
-    <div className="rounded-2xl bg-background/70 backdrop-blur-xl ring-2 ring-primary/40 shadow-sm transition-all duration-150 hover:transition-none p-4 space-y-4">
+    <div className={cn("rounded-2xl ring-2 ring-primary/40 transition-all duration-150 hover:transition-none p-4 space-y-4", ruleCardSurfaceClass)}>
       <NumberedStep n={1} title="Name this rule">
         <div className="flex items-center gap-3">
           <DesignInput
@@ -868,7 +876,8 @@ function SortableRuleRow(props: RuleRowProps) {
     <div
       {...dragBindings}
       className={cn(
-        "rounded-2xl bg-background/70 backdrop-blur-xl ring-1 ring-foreground/[0.06] shadow-sm",
+        "rounded-2xl",
+        ruleCardSurfaceClass,
         "flex items-center gap-3 p-4 cursor-grab active:cursor-grabbing",
         !isDragging && "transition-all duration-150 hover:transition-none",
         isDragging && "opacity-50 shadow-lg z-10",
@@ -943,7 +952,7 @@ function DefaultActionRow({
   onChange: (value: 'allow' | 'reject') => void,
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl ring-1 ring-foreground/[0.06] bg-background/40 px-4 py-3">
+    <div className={cn("flex items-center justify-between gap-3 rounded-xl px-4 py-3", ruleCardMutedSurfaceClass)}>
       <div className="flex items-center gap-2">
         <ShieldCheckIcon className="h-4 w-4 text-muted-foreground" />
         <Typography className="text-sm">
@@ -1146,14 +1155,14 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
   );
 
   const subCard = (children: React.ReactNode, className?: string) => (
-    <div className={cn("rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-2", className)}>
+    <div className={cn("rounded-xl p-3 space-y-2", ruleCardMutedSurfaceClass, className)}>
       {children}
     </div>
   );
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-      <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-4 space-y-4">
+      <div className={cn("rounded-xl p-4 space-y-4", ruleCardMutedSurfaceClass)}>
         <div className="space-y-3">
           {sectionHeader(
             <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />,
@@ -1284,7 +1293,7 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
 
       <div className="space-y-3">
         {!result ? (
-          <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 h-full min-h-[260px] flex items-center justify-center">
+          <div className={cn("rounded-xl h-full min-h-[260px] flex items-center justify-center", ruleCardMutedSurfaceClass)}>
             <DesignEmptyState
               icon={FlaskIcon}
               title="No simulation yet"
@@ -1352,7 +1361,7 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
                     {matchedEvaluations.map((evaluation) => (
                       <div
                         key={evaluation.rule_id}
-                        className="flex items-center justify-between gap-2 rounded-lg bg-background/60 px-2.5 py-2 ring-1 ring-foreground/[0.04]"
+                        className={cn("flex items-center justify-between gap-2 rounded-lg px-2.5 py-2", ruleCardMutedSurfaceClass)}
                       >
                         <div className="min-w-0">
                           <Typography className="text-xs font-medium truncate">

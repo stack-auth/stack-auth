@@ -9,12 +9,14 @@ import { getPublicEnvVar } from "@/lib/env";
 import { hexclaveClientApp } from "@/hexclave/client";
 import { StackProvider, StackTheme } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { usePathname } from "next/navigation";
 import React, { useSyncExternalStore } from "react";
 import { BackgroundShine } from "./background-shine";
 import { ClientPolyfill } from "./client-polyfill";
 import { DevelopmentPortDisplay } from "./development-port-display";
 import Loading from "./loading";
 import { UserIdentity } from "./providers";
+import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret, RemoteDevelopmentEnvironmentBrowserSecretRedirectingError } from "./remote-development-environment-browser-secret-client";
 import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-environment-auth-gate";
 import { WrongAddressScreen } from "./wrong-address-screen";
 
@@ -60,7 +62,7 @@ async function refreshDevEnvironmentHealth() {
   };
 
   try {
-    const response = await fetch("/api/development-environment/health", {
+    const response = await fetchWithRemoteDevelopmentEnvironmentBrowserSecret("/api/development-environment/health", {
       cache: "no-store",
       headers: {
         Accept: "application/json",
@@ -86,7 +88,10 @@ async function refreshDevEnvironmentHealth() {
     setSnapshotIfCurrent(body.ok && response.ok
       ? HEALTHY_DEV_ENVIRONMENT_HEALTH_SNAPSHOT
       : { status: "unhealthy", restartCommand: body.restart_command });
-  } catch {
+  } catch (error) {
+    if (error instanceof RemoteDevelopmentEnvironmentBrowserSecretRedirectingError) {
+      return;
+    }
     setSnapshotIfCurrent({
       status: "unhealthy",
       restartCommand: "stack dev --config-file <path-to-stack.config.ts> -- <your app command>",
@@ -149,10 +154,10 @@ function DevEnvironmentStoppedScreen(props: { restartCommand: string }) {
   );
 }
 
-function DevEnvironmentHealthGate(props: { children: React.ReactNode }) {
+function DevEnvironmentHealthGate(props: { children: React.ReactNode, disabled?: boolean }) {
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  const shouldCheckHealth = isLocalEmulator || isRemoteDevelopmentEnvironment;
+  const shouldCheckHealth = props.disabled !== true && (isLocalEmulator || isRemoteDevelopmentEnvironment);
   const health = useSyncExternalStore(
     shouldCheckHealth ? subscribeDevEnvironmentHealth : subscribeHealthyDevEnvironment,
     shouldCheckHealth ? getDevEnvironmentHealthSnapshot : getHealthyDevEnvironmentSnapshot,
@@ -182,14 +187,17 @@ export function LayoutClient(props: {
   children: React.ReactNode,
   translationLocale?: string,
 }) {
+  const pathname = usePathname();
+  const isBrowserSecretAuthorizationPage = pathname === "/development-environment/browser-secret";
+
   return (
     <>
       <StackProvider app={hexclaveClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
         <StackTheme>
           <TooltipProvider>
             <ClientPolyfill />
-            <DevEnvironmentHealthGate>
-              <RemoteDevelopmentEnvironmentAuthGate>
+            <DevEnvironmentHealthGate disabled={isBrowserSecretAuthorizationPage}>
+              <RemoteDevelopmentEnvironmentAuthGate disabled={isBrowserSecretAuthorizationPage}>
                 <RouterProvider>
                   <UserIdentity />
                   <VersionAlerter />

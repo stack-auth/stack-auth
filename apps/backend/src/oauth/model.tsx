@@ -300,7 +300,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
     if (!validateRedirectUrl(code.redirectUri, tenancy) && !isAcceptedNativeAppUrl(code.redirectUri)) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(code.redirectUri);
     }
 
     await globalPrismaClient.projectUserAuthorizationCode.create({

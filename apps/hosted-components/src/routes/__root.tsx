@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { StackClientApp, StackProvider, StackTheme } from '@hexclave/react';
+import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
 import {
   HeadContent,
   Outlet,
@@ -143,6 +144,7 @@ function RootComponent() {
     if (!projectId || !isValidProjectId) return null;
     return new StackClientApp({
       projectId,
+      publishableClientKey: publishableClientKeyNotNecessarySentinel,
       tokenStore: "cookie",
       baseUrl: getApiBaseUrlFromEnv(),
       urls: {

@@ -14,10 +14,17 @@ type LocalDashboardState = {
   version?: string,
 };
 
+export type PendingBrowserSecretConfirmationCode = {
+  code: string,
+  expiresAtMillis: number,
+  updatedAtMillis: number,
+};
+
 export type DevEnvState = {
   version: 1,
   anonymousRefreshToken?: string,
   localDashboardsByPort?: Partial<Record<string, LocalDashboardState>>,
+  pendingBrowserSecretConfirmationCodesByPort?: Partial<Record<string, PendingBrowserSecretConfirmationCode>>,
   anonymousApiBaseUrl?: string,
   projectsByConfigPath: Partial<Record<string, {
     projectId: string,
@@ -87,6 +94,7 @@ export function readDevEnvState(): DevEnvState {
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
     localDashboardsByPort: sanitizeLocalDashboardsByPort(parsed.localDashboardsByPort),
+    pendingBrowserSecretConfirmationCodesByPort: parsed.pendingBrowserSecretConfirmationCodesByPort,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }

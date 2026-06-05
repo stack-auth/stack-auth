@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { isVersionNewer, killLocalDashboard, processExists, shouldRestartDashboard } from "./dev.js";
+import { devDashboardCommandFromEnv, isVersionNewer, killLocalDashboard, processExists, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -72,6 +72,19 @@ describe("processExists", () => {
     expect(processExists(process.pid)).toBe(true);
     // pid 1 always exists; a huge pid effectively never does.
     expect(processExists(2_147_483_646)).toBe(false);
+  });
+});
+
+describe("devDashboardCommandFromEnv", () => {
+  it("uses a non-empty custom dashboard command", () => {
+    expect(devDashboardCommandFromEnv({
+      HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: " pnpm --dir apps/dashboard run dev ",
+    })).toBe("pnpm --dir apps/dashboard run dev");
+  });
+
+  it("ignores missing and blank custom dashboard commands", () => {
+    expect(devDashboardCommandFromEnv({})).toBeUndefined();
+    expect(devDashboardCommandFromEnv({ HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "   " })).toBeUndefined();
   });
 });
 

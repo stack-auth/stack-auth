@@ -73,14 +73,16 @@ const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
   {
     id: "recipient",
     header: "Recipient",
-    width: 200,
+    width: 160,
+    minWidth: 96,
     type: "string",
     accessor: (row) => getRecipientDisplay(row),
   },
   {
     id: "subject",
     header: "Subject",
-    width: 220,
+    width: 180,
+    minWidth: 120,
     flex: 1,
     type: "string",
     accessor: (row) => getSubjectDisplay(row),
@@ -88,7 +90,8 @@ const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
   {
     id: "scheduledAt",
     header: "Time",
-    width: 180,
+    width: 140,
+    minWidth: 100,
     type: "dateTime",
     accessor: (row) => getTimeValue(row),
   },
@@ -96,6 +99,7 @@ const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
     id: "status",
     header: "Status",
     width: 120,
+    minWidth: 108,
     renderCell: ({ row }) => {
       const status = row.status;
       return (
@@ -158,26 +162,28 @@ function EmailSendDataTable() {
   }
 
   return (
-    <DataGrid
-      columns={emailTableColumns}
-      rows={gridData.rows}
-      getRowId={getRowId}
-      totalRowCount={gridData.totalRowCount}
-      isLoading={gridData.isLoading}
-      isRefetching={gridData.isRefetching}
-      state={gridState}
-      onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
-      fillHeight={false}
-      footer={false}
-
-      onRowClick={(row) => {
-        router.push(`email-viewer/${row.id}`);
-      }}
-    />
+    <div className="min-w-0 w-full">
+      <DataGrid
+        className="min-w-0"
+        columns={emailTableColumns}
+        rows={gridData.rows}
+        getRowId={getRowId}
+        totalRowCount={gridData.totalRowCount}
+        isLoading={gridData.isLoading}
+        isRefetching={gridData.isRefetching}
+        state={gridState}
+        onChange={setGridState}
+        paginationMode="infinite"
+        hasMore={gridData.hasMore}
+        isLoadingMore={gridData.isLoadingMore}
+        onLoadMore={gridData.loadMore}
+        fillHeight={false}
+        footer={false}
+        onRowClick={(row) => {
+          router.push(`email-viewer/${row.id}`);
+        }}
+      />
+    </div>
   );
 }
 
@@ -190,15 +196,16 @@ export default function PageClient() {
         title="Sent"
         description="View email logs and domain reputation"
       >
-        <div data-walkthrough="emails-sent" className="flex flex-col lg:flex-row gap-6">
+        <div data-walkthrough="emails-sent" className="flex flex-col xl:flex-row gap-6 min-w-0">
           {/* Left side: Email Log with toggle inside card */}
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="order-2 xl:order-1 flex-1 flex flex-col gap-4 min-w-0">
             <DesignCard
-              contentClassName="p-3"
+              className="min-w-0"
+              contentClassName="p-3 min-w-0"
               gradient="default"
               glassmorphic
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2">
                   <div className="p-1 rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.04]">
                     <Envelope className="h-3 w-3 text-foreground/70 dark:text-muted-foreground" />
@@ -220,7 +227,7 @@ export default function PageClient() {
           </div>
 
           {/* Right side: Domain Reputation */}
-          <div className="flex-shrink-0">
+          <div className="order-1 xl:order-2 flex-shrink-0">
             <DomainReputationCard />
           </div>
         </div>

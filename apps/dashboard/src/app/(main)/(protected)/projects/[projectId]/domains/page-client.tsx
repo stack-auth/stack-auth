@@ -2,6 +2,7 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
+import { DesignAlert } from "@/components/design-components";
 import { SettingCard, SettingSwitch } from "@/components/settings";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
@@ -180,18 +181,18 @@ function EditDialog(props: {
     }}
     render={(form) => (
       <>
-        <Alert>
-          <div className="space-y-2">
+        <DesignAlert variant="info">
+          <div className="space-y-2 text-foreground/80 dark:text-muted-foreground">
             <p>Please ensure you own or have control over this domain. Also note that each subdomain (e.g. blog.example.com, app.example.com) is treated as a distinct domain.</p>
-            <p><strong>Wildcard domains:</strong> You can use wildcards to match multiple domains:</p>
-            <ul className="list-disc list-inside ml-2 space-y-1">
+            <p><strong className="text-foreground">Wildcard domains:</strong> You can use wildcards to match multiple domains:</p>
+            <ul className="ml-2 list-inside list-disc space-y-1">
               <li><code>*.example.com</code> - matches any single subdomain (e.g., api.example.com, www.example.com)</li>
               <li><code>**.example.com</code> - matches any subdomain level (e.g., api.v2.example.com)</li>
               <li><code>api-*.example.com</code> - matches api-v1.example.com, api-prod.example.com, etc.</li>
               <li><code>*.*.org</code> - matches mail.example.org, but not example.org</li>
             </ul>
           </div>
-        </Alert>
+        </DesignAlert>
         <InputField
           label="Domain"
           name="domain"
@@ -413,9 +414,7 @@ export default function PageClient() {
           {domains.length > 0 ? (
             <DomainDataGrid domains={domains} />
           ) : (
-            <Alert>
-              No domains added yet.
-            </Alert>
+            <DesignAlert variant="info" description="No domains added yet." />
           )}
         </SettingCard>
 

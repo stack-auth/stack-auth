@@ -84,16 +84,16 @@ function QuickSearch({
 }) {
   return (
     <div className="relative flex min-w-0 flex-1 items-center sm:flex-initial">
-      <MagnifyingGlass className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+      <MagnifyingGlass className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
       <input
         type="text"
         className={cn(
           "h-8 w-full sm:w-52 pl-8 pr-7 rounded-xl text-xs",
-          "bg-background",
-          "border border-black/[0.08] dark:border-white/[0.08]",
-          "placeholder:text-muted-foreground/40",
+          "border border-black/[0.08] dark:border-white/[0.06]",
+          "bg-white dark:bg-background shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+          "placeholder:text-muted-foreground/50",
           "focus:outline-none focus:ring-1 focus:ring-foreground/[0.1]",
-          "transition-all duration-150",
+          "transition-all duration-150 hover:transition-none hover:ring-black/[0.12] dark:hover:ring-white/[0.1]",
         )}
         placeholder={placeholder}
         value={value}
@@ -234,13 +234,13 @@ function ColumnManager<TRow>({
             <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               {strings.dateFormat}
             </span>
-            <div className="inline-flex items-center gap-0.5 rounded-lg bg-foreground/[0.04] p-0.5">
+            <div className="inline-flex items-center gap-0.5 rounded-lg bg-zinc-100/90 p-0.5 ring-1 ring-black/[0.06] dark:bg-foreground/[0.04] dark:ring-white/[0.06]">
               <button
                 className={cn(
-                  "px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors duration-75",
+                  "px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors duration-150 hover:transition-none",
                   dateDisplay === "relative"
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-white text-foreground shadow-sm ring-1 ring-black/[0.12] dark:bg-background dark:ring-white/[0.06]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-white/[0.06]",
                 )}
                 onClick={() => onDateDisplayChange("relative")}
               >
@@ -248,10 +248,10 @@ function ColumnManager<TRow>({
               </button>
               <button
                 className={cn(
-                  "px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors duration-75",
+                  "px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors duration-150 hover:transition-none",
                   dateDisplay === "absolute"
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-white text-foreground shadow-sm ring-1 ring-black/[0.12] dark:bg-background dark:ring-white/[0.06]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-white/[0.06]",
                 )}
                 onClick={() => onDateDisplayChange("absolute")}
               >

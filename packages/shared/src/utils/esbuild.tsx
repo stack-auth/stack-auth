@@ -20,7 +20,6 @@ if (typeof process !== "undefined" && typeof process.exit === "function" && getP
       await initializeEsbuild();
     } catch (e) {
       captureError("initialize-esbuild-in-dev", e);
-      (globalThis as any).process?.exit?.(1);
     }
   });
 }

@@ -177,7 +177,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
       placeholder="Search for a provider..."
       value={providerSearch}
       onChange={(e) => setProviderSearch(e.target.value)}
-      leadingIcon={<MagnifyingGlassIcon size={14} />}
+      leadingIcon={<MagnifyingGlassIcon className="h-3.5 w-3.5" />}
     />
     <div className="flex gap-2 flex-wrap justify-center">
       {filteredProviders
@@ -464,6 +464,7 @@ function useEmailVerificationToggle() {
       open={!!pendingChange}
       onClose={() => setPendingChange(null)}
       title="Enable email verification requirement"
+      size="2xl"
       danger
       okButton={{
         label: "Apply Change",
@@ -484,35 +485,50 @@ function useEmailVerificationToggle() {
             <Typography variant="secondary" type="label">
               Affected users
             </Typography>
-            <div className="rounded-xl ring-1 ring-black/[0.06] dark:ring-white/[0.06] overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-foreground/[0.04]">
+            <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.06] dark:ring-white/[0.06]">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[22%]" />
+                  <col />
+                  <col className="w-[7.5rem]" />
+                </colgroup>
+                <thead className="bg-zinc-50 dark:bg-background">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">User</th>
                     <th className="px-3 py-2 text-left font-medium">Email</th>
-                    <th className="px-3 py-2 text-left font-medium">Reason</th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Reason</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pendingChange.affectedUsers.map((user) => (
-                    <tr key={user.id} className="border-t border-black/[0.06] dark:border-white/[0.06]">
-                      <td className="px-3 py-2">
-                        {user.displayName || <span className="text-muted-foreground italic">No name</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        {user.primaryEmail || <span className="text-muted-foreground italic">No email</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        <DesignBadge
-                          label={user.restrictedReason.type === "email_not_verified" ? "Email not verified" : "Anonymous user"}
-                          color="orange"
-                          size="sm"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
               </table>
+              <div className="max-h-52 overflow-y-auto border-t border-black/[0.06] dark:border-white/[0.06]">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[22%]" />
+                    <col />
+                    <col className="w-[7.5rem]" />
+                  </colgroup>
+                  <tbody>
+                    {pendingChange.affectedUsers.map((user) => (
+                      <tr key={user.id} className="border-t border-black/[0.06] dark:border-white/[0.06] first:border-t-0">
+                        <td className="px-3 py-2 align-middle">
+                          {user.displayName || <span className="text-muted-foreground italic">No name</span>}
+                        </td>
+                        <td className="px-3 py-2 align-middle truncate" title={user.primaryEmail ?? undefined}>
+                          {user.primaryEmail || <span className="text-muted-foreground italic">No email</span>}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <DesignBadge
+                            label={user.restrictedReason.type === "email_not_verified" ? "Not verified" : "Anonymous"}
+                            color="orange"
+                            size="sm"
+                            contentMode="text"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             {pendingChange.totalAffectedCount > pendingChange.affectedUsers.length && (
               <Typography variant="secondary" type="footnote">

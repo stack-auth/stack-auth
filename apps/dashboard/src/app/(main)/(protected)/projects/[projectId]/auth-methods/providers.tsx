@@ -81,9 +81,6 @@ export const providerFormSchema = yupObject({
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
 
-/** Modal chrome — "Floating soft" (variant G). */
-const PROVIDER_DIALOG_CHROME_CLASS = "border-0 rounded-3xl bg-background shadow-2xl shadow-black/30 dark:shadow-black/60";
-
 function ProviderHeader({ providerId }: { providerId: string }) {
   return (
     <div className="flex items-center gap-3">
@@ -332,7 +329,6 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
       title={`${toTitle(props.id)} OAuth provider`}
       cancelButton
       okButton={{ label: 'Save' }}
-      contentClassName={PROVIDER_DIALOG_CHROME_CLASS}
       render={(form) => (
         <OAuthProviderSettingsForm
           form={form}
