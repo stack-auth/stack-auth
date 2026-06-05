@@ -598,14 +598,6 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     nodejs: "@hexclave/js",
     bun: "@hexclave/js",
   }[mainType];
-  // The browser-visible env var that holds the project ID differs by bundler: Next.js inlines
-  // `process.env.NEXT_PUBLIC_*`, Vite (incl. TanStack Start) only exposes `import.meta.env.VITE_*`,
-  // and everything else falls back to plain `process.env.HEXCLAVE_PROJECT_ID`.
-  const projectIdEnvExpr = isDefinitelyNextjs
-    ? "process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID"
-    : isDefinitelyTanstackStart
-      ? "import.meta.env.VITE_HEXCLAVE_PROJECT_ID"
-      : "process.env.HEXCLAVE_PROJECT_ID";
 
   return deindent`
     ## ${typeLabel ? `${typeLabel} SDK Setup Instructions` : "SDK Setup Instructions"}
@@ -663,10 +655,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           export const hexclaveClientApp = new HexclaveClientApp({
             tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
-            // Your Hexclave project ID. For Vite-based frameworks like TanStack Start, pass it in
-            // explicitly via \`import.meta.env.VITE_HEXCLAVE_PROJECT_ID\` (the browser has no \`process.env\`).
-            // For Next.js, use \`process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID\` — it's read automatically, so you can omit this line.
-            projectId: ${projectIdEnvExpr},
+            // Your Hexclave project ID. In Next.js this is read automatically from
+            // \`process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID\`. In other frameworks, pass it in manually —
+            // e.g. in Vite-based frameworks like TanStack Start use \`import.meta.env.VITE_HEXCLAVE_PROJECT_ID\`,
+            // and otherwise however your framework exposes environment variables to the browser.
+            projectId: process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID,
             urls: {
               default: {
                 type: "hosted",
