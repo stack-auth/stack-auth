@@ -817,20 +817,23 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           ` : ""}
 
           ${isMaybeNextjs ? deindent`
-            ${!isDefinitelyNextjs ? "For Next.js specifically: " : ""}You can do this in the \`layout.tsx\` file in the \`app\` directory:
+            ${!isDefinitelyNextjs ? "For Next.js specifically: " : ""}You can do this in the \`layout.tsx\` file in the \`app\` directory. The root layout must render the \`<html>\` and \`<body>\` tags, and \`HexclaveProvider\`/\`HexclaveTheme\` must go inside:
 
             \`\`\`tsx src/app/layout.tsx
-            import { Suspense } from "react";
             import { HexclaveProvider, HexclaveTheme } from "${packageName}";
             import { hexclaveServerApp } from "@/hexclave/server";
 
             export default function RootLayout({ children }: { children: React.ReactNode }) {
               return (
-                <HexclaveProvider app={hexclaveServerApp}>
-                  <HexclaveTheme>
-                    {children}
-                  </HexclaveTheme>
-                </HexclaveProvider>
+                <html lang="en" suppressHydrationWarning>
+                  <body>
+                    <HexclaveProvider app={hexclaveServerApp}>
+                      <HexclaveTheme>
+                        {children}
+                      </HexclaveTheme>
+                    </HexclaveProvider>
+                  </body>
+                </html>
               );
             }
             \`\`\`
