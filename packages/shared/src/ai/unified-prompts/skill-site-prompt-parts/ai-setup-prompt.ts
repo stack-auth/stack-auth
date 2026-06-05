@@ -598,6 +598,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
     nodejs: "@hexclave/js",
     bun: "@hexclave/js",
   }[mainType];
+  // The browser-visible env var that holds the project ID differs by bundler: Next.js inlines
+  // `process.env.NEXT_PUBLIC_*`, while Vite (incl. TanStack Start) only exposes `import.meta.env.VITE_*`.
+  const projectIdEnvExpr = isDefinitelyNextjs
+    ? "process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID"
+    : "import.meta.env.VITE_HEXCLAVE_PROJECT_ID";
 
   return deindent`
     ## ${typeLabel ? `${typeLabel} SDK Setup Instructions` : "SDK Setup Instructions"}
@@ -650,42 +655,22 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
         ${isMaybeFrontend ? deindent`
           In a frontend where you cannot keep a secret key safe, you would use the \`HexclaveClientApp\` constructor:
 
-          ${isDefinitelyTanstackStart ? deindent`
-            \`\`\`ts src/hexclave/client.ts
-            import { HexclaveClientApp } from "${packageName}";
+          \`\`\`ts src/hexclave/client.ts
+          import { HexclaveClientApp } from "${packageName}";
 
-            export const hexclaveClientApp = new HexclaveClientApp({
-              tokenStore: "cookie",
-              // Vite (and therefore TanStack Start) only exposes \`VITE_\`-prefixed variables to the
-              // browser, and the SDK's automatic project ID detection reads \`process.env\`, which is
-              // undefined in the browser. Pass the project ID explicitly from \`import.meta.env\`:
-              projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID,
-              urls: {
-                default: {
-                  type: "hosted",
-                }
-              },
-            });
-            \`\`\`
-          ` : deindent`
-            \`\`\`ts src/hexclave/client.ts
-            import { HexclaveClientApp } from "${packageName}";
-
-            export const hexclaveClientApp = new HexclaveClientApp({
-              tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
-              urls: {
-                default: {
-                  type: "hosted",
-                }
-              },
-            });
-            \`\`\`
-          `}
-          ${isAiPrompt ? deindent`
-            <Note>
-              For Vite-based frameworks such as TanStack Start, \`process.env\` is not available in the browser, so the SDK cannot auto-detect your project ID. Pass it explicitly with \`projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID\` and make sure the variable is set with the \`VITE_\` prefix.
-            </Note>
-          ` : ""}
+          export const hexclaveClientApp = new HexclaveClientApp({
+            tokenStore: "cookie", // "nextjs-cookie" for Next.js, "cookie" for other web frontends, null for backend environments
+            // Your Hexclave project ID. For Vite-based frameworks like TanStack Start, pass it in
+            // explicitly via \`import.meta.env.VITE_HEXCLAVE_PROJECT_ID\` (the browser has no \`process.env\`).
+            // For Next.js, use \`process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID\` — it's read automatically, so you can omit this line.
+            projectId: ${projectIdEnvExpr},
+            urls: {
+              default: {
+                type: "hosted",
+              }
+            },
+          });
+          \`\`\`
         ` : ""}
 
         ${isMaybeBackend ? deindent`
@@ -788,18 +773,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             `}\n\n` : ""}\`\`\`.env .env.local
             ${isDefinitelyTanstackStart ? "VITE_HEXCLAVE_PROJECT_ID" : "HEXCLAVE_PROJECT_ID"}=<your-project-id>
             \`\`\`
-            ${isAiPrompt ? deindent`
 
-              <Note>
-                For Vite-based frameworks such as TanStack Start, name the variable \`VITE_HEXCLAVE_PROJECT_ID\` (only \`VITE_\`-prefixed variables reach the browser) and pass it explicitly to the constructor, since the SDK's auto-detection reads \`process.env\`, which isn't available in the browser.
-              </Note>
-            ` : ""}
             Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
 
             \`\`\`ts src/hexclave/client.ts
             export const hexclaveClientApp = new HexclaveClientApp({
               // ...
-              projectId: ${isDefinitelyTanstackStart ? "import.meta.env.VITE_HEXCLAVE_PROJECT_ID" : `"your-project-id"`},
+              projectId: "your-project-id",
             });
             \`\`\`
 

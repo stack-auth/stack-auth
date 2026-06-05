@@ -219,10 +219,8 @@ function createInternalApp(apiBaseUrl: string, anonymousRefreshToken?: string) {
 
 function envVarsForProject(project: RemoteDevelopmentEnvironmentProject): Record<string, string> {
   return {
-    // Hexclave rebrand: inject both the new HEXCLAVE_-prefixed names and the legacy STACK_-prefixed
-    // names so apps on either naming convention pick them up. Each is emitted with every framework
-    // prefix family (plain for backends/SSR, NEXT_PUBLIC_ for Next.js, VITE_ for Vite/TanStack Start,
-    // EXPO_PUBLIC_ for Expo) since each framework's browser bundle only sees its own prefix.
+    // Emit both HEXCLAVE_ and legacy STACK_ names, across every framework prefix (plain, NEXT_PUBLIC_,
+    // VITE_, EXPO_PUBLIC_), since each framework's browser only sees its own prefix.
     HEXCLAVE_PROJECT_ID: project.projectId,
     NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: project.projectId,
     VITE_HEXCLAVE_PROJECT_ID: project.projectId,
