@@ -183,6 +183,10 @@ The frameworks and languages with explicit SDK support are:
     });
     ```
 
+    <Note>
+      The SDK auto-captures page-view and click analytics. To turn this off (and silence the `ANALYTICS_NOT_ENABLED` console warning that appears until you enable the Analytics app in your dashboard), pass `analytics: { enabled: false }`.
+    </Note>
+
     In a backend where you can keep a secret key safe, you can use the `HexclaveServerApp`, which provides access to more sensitive APIs compared to `HexclaveClientApp`:
 
     ```ts src/hexclave/server.ts

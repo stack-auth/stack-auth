@@ -662,6 +662,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             },
           });
           \`\`\`
+
+          <Note>
+            The SDK auto-captures page-view and click analytics. To turn this off (and silence the \`ANALYTICS_NOT_ENABLED\` console warning that appears until you enable the Analytics app in your dashboard), pass \`analytics: { enabled: false }\`.
+          </Note>
         ` : ""}
 
         ${isMaybeBackend ? deindent`
