@@ -50,12 +50,13 @@ function createMockDocument(): Document {
 
 describe("StackClientApp cross-domain auth", () => {
   it("uses the fresh post-auth refresh token when minting a cross-domain handoff", async () => {
+    const freshAccessToken = createAccessTokenString("fresh-refresh-token-id");
     const clientApp = new StackClientApp({
       baseUrl: "http://localhost:12345",
       projectId: "00000000-0000-4000-8000-000000000000",
       publishableClientKey: "stack-pk-test",
       tokenStore: {
-        accessToken: "stale-access-token",
+        accessToken: createAccessTokenString("stale-refresh-token-id"),
         refreshToken: "stale-refresh-token",
       },
       redirectMethod: "none",
@@ -64,12 +65,19 @@ describe("StackClientApp cross-domain auth", () => {
 
     const clientInterface = Reflect.get(clientApp, "_interface");
     const originalSendClientRequest = Reflect.get(clientInterface, "sendClientRequest");
+    const originalFetchNewAccessToken = Reflect.get(clientInterface, "fetchNewAccessToken");
     const capturedRefreshTokens: string[] = [];
+    const capturedAccessTokenRefreshTokenIds: string[] = [];
+    const refreshedRawRefreshTokens: string[] = [];
 
     Reflect.set(clientInterface, "sendClientRequest", async (_path: unknown, _requestOptions: unknown, session: unknown) => {
       const getRefreshToken = Reflect.get(session ?? {}, "getRefreshToken");
+      const getOrFetchLikelyValidTokens = Reflect.get(session ?? {}, "getOrFetchLikelyValidTokens");
       if (typeof getRefreshToken !== "function") {
         throw new Error("Expected cross-domain auth to pass a session to the client interface.");
+      }
+      if (typeof getOrFetchLikelyValidTokens !== "function") {
+        throw new Error("Expected cross-domain auth to pass a session with token accessors.");
       }
       const refreshToken = getRefreshToken.call(session);
       const refreshTokenString = Reflect.get(refreshToken ?? {}, "token");
@@ -77,10 +85,22 @@ describe("StackClientApp cross-domain auth", () => {
         throw new Error("Expected cross-domain auth to pass a refresh-token-backed session.");
       }
       capturedRefreshTokens.push(refreshTokenString);
+      const tokens = await getOrFetchLikelyValidTokens.call(session, 0, null);
+      capturedAccessTokenRefreshTokenIds.push(tokens.accessToken.payload.refresh_token_id);
       return {
         ok: true,
         json: async () => ({ redirect_url: "https://example.com/handler/oauth-callback?code=handoff-code&state=handoff-state" }),
       };
+    });
+    Reflect.set(clientInterface, "fetchNewAccessToken", async (refreshToken: unknown) => {
+      const refreshTokenString = Reflect.get(refreshToken ?? {}, "token");
+      if (typeof refreshTokenString !== "string") {
+        throw new Error("Expected refresh token while fetching a new access token.");
+      }
+      refreshedRawRefreshTokens.push(refreshTokenString);
+      return AccessToken.createIfValid(freshAccessToken) ?? (() => {
+        throw new Error("Expected test access token to be valid");
+      })();
     });
 
     try {
@@ -95,15 +115,18 @@ describe("StackClientApp cross-domain auth", () => {
         codeChallenge: "abcdefghijklmnopqrstuvwxyzABCDEFG_0123456789-._~",
         afterCallbackRedirectUrl: "https://example.com/account-settings",
         overrideTokenStoreInit: {
-          accessToken: "fresh-access-token",
+          accessToken: createAccessTokenString("fresh-stale-refresh-token-id"),
           refreshToken: "fresh-refresh-token",
         },
       })).resolves.toBe("https://example.com/handler/oauth-callback?code=handoff-code&state=handoff-state");
     } finally {
       Reflect.set(clientInterface, "sendClientRequest", originalSendClientRequest);
+      Reflect.set(clientInterface, "fetchNewAccessToken", originalFetchNewAccessToken);
     }
 
+    expect(refreshedRawRefreshTokens).toEqual(["fresh-refresh-token"]);
     expect(capturedRefreshTokens).toEqual(["fresh-refresh-token"]);
+    expect(capturedAccessTokenRefreshTokenIds).toEqual(["fresh-refresh-token-id"]);
   });
 
   it("uses a fresh nested OAuth state while preserving the outer cross-domain return state", async () => {
@@ -132,7 +155,7 @@ describe("StackClientApp cross-domain auth", () => {
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
       state: "fresh-nested-state",
       codeChallenge: "fresh-nested-code-challenge",
@@ -199,6 +222,13 @@ describe("StackClientApp cross-domain auth", () => {
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    const originalFetchNewAccessToken = Reflect.get(clientInterface, "fetchNewAccessToken");
+    Reflect.set(clientInterface, "fetchNewAccessToken", async () => {
+      return AccessToken.createIfValid(hostedAccessToken) ?? (() => {
+        throw new Error("Expected test access token to be valid");
+      })();
+    });
     vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(true);
 
     globalThis.document = createMockDocument();
@@ -215,6 +245,7 @@ describe("StackClientApp cross-domain auth", () => {
     try {
       await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
     } finally {
+      Reflect.set(clientInterface, "fetchNewAccessToken", originalFetchNewAccessToken);
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
     }
@@ -224,6 +255,74 @@ describe("StackClientApp cross-domain auth", () => {
       accessToken: null,
     });
     expect(new URL(redirectedUrl).origin).toBe("https://demo.stack-auth.com");
+  });
+
+  it("uses the latest browser refresh cookie before computing nested cross-domain session IDs", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000007";
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+
+    globalThis.document = createMockDocument();
+    globalThis.window = {
+      location: {
+        href: "https://demo.stack-auth.com/",
+        protocol: "https:",
+        hostname: "demo.stack-auth.com",
+      },
+    } as any;
+
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId,
+      publishableClientKey: "stack-pk-test",
+      tokenStore: "cookie",
+      redirectMethod: "none",
+      noAutomaticPrefetch: true,
+    });
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    const originalFetchNewAccessToken = Reflect.get(clientInterface, "fetchNewAccessToken");
+    const refreshedRawRefreshTokens: string[] = [];
+
+    try {
+      const getBrowserCookieTokenStore = Reflect.get(clientApp, "_getBrowserCookieTokenStore");
+      if (typeof getBrowserCookieTokenStore !== "function") {
+        throw new Error("Expected StackClientApp to expose _getBrowserCookieTokenStore in tests.");
+      }
+      const tokenStore = getBrowserCookieTokenStore.call(clientApp);
+      tokenStore.set({
+        refreshToken: "old-refresh-token",
+        accessToken: createAccessTokenString("old-refresh-token-id"),
+      });
+
+      document.cookie = `__Host-hexclave-refresh-${projectId}--default=${JSON.stringify({
+        refresh_token: "new-refresh-token",
+        updated_at_millis: 1,
+      })}`;
+      Reflect.set(clientInterface, "fetchNewAccessToken", async (refreshToken: unknown) => {
+        const refreshTokenString = Reflect.get(refreshToken ?? {}, "token");
+        if (typeof refreshTokenString !== "string") {
+          throw new Error("Expected refresh token while fetching a new access token.");
+        }
+        refreshedRawRefreshTokens.push(refreshTokenString);
+        return AccessToken.createIfValid(createAccessTokenString("new-refresh-token-id")) ?? (() => {
+          throw new Error("Expected test access token to be valid");
+        })();
+      });
+
+      const fetchCurrentRefreshTokenIdIfSignedIn = Reflect.get(clientApp, "_fetchCurrentRefreshTokenIdIfSignedIn");
+      if (typeof fetchCurrentRefreshTokenIdIfSignedIn !== "function") {
+        throw new Error("Expected StackClientApp to expose _fetchCurrentRefreshTokenIdIfSignedIn in tests.");
+      }
+      await expect(fetchCurrentRefreshTokenIdIfSignedIn.call(clientApp, {
+        awaitPendingAuthResolutions: false,
+      })).resolves.toBe("new-refresh-token-id");
+    } finally {
+      Reflect.set(clientInterface, "fetchNewAccessToken", originalFetchNewAccessToken);
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    expect(refreshedRawRefreshTokens).toEqual(["new-refresh-token"]);
   });
 
   it("uses direct sign-out instead of hosted sign-out redirects when code execution is available", async () => {
@@ -286,7 +385,9 @@ describe("StackClientApp cross-domain auth", () => {
       if (typeof signOut !== "function") {
         throw new Error("Expected StackClientApp to expose _signOut in tests.");
       }
-      await expect(signOut.call(clientApp, {})).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+      await expect(signOut.call(clientApp, Reflect.get(clientInterface, "createSession").call(clientInterface, {
+        refreshToken: null,
+      }))).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
     } finally {
       Reflect.set(clientInterface, "signOut", originalSignOut);
       globalThis.window = previousWindow;

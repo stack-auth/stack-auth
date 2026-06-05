@@ -847,12 +847,16 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return currentUrl.toString();
   }
 
-  protected async _getCurrentRefreshTokenIdIfSignedIn(options?: {
+  protected async _fetchCurrentRefreshTokenIdIfSignedIn(options?: {
     awaitPendingAuthResolutions?: boolean,
     overrideTokenStoreInit?: TokenStoreInit,
   }): Promise<string | null> {
     const session = await this._getSession(options?.overrideTokenStoreInit, options);
-    const tokens = await session.getOrFetchLikelyValidTokens(0, null);
+    // Nested cross-domain auth passes this ID to another origin, which later
+    // asks us to prove the same raw refresh token. A cached access token can be
+    // valid but stale relative to the refresh token, so mint from the refresh
+    // token that owns this session before exposing the ID.
+    const tokens = await session.fetchNewTokens();
     if (tokens?.refreshToken == null) {
       return null;
     }
@@ -870,7 +874,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return options.url;
     }
 
-    const refreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({
+    const refreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({
       awaitPendingAuthResolutions: options.awaitPendingAuthResolutions,
       overrideTokenStoreInit: options.overrideTokenStoreInit,
     });
@@ -925,7 +929,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
         throw new Error(`Nested cross-domain auth after-callback redirect URL ${afterCallbackRedirectUrlString} is not trusted.`);
       }
-      const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+      const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
       if (currentRefreshTokenId !== refreshTokenId) {
         throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
       }
@@ -944,7 +948,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     // We are on b.com. Bounce to the trusted callback on a.com with a normal OAuth request
     // shape; a.com will verify the source session and issue the one-time code.
-    const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+    const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
     if (currentRefreshTokenId === refreshTokenId) return false;
     if (currentRefreshTokenId != null) {
       const session = await this._getSession(undefined, { awaitPendingAuthResolutions: false });
@@ -1142,6 +1146,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       accessToken,
     };
   }
+  private _getCurrentBrowserCookieTokenStoreValue(old: TokenObject | null): TokenObject {
+    const tokens = this._getTokensFromCookies(this._getAllBrowserCookies());
+    return {
+      refreshToken: tokens.refreshToken,
+      accessToken: tokens.accessToken ?? (old?.refreshToken === tokens.refreshToken ? old.accessToken : null),
+    };
+  }
   protected get _accessTokenCookieName() {
     // The access token, unlike the refresh token, should not depend on the project ID. We never want to store the
     // access token in cookies more than once because of how big it is (there's a limit of 4096 bytes for all cookies
@@ -1284,20 +1295,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
 
     if (this._storedBrowserCookieTokenStore === null) {
-      const getCurrentValue = (old: TokenObject | null) => {
-        const tokens = this._getTokensFromCookies(this._getAllBrowserCookies());
-        return {
-          refreshToken: tokens.refreshToken,
-          accessToken: tokens.accessToken ?? (old?.refreshToken === tokens.refreshToken ? old.accessToken : null),
-        };
-      };
-      this._storedBrowserCookieTokenStore = new Store<TokenObject>(getCurrentValue(null));
+      this._storedBrowserCookieTokenStore = new Store<TokenObject>(this._getCurrentBrowserCookieTokenStoreValue(null));
       let hasSucceededInWriting = true;
 
       setInterval(() => {
         if (hasSucceededInWriting) {
           const oldValue = this._storedBrowserCookieTokenStore!.get();
-          const currentValue = getCurrentValue(oldValue);
+          const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
           if (!deepPlainEquals(currentValue, oldValue)) {
             this._storedBrowserCookieTokenStore!.set(currentValue);
           }
@@ -1331,6 +1335,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           }
         }
       });
+    } else {
+      const oldValue = this._storedBrowserCookieTokenStore.get();
+      const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
+      if (!deepPlainEquals(currentValue, oldValue)) {
+        this._storedBrowserCookieTokenStore.set(currentValue);
+      }
     }
 
     return this._storedBrowserCookieTokenStore;
@@ -2850,6 +2860,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     overrideTokenStoreInit?: TokenStoreInit,
   }): Promise<string> {
     const session = await this._getSession(options.overrideTokenStoreInit, { awaitPendingAuthResolutions: options.awaitPendingAuthResolutions });
+    // The authorize endpoint intentionally verifies that the access token and
+    // raw refresh token describe the same DB session. Force the access token to
+    // be minted from the refresh token we are about to send, instead of reusing
+    // a still-valid cached token from a pre-handoff session snapshot.
+    await session.fetchNewTokens();
     const response = await this._interface.sendClientRequest(
       "/auth/oauth/cross-domain/authorize",
       {
