@@ -275,6 +275,11 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
     return;
   }
 
+  // Structural-only fallback: when jiti can't evaluate the config (e.g. missing
+  // runtime dependencies in import-with attributes), we can only verify that
+  // (a) something changed on disk and (b) the file still exports `config`.
+  // This cannot catch silently mis-applied values — an accepted tradeoff vs.
+  // blocking updates entirely for configs we can't evaluate.
   if (flattenConfigUpdate(configUpdate).length > 0 && !snapshotsChangedOnDisk(snapshots)) {
     throw new Error(`Config update validation failed for ${configFilePath}: the agent did not modify the config or any of its referenced files.`);
   }

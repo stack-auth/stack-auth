@@ -505,6 +505,7 @@ async function updateRemoteDevelopmentEnvironmentConfigFile(
         config_update: configUpdate,
         wait_for_sync: true,
       }),
+      signal: AbortSignal.timeout(130_000),
     });
     if (!response.ok) {
       throw new Error(`Failed to update local development environment config (${response.status}): ${await response.text()}`);
