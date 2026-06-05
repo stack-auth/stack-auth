@@ -35,6 +35,20 @@ export type RunClaudeAgentResult = {
   resultText: string,
 };
 
+export class ClaudeAgentTimeoutError extends Error {
+  constructor(timeoutMs?: number) {
+    super(`Claude agent timed out${timeoutMs == null ? "" : ` after ${timeoutMs}ms`}.`);
+    this.name = "ClaudeAgentTimeoutError";
+  }
+}
+
+export class ClaudeAgentFailureError extends Error {
+  constructor(subtype: string) {
+    super(`Claude agent failed (${subtype}).`);
+    this.name = "ClaudeAgentFailureError";
+  }
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
@@ -91,13 +105,13 @@ export async function runHeadlessClaudeAgent(options: RunClaudeAgentOptions): Pr
           sawResult = true;
           resultText = message.result;
         } else {
-          throw new Error(`Claude agent failed (${message.subtype}).`);
+          throw new ClaudeAgentFailureError(message.subtype);
         }
       }
     }
   } catch (error) {
     if (abortController.signal.aborted && isAbortError(error)) {
-      throw new Error(`Claude agent timed out${options.timeoutMs == null ? "" : ` after ${options.timeoutMs}ms`}.`);
+      throw new ClaudeAgentTimeoutError(options.timeoutMs ?? undefined);
     }
     throw error;
   } finally {

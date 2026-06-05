@@ -7,7 +7,7 @@ import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
-import { getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent";
+import { ClaudeAgentFailureError, ClaudeAgentTimeoutError, getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
 
@@ -190,10 +190,10 @@ async function runConfigUpdateAgent(options: {
       },
     });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Claude agent timed out")) {
+    if (error instanceof ClaudeAgentTimeoutError) {
       throw new Error(`Config update agent timed out after ${timeoutMs}ms. It was unable to apply the config changes to the file.`);
     }
-    if (error instanceof Error && error.message.startsWith("Claude agent failed")) {
+    if (error instanceof ClaudeAgentFailureError) {
       throw new Error(`${error.message} It was unable to apply the config changes to the file.`);
     }
     throw error;
