@@ -11,8 +11,9 @@ vi.mock("@hexclave/shared/dist/hooks/use-hash", async () => {
     useHash: () => {
       const [hash, setHash] = React.useState(() => window.location.hash.substring(1));
       React.useEffect(() => {
-        const interval = setInterval(() => setHash(window.location.hash.substring(1)), 10);
-        return () => clearInterval(interval);
+        const handleHashChange = () => setHash(window.location.hash.substring(1));
+        window.addEventListener("hashchange", handleHashChange);
+        return () => window.removeEventListener("hashchange", handleHashChange);
       }, []);
       return hash;
     },
@@ -94,10 +95,34 @@ describe("SidebarLayout", () => {
 
     await act(async () => {
       getButton("API Keys").click();
-      await new Promise(resolve => setTimeout(resolve, 20));
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
 
     expect(window.location.hash).toBe("#api-keys");
     expect(container?.textContent).toContain("API keys content");
+  });
+
+  it("clears the local URL hash from the mobile close button", async () => {
+    await renderSidebar();
+
+    await act(async () => {
+      getButton("API Keys").click();
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    expect(window.location.hash).toBe("#api-keys");
+
+    const closeButton = [...container?.querySelectorAll("button") ?? []]
+      .find((button) => button.querySelector("svg") != null);
+    if (!(closeButton instanceof HTMLButtonElement)) {
+      throw new Error("Could not find mobile close button");
+    }
+
+    await act(async () => {
+      closeButton.click();
+    });
+
+    expect(window.location.hash).toBe("");
+    expect(container?.textContent).toContain("Profile content");
   });
 });

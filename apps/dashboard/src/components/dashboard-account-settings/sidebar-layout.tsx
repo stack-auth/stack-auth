@@ -18,7 +18,7 @@ export type SidebarItem = {
 
 export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string }) {
   const hash = useHash();
-  const selectedIndex = props.items.findIndex(item => item.id && (item.id === hash));
+  const selectedIndex = props.items.findIndex(item => item.id != null && item.id === hash);
   return (
     <>
       <div className={cn("hidden sm:flex h-full", props.className)}>
@@ -31,8 +31,15 @@ export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, 
   );
 }
 
+// navigateToSidebarItem intentionally mutates the URL fragment directly; these sidebar tabs are local hash state, not app routes.
 function navigateToSidebarItem(itemId: string | null) {
-  window.location.hash = itemId ?? "";
+  if (itemId === null) {
+    const previousUrl = window.location.href;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    window.dispatchEvent(new HashChangeEvent("hashchange", { oldURL: previousUrl, newURL: window.location.href }));
+    return;
+  }
+  window.location.hash = itemId;
 }
 
 function Items(props: { items: SidebarItem[], selectedIndex: number }) {
@@ -49,7 +56,7 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
           activeItemIndex === index ? "bg-white dark:bg-zinc-800/80 shadow-sm ring-1 ring-black/[0.04] text-foreground font-semibold" : ""
         )}
         onClick={() => {
-          if (item.id) {
+          if (item.id != null) {
             navigateToSidebarItem(item.id);
           }
         }}
