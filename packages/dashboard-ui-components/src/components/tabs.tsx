@@ -135,7 +135,7 @@ export function DesignCategoryTabs({
       className={cn(
         "flex w-full min-w-0 items-center gap-2",
         glassmorphic
-          ? "rounded-xl bg-black/[0.08] dark:bg-white/[0.04] p-1 backdrop-blur-sm"
+          ? "rounded-xl bg-zinc-100/90 p-1 ring-1 ring-black/[0.06] backdrop-blur-sm dark:bg-white/[0.04] dark:ring-white/[0.06]"
           : "border-b border-gray-300 dark:border-gray-800",
         className
       )}
@@ -164,9 +164,12 @@ export function DesignCategoryTabs({
                 isActive
                   ? cn(
                     gradientClass.activeText,
-                    glassmorphic && "bg-background shadow-sm ring-1 ring-black/[0.12] dark:ring-white/[0.06]"
+                    glassmorphic && "bg-white shadow-sm ring-1 ring-black/[0.12] dark:bg-background dark:ring-white/[0.06]"
                   )
-                  : "text-gray-700 dark:text-gray-400"
+                  : cn(
+                    "text-gray-700 dark:text-gray-400",
+                    glassmorphic && "rounded-lg hover:bg-white/50 dark:hover:bg-white/[0.06]",
+                  )
               )}
             >
               {loadingCategoryId === category.id && (

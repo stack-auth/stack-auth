@@ -107,7 +107,7 @@ export function DesignPillToggle({
                 sizeClass.button,
                 isActive
                   ? cn(
-                    "bg-background text-foreground shadow-sm ring-1",
+                    "bg-white dark:bg-background text-foreground shadow-sm ring-1",
                     glassmorphic
                       ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:text-[hsl(240,71%,90%)] dark:ring-[hsl(240,71%,70%)]/20"
                       : activeRingClass

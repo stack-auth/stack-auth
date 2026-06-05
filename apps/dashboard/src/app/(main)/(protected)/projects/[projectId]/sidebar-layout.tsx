@@ -1,6 +1,7 @@
 'use client';
 
 import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
+import { DashboardUserButton } from "@/components/dashboard-user-button";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -37,7 +38,6 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { UserButton } from "@hexclave/next";
 import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -600,7 +600,7 @@ function SidebarContent({
           {!isCollapsed && (
             <div className="min-w-0 flex-1 overflow-hidden max-w-[calc(100%-3rem)]">
               <div className="w-full min-w-0 [&_button]:min-w-0 [&_button]:w-full [&_button]:max-w-full">
-                <UserButton showUserInfo />
+                <DashboardUserButton showUserInfo />
               </div>
             </div>
           )}
@@ -728,7 +728,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               {/* Right section: Search, Theme toggle and User button */}
               <div className="flex grow-1 gap-2 items-center">
                 <ThemeToggle />
-                <UserButton />
+                <DashboardUserButton />
               </div>
             </div>
           </div>
@@ -753,14 +753,14 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 dark:py-0 dark:px-2 dark:pb-3">
+            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 lg:pr-24 dark:py-0 dark:px-2 dark:pb-3 dark:lg:pr-24">
               <div className={cn(
               "relative flex min-w-0 flex-col overflow-visible has-[[data-full-bleed]]:h-full",
-              // Light mode card styling
-              "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06] lg:pr-20",
+              // Light mode card styling (companion gutter is on <main>, not here — avoids empty card chrome behind Stack Companion)
+              "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06]",
               // Dark mode: remove card styling
-              "dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0 dark:lg:pr-20",
-              // Full-bleed pages (email editors etc.): remove card styling in light mode too (keep lg:pr-20 for companion space)
+              "dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0",
+              // Full-bleed pages (email editors etc.): remove card styling in light mode too
               "has-[[data-full-bleed]]:min-h-0 has-[[data-full-bleed]]:bg-transparent has-[[data-full-bleed]]:backdrop-blur-none has-[[data-full-bleed]]:shadow-none has-[[data-full-bleed]]:rounded-none has-[[data-full-bleed]]:border-0",
             )}>
                 {props.children}

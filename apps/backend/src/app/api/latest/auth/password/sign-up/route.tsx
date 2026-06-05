@@ -46,7 +46,7 @@ export const POST = createSmartRouteHandler({
     }
 
     if (verificationCallbackUrl && !validateRedirectUrl(verificationCallbackUrl, tenancy)) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(verificationCallbackUrl);
     }
 
     if (!tenancy.config.auth.allowSignUp) {

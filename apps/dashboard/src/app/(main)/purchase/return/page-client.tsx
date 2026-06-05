@@ -1,10 +1,12 @@
 "use client";
 
 import { StyledLink } from "@/components/link";
+import { DesignCard } from "@/components/design-components/card";
+import { Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { Typography } from "@/components/ui";
+import { CheckCircleIcon, SpinnerGapIcon, XCircleIcon } from "@phosphor-icons/react";
 import { loadStripe } from "@stripe/stripe-js";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -104,31 +106,53 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
   }, [updateViewState]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen text-center px-4 gap-4">
-      {state.kind === "loading" && (
-        <>
-          <Typography type="h2">Finalizing purchase…</Typography>
-          <Typography type="label">Please wait while we verify your payment.</Typography>
-        </>
-      )}
-      {state.kind === "success" && (
-        <>
-          <Typography type="h2">Purchase successful</Typography>
-          <Typography type="label">{state.message}</Typography>
-        </>
-      )}
-      {state.kind === "error" && (
-        <>
-          <Typography type="h2">Purchase failed</Typography>
-          <Typography type="label">
-            The following error occurred: &quot;{state.message}&quot;
-          </Typography>
-          <Typography type="label">
-            <StyledLink href={`/purchase/${purchaseFullCode}`}>Click here</StyledLink> to try making your purchase again.
-          </Typography>
-        </>
-      )}
+    <div className="relative flex min-h-screen items-center justify-center bg-white px-4 py-12 dark:bg-black">
+      <DesignCard glassmorphic className="relative w-full max-w-md" contentClassName="flex flex-col items-center gap-5 p-8 text-center">
+        {state.kind === "loading" && (
+          <>
+            <div className="flex size-14 items-center justify-center rounded-full bg-primary/10">
+              <SpinnerGapIcon className="size-7 animate-spin text-primary" />
+            </div>
+            <Typography type="h2" className="text-xl font-semibold tracking-tight">
+              Finalizing purchase…
+            </Typography>
+            <Typography type="label" className="text-sm text-muted-foreground">
+              Please wait while we verify your payment.
+            </Typography>
+          </>
+        )}
+
+        {state.kind === "success" && (
+          <>
+            <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/10">
+              <CheckCircleIcon className="size-7 text-emerald-600 dark:text-emerald-400" weight="fill" />
+            </div>
+            <Typography type="h2" className="text-xl font-semibold tracking-tight">
+              Purchase successful
+            </Typography>
+            <Typography type="label" className="text-sm text-muted-foreground">
+              {state.message}
+            </Typography>
+          </>
+        )}
+
+        {state.kind === "error" && (
+          <>
+            <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10">
+              <XCircleIcon className="size-7 text-destructive" weight="fill" />
+            </div>
+            <Typography type="h2" className="text-xl font-semibold tracking-tight">
+              Purchase failed
+            </Typography>
+            <Typography type="label" className="text-sm text-muted-foreground">
+              The following error occurred: &quot;{state.message}&quot;
+            </Typography>
+            <Typography type="label" className="text-sm text-muted-foreground">
+              <StyledLink href={`/purchase/${purchaseFullCode}`}>Click here</StyledLink> to try making your purchase again.
+            </Typography>
+          </>
+        )}
+      </DesignCard>
     </div>
   );
 }
-

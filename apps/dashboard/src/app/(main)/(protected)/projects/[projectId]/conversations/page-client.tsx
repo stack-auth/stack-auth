@@ -3,18 +3,22 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { UserPickerTable } from "@/components/data-table/user-picker-table";
 import { useRouter } from "@/components/router";
-import { DesignAlert, DesignBadge, DesignCard, DesignCategoryTabs, DesignInput, DesignSelectorDropdown } from "@/components/design-components";
+import {
+  DesignAlert,
+  DesignBadge,
+  DesignButton,
+  DesignCard,
+  DesignCategoryTabs,
+  DesignDialog,
+  DesignDialogClose,
+  DesignInput,
+  DesignSelectorDropdown,
+} from "@/components/design-components";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -582,7 +586,6 @@ function NewConversationDialog(props: {
   const [subject, setSubject] = useState("");
   const [initialMessage, setInitialMessage] = useState("");
   const [priority, setPriority] = useState<ConversationPriority>("normal");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -600,36 +603,72 @@ function NewConversationDialog(props: {
   const canSubmit = subject.trim() !== "" && initialMessage.trim() !== "";
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Create conversation</DialogTitle>
-          <DialogDescription>
-            Start a support conversation for a user and keep replies, notes, and context in one place.
-          </DialogDescription>
-        </DialogHeader>
+    <DesignDialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      size="2xl"
+      icon={ChatCircleDotsIcon}
+      title="Create conversation"
+      description="Start a support conversation for a user and keep replies, notes, and context in one place."
+      className="max-h-[min(100dvh-2rem,52rem)]"
+      bodyClassName="px-6 py-6"
+      footerClassName="px-6 py-4"
+      footer={(
+        <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <DesignDialogClose asChild>
+            <DesignButton variant="secondary" size="sm">
+              Cancel
+            </DesignButton>
+          </DesignDialogClose>
+          <DesignButton
+            size="sm"
+            disabled={selectedUserId == null || !canSubmit}
+            onClick={async () => {
+              if (!canSubmit) {
+                return;
+              }
+              const nextUserId = selectedUserId ?? throwErr("A support conversation must be attached to a selected user.");
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              User
-            </Typography>
-            {selectedUserLabel != null ? (
-              <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 px-3 py-2">
-                <Typography className="text-sm">{selectedUserLabel}</Typography>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => {
-                    setSelectedUserId(null);
-                    setSelectedUserLabel(null);
-                  }}
-                >
-                  <XIcon className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
+              setErrorMessage(null);
+              const result = await createConversation(props.currentUser, {
+                projectId: props.projectId,
+                userId: nextUserId,
+                subject: subject.trim(),
+                initialMessage: initialMessage.trim(),
+                priority,
+              });
+              props.onCreated(result.conversationId, nextUserId);
+              props.onOpenChange(false);
+            }}
+          >
+            <PlusIcon className="mr-2 h-4 w-4" />
+            Create Conversation
+          </DesignButton>
+        </div>
+      )}
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
+          <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            User
+          </Typography>
+          {selectedUserLabel != null ? (
+            <div className="flex items-center justify-between rounded-xl border border-black/[0.08] bg-zinc-50/80 px-3 py-2 dark:border-white/[0.06] dark:bg-foreground/[0.03]">
+              <Typography className="text-sm">{selectedUserLabel}</Typography>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  setSelectedUserId(null);
+                  setSelectedUserLabel(null);
+                }}
+              >
+                <XIcon className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.06] dark:ring-white/[0.06]">
               <UserPickerTable
                 action={(user) => (
                   <Button
@@ -643,93 +682,59 @@ function NewConversationDialog(props: {
                   </Button>
                 )}
               />
-            )}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_160px]">
-            <div className="flex flex-col gap-2">
-              <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Subject
-              </Typography>
-              <Input
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-                placeholder="Password reset loop on mobile"
-              />
             </div>
-            <div className="flex flex-col gap-2">
-              <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Priority
-              </Typography>
-              <Select value={priority} onValueChange={(value: ConversationPriority) => setPriority(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          )}
+        </div>
 
+        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_160px]">
           <div className="flex flex-col gap-2">
             <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Initial message
+              Subject
             </Typography>
-            <Textarea
-              value={initialMessage}
-              onChange={(event) => setInitialMessage(event.target.value)}
-              placeholder="Describe the issue, customer context, and what support should do next."
-              className="min-h-32"
+            <DesignInput
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+              placeholder="Password reset loop on mobile"
             />
           </div>
-
-          {errorMessage != null && (
-            <DesignAlert
-              variant="error"
-              title="Could not create conversation"
-              description={errorMessage}
-            />
-          )}
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => props.onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={selectedUserId == null || !canSubmit || isSubmitting}
-              onClick={async () => {
-                if (!canSubmit) {
-                  return;
-                }
-                const nextUserId = selectedUserId ?? throwErr("A support conversation must be attached to a selected user.");
-
-                setIsSubmitting(true);
-                setErrorMessage(null);
-                try {
-                  const result = await createConversation(props.currentUser, {
-                    projectId: props.projectId,
-                    userId: nextUserId,
-                    subject: subject.trim(),
-                    initialMessage: initialMessage.trim(),
-                    priority,
-                  });
-                  props.onCreated(result.conversationId, nextUserId);
-                  props.onOpenChange(false);
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}
-            >
-              {isSubmitting ? <Spinner className="mr-2 h-4 w-4" /> : <PlusIcon className="mr-2 h-4 w-4" />}
-              Create Conversation
-            </Button>
+          <div className="flex flex-col gap-2">
+            <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Priority
+            </Typography>
+            <Select value={priority} onValueChange={(value: ConversationPriority) => setPriority(value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITY_OPTIONS.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <div className="flex flex-col gap-2">
+          <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Initial message
+          </Typography>
+          <Textarea
+            value={initialMessage}
+            onChange={(event) => setInitialMessage(event.target.value)}
+            placeholder="Describe the issue, customer context, and what support should do next."
+            className="min-h-32"
+          />
+        </div>
+
+        {errorMessage != null && (
+          <DesignAlert
+            variant="error"
+            title="Could not create conversation"
+            description={errorMessage}
+          />
+        )}
+      </div>
+    </DesignDialog>
   );
 }
 
@@ -1111,28 +1116,22 @@ export default function PageClient() {
         } : { fillWidth: true as const })}
       >
         <div className={cn("relative isolate", isConversationSelected && "flex min-h-0 flex-1 flex-col")}>
-          <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-44 bg-gradient-to-b from-blue-500/12 via-cyan-500/8 to-transparent blur-2xl" />
           <div className={cn(isConversationSelected ? "flex min-h-0 flex-1 flex-col gap-3" : "grid gap-6")}>
             {!isConversationSelected && (
               <DesignCard
-                className="h-fit rounded-3xl border border-white/10 bg-background/80 shadow-[0_10px_40px_-24px_rgba(30,80,255,0.6)] backdrop-blur-xl"
-                contentClassName="overflow-hidden p-0"
+                title="Unified inbox"
+                subtitle="Search conversations by subject or user and jump straight into the full history."
+                icon={HeadsetIcon}
+                gradient="default"
+                className="h-fit"
+                contentClassName="overflow-hidden !p-0"
+                actions={selectedUserId != null ? (
+                  <Button variant="ghost" size="sm" onClick={() => updateSelection({ userId: null, conversationId: null })}>
+                    Clear Filter
+                  </Button>
+                ) : undefined}
               >
-                <div className="flex flex-col gap-4 border-b border-border/70 bg-gradient-to-b from-foreground/[0.03] to-transparent px-5 py-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <Typography className="text-sm font-semibold tracking-wide">Unified inbox</Typography>
-                      <Typography variant="secondary" className="mt-1 text-xs">
-                        Search conversations by subject or user and jump straight into the full history.
-                      </Typography>
-                    </div>
-                    {selectedUserId != null && (
-                      <Button variant="ghost" size="sm" onClick={() => updateSelection({ userId: null, conversationId: null })}>
-                        Clear Filter
-                      </Button>
-                    )}
-                  </div>
-
+                <div className="flex flex-col gap-4 px-5 pt-4 pb-4">
                   <DesignInput
                     value={searchInput}
                     onChange={(event) => setSearchInput(event.target.value)}
@@ -1146,11 +1145,12 @@ export default function PageClient() {
                     onSelect={(id) => id === "closed" ? setStatusFilter("closed") : id === "pending" ? setStatusFilter("pending") : id === "open" ? setStatusFilter("open") : setStatusFilter("all")}
                     showBadge={false}
                     size="sm"
-                    gradient="blue"
+                    gradient="default"
+                    glassmorphic={false}
                   />
                 </div>
 
-                <div className="flex max-h-[760px] flex-col overflow-y-auto px-2 py-2">
+                <div className="flex max-h-[760px] flex-col overflow-y-auto border-t border-black/[0.06] px-2 py-2 dark:border-white/[0.06]">
                   {conversationsLoading && (
                     <div className="flex items-center justify-center py-10">
                       <Spinner className="h-5 w-5" />
@@ -1201,8 +1201,8 @@ export default function PageClient() {
                           "w-full rounded-2xl border border-transparent px-2 py-2 text-left",
                           "transition-colors duration-150 hover:transition-none",
                           isActive
-                            ? "border-blue-400/25 bg-blue-500/10 shadow-[0_8px_24px_-20px_rgba(30,80,255,0.9)]"
-                            : "hover:bg-foreground/[0.03]",
+                            ? "border-black/[0.08] bg-zinc-50 ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-white/[0.06] dark:ring-white/[0.06]"
+                            : "hover:bg-zinc-50 dark:hover:bg-foreground/[0.03]",
                         )}
                           onClick={() => updateSelection({ conversationId: conversation.conversationId, userId: conversation.userId })}
                         >
@@ -1254,7 +1254,7 @@ export default function PageClient() {
                               </span>
                             </div>
 
-                            <div className="rounded-md border border-border/60 bg-foreground/[0.03] px-2 py-1.5">
+                            <div className="rounded-md border border-black/[0.06] bg-zinc-50/80 px-2 py-1.5 dark:border-white/[0.06] dark:bg-foreground/[0.03]">
                               <Typography variant="secondary" className="text-[10px] uppercase tracking-wider">
                                 Last message
                               </Typography>
@@ -1289,7 +1289,7 @@ export default function PageClient() {
                 </button>
 
                 {conversationLoading && (
-                  <DesignCard className="rounded-3xl" contentClassName="flex items-center justify-center p-10">
+                  <DesignCard gradient="default" contentClassName="flex items-center justify-center p-10">
                     <Spinner className="h-5 w-5" />
                   </DesignCard>
                 )}
@@ -1301,7 +1301,7 @@ export default function PageClient() {
                 {!conversationLoading && conversationDetail != null && (
                   <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-5">
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-                      <div className="shrink-0 rounded-xl border border-border/60 bg-background/80 px-3 py-2.5 shadow-sm backdrop-blur-sm dark:bg-background/50">
+                      <div className="shrink-0 rounded-xl bg-white/90 px-3 py-2.5 shadow-sm ring-1 ring-black/[0.06] backdrop-blur-xl dark:bg-background/50 dark:ring-white/[0.06]">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <SupportUserHeader
                             size="compact"
@@ -1369,12 +1369,13 @@ export default function PageClient() {
                         </div>
                       </div>
 
-                      <div
+                      <DesignCard
+                        gradient="default"
                         className={cn(
-                          "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-background/50 shadow-[0_10px_36px_-28px_rgba(30,80,255,0.55)]",
-                          "ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.06] dark:backdrop-blur-xl",
+                          "relative flex min-h-0 flex-1 flex-col overflow-hidden",
                           "min-h-[min(520px,calc(100dvh-14rem))] lg:min-h-0",
                         )}
+                        contentClassName="flex min-h-0 flex-1 flex-col overflow-hidden !p-0"
                       >
                         <div className="flex min-h-0 flex-1 flex-col">
                           <div
@@ -1406,7 +1407,7 @@ export default function PageClient() {
                             }}
                           />
                         </div>
-                      </div>
+                      </DesignCard>
                     </div>
 
                     {isLgViewport && (
@@ -1462,7 +1463,7 @@ export default function PageClient() {
                 )}
 
                 {!conversationLoading && conversationDetail == null && selectedUserId != null && selectedUser != null && (
-                  <DesignCard className="rounded-3xl border border-white/10" contentClassName="p-7">
+                  <DesignCard gradient="default" contentClassName="p-7">
                     <div className="flex flex-col gap-6">
                       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                         <div className="flex flex-col gap-3">
@@ -1492,15 +1493,15 @@ export default function PageClient() {
                       </div>
 
                       <div className="grid gap-4 md:grid-cols-3">
-                        <DesignCard className="rounded-2xl border border-white/10" contentClassName="p-4">
+                        <DesignCard gradient="default" contentClassName="p-4">
                           <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Primary Email</Typography>
                           <Typography className="mt-2 text-sm">{selectedUser.primaryEmail ?? "Not set"}</Typography>
                         </DesignCard>
-                        <DesignCard className="rounded-2xl border border-white/10" contentClassName="p-4">
+                        <DesignCard gradient="default" contentClassName="p-4">
                           <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Signed Up</Typography>
                           <Typography className="mt-2 text-sm">{fromNow(selectedUser.signedUpAt)}</Typography>
                         </DesignCard>
-                        <DesignCard className="rounded-2xl border border-white/10" contentClassName="p-4">
+                        <DesignCard gradient="default" contentClassName="p-4">
                           <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Last Active</Typography>
                           <Typography className="mt-2 text-sm">{fromNow(selectedUser.lastActiveAt)}</Typography>
                         </DesignCard>
@@ -1510,22 +1511,17 @@ export default function PageClient() {
                 )}
 
                 {!conversationLoading && conversationDetail == null && selectedUserId == null && (
-                  <DesignCard className="rounded-3xl border border-white/10 bg-gradient-to-b from-blue-500/[0.08] to-background/80" contentClassName="p-10">
-                    <div className="flex flex-col items-center gap-4 text-center">
-                      <div className="rounded-2xl bg-blue-500/10 p-4 text-blue-600 dark:text-blue-300">
-                        <ChatCircleDotsIcon className="h-8 w-8" />
-                      </div>
-                      <div className="space-y-1">
-                        <Typography className="text-lg font-semibold">Pick a conversation or open a user</Typography>
-                        <Typography variant="secondary" className="mx-auto max-w-xl text-sm">
-                          This inbox is the single place to investigate a user, add internal context, and reply in the same conversation the user sees.
-                        </Typography>
-                      </div>
-                      <Button onClick={() => setNewConversationOpen(true)}>
-                        <PlusIcon className="mr-2 h-4 w-4" />
-                        Create First Conversation
-                      </Button>
-                    </div>
+                  <DesignCard
+                    title="Pick a conversation or open a user"
+                    subtitle="This inbox is the single place to investigate a user, add internal context, and reply in the same conversation the user sees."
+                    icon={ChatCircleDotsIcon}
+                    gradient="default"
+                    contentClassName="flex justify-center p-10"
+                  >
+                    <Button onClick={() => setNewConversationOpen(true)}>
+                      <PlusIcon className="mr-2 h-4 w-4" />
+                      Create First Conversation
+                    </Button>
                   </DesignCard>
                 )}
               </div>

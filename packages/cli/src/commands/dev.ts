@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "child_process";
+import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
@@ -28,6 +28,12 @@ type SessionResponse = {
   onboarding_outstanding: boolean,
 };
 
+type HeartbeatResponse = {
+  ok: true,
+  browser_secret_confirmation_code?: string,
+  browser_secret_confirmation_code_expires_at_millis?: number,
+};
+
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
@@ -37,6 +43,8 @@ const DASHBOARD_START_TIMEOUT_MS = 60_000;
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
+const DEV_DASHBOARD_COMMAND_ENV_VAR = "HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND";
+const DEV_DASHBOARD_DIST_DIR_ENV_VAR = "HEXCLAVE_DASHBOARD_NEXT_DIST_DIR";
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
@@ -101,6 +109,11 @@ function dashboardPort(): number {
 
 function dashboardUrl(port = dashboardPort()): string {
   return `http://127.0.0.1:${port}`;
+}
+
+export function devDashboardCommandFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  const command = env[DEV_DASHBOARD_COMMAND_ENV_VAR]?.trim();
+  return command == null || command.length === 0 ? undefined : command;
 }
 
 function normalizeApiBaseUrl(apiBaseUrl: string): string {
@@ -252,13 +265,18 @@ function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
   return runtimeServerPath;
 }
 
-async function isDashboardReachable(url: string): Promise<boolean> {
+async function isDashboardReachable(url: string, secret?: string): Promise<boolean> {
   try {
-    const response = await fetch(`${url}${DASHBOARD_HEALTH_PATH}`, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (secret) {
+      headers.Authorization = `Bearer ${secret}`;
+    }
+    const response = await fetch(`${url}${DASHBOARD_HEALTH_PATH}`, { headers });
+    if (!secret) {
+      // Without a secret we only care whether the port is still bound (used by
+      // killLocalDashboard to detect process shutdown), so any HTTP response suffices.
+      return true;
+    }
     const body: unknown = await response.json();
     return (
       typeof body === "object"
@@ -329,6 +347,47 @@ export function processExists(pid: number): boolean {
   }
 }
 
+function signalDashboardProcess(pid: number, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-pid, signal);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+        throw error;
+      }
+    }
+  }
+
+  process.kill(pid, signal);
+}
+
+function startDashboardProcess(options: {
+  dashboardEnv: NodeJS.ProcessEnv,
+  logFd: number,
+  port: number,
+}): ChildProcess {
+  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
+  if (devDashboardCommand != null) {
+    writeSync(options.logFd, `Using ${DEV_DASHBOARD_COMMAND_ENV_VAR}: ${devDashboardCommand}\n`);
+    return spawn(devDashboardCommand, {
+      cwd: process.cwd(),
+      detached: true,
+      env: options.dashboardEnv,
+      shell: true,
+      stdio: ["ignore", options.logFd, options.logFd],
+    });
+  }
+
+  const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port);
+  return spawn(process.execPath, [dashboardServerPath], {
+    cwd: resolve(dirname(dashboardServerPath), "../.."),
+    detached: true,
+    stdio: ["ignore", options.logFd, options.logFd],
+    env: options.dashboardEnv,
+  });
+}
+
 // Terminate the background dashboard recorded for `port` in dev-env state and
 // wait until the port stops answering, so a fresh (newer) dashboard can rebind
 // without EADDRINUSE.
@@ -338,7 +397,7 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   if (!processExists(pid)) return;
 
   try {
-    process.kill(pid, "SIGTERM");
+    signalDashboardProcess(pid, "SIGTERM");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     // ESRCH: already gone. EPERM: the pid was recycled onto a process we don't
@@ -363,7 +422,7 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   // still holding the port, so the recorded pid is necessarily still valid;
   // force it down, then wait for the socket to be released.
   try {
-    process.kill(pid, "SIGKILL");
+    signalDashboardProcess(pid, "SIGKILL");
   } catch {
     // best-effort
   }
@@ -376,24 +435,30 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
 
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number }): Promise<void> {
   const url = dashboardUrl(options.port);
-  if (await isDashboardReachable(url)) {
+  if (await isDashboardReachable(url, options.secret)) {
     const currentVersion = cliVersion();
-    const runningVersion = readDevEnvState().localDashboardsByPort?.[String(options.port)]?.version;
+    const runningDashboard = readDevEnvState().localDashboardsByPort?.[String(options.port)];
+    const runningVersion = runningDashboard?.version;
     if (shouldRestartDashboard(currentVersion, runningVersion)) {
       logDev(`Existing Hexclave dashboard is ${runningVersion}; restarting with ${currentVersion}...`);
       await killLocalDashboard(url, options.port);
     } else {
       logDev(`Using existing Hexclave dashboard on ${url}.`);
+      if (runningDashboard?.logPath != null) {
+        logDev(`Dashboard logs: ${runningDashboard.logPath}`);
+      }
       return;
     }
   }
 
   const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
+  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   const dashboardEnv = {
     ...process.env,
-    NODE_ENV: "production",
+    NODE_ENV: devDashboardCommand == null ? "production" : "development",
     PORT: String(options.port),
-    HOSTNAME: "127.0.0.1",
+    HOSTNAME: "0.0.0.0",
+    [DEV_DASHBOARD_DIST_DIR_ENV_VAR]: process.env[DEV_DASHBOARD_DIST_DIR_ENV_VAR] ?? ".next-development-environment",
     STACK_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_STACK_API_URL: options.apiBaseUrl,
     NEXT_PUBLIC_BROWSER_STACK_API_URL: options.apiBaseUrl,
@@ -409,7 +474,6 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     [DASHBOARD_PORT_ENV_VAR]: String(options.port),
   };
   try {
-    const dashboardServerPath = prepareDashboardRuntime(dashboardEnv, options.port);
     const logPath = dashboardLogPath(options.port);
     mkdirSync(dirname(logPath), { recursive: true });
     const logFd = openSync(logPath, "a", 0o600);
@@ -417,12 +481,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     writeSync(logFd, `\n[${new Date().toISOString()}] Starting Hexclave development-environment dashboard on ${url}\n`);
     const child = (() => {
       try {
-        return spawn(process.execPath, [dashboardServerPath], {
-          cwd: resolve(dirname(dashboardServerPath), "../.."),
-          detached: true,
-          stdio: ["ignore", logFd, logFd],
-          env: dashboardEnv,
-        });
+        return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
       } finally {
         closeSync(logFd);
       }
@@ -431,11 +490,12 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
       throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
     }
     recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+    logDev(`Dashboard logs: ${logPath}`);
     child.unref();
 
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
-      if (await isDashboardReachable(url)) {
+      if (await isDashboardReachable(url, options.secret)) {
         progress.stop(`Started Hexclave dashboard`);
         return;
       }
@@ -511,6 +571,71 @@ function isSessionResponse(value: unknown): value is SessionResponse {
   );
 }
 
+function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "ok" in value &&
+    value.ok === true &&
+    (
+      !("browser_secret_confirmation_code" in value) ||
+      typeof value.browser_secret_confirmation_code === "string"
+    ) &&
+    (
+      !("browser_secret_confirmation_code_expires_at_millis" in value) ||
+      typeof value.browser_secret_confirmation_code_expires_at_millis === "number"
+    )
+  );
+}
+
+function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
+  if (response.browser_secret_confirmation_code == null) return;
+  const expiresAtMillis = response.browser_secret_confirmation_code_expires_at_millis;
+  const expiresInSeconds = expiresAtMillis == null
+    ? undefined
+    : Math.max(0, Math.ceil((expiresAtMillis - Date.now()) / 1000));
+  logDev(expiresInSeconds == null
+    ? `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code}`
+    : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
+}
+
+function pendingBrowserSecretConfirmationCodeFromState(port: number): HeartbeatResponse | null {
+  const pending = readDevEnvState().pendingBrowserSecretConfirmationCodesByPort?.[String(port)];
+  if (pending == null || pending.expiresAtMillis <= Date.now()) {
+    return null;
+  }
+  return {
+    ok: true,
+    browser_secret_confirmation_code: pending.code,
+    browser_secret_confirmation_code_expires_at_millis: pending.expiresAtMillis,
+  };
+}
+
+function maybeLogPendingBrowserSecretConfirmationCodeFromState(port: number, lastLoggedConfirmationCode: string | null): string | null {
+  const pending = pendingBrowserSecretConfirmationCodeFromState(port);
+  const code = pending?.browser_secret_confirmation_code;
+  if (code == null || code === lastLoggedConfirmationCode) {
+    return lastLoggedConfirmationCode;
+  }
+  if (pending == null) {
+    return lastLoggedConfirmationCode;
+  }
+  logBrowserSecretConfirmationCode(pending);
+  return code;
+}
+
+async function logPendingBrowserSecretConfirmationCodesUntilStopped(options: {
+  port: number,
+  shouldStop: () => boolean,
+}): Promise<void> {
+  let lastLoggedConfirmationCode: string | null = null;
+  while (!options.shouldStop()) {
+    lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
+    await wait(1_000);
+  }
+}
+
 async function createRemoteDevelopmentEnvironmentSession(options: {
   apiBaseUrl: string,
   configFilePath: string,
@@ -537,10 +662,110 @@ async function createRemoteDevelopmentEnvironmentSession(options: {
   return body;
 }
 
+const APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND_PARENT_PID";
+const APP_COMMAND_WRAPPER_COMMAND_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND";
+const APP_COMMAND_WRAPPER_ARGS_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON";
+
+const APP_COMMAND_WRAPPER_SCRIPT = String.raw`
+const { spawn } = require("node:child_process");
+
+const parentPid = Number(process.env.HEXCLAVE_DEV_APP_COMMAND_PARENT_PID);
+const command = process.env.HEXCLAVE_DEV_APP_COMMAND;
+const rawArgs = process.env.HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON ?? "[]";
+if (!Number.isSafeInteger(parentPid) || parentPid <= 0 || !command) {
+  console.error("[Hexclave] Invalid app-command wrapper configuration.");
+  process.exit(1);
+}
+
+let args;
+try {
+  args = JSON.parse(rawArgs);
+} catch (error) {
+  console.error("[Hexclave] Invalid app-command argument payload.", error);
+  process.exit(1);
+}
+if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) {
+  console.error("[Hexclave] Invalid app-command arguments.");
+  process.exit(1);
+}
+
+const childEnv = { ...process.env };
+delete childEnv.HEXCLAVE_DEV_APP_COMMAND_PARENT_PID;
+delete childEnv.HEXCLAVE_DEV_APP_COMMAND;
+delete childEnv.HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON;
+
+const child = spawn(command, args, {
+  env: childEnv,
+  stdio: "inherit",
+});
+
+let stopping = false;
+let forceKillTimer;
+
+function signalOwnProcessGroup(signal) {
+  try {
+    process.kill(-process.pid, signal);
+  } catch {
+    // best-effort
+  }
+}
+
+function stopProcessGroup(signal) {
+  if (stopping) return;
+  stopping = true;
+  signalOwnProcessGroup(signal);
+  forceKillTimer = setTimeout(() => signalOwnProcessGroup("SIGKILL"), 5000);
+  forceKillTimer.unref();
+}
+
+process.on("SIGINT", () => stopProcessGroup("SIGINT"));
+process.on("SIGTERM", () => stopProcessGroup("SIGTERM"));
+
+const parentWatch = setInterval(() => {
+  try {
+    process.kill(parentPid, 0);
+  } catch {
+    stopProcessGroup("SIGTERM");
+  }
+}, 1000);
+parentWatch.unref();
+
+child.on("close", (code, signal) => {
+  clearInterval(parentWatch);
+  if (forceKillTimer != null) clearTimeout(forceKillTimer);
+  if (code != null) {
+    process.exit(code);
+  }
+  if (signal === "SIGINT") process.exit(130);
+  if (signal === "SIGTERM") process.exit(143);
+  if (signal === "SIGKILL") process.exit(137);
+  process.exit(1);
+});
+
+child.on("error", (error) => {
+  console.error("[Hexclave] Failed to run app command:", error);
+  process.exit(1);
+});
+`;
+
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command.command, command.args, { stdio: "inherit", env });
-    const cleanup = forwardSignals(child);
+    const child = process.platform === "win32"
+      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
+        detached: true,
+        stdio: "inherit",
+        env: {
+          ...env,
+          [APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR]: String(process.pid),
+          [APP_COMMAND_WRAPPER_COMMAND_ENV_VAR]: command.command,
+          [APP_COMMAND_WRAPPER_ARGS_ENV_VAR]: JSON.stringify(command.args),
+        },
+      });
+    const cleanup = forwardSignals(child, {
+      forceKillAfterMs: 5_000,
+      processGroup: process.platform !== "win32",
+    });
     child.on("close", (code) => {
       cleanup();
       resolvePromise(code ?? 1);
@@ -591,8 +816,14 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
   secret: string,
   shouldStop: () => boolean,
 }): Promise<void> {
+  let lastLoggedConfirmationCode: string | null = null;
+  let heartbeatAttempt = 0;
   while (!options.shouldStop()) {
-    if (await waitForHeartbeatIntervalOrStop(options.shouldStop)) return;
+    if (await waitForHeartbeatIntervalOrStop(options.shouldStop)) {
+      return;
+    }
+    lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
+    heartbeatAttempt += 1;
 
     let response: Response;
     const controller = new AbortController();
@@ -606,7 +837,8 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
         method: "POST",
         signal: controller.signal,
       }, options.secret, options.port);
-    } catch {
+    } catch (error) {
+      lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
       if (options.shouldStop()) return;
       sessionState.session = await restartDashboardForHeartbeat({
         apiBaseUrl: options.apiBaseUrl,
@@ -633,6 +865,25 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
       });
       sessionState.dashboardReachableSinceMs = performance.now();
       logDev(`Hexclave dashboard running at ${dashboardUrl(options.port)}`);
+      continue;
+    }
+
+    let heartbeatBody: unknown;
+    try {
+      heartbeatBody = await response.json();
+    } catch {
+      logDev("Development environment heartbeat returned unparseable JSON.");
+      continue;
+    }
+    if (!isHeartbeatResponse(heartbeatBody)) {
+      logDev("Development environment heartbeat returned an invalid response.");
+      continue;
+    }
+    // Deduplicate: only log a confirmation code once per unique code value.
+    if (heartbeatBody.browser_secret_confirmation_code != null &&
+        heartbeatBody.browser_secret_confirmation_code !== lastLoggedConfirmationCode) {
+      logBrowserSecretConfirmationCode(heartbeatBody);
+      lastLoggedConfirmationCode = heartbeatBody.browser_secret_confirmation_code;
     }
   }
 }
@@ -702,6 +953,10 @@ export function registerDevCommand(program: Command) {
         secret,
         shouldStop: () => stopped,
       });
+      const browserSecretCodePolling = logPendingBrowserSecretConfirmationCodesUntilStopped({
+        port,
+        shouldStop: () => stopped,
+      });
       let exitCode = 1;
       try {
         exitCode = await runChildProcess(childCommand, {
@@ -710,7 +965,7 @@ export function registerDevCommand(program: Command) {
         });
       } finally {
         stopped = true;
-        await heartbeat;
+        await Promise.all([heartbeat, browserSecretCodePolling]);
         await closeSession(sessionState.session.session_id, secret, port);
       }
       process.exit(exitCode);

@@ -96,6 +96,23 @@ describe("handler URL targets", () => {
     expect(urls.cliAuthConfirm).toBe("https://project-id.example-stack-hosted.test/handler/cli-auth-confirm");
   });
 
+  it("keeps redirect-only post-auth targets local even when the default target is hosted", () => {
+    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
+
+    const urls = resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        default: { type: "hosted" },
+      },
+    });
+
+    expect(urls.signIn).toBe("https://project-id.example-stack-hosted.test/handler/sign-in");
+    expect(urls.signOut).toBe("https://project-id.example-stack-hosted.test/handler/sign-out");
+    expect(urls.afterSignIn).toBe("/");
+    expect(urls.afterSignUp).toBe("/");
+    expect(urls.afterSignOut).toBe("/");
+  });
+
   it("rejects absolute OAuth callback string targets", () => {
     expect(() => resolveHandlerUrls({
       projectId: "project-id",

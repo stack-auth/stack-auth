@@ -70,6 +70,16 @@ const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
   redirect(url.toString());
 };
 
+function getFirstQueryString(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value) && typeof value[0] === "string") {
+    return value[0];
+  }
+  return undefined;
+}
+
 const shouldRedirectOAuthCallbackKnownError = (error: KnownError) => (
   KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
   || KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)
@@ -416,7 +426,7 @@ const handler = createSmartRouteHandler({
         if (error instanceof InvalidClientError) {
           if (error.message.includes("redirect_uri") || error.message.includes("redirectUri")) {
             console.log("User is trying to authorize OAuth with an invalid redirect URI", error, { redirectUri: oauthRequest.query?.redirect_uri, clientId: oauthRequest.query?.client_id });
-            throw new KnownErrors.RedirectUrlNotWhitelisted();
+            throw new KnownErrors.RedirectUrlNotWhitelisted(getFirstQueryString(oauthRequest.query?.redirect_uri));
           }
         } else if (error instanceof InvalidScopeError) {
           // which scopes are being requested, and by whom?

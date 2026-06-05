@@ -257,7 +257,7 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
               cx={midpoint.x}
               cy={midpoint.y}
               r="14"
-              className="fill-background"
+              className="fill-white dark:fill-background"
               stroke="hsl(200, 91%, 70%)"
               strokeWidth="1"
               strokeOpacity="0.3"

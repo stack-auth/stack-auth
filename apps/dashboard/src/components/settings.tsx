@@ -69,8 +69,8 @@ export const SettingSwitch = React.memo(function SettingSwitch(props: {
   }, [propOnCheckedChange]);
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border/70 bg-background/80 px-3 py-3">
-      <div className="flex flex-1 flex-col gap-2">
+    <div className="flex items-center gap-3 rounded-xl border border-black/[0.08] bg-white/90 px-4 py-3 shadow-sm ring-1 ring-black/[0.06] dark:border-white/[0.06] dark:bg-background/60 dark:ring-white/[0.06]">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-3">
           <Switch
             id={id}
@@ -79,13 +79,13 @@ export const SettingSwitch = React.memo(function SettingSwitch(props: {
             disabled={props.disabled}
           />
           <Label className="cursor-pointer" htmlFor={id}>
-            <Typography type="div" className="text-sm font-medium leading-none">
+            <Typography type="div" className="text-sm font-medium leading-snug">
               {props.label}
             </Typography>
           </Label>
         </div>
         {props.hint && (
-          <Typography variant="secondary" className="text-xs pl-9">
+          <Typography variant="secondary" className="pl-11 text-xs leading-relaxed">
             {props.hint}
           </Typography>
         )}

@@ -490,6 +490,13 @@ export function sanitizeUserSpecifiedId(input: string): string {
 }
 
 export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(USER_SPECIFIED_ID_MAX_LENGTH).matches(USER_SPECIFIED_ID_PATTERN, getUserSpecifiedIdErrorMessage(idName));
+
+/**
+ * Validates that a value is a decimal string like `"9.99"` or `"1000"` (see `MoneyAmount`).
+ *
+ * Currency amounts are always strings in `"<integer>"` or `"<integer>.<decimals>"` format — never
+ * cent integers or minor-unit numbers. For example, `"9.99"` means $9.99, not `999`.
+ */
 export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>().test('money-amount', 'Invalid money amount', (value, context) => {
   if (value == null) return true;
   const regex = /^([0-9]+)(\.([0-9]+))?$/;
@@ -650,6 +657,10 @@ const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown> |
   }
   return true;
 };
+/**
+ * Schema for a single product price. Each currency field (USD, EUR, etc.) is a decimal string
+ * like `"9.99"` or `"1000"` — never cent integers. See `MoneyAmount` for the exact format.
+ */
 export const productPriceSchema = yupObject({
   ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, moneyAmountSchema(currency).optional()])),
   interval: dayIntervalSchema.optional(),

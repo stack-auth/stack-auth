@@ -25,6 +25,26 @@ const replaceHexclavePortPrefix = <T extends string | undefined>(input: T): T =>
   return prefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) as T : input;
 };
 
+const showMissingConfigAlertInBrowser = (message: string) => {
+  if (!isBrowserLike()) return;
+
+  const global = globalThis as any;
+  const alertAlreadyShownKey = "__hexclave_missing_config_alert_already_shown";
+  if (global[alertAlreadyShownKey]) return;
+  global[alertAlreadyShownKey] = true;
+
+  const alertFn = global.alert;
+  if (typeof alertFn === "function") {
+    alertFn(message);
+  }
+};
+
+const throwMissingProjectIdError = (): never => {
+  const message = "Welcome to Hexclave! It seems that you haven't provided a project ID. Please create a project on the Hexclave dashboard at https://app.hexclave.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable.";
+  showMissingConfigAlertInBrowser(message);
+  return throwErr(new Error(message));
+};
+
 
 export const createCache = <D extends any[], T>(fetcher: (dependencies: D) => Promise<T>) => {
   return new AsyncCache<D, Result<T>>(
@@ -62,7 +82,7 @@ export function getUrls(partial: HandlerUrlOptions, options: { projectId: string
 }
 
 export function getDefaultProjectId() {
-  return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || throwErr(new Error("Welcome to Hexclave! It seems that you haven't provided a project ID. Please create a project on the Hexclave dashboard at https://app.hexclave.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
+  return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || throwMissingProjectIdError();
 }
 
 export function getDefaultPublishableClientKey() {
@@ -221,6 +241,7 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
     });
     return unsubscribe;
   }, [cache, ...dependencies]);
+
   const getSnapshot = useCallback(() => {
     // React checks whether a promise passed to `use` is still the same as the previous one by comparing the reference.
     // If we didn't cache here, this wouldn't work because the promise would be recreated every time the value changes.
