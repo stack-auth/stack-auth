@@ -4,7 +4,6 @@
 
 ## 6/5/26
 
-- Completed platform rebrand to Hexclave with native `@hexclave/*` packages and deprecated `@stackframe` scope.
 - CLI improvements: local dashboard in remote SSH and Codespaces, auto-update via npx re-exec, and ~154 MB bundle reduction.
 - Fixes for sign-out handling, nested cross-domain auth, subscription switching, and email preview theme blanking.
 - New Python & REST API setup docs, product prices clarified as decimal strings, and pnpm v11 upgrade.
