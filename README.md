@@ -35,7 +35,7 @@ Read skill.hexclave.com and help me setup hexclave in this project
 
 ## For AI agents
 
-If you're an AI coding agent, fetch the skill documentation for up-to-date integration instructions:
+If you're an AI coding agent, use your web fetch tool or curl the skill documentation for up-to-date integration instructions:
 
 ```
 curl -sSL "https://skill.hexclave.com?question=<your-question>&context=<your-context>"
