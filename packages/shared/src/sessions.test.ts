@@ -81,23 +81,23 @@ describe("InternalSession.calculateSessionKey", () => {
 });
 
 describe("InternalSession#updateAccessToken", () => {
-  it("installs a fresh token for the same session in place", () => {
+  it("installs a fresh token for the same access-only session in place", () => {
     const initial = createAccessTokenString("rtid-1", { iatOffsetSeconds: 0 });
     const refreshed = createAccessTokenString("rtid-1", { iatOffsetSeconds: 1 });
     const session = createAccessOnlySession(initial);
 
-    session.updateAccessToken(refreshed);
+    session.updateAccessToken({ accessToken: refreshed, refreshToken: null });
     expect(currentToken(session)).toBe(refreshed);
     // identity is unchanged — same session key, same object
     expect(session.sessionKey).toBe("access-session-rtid-1");
   });
 
-  it("rejects a token belonging to a different session", () => {
+  it("rejects a token pair belonging to a different access-only session", () => {
     const initial = createAccessTokenString("rtid-1");
     const foreign = createAccessTokenString("rtid-2", { sub: "other-user" });
     const session = createAccessOnlySession(initial);
 
-    session.updateAccessToken(foreign);
+    session.updateAccessToken({ accessToken: foreign, refreshToken: null });
     expect(currentToken(session)).toBe(initial);
   });
 
@@ -105,9 +105,9 @@ describe("InternalSession#updateAccessToken", () => {
     const initial = createAccessTokenString("rtid-1");
     const session = createAccessOnlySession(initial);
 
-    session.updateAccessToken(initial);
-    session.updateAccessToken(null);
-    session.updateAccessToken("not-a-jwt");
+    session.updateAccessToken({ accessToken: initial, refreshToken: null });
+    session.updateAccessToken({ accessToken: null, refreshToken: null });
+    session.updateAccessToken({ accessToken: "not-a-jwt", refreshToken: null });
     expect(currentToken(session)).toBe(initial);
   });
 
@@ -115,12 +115,12 @@ describe("InternalSession#updateAccessToken", () => {
     const session = createAccessOnlySession(createAccessTokenString("rtid-1"));
     session.markInvalid();
 
-    session.updateAccessToken(createAccessTokenString("rtid-1", { iatOffsetSeconds: 1 }));
+    session.updateAccessToken({ accessToken: createAccessTokenString("rtid-1", { iatOffsetSeconds: 1 }), refreshToken: null });
     expect(session.isKnownToBeInvalid()).toBe(true);
     expect(currentToken(session)).toBeUndefined();
   });
 
-  it("updates a refresh-token-backed session's access token in place", () => {
+  it("updates a refresh-token-backed session's access token in place when the refresh token matches", () => {
     const session = new InternalSession({
       refreshAccessTokenCallback: async () => null,
       refreshToken: "rt-abc",
@@ -128,9 +128,20 @@ describe("InternalSession#updateAccessToken", () => {
     });
     const refreshed = createAccessTokenString("rtid-2", { iatOffsetSeconds: 1 });
 
-    // a refresh-keyed session is identified by its refresh token, so any valid access token is accepted
-    session.updateAccessToken(refreshed);
+    session.updateAccessToken({ accessToken: refreshed, refreshToken: "rt-abc" });
     expect(currentToken(session)).toBe(refreshed);
     expect(session.sessionKey).toBe("refresh-rt-abc");
+  });
+
+  it("rejects a token pair carrying a different refresh token for a refresh-backed session", () => {
+    const initial = createAccessTokenString("rtid-1");
+    const session = new InternalSession({
+      refreshAccessTokenCallback: async () => null,
+      refreshToken: "rt-abc",
+      accessToken: initial,
+    });
+
+    session.updateAccessToken({ accessToken: createAccessTokenString("rtid-2"), refreshToken: "rt-other" });
+    expect(currentToken(session)).toBe(initial);
   });
 });

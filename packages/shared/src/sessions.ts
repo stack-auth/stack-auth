@@ -219,20 +219,19 @@ export class InternalSession {
   }
 
   /**
-   * Installs a fresh access token into this session in place, keeping the session object (and therefore every
-   * session-scoped cache) stable instead of constructing a new InternalSession. No-op if the session is invalid,
-   * the token can't be decoded, it's unchanged, or it doesn't belong to this session (its session key differs);
-   * never clears an existing token.
+   * Installs a freshly obtained token pair's access token into this session in place, keeping the session object
+   * (and therefore every session-scoped cache) stable instead of constructing a new InternalSession. No-op if the
+   * session is invalid, the access token can't be decoded, it's unchanged, or the pair doesn't map to this session
+   * (so a foreign token can never be written into this object's cache); never clears an existing token.
    */
-  updateAccessToken(accessToken: string | null) {
+  updateAccessToken(tokens: { accessToken: string | null, refreshToken: string | null }) {
     if (this._knownToBeInvalid.get()) return;
-    if (!accessToken) return;
-    const newAccessToken = AccessToken.createIfValid(accessToken);
+    if (!tokens.accessToken) return;
+    const newAccessToken = AccessToken.createIfValid(tokens.accessToken);
     if (!newAccessToken) return;
-    // Self-enforce the "a session never changes which session it belongs to" invariant: only install a token that
-    // maps to this same session key, so a foreign token can never be written into this object's cache.
-    const newSessionKey = InternalSession.calculateSessionKey({ refreshToken: this._refreshToken?.token ?? null, accessToken: newAccessToken.token });
-    if (newSessionKey !== this.sessionKey) return;
+    // Self-enforce the "a session never changes which session it belongs to" invariant: only install a token pair
+    // that maps to this same session key (validated against the incoming pair, not this session's existing tokens).
+    if (InternalSession.calculateSessionKey(tokens) !== this.sessionKey) return;
     if (this._accessToken.get()?.token === newAccessToken.token) return;
     this._accessToken.set(newAccessToken);
   }
