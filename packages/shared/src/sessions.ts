@@ -124,6 +124,14 @@ export class InternalSession {
     if (ofTokens.refreshToken) {
       return `refresh-${ofTokens.refreshToken}`;
     } else if (ofTokens.accessToken) {
+      // Access-only sessions (no refresh token) are keyed by the underlying session's `refresh_token_id`, not the
+      // access token string: access tokens get re-minted frequently, and keying by the raw token would spawn a new
+      // session (and cold-invalidate every session-scoped cache) on each refresh. Falls back to the raw token if
+      // the JWT can't be decoded.
+      const refreshTokenId = decodeAccessTokenIfValid(ofTokens.accessToken)?.refresh_token_id;
+      if (refreshTokenId) {
+        return `access-session-${refreshTokenId}`;
+      }
       return `access-${ofTokens.accessToken}`;
     } else {
       return "not-logged-in";
@@ -208,6 +216,21 @@ export class InternalSession {
   async fetchNewTokens(): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
     const accessToken = await this._getNewlyFetchedAccessToken();
     return accessToken ? { accessToken, refreshToken: this._refreshToken } : null;
+  }
+
+  /**
+   * Installs a fresh access token into this session in place, keeping the session object (and therefore every
+   * session-scoped cache) stable instead of constructing a new InternalSession. Caller must pass a token that
+   * belongs to the same session. No-op if the session is invalid, the token can't be decoded, or it's unchanged;
+   * never clears an existing token.
+   */
+  updateAccessToken(accessToken: string | null) {
+    if (this._knownToBeInvalid.get()) return;
+    if (!accessToken) return;
+    const newAccessToken = AccessToken.createIfValid(accessToken);
+    if (!newAccessToken) return;
+    if (this._accessToken.get()?.token === newAccessToken.token) return;
+    this._accessToken.set(newAccessToken);
   }
 
   /**
