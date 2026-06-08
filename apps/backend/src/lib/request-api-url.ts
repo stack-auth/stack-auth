@@ -1,6 +1,5 @@
 import { CLOUD_HOST_PAIRS } from "@hexclave/shared/dist/utils/cloud-hosts";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * The stack-auth ↔ hexclave cloud host pairs live in stack-shared
@@ -30,8 +29,7 @@ export { CLOUD_HOST_PAIRS };
  *
  * Hosts NOT in this map (localhost, vercel preview URLs, self-host custom
  * domains) fall back to `NEXT_PUBLIC_STACK_API_URL` so single-host deployments
- * keep behaving exactly as before. We capture those fallbacks as errors so
- * missed cloud host aliases are visible during the rebrand rollout.
+ * keep behaving exactly as before.
  *
  * Trust model: on Vercel, `x-forwarded-host` is set by the edge from the
  * customer-facing hostname and cannot be spoofed by a client. The blast
@@ -65,6 +63,12 @@ function normalizeRequestHost(host: string | undefined | null): string | undefin
   if (!host) return undefined;
   const firstHost = host.split(",")[0]?.trim();
   if (!firstHost) return undefined;
+  if (firstHost.startsWith("[")) {
+    const closingBracketIndex = firstHost.indexOf("]");
+    if (closingBracketIndex > 1) {
+      return firstHost.slice(1, closingBracketIndex).toLowerCase();
+    }
+  }
   return firstHost.split(":")[0].toLowerCase();
 }
 
@@ -81,13 +85,7 @@ export function getApiUrlForHost(host: string | undefined | null): string {
       return `https://${apiHost}`;
     }
   }
-  const fallbackApiUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
-  captureError("request-api-url.fallback", new HexclaveAssertionError(`Falling back to NEXT_PUBLIC_STACK_API_URL while resolving request API URL`, {
-    host,
-    normalizedHost,
-    fallbackApiUrl,
-  }));
-  return fallbackApiUrl;
+  return getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 }
 
 /**
@@ -118,4 +116,12 @@ import.meta.vitest?.test("getApiUrlForHost maps cloud sibling hosts to canonical
 import.meta.vitest?.test("getApiUrlForHost maps app.dev sibling hosts to canonical dev API hosts", ({ expect }) => {
   expect(getApiUrlForHost("app.dev.stack-auth.com")).toBe("https://api.dev.stack-auth.com");
   expect(getApiUrlForHost("app.dev.hexclave.com")).toBe("https://api.dev.hexclave.com");
+});
+
+import.meta.vitest?.test("getApiUrlForHost falls back for non-cloud hosts without reporting", ({ expect }) => {
+  const fallbackApiUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+  expect(getApiUrlForHost("localhost:8102")).toBe(fallbackApiUrl);
+  expect(getApiUrlForHost("p93.localhost:9302")).toBe(fallbackApiUrl);
+  expect(getApiUrlForHost("[::1]:8102")).toBe(fallbackApiUrl);
+  expect(getApiUrlForHost("customer.example.com")).toBe(fallbackApiUrl);
 });

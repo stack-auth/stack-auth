@@ -153,8 +153,8 @@ function adminProviderToConfigProvider(
 }
 
 function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const oauthProviders = project.config.oauthProviders;
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
@@ -177,7 +177,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
       placeholder="Search for a provider..."
       value={providerSearch}
       onChange={(e) => setProviderSearch(e.target.value)}
-      leadingIcon={<MagnifyingGlassIcon size={14} />}
+      leadingIcon={<MagnifyingGlassIcon className="h-3.5 w-3.5" />}
     />
     <div className="flex gap-2 flex-wrap justify-center">
       {filteredProviders
@@ -188,7 +188,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             provider={provider}
             updateProvider={async (provider) => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: {
                   [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, config.auth.oauth.providers[provider.id]),
                 },
@@ -197,7 +197,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             }}
             deleteProvider={async (id) => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: {
                   [`auth.oauth.providers.${id}`]: null,
                 },
@@ -218,15 +218,15 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
 // ─── Provider action menu (dots) ──────────────────────────────────────────
 
 function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
-  const stackAdminApp = useAdminApp();
-  const completeConfig = stackAdminApp.useProject().useConfig();
+  const hexclaveAdminApp = useAdminApp();
+  const completeConfig = hexclaveAdminApp.useProject().useConfig();
   const updateConfig = useUpdateConfig();
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
   const updateProvider = async (provider: AdminOAuthProviderConfig) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, completeConfig.auth.oauth.providers[provider.id]),
       },
@@ -236,7 +236,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
 
   const deleteProvider = async (id: string) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.oauth.providers.${id}`]: null,
       },
@@ -417,8 +417,8 @@ type PendingChange = {
 };
 
 function useEmailVerificationToggle() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const projectConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
@@ -428,7 +428,7 @@ function useEmailVerificationToggle() {
   const handleChange = async (next: boolean) => {
     if (next && !projectConfig.onboarding.requireEmailVerification) {
       // any cast needed: previewAffectedUsersByOnboardingChange is a dynamically-typed admin API method
-      const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
+      const preview = await (hexclaveAdminApp as any).previewAffectedUsersByOnboardingChange(
         { requireEmailVerification: true },
         10,
       );
@@ -438,7 +438,7 @@ function useEmailVerificationToggle() {
           totalAffectedCount: preview.totalAffectedCount,
           onConfirm: async () => {
             await updateConfig({
-              adminApp: stackAdminApp,
+              adminApp: hexclaveAdminApp,
               configUpdate: { "onboarding.requireEmailVerification": true },
               pushable: true,
             });
@@ -449,7 +449,7 @@ function useEmailVerificationToggle() {
       }
     }
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { "onboarding.requireEmailVerification": next },
       pushable: true,
     });
@@ -464,6 +464,7 @@ function useEmailVerificationToggle() {
       open={!!pendingChange}
       onClose={() => setPendingChange(null)}
       title="Enable email verification requirement"
+      size="2xl"
       danger
       okButton={{
         label: "Apply Change",
@@ -484,35 +485,50 @@ function useEmailVerificationToggle() {
             <Typography variant="secondary" type="label">
               Affected users
             </Typography>
-            <div className="rounded-xl ring-1 ring-black/[0.06] dark:ring-white/[0.06] overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-foreground/[0.04]">
+            <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.06] dark:ring-white/[0.06]">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[22%]" />
+                  <col />
+                  <col className="w-[7.5rem]" />
+                </colgroup>
+                <thead className="bg-zinc-50 dark:bg-background">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">User</th>
                     <th className="px-3 py-2 text-left font-medium">Email</th>
-                    <th className="px-3 py-2 text-left font-medium">Reason</th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Reason</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pendingChange.affectedUsers.map((user) => (
-                    <tr key={user.id} className="border-t border-black/[0.06] dark:border-white/[0.06]">
-                      <td className="px-3 py-2">
-                        {user.displayName || <span className="text-muted-foreground italic">No name</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        {user.primaryEmail || <span className="text-muted-foreground italic">No email</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        <DesignBadge
-                          label={user.restrictedReason.type === "email_not_verified" ? "Email not verified" : "Anonymous user"}
-                          color="orange"
-                          size="sm"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
               </table>
+              <div className="max-h-52 overflow-y-auto border-t border-black/[0.06] dark:border-white/[0.06]">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[22%]" />
+                    <col />
+                    <col className="w-[7.5rem]" />
+                  </colgroup>
+                  <tbody>
+                    {pendingChange.affectedUsers.map((user) => (
+                      <tr key={user.id} className="border-t border-black/[0.06] dark:border-white/[0.06] first:border-t-0">
+                        <td className="px-3 py-2 align-middle">
+                          {user.displayName || <span className="text-muted-foreground italic">No name</span>}
+                        </td>
+                        <td className="px-3 py-2 align-middle truncate" title={user.primaryEmail ?? undefined}>
+                          {user.primaryEmail || <span className="text-muted-foreground italic">No email</span>}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <DesignBadge
+                            label={user.restrictedReason.type === "email_not_verified" ? "Not verified" : "Anonymous"}
+                            color="orange"
+                            size="sm"
+                            contentMode="text"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             {pendingChange.totalAffectedCount > pendingChange.affectedUsers.length && (
               <Typography variant="secondary" type="footnote">
@@ -531,8 +547,8 @@ function useEmailVerificationToggle() {
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const oauthProviders = project.config.oauthProviders;
   const updateConfig = useUpdateConfig();
@@ -566,7 +582,7 @@ export default function PageClient() {
     if (localPasskeyEnabled !== undefined) {
       configUpdate['auth.passkey.allowSignIn'] = localPasskeyEnabled;
     }
-    await updateConfig({ adminApp: stackAdminApp, configUpdate, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     setLocalPasswordEnabled(undefined);
     setLocalOtpEnabled(undefined);
     setLocalPasskeyEnabled(undefined);
@@ -601,7 +617,7 @@ export default function PageClient() {
 
     if (localMergeStrategy !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { 'auth.oauth.accountMergeStrategy': localMergeStrategy },
         pushable: true,
       });
@@ -620,7 +636,7 @@ export default function PageClient() {
     if (localMergeStrategy !== undefined) {
       configUpdate['auth.oauth.accountMergeStrategy'] = localMergeStrategy;
     }
-    await updateConfig({ adminApp: stackAdminApp, configUpdate, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     setLocalAllowSignUp(undefined);
     setLocalMergeStrategy(undefined);
   };
@@ -633,7 +649,7 @@ export default function PageClient() {
   const handleUserDeletionSave = async () => {
     if (localAllowClientDeletion !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { 'users.allowClientUserDeletion': localAllowClientDeletion },
         pushable: true,
       });

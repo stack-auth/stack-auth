@@ -7,7 +7,7 @@ describe('validateRedirectUrl', () => {
     values: {
       hostedHandlerUrlTemplate?: string,
       hostedHandlerDomainSuffix?: string,
-      stackPortPrefix?: string,
+      hexclavePortPrefix?: string,
     },
     callback: () => T,
   ): T => {
@@ -28,7 +28,7 @@ describe('validateRedirectUrl', () => {
     const newValues: Record<string, string | undefined> = {
       NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
       NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
-      NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX: values.stackPortPrefix,
+      NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX: values.hexclavePortPrefix,
     };
     for (const stackKey of stackKeys) {
       newValues[hexclaveOf(stackKey)] = newValues[stackKey];
@@ -70,7 +70,7 @@ describe('validateRedirectUrl', () => {
     it('should implicitly validate hosted handler domains for the project', () => {
       withHostedHandlerEnv({
         hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}",
-        stackPortPrefix: "92",
+        hexclavePortPrefix: "92",
       }, () => {
         const tenancy = createMockTenancy({
           domains: {

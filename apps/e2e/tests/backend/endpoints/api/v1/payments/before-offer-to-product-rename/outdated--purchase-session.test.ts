@@ -138,6 +138,7 @@ it("should return client secret for one-time price (no interval)", async ({ expe
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: false,
       products: {
         "ot-offer": {
           displayName: "One Time Offer",
@@ -186,6 +187,7 @@ it("should error on one-time price quantity > 1 when offer is not stackable", as
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: false,
       products: {
         "ot-non-stack": {
           displayName: "One Time Non-Stackable",
@@ -283,6 +285,9 @@ it("should return client secret for one-time price even if a conflicting group s
   });
   expect(testModeRes.status).toBe(200);
 
+  // Flip to live mode for the next purchase. Path notation preserves products/productLines.
+  await Project.updateConfig({ "payments.testMode": false });
+
   // Now purchase one-time offer in same group; should succeed and return client secret
   const createUrlRespB = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -375,6 +380,7 @@ it("should create purchase URL, validate code, and create purchase session", asy
 it("should create purchase URL with inline offer, validate code, and create purchase session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
+  await Project.updateConfig({ "payments.testMode": false });
 
   const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
@@ -626,7 +632,7 @@ it("should update existing stripe subscription when switching offers within a gr
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      testMode: true,
+      testMode: false,
       catalogs: {
         grp: { displayName: "Test Group" },
       },
@@ -797,6 +803,9 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   });
   expect(testModeRes.status).toBe(200);
 
+  // Flip to live mode so the next purchase exercises the Stripe path.
+  await Project.updateConfig({ "payments.testMode": false });
+
   // Now purchase offerB in non test-mode; should cancel DB-only sub and create Stripe subscription
   const resUrlB = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -949,9 +958,9 @@ it("should block one-time purchase in same group after prior one-time purchase i
   const codeB = (urlB.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
   expect(codeB).toBeDefined();
 
-  const resB = await niceBackendFetch("/api/v1/payments/purchases/purchase-session", {
+  const resB = await niceBackendFetch("/api/v1/internal/payments/test-mode-purchase-session", {
     method: "POST",
-    accessType: "client",
+    accessType: "admin",
     body: { full_code: codeB, price_id: "one", quantity: 1 },
   });
   expect(resB.status).toBe(400);

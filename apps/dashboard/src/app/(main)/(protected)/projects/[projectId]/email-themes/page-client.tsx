@@ -82,9 +82,9 @@ function ViewportSelector({
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
-  const themes = stackAdminApp.useEmailThemes();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
+  const themes = hexclaveAdminApp.useEmailThemes();
   const config = project.useConfig();
   const activeTheme = config.emails.selectedThemeId;
   const updateConfig = useUpdateConfig();
@@ -124,7 +124,7 @@ export default function PageClient() {
     return await new Promise<"prevent-close" | void>((resolve) => {
       runAsynchronouslyWithAlert(async () => {
         const didUpdate = await updateConfig({
-          adminApp: stackAdminApp,
+          adminApp: hexclaveAdminApp,
           configUpdate: {
             'emails.selectedThemeId': dialogSelectedThemeId,
           },
@@ -281,8 +281,8 @@ function ThemeOption({
   dialogSelectedThemeId: string,
   onDialogThemeDeleted: (deletedThemeId: string) => void,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const isDefault = Object.keys(DEFAULT_EMAIL_THEMES).includes(theme.id);
@@ -296,7 +296,7 @@ function ThemeOption({
         // (backend prevents deleting the active theme)
         if (config.emails.selectedThemeId === theme.id) {
           const didUpdate = await updateConfig({
-            adminApp: stackAdminApp,
+            adminApp: hexclaveAdminApp,
             configUpdate: {
               'emails.selectedThemeId': DEFAULT_EMAIL_THEME_ID,
             },
@@ -309,7 +309,7 @@ function ThemeOption({
         }
 
         // Now delete the theme
-        await stackAdminApp.deleteEmailTheme(theme.id);
+        await hexclaveAdminApp.deleteEmailTheme(theme.id);
 
         // If the deleted theme was selected in the dialog, switch to default
         onDialogThemeDeleted(theme.id);
@@ -384,11 +384,11 @@ function ThemeOption({
 }
 
 function NewThemeButton() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
 
   const handleCreateNewTheme = async (values: { name: string }) => {
-    const { id } = await stackAdminApp.createEmailTheme(values.name);
+    const { id } = await hexclaveAdminApp.createEmailTheme(values.name);
     router.push(`email-themes/${id}`);
   };
 

@@ -47,7 +47,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     ```ts title="src/stack/client.ts"
     import { HexclaveClientApp } from "@hexclave/tanstack-start";
 
-    export const stackClientApp = new HexclaveClientApp({
+    export const hexclaveClientApp = new HexclaveClientApp({
       projectId: import.meta.env.VITE_STACK_PROJECT_ID,
       tokenStore: "cookie",
       redirectMethod: "window",
@@ -61,7 +61,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     ```tsx title="src/routes/__root.tsx"
     import { HexclaveProvider, HexclaveTheme } from "@hexclave/tanstack-start";
     import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
-    import { stackClientApp } from "../stack/client";
+    import { hexclaveClientApp } from "../stack/client";
 
     export const Route = createRootRoute({
       component: RootComponent,
@@ -70,7 +70,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
 
     function RootComponent() {
       return (
-        <HexclaveProvider app={stackClientApp}>
+        <HexclaveProvider app={hexclaveClientApp}>
           <HexclaveTheme>
             <Outlet />
           </HexclaveTheme>

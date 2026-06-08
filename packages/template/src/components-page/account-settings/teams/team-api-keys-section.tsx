@@ -4,8 +4,8 @@ import { useState } from "react";
 import { CreateApiKeyDialog, ShowApiKeyDialog } from "../../../components/api-key-dialogs";
 import { ApiKeyTable } from "../../../components/api-key-table";
 import { useStackApp, useUser } from "../../../lib/hooks";
-import { TeamApiKeyFirstView } from "../../../lib/stack-app/api-keys";
-import { Team } from "../../../lib/stack-app/teams";
+import { TeamApiKeyFirstView } from "../../../lib/hexclave-app/api-keys";
+import { Team } from "../../../lib/hexclave-app/teams";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 
@@ -13,8 +13,8 @@ import { Section } from "../section";
 export function TeamApiKeysSection(props: { team: Team }) {
   const user = useUser({ or: 'redirect' });
   const team = user.useTeam(props.team.id);
-  const stackApp = useStackApp();
-  const project = stackApp.useProject();
+  const hexclaveApp = useStackApp();
+  const project = hexclaveApp.useProject();
 
   if (!team) {
     throw new HexclaveAssertionError("Team not found");

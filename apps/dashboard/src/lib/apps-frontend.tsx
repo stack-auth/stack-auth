@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Link } from "@/components/link";
 import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
@@ -28,7 +29,7 @@ type AppNavigationItem = {
   href: string,
   external?: boolean,
   matchPath?: (relativePart: string) => boolean,
-  getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
+  getBreadcrumbItems?: (hexclaveAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
 };
 
 export type AppFrontend = {
@@ -42,7 +43,7 @@ export type AppFrontend = {
   | {
     navigationItems: AppNavigationItem[],
     matchPath?: (relativePart: string) => boolean,
-    getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
+    getBreadcrumbItems?: (hexclaveAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
   }
   | {
     parentAppId: AppId,
@@ -439,7 +440,7 @@ function createSvgIcon(ChildrenComponent: () => React.ReactNode): (props: any) =
   return Result;
 }
 
-async function getEmailTemplatesBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relativePart: string) {
+async function getEmailTemplatesBreadcrumbItems(hexclaveAdminApp: StackAdminApp<false>, relativePart: string) {
   const normalized = relativePart || "/";
   const baseCrumbs = [{ item: "Templates", href: "." }];
   if (normalized === "/" || normalized === "") {
@@ -452,7 +453,7 @@ async function getEmailTemplatesBreadcrumbItems(stackAdminApp: StackAdminApp<fal
   }
 
   const templateId = decodeURIComponent(match[1]);
-  const templates = await stackAdminApp.listEmailTemplates();
+  const templates = await hexclaveAdminApp.listEmailTemplates();
   const template = templates.find(({ id }) => id === templateId);
   if (!template) {
     return baseCrumbs;
@@ -467,7 +468,7 @@ async function getEmailTemplatesBreadcrumbItems(stackAdminApp: StackAdminApp<fal
   ];
 }
 
-async function getTeamBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relativePart: string) {
+async function getTeamBreadcrumbItems(hexclaveAdminApp: StackAdminApp<false>, relativePart: string) {
   const baseCrumbs = [{ item: "Teams", href: "." }];
   const match = relativePart.match(/^\/([^/]+)(?:\/.*)?$/);
   if (!match) {
@@ -475,7 +476,7 @@ async function getTeamBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relat
   }
 
   const teamId = decodeURIComponent(match[1]);
-  const team = await stackAdminApp.getTeam(teamId);
+  const team = await hexclaveAdminApp.getTeam(teamId);
   if (!team) {
     return baseCrumbs;
   }
@@ -490,7 +491,7 @@ async function getTeamBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relat
 }
 
 
-async function getEmailDraftBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relativePart: string) {
+async function getEmailDraftBreadcrumbItems(hexclaveAdminApp: StackAdminApp<false>, relativePart: string) {
   const baseCrumbs = [{ item: "Drafts", href: "." }];
   const match = relativePart.match(/^\/([^/]+)(?:\/.*)?$/);
   if (!match) {
@@ -498,7 +499,7 @@ async function getEmailDraftBreadcrumbItems(stackAdminApp: StackAdminApp<false>,
   }
 
   const draftId = decodeURIComponent(match[1]);
-  const drafts = await stackAdminApp.listEmailDrafts();
+  const drafts = await hexclaveAdminApp.listEmailDrafts();
   const draft = drafts.find(({ id }) => id === draftId);
   if (!draft) {
     return baseCrumbs;

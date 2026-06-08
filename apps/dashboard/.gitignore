@@ -6,6 +6,8 @@
 .pnp.js
 .yarn/install-state.gz
 
+.next-development-environment
+
 # testing
 /coverage
 

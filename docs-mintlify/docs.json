@@ -75,10 +75,9 @@
           {
             "group": "Going Further",
             "pages": [
-              "guides/going-further/stack-app",
-              "guides/going-further/backend-integration",
               "guides/going-further/cli",
-              "guides/going-further/user-metadata"
+              "guides/going-further/local-vs-cloud-dashboard",
+              "guides/going-further/hexclave-config"
             ]
           },
           {
@@ -169,7 +168,7 @@
           "sdk/overview",
           {
             "group": "Objects",
-            "pages": ["sdk/objects/stack-app"]
+            "pages": ["sdk/objects/hexclave-app"]
           },
           {
             "group": "Types",
@@ -190,7 +189,7 @@
           },
           {
             "group": "Hooks",
-            "pages": ["sdk/hooks/use-stack-app", "sdk/hooks/use-user"]
+            "pages": ["sdk/hooks/use-hexclave-app", "sdk/hooks/use-user"]
           }
         ]
       },
@@ -233,7 +232,7 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/stack_auth",
+      "x": "https://x.com/hexclave",
       "github": "https://github.com/hexclave/hexclave",
       "discord": "https://discord.hexclave.com"
     }
@@ -247,6 +246,14 @@
     "customScripts": ["/apps-sidebar-filter.js", "/code-language-labels.js"]
   },
   "redirects": [
+    {
+      "source": "/sdk/objects/stack-app",
+      "destination": "/sdk/objects/hexclave-app"
+    },
+    {
+      "source": "/sdk/hooks/use-stack-app",
+      "destination": "/sdk/hooks/use-hexclave-app"
+    },
     {
       "source": "/rest-api/overview",
       "destination": "/api/overview"
@@ -285,11 +292,19 @@
     },
     {
       "source": "/docs/concepts/custom-user-data",
-      "destination": "/guides/going-further/user-metadata"
+      "destination": "/guides/getting-started/user-fundamentals#custom-metadata"
+    },
+    {
+      "source": "/guides/going-further/user-metadata",
+      "destination": "/guides/getting-started/user-fundamentals#custom-metadata"
     },
     {
       "source": "/others/js-client",
-      "destination": "/guides/going-further/stack-app"
+      "destination": "/sdk/objects/hexclave-app"
+    },
+    {
+      "source": "/guides/going-further/stack-app",
+      "destination": "/sdk/objects/hexclave-app"
     }
   ]
 }

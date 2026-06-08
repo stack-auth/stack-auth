@@ -366,7 +366,7 @@ export function renderSetupPageHtml(mcpUrl: string): string {
         }
       }
 
-      .stack-icon,
+      .hexclave-icon,
       .mcp-icon {
         width: 128px;
         height: 128px;
@@ -379,7 +379,7 @@ export function renderSetupPageHtml(mcpUrl: string): string {
         opacity: 0;
       }
 
-      .stack-icon {
+      .hexclave-icon {
         animation: card-in-left 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
 
@@ -393,7 +393,7 @@ export function renderSetupPageHtml(mcpUrl: string): string {
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .stack-icon,
+        .hexclave-icon,
         .mcp-icon,
         .plus {
           animation: none;
@@ -401,7 +401,7 @@ export function renderSetupPageHtml(mcpUrl: string): string {
         }
       }
 
-      .stack-icon {
+      .hexclave-icon {
         font-size: 28px;
       }
 
@@ -623,7 +623,7 @@ export function renderSetupPageHtml(mcpUrl: string): string {
           gap: 18px;
         }
 
-        .stack-icon,
+        .hexclave-icon,
         .mcp-icon {
           width: 88px;
           height: 88px;
@@ -652,7 +652,7 @@ export function renderSetupPageHtml(mcpUrl: string): string {
   <body>
     <main>
       <div class="icon-row" aria-hidden="true">
-        <div class="stack-icon">Stack</div>
+        <div class="hexclave-icon">Hexclave</div>
         <div class="plus">+</div>
         <div class="mcp-icon">MCP</div>
       </div>

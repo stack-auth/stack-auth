@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/js-example",
-  "version": "1.0.0",
+  "version": "1.0.10",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "description": "",
@@ -18,5 +18,5 @@
     "typescript": "5.9.3",
     "vite": "^6.1.0"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

@@ -1,6 +1,6 @@
 {
   "//": "IF_PLATFORM template",
-  "name": "@stackframe/template",
+  "name": "@hexclave/template",
   "//": "ELSE_IF_PLATFORM js",
   "name": "@hexclave/js",
   "//": "ELSE_IF_PLATFORM next",
@@ -13,7 +13,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.10",
   "repository": "https://github.com/hexclave/hexclave",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -67,16 +67,19 @@
     "lint": "eslint --ext .tsx,.ts .",
 
     "//": "IF_PLATFORM template react-like",
-    "build": "rimraf dist && pnpm run css && tsdown",
-    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
-    "codegen": "pnpm run css",
-    "codegen:watch": "pnpm run css:watch"
-    ,"//": "ELSE_PLATFORM",
-    "build": "rimraf dist && tsdown",
-    "dev": "tsdown --watch"
-    ,"//": "END_PLATFORM",
+    "codegen": "pnpm run env && pnpm run css",
+    "codegen:watch": "concurrently -n \"env,css\" -k \"pnpm run env:watch\" \"pnpm run css:watch\"",
+    "//": "ELSE_PLATFORM",
+    "codegen": "pnpm run env",
+    "codegen:watch": "concurrently -n \"env\" -k \"pnpm run env:watch\"",
+    "//": "END_PLATFORM",
 
-    "//": "IF_PLATFORM template react-like"
+    "build": "rimraf dist && pnpm run codegen && tsdown",
+    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
+    "env": "tsx ./scripts/generate-env.ts",
+    "env:watch": "chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000"
+
+    ,"//": "IF_PLATFORM template react-like"
     ,"css": "pnpm run css-tw && pnpm run css-sc",
     "css:watch": "concurrently -n \"tw,sc\" -k \"pnpm run css-tw:watch\" \"pnpm run css-sc:watch\"",
     "css-tw:watch": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch",
@@ -86,9 +89,7 @@
     ,"//": "END_PLATFORM",
 
     "//": "IF_PLATFORM template"
-    ,"codegen": "pnpm run css",
-    "codegen:watch": "concurrently -n \"css\" -k \"pnpm run css:watch\"",
-    "override-env-local-for-quetzal": "echo \"\\n$STACK_ENV_LOCAL_PACKAGE_BUILD_OVERRIDE_FOR_QUETZAL\\n\" >> .env.local",
+    ,"override-env-local-for-quetzal": "echo \"\\n$STACK_ENV_LOCAL_PACKAGE_BUILD_OVERRIDE_FOR_QUETZAL\\n\" >> .env.local",
     "quetzal": "rimraf quetzal-translations && pnpm run override-env-local-for-quetzal && quetzal-process-translations && tsx ./scripts/merge-quetzal-translations.ts",
     "quetzal:ignore-errors": "pnpm run quetzal || echo Quetzal failed, probably because the API key is missing. We will just ignore it",
     "quetzal:watch": "chokidar --silent \"src/**/*\" -i \"src/generated/quetzal-translations.ts\" -c 'pnpm run quetzal:ignore-errors' --throttle 2000"
@@ -97,6 +98,7 @@
   "files": [
     "README.md",
     "dist",
+    "src",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -140,26 +142,24 @@
   },
   "//": "IF_PLATFORM react-like",
   "peerDependencies": {
-    "@types/react": ">=18.3.0",
+    "@types/react": ">=18.0.0",
+    "@types/react-dom": ">=18.0.0",
+    "react-dom": ">=18.0.0",
     "//": "IF_PLATFORM next",
-    "@types/react-dom": ">=18.3.0",
-    "react-dom": ">=18.3.0",
     "next": ">=14.1 || >=15.0.0-canary.0 || >=15.0.0-rc.0",
     "//": "END_PLATFORM",
     "//": "IF_PLATFORM tanstack-start",
     "@tanstack/react-router": ">=1.100.0",
     "@tanstack/react-start": ">=1.100.0",
     "//": "END_PLATFORM",
-    "react": ">=18.3.0"
+    "react": ">=18.0.0"
   },
   "//": "END_PLATFORM",
   "//": "IF_PLATFORM react-like",
   "peerDependenciesMeta": {
-    "//": "IF_PLATFORM next",
     "@types/react-dom": {
       "optional": true
     },
-    "//": "END_PLATFORM",
     "@types/react": {
       "optional": true
     }

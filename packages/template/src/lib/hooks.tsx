@@ -1,6 +1,6 @@
 import { useContext } from "react";
-import { StackContext } from "../providers/stack-context";
-import type { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
+import { HexclaveContext } from "../providers/hexclave-context";
+import type { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./hexclave-app";
 
 type GetUserOptions = AppGetUserOptions<true> & {
   projectIdMustMatch?: string,
@@ -16,14 +16,14 @@ export function useUser(options: GetUserOptions & { or: 'redirect' | 'throw' }):
 export function useUser(options: GetUserOptions & { projectIdMustMatch: "internal" }): CurrentInternalUser | null;
 export function useUser(options?: GetUserOptions): CurrentUser | CurrentInternalUser | null;
 export function useUser(options: GetUserOptions = {}): CurrentUser | CurrentInternalUser | null {
-  const stackApp = useHexclaveApp(options);
-  if (options.projectIdMustMatch && stackApp.projectId !== options.projectIdMustMatch) {
-    throw new Error("Unexpected project ID in useHexclaveApp: " + stackApp.projectId);
+  const hexclaveApp = useHexclaveApp(options);
+  if (options.projectIdMustMatch && hexclaveApp.projectId !== options.projectIdMustMatch) {
+    throw new Error("Unexpected project ID in useHexclaveApp: " + hexclaveApp.projectId);
   }
   if (options.projectIdMustMatch === "internal") {
-    return stackApp.useUser(options) as CurrentInternalUser;
+    return hexclaveApp.useUser(options) as CurrentInternalUser;
   } else {
-    return stackApp.useUser(options) as CurrentUser;
+    return hexclaveApp.useUser(options) as CurrentUser;
   }
 }
 
@@ -36,15 +36,15 @@ export function useHexclaveApp<ProjectId extends string>(options: { projectIdMus
   if (typeof useContext !== "function") {
     throw new Error("useHexclaveApp() can only be used in a React Client Component. Make sure you're not calling it from a Server Component, or any other environment.");
   }
-  const context = useContext(StackContext);
+  const context = useContext(HexclaveContext);
   if (context === null) {
     throw new Error("useHexclaveApp must be used within a HexclaveProvider");
   }
-  const stackApp = context.app;
-  if (options.projectIdMustMatch && stackApp.projectId !== options.projectIdMustMatch) {
-    throw new Error("Unexpected project ID in useHexclaveApp: " + stackApp.projectId);
+  const hexclaveApp = context.app;
+  if (options.projectIdMustMatch && hexclaveApp.projectId !== options.projectIdMustMatch) {
+    throw new Error("Unexpected project ID in useHexclaveApp: " + hexclaveApp.projectId);
   }
-  return stackApp as StackClientApp<true, ProjectId>;
+  return hexclaveApp as StackClientApp<true, ProjectId>;
 }
 
 /**

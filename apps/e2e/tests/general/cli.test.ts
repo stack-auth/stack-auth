@@ -9,11 +9,10 @@ import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KE
 
 const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
 
-const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
-const CLI_SRC_BIN = path.resolve("packages/stack-cli/src/index.ts");
+const CLI_BIN = path.resolve("packages/cli/dist/index.js");
 
 function extractConfigObjectString(content: string): string {
-  const configMatch = content.match(/export const config:\s*StackConfig\s*=\s*(.+);\s*$/s);
+  const configMatch = content.match(/export const config:\s*HexclaveConfig\s*=\s*(.+);\s*$/s);
   if (!configMatch) {
     throw new Error(`Could not extract config object from file:\n${content}`);
   }
@@ -123,7 +122,7 @@ describe("Stack CLI", () => {
   });
 
   it("shows version output", async ({ expect }) => {
-    const pkg = JSON.parse(fs.readFileSync(path.resolve("packages/stack-cli/package.json"), "utf-8"));
+    const pkg = JSON.parse(fs.readFileSync(path.resolve("packages/cli/package.json"), "utf-8"));
     const { stdout, exitCode } = await runCli(["--version"]);
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe(pkg.version);
@@ -235,9 +234,9 @@ describe("Stack CLI", () => {
     expect(stdout.trim()).toBe("2");
   });
 
-  it("has stackServerApp object available", async ({ expect }) => {
+  it("has hexclaveServerApp object available", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud-project-id", createdProjectId, "return typeof stackServerApp"],
+      ["exec", "--cloud-project-id", createdProjectId, "return typeof hexclaveServerApp"],
     );
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe('"object"');
@@ -246,7 +245,7 @@ describe("Stack CLI", () => {
   it("exec help mentions docs URL", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(["exec", "--help"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("https://docs.hexclave.com/docs/sdk");
+    expect(stdout).toContain("https://docs.hexclave.com/sdk/overview");
   });
 
   it("exec help mentions --cloud-project-id and --config-file", async ({ expect }) => {
@@ -329,9 +328,9 @@ describe("Stack CLI", () => {
 
   let createdUserEmail: string;
 
-  it("can create user with stackServerApp", async ({ expect }) => {
+  it("can create user with hexclaveServerApp", async ({ expect }) => {
     createdUserEmail = `exec-test-${crypto.randomUUID()}@stack-generated.example.com`;
-    const code = `const u = await stackServerApp.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
+    const code = `const u = await hexclaveServerApp.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
     const { stdout, exitCode } = await runCli(
       ["exec", "--cloud-project-id", createdProjectId, code],
     );
@@ -341,11 +340,11 @@ describe("Stack CLI", () => {
     expect(parsed.email).toBe(createdUserEmail);
   });
 
-  it("can list users with stackServerApp", async ({ expect }) => {
+  it("can list users with hexclaveServerApp", async ({ expect }) => {
     expect(createdProjectId).toBeDefined();
     expect(createdUserEmail).toBeDefined();
     const { stdout, exitCode } = await runCli(
-      ["exec", "--cloud-project-id", createdProjectId, "const users = await stackServerApp.listUsers(); return users.length"],
+      ["exec", "--cloud-project-id", createdProjectId, "const users = await hexclaveServerApp.listUsers(); return users.length"],
     );
     expect(exitCode).toBe(0);
     const count = JSON.parse(stdout);
@@ -375,7 +374,7 @@ describe("Stack CLI", () => {
         },
       );
       expect(exitCode).toBe(1);
-      expect(stderr).toContain("Local emulator publishable client key not found");
+      expect(stderr).toContain("Development environment publishable client key not found");
     } finally {
       fs.rmSync(fakeEmulatorHome, { recursive: true });
     }
@@ -401,7 +400,7 @@ describe("Stack CLI", () => {
         },
       );
       expect(exitCode).toBe(1);
-      expect(stderr).toContain("Cannot reach local emulator");
+      expect(stderr).toContain("Cannot reach development environment");
     } finally {
       fs.rmSync(fakeEmulatorHome, { recursive: true });
     }
@@ -462,8 +461,8 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
-    expect(content).toContain("export const config: StackConfig");
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain("export const config: HexclaveConfig");
   });
 
   it("config push succeeds", async ({ expect }) => {
@@ -521,7 +520,7 @@ describe("Stack CLI", () => {
       expect(exitCode).toBe(0);
       expect(stdout).toContain(`Config written to ${expected}`);
       const content = fs.readFileSync(expected, "utf-8");
-      expect(content).toContain("export const config: StackConfig");
+      expect(content).toContain("export const config: HexclaveConfig");
     } finally {
       fs.rmSync(cwdDir, { recursive: true });
     }
@@ -557,8 +556,8 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@hexclave/js";');
-    expect(content).toContain("export const config: StackConfig");
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain("export const config: HexclaveConfig");
     expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {
         installed: {
@@ -625,9 +624,9 @@ describe("Stack CLI", () => {
 
     const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
     expect(envContent).toContain("# Hexclave");
-    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
-    expect(envContent).toContain("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=");
-    expect(envContent).toContain("STACK_SECRET_SERVER_KEY=");
+    expect(envContent).toContain(`NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${createdProjectId}`);
+    expect(envContent).toContain("NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY=");
+    expect(envContent).toContain("HEXCLAVE_SECRET_SERVER_KEY=");
   });
 
   it("init link-cloud appends to existing .env", async ({ expect }) => {
@@ -646,7 +645,7 @@ describe("Stack CLI", () => {
     const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
     expect(envContent).toContain("EXISTING_VAR=hello");
     expect(envContent).toContain("# Hexclave");
-    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
+    expect(envContent).toContain(`NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=${createdProjectId}`);
   });
 
   it("init link-cloud fails with invalid project ID", async ({ expect }) => {
@@ -666,75 +665,6 @@ describe("Stack CLI", () => {
     ]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
-  });
-});
-
-// Emulator CLI tests — no backend required, just validates help/arg parsing
-describe("Stack CLI — Emulator", () => {
-  function runCliBare(
-    args: string[],
-  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
-    return new Promise((resolve) => {
-      execFile("node", [CLI_BIN, ...args], {
-        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
-        timeout: 15_000,
-      }, (error, stdout, stderr) => {
-        resolve({
-          stdout: stdout.toString(),
-          stderr: stderr.toString(),
-          exitCode: error ? (error as any).code ?? 1 : 0,
-        });
-      });
-    });
-  }
-
-  function runCliBareFromSource(
-    args: string[],
-  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
-    return new Promise((resolve) => {
-      execFile("node", ["--import", "tsx", CLI_SRC_BIN, ...args], {
-        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
-        timeout: 15_000,
-      }, (error, stdout, stderr) => {
-        resolve({
-          stdout: stdout.toString(),
-          stderr: stderr.toString(),
-          exitCode: error ? (error as any).code ?? 1 : 0,
-        });
-      });
-    });
-  }
-
-  it("emulator help shows subcommands", async ({ expect }) => {
-    const { stdout, exitCode } = await runCliBare(["emulator", "--help"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("pull");
-    expect(stdout).toContain("start");
-    expect(stdout).toContain("stop");
-    expect(stdout).toContain("reset");
-    expect(stdout).toContain("status");
-    expect(stdout).toContain("list-releases");
-  });
-
-  it("emulator pull help shows options", async ({ expect }) => {
-    const { stdout, exitCode } = await runCliBare(["emulator", "pull", "--help"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("--arch");
-    expect(stdout).toContain("--branch");
-    expect(stdout).toContain("--tag");
-    expect(stdout).toContain("--repo");
-  });
-
-  it("emulator pull rejects invalid arch values", async ({ expect }) => {
-    const { stderr, exitCode } = await runCliBareFromSource(["emulator", "pull", "--arch", "sparc"]);
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain("Invalid architecture: sparc. Expected arm64 or amd64.");
-  });
-
-  it("emulator list-releases help shows repo option", async ({ expect }) => {
-    const { stdout, exitCode } = await runCliBare(["emulator", "list-releases", "--help"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("--repo");
   });
 });
 
@@ -801,13 +731,13 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
-      "stack/client.ts": "export const stackClientApp = {};\n",
-      "stack/server.ts": "export const stackServerApp = {};\n",
-      "app/handler/[...stack]/page.tsx": "export default function Page() { return null; }\n",
+      "hexclave/client.ts": "export const hexclaveClientApp = {};\n",
+      "hexclave/server.ts": "export const hexclaveServerApp = {};\n",
+      "app/handler/[...hexclave]/page.tsx": "export default function Page() { return null; }\n",
       "app/layout.tsx":
-        `import { StackProvider } from "@hexclave/next";\n` +
+        `import { HexclaveProvider } from "@hexclave/next";\n` +
         `export default function RootLayout({ children }) {\n` +
-        `  return <StackProvider>{children}</StackProvider>;\n` +
+        `  return <HexclaveProvider>{children}</HexclaveProvider>;\n` +
         `}\n`,
       ".env.local":
         `NEXT_PUBLIC_STACK_PROJECT_ID=proj_test\n` +
@@ -897,17 +827,32 @@ describe("Stack CLI — Doctor", () => {
     expect(parsed.checks.every((c: any) => c.status === "pass")).toBe(true);
   });
 
+  it("Next.js legacy stack paths are still accepted", async ({ expect }) => {
+    const files = nextHappyFiles();
+    files["stack/client.ts"] = files["hexclave/client.ts"];
+    files["stack/server.ts"] = files["hexclave/server.ts"];
+    files["app/handler/[...stack]/page.tsx"] = files["app/handler/[...hexclave]/page.tsx"];
+    delete files["hexclave/client.ts"];
+    delete files["hexclave/server.ts"];
+    delete files["app/handler/[...hexclave]/page.tsx"];
+    const dir = makeProject("next-legacy-stack-paths", files);
+    const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.failed).toBe(0);
+  });
+
   it("Next.js applies src/ prefix when src/app exists", async ({ expect }) => {
     const dir = makeProject("next-src", {
       "package.json": pkg({
         dependencies: { next: "14.0.0", "@hexclave/next": "1.0.0" },
       }),
-      "src/stack/client.ts": "export const stackClientApp = {};\n",
-      "src/stack/server.ts": "export const stackServerApp = {};\n",
-      "src/app/handler/[...stack]/page.tsx": "export default function P() { return null; }\n",
+      "src/hexclave/client.ts": "export const hexclaveClientApp = {};\n",
+      "src/hexclave/server.ts": "export const hexclaveServerApp = {};\n",
+      "src/app/handler/[...hexclave]/page.tsx": "export default function P() { return null; }\n",
       "src/app/layout.tsx":
-        `import { StackProvider } from "@hexclave/next";\n` +
-        `export default function L({ children }) { return <StackProvider>{children}</StackProvider>; }\n`,
+        `import { HexclaveProvider } from "@hexclave/next";\n` +
+        `export default function L({ children }) { return <HexclaveProvider>{children}</HexclaveProvider>; }\n`,
       ".env.local":
         `NEXT_PUBLIC_STACK_PROJECT_ID=p\n` +
         `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
@@ -918,7 +863,7 @@ describe("Stack CLI — Doctor", () => {
     const parsed = JSON.parse(stdout);
     const clientCheck = parsed.checks.find((c: any) => c.id === "next.client-app");
     expect(clientCheck.status).toBe("pass");
-    expect(clientCheck.label).toContain("src/stack/client.ts");
+    expect(clientCheck.label).toContain("src/hexclave/client.ts");
   });
 
   it("React happy path passes all checks", async ({ expect }) => {
@@ -926,7 +871,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { react: "18.0.0", "@hexclave/react": "1.0.0" },
       }),
-      "stack/client.ts": "export const stackClientApp = {};\n",
+      "hexclave/client.ts": "export const hexclaveClientApp = {};\n",
       ".env.local":
         `VITE_STACK_PROJECT_ID=p\n` +
         `VITE_STACK_PUBLISHABLE_CLIENT_KEY=k\n`,
@@ -943,7 +888,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
-      "stack/server.ts": "export const stackServerApp = {};\n",
+      "hexclave/server.ts": "export const hexclaveServerApp = {};\n",
       ".env":
         `STACK_PROJECT_ID=p\n` +
         `STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
@@ -961,7 +906,7 @@ describe("Stack CLI — Doctor", () => {
       "package.json": pkg({
         dependencies: { svelte: "4.0.0", "@hexclave/js": "1.0.0" },
       }),
-      "stack/client.ts": "export const stackClientApp = {};\n",
+      "hexclave/client.ts": "export const hexclaveClientApp = {};\n",
       ".env":
         `PUBLIC_STACK_PROJECT_ID=p\n` +
         `PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=k\n` +
@@ -987,7 +932,7 @@ describe("Stack CLI — Doctor", () => {
 
   it("fails when client app file is missing", async ({ expect }) => {
     const files = nextHappyFiles();
-    delete files["stack/client.ts"];
+    delete files["hexclave/client.ts"];
     const dir = makeProject("no-client", files);
     const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
     expect(exitCode).toBe(1);
@@ -998,14 +943,14 @@ describe("Stack CLI — Doctor", () => {
 
   it("fails when handler route is missing", async ({ expect }) => {
     const files = nextHappyFiles();
-    delete files["app/handler/[...stack]/page.tsx"];
+    delete files["app/handler/[...hexclave]/page.tsx"];
     const dir = makeProject("no-handler", files);
     const { stdout, exitCode } = await runDoctor(["doctor", "--output-dir", dir, "--json"]);
     expect(exitCode).toBe(1);
     const parsed = JSON.parse(stdout);
     const check = parsed.checks.find((c: any) => c.id === "next.handler-route");
     expect(check.status).toBe("fail");
-    expect(check.hint).toContain("app/handler/[...stack]/page.tsx");
+    expect(check.hint).toContain("app/handler/[...hexclave]/page.tsx");
   });
 
   it("warns when layout imports StackProvider but does not render it", async ({ expect }) => {

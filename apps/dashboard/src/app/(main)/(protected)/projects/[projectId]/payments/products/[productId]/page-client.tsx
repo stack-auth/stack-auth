@@ -3,6 +3,7 @@
 import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { Link, StyledLink } from "@/components/link";
+import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import {
   ActionCell,
@@ -1056,9 +1057,12 @@ type EditingItem = {
 };
 
 function ProductItemsSection({ productId, product, items, onItemsChange, config, inline = false }: ProductItemsSectionProps) {
+  const adminApp = useAdminApp();
+  const updateConfig = useUpdateConfig();
   const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string>('');
+  const [showCreateItemDialog, setShowCreateItemDialog] = useState(false);
 
   // Get all available items for this customer type
   const availableItems = useMemo(() => {
@@ -1087,6 +1091,34 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
     setEditingItem(null);
     setIsAddingItem(false);
     setSelectedItemId('');
+  };
+
+  const openCreateItemDialog = () => {
+    setEditingItem(null);
+    setIsAddingItem(false);
+    setSelectedItemId('');
+    setShowCreateItemDialog(true);
+  };
+
+  const handleCreateAndAddItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
+    const success = await updateConfig({
+      adminApp,
+      configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+      pushable: true,
+    });
+    if (!success) {
+      return;
+    }
+
+    onItemsChange({
+      ...items,
+      [item.id]: {
+        quantity: 1,
+        repeat: 'never',
+        expires: 'never',
+      },
+    });
+    toast({ title: "Item created", description: "Save product changes to keep it included." });
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -1159,8 +1191,10 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
       ) : (
         <div className="flex flex-col">
           {itemEntries.map(([itemId, item]) => {
-            const itemConfig = config.payments.items[itemId];
-            const displayName = itemConfig.displayName || itemId;
+            const itemConfig = Object.prototype.hasOwnProperty.call(config.payments.items, itemId)
+              ? config.payments.items[itemId]
+              : undefined;
+            const displayName = itemConfig?.displayName || itemId;
             return (
               <div key={itemId} className="group flex items-center text-sm leading-6">
                 <span className="font-semibold tabular-nums text-foreground">{prettyPrintWithMagnitudes(item.quantity)}×</span>
@@ -1242,14 +1276,8 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
               No items available for this customer type.
             </p>
             <p className="text-xs text-muted-foreground/70 text-center">
-              Create items in the Items list first before adding them to a product.
+              Create an item now and it will be added to this product automatically.
             </p>
-            <Button variant="outline" onClick={() => {
-              setEditingItem(null);
-              setIsAddingItem(false);
-            }}>
-              Close
-            </Button>
           </div>
         ) : editingItem && (
           <div className="grid gap-4 py-4">
@@ -1355,12 +1383,26 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
           }}>
             Cancel
           </Button>
-          <Button onClick={editingItem ? () => handleSaveItem(editingItem) : undefined}>
-            {isAddingItem ? "Add Item" : "Apply"}
+          <Button
+            onClick={isAddingItem && availableItems.length === 0
+              ? openCreateItemDialog
+              : editingItem ? () => handleSaveItem(editingItem) : undefined}
+          >
+            {isAddingItem && availableItems.length === 0 ? "Create Item" : isAddingItem ? "Add Item" : "Apply"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+
+  const createItemDialog = (
+    <ItemDialog
+      open={showCreateItemDialog}
+      onOpenChange={setShowCreateItemDialog}
+      onSave={handleCreateAndAddItem}
+      existingItemIds={Object.keys(config.payments.items)}
+      forceCustomerType={product.customerType}
+    />
   );
 
   if (inline) {
@@ -1368,6 +1410,7 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
       <>
         {listContent}
         {itemDialog}
+        {createItemDialog}
       </>
     );
   }
@@ -1377,6 +1420,7 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Included Items</h3>
       {listContent}
       {itemDialog}
+      {createItemDialog}
     </div>
   );
 }

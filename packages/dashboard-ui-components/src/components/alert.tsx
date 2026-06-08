@@ -23,7 +23,7 @@ const variantStyles = new Map<DesignAlertVariant, VariantStyles>([
   [
     "default",
     {
-      container: "bg-background border-border",
+      container: "border-black/[0.08] bg-white/90 ring-1 ring-black/[0.06] dark:border-border dark:bg-background dark:ring-0",
       icon: "text-foreground",
       title: "text-foreground",
     },
@@ -55,9 +55,9 @@ const variantStyles = new Map<DesignAlertVariant, VariantStyles>([
   [
     "info",
     {
-      container: "bg-blue-500/[0.06] border-blue-500/30",
-      icon: "text-blue-500",
-      title: "text-blue-600 dark:text-blue-400",
+      container: "border-blue-500/20 bg-blue-50/90 ring-1 ring-blue-500/10 dark:border-blue-500/30 dark:bg-blue-500/[0.06] dark:ring-0",
+      icon: "text-blue-600 dark:text-blue-400",
+      title: "text-blue-700 dark:text-blue-400",
     },
   ],
 ]);

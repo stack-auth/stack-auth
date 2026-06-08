@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, cn, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui";
+import { DesignInput, DesignSelectorDropdown } from "@/components/design-components";
 import {
   type ConditionNode,
   createEmptyCondition,
@@ -14,6 +15,13 @@ import { normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
 import { validateCountryCode } from "@hexclave/shared/dist/utils/country-codes";
 import { type ConditionField, type ConditionOperator, conditionFields, fieldMetadata, getOperatorsForField, isNumericField, validateNumericFieldValue } from "@hexclave/shared/dist/utils/cel-fields";
 import React from "react";
+
+const conditionRowSurfaceClass =
+  "bg-white/90 dark:bg-background/60 shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]";
+const conditionFieldClass = "h-8 min-w-[120px]";
+const conditionValueClass = "h-8 w-full";
+
+const UNSET_SELECT_VALUE = "__unset__";
 
 /**
  * Validates whether a string is a valid regular expression.
@@ -183,28 +191,24 @@ function ConditionRow({
   };
 
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg bg-background/40 ring-1 ring-foreground/[0.04]">
-      {/* Field selector */}
-      <select
+    <div className={cn("flex items-center gap-2 p-2 rounded-lg", conditionRowSurfaceClass)}>
+      <DesignSelectorDropdown
         value={condition.field}
-        onChange={(e) => handleFieldChange(e.target.value as ConditionField)}
-        className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md min-w-[120px]"
-      >
-        {FIELD_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
+        onValueChange={(value) => handleFieldChange(value as ConditionField)}
+        options={FIELD_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+        size="sm"
+        className={conditionFieldClass}
+        triggerClassName={conditionFieldClass}
+      />
 
-      {/* Operator selector */}
-      <select
+      <DesignSelectorDropdown
         value={condition.operator}
-        onChange={(e) => handleOperatorChange(e.target.value as ConditionOperator)}
-        className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md min-w-[120px]"
-      >
-        {availableOperators.map((op) => (
-          <option key={op} value={op}>{OPERATOR_LABELS[op]}</option>
-        ))}
-      </select>
+        onValueChange={(value) => handleOperatorChange(value as ConditionOperator)}
+        options={availableOperators.map((op) => ({ value: op, label: OPERATOR_LABELS[op] }))}
+        size="sm"
+        className={conditionFieldClass}
+        triggerClassName={conditionFieldClass}
+      />
 
       {/* Value input */}
       <div className="flex-1 min-w-0 space-y-1">
@@ -216,7 +220,7 @@ function ConditionRow({
                   value={countryCode || null}
                   onChange={(val) => handleCountryCodeListItemChange(index, val ?? "")}
                   className={cn(
-                    "h-8 text-sm flex-1",
+                    conditionValueClass,
                     countryCodeError !== null && "border-destructive ring-1 ring-destructive/30",
                   )}
                 />
@@ -244,19 +248,20 @@ function ConditionRow({
             </Button>
           </div>
         ) : condition.operator === 'in_list' ? (
-          <input
+          <DesignInput
             type="text"
-            value={Array.isArray(condition.value) ? condition.value.join(', ') : condition.value}
+            size="sm"
+            value={Array.isArray(condition.value) ? condition.value.join(', ') : String(condition.value)}
             onChange={(e) => {
               const items = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
               handleValueChange(items);
             }}
             placeholder="value1, value2, ... (values cannot contain commas)"
             className={cn(
-              "h-8 px-2 text-sm bg-background/60 border rounded-md w-full",
+              conditionValueClass,
               countryCodeError !== null
                 ? "border-destructive ring-1 ring-destructive/30"
-                : "border-border/50",
+                : undefined,
             )}
           />
         ) : isCountryCodeField ? (
@@ -264,36 +269,39 @@ function ConditionRow({
             value={typeof condition.value === 'string' && condition.value ? condition.value : null}
             onChange={(val) => handleValueChange(val ?? "")}
             className={cn(
-              "h-8 text-sm w-full",
+              conditionValueClass,
               countryCodeError !== null && "border-destructive ring-1 ring-destructive/30",
             )}
           />
         ) : predefinedValues ? (
-          <select
-            value={String(condition.value)}
-            onChange={(e) => handleValueChange(e.target.value)}
-            className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md w-full"
-          >
-            <option value="">Select...</option>
-            {predefinedValues.map((val) => (
-              <option key={val} value={val}>{val}</option>
-            ))}
-          </select>
+          <DesignSelectorDropdown
+            value={String(condition.value) || UNSET_SELECT_VALUE}
+            onValueChange={(value) => handleValueChange(value === UNSET_SELECT_VALUE ? "" : value)}
+            options={[
+              { value: UNSET_SELECT_VALUE, label: "Select..." },
+              ...predefinedValues.map((val) => ({ value: val, label: val })),
+            ]}
+            size="sm"
+            className="w-full"
+            triggerClassName={conditionValueClass}
+          />
         ) : isNumericField(condition.field) ? (
-          <input
+          <DesignInput
             type="number"
+            size="sm"
             min={0}
             max={100}
-            step="1"
+            step={1}
             value={String(condition.value)}
             onChange={(e) => handleValueChange(e.target.value === '' ? 0 : Number(e.target.value))}
             placeholder="0-100"
-            className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md w-full"
+            className={conditionValueClass}
           />
         ) : (
           <div className="flex items-center gap-1">
-            <input
+            <DesignInput
               type="text"
+              size="sm"
               value={String(condition.value)}
               onChange={(e) => handleValueChange(e.target.value)}
               placeholder={
@@ -302,10 +310,10 @@ function ConditionRow({
                   : "Enter value..."
               }
               className={cn(
-                "h-8 px-2 text-sm bg-background/60 border rounded-md flex-1",
+                conditionValueClass,
                 regexError !== null || countryCodeError !== null
                   ? "border-destructive ring-1 ring-destructive/30"
-                  : "border-border/50"
+                  : undefined,
               )}
             />
             {(regexError !== null || countryCodeError !== null) && (

@@ -7,11 +7,11 @@ import { CardElement, Elements, useElements, useStripe } from "@stripe/react-str
 import { loadStripe } from "@stripe/stripe-js";
 import { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
-import { envVars } from "../../../lib/env";
+import { envVars } from "../../../generated/env";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import type { CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions } from "../../../lib/stack-app/customers";
+import type { CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions } from "../../../lib/hexclave-app/customers";
 
 type PaymentMethodSummary = {
   id: string,
@@ -229,7 +229,7 @@ function MockPaymentsPanel(props: { title?: string }) {
 
 function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, customerType: "user" | "team" }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const billing = props.customer.useBilling();
   const defaultPaymentMethod = billing.defaultPaymentMethod;
   const products = props.customer.useProducts();
@@ -245,7 +245,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
 
   const stripePromise = useMemo(() => {
     if (!setupIntentStripeAccountId) return null;
-    const publishableKey = envVars.NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY;
+    const publishableKey = envVars.HEXCLAVE_STRIPE_PUBLISHABLE_KEY;
     if (!publishableKey) return null;
     return loadStripe(publishableKey, { stripeAccount: setupIntentStripeAccountId });
   }, [setupIntentStripeAccountId]);
@@ -408,9 +408,9 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                 if (!cancelTarget) return;
                 const { productId, subscriptionId } = cancelTarget;
                 if (props.customerType === "team") {
-                  await stackApp.cancelSubscription({ teamId: props.customer.id, productId, subscriptionId });
+                  await hexclaveApp.cancelSubscription({ teamId: props.customer.id, productId, subscriptionId });
                 } else {
-                  await stackApp.cancelSubscription({ productId, subscriptionId });
+                  await hexclaveApp.cancelSubscription({ productId, subscriptionId });
                 }
                 setCancelTarget(null);
               },

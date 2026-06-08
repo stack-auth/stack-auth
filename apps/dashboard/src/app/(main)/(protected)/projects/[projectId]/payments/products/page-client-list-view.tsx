@@ -79,7 +79,7 @@ type ListItemProps = {
   onMouseLeave?: () => void,
   isEven?: boolean,
   isHighlighted?: boolean,
-  itemRef?: React.RefObject<HTMLDivElement>,
+  itemRef?: React.RefObject<HTMLDivElement | null>,
   actionItems?: ActionMenuItem[],
 };
 
@@ -180,9 +180,9 @@ function ListGroup({ title, children }: ListGroupProps) {
 
 // Connection line component
 type ConnectionLineProps = {
-  fromRef: React.RefObject<HTMLDivElement>,
-  toRef: React.RefObject<HTMLDivElement>,
-  containerRef: React.RefObject<HTMLDivElement>,
+  fromRef: React.RefObject<HTMLDivElement | null>,
+  toRef: React.RefObject<HTMLDivElement | null>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   quantity?: number,
 };
 
@@ -257,7 +257,7 @@ function ConnectionLine({ fromRef, toRef, containerRef, quantity }: ConnectionLi
               cx={midpoint.x}
               cy={midpoint.y}
               r="14"
-              className="fill-background"
+              className="fill-white dark:fill-background"
               stroke="hsl(200, 91%, 70%)"
               strokeWidth="1"
               strokeOpacity="0.3"
@@ -320,7 +320,7 @@ type ProductsListProps = {
   paymentsGroups: any,
   hoveredItemId: string | null,
   getConnectedProducts: (itemId: string) => string[],
-  productRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  productRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onProductMouseEnter: (productId: string) => void,
   onProductMouseLeave: () => void,
   onProductAdd?: () => void,
@@ -340,8 +340,8 @@ function ProductsList({
   setEditingProduct,
   setShowProductDialog,
 }: ProductsListProps) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const updateConfig = useUpdateConfig();
   const projectId = useProjectId();
   const router = useRouter();
@@ -453,7 +453,7 @@ function ProductsList({
               typedEntries(config.payments.products)
                 .filter(([productId]) => productId !== productToDelete.id)
             );
-            await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
+            await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
             toast({ title: "Product deleted" });
             setProductToDelete(null);
           }
@@ -470,7 +470,7 @@ type ItemsListProps = {
   items: CompleteConfig['payments']['items'],
   hoveredProductId: string | null,
   getConnectedItems: (productId: string) => string[],
-  itemRefs?: Record<string, React.RefObject<HTMLDivElement>>,
+  itemRefs?: Record<string, React.RefObject<HTMLDivElement | null>>,
   onItemMouseEnter: (itemId: string) => void,
   onItemMouseLeave: () => void,
   onItemAdd?: () => void,
@@ -489,8 +489,8 @@ function ItemsList({
   setEditingItem,
   setShowItemDialog,
 }: ItemsListProps) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const updateConfig = useUpdateConfig();
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -586,7 +586,7 @@ function ItemsList({
           label: "Delete",
           onClick: async () => {
             if (!itemToDelete) return;
-            await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${itemToDelete.id}`]: null }, pushable: true });
+            await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { [`payments.items.${itemToDelete.id}`]: null }, pushable: true });
             toast({ title: "Item deleted" });
             setItemToDelete(null);
           }
@@ -733,8 +733,8 @@ export default function PageClient() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const paymentsConfig = config.payments;
@@ -872,14 +872,14 @@ export default function PageClient() {
 
   // Handler for saving product
   const handleSaveProduct = async (productId: string, product: Product) => {
-    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
     setShowProductDialog(false);
     toast({ title: editingProduct ? "Product updated" : "Product created" });
   };
 
   // Handler for saving item
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
-    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
     setShowItemDialog(false);
     setEditingItem(null);
     toast({ title: editingItem ? "Item updated" : "Item created" });

@@ -6,25 +6,25 @@ import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/er
 import { notFound, usePathname } from "next/navigation";
 import React from "react";
 
-const StackAdminAppContext = React.createContext<StackAdminApp<false> | null>(null);
+const HexclaveAdminAppContext = React.createContext<StackAdminApp<false> | null>(null);
 
 export function AdminAppProvider(props: { children: React.ReactNode }) {
   const projectId = useProjectId();
   const app = useAdminApp(projectId);
   return (
-    <StackAdminAppContext.Provider value={app}>
+    <HexclaveAdminAppContext.Provider value={app}>
       {props.children}
-    </StackAdminAppContext.Provider>
+    </HexclaveAdminAppContext.Provider>
   );
 }
 
 export function useAdminAppIfExists() {
-  const stackAdminApp = React.useContext(StackAdminAppContext);
-  if (!stackAdminApp) {
+  const hexclaveAdminApp = React.useContext(HexclaveAdminAppContext);
+  if (!hexclaveAdminApp) {
     return null;
   }
 
-  return stackAdminApp;
+  return hexclaveAdminApp;
 }
 
 export function useAdminApp(projectId?: string) {

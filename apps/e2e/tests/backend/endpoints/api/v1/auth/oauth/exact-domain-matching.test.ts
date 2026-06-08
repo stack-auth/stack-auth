@@ -70,6 +70,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "details": { "redirect_url": "http://stack-test.localhost/some-callback-url" },
           "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
@@ -115,6 +116,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "details": { "redirect_url": "http://stack-test.localhost/some-callback-url" },
           "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
@@ -160,6 +162,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "details": { "redirect_url": "http://stack-test.localhost/some-callback-url" },
           "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
@@ -205,6 +208,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "details": { "redirect_url": "http://stack-test.localhost/some-callback-url" },
           "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {
@@ -330,6 +334,7 @@ describe("OAuth with exact domain matching", () => {
         "status": 400,
         "body": {
           "code": "REDIRECT_URL_NOT_WHITELISTED",
+          "details": { "redirect_url": "http://stack-test.localhost/some-callback-url" },
           "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
         },
         "headers": Headers {

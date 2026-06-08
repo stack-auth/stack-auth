@@ -249,11 +249,15 @@ export function SelectField<F extends FieldValues>(props: {
         <FormItem>
           <FieldLabel required={props.required}>{props.label}</FieldLabel>
           <FormControl>
-            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={props.disabled}>
+            <Select
+              onValueChange={field.onChange}
+              value={field.value ?? ""}
+              disabled={props.disabled}
+            >
               <SelectTrigger className="max-w-lg">
-                <SelectValue placeholder={props.placeholder} />
+                <SelectValue placeholder={props.placeholder ?? "Select an option"} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" sideOffset={4}>
                 <SelectGroup>
                   {props.options.map(option => (
                     <SelectItem key={option.value} value={option.value}>

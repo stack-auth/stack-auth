@@ -42,7 +42,7 @@ export default function PasswordResetForm(props: {
   const { register, handleSubmit, formState: { errors }, clearErrors } = useForm({
     resolver: yupResolver(schema)
   });
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [finished, setFinished] = useState(false);
   const [resetError, setResetError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -51,7 +51,7 @@ export default function PasswordResetForm(props: {
     setLoading(true);
     try {
       const { password } = data;
-      const result = await stackApp.resetPassword({ password, code: props.code });
+      const result = await hexclaveApp.resetPassword({ password, code: props.code });
       if (result.status === 'error') {
         setResetError(true);
         return;
@@ -125,8 +125,8 @@ export default function PasswordResetForm(props: {
 }
 
 
-const cachedVerifyPasswordResetCode = cacheFunction(async (stackApp: StackClientApp<true>, code: string) => {
-  return await stackApp.verifyPasswordResetCode(code);
+const cachedVerifyPasswordResetCode = cacheFunction(async (hexclaveApp: StackClientApp<true>, code: string) => {
+  return await hexclaveApp.verifyPasswordResetCode(code);
 });
 
 export function PasswordReset({
@@ -137,7 +137,7 @@ export function PasswordReset({
   fullPage?: boolean,
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
 
   const invalidJsx = (
     <MessageCard title={t("Invalid Password Reset Link")} fullPage={fullPage}>
@@ -162,7 +162,7 @@ export function PasswordReset({
     return invalidJsx;
   }
 
-  const result = use(cachedVerifyPasswordResetCode(stackApp, code));
+  const result = use(cachedVerifyPasswordResetCode(hexclaveApp, code));
 
   if (result.status === 'error') {
     if (KnownErrors.VerificationCodeNotFound.isInstance(result.error)) {
