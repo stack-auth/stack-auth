@@ -159,6 +159,15 @@ withGeneratorLock(async () => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["js"] });
     },
     filterFn: (relativePath) => {
+      const jsGeneratedFiles = new Set([
+        "scripts/generate-env.ts",
+        "src/generated/.gitignore",
+        "src/generated/env.ts",
+      ]);
+      if (jsGeneratedFiles.has(relativePath)) {
+        return true;
+      }
+
       const ignores = [
         "postcss.config.js",
         "tailwind.config.js",
@@ -172,8 +181,6 @@ withGeneratorLock(async () => {
         "src/components-page/",
         "src/generated/",
         "src/providers/",
-        "src/global.css",
-        "src/global.d.ts",
       ];
 
       if (tanstackStartOnlyTemplateFiles.has(relativePath) || templateOnlyFiles.has(relativePath)) {
