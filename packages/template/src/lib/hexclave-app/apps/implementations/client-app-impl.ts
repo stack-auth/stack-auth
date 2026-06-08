@@ -46,7 +46,7 @@ import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
-import { envVars } from "../../../env";
+import { envVars } from "../../../../generated/env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
@@ -2669,16 +2669,16 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
-    const visibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
+    const visibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_SITE_KEY;
     if (!visibleSiteKey) {
       if (!this._botChallengeSiteKeysWarned) {
         this._botChallengeSiteKeysWarned = true;
-        console.warn("[stack-auth] NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
+        console.warn("[stack-auth] HEXCLAVE_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
       }
       return null;
     }
 
-    const invisibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
+    const invisibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
 
     return { visibleSiteKey, invisibleSiteKey };
   }

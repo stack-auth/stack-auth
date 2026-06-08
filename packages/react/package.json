@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY UNLESS YOU ALSO EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@hexclave/react",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "repository": "https://github.com/hexclave/hexclave",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -40,10 +40,12 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
-    "build": "rimraf dist && pnpm run css && tsdown",
+    "build": "rimraf dist && pnpm run codegen && tsdown",
     "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
-    "codegen": "pnpm run css",
-    "codegen:watch": "pnpm run css:watch",
+    "codegen": "pnpm run env && pnpm run css",
+    "codegen:watch": "concurrently -n \"env,css\" -k \"pnpm run env:watch\" \"pnpm run css:watch\"",
+    "env": "tsx ./scripts/generate-env.ts",
+    "env:watch": "chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000",
     "css": "pnpm run css-tw && pnpm run css-sc",
     "css:watch": "concurrently -n \"tw,sc\" -k \"pnpm run css-tw:watch\" \"pnpm run css-sc:watch\"",
     "css-tw:watch": "tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch",
@@ -86,9 +88,14 @@
   },
   "peerDependencies": {
     "@types/react": ">=18.0.0",
+    "@types/react-dom": ">=18.0.0",
+    "react-dom": ">=18.0.0",
     "react": ">=18.0.0"
   },
   "peerDependenciesMeta": {
+    "@types/react-dom": {
+      "optional": true
+    },
     "@types/react": {
       "optional": true
     }

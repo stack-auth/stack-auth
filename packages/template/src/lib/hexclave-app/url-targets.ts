@@ -1,7 +1,7 @@
 import { getCustomPagePrompts, type CustomPagePrompt } from "@hexclave/shared/dist/interface/handler-urls";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { getHostedHandlerUrlFromConfig } from "@hexclave/shared/dist/utils/redirect-urls";
-import { envVars } from "../env";
+import { envVars } from "../../generated/env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
 const localUrlPlaceholderOrigin = "http://example.com";
@@ -107,9 +107,9 @@ export const getHostedHandlerUrl = (options: { projectId: string, pagePath: stri
   return getHostedHandlerUrlFromConfig({
     projectId: options.projectId,
     hostedPath,
-    hostedHandlerDomainSuffix: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX,
-    hostedHandlerUrlTemplate: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE,
-    hexclavePortPrefix: envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX,
+    hostedHandlerDomainSuffix: envVars.HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX,
+    hostedHandlerUrlTemplate: envVars.HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE,
+    hexclavePortPrefix: envVars.HEXCLAVE_PORT_PREFIX,
   });
 };
 

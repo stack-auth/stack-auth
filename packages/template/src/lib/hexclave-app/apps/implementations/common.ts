@@ -10,7 +10,7 @@ import { Result } from "@hexclave/shared/dist/utils/results";
 import { Store } from "@hexclave/shared/dist/utils/stores";
 import { getDefaultApiUrls } from "@hexclave/shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
-import { envVars } from "../../../env";
+import { envVars } from "../../../../generated/env";
 import { HandlerUrlOptions, ResolvedHandlerUrls, hexclaveAppInternalsSymbol } from "../../common";
 import { resolveHandlerUrls } from "../../url-targets";
 
@@ -21,7 +21,7 @@ if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
 
 const replaceHexclavePortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
-  const prefix = envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX;
+  const prefix = envVars.HEXCLAVE_PORT_PREFIX;
   return prefix ? input.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) as T : input;
 };
 
@@ -40,7 +40,7 @@ const showMissingConfigAlertInBrowser = (message: string) => {
 };
 
 const throwMissingProjectIdError = (): never => {
-  const message = "Welcome to Hexclave! It seems that you haven't provided a project ID. Please create a project on the Hexclave dashboard at https://app.hexclave.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable.";
+  const message = "Welcome to Hexclave! It seems that you haven't provided a project ID. Please create a project on the Hexclave dashboard at https://app.hexclave.com and put it in the HEXCLAVE_PROJECT_ID environment variable.";
   showMissingConfigAlertInBrowser(message);
   return throwErr(new Error(message));
 };
@@ -82,23 +82,23 @@ export function getUrls(partial: HandlerUrlOptions, options: { projectId: string
 }
 
 export function getDefaultProjectId() {
-  return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || throwMissingProjectIdError();
+  return envVars.HEXCLAVE_PROJECT_ID || throwMissingProjectIdError();
 }
 
 export function getDefaultPublishableClientKey() {
-  return envVars.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || envVars.STACK_PUBLISHABLE_CLIENT_KEY;
+  return envVars.HEXCLAVE_PUBLISHABLE_CLIENT_KEY;
 }
 
 export function getDefaultSecretServerKey() {
-  return envVars.STACK_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Hexclave dashboard and put it in the STACK_SECRET_SERVER_KEY environment variable."));
+  return envVars.HEXCLAVE_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Hexclave dashboard and put it in the HEXCLAVE_SECRET_SERVER_KEY environment variable."));
 }
 
 export function getDefaultSuperSecretAdminKey() {
-  return envVars.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Hexclave dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
+  return envVars.HEXCLAVE_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Hexclave dashboard and put it in the HEXCLAVE_SUPER_SECRET_ADMIN_KEY environment variable."));
 }
 
 export function getDefaultExtraRequestHeaders() {
-  return JSON.parse(envVars.NEXT_PUBLIC_STACK_EXTRA_REQUEST_HEADERS || envVars.STACK_EXTRA_REQUEST_HEADERS || '{}');
+  return JSON.parse(envVars.HEXCLAVE_EXTRA_REQUEST_HEADERS || '{}');
 }
 
 /**
@@ -107,9 +107,9 @@ export function getDefaultExtraRequestHeaders() {
  * The URL can be specified in several ways, in order of precedence:
  * 1. Directly through userSpecifiedBaseUrl parameter as string or browser/server object
  * 2. Through environment variables:
- *    - Browser: NEXT_PUBLIC_BROWSER_STACK_API_URL
- *    - Server: NEXT_PUBLIC_SERVER_STACK_API_URL
- *    - Fallback: NEXT_PUBLIC_STACK_API_URL or NEXT_PUBLIC_STACK_URL
+ *    - Browser: NEXT_PUBLIC_HEXCLAVE_API_URL_BROWSER/VITE_HEXCLAVE_API_URL_BROWSER
+ *    - Server: HEXCLAVE_API_URL_SERVER
+ *    - Default: HEXCLAVE_API_URL
  * 3. Default base URL if none of the above are specified
  *
  * The function also ensures the URL doesn't end with a trailing slash
@@ -132,13 +132,12 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
       }
     }
   } else {
-    // note: NEXT_PUBLIC_BROWSER_STACK_API_URL was renamed to NEXT_PUBLIC_STACK_API_URL_BROWSER, and NEXT_PUBLIC_STACK_URL to NEXT_PUBLIC_STACK_API_URL
     if (isBrowserLike()) {
-      url = envVars.NEXT_PUBLIC_BROWSER_STACK_API_URL || envVars.NEXT_PUBLIC_STACK_API_URL_BROWSER || envVars.STACK_API_URL_BROWSER;
+      url = envVars.HEXCLAVE_API_URL_BROWSER;
     } else {
-      url = envVars.NEXT_PUBLIC_SERVER_STACK_API_URL || envVars.NEXT_PUBLIC_STACK_API_URL_SERVER || envVars.STACK_API_URL_SERVER;
+      url = envVars.HEXCLAVE_API_URL_SERVER;
     }
-    url = url || envVars.NEXT_PUBLIC_STACK_API_URL || envVars.STACK_API_URL || envVars.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
+    url = url || envVars.HEXCLAVE_API_URL || defaultBaseUrl;
   }
 
   return replaceHexclavePortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);

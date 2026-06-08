@@ -33,6 +33,14 @@ Setting up Hexclave is one prompt. Paste this into your coding agent of choice:
 Read skill.hexclave.com and help me setup hexclave in this project
 ```
 
+## For AI agents
+
+If you're an AI coding agent, use your web fetch tool or curl the skill documentation for up-to-date integration instructions:
+
+```
+curl -sSL "https://skill.hexclave.com?question=<your-question>&context=<your-context>"
+```
+
 ## What's included
 
 Hexclave ships as a catalog of apps you switch on as your product needs them.

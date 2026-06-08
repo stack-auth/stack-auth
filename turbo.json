@@ -100,6 +100,30 @@
         "dist/**"
       ]
     },
+    "@hexclave/next#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
+      ]
+    },
+    "@hexclave/react#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
+      ]
+    },
+    "@hexclave/tanstack-start#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
+      ]
+    },
+    "@hexclave/js#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
+      ]
+    },
     "clean": {
       "cache": false
     },
