@@ -2,6 +2,8 @@
 import { StackClientApp, StackProvider, StackTheme } from '@hexclave/react';
 import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { validateRedirectUrl } from '@hexclave/shared/dist/utils/redirect-urls';
+import { isRelative } from '@hexclave/shared/dist/utils/urls';
 import {
   HeadContent,
   Outlet,
@@ -50,20 +52,25 @@ function getApiBaseUrlFromEnv(): string | undefined {
   return import.meta.env.VITE_HEXCLAVE_API_URL ?? import.meta.env.VITE_STACK_API_URL ?? undefined;
 }
 
-function useHexclaveNavigateAdapter() {
+function isTrustedNavigationTarget(to: string): boolean {
+  return isRelative(to) || validateRedirectUrl(to, { trustedDomains: [window.location.origin] });
+}
+
+function useHostedComponentsNavigate() {
   const navigate = useNavigate();
 
-  return useMemo(() => ({
-    useNavigate: () => (to: string) => {
-      runAsynchronously(async () => {
-        if (to.startsWith("#")) {
-          await navigate({ hash: to.slice(1) });
-        } else {
-          await navigate({ href: to });
+  return useMemo(() => (to: string) => {
+    runAsynchronously(async () => {
+      if (to.startsWith("#")) {
+        await navigate({ hash: to.slice(1) });
+      } else {
+        if (!isTrustedNavigationTarget(to)) {
+          throw new Error(`Refusing to navigate to untrusted URL: ${to}`);
         }
-      });
-    },
-  }), [navigate]);
+        await navigate({ href: to });
+      }
+    });
+  }, [navigate]);
 }
 
 function FullPageError({ title, message }: { title: string, message: string }) {
@@ -154,7 +161,6 @@ function RootDocument({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const projectId = useProjectIdFromHostname();
-  const redirectMethod = useHexclaveNavigateAdapter();
 
   const isValidProjectId = projectId ? (projectId === "internal" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) : false;
 
@@ -173,9 +179,9 @@ function RootComponent() {
         afterSignUp: "/",
         afterSignOut: "/handler/sign-in",
       },
-      redirectMethod,
+      redirectMethod: { useNavigate: useHostedComponentsNavigate },
     });
-  }, [isValidProjectId, projectId, redirectMethod]);
+  }, [isValidProjectId, projectId]);
 
   if (projectId === undefined) {
     return <FullPageLoadingSkeleton />;
