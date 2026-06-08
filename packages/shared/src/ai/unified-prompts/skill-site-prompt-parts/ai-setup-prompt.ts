@@ -744,6 +744,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
               }
             }
             \`\`\`
+
+            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.
           </Accordion>
 
           <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
