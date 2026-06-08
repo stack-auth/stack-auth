@@ -220,8 +220,8 @@ export class InternalSession {
 
   /**
    * Installs a fresh access token into this session in place, keeping the session object (and therefore every
-   * session-scoped cache) stable instead of constructing a new InternalSession. Caller must pass a token that
-   * belongs to the same session. No-op if the session is invalid, the token can't be decoded, or it's unchanged;
+   * session-scoped cache) stable instead of constructing a new InternalSession. No-op if the session is invalid,
+   * the token can't be decoded, it's unchanged, or it doesn't belong to this session (its session key differs);
    * never clears an existing token.
    */
   updateAccessToken(accessToken: string | null) {
@@ -229,6 +229,10 @@ export class InternalSession {
     if (!accessToken) return;
     const newAccessToken = AccessToken.createIfValid(accessToken);
     if (!newAccessToken) return;
+    // Self-enforce the "a session never changes which session it belongs to" invariant: only install a token that
+    // maps to this same session key, so a foreign token can never be written into this object's cache.
+    const newSessionKey = InternalSession.calculateSessionKey({ refreshToken: this._refreshToken?.token ?? null, accessToken: newAccessToken.token });
+    if (newSessionKey !== this.sessionKey) return;
     if (this._accessToken.get()?.token === newAccessToken.token) return;
     this._accessToken.set(newAccessToken);
   }
