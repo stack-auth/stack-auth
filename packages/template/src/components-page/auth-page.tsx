@@ -166,7 +166,7 @@ function Inner(props: Props) {
       </div>
 
       {(hasOAuthProviders || hasPasskey) && (
-        <div className='gap-2.5 flex flex-col items-stretch mb-2'>
+        <div className='gap-3 flex flex-col items-stretch mb-2'>
           {hasOAuthProviders && <OAuthButtonGroup type={props.type} mockProject={props.mockProject} />}
           {hasPasskey && <PasskeyButton type={props.type} />}
         </div>
