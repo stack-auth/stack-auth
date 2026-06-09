@@ -13,18 +13,18 @@ import { watch, type FSWatcher } from "fs";
 import { basename, dirname } from "path";
 import { peekRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli } from "./browser-secret";
 import {
-    ensureConfigFileExists,
-    readConfigFile,
-    replaceConfigObject,
-    resolveConfigFilePath,
-    sha256String,
-    updateConfigObject,
+  ensureConfigFileExists,
+  readConfigFile,
+  replaceConfigObject,
+  resolveConfigFilePath,
+  sha256String,
+  updateConfigObject,
 } from "./config-file";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 import {
-    RemoteDevelopmentEnvironmentProject,
-    readRemoteDevelopmentEnvironmentState,
-    updateRemoteDevelopmentEnvironmentState,
+  RemoteDevelopmentEnvironmentProject,
+  readRemoteDevelopmentEnvironmentState,
+  updateRemoteDevelopmentEnvironmentState,
 } from "./state";
 
 const SESSION_TTL_MS = 25_000;
