@@ -1,0 +1,182 @@
+apps/internal-tool/src/app/api/evals/_lib.ts
+  s_a414a1f3a2cb1b::t_971743aa4c2432 1-15
+apps/internal-tool/src/lib/evals/config.ts
+  s_a414a1f3a2cb1b::t_3e6928ee501d76 1-3,11-12,17-49,68-92
+  s_a414a1f3a2cb1b::t_d98abda2265408 50-67
+  s_a414a1f3a2cb1b::t_95c227d2f27c34 4-10,13-16
+apps/internal-tool/src/module_bindings/eval_run_table.ts
+  s_a414a1f3a2cb1b::t_18ffa210b09d2f 1-30
+apps/internal-tool/src/module_bindings/delete_eval_workflow_reducer.ts
+  s_a414a1f3a2cb1b::t_3c3bb1534ccd4b 1-16
+apps/internal-tool/src/lib/evals/default-workflow.ts
+  s_a414a1f3a2cb1b::t_33116b2ebfe27f 44-46
+  s_a414a1f3a2cb1b::t_7234899a631c12 1-43,47-66,70-85,87-92,94,100,106-108,115-141,148-150,153-155
+  s_a414a1f3a2cb1b::t_910e581f0825c4 93,95-99,101-105,109-114
+  s_a414a1f3a2cb1b::t_113a3d61aa7d5d 142-147,151-152
+  s_a414a1f3a2cb1b::t_c56705db8520f3 67-69
+  s_a414a1f3a2cb1b::t_2aa2e3398906d6 86
+apps/internal-tool/src/hooks/useEvalsDB.ts
+  s_a414a1f3a2cb1b::t_8ef10b3962011a 1-120,126-129,134-139,144-152,157-165,170-180,185-282
+  s_a414a1f3a2cb1b::t_2b955e2205ed27 181-184
+  s_a414a1f3a2cb1b::t_0a29a92238f791 121-125,130-133,140-143,153-156,166-169
+apps/internal-tool/src/components/evals/RunDetail.tsx
+  s_b2e775b6ca8597::t_a1f15810d9ed55 145
+  s_a414a1f3a2cb1b::t_c5bbaa55912205 1-3,5-106,108-144,146-242
+  s_b2e775b6ca8597::t_25009c3d3a559c 107
+  s_b2e775b6ca8597::t_ca2c800da533ca 4
+apps/internal-tool/scripts/spacetime-token.mjs
+  s_a414a1f3a2cb1b::t_2536ebf7a11bdc 55
+  s_a414a1f3a2cb1b::t_36964d91d5220a 12-41,47-51
+  s_a414a1f3a2cb1b::t_7b8e796b77b743 42-46
+apps/internal-tool/src/module_bindings/upsert_eval_workflow_reducer.ts
+  s_a414a1f3a2cb1b::t_4a3fd8e42b97fb 1-20
+apps/internal-tool/src/app/api/evals/workflows/route.ts
+  s_a414a1f3a2cb1b::t_635060808dd5fd 1-59
+apps/internal-tool/spacetimedb/src/index.ts
+  s_a414a1f3a2cb1b::t_09bedcc2ed1221 46-137
+  s_a414a1f3a2cb1b::t_4fc4a63afd8e3e 331-591
+apps/internal-tool/src/app/api/evals/runs/[runId]/cancel/route.ts
+  s_a414a1f3a2cb1b::t_122707923a56c8 1-17
+apps/internal-tool/src/components/evals/WorkflowsPanel.tsx
+  s_b2e775b6ca8597::t_6fb7c510783b63 5
+  s_b2e775b6ca8597::t_ac96184eef1c3c 121-124
+  s_a414a1f3a2cb1b::t_7fc7345c5d83dd 1-4,6-120,125-240,242-322
+  s_b2e775b6ca8597::t_d3f7c58fd25993 241
+apps/internal-tool/src/app/api/evals/runs/route.ts
+  s_a414a1f3a2cb1b::t_d47ff460200816 1-34
+apps/internal-tool/src/lib/evals/openrouter.ts
+  s_a414a1f3a2cb1b::t_3b770557ab3ade 1-56,82-101
+  s_a414a1f3a2cb1b::t_586e1ba4532530 57-81
+apps/internal-tool/src/app/api/evals/runs/[runId]/route.ts
+  s_a414a1f3a2cb1b::t_88a41caec78e53 1-22
+apps/internal-tool/src/module_bindings/append_eval_worklog_reducer.ts
+  s_a414a1f3a2cb1b::t_9eeb2f46489882 1-18
+apps/internal-tool/src/components/evals/RunLauncher.tsx
+  s_b2e775b6ca8597::t_ebaea3056d46eb 5
+  s_a414a1f3a2cb1b::t_7a5b8a516efbb7 1-4,6-17,19-39,48-189
+  s_b2e775b6ca8597::t_4e0586b9ee9f69 40-47
+  s_b2e775b6ca8597::t_630b5430392b9c 18
+apps/internal-tool/src/components/evals/RunsPanel.tsx
+  s_a414a1f3a2cb1b::t_4092dc5afc9059 142-169
+  s_a414a1f3a2cb1b::t_a9ef4b6c347088 3
+  s_a414a1f3a2cb1b::t_37ae2624bd5026 1-2,4,6-36,40-42,84-86,89-93,117,134-141,170-178,189-207,217-228,233-238,243-269
+  s_a414a1f3a2cb1b::t_bc7e1a7e73e3ff 179-188
+  s_b2e775b6ca8597::t_6ae639b9542205 239-242
+  s_b2e775b6ca8597::t_8f6ed150439ca5 229-232
+  s_b2e775b6ca8597::t_b74006b3329d24 5
+  s_a414a1f3a2cb1b::t_be8d1e5aafb23f 208-216
+  s_a414a1f3a2cb1b::t_f3e267853894ff 37-39,43-83,87-88,94-116,118-133
+apps/internal-tool/.env
+  s_a414a1f3a2cb1b::t_d926a74a48c88d 10-20
+apps/internal-tool/src/module_bindings/add_eval_artifact_reducer.ts
+  s_a414a1f3a2cb1b::t_c048155aef33c9 1-20
+apps/internal-tool/src/app/app-client.tsx
+  s_a414a1f3a2cb1b::t_e0c3024cbbf38d 209-214
+  s_a414a1f3a2cb1b::t_e1d1f479a1fc08 9,14
+  s_a414a1f3a2cb1b::t_7a208e6ad83e31 119-130
+apps/internal-tool/src/module_bindings/eval_worklog_table.ts
+  s_a414a1f3a2cb1b::t_5471a4288bd93d 1-21
+apps/internal-tool/package.json
+  s_a414a1f3a2cb1b::t_5469e63cb5d05e 20,23,28
+apps/internal-tool/src/module_bindings/types.ts
+  s_a414a1f3a2cb1b::t_caeb83f24a1fdf 13-85
+apps/internal-tool/src/lib/evals/stdb.ts
+  s_a414a1f3a2cb1b::t_38a0ce1db0c3b0 94-97,99,105,111,118-120,122-124,132,136-138
+  s_a414a1f3a2cb1b::t_6b1ea5c8eb217f 116,130,133-134
+  s_a414a1f3a2cb1b::t_6298acd273ffef 164-172,177-190
+  s_a414a1f3a2cb1b::t_9e15d718550edc 1-5,7-93,98,100-104,106-110,112-115,117,121,125-129,131,135,139-163,173-176,191-216,218-255
+  s_b2e775b6ca8597::t_4d4dec66862710 6
+  s_b2e775b6ca8597::t_8fda9c8e6bf9ee 217
+apps/internal-tool/src/app/api/evals/runs/[runId]/exec/route.ts
+  s_a414a1f3a2cb1b::t_4df9253c6d647b 1-21
+apps/internal-tool/src/app/api/evals/models/route.ts
+  s_a414a1f3a2cb1b::t_d0dbeb94aec3ae 1-19
+apps/internal-tool/src/module_bindings/eval_step_run_table.ts
+  s_a414a1f3a2cb1b::t_0fefaf33c87d1c 1-29
+apps/internal-tool/src/app/api/evals/workflows/[workflowId]/route.ts
+  s_a414a1f3a2cb1b::t_bb993abf5efe78 1-17
+apps/internal-tool/src/module_bindings/update_eval_run_reducer.ts
+  s_a414a1f3a2cb1b::t_16511f5b1ebad4 1-21
+apps/internal-tool/src/module_bindings/create_eval_run_reducer.ts
+  s_a414a1f3a2cb1b::t_838ef0559856e0 1-22
+apps/internal-tool/src/module_bindings/types/reducers.ts
+  s_a414a1f3a2cb1b::t_4a287cb1c4c7d7 9,11-14,18,21-22,24,26-29,33,36-37
+apps/internal-tool/src/types.ts
+  s_a414a1f3a2cb1b::t_e862465b52f48d 1-8
+apps/internal-tool/src/components/evals/ModelPicker.tsx
+  s_a414a1f3a2cb1b::t_584c8d43791f19 1-153
+apps/internal-tool/src/module_bindings/index.ts
+  s_a414a1f3a2cb1b::t_1e04cdde097a7c 136,138-141,145,148-149
+  s_a414a1f3a2cb1b::t_4279a44f888085 66-120
+  s_a414a1f3a2cb1b::t_4cefe6e0980ffd 37,39-42,46,49-50,55-59
+apps/internal-tool/src/app/api/evals/chat/route.ts
+  s_a414a1f3a2cb1b::t_8ad6e2d886620e 1-50
+apps/internal-tool/src/components/evals/EvalChat.tsx
+  s_b2e775b6ca8597::t_fdb7ac03ac5cb1 140
+  s_a414a1f3a2cb1b::t_3b1b4fb71fa121 1-139,141-228
+apps/internal-tool/src/components/evals/EvalsView.tsx
+  s_a414a1f3a2cb1b::t_e793b1bb0390ff 1-98
+apps/internal-tool/src/lib/evals/chat-agent.ts
+  s_a414a1f3a2cb1b::t_1cdf5e5bfad266 1-354
+apps/internal-tool/src/module_bindings/delete_eval_run_reducer.ts
+  s_a414a1f3a2cb1b::t_7e85982c0f3d37 1-16
+apps/internal-tool/src/module_bindings/eval_artifact_table.ts
+  s_a414a1f3a2cb1b::t_6e18f8560f7c10 1-21
+apps/internal-tool/src/module_bindings/upsert_eval_step_run_reducer.ts
+  s_a414a1f3a2cb1b::t_56fec58fdaa15b 1-26
+apps/internal-tool/src/lib/evals/orchestrator.ts
+  s_a414a1f3a2cb1b::t_972d05bd39fbf2 35-49
+  s_b2e775b6ca8597::t_3e3b12ed3b3992 311-312
+  s_a414a1f3a2cb1b::t_e38664c90d0839 324
+  s_a414a1f3a2cb1b::t_74dcc9d048b905 355-357
+  s_a414a1f3a2cb1b::t_2e29927f5cde3d 1-7,9,11-34,50-52,58-72,74-86,88,97-103,105-148,158-214,219-310,313-323,325-354,358-517
+  s_a414a1f3a2cb1b::t_1f7433ac2b10a3 73,87,89-95,104
+  s_a414a1f3a2cb1b::t_3faeddb1dbacfd 10
+  s_b2e775b6ca8597::t_be1eaaf74ee664 149-157
+  s_b2e775b6ca8597::t_efc843ed438ac9 8
+  s_a414a1f3a2cb1b::t_dda5287a77c3f2 53-57
+  s_b2e775b6ca8597::t_dd66065ca97d3a 96
+  s_a414a1f3a2cb1b::t_f5645aa17efd35 215-218
+apps/internal-tool/src/hooks/useSpacetimeDB.ts
+  s_a414a1f3a2cb1b::t_2ac5e729384e06 78-81,92-94
+apps/internal-tool/src/module_bindings/eval_workflow_table.ts
+  s_a414a1f3a2cb1b::t_bcafec61939456 1-22
+apps/internal-tool/src/components/evals/WorklogViewer.tsx
+  s_a414a1f3a2cb1b::t_41974c92dd7f6c 62,71-74,88-91
+  s_a414a1f3a2cb1b::t_d42354875ed44c 19,24-41
+  s_a414a1f3a2cb1b::t_7a43bde2a9cdb2 14-15,20
+  s_a414a1f3a2cb1b::t_5e2d250fcb8ad2 1-13,16-18,21-23,42-61,63-70,75-87,92-95,97-103,105-108,110,112-116,127-137,159,161,171-183,186-204,225-226,240-314
+  s_a414a1f3a2cb1b::t_25db67858b435a 138-158,160,162-170
+  s_a414a1f3a2cb1b::t_a5e1228d030063 96,104,109,111,117-126
+  s_a414a1f3a2cb1b::t_730d37d8acf515 184-185
+  s_a414a1f3a2cb1b::t_a388258aaa4759 205-221,227-239
+  s_a414a1f3a2cb1b::t_e71439f204ae6f 222-224
+apps/internal-tool/src/lib/evals/sandbox.ts
+  s_a414a1f3a2cb1b::t_ecc0b9d7baf29f 1-139
+apps/internal-tool/src/lib/evals/types.ts
+  s_a414a1f3a2cb1b::t_224961b02cd5bf 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "e47af32821071ea6a20f562a77a198823cc3fd28",
+  "prompts": {},
+  "sessions": {
+    "s_a414a1f3a2cb1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a170145b-781f-4e85-bd80-393bd957a182",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_b2e775b6ca8597": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6f8418e-8ca7-43aa-a454-eebe8c07245f",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}
