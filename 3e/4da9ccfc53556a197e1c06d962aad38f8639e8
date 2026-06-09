@@ -1,0 +1,19 @@
+docs-mintlify/sdk/objects/hexclave-app.mdx
+  s_edd60bd107038a::t_f747f64d19d8c6 62,503,507,561
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "3e4da9ccfc53556a197e1c06d962aad38f8639e8",
+  "prompts": {},
+  "sessions": {
+    "s_edd60bd107038a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e0b69bd-ed40-498a-b79f-59821fa54f09",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
