@@ -176,11 +176,11 @@ function Inner(props: Props) {
 
       {project.config.credentialEnabled && project.config.magicLinkEnabled ? (
         <Tabs defaultValue={props.firstTab || 'magic-link'} className="w-full">
-          <TabsList className={cn('w-full mb-4 bg-muted p-1 rounded-lg h-9 border border-border', {
+          <TabsList className={cn('w-full mb-4 bg-muted p-1 rounded-lg h-10 border border-border', {
             'flex-row-reverse': props.firstTab === 'password'
           })}>
-            <TabsTrigger value='magic-link' className='flex-1 rounded-md py-1 text-sm font-medium border border-transparent transition-all data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm'>{t("Email")}</TabsTrigger>
-            <TabsTrigger value='password' className='flex-1 rounded-md py-1 text-sm font-medium border border-transparent transition-all data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm'>{t("Email & Password")}</TabsTrigger>
+            <TabsTrigger value='magic-link' className='h-8 flex-1 rounded-md py-0 text-sm font-medium border border-transparent transition-all data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm'>{t("Email")}</TabsTrigger>
+            <TabsTrigger value='password' className='h-8 flex-1 rounded-md py-0 text-sm font-medium border border-transparent transition-all data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm'>{t("Email & Password")}</TabsTrigger>
           </TabsList>
           <TabsContent value='magic-link' className="focus-visible:outline-none focus-visible:ring-0">
             <MagicLinkSignIn />
