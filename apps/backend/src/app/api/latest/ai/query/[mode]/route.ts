@@ -95,7 +95,7 @@ export const POST = createSmartRouteHandler({
         body: result.toUIMessageStreamResponse(),
       };
     } else {
-      const startedAt = Date.now();
+      const startedAt = performance.now();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180_000);
       const result = await generateText({
@@ -148,7 +148,7 @@ export const POST = createSmartRouteHandler({
           response: result.text,
           stepCount: result.steps.length,
           innerToolCallsJson,
-          durationMs: BigInt(Date.now() - startedAt),
+          durationMs: BigInt(Math.round(performance.now() - startedAt)),
           modelId: String(model.modelId),
           errorMessage: undefined,
         });
