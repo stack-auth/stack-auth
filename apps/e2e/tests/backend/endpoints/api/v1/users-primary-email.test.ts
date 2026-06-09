@@ -436,7 +436,7 @@ describe("updating primary_email via users/me endpoint", () => {
 
     it("should return a clear error when changing primary_email to an email already used for auth by another user", async ({ expect }) => {
       // Create first user with email used for auth (via OTP sign-in)
-      const { userId: firstUserId } = await Auth.Otp.signIn();
+      await Auth.Otp.signIn();
       const firstUserEmail = (await niceBackendFetch("/api/v1/users/me", {
         accessType: "client",
       })).body.primary_email;
