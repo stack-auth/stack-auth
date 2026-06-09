@@ -10,6 +10,8 @@ const TOOL_ROUTE_HEADERS = {
   "Access-Control-Allow-Headers": "*",
 };
 
+const MCP_RPC_TIMEOUT_MS = 15_000;
+
 type JsonRecord = Record<string, unknown>;
 
 type McpTool = {
@@ -45,7 +47,7 @@ class McpJsonRpcError extends Error {
 }
 
 function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseJsonFromMcpBody(body: string): unknown {
@@ -83,16 +85,20 @@ function getConfiguredMcpEndpointUrl(): URL | null {
   return normalizeMcpEndpointUrl(new URL(configured));
 }
 
+function isLocalHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname.endsWith(".localhost");
+}
+
 function getSiblingMcpUrl(req: Request): URL {
   const url = new URL(req.url);
   const sibling = new URL(url);
 
   if (sibling.hostname === "skill.hexclave.com") {
     sibling.hostname = "mcp.hexclave.com";
-  } else if (sibling.hostname.startsWith("skill.")) {
-    sibling.hostname = `mcp.${sibling.hostname.slice("skill.".length)}`;
-  } else if (sibling.port.endsWith("45")) {
+  } else if (isLocalHostname(sibling.hostname) && sibling.port.endsWith("45")) {
     sibling.port = `${sibling.port.slice(0, -2)}44`;
+  } else {
+    throw new QueryArgumentError("Unable to derive MCP endpoint URL for this skill host.");
   }
 
   sibling.pathname = "/mcp";
@@ -110,15 +116,28 @@ async function mcpJsonRpc(endpointUrl: URL, method: string, params?: unknown): P
     ? { jsonrpc: "2.0", id: 1, method }
     : { jsonrpc: "2.0", id: 1, method, params };
 
-  const response = await fetch(endpointUrl, {
-    method: "POST",
-    headers: MCP_RPC_HEADERS,
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MCP_RPC_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(endpointUrl, {
+      method: "POST",
+      headers: MCP_RPC_HEADERS,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new McpHttpError(504, `MCP HTTP timeout after ${MCP_RPC_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const text = await response.text();
   if (!response.ok) {
-    throw new McpHttpError(response.status, `MCP HTTP error ${response.status}: ${text}`);
+    throw new McpHttpError(response.status, `MCP HTTP error ${response.status}`);
   }
 
   const parsed = parseJsonFromMcpBody(text);
@@ -318,7 +337,7 @@ function applyQuestionAlias(values: Map<string, string[]>, properties: Map<strin
 export function buildMcpToolArguments(tool: McpTool, searchParams: URLSearchParams): JsonRecord {
   const properties = getSchemaProperties(tool.inputSchema);
   const queryValues = applyQuestionAlias(getQueryParameterValues(searchParams), properties);
-  const args: JsonRecord = {};
+  const args: JsonRecord = Object.create(null);
 
   for (const [parameterName, values] of queryValues.entries()) {
     args[parameterName] = coerceQueryValue(parameterName, values, properties.get(parameterName));
@@ -363,7 +382,14 @@ function getToolNameFromRequest(req: Request): string {
   if (routeName == null) {
     throw new QueryArgumentError("Missing MCP tool route name.");
   }
-  return decodeURIComponent(routeName);
+  try {
+    return decodeURIComponent(routeName);
+  } catch (error) {
+    if (error instanceof URIError) {
+      throw new QueryArgumentError("Malformed MCP tool route name encoding.");
+    }
+    throw error;
+  }
 }
 
 function textResponse(text: string, status = 200): Response {
@@ -399,6 +425,10 @@ export async function handleMcpToolRoute(req: Request): Promise<Response> {
       return textResponse(`Unknown MCP tool route "/${routeName}". Available routes: ${getAvailableRouteNames(tools).join(", ")}`, 404);
     }
 
+    if (req.method === "HEAD") {
+      return textResponse("");
+    }
+
     const response = await callMcpTool(endpointUrl, tool, new URL(req.url).searchParams);
     return textResponse(response.text, response.isError ? 502 : 200);
   } catch (error) {
@@ -407,7 +437,7 @@ export async function handleMcpToolRoute(req: Request): Promise<Response> {
     }
 
     if (error instanceof McpJsonRpcError) {
-      return textResponse(error.message, errorStatusForMcpError(error));
+      return textResponse(`MCP JSON-RPC error ${error.code}`, errorStatusForMcpError(error));
     }
 
     if (error instanceof McpHttpError) {
@@ -423,4 +453,8 @@ export function handleMcpToolOptions(): Response {
     status: 204,
     headers: TOOL_ROUTE_HEADERS,
   });
+}
+
+export function handleMcpToolHead(): Response {
+  return textResponse("");
 }

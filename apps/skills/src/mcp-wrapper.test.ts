@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { buildMcpToolArguments, getAvailableRouteNames, getMcpEndpointUrl, resolveMcpToolRoute } from "./mcp-wrapper";
+import { buildMcpToolArguments, getAvailableRouteNames, getMcpEndpointUrl, handleMcpToolRoute, resolveMcpToolRoute } from "./mcp-wrapper";
 
 function restoreEnvVariable(name: string, value: string | undefined) {
   if (value == null) {
@@ -111,6 +111,23 @@ describe("skill-site MCP wrapper", () => {
     `);
   });
 
+  it("rejects arrays for object query parameters", () => {
+    const tool = {
+      name: "search",
+      inputSchema: {
+        type: "object",
+        properties: {
+          filters: { type: "object" },
+        },
+      },
+    };
+    const params = new URLSearchParams({
+      filters: "[]",
+    });
+
+    expect(() => buildMcpToolArguments(tool, params)).toThrow("must be a JSON object");
+  });
+
   it("infers the sibling MCP endpoint from local and production skill URLs", () => {
     const previousHexclaveMcpBaseUrl = process.env.HEXCLAVE_MCP_BASE_URL;
     const previousStackMcpBaseUrl = process.env.STACK_MCP_BASE_URL;
@@ -120,9 +137,40 @@ describe("skill-site MCP wrapper", () => {
     try {
       expect(getMcpEndpointUrl(new Request("http://localhost:8145/ask")).toString()).toBe("http://localhost:8144/mcp");
       expect(getMcpEndpointUrl(new Request("https://skill.hexclave.com/ask")).toString()).toBe("https://mcp.hexclave.com/mcp");
+      expect(() => getMcpEndpointUrl(new Request("https://skill.evil.example/ask"))).toThrow("Unable to derive MCP endpoint URL");
     } finally {
       restoreEnvVariable("HEXCLAVE_MCP_BASE_URL", previousHexclaveMcpBaseUrl);
       restoreEnvVariable("STACK_MCP_BASE_URL", previousStackMcpBaseUrl);
+    }
+  });
+
+  it("does not call MCP tools for HEAD requests", async () => {
+    const previousFetch = globalThis.fetch;
+    const previousHexclaveMcpBaseUrl = process.env.HEXCLAVE_MCP_BASE_URL;
+    process.env.HEXCLAVE_MCP_BASE_URL = "https://mcp.hexclave.com/mcp";
+
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      expect(body?.method).toBe("tools/list");
+
+      return new Response(`data: ${JSON.stringify({
+        result: {
+          tools: [askTool],
+        },
+        jsonrpc: "2.0",
+        id: 1,
+      })}`);
+    });
+
+    globalThis.fetch = fetchMock;
+
+    try {
+      const response = await handleMcpToolRoute(new Request("https://skill.hexclave.com/ask", { method: "HEAD" }));
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = previousFetch;
+      restoreEnvVariable("HEXCLAVE_MCP_BASE_URL", previousHexclaveMcpBaseUrl);
     }
   });
 });
