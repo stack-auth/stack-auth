@@ -32,7 +32,7 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # Only prune backend (no dashboard)
-RUN turbo prune --scope=@hexclave/backend --docker
+RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/template --docker
 
 
 # Build stage
