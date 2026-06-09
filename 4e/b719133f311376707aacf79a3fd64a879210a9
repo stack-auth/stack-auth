@@ -1,0 +1,22 @@
+packages/shared/src/config-authoring.ts
+  h_8c1b79571cf22c 3,11-12,14,16,18-19
+packages/shared/src/config-authoring.test.ts
+  h_8c1b79571cf22c 3
+packages/cli/src/commands/config-file.ts
+  h_8c1b79571cf22c 1-5,8,10,12
+packages/shared/src/config-rendering.ts
+  h_8c1b79571cf22c 3-4
+packages/local-config-updater/src/index.test.ts
+  h_8c1b79571cf22c 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "4eb719133f311376707aacf79a3fd64a879210a9",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
