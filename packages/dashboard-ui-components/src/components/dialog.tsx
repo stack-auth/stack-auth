@@ -44,14 +44,12 @@ const dialogSizeClasses = new Map<DesignDialogSize, string>([
 ]);
 
 const dialogSurfaceClasses = new Map<DesignDialogVariant, string>([
-  ["glassmorphic", "border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"],
-  ["plain", "border bg-background shadow-lg sm:rounded-lg"],
+  ["glassmorphic", "border-0 sm:rounded-2xl bg-white/95 backdrop-blur-2xl ring-1 ring-black/[0.08] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"],
+  ["plain", "border border-black/[0.08] bg-white shadow-lg sm:rounded-lg dark:border-white/[0.06] dark:bg-background"],
 ]);
 
-const dialogOverlayClasses = new Map<DesignDialogVariant, string | undefined>([
-  ["glassmorphic", "bg-black/50 backdrop-blur-sm"],
-  ["plain", undefined],
-]);
+export const designDialogGlassmorphicSurfaceClass = dialogSurfaceClasses.get("glassmorphic") ?? "";
+export const designDialogGlassmorphicOverlayClass = "bg-black/50 backdrop-blur-sm";
 
 type DesignDialogIcon = React.ElementType<{ className?: string }>;
 
@@ -75,6 +73,10 @@ export type DesignDialogProps = {
   bodyClassName?: string,
   footerClassName?: string,
   children?: React.ReactNode,
+  contentProps?: Omit<
+    React.ComponentPropsWithoutRef<typeof DialogContent>,
+    "className" | "children" | "overlayProps" | "noCloseButton"
+  >,
 } & DesignDialogRootProps;
 
 /**
@@ -98,12 +100,16 @@ export function DesignDialog({
   headerClassName,
   bodyClassName,
   footerClassName,
+  contentProps,
   children,
   ...dialogRootProps
 }: DesignDialogProps) {
   const resolvedSizeClass = dialogSizeClasses.get(size) ?? "max-w-lg";
   const resolvedSurfaceClass = dialogSurfaceClasses.get(variant) ?? dialogSurfaceClasses.get("glassmorphic");
-  const resolvedOverlayClass = cn(dialogOverlayClasses.get(variant), overlayClassName);
+  const resolvedOverlayClass = cn(
+    variant === "glassmorphic" ? designDialogGlassmorphicOverlayClass : undefined,
+    overlayClassName,
+  );
   const shouldRenderTopHeaderRow = Icon != null || title != null || description != null;
   const shouldRenderHeader = customHeader != null || shouldRenderTopHeaderRow || headerContent != null;
   // Use toArray + filter(Boolean) instead of Children.count so that
@@ -129,23 +135,28 @@ export function DesignDialog({
 
       <DialogContent
         className={cn(
-          "gap-0 p-0 overflow-hidden",
+          "gap-0 h-auto max-h-[min(100dvh-2rem,36rem)] overflow-hidden p-0",
           resolvedSizeClass,
           resolvedSurfaceClass,
           className
         )}
         overlayProps={resolvedOverlayClass ? { className: resolvedOverlayClass } : undefined}
         noCloseButton={hideTopCloseButton}
+        {...contentProps}
       >
         {needsAccessibleTitleFallback && (
           <DialogTitle className="sr-only">Dialog</DialogTitle>
         )}
         {shouldRenderHeader && (
-          <DialogHeader className={cn("px-6 pt-6 pb-4 border-b border-foreground/[0.06]", headerClassName)}>
+          <DialogHeader className={cn("shrink-0 px-6 pt-6 pb-4 border-b border-foreground/[0.06]", headerClassName)}>
             {customHeader ?? (
               <>
                 {shouldRenderTopHeaderRow && (
-                  <div className={cn("flex items-start gap-3", Icon == null && "gap-0")}>
+                  <div className={cn(
+                    "flex gap-3",
+                    description != null ? "items-start" : "items-center",
+                    Icon == null && "gap-0",
+                  )}>
                     {Icon != null && (
                       <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
                         <Icon className="h-4 w-4 text-primary" />
@@ -154,7 +165,7 @@ export function DesignDialog({
                     {(title != null || description != null) && (
                       <div className="flex-1 min-w-0 space-y-1">
                         {title != null ? (
-                          <DialogTitle className="text-base">
+                          <DialogTitle className="text-base font-semibold leading-snug">
                             {title}
                           </DialogTitle>
                         ) : null}
@@ -181,7 +192,7 @@ export function DesignDialog({
         {shouldRenderBody && (
           <DialogBody
             className={cn(
-              "mx-0 my-0 w-auto",
+              "mx-0 my-0 w-auto min-h-0 overflow-y-auto",
               noBodyPadding ? "px-0 py-0" : "px-6 py-4",
               bodyClassName
             )}
@@ -191,7 +202,7 @@ export function DesignDialog({
         )}
 
         {footer != null ? (
-          <DialogFooter className={cn("px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]", footerClassName)}>
+          <DialogFooter className={cn("shrink-0 px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]", footerClassName)}>
             {footer}
           </DialogFooter>
         ) : null}

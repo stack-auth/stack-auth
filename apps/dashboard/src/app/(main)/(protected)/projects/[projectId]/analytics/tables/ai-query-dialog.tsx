@@ -371,7 +371,7 @@ export function AiQueryDialog({
             </div>
           </DialogHeader>
 
-          <div className="shrink-0 border-b border-border/40 bg-muted/20">
+          <div className="shrink-0 border-b border-black/[0.06] bg-zinc-50/80 dark:border-border/40 dark:bg-muted/20">
             <div className="flex items-center justify-between px-5 py-2">
               <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Current query
@@ -417,7 +417,7 @@ export function AiQueryDialog({
                   }
                 }}
                 placeholder="Ask the AI a question to generate a query."
-                className="min-h-16 max-h-32 resize-y overflow-auto border-border/40 bg-background/70 font-mono text-[11px] text-foreground/90 shadow-none placeholder:italic placeholder:text-muted-foreground"
+                className="min-h-16 max-h-32 resize-y overflow-auto border-black/[0.08] bg-white/95 font-mono text-[11px] text-foreground/90 shadow-sm ring-1 ring-black/[0.06] placeholder:italic placeholder:text-muted-foreground dark:border-border/40 dark:bg-background/60 dark:ring-white/[0.06]"
               />
             </div>
           </div>

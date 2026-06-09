@@ -101,8 +101,43 @@ class MockIntersectionObserver implements IntersectionObserver {
 }
 
 class MockResizeObserver implements ResizeObserver {
+  private readonly callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+  }
+
   disconnect() {}
-  observe() {}
+  observe(target: Element) {
+    const el = target instanceof HTMLElement ? target : null;
+    const parentWidth = el?.parentElement instanceof HTMLElement ? el.parentElement.clientWidth : 0;
+    const width = (el?.clientWidth ?? 0) > 0 ? (el?.clientWidth ?? 320) : parentWidth > 0 ? parentWidth : 320;
+    const height = (el?.clientHeight ?? 0) > 0 ? (el?.clientHeight ?? 400) : 400;
+    this.callback(
+      [
+        {
+          target,
+          contentRect: {
+            x: 0,
+            y: 0,
+            width,
+            height,
+            top: 0,
+            left: 0,
+            right: width,
+            bottom: height,
+            toJSON() {
+              return this;
+            },
+          } as DOMRectReadOnly,
+          borderBoxSize: [],
+          contentBoxSize: [],
+          devicePixelContentBoxSize: [],
+        },
+      ],
+      this,
+    );
+  }
   unobserve() {}
 }
 
@@ -307,6 +342,12 @@ describe("DataGrid controlled callbacks", () => {
 describe("DataGrid horizontal scrolling", () => {
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 320;
+      },
+    });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function getBoundingClientRect() {
         return {

@@ -7,7 +7,7 @@ import { CardElement, Elements, useElements, useStripe } from "@stripe/react-str
 import { loadStripe } from "@stripe/stripe-js";
 import { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
-import { envVars } from "../../../lib/env";
+import { envVars } from "../../../generated/env";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -245,7 +245,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
 
   const stripePromise = useMemo(() => {
     if (!setupIntentStripeAccountId) return null;
-    const publishableKey = envVars.NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY;
+    const publishableKey = envVars.HEXCLAVE_STRIPE_PUBLISHABLE_KEY;
     if (!publishableKey) return null;
     return loadStripe(publishableKey, { stripeAccount: setupIntentStripeAccountId });
   }, [setupIntentStripeAccountId]);

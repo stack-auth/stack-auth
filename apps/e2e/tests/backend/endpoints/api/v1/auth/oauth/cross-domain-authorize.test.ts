@@ -151,6 +151,7 @@ it("rejects untrusted redirect URLs before issuing a code", async ({ expect }) =
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "details": { "redirect_url": "https://evil.example.com/oauth/callback" },
         "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
@@ -172,6 +173,7 @@ it("rejects untrusted after-callback redirect URLs before issuing a code", async
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "details": { "redirect_url": "https://evil.example.com/post-auth" },
         "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {

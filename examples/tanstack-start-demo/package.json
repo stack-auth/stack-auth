@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/example-tanstack-start-demo",
-  "version": "1.0.5",
+  "version": "1.0.10",
   "repository": "https://github.com/hexclave/hexclave",
   "description": "TanStack Start demo app for Hexclave",
   "private": true,
@@ -20,13 +20,13 @@
     "@tanstack/react-router": "^1.168.23",
     "@tanstack/react-start": "^1.167.42",
     "nitro": "^3.0.0",
-    "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
-    "@types/react": "19.2.1",
-    "@types/react-dom": "19.2.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",

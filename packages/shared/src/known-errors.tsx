@@ -858,11 +858,14 @@ const EmailPasswordMismatch = createKnownErrorConstructor(
 const RedirectUrlNotWhitelisted = createKnownErrorConstructor(
   KnownError,
   "REDIRECT_URL_NOT_WHITELISTED",
-  () => [
+  (redirectUrl?: string) => [
     400,
     "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
+    redirectUrl === undefined ? undefined : {
+      redirect_url: redirectUrl,
+    },
   ] as const,
-  () => [] as const,
+  (json) => [(json as any)?.redirect_url] as const,
 );
 
 const PasswordRequirementsNotMet = createKnownErrorConstructor(

@@ -1,17 +1,23 @@
 "use client";
 
-import { CheckoutForm, TestModeBypassForm } from "@/components/payments/checkout";
+import { CheckoutForm, PaymentsNotEnabledCard, TestModeBypassForm } from "@/components/payments/checkout";
+import { PurchasePriceOption } from "@/components/payments/purchase-price-option";
+import { PurchaseQuantitySelector } from "@/components/payments/purchase-quantity-selector";
+import { isFreePrice, shortenedInterval } from "@/components/payments/purchase-utils";
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
-import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Input, Skeleton, Typography } from "@/components/ui";
+import { DesignAlert } from "@/components/design-components/alert";
+import { DesignCard } from "@/components/design-components/card";
+import { Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
+import { XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
-import Image from 'next/image';
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
   stripe_account_id: string | null,
@@ -25,6 +31,7 @@ type ProductData = {
 
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 const baseUrl = new URL("/api/v1", apiUrl).toString();
+const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
 
 export default function PageClient({ code }: { code: string }) {
   const [data, setData] = useState<ProductData | null>(null);
@@ -50,8 +57,6 @@ export default function PageClient({ code }: { code: string }) {
     return Math.round(Number(data.product.prices[selectedPriceId].USD) * 100);
   }, [data, selectedPriceId]);
 
-  const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
-
   const rawAmountCents = useMemo(() => {
     return unitCents * Math.max(0, quantityNumber);
   }, [unitCents, quantityNumber]);
@@ -63,7 +68,7 @@ export default function PageClient({ code }: { code: string }) {
     if (rawAmountCents < 1) return unitCents;
     if (isTooLarge) return MAX_STRIPE_AMOUNT_CENTS;
     return rawAmountCents;
-  }, [unitCents, rawAmountCents, isTooLarge, MAX_STRIPE_AMOUNT_CENTS]);
+  }, [unitCents, rawAmountCents, isTooLarge]);
 
   const elementsMode = useMemo<"subscription" | "payment">(() => {
     if (!selectedPriceId || !data?.product?.prices) return "subscription";
@@ -71,51 +76,11 @@ export default function PageClient({ code }: { code: string }) {
     return price.interval ? "subscription" : "payment";
   }, [data, selectedPriceId]);
 
-  const shortenedInterval = (interval: [number, string]) => {
-    if (interval[0] === 1) {
-      return interval[1];
-    }
-    return `${interval[0]} ${interval[1]}s`;
-  };
-
-  const getPriceLabel = (interval: [number, string] | undefined): string => {
-    if (!interval) {
-      return "One-time";
-    }
-    const [count, unit] = interval;
-
-    if (count === 1) {
-      if (unit === "day") {
-        return "Daily";
-      } else if (unit === "week") {
-        return "Weekly";
-      } else if (unit === "month") {
-        return "Monthly";
-      } else if (unit === "year") {
-        return "Yearly";
-      } else {
-        return `Every ${unit}`;
-      }
-    }
-
-    if (unit === "day") {
-      return `Every ${count} days`;
-    } else if (unit === "week") {
-      return `Once every ${count} weeks`;
-    } else if (unit === "month") {
-      return `Every ${count} months`;
-    } else if (unit === "year") {
-      return `Every ${count} years`;
-    } else {
-      return `Every ${count} ${unit}s`;
-    }
-  };
-
   const validateCode = useCallback(async () => {
     const response = await fetch(`${baseUrl}/payments/purchases/validate-code`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         full_code: code,
@@ -123,39 +88,42 @@ export default function PageClient({ code }: { code: string }) {
       }),
     });
     if (!response.ok) {
-      throw new Error('Failed to validate code');
+      throw new Error("Failed to validate code");
     }
     const result = await response.json();
     setData(result);
     if (result?.product?.prices) {
-      const firstPriceId = Object.keys(result.product.prices)[0];
-      setSelectedPriceId(firstPriceId);
+      const priceIds = Object.keys(result.product.prices);
+      if (priceIds.length > 0) {
+        setSelectedPriceId(priceIds[0]);
+      }
     }
   }, [code, returnUrl]);
 
   useEffect(() => {
     setLoading(true);
     validateCode().catch((err) => {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     }).finally(() => {
       setLoading(false);
     });
   }, [validateCode]);
 
-  // True iff the price the user is about to purchase is $0. The backend
-  // intentionally omits client_secret for $0 subs (Stripe activates them
-  // synchronously, nothing to confirm), so this drives both the
-  // missing-secret-is-ok check below and the skip-Stripe-Elements branch in
   const isFreeSelected = useMemo<boolean>(() => {
     if (!selectedPriceId || !data?.product?.prices) return false;
     const usd = data.product.prices[selectedPriceId].USD;
-    return usd === "0" || usd === "0.00";
+    return isFreePrice(usd);
+  }, [data, selectedPriceId]);
+
+  const selectedPriceData = useMemo(() => {
+    if (!selectedPriceId || !data?.product?.prices) return null;
+    return data.product.prices[selectedPriceId];
   }, [data, selectedPriceId]);
 
   const setupSubscription = async () => {
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ full_code: code, price_id: selectedPriceId, quantity: quantityNumber }),
     });
     const result = await response.json();
@@ -175,12 +143,12 @@ export default function PageClient({ code }: { code: string }) {
       return;
     }
     const response = await fetch(`${baseUrl}/internal/payments/test-mode-purchase-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         full_code: code,
         price_id: selectedPriceId,
-        quantity: quantityNumber
+        quantity: quantityNumber,
       }),
     });
     if (!response.ok) {
@@ -195,235 +163,181 @@ export default function PageClient({ code }: { code: string }) {
     window.location.assign(url.toString());
   }, [code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
+  const checkoutDisabled = quantityNumber < 1 || isTooLarge || data?.already_bought_non_stackable === true;
+  const showInvalidPurchaseCode = !loading && error != null;
+
+  if (showInvalidPurchaseCode) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
+        <div className="w-full max-w-md text-center">
+          <DesignCard glassmorphic contentClassName="flex flex-col items-center gap-4 p-8">
+            <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
+              <XCircleIcon className="size-6 text-destructive" weight="fill" />
+            </div>
+            <div className="space-y-2">
+              <Typography type="h2" className="mb-2 text-xl font-semibold text-foreground">
+                Invalid Purchase Code
+              </Typography>
+              <Typography type="p" variant="secondary" className="text-sm">
+                The purchase code is invalid or has expired. Please check your link and try again.
+              </Typography>
+            </div>
+          </DesignCard>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
-      <div className="w-full md:w-1/2 flex flex-col bg-background border-b md:border-b-0 md:border-r border-primary/10">
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-xl mx-auto px-4 py-6 md:py-8">
+    <div className="relative min-h-screen bg-white dark:bg-zinc-950">
+      <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
+        {/* Left Panel: Product & Pricing Selection */}
+        <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:w-1/2 lg:border-b-0 lg:border-r">
+          <div className="mx-auto w-full max-w-md px-6 pb-12 pt-16 lg:pt-20">
             {loading ? (
-              <div>
-                <Skeleton className="h-10 w-10 rounded-lg" />
-                <Skeleton className="w-3/4 h-7 mt-5" />
-                <Skeleton className="w-full h-16 mt-5" />
-                <Skeleton className="w-full h-16 mt-5" />
-              </div>
-            ) : error ? (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-                <Typography type="h2" className="mb-2 text-xl">Invalid Purchase Code</Typography>
-                <Typography type="p" variant="secondary" className="max-w-md text-sm">
-                  The purchase code is invalid or has expired. Please check your link and try again.
-                </Typography>
+              <div className="space-y-5">
+                <Skeleton className="size-12 rounded-full" />
+                <Skeleton className="mt-4 h-10 w-2/3" />
+                <Skeleton className="mt-2 h-5 w-full" />
+                <Skeleton className="mt-8 h-20 w-full rounded-xl" />
+                <Skeleton className="mt-4 h-24 w-full rounded-xl" />
               </div>
             ) : (
-              <div className="space-y-5">
+              <div className="space-y-8">
+                {/* Product Logo */}
                 {data?.project_logo_url && (
-                  <div className="flex items-center">
+                  <div>
                     <Image
                       src={data.project_logo_url}
                       alt="Project logo"
-                      className="h-10 w-10 object-contain"
-                      width={40}
-                      height={40}
+                      className="size-12 rounded-full border border-border/40 bg-white p-1 object-contain shadow-sm dark:bg-zinc-950"
+                      width={48}
+                      height={48}
                       unoptimized
                     />
                   </div>
                 )}
 
-                <div className="space-y-1">
-                  <Typography type="h2" className="text-xl font-semibold">
-                    {data?.product?.display_name || "Choose Your Plan"}
-                  </Typography>
-                </div>
+                {/* Product Name */}
+                <Typography type="h1" className="text-3xl font-bold tracking-tight text-foreground">
+                  {data?.product?.display_name || "Choose Your Plan"}
+                </Typography>
 
+                {/* Prominent Selected Price Display */}
+                {selectedPriceData && (
+                  <div className="py-2">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-5xl font-bold tabular-nums tracking-tight text-foreground">
+                        ${selectedPriceData.USD ?? "0.00"}
+                      </span>
+                      {selectedPriceData.interval && (
+                        <span className="text-lg font-medium text-muted-foreground">
+                          /{shortenedInterval(selectedPriceData.interval)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Conflict / Already Purchased Alerts */}
                 {(data?.already_bought_non_stackable || (data?.conflicting_products && data.conflicting_products.length > 0)) && (
                   <div className="space-y-2">
                     {data.already_bought_non_stackable && (
-                      <Alert variant="destructive">
-                        <AlertTitle className="text-sm">Already Purchased</AlertTitle>
-                        <AlertDescription className="text-sm">
-                          You already have this product and cannot purchase it again.
-                        </AlertDescription>
-                      </Alert>
+                      <DesignAlert
+                        variant="error"
+                        title="Already Purchased"
+                        description="You already have this product and cannot purchase it again."
+                      />
                     )}
                     {data.conflicting_products && data.conflicting_products.length > 0 && (
-                      <Alert>
-                        <AlertTitle className="text-sm">Plan Change Detected</AlertTitle>
-                        <AlertDescription className="text-sm">
-                          {data.conflicting_products.length === 1 ? (
-                            <>This purchase will replace your current plan: <strong>{data.conflicting_products[0].display_name}</strong></>
-                          ) : (
-                            <>This purchase will replace one of your existing plans.</>
-                          )}
-                        </AlertDescription>
-                      </Alert>
+                      <DesignAlert
+                        variant="warning"
+                        title="Plan Change Detected"
+                        description={
+                          data.conflicting_products.length === 1
+                            ? `This purchase will replace your current plan: ${data.conflicting_products[0].display_name}`
+                            : "This purchase will replace one of your existing plans."
+                        }
+                      />
                     )}
                   </div>
                 )}
 
+                {/* Pricing Options */}
                 {data?.product?.prices && typedEntries(data.product.prices).length > 0 && (
                   <div className="space-y-3">
-                    <Typography type="label" className="text-xs font-medium uppercase tracking-wide text-primary/60">
+                    <Typography type="label" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Select a Pricing Option
                     </Typography>
-                    <div className="grid gap-3">
-                      {typedEntries(data.product.prices).map(([priceId, priceData], index) => (
-                        <Card
+                    <div className="grid gap-2.5">
+                      {typedEntries(data.product.prices).map(([priceId, priceData]) => (
+                        <PurchasePriceOption
                           key={priceId}
-                          className={`cursor-pointer transition-all duration-200 border-0 ${
-                            selectedPriceId === priceId
-                              ? 'outline-2 outline-primary outline'
-                              : 'outline outline-2 outline-primary/20 hover:outline-primary/40'
-                          }`}
-                          onClick={() => setSelectedPriceId(priceId)}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <Typography type="h4" className="text-sm font-semibold">
-                                    {getPriceLabel(priceData.interval)}
-                                  </Typography>
-                                  {selectedPriceId === priceId && (
-                                    <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center">
-                                      <svg className="w-2.5 h-2.5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    </div>
-                                  )}
-                                </div>
-
-                              </div>
-                              <div className="text-right">
-                                <Typography type="h3" className="text-lg font-bold">
-                                  ${priceData.USD}
-                                </Typography>
-                                {priceData.interval && (
-                                  <Typography type="p" variant="secondary" className="text-xs mt-0.5">
-                                    per {shortenedInterval(priceData.interval)}
-                                  </Typography>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
+                          priceId={priceId}
+                          priceData={priceData}
+                          selected={selectedPriceId === priceId}
+                          onSelect={setSelectedPriceId}
+                        />
                       ))}
                     </div>
                   </div>
                 )}
 
+                {/* Stackable Quantity Selector */}
                 {data?.product?.stackable && selectedPriceId && (
-                  <div className="bg-primary/5 rounded-lg p-4 space-y-4 border border-primary/10">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Typography type="label" className="text-sm font-semibold">
-                          Quantity
-                        </Typography>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8"
-                            disabled={quantityNumber <= 1}
-                            onClick={() => setQuantityInput(String(Math.max(1, quantityNumber - 1)))}
-                          >
-                            <MinusIcon className="w-3.5 h-3.5" />
-                          </Button>
-                          <Input
-                            className="text-center w-20 h-8 text-sm font-semibold"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            type="text"
-                            value={quantityInput}
-                            onChange={e => {
-                              const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
-                              setQuantityInput(digitsOnly);
-                            }}
-                          />
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8"
-                            onClick={() => setQuantityInput(String(quantityNumber + 1))}
-                          >
-                            <PlusIcon className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      {(quantityNumber < 1 || isTooLarge) && (
-                        <Typography type="footnote" variant="destructive" className="text-xs">
-                          {quantityNumber < 1
-                            ? "Please enter a quantity of at least 1."
-                            : "Amount exceeds the maximum limit of $999,999. Please reduce the quantity."}
-                        </Typography>
-                      )}
-                    </div>
-
-                    <div className="pt-3 border-t border-primary/10">
-                      <div className="flex items-baseline justify-between">
-                        <Typography type="label" className="text-sm font-semibold">
-                          Total Amount
-                        </Typography>
-                        <div className="text-right">
-                          <Typography type="h2" className="text-xl font-bold">
-                            ${selectedPriceId ? (Number(data.product.prices[selectedPriceId].USD) * Math.max(0, quantityNumber)).toFixed(2) : "0.00"}
-                          </Typography>
-                          {selectedPriceId && data.product.prices[selectedPriceId].interval && (
-                            <Typography type="p" variant="secondary" className="text-xs mt-0.5">
-                              per {shortenedInterval(data.product.prices[selectedPriceId].interval!)}
-                            </Typography>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                  <div className="rounded-xl border border-border/40 bg-foreground/[0.01] p-4 sm:p-5">
+                    <PurchaseQuantitySelector
+                      quantityInput={quantityInput}
+                      quantityNumber={quantityNumber}
+                      onQuantityChange={setQuantityInput}
+                      isTooLarge={isTooLarge}
+                      selectedPriceId={selectedPriceId}
+                      priceData={data.product.prices[selectedPriceId]}
+                    />
                   </div>
                 )}
               </div>
             )}
           </div>
         </div>
-      </div>
 
-      <div className="w-full md:w-1/2 flex flex-grow items-center justify-center bg-gradient-to-br from-primary/5 via-primary/3 to-background p-6 md:p-12">
-        {data && (
-          <div className="w-full max-w-lg">
-            {data.test_mode ? (
-              <TestModeBypassForm
-                onBypass={handleBypass}
-                disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
-              />
-            ) : data.stripe_account_id == null ? (
-              <div className="flex flex-col gap-4 max-w-md w-full p-6 rounded-md bg-background">
-                <Typography type="h3" variant="destructive">Payments not enabled</Typography>
-                <p className="text-sm text-muted-foreground">
-                  This project does not have payments enabled yet. Please contact the app developer to finish setting up payments.
-                </p>
+        {/* Right Panel: Checkout Form / Payment Details */}
+        <div className="flex flex-1 flex-col justify-center bg-zinc-200 dark:bg-black lg:w-1/2">
+          <div className="mx-auto w-full max-w-md px-6 py-12">
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-64 w-full rounded-2xl" />
               </div>
-            ) : (
-              <StripeElementsProvider
-                stripeAccountId={data.stripe_account_id}
-                amount={elementsAmountCents}
-                mode={elementsMode}
-              >
-                <CheckoutForm
-                  fullCode={code}
-                  stripeAccountId={data.stripe_account_id}
-                  setupSubscription={setupSubscription}
-                  returnUrl={returnUrl ?? undefined}
-                  disabled={quantityNumber < 1 || isTooLarge || data.already_bought_non_stackable === true}
-                  chargesEnabled={data.charges_enabled ?? false}
-                  isFree={isFreeSelected}
-                />
-              </StripeElementsProvider>
-            )}
+            ) : data ? (
+              <div className="space-y-4">
+                {data.test_mode ? (
+                  <TestModeBypassForm
+                    onBypass={handleBypass}
+                    disabled={checkoutDisabled}
+                  />
+                ) : data.stripe_account_id == null ? (
+                  <PaymentsNotEnabledCard />
+                ) : (
+                  <StripeElementsProvider
+                    stripeAccountId={data.stripe_account_id}
+                    amount={elementsAmountCents}
+                    mode={elementsMode}
+                  >
+                    <CheckoutForm
+                      fullCode={code}
+                      stripeAccountId={data.stripe_account_id}
+                      setupSubscription={setupSubscription}
+                      returnUrl={returnUrl ?? undefined}
+                      disabled={checkoutDisabled}
+                      chargesEnabled={data.charges_enabled ?? false}
+                      isFree={isFreeSelected}
+                    />
+                  </StripeElementsProvider>
+                )}
+              </div>
+            ) : null}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

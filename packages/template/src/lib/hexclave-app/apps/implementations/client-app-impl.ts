@@ -35,7 +35,7 @@ import { Store, storeLock } from "@hexclave/shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import type { TurnstileAction } from "@hexclave/shared/dist/utils/turnstile";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@hexclave/shared/dist/utils/turnstile-flow";
-import { createUrlIfValid, isRelative } from "@hexclave/shared/dist/utils/urls";
+import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
@@ -46,7 +46,7 @@ import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
-import { envVars } from "../../../env";
+import { envVars } from "../../../../generated/env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
@@ -847,12 +847,16 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return currentUrl.toString();
   }
 
-  protected async _getCurrentRefreshTokenIdIfSignedIn(options?: {
+  protected async _fetchCurrentRefreshTokenIdIfSignedIn(options?: {
     awaitPendingAuthResolutions?: boolean,
     overrideTokenStoreInit?: TokenStoreInit,
   }): Promise<string | null> {
     const session = await this._getSession(options?.overrideTokenStoreInit, options);
-    const tokens = await session.getOrFetchLikelyValidTokens(0, null);
+    // Nested cross-domain auth passes this ID to another origin, which later
+    // asks us to prove the same raw refresh token. A cached access token can be
+    // valid but stale relative to the refresh token, so mint from the refresh
+    // token that owns this session before exposing the ID.
+    const tokens = await session.fetchNewTokens();
     if (tokens?.refreshToken == null) {
       return null;
     }
@@ -870,7 +874,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return options.url;
     }
 
-    const refreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({
+    const refreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({
       awaitPendingAuthResolutions: options.awaitPendingAuthResolutions,
       overrideTokenStoreInit: options.overrideTokenStoreInit,
     });
@@ -925,7 +929,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if (!await this._isTrusted(afterCallbackRedirectUrl.toString())) {
         throw new Error(`Nested cross-domain auth after-callback redirect URL ${afterCallbackRedirectUrlString} is not trusted.`);
       }
-      const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+      const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
       if (currentRefreshTokenId !== refreshTokenId) {
         throw new Error("Nested cross-domain auth source session does not match the requested refresh token ID.");
       }
@@ -944,8 +948,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     // We are on b.com. Bounce to the trusted callback on a.com with a normal OAuth request
     // shape; a.com will verify the source session and issue the one-time code.
-    const currentRefreshTokenId = await this._getCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
+    const currentRefreshTokenId = await this._fetchCurrentRefreshTokenIdIfSignedIn({ awaitPendingAuthResolutions: false });
     if (currentRefreshTokenId === refreshTokenId) return false;
+    if (currentRefreshTokenId != null) {
+      const session = await this._getSession(undefined, { awaitPendingAuthResolutions: false });
+      session.markInvalid();
+    }
     const callbackUrlString = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.callbackUrl);
     if (callbackUrlString == null) {
       throw new HexclaveAssertionError("Nested cross-domain auth URL is missing callback URL");
@@ -1138,6 +1146,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       accessToken,
     };
   }
+  private _getCurrentBrowserCookieTokenStoreValue(old: TokenObject | null): TokenObject {
+    const tokens = this._getTokensFromCookies(this._getAllBrowserCookies());
+    return {
+      refreshToken: tokens.refreshToken,
+      accessToken: tokens.accessToken ?? (old?.refreshToken === tokens.refreshToken ? old.accessToken : null),
+    };
+  }
   protected get _accessTokenCookieName() {
     // The access token, unlike the refresh token, should not depend on the project ID. We never want to store the
     // access token in cookies more than once because of how big it is (there's a limit of 4096 bytes for all cookies
@@ -1280,20 +1295,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
 
     if (this._storedBrowserCookieTokenStore === null) {
-      const getCurrentValue = (old: TokenObject | null) => {
-        const tokens = this._getTokensFromCookies(this._getAllBrowserCookies());
-        return {
-          refreshToken: tokens.refreshToken,
-          accessToken: tokens.accessToken ?? (old?.refreshToken === tokens.refreshToken ? old.accessToken : null),
-        };
-      };
-      this._storedBrowserCookieTokenStore = new Store<TokenObject>(getCurrentValue(null));
+      this._storedBrowserCookieTokenStore = new Store<TokenObject>(this._getCurrentBrowserCookieTokenStoreValue(null));
       let hasSucceededInWriting = true;
 
       setInterval(() => {
         if (hasSucceededInWriting) {
           const oldValue = this._storedBrowserCookieTokenStore!.get();
-          const currentValue = getCurrentValue(oldValue);
+          const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
           if (!deepPlainEquals(currentValue, oldValue)) {
             this._storedBrowserCookieTokenStore!.set(currentValue);
           }
@@ -1327,6 +1335,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           }
         }
       });
+    } else {
+      const oldValue = this._storedBrowserCookieTokenStore.get();
+      const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
+      if (!deepPlainEquals(currentValue, oldValue)) {
+        this._storedBrowserCookieTokenStore.set(currentValue);
+      }
     }
 
     return this._storedBrowserCookieTokenStore;
@@ -1481,17 +1495,17 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       accessToken: tokenObj.accessToken,
     });
     session.onAccessTokenChange((newAccessToken) => {
-      tokenStore.update((old) => ({
+      tokenStore.update((old) => InternalSession.calculateSessionKey(old) === sessionKey ? {
         ...old,
         accessToken: newAccessToken?.token ?? null
-      }));
+      } : old);
     });
     session.onInvalidate(() => {
-      tokenStore.update((old) => ({
+      tokenStore.update((old) => InternalSession.calculateSessionKey(old) === sessionKey ? {
         ...old,
         accessToken: null,
         refreshToken: null,
-      }));
+      } : old);
     });
 
     let sessionsBySessionKey = this._sessionsByTokenStoreAndSessionKey.get(tokenStore) ?? new Map();
@@ -2655,16 +2669,16 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
-    const visibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
+    const visibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_SITE_KEY;
     if (!visibleSiteKey) {
       if (!this._botChallengeSiteKeysWarned) {
         this._botChallengeSiteKeysWarned = true;
-        console.warn("[stack-auth] NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
+        console.warn("[stack-auth] HEXCLAVE_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
       }
       return null;
     }
 
-    const invisibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
+    const invisibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
 
     return { visibleSiteKey, invisibleSiteKey };
   }
@@ -2846,6 +2860,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     overrideTokenStoreInit?: TokenStoreInit,
   }): Promise<string> {
     const session = await this._getSession(options.overrideTokenStoreInit, { awaitPendingAuthResolutions: options.awaitPendingAuthResolutions });
+    // The authorize endpoint intentionally verifies that the access token and
+    // raw refresh token describe the same DB session. Force the access token to
+    // be minted from the refresh token we are about to send, instead of reusing
+    // a still-valid cached token from a pre-handoff session snapshot.
+    await session.fetchNewTokens();
     const response = await this._interface.sendClientRequest(
       "/auth/oauth/cross-domain/authorize",
       {
@@ -3010,7 +3029,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async redirectToSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("signIn", options); }
   async redirectToSignUp(options?: RedirectToOptions) { return await this._redirectToHandler("signUp", options); }
-  async redirectToSignOut(options?: RedirectToOptions) { return await this._redirectToHandler("signOut", options); }
+  async redirectToSignOut(options?: RedirectToOptions) {
+    const configuredSignOutTarget = this._urlOptions.signOut ?? this._urlOptions.default;
+    if (typeof configuredSignOutTarget !== "string" && configuredSignOutTarget?.type === "hosted") {
+      return await this.signOut();
+    }
+    return await this._redirectToHandler("signOut", options);
+  }
   async redirectToEmailVerification(options?: RedirectToOptions) { return await this._redirectToHandler("emailVerification", options); }
   async redirectToPasswordReset(options?: RedirectToOptions) { return await this._redirectToHandler("passwordReset", options); }
   async redirectToForgotPassword(options?: RedirectToOptions) { return await this._redirectToHandler("forgotPassword", options); }
@@ -3811,9 +3836,28 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if (options?.redirectUrl) {
         await this._redirectTo({ url: options.redirectUrl, replace: true });
       } else {
-        await this.redirectToAfterSignOut();
+        await this._redirectToDefaultAfterSignOut();
       }
     });
+  }
+
+  protected async _redirectToDefaultAfterSignOut(): Promise<void> {
+    if (this._urlOptions.afterSignOut != null) {
+      await this.redirectToAfterSignOut({ replace: true });
+      return;
+    }
+
+    if (this._urlOptions.home != null) {
+      await this.redirectToHome({ replace: true });
+      return;
+    }
+
+    if (this._urlOptions.default?.type === "hosted" && typeof window !== "undefined") {
+      await this._redirectTo({ url: getRelativePart(new URL(window.location.href)), replace: true });
+      return;
+    }
+
+    await this.redirectToAfterSignOut({ replace: true });
   }
 
   async signOut(options?: { redirectUrl?: URL | string, tokenStore?: TokenStoreInit }): Promise<void> {

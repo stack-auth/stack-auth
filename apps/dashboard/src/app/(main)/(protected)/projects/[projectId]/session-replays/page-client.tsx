@@ -39,6 +39,16 @@ import {
   type StreamInfo,
 } from "./session-replay-machine";
 
+const replaysPanelShellClass =
+  "flex-1 min-h-[520px] overflow-hidden rounded-xl bg-white/90 ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.06]";
+const replaysListChromeClass =
+  "shrink-0 space-y-2 border-b border-black/[0.06] px-3 py-2.5 dark:border-border/30";
+const replaysDetailChromeClass =
+  "flex h-10 shrink-0 items-center justify-between gap-3 border-b border-black/[0.06] px-3 py-2 dark:border-border/30";
+const replaysViewerSurfaceClass = "bg-zinc-100 dark:bg-background";
+const replaysTransportBarClass =
+  "flex items-center gap-3 border-t border-black/[0.06] bg-white/95 px-3 dark:border-border/30 dark:bg-background/80";
+
 const PAGE_SIZE = 50;
 const INITIAL_CHUNK_BATCH = 20;
 const BACKGROUND_CHUNK_BATCH = 50;
@@ -289,7 +299,7 @@ function Timeline({
   const hoveredMarker = hoveredMarkerIndex !== null ? markers?.[hoveredMarkerIndex] ?? null : null;
 
   return (
-    <div className={cn("border-t border-border/30 bg-background px-3 flex items-center gap-3", hasMarkers ? "py-1.5" : "py-2")}>
+    <div className={cn(replaysTransportBarClass, hasMarkers ? "py-1.5" : "py-2")}>
       <Button
         variant="ghost"
         size="icon"
@@ -367,7 +377,7 @@ function Timeline({
       </span>
 
       <select
-        className="h-7 rounded-md border border-border/40 bg-background px-1.5 text-xs"
+        className="h-7 rounded-md border border-black/[0.08] bg-white/95 px-1.5 text-xs ring-1 ring-black/[0.06] dark:border-border/40 dark:bg-background dark:ring-white/[0.06]"
         value={playerSpeed}
         onChange={(e) => onSpeedChange(Number(e.target.value))}
       >
@@ -1463,642 +1473,647 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
           </StyledLink>
         ) : undefined}
         fillWidth
-        noPadding={isEmbedded}
+        noPadding
       >
-        <SessionReplayLimitBanner />
-        <PanelGroup data-walkthrough="analytics-replays" direction="horizontal" className="flex-1 min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
-          {!isStandaloneReplayPage && (
-            <>
-              <Panel defaultSize={25} minSize={16}>
-                <div className="h-full flex flex-col">
-                  <div className="shrink-0 px-3 py-2 border-b border-border/30 space-y-2">
-                    <div className="flex items-center justify-between gap-2 h-8">
-                      <Typography className="text-sm font-medium">
-                        Sessions{!loadingInitial && recordings.length > 0 ? ` (${recordings.length}${nextCursor ? "+" : ""})` : ""}
-                      </Typography>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2.5"
-                          >
-                            <FunnelSimpleIcon className="h-3.5 w-3.5 mr-1" />
-                            Filters
-                            {activeFilterCount > 0 && (
-                              <span className="ml-1 rounded-full bg-foreground/10 px-1.5 py-0 text-[10px]">
-                                {activeFilterCount}
-                              </span>
-                            )}
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          className="w-48"
-                          onCloseAutoFocus={(e) => e.preventDefault()}
-                        >
-                          {!isEmbedded && (
-                            <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
-                              User
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
-                            Team
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("duration")); }}>
-                            Duration
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("lastActive")); }}>
-                            Last active
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("clicks")); }}>
-                            Click count
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-
-                    {activeFilterCount > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {appliedFilters.userId && !isEmbedded && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                            user:{appliedFilters.userLabel || "selected"}
-                          </span>
-                        )}
-                        {appliedFilters.teamId && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                            team:{appliedFilters.teamLabel || "selected"}
-                          </span>
-                        )}
-                        {(appliedFilters.durationMinSeconds || appliedFilters.durationMaxSeconds) && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                            duration
-                          </span>
-                        )}
-                        {appliedFilters.lastActivePreset && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                            last active: {appliedFilters.lastActivePreset}
-                          </span>
-                        )}
-                        {appliedFilters.clickCountMin && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                            clicks
-                          </span>
-                        )}
-                        <button
-                          className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors hover:transition-none"
-                          onClick={() => setAppliedFilters(baseFilters)}
-                        >
-                          <XIcon className="h-2.5 w-2.5" />
-                          clear
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <Dialog open={activeFilterDialog === "user"} onOpenChange={(open) => setActiveFilterDialog(open ? "user" : null)}>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>User Filter</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-3">
-                        <UserPickerTable
-                          action={(user) => (
+        <div className={cn("flex min-h-0 flex-1 flex-col gap-3", !isEmbedded && "px-4 sm:px-6")}>
+          <SessionReplayLimitBanner />
+          <PanelGroup data-walkthrough="analytics-replays" direction="horizontal" className={replaysPanelShellClass}>
+            {!isStandaloneReplayPage && (
+              <>
+                <Panel defaultSize={25} minSize={16}>
+                  <div className="flex h-full flex-col bg-zinc-50 dark:bg-transparent">
+                    <div className={replaysListChromeClass}>
+                      <div className="flex items-center justify-between gap-2 h-8">
+                        <Typography className="text-sm font-medium">
+                          Sessions{!loadingInitial && recordings.length > 0 ? ` (${recordings.length}${nextCursor ? "+" : ""})` : ""}
+                        </Typography>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
+                              className="h-7 px-2.5"
+                            >
+                              <FunnelSimpleIcon className="h-3.5 w-3.5 mr-1" />
+                              Filters
+                              {activeFilterCount > 0 && (
+                                <span className="ml-1 rounded-full bg-foreground/10 px-1.5 py-0 text-[10px]">
+                                  {activeFilterCount}
+                                </span>
+                              )}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-48"
+                            onCloseAutoFocus={(e) => e.preventDefault()}
+                          >
+                            {!isEmbedded && (
+                              <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
+                                User
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
+                              Team
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("duration")); }}>
+                              Duration
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("lastActive")); }}>
+                              Last active
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("clicks")); }}>
+                              Click count
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+
+                      {activeFilterCount > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {appliedFilters.userId && !isEmbedded && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                              user:{appliedFilters.userLabel || "selected"}
+                            </span>
+                          )}
+                          {appliedFilters.teamId && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                              team:{appliedFilters.teamLabel || "selected"}
+                            </span>
+                          )}
+                          {(appliedFilters.durationMinSeconds || appliedFilters.durationMaxSeconds) && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                              duration
+                            </span>
+                          )}
+                          {appliedFilters.lastActivePreset && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                              last active: {appliedFilters.lastActivePreset}
+                            </span>
+                          )}
+                          {appliedFilters.clickCountMin && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                              clicks
+                            </span>
+                          )}
+                          <button
+                            className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors hover:transition-none"
+                            onClick={() => setAppliedFilters(baseFilters)}
+                          >
+                            <XIcon className="h-2.5 w-2.5" />
+                            clear
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <Dialog open={activeFilterDialog === "user"} onOpenChange={(open) => setActiveFilterDialog(open ? "user" : null)}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>User Filter</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          <UserPickerTable
+                            action={(user) => (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
                             setAppliedFilters((prev) => ({
                               ...prev,
                               userId: user.id,
                               userLabel: user.displayName ?? user.primaryEmail ?? user.id,
                             }));
                             setActiveFilterDialog(null);
-                              }}
-                            >
-                              Select
-                            </Button>
-                          )}
-                        />
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => {
+                                }}
+                              >
+                                Select
+                              </Button>
+                            )}
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => {
                           setAppliedFilters((prev) => ({ ...prev, userId: "", userLabel: "" }));
                           setActiveFilterDialog(null);
-                            }}
-                          >
-                            Clear
-                          </Button>
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogContent>
+                    </Dialog>
 
-                  <Dialog open={activeFilterDialog === "team"} onOpenChange={(open) => setActiveFilterDialog(open ? "team" : null)}>
-                    <DialogContent className="max-w-3xl">
-                      <DialogHeader>
-                        <DialogTitle>Team Filter</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-3 pt-2">
-                        <TeamSearchTable
-                          action={(team) => (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
+                    <Dialog open={activeFilterDialog === "team"} onOpenChange={(open) => setActiveFilterDialog(open ? "team" : null)}>
+                      <DialogContent className="max-w-3xl">
+                        <DialogHeader>
+                          <DialogTitle>Team Filter</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-3 pt-2">
+                          <TeamSearchTable
+                            action={(team) => (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
                             setAppliedFilters((prev) => ({
                               ...prev,
                               teamId: team.id,
                               teamLabel: team.displayName,
                             }));
                             setActiveFilterDialog(null);
+                                }}
+                              >
+                                Select
+                              </Button>
+                            )}
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => {
+                          setAppliedFilters((prev) => ({ ...prev, teamId: "", teamLabel: "" }));
+                          setActiveFilterDialog(null);
                               }}
                             >
-                              Select
+                              Clear
                             </Button>
-                          )}
-                        />
-                        <div className="flex items-center justify-end gap-2">
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={activeFilterDialog === "duration"} onOpenChange={(open) => setActiveFilterDialog(open ? "duration" : null)}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Duration Filter</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={(e) => {
+                    e.preventDefault();
+                    applyDraftFilters();
+                        }}>
+                          <div className="grid grid-cols-2 gap-3 pt-2">
+                            <label className="space-y-1">
+                              <Typography className="text-xs text-muted-foreground">Min (seconds)</Typography>
+                              <input
+                                type="number"
+                                min={0}
+                                className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                                value={draftFilters.durationMinSeconds}
+                                onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMinSeconds: e.target.value }))}
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <Typography className="text-xs text-muted-foreground">Max (seconds)</Typography>
+                              <input
+                                type="number"
+                                min={0}
+                                className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                                value={draftFilters.durationMaxSeconds}
+                                onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMaxSeconds: e.target.value }))}
+                              />
+                            </label>
+                          </div>
+                          <div className="pt-3 flex items-center justify-end gap-2">
+                            <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
+                            <Button type="submit" size="sm" className="h-8">Apply</Button>
+                          </div>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={activeFilterDialog === "lastActive"} onOpenChange={(open) => setActiveFilterDialog(open ? "lastActive" : null)}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Last Active Filter</DialogTitle>
+                        </DialogHeader>
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          {([["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["30d", "Last 30 days"]] as const).map(([value, label]) => (
+                            <Button
+                              key={value}
+                              variant={appliedFilters.lastActivePreset === value ? "default" : "outline"}
+                              size="sm"
+                              className="h-8"
+                              onClick={() => {
+                          setAppliedFilters((prev) => ({ ...prev, lastActivePreset: value }));
+                          setActiveFilterDialog(null);
+                              }}
+                            >
+                              {label}
+                            </Button>
+                          ))}
+                        </div>
+                        <div className="pt-1 flex items-center justify-end gap-2">
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-8"
                             onClick={() => {
-                          setAppliedFilters((prev) => ({ ...prev, teamId: "", teamLabel: "" }));
-                          setActiveFilterDialog(null);
+                        setAppliedFilters((prev) => ({ ...prev, lastActivePreset: "" }));
+                        setActiveFilterDialog(null);
                             }}
                           >
                             Clear
                           </Button>
                         </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogContent>
+                    </Dialog>
 
-                  <Dialog open={activeFilterDialog === "duration"} onOpenChange={(open) => setActiveFilterDialog(open ? "duration" : null)}>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Duration Filter</DialogTitle>
-                      </DialogHeader>
-                      <form onSubmit={(e) => {
+                    <Dialog open={activeFilterDialog === "clicks"} onOpenChange={(open) => setActiveFilterDialog(open ? "clicks" : null)}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Click Count Filter</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={(e) => {
                     e.preventDefault();
                     applyDraftFilters();
-                      }}>
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                          <label className="space-y-1">
-                            <Typography className="text-xs text-muted-foreground">Min (seconds)</Typography>
+                        }}>
+                          <div className="space-y-3 pt-2">
                             <input
                               type="number"
                               min={0}
                               className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
-                              value={draftFilters.durationMinSeconds}
-                              onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMinSeconds: e.target.value }))}
+                              value={draftFilters.clickCountMin}
+                              onChange={(e) => setDraftFilters((prev) => ({ ...prev, clickCountMin: e.target.value }))}
+                              placeholder="Minimum click count"
                             />
-                          </label>
-                          <label className="space-y-1">
-                            <Typography className="text-xs text-muted-foreground">Max (seconds)</Typography>
-                            <input
-                              type="number"
-                              min={0}
-                              className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
-                              value={draftFilters.durationMaxSeconds}
-                              onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMaxSeconds: e.target.value }))}
-                            />
-                          </label>
-                        </div>
-                        <div className="pt-3 flex items-center justify-end gap-2">
-                          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
-                          <Button type="submit" size="sm" className="h-8">Apply</Button>
-                        </div>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-
-                  <Dialog open={activeFilterDialog === "lastActive"} onOpenChange={(open) => setActiveFilterDialog(open ? "lastActive" : null)}>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Last Active Filter</DialogTitle>
-                      </DialogHeader>
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        {([["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["30d", "Last 30 days"]] as const).map(([value, label]) => (
-                          <Button
-                            key={value}
-                            variant={appliedFilters.lastActivePreset === value ? "default" : "outline"}
-                            size="sm"
-                            className="h-8"
-                            onClick={() => {
-                          setAppliedFilters((prev) => ({ ...prev, lastActivePreset: value }));
-                          setActiveFilterDialog(null);
-                            }}
-                          >
-                            {label}
-                          </Button>
-                        ))}
-                      </div>
-                      <div className="pt-1 flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8"
-                          onClick={() => {
-                        setAppliedFilters((prev) => ({ ...prev, lastActivePreset: "" }));
-                        setActiveFilterDialog(null);
-                          }}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-
-                  <Dialog open={activeFilterDialog === "clicks"} onOpenChange={(open) => setActiveFilterDialog(open ? "clicks" : null)}>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Click Count Filter</DialogTitle>
-                      </DialogHeader>
-                      <form onSubmit={(e) => {
-                    e.preventDefault();
-                    applyDraftFilters();
-                      }}>
-                        <div className="space-y-3 pt-2">
-                          <input
-                            type="number"
-                            min={0}
-                            className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
-                            value={draftFilters.clickCountMin}
-                            onChange={(e) => setDraftFilters((prev) => ({ ...prev, clickCountMin: e.target.value }))}
-                            placeholder="Minimum click count"
-                          />
-                        </div>
-                        <div className="pt-3 flex items-center justify-end gap-2">
-                          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
-                          <Button type="submit" size="sm" className="h-8">Apply</Button>
-                        </div>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-
-                  {listError && (
-                    <div className="p-3">
-                      <Alert variant="destructive">{listError}</Alert>
-                    </div>
-                  )}
-
-                  <div
-                    ref={listBoxRef}
-                    onScroll={onListScroll}
-                    className="flex-1 overflow-y-auto"
-                  >
-                    {loadingInitial ? (
-                      <div className="p-2 space-y-1">
-                        {Array.from({ length: 8 }).map((_, i) => (
-                          <div key={i} className="rounded-lg p-3">
-                            <Skeleton className="h-4 w-36" />
-                            <Skeleton className="mt-1.5 h-3 w-24" />
                           </div>
-                        ))}
+                          <div className="pt-3 flex items-center justify-end gap-2">
+                            <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
+                            <Button type="submit" size="sm" className="h-8">Apply</Button>
+                          </div>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+
+                    {listError && (
+                      <div className="p-3">
+                        <Alert variant="destructive">{listError}</Alert>
                       </div>
-                    ) : recordings.length === 0 ? (
-                      <div className="p-6 text-center">
-                        <Typography className="text-sm text-muted-foreground">
-                          {activeFilterCount > 0 ? "No replays match these filters." : "No replays yet."}
-                        </Typography>
-                      </div>
-                    ) : (
-                      <div className="p-1.5 space-y-0.5">
-                        {recordings.map((r) => {
-                          const isSelected = r.id === selectedRecordingId;
-                          const durationMs = r.lastEventAt.getTime() - r.startedAt.getTime();
-                          const duration = formatDurationMs(durationMs);
-                          return (
-                            <div
-                              key={r.id}
-                              className={cn(
-                                "rounded-lg",
-                                isSelected ? "bg-muted/60 ring-1 ring-border/40" : "hover:bg-muted/20",
-                              )}
-                            >
-                              <button
-                                onClick={() => setSelectedRecordingId(r.id)}
+                    )}
+
+                    <div
+                      ref={listBoxRef}
+                      onScroll={onListScroll}
+                      className="flex-1 overflow-y-auto"
+                    >
+                      {loadingInitial ? (
+                        <div className="p-2 space-y-1">
+                          {Array.from({ length: 8 }).map((_, i) => (
+                            <div key={i} className="rounded-lg p-3">
+                              <Skeleton className="h-4 w-36" />
+                              <Skeleton className="mt-1.5 h-3 w-24" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : recordings.length === 0 ? (
+                        <div className="p-6 text-center">
+                          <Typography className="text-sm text-muted-foreground">
+                            {activeFilterCount > 0 ? "No replays match these filters." : "No replays yet."}
+                          </Typography>
+                        </div>
+                      ) : (
+                        <div className="p-1.5 space-y-0.5">
+                          {recordings.map((r) => {
+                            const isSelected = r.id === selectedRecordingId;
+                            const durationMs = r.lastEventAt.getTime() - r.startedAt.getTime();
+                            const duration = formatDurationMs(durationMs);
+                            return (
+                              <div
+                                key={r.id}
                                 className={cn(
+                                "rounded-lg",
+                                isSelected
+                                  ? "bg-white shadow-sm ring-1 ring-black/[0.06] dark:bg-background/80 dark:ring-white/[0.06]"
+                                  : "hover:bg-white/70 dark:hover:bg-muted/20",
+                              )}
+                              >
+                                <button
+                                  onClick={() => setSelectedRecordingId(r.id)}
+                                  className={cn(
                                   "w-full text-left rounded-lg px-3 py-2.5",
                                   "transition-colors hover:transition-none",
                                 )}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-sm font-medium truncate">
-                                    {getRecordingTitle(r)}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                    {duration}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                  <DisplayDate date={r.lastEventAt} />
-                                  {(clickCountsByReplayId.get(r.id) ?? 0) > 0 && (
-                                    <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
-                                      <CursorClickIcon className="h-3 w-3" />
-                                      {clickCountsByReplayId.get(r.id)}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-sm font-medium truncate">
+                                      {getRecordingTitle(r)}
                                     </span>
-                                  )}
-                                </div>
-                              </button>
+                                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                      {duration}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                    <DisplayDate date={r.lastEventAt} />
+                                    {(clickCountsByReplayId.get(r.id) ?? 0) > 0 && (
+                                      <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+                                        <CursorClickIcon className="h-3 w-3" />
+                                        {clickCountsByReplayId.get(r.id)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+                              </div>
+                            );
+                          })}
+
+                          {loadingMore && (
+                            <div className="rounded-lg p-3">
+                              <Skeleton className="h-4 w-36" />
+                              <Skeleton className="mt-1.5 h-3 w-24" />
                             </div>
-                          );
-                        })}
-
-                        {loadingMore && (
-                          <div className="rounded-lg p-3">
-                            <Skeleton className="h-4 w-36" />
-                            <Skeleton className="mt-1.5 h-3 w-24" />
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </Panel>
+                </Panel>
 
-              <PanelResizeHandle className="w-px bg-border/40 hover:bg-border transition-colors hover:transition-none" />
-            </>
-          )}
+                <PanelResizeHandle className="w-px bg-black/[0.08] transition-colors duration-150 hover:bg-black/[0.14] hover:transition-none dark:bg-border/40 dark:hover:bg-border" />
+              </>
+            )}
 
-          <Panel defaultSize={isStandaloneReplayPage ? 100 : 75} minSize={35}>
-            <div className="h-full flex flex-col">
-              {(standaloneReplayError || ms.downloadError || ms.playerError) && (
-                <div className="p-3 space-y-2">
-                  {standaloneReplayError && <Alert variant="destructive">{standaloneReplayError}</Alert>}
-                  {ms.downloadError && <Alert variant="destructive">{ms.downloadError}</Alert>}
-                  {ms.playerError && <Alert variant="destructive">{ms.playerError}</Alert>}
-                </div>
-              )}
-
-              <div className="shrink-0 px-3 py-2 border-b border-border/30 flex items-center justify-between gap-3 h-10">
-                {selectedRecording ? (
-                  <StyledLink
-                    href={`/projects/${encodeURIComponent(adminApp.projectId)}/users/${encodeURIComponent(selectedRecording.projectUser.id)}`}
-                    className="text-sm font-medium truncate"
-                  >
-                    {getRecordingTitle(selectedRecording)}
-                  </StyledLink>
-                ) : isStandaloneReplayPage && selectedRecordingId ? (
-                  <Typography className="text-sm font-medium truncate font-mono">
-                    Replay {selectedRecordingId}
-                  </Typography>
-                ) : (
-                  <Typography className="text-sm font-medium truncate" />
+            <Panel defaultSize={isStandaloneReplayPage ? 100 : 75} minSize={35}>
+              <div className="h-full flex flex-col bg-white dark:bg-background">
+                {(standaloneReplayError || ms.downloadError || ms.playerError) && (
+                  <div className="p-3 space-y-2">
+                    {standaloneReplayError && <Alert variant="destructive">{standaloneReplayError}</Alert>}
+                    {ms.downloadError && <Alert variant="destructive">{ms.downloadError}</Alert>}
+                    {ms.playerError && <Alert variant="destructive">{ms.playerError}</Alert>}
+                  </div>
                 )}
-                <div className="flex items-center gap-1">
-                  {selectedRecordingId && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label={replayShareLinkCopied ? "Link copied" : "Copy link to replay"}
-                      title={replayShareLinkCopied ? "Copied!" : "Copy link to replay"}
-                      onClick={() => runAsynchronouslyWithAlert(async () => {
-                        await navigator.clipboard.writeText(
+
+                <div className={replaysDetailChromeClass}>
+                  {selectedRecording ? (
+                    <StyledLink
+                      href={`/projects/${encodeURIComponent(adminApp.projectId)}/users/${encodeURIComponent(selectedRecording.projectUser.id)}`}
+                      className="text-sm font-medium truncate"
+                    >
+                      {getRecordingTitle(selectedRecording)}
+                    </StyledLink>
+                  ) : isStandaloneReplayPage && selectedRecordingId ? (
+                    <Typography className="text-sm font-medium truncate font-mono">
+                      Replay {selectedRecordingId}
+                    </Typography>
+                  ) : (
+                    <Typography className="text-sm font-medium truncate" />
+                  )}
+                  <div className="flex items-center gap-1">
+                    {selectedRecordingId && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label={replayShareLinkCopied ? "Link copied" : "Copy link to replay"}
+                        title={replayShareLinkCopied ? "Copied!" : "Copy link to replay"}
+                        onClick={() => runAsynchronouslyWithAlert(async () => {
+                          await navigator.clipboard.writeText(
                           `${window.location.origin}/projects/${encodeURIComponent(adminApp.projectId)}/session-replays/${encodeURIComponent(selectedRecordingId)}`,
                         );
                         setReplayShareLinkCopied(true);
-                      })}
-                    >
-                      {replayShareLinkCopied ? (
-                        <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />
-                      ) : (
-                        <LinkIcon className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                  <ReplaySettingsButton
-                    settings={ms.settings}
-                    onSettingsChange={(updates) => actRef.current({ type: "UPDATE_SETTINGS", updates })}
-                  />
+                        })}
+                      >
+                        {replayShareLinkCopied ? (
+                          <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />
+                        ) : (
+                          <LinkIcon className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
+                    <ReplaySettingsButton
+                      settings={ms.settings}
+                      onSettingsChange={(updates) => actRef.current({ type: "UPDATE_SETTINGS", updates })}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {selectedRecordingId ? (
-                <div className="flex-1 overflow-hidden flex flex-col">
+                {selectedRecordingId ? (
                   <div className="flex-1 overflow-hidden flex flex-col">
-                    <div
-                      className="flex-1 overflow-hidden grid grid-cols-[minmax(0,1fr)_260px] gap-px bg-border/40"
-                      style={{
-                        gridTemplateColumns: showRightColumn ? "minmax(0, 1fr) 260px" : "minmax(0, 1fr) 0px",
-                        gridTemplateRows: showRightColumn ? `repeat(${EXTRA_TABS_TO_SHOW}, auto) 1fr` : "1fr",
-                        transition: "grid-template-columns 180ms ease-out",
-                      }}
-                    >
-                      {fullStreams.length === 0 && (
-                        <div className="col-span-2 row-span-6 grid place-items-center bg-background">
-                          <div className="text-center space-y-2 p-6">
-                            {isDownloading ? (
-                              <>
-                                <Skeleton className="h-2 w-48 mx-auto" />
+                    <div className="flex-1 overflow-hidden flex flex-col">
+                      <div
+                        className="grid flex-1 grid-cols-[minmax(0,1fr)_260px] gap-px overflow-hidden bg-black/[0.06] dark:bg-border/40"
+                        style={{
+                          gridTemplateColumns: showRightColumn ? "minmax(0, 1fr) 260px" : "minmax(0, 1fr) 0px",
+                          gridTemplateRows: showRightColumn ? `repeat(${EXTRA_TABS_TO_SHOW}, auto) 1fr` : "1fr",
+                          transition: "grid-template-columns 180ms ease-out",
+                        }}
+                      >
+                        {fullStreams.length === 0 && (
+                          <div className={cn("col-span-2 row-span-6 grid place-items-center", replaysViewerSurfaceClass)}>
+                            <div className="text-center space-y-2 p-6">
+                              {isDownloading ? (
+                                <>
+                                  <Skeleton className="h-2 w-48 mx-auto" />
+                                  <Typography className="text-sm text-muted-foreground">
+                                    Loading replay...
+                                  </Typography>
+                                </>
+                              ) : (
                                 <Typography className="text-sm text-muted-foreground">
-                                  Loading replay...
+                                  No replay data loaded yet.
                                 </Typography>
-                              </>
-                            ) : (
-                              <Typography className="text-sm text-muted-foreground">
-                                No replay data loaded yet.
-                              </Typography>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {fullStreams.map((s) => {
-                        const isActive = s.tabKey === ms.activeTabKey;
-                        const miniIndex = miniIndexByKey.get(s.tabKey);
-                        const isMiniVisible = miniIndex !== undefined && miniIndex >= 0 && miniIndex < EXTRA_TABS_TO_SHOW;
-                        if (!isActive && !isMiniVisible) return null;
+                        {fullStreams.map((s) => {
+                          const isActive = s.tabKey === ms.activeTabKey;
+                          const miniIndex = miniIndexByKey.get(s.tabKey);
+                          const isMiniVisible = miniIndex !== undefined && miniIndex >= 0 && miniIndex < EXTRA_TABS_TO_SHOW;
+                          if (!isActive && !isMiniVisible) return null;
 
-                        const title = getTabLabel(s.tabKey);
+                          const title = getTabLabel(s.tabKey);
 
-                        return (
-                          <button
-                            key={s.tabKey}
-                            type="button"
-                            onClick={() => {
-                              if (!isActive) onSelectActiveTab(s.tabKey);
-                            }}
-                            className={cn(
-                              "relative overflow-hidden bg-background text-left block w-full",
-                              isActive ? "h-full cursor-default" : "transition-colors hover:transition-none hover:bg-muted/10",
+                          return (
+                            <button
+                              key={s.tabKey}
+                              type="button"
+                              onClick={() => {
+                                if (!isActive) onSelectActiveTab(s.tabKey);
+                              }}
+                              className={cn(
+                              "relative block w-full overflow-hidden text-left",
+                              replaysViewerSurfaceClass,
+                              isActive ? "h-full cursor-default" : "transition-colors duration-150 hover:transition-none hover:bg-zinc-200/50 dark:hover:bg-muted/10",
                             )}
-                            style={{
-                              gridColumn: isActive ? "1" : "2",
-                              gridRow: isActive ? ("1 / -1" as any) : ((miniIndex ?? 0) + 1),
-                              ...(isActive ? {} : { aspectRatio: "16/10" }),
-                            }}
-                          >
-                            <div
-                              ref={(el) => setContainerRefForTab(s.tabKey, el)}
-                              className="absolute inset-0 bg-background"
-                            />
+                              style={{
+                                gridColumn: isActive ? "1" : "2",
+                                gridRow: isActive ? ("1 / -1" as any) : ((miniIndex ?? 0) + 1),
+                                ...(isActive ? {} : { aspectRatio: "16/10" }),
+                              }}
+                            >
+                              <div
+                                ref={(el) => setContainerRefForTab(s.tabKey, el)}
+                                className={cn("absolute inset-0", replaysViewerSurfaceClass)}
+                              />
 
-                            {!isActive && (
-                              <div className="absolute inset-x-0 top-0 z-10 px-2 pt-1.5">
-                                <span className="text-[11px] font-medium truncate bg-black/50 text-white px-2 py-0.5 rounded-full backdrop-blur-sm">{title}</span>
-                              </div>
-                            )}
+                              {!isActive && (
+                                <div className="absolute inset-x-0 top-0 z-10 px-2 pt-1.5">
+                                  <span className="text-[11px] font-medium truncate bg-black/50 text-white px-2 py-0.5 rounded-full backdrop-blur-sm">{title}</span>
+                                </div>
+                              )}
 
-                            {!isActive && !replayerByTabRef.current.has(s.tabKey) && (
-                              <div className="absolute inset-0 grid place-items-center text-[11px] text-muted-foreground pointer-events-none">
-                                Loading...
-                              </div>
-                            )}
+                              {!isActive && !replayerByTabRef.current.has(s.tabKey) && (
+                                <div className="absolute inset-0 grid place-items-center text-[11px] text-muted-foreground pointer-events-none">
+                                  Loading...
+                                </div>
+                              )}
 
-                            {isActive && (
-                              <>
-                                {showMainTabLabel && (
-                                  <div className="absolute inset-x-0 top-4 z-10 flex justify-start pointer-events-none px-4">
-                                    <div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-                                      <span className="text-xs text-white font-medium">{getTabLabel(s.tabKey)}</span>
-                                      {s.tabKey === NULL_TAB_KEY && (
-                                        <span className="text-xs text-white/70">unknown id</span>
-                                      )}
+                              {isActive && (
+                                <>
+                                  {showMainTabLabel && (
+                                    <div className="absolute inset-x-0 top-4 z-10 flex justify-start pointer-events-none px-4">
+                                      <div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+                                        <span className="text-xs text-white font-medium">{getTabLabel(s.tabKey)}</span>
+                                        {s.tabKey === NULL_TAB_KEY && (
+                                          <span className="text-xs text-white/70">unknown id</span>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  )}
 
-                                {activeHasEvents && !playerIsPlaying && !isBuffering && (
-                                  <div
-                                    className="absolute inset-0 z-10 grid place-items-center cursor-pointer transition-opacity"
-                                    onClick={(e) => {
+                                  {activeHasEvents && !playerIsPlaying && !isBuffering && (
+                                    <div
+                                      className="absolute inset-0 z-10 grid place-items-center cursor-pointer transition-opacity"
+                                      onClick={(e) => {
                                       e.preventDefault();
                                       if (replayFinished) {
                                         handleSeek(0);
                                       } else {
                                         togglePlayPause();
                                       }
-                                    }}
-                                  >
-                                    {replayFinished ? (
-                                      <div className="flex flex-col items-center gap-2">
-                                        <div className="rounded-full bg-black/50 p-4 backdrop-blur-sm">
-                                          <ArrowsClockwiseIcon className="h-10 w-10 text-white" weight="bold" />
+                                      }}
+                                    >
+                                      {replayFinished ? (
+                                        <div className="flex flex-col items-center gap-2">
+                                          <div className="rounded-full bg-black/50 p-4 backdrop-blur-sm">
+                                            <ArrowsClockwiseIcon className="h-10 w-10 text-white" weight="bold" />
+                                          </div>
+                                          <span className="text-sm text-white/80 bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">
+                                            Replay from start
+                                          </span>
                                         </div>
-                                        <span className="text-sm text-white/80 bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">
-                                          Replay from start
-                                        </span>
-                                      </div>
-                                    ) : (
-                                      <div className="rounded-full bg-black/50 p-4 backdrop-blur-sm">
-                                        <PlayIcon className="h-10 w-10 text-white" weight="fill" />
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {activeHasEvents && ms.settings.skipInactivity && isSkipping && (
-                                  <div className="absolute inset-x-0 top-4 z-10 flex justify-center pointer-events-none">
-                                    <div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-                                      <FastForwardIcon className="h-3.5 w-3.5 text-white" weight="fill" />
-                                      <span className="text-xs text-white">Skipping inactivity</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {activeHasEvents && isBuffering && (
-                                  <div
-                                    className="absolute inset-0 z-10 grid place-items-center cursor-pointer"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      togglePlayPause();
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-2 rounded-full bg-black/50 px-4 py-2 backdrop-blur-sm">
-                                      <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                                      <span className="text-sm text-white">Buffering...</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {activeHasEvents && playerIsPlaying && !isBuffering && (
-                                  <div
-                                    className="absolute inset-0 z-10 cursor-pointer"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      togglePlayPause();
-                                    }}
-                                  />
-                                )}
-
-                                {!activeHasEvents && (
-                                  <div className="absolute inset-0 grid place-items-center bg-background/80 backdrop-blur-sm">
-                                    <div className="text-center space-y-2 p-6">
-                                      {isDownloading ? (
-                                        <>
-                                          <Skeleton className="h-2 w-48 mx-auto" />
-                                          <Typography className="text-sm text-muted-foreground">
-                                            Loading replay...
-                                          </Typography>
-                                        </>
                                       ) : (
-                                        <Typography className="text-sm text-muted-foreground">
-                                          No events found.
-                                        </Typography>
+                                        <div className="rounded-full bg-black/50 p-4 backdrop-blur-sm">
+                                          <PlayIcon className="h-10 w-10 text-white" weight="fill" />
+                                        </div>
                                       )}
                                     </div>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                                  )}
 
-                    {activeStream && activeHasEvents && (
-                      <Timeline
-                        getCurrentTimeMs={getCurrentGlobalTimeMs}
-                        playerIsPlaying={playerIsPlaying}
-                        totalTimeMs={ms.globalTotalMs}
-                        onTogglePlayPause={togglePlayPause}
-                        onSeek={handleSeek}
-                        playerSpeed={ms.settings.playerSpeed}
-                        onSpeedChange={updateSpeed}
-                        markers={timelineMarkers}
-                      />
+                                  {activeHasEvents && ms.settings.skipInactivity && isSkipping && (
+                                    <div className="absolute inset-x-0 top-4 z-10 flex justify-center pointer-events-none">
+                                      <div className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+                                        <FastForwardIcon className="h-3.5 w-3.5 text-white" weight="fill" />
+                                        <span className="text-xs text-white">Skipping inactivity</span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {activeHasEvents && isBuffering && (
+                                    <div
+                                      className="absolute inset-0 z-10 grid place-items-center cursor-pointer"
+                                      onClick={(e) => {
+                                      e.preventDefault();
+                                      togglePlayPause();
+                                      }}
+                                    >
+                                      <div className="flex items-center gap-2 rounded-full bg-black/50 px-4 py-2 backdrop-blur-sm">
+                                        <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                                        <span className="text-sm text-white">Buffering...</span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {activeHasEvents && playerIsPlaying && !isBuffering && (
+                                    <div
+                                      className="absolute inset-0 z-10 cursor-pointer"
+                                      onClick={(e) => {
+                                      e.stopPropagation();
+                                      togglePlayPause();
+                                      }}
+                                    />
+                                  )}
+
+                                  {!activeHasEvents && (
+                                    <div className="absolute inset-0 grid place-items-center bg-background/80 backdrop-blur-sm">
+                                      <div className="text-center space-y-2 p-6">
+                                        {isDownloading ? (
+                                          <>
+                                            <Skeleton className="h-2 w-48 mx-auto" />
+                                            <Typography className="text-sm text-muted-foreground">
+                                              Loading replay...
+                                            </Typography>
+                                          </>
+                                        ) : (
+                                          <Typography className="text-sm text-muted-foreground">
+                                            No events found.
+                                          </Typography>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {activeStream && activeHasEvents && (
+                        <Timeline
+                          getCurrentTimeMs={getCurrentGlobalTimeMs}
+                          playerIsPlaying={playerIsPlaying}
+                          totalTimeMs={ms.globalTotalMs}
+                          onTogglePlayPause={togglePlayPause}
+                          onSeek={handleSeek}
+                          playerSpeed={ms.settings.playerSpeed}
+                          onSpeedChange={updateSpeed}
+                          markers={timelineMarkers}
+                        />
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 grid place-items-center">
+                    {loadingInitial ? (
+                      <div className="text-center space-y-2 p-6">
+                        <Skeleton className="h-2 w-48 mx-auto" />
+                        <Typography className="text-sm text-muted-foreground">
+                          Loading replay...
+                        </Typography>
+                      </div>
+                    ) : (
+                      <div className="text-center p-6 max-w-md mx-auto">
+                        <MonitorPlayIcon className="h-12 w-12 text-muted-foreground/40 mx-auto" />
+                        <Typography className="mt-3 text-sm font-medium">
+                          No session replays yet
+                        </Typography>
+                        <Typography className="mt-2 text-sm text-muted-foreground">
+                          Session replays let you watch how users interact with your app. For info on enabling replays,{" "}
+                          <StyledLink
+                            href="https://docs.hexclave.com/guides/apps/analytics/overview"
+                            target="_blank"
+                          >
+                            look here
+                          </StyledLink>
+                          .
+                        </Typography>
+                      </div>
                     )}
                   </div>
-                </div>
-              ) : (
-                <div className="flex-1 grid place-items-center">
-                  {loadingInitial ? (
-                    <div className="text-center space-y-2 p-6">
-                      <Skeleton className="h-2 w-48 mx-auto" />
-                      <Typography className="text-sm text-muted-foreground">
-                        Loading replay...
-                      </Typography>
-                    </div>
-                  ) : (
-                    <div className="text-center p-6 max-w-md mx-auto">
-                      <MonitorPlayIcon className="h-12 w-12 text-muted-foreground/40 mx-auto" />
-                      <Typography className="mt-3 text-sm font-medium">
-                        No session replays yet
-                      </Typography>
-                      <Typography className="mt-2 text-sm text-muted-foreground">
-                        Session replays let you watch how users interact with your app. For info on enabling replays,{" "}
-                        <StyledLink
-                          href="https://docs.hexclave.com/guides/apps/analytics/overview"
-                          target="_blank"
-                        >
-                          look here
-                        </StyledLink>
-                        .
-                      </Typography>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </Panel>
-        </PanelGroup>
+                )}
+              </div>
+            </Panel>
+          </PanelGroup>
+        </div>
       </PageLayout>
     </AppEnabledGuard>
   );

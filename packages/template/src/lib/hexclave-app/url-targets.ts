@@ -1,7 +1,7 @@
 import { getCustomPagePrompts, type CustomPagePrompt } from "@hexclave/shared/dist/interface/handler-urls";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { getHostedHandlerUrlFromConfig } from "@hexclave/shared/dist/utils/redirect-urls";
-import { envVars } from "../env";
+import { envVars } from "../../generated/env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
 const localUrlPlaceholderOrigin = "http://example.com";
@@ -107,9 +107,9 @@ export const getHostedHandlerUrl = (options: { projectId: string, pagePath: stri
   return getHostedHandlerUrlFromConfig({
     projectId: options.projectId,
     hostedPath,
-    hostedHandlerDomainSuffix: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX,
-    hostedHandlerUrlTemplate: envVars.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE,
-    hexclavePortPrefix: envVars.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX,
+    hostedHandlerDomainSuffix: envVars.HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX,
+    hostedHandlerUrlTemplate: envVars.HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE,
+    hexclavePortPrefix: envVars.HEXCLAVE_PORT_PREFIX,
   });
 };
 
@@ -119,6 +119,13 @@ const isRelativeUrlString = (url: string): boolean => {
   }
   return !schemePrefixRegex.test(url);
 };
+
+const nonHostedHandlerNames = new Set<keyof HandlerUrls>([
+  "home",
+  "afterSignIn",
+  "afterSignUp",
+  "afterSignOut",
+]);
 
 export const isLocalHandlerUrlTarget = (options: {
   targetUrl: string,
@@ -155,6 +162,9 @@ const resolveUrlTarget = (options: {
       return options.fallbackPath;
     }
     case "hosted": {
+      if (nonHostedHandlerNames.has(options.handlerName)) {
+        return options.fallbackPath;
+      }
       return getHostedHandlerUrl({
         projectId: options.projectId,
         pagePath: getHostedPagePathForHandlerName(options.handlerName),
@@ -202,15 +212,24 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
     });
   }
 
+  const homeTarget = configuredUrls?.home ?? defaultTarget;
+  const localHome = resolveUrlTarget({
+    target: typeof homeTarget !== "string" && homeTarget.type === "hosted"
+      ? { type: "handler-component" }
+      : homeTarget,
+    fallbackPath: "/",
+    handlerName: "home",
+    projectId: options.projectId,
+  });
   const home = resolveUrlTarget({
-    target: configuredUrls?.home ?? defaultTarget,
+    target: homeTarget,
     fallbackPath: "/",
     handlerName: "home",
     projectId: options.projectId,
   });
   const afterSignIn = resolveUrlTarget({
     target: configuredUrls?.afterSignIn ?? defaultTarget,
-    fallbackPath: home,
+    fallbackPath: localHome,
     handlerName: "afterSignIn",
     projectId: options.projectId,
   });
@@ -249,7 +268,7 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
     }),
     afterSignOut: resolveUrlTarget({
       target: configuredUrls?.afterSignOut ?? defaultTarget,
-      fallbackPath: home,
+      fallbackPath: localHome,
       handlerName: "afterSignOut",
       projectId: options.projectId,
     }),

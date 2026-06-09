@@ -1,13 +1,14 @@
 "use client";
 
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { KnownError } from "@hexclave/shared";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { FilterUndefined, filterUndefined } from "@hexclave/shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { use } from "@hexclave/shared/dist/utils/react";
 import { getRelativePart } from "@hexclave/shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { Suspense, useMemo, useSyncExternalStore } from 'react';
 /* IF_PLATFORM react
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 // END_PLATFORM */
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
@@ -26,7 +27,9 @@ import { PasswordReset } from "./password-reset";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
 
+import { KnownErrorMessageCard } from "../components/message-cards/known-error-message-card";
 import { MessageCard } from "../components/message-cards/message-card";
+import { PredefinedMessageCard } from "../components/message-cards/predefined-message-card";
 
 type Components = {
   SignIn: typeof SignIn,
@@ -49,6 +52,11 @@ type RouteProps = {
   params: Promise<{ stack?: string[] }> | { stack?: string[] },
   searchParams: Promise<Record<string, string>> | Record<string, string>,
 };
+
+type RedirectToPageResult =
+  | { status: "success" }
+  | { status: "known-error", error: KnownError }
+  | { status: "unknown-error" };
 
 const availablePaths = {
   signIn: 'sign-in',
@@ -223,6 +231,42 @@ function renderComponent(props: {
   }
 }
 
+export async function getRedirectToPageResult(
+  app: StackClientApp,
+  redirectToPage: keyof HandlerUrls,
+): Promise<RedirectToPageResult> {
+  try {
+    await app[hexclaveAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true });
+    return { status: "success" };
+  } catch (e) {
+    if (KnownError.isKnownError(e)) {
+      return { status: "known-error", error: e };
+    }
+    captureError("<HexclaveHandlerClient redirectToPage />", e);
+    return { status: "unknown-error" };
+  }
+}
+
+function RedirectToPage(props: {
+  app: StackClientApp,
+  fullPage?: boolean,
+  redirectToPage: keyof HandlerUrls,
+}) {
+  const redirectResultPromise = useMemo(
+    () => getRedirectToPageResult(props.app, props.redirectToPage),
+    [props.app, props.redirectToPage],
+  );
+
+  const redirectResult = use(redirectResultPromise);
+  if (redirectResult.status === "known-error") {
+    return <KnownErrorMessageCard error={redirectResult.error} fullPage={props.fullPage} />;
+  }
+  if (redirectResult.status === "unknown-error") {
+    return <PredefinedMessageCard type="unknownError" fullPage={props.fullPage} />;
+  }
+  return <MessageCard title="Redirecting..." fullPage={props.fullPage} />;
+}
+
 export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RouteProps> & { location?: string }) {
   // Use hooks to get app
   const hexclaveApp = useStackApp();
@@ -304,16 +348,11 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
 
   const redirectToPage = (result != null && typeof result === 'object' && 'redirectToPage' in result) ? result.redirectToPage : undefined;
 
-  useEffect(() => {
-    if (redirectToPage == null) return;
-    runAsynchronouslyWithAlert(
-      hexclaveApp[hexclaveAppInternalsSymbol].redirectToHandler(redirectToPage, { replace: true })
-    );
-  }, [redirectToPage, hexclaveApp]);
-
   if (redirectToPage != null) {
     return (
-      <MessageCard title="Redirecting..." fullPage={props.fullPage} />
+      <Suspense fallback={<MessageCard title="Redirecting..." fullPage={props.fullPage} />}>
+        <RedirectToPage app={hexclaveApp} redirectToPage={redirectToPage} fullPage={props.fullPage} />
+      </Suspense>
     );
   }
 

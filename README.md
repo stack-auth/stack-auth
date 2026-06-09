@@ -1,3 +1,4 @@
+# Hexclave
 <div align="center">
 
 <img src=".github/assets/hexclave-header.svg" alt="Hexclave" width="320"/>
@@ -30,6 +31,14 @@ Setting up Hexclave is one prompt. Paste this into your coding agent of choice:
 
 ```text
 Read skill.hexclave.com and help me setup hexclave in this project
+```
+
+## For AI agents
+
+If you're an AI coding agent, use your web fetch tool or curl the skill documentation for up-to-date integration instructions:
+
+```
+curl -sSL "https://skill.hexclave.com?question=<your-question>&context=<your-context>"
 ```
 
 ## What's included

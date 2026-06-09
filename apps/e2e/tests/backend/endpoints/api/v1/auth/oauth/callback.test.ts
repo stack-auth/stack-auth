@@ -188,6 +188,7 @@ it("should fail if an untrusted redirect URL is provided", async ({ expect }) =>
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "details": { "redirect_url": "http://untrusted-redirect-url.stack-test.example.com" },
         "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
@@ -228,6 +229,7 @@ it("should fail if an untrusted redirect URL is provided that is similar to a tr
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "details": { "redirect_url": "https://trusted-domain.com.evil.com" },
         "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {

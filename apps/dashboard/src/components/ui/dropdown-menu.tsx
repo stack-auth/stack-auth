@@ -10,6 +10,9 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Spinner } from "./spinner";
 
+const dropdownMenuItemHighlightClasses =
+  "rounded-lg transition-colors duration-150 hover:transition-none focus:bg-zinc-100 dark:focus:bg-accent dark:focus:text-accent-foreground data-[highlighted]:bg-zinc-100 dark:data-[highlighted]:bg-accent dark:data-[highlighted]:text-accent-foreground";
+
 const DropdownMenuContext = React.createContext<{
   open: boolean,
   setOpen: (open: boolean) => void,
@@ -61,7 +64,9 @@ const DropdownMenuSubTrigger = forwardRefIfNeeded<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      "stack-scope flex cursor-default select-none items-center rounded-sm px-3 py-2 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
+      "stack-scope flex cursor-default select-none items-center px-3 py-2 text-sm outline-none",
+      dropdownMenuItemHighlightClasses,
+      "data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-accent dark:data-[state=open]:text-accent-foreground",
       inset && "pl-9",
       className
     )}
@@ -143,10 +148,9 @@ const DropdownMenuItem = forwardRefIfNeeded<
   return <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "stack-scope relative flex cursor-default select-none items-center rounded-lg py-2 text-sm outline-none transition-all duration-150 hover:transition-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      "hover:bg-foreground/[0.05] hover:text-accent-foreground",
-      "focus:bg-foreground/[0.05] focus:text-accent-foreground",
-      "data-[highlighted]:bg-foreground/[0.05] data-[highlighted]:text-accent-foreground",
+      "stack-scope relative flex cursor-default select-none items-center py-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      dropdownMenuItemHighlightClasses,
+      "hover:text-foreground",
       paddingClasses,
       className
     )}
@@ -176,7 +180,8 @@ const DropdownMenuCheckboxItem = forwardRefIfNeeded<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-2 pl-9 pr-3 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex cursor-default select-none items-center py-2 pl-9 pr-3 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      dropdownMenuItemHighlightClasses,
       className
     )}
     checked={checked}
@@ -200,7 +205,8 @@ const DropdownMenuRadioItem = forwardRefIfNeeded<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm py-2 pl-9 pr-3 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex cursor-default select-none items-center py-2 pl-9 pr-3 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      dropdownMenuItemHighlightClasses,
       className
     )}
     {...props}

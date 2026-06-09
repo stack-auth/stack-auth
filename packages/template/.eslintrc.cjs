@@ -14,16 +14,8 @@ module.exports = {
       {
         "object": "process",
         "property": "env",
-        "message": "Use envVars from src/lib/env.ts instead of reading process.env directly.",
+        "message": "Use envVars from src/generated/env.ts instead of reading process.env directly.",
       },
     ],
-  },
-  "overrides": [
-    {
-      "files": ["src/lib/env.ts"],
-      "rules": {
-        "no-restricted-properties": "off",
-      },
-    },
-  ],
+  }
 };

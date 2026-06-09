@@ -2,8 +2,8 @@
 
 import { Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { UserButton } from "@hexclave/next";
 
+import { DashboardUserButton } from "./dashboard-user-button";
 import { Link } from "./link";
 import { Logo } from "./logo";
 import ThemeToggle from "./theme-toggle";
@@ -26,7 +26,7 @@ export function Navbar({ ...props }) {
           </Link>
           <ThemeToggle />
         </div>
-        {!isRemoteDevelopmentEnvironment && <UserButton />}
+        {!isRemoteDevelopmentEnvironment && <DashboardUserButton />}
       </div>
     </header>
   );
