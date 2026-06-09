@@ -77,8 +77,20 @@ export const config = defineHexclaveConfig({
     // Rules are evaluated highest-priority-first; the default action applies when
     // nothing matches. Conditions are CEL expressions over the sign-up context.
     signUpRules: {
-      block_example_domain: null,
-      flag_freemail: null,
+      block_example_domain: {
+        enabled: false,
+        displayName: "Block example.com domain",
+        priority: 10,
+        condition: 'email.endsWith("@example.com")',
+        action: { type: "reject", message: "Sign-ups from example.com are not allowed" },
+      },
+      flag_freemail: {
+        enabled: false,
+        displayName: "Flag freemail sign-ups",
+        priority: 5,
+        condition: 'emailDomain == "gmail.com"',
+        action: { type: "log" },
+      },
     },
     signUpRulesDefaultAction: "allow",
   },
