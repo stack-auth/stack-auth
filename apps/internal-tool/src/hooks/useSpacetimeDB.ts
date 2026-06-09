@@ -75,7 +75,10 @@ export function useMcpCallLogs() {
             })
             .subscribe(`SELECT * FROM mcp_call_log`);
 
-          connInstance.db.mcpCallLog.onInsert((_ctx: EventContext, row: McpCallLogRow) => {
+          // QA-review / human-review reducers delete+re-insert the row keeping
+          // its primary key, which arrives as onUpdate — handle it (as an upsert)
+          // or review fields would never appear without a page refresh.
+          const upsertRow = (row: McpCallLogRow) => {
             if (cancelled) return;
             setRows(prev => {
               const existing = prev.findIndex(r => r.id === row.id);
@@ -86,7 +89,9 @@ export function useMcpCallLogs() {
               }
               return [row, ...prev];
             });
-          });
+          };
+          connInstance.db.mcpCallLog.onInsert((_ctx: EventContext, row: McpCallLogRow) => upsertRow(row));
+          connInstance.db.mcpCallLog.onUpdate((_ctx: EventContext, _old: McpCallLogRow, row: McpCallLogRow) => upsertRow(row));
 
           connInstance.db.mcpCallLog.onDelete((_ctx: EventContext, row: McpCallLogRow) => {
             if (cancelled) return;
@@ -94,6 +99,10 @@ export function useMcpCallLogs() {
           });
         })
         .onConnectError((_ctx: unknown, err: unknown) => {
+          // Tearing down a still-connecting socket (React StrictMode remount or
+          // unmount) fires this with an empty event. That's our own abort, not
+          // a real failure — don't log it as an error or trigger a retry.
+          if (cancelled) return;
           console.error("[SpacetimeDB] Connection error:", err);
           const storedToken = localStorage.getItem(TOKEN_KEY);
           if (storedToken) {

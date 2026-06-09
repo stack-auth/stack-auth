@@ -43,7 +43,98 @@ const mcpCallLog = table(
   }
 );
 
-const spacetimedb = schema({ mcpCallLog });
+// --- Eval suite tables ---
+// A workflow is an ordered queue of steps; each step is one Claude Code agent
+// session executed inside the run's shared sandbox.
+const evalWorkflow = table(
+  { name: 'eval_workflow', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    workflowId: t.string(),
+    name: t.string(),
+    description: t.string(),
+    // JSON array of { name, prompt, outputKey?, model?, artifacts?: string[] }
+    stepsJson: t.string(),
+    defaultModel: t.string(),
+    createdAt: t.timestamp(),
+    updatedAt: t.timestamp(),
+  }
+);
+
+const evalRun = table(
+  { name: 'eval_run', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    runId: t.string(),
+    workflowId: t.string(),
+    workflowName: t.string(),
+    label: t.string(),
+    model: t.string(),
+    // queued | booting | running | completed | failed | cancelled
+    status: t.string(),
+    sandboxId: t.string().optional(),
+    currentStepIndex: t.u32(),
+    totalSteps: t.u32(),
+    // JSON object of template variables produced by completed steps
+    contextJson: t.string(),
+    configJson: t.string(),
+    error: t.string().optional(),
+    createdAt: t.timestamp(),
+    startedAt: t.timestamp().optional(),
+    finishedAt: t.timestamp().optional(),
+  }
+);
+
+const evalStepRun = table(
+  { name: 'eval_step_run', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    stepRunId: t.string(),
+    runId: t.string(),
+    stepIndex: t.u32(),
+    stepName: t.string(),
+    model: t.string(),
+    // pending | running | completed | failed | cancelled
+    status: t.string(),
+    resultText: t.string(),
+    error: t.string().optional(),
+    numMessages: t.u32(),
+    costUsd: t.string().optional(),
+    sessionId: t.string().optional(),
+    createdAt: t.timestamp(),
+    startedAt: t.timestamp().optional(),
+    finishedAt: t.timestamp().optional(),
+  }
+);
+
+const evalWorklog = table(
+  { name: 'eval_worklog', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    runId: t.string(),
+    stepRunId: t.string(),
+    seq: t.u32(),
+    // system | assistant | user | result | stdout | stderr | meta
+    kind: t.string(),
+    content: t.string(),
+    createdAt: t.timestamp(),
+  }
+);
+
+const evalArtifact = table(
+  { name: 'eval_artifact', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    runId: t.string(),
+    stepRunId: t.string(),
+    path: t.string(),
+    contentType: t.string(),
+    content: t.string(),
+    createdAt: t.timestamp(),
+  }
+);
+
+const spacetimedb = schema({ mcpCallLog, evalWorkflow, evalRun, evalStepRun, evalWorklog, evalArtifact });
 export default spacetimedb;
 
 export const log_mcp_call = spacetimedb.reducer(
@@ -234,6 +325,267 @@ export const delete_qa_entry = spacetimedb.reducer(
       }
     }
     throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+  }
+);
+
+// --- Eval suite reducers ---
+
+export const upsert_eval_workflow = spacetimedb.reducer(
+  {
+    token: t.string(),
+    workflowId: t.string(),
+    name: t.string(),
+    description: t.string(),
+    stepsJson: t.string(),
+    defaultModel: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    for (const row of ctx.db.evalWorkflow.iter()) {
+      if (row.workflowId === args.workflowId) {
+        ctx.db.evalWorkflow.delete(row);
+        ctx.db.evalWorkflow.insert({
+          ...row,
+          name: args.name,
+          description: args.description,
+          stepsJson: args.stepsJson,
+          defaultModel: args.defaultModel,
+          updatedAt: ctx.timestamp,
+        });
+        return;
+      }
+    }
+    ctx.db.evalWorkflow.insert({
+      id: 0n,
+      workflowId: args.workflowId,
+      name: args.name,
+      description: args.description,
+      stepsJson: args.stepsJson,
+      defaultModel: args.defaultModel,
+      createdAt: ctx.timestamp,
+      updatedAt: ctx.timestamp,
+    } as Parameters<typeof ctx.db.evalWorkflow.insert>[0]);
+  }
+);
+
+export const delete_eval_workflow = spacetimedb.reducer(
+  {
+    token: t.string(),
+    workflowId: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    for (const row of ctx.db.evalWorkflow.iter()) {
+      if (row.workflowId === args.workflowId) {
+        ctx.db.evalWorkflow.delete(row);
+        return;
+      }
+    }
+    throw new SenderError('Workflow not found: ' + args.workflowId);
+  }
+);
+
+export const create_eval_run = spacetimedb.reducer(
+  {
+    token: t.string(),
+    runId: t.string(),
+    workflowId: t.string(),
+    workflowName: t.string(),
+    label: t.string(),
+    model: t.string(),
+    totalSteps: t.u32(),
+    configJson: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    ctx.db.evalRun.insert({
+      id: 0n,
+      runId: args.runId,
+      workflowId: args.workflowId,
+      workflowName: args.workflowName,
+      label: args.label,
+      model: args.model,
+      status: 'queued',
+      currentStepIndex: 0,
+      totalSteps: args.totalSteps,
+      contextJson: '{}',
+      configJson: args.configJson,
+      createdAt: ctx.timestamp,
+    } as Parameters<typeof ctx.db.evalRun.insert>[0]);
+  }
+);
+
+export const update_eval_run = spacetimedb.reducer(
+  {
+    token: t.string(),
+    runId: t.string(),
+    status: t.string(),
+    sandboxId: t.string().optional(),
+    currentStepIndex: t.u32(),
+    contextJson: t.string().optional(),
+    error: t.string().optional(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const isTerminal = args.status === 'completed' || args.status === 'failed' || args.status === 'cancelled';
+    for (const row of ctx.db.evalRun.iter()) {
+      if (row.runId === args.runId) {
+        ctx.db.evalRun.delete(row);
+        ctx.db.evalRun.insert({
+          ...row,
+          status: args.status,
+          sandboxId: args.sandboxId ?? row.sandboxId,
+          currentStepIndex: args.currentStepIndex,
+          contextJson: args.contextJson ?? row.contextJson,
+          error: args.error ?? row.error,
+          startedAt: row.startedAt ?? (args.status === 'running' || args.status === 'booting' ? ctx.timestamp : undefined),
+          finishedAt: row.finishedAt ?? (isTerminal ? ctx.timestamp : undefined),
+        });
+        return;
+      }
+    }
+    throw new SenderError('Run not found: ' + args.runId);
+  }
+);
+
+export const upsert_eval_step_run = spacetimedb.reducer(
+  {
+    token: t.string(),
+    stepRunId: t.string(),
+    runId: t.string(),
+    stepIndex: t.u32(),
+    stepName: t.string(),
+    model: t.string(),
+    status: t.string(),
+    resultText: t.string(),
+    error: t.string().optional(),
+    numMessages: t.u32(),
+    costUsd: t.string().optional(),
+    sessionId: t.string().optional(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const isTerminal = args.status === 'completed' || args.status === 'failed' || args.status === 'cancelled';
+    for (const row of ctx.db.evalStepRun.iter()) {
+      if (row.stepRunId === args.stepRunId) {
+        ctx.db.evalStepRun.delete(row);
+        ctx.db.evalStepRun.insert({
+          ...row,
+          status: args.status,
+          resultText: args.resultText,
+          error: args.error ?? row.error,
+          numMessages: args.numMessages,
+          costUsd: args.costUsd ?? row.costUsd,
+          sessionId: args.sessionId ?? row.sessionId,
+          startedAt: row.startedAt ?? (args.status === 'running' ? ctx.timestamp : undefined),
+          finishedAt: row.finishedAt ?? (isTerminal ? ctx.timestamp : undefined),
+        });
+        return;
+      }
+    }
+    ctx.db.evalStepRun.insert({
+      id: 0n,
+      stepRunId: args.stepRunId,
+      runId: args.runId,
+      stepIndex: args.stepIndex,
+      stepName: args.stepName,
+      model: args.model,
+      status: args.status,
+      resultText: args.resultText,
+      error: args.error,
+      numMessages: args.numMessages,
+      costUsd: args.costUsd,
+      sessionId: args.sessionId,
+      createdAt: ctx.timestamp,
+      startedAt: args.status === 'running' ? ctx.timestamp : undefined,
+      finishedAt: isTerminal ? ctx.timestamp : undefined,
+    } as Parameters<typeof ctx.db.evalStepRun.insert>[0]);
+  }
+);
+
+export const append_eval_worklog = spacetimedb.reducer(
+  {
+    token: t.string(),
+    runId: t.string(),
+    stepRunId: t.string(),
+    // JSON array of { seq: number, kind: string, content: string }
+    entriesJson: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const entries = JSON.parse(args.entriesJson) as { seq: number, kind: string, content: string }[];
+    for (const entry of entries) {
+      ctx.db.evalWorklog.insert({
+        id: 0n,
+        runId: args.runId,
+        stepRunId: args.stepRunId,
+        seq: entry.seq,
+        kind: entry.kind,
+        content: entry.content,
+        createdAt: ctx.timestamp,
+      } as Parameters<typeof ctx.db.evalWorklog.insert>[0]);
+    }
+  }
+);
+
+export const add_eval_artifact = spacetimedb.reducer(
+  {
+    token: t.string(),
+    runId: t.string(),
+    stepRunId: t.string(),
+    path: t.string(),
+    contentType: t.string(),
+    content: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    ctx.db.evalArtifact.insert({
+      id: 0n,
+      runId: args.runId,
+      stepRunId: args.stepRunId,
+      path: args.path,
+      contentType: args.contentType,
+      content: args.content,
+      createdAt: ctx.timestamp,
+    } as Parameters<typeof ctx.db.evalArtifact.insert>[0]);
+  }
+);
+
+export const delete_eval_run = spacetimedb.reducer(
+  {
+    token: t.string(),
+    runId: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    for (const row of [...ctx.db.evalWorklog.iter()]) {
+      if (row.runId === args.runId) ctx.db.evalWorklog.delete(row);
+    }
+    for (const row of [...ctx.db.evalArtifact.iter()]) {
+      if (row.runId === args.runId) ctx.db.evalArtifact.delete(row);
+    }
+    for (const row of [...ctx.db.evalStepRun.iter()]) {
+      if (row.runId === args.runId) ctx.db.evalStepRun.delete(row);
+    }
+    for (const row of [...ctx.db.evalRun.iter()]) {
+      if (row.runId === args.runId) ctx.db.evalRun.delete(row);
+    }
   }
 );
 

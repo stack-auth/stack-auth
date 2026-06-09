@@ -34,22 +34,90 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AddEvalArtifactReducer from "./add_eval_artifact_reducer";
 import AddManualQaReducer from "./add_manual_qa_reducer";
+import AppendEvalWorklogReducer from "./append_eval_worklog_reducer";
+import CreateEvalRunReducer from "./create_eval_run_reducer";
+import DeleteEvalRunReducer from "./delete_eval_run_reducer";
+import DeleteEvalWorkflowReducer from "./delete_eval_workflow_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
+import UpdateEvalRunReducer from "./update_eval_run_reducer";
 import UpdateHumanCorrectionReducer from "./update_human_correction_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
+import UpsertEvalStepRunReducer from "./upsert_eval_step_run_reducer";
+import UpsertEvalWorkflowReducer from "./upsert_eval_workflow_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import EvalArtifactRow from "./eval_artifact_table";
+import EvalRunRow from "./eval_run_table";
+import EvalStepRunRow from "./eval_step_run_table";
+import EvalWorkflowRow from "./eval_workflow_table";
+import EvalWorklogRow from "./eval_worklog_table";
 import McpCallLogRow from "./mcp_call_log_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  evalArtifact: __table({
+    name: 'eval_artifact',
+    indexes: [
+      { accessor: 'id', name: 'eval_artifact_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'eval_artifact_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EvalArtifactRow),
+  evalRun: __table({
+    name: 'eval_run',
+    indexes: [
+      { accessor: 'id', name: 'eval_run_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'eval_run_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EvalRunRow),
+  evalStepRun: __table({
+    name: 'eval_step_run',
+    indexes: [
+      { accessor: 'id', name: 'eval_step_run_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'eval_step_run_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EvalStepRunRow),
+  evalWorkflow: __table({
+    name: 'eval_workflow',
+    indexes: [
+      { accessor: 'id', name: 'eval_workflow_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'eval_workflow_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EvalWorkflowRow),
+  evalWorklog: __table({
+    name: 'eval_worklog',
+    indexes: [
+      { accessor: 'id', name: 'eval_worklog_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'eval_worklog_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EvalWorklogRow),
   mcpCallLog: __table({
     name: 'mcp_call_log',
     indexes: [
@@ -65,12 +133,20 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("add_eval_artifact", AddEvalArtifactReducer),
   __reducerSchema("add_manual_qa", AddManualQaReducer),
+  __reducerSchema("append_eval_worklog", AppendEvalWorklogReducer),
+  __reducerSchema("create_eval_run", CreateEvalRunReducer),
+  __reducerSchema("delete_eval_run", DeleteEvalRunReducer),
+  __reducerSchema("delete_eval_workflow", DeleteEvalWorkflowReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
   __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
+  __reducerSchema("update_eval_run", UpdateEvalRunReducer),
   __reducerSchema("update_human_correction", UpdateHumanCorrectionReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
+  __reducerSchema("upsert_eval_step_run", UpsertEvalStepRunReducer),
+  __reducerSchema("upsert_eval_workflow", UpsertEvalWorkflowReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

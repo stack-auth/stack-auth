@@ -6,17 +6,33 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AddEvalArtifactReducer from "../add_eval_artifact_reducer";
 import AddManualQaReducer from "../add_manual_qa_reducer";
+import AppendEvalWorklogReducer from "../append_eval_worklog_reducer";
+import CreateEvalRunReducer from "../create_eval_run_reducer";
+import DeleteEvalRunReducer from "../delete_eval_run_reducer";
+import DeleteEvalWorkflowReducer from "../delete_eval_workflow_reducer";
 import DeleteQaEntryReducer from "../delete_qa_entry_reducer";
 import LogMcpCallReducer from "../log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "../mark_human_reviewed_reducer";
+import UpdateEvalRunReducer from "../update_eval_run_reducer";
 import UpdateHumanCorrectionReducer from "../update_human_correction_reducer";
 import UpdateMcpQaReviewReducer from "../update_mcp_qa_review_reducer";
+import UpsertEvalStepRunReducer from "../upsert_eval_step_run_reducer";
+import UpsertEvalWorkflowReducer from "../upsert_eval_workflow_reducer";
 
+export type AddEvalArtifactParams = __Infer<typeof AddEvalArtifactReducer>;
 export type AddManualQaParams = __Infer<typeof AddManualQaReducer>;
+export type AppendEvalWorklogParams = __Infer<typeof AppendEvalWorklogReducer>;
+export type CreateEvalRunParams = __Infer<typeof CreateEvalRunReducer>;
+export type DeleteEvalRunParams = __Infer<typeof DeleteEvalRunReducer>;
+export type DeleteEvalWorkflowParams = __Infer<typeof DeleteEvalWorkflowReducer>;
 export type DeleteQaEntryParams = __Infer<typeof DeleteQaEntryReducer>;
 export type LogMcpCallParams = __Infer<typeof LogMcpCallReducer>;
 export type MarkHumanReviewedParams = __Infer<typeof MarkHumanReviewedReducer>;
+export type UpdateEvalRunParams = __Infer<typeof UpdateEvalRunReducer>;
 export type UpdateHumanCorrectionParams = __Infer<typeof UpdateHumanCorrectionReducer>;
 export type UpdateMcpQaReviewParams = __Infer<typeof UpdateMcpQaReviewReducer>;
+export type UpsertEvalStepRunParams = __Infer<typeof UpsertEvalStepRunReducer>;
+export type UpsertEvalWorkflowParams = __Infer<typeof UpsertEvalWorkflowReducer>;
 

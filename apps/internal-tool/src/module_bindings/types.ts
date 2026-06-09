@@ -10,6 +10,79 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const EvalArtifact = __t.object("EvalArtifact", {
+  id: __t.u64(),
+  runId: __t.string(),
+  stepRunId: __t.string(),
+  path: __t.string(),
+  contentType: __t.string(),
+  content: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type EvalArtifact = __Infer<typeof EvalArtifact>;
+
+export const EvalRun = __t.object("EvalRun", {
+  id: __t.u64(),
+  runId: __t.string(),
+  workflowId: __t.string(),
+  workflowName: __t.string(),
+  label: __t.string(),
+  model: __t.string(),
+  status: __t.string(),
+  sandboxId: __t.option(__t.string()),
+  currentStepIndex: __t.u32(),
+  totalSteps: __t.u32(),
+  contextJson: __t.string(),
+  configJson: __t.string(),
+  error: __t.option(__t.string()),
+  createdAt: __t.timestamp(),
+  startedAt: __t.option(__t.timestamp()),
+  finishedAt: __t.option(__t.timestamp()),
+});
+export type EvalRun = __Infer<typeof EvalRun>;
+
+export const EvalStepRun = __t.object("EvalStepRun", {
+  id: __t.u64(),
+  stepRunId: __t.string(),
+  runId: __t.string(),
+  stepIndex: __t.u32(),
+  stepName: __t.string(),
+  model: __t.string(),
+  status: __t.string(),
+  resultText: __t.string(),
+  error: __t.option(__t.string()),
+  numMessages: __t.u32(),
+  costUsd: __t.option(__t.string()),
+  sessionId: __t.option(__t.string()),
+  createdAt: __t.timestamp(),
+  startedAt: __t.option(__t.timestamp()),
+  finishedAt: __t.option(__t.timestamp()),
+});
+export type EvalStepRun = __Infer<typeof EvalStepRun>;
+
+export const EvalWorkflow = __t.object("EvalWorkflow", {
+  id: __t.u64(),
+  workflowId: __t.string(),
+  name: __t.string(),
+  description: __t.string(),
+  stepsJson: __t.string(),
+  defaultModel: __t.string(),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type EvalWorkflow = __Infer<typeof EvalWorkflow>;
+
+export const EvalWorklog = __t.object("EvalWorklog", {
+  id: __t.u64(),
+  runId: __t.string(),
+  stepRunId: __t.string(),
+  seq: __t.u32(),
+  kind: __t.string(),
+  content: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type EvalWorklog = __Infer<typeof EvalWorklog>;
+
 export const McpCallLog = __t.object("McpCallLog", {
   id: __t.u64(),
   correlationId: __t.string(),

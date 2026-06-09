@@ -6,11 +6,12 @@ import { Analytics } from "../components/Analytics";
 import { CallLogDetail } from "../components/CallLogDetail";
 import { CallLogList } from "../components/CallLogList";
 import { KnowledgeBase } from "../components/KnowledgeBase";
+import { EvalsView } from "../components/evals/EvalsView";
 import { useMcpCallLogs } from "../hooks/useSpacetimeDB";
 import { makeMcpReviewApi } from "../lib/mcp-review-api";
 import type { McpCallLogRow } from "../types";
 
-type Tab = "calls" | "knowledge" | "analytics";
+type Tab = "calls" | "knowledge" | "analytics" | "evals";
 
 export default function App() {
   const user = useUser({ or: process.env.NODE_ENV === "development" ? "redirect" : "return-null" });
@@ -115,6 +116,18 @@ export default function App() {
             >
               Analytics
             </button>
+            <button
+              onClick={() => {
+                setTab("evals");
+                setSelectedRow(null);
+              }}
+              className={clsx(
+                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                tab === "evals" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              Evals
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -191,6 +204,12 @@ export default function App() {
       {tab === "analytics" && (
         <main className="p-6 max-w-6xl mx-auto">
           <Analytics rows={rows} />
+        </main>
+      )}
+
+      {tab === "evals" && (
+        <main>
+          <EvalsView />
         </main>
       )}
     </div>
