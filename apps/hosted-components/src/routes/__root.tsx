@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { StackClientApp, StackProvider, StackTheme } from '@hexclave/react';
+import { HexclaveClientApp, HexclaveProvider, HexclaveTheme } from '@hexclave/react';
 import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { validateRedirectUrl } from '@hexclave/shared/dist/utils/redirect-urls';
@@ -166,7 +166,7 @@ function RootComponent() {
 
   const hexclaveApp = useMemo(() => {
     if (!projectId || !isValidProjectId) return null;
-    return new StackClientApp({
+    return new HexclaveClientApp({
       projectId,
       publishableClientKey: publishableClientKeyNotNecessarySentinel,
       tokenStore: "cookie",
@@ -197,11 +197,11 @@ function RootComponent() {
 
   return (
     <ErrorBoundary>
-      <StackProvider app={hexclaveApp!}>
-        <StackTheme>
+      <HexclaveProvider app={hexclaveApp!}>
+        <HexclaveTheme>
           <Outlet />
-        </StackTheme>
-      </StackProvider>
+        </HexclaveTheme>
+      </HexclaveProvider>
     </ErrorBoundary>
   );
 }
