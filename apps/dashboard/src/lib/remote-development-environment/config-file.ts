@@ -7,5 +7,5 @@ export {
   replaceConfigObject,
   resolveConfigFilePath,
   sha256String,
-  updateConfigObject,
+  updateConfigObject
 } from "@hexclave/local-config-updater";

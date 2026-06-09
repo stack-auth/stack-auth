@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { typeAssertExtends } from "./utils/types";
 import { defineStackConfig, type StackConfig } from "./config-authoring";
+import { typeAssertExtends } from "./utils/types";
 
 const validConfig = defineStackConfig({
   payments: {
@@ -49,10 +49,4 @@ defineStackConfig({
       },
     },
   },
-});
-
-// `null` is allowed on any value: it resets that key to its default at runtime.
-defineStackConfig({
-  auth: { oauth: { providers: { google: null } } },
-  payments: { items: { todos: null } },
 });

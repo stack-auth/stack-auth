@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { parseHexclaveConfigFileContent, renderConfigFileContent, hexclaveConfigFileExportsConfig, tryParseHexclaveConfigFileContent } from "./hexclave-config-file";
-export { parseHexclaveConfigFileContent, renderConfigFileContent, hexclaveConfigFileExportsConfig, tryParseHexclaveConfigFileContent };
+import { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent } from "./hexclave-config-file";
+export { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent };
 
 /**
  * Packages that export the `HexclaveConfig` type, in priority order.

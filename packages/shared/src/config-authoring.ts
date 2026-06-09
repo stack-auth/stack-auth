@@ -1,19 +1,6 @@
 import type { BranchConfigNormalizedOverride } from "./config/schema";
 
-// A config file is an *override*, not a fully-normalized config: any value may be
-// `null` to mean "remove this key and fall back to the default" (this is how the
-// runtime `normalize` step interprets null). The normalized schema type forbids
-// null, so re-add it on every value — recursively, preserving the exact key set
-// and enums — so authors can write e.g. `oauth: { providers: { google: null } }`
-// to reset a field while typos and bad enum values are still caught.
-type NullableConfigValues<T> =
-  T extends readonly unknown[]
-    ? T
-    : T extends object
-      ? { [K in keyof T]: NullableConfigValues<T[K]> | null }
-      : T;
-
-type StackConfigObject = NullableConfigValues<BranchConfigNormalizedOverride>;
+type StackConfigObject = BranchConfigNormalizedOverride;
 export const showOnboardingHexclaveConfigValue = "show-onboarding";
 /** @deprecated Use `HexclaveConfig` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackConfig = StackConfigObject | typeof showOnboardingHexclaveConfigValue;
@@ -21,20 +8,15 @@ export type StackConfig = StackConfigObject | typeof showOnboardingHexclaveConfi
 // Hexclave alias — same shape, declared separately so it doesn't inherit the deprecation tag.
 export type HexclaveConfig = StackConfigObject | typeof showOnboardingHexclaveConfigValue;
 
-// `Expected` values are nullable (see `NullableConfigValues`); strip the `null`
-// with `NonNullable` before inspecting structure so excess-key detection still
-// works, while a literal `null` on the `Actual` side is always allowed through.
-type StrictConfigShape<Actual, Expected, E = NonNullable<Expected>> =
-  Actual extends null
-    ? Actual
-    : E extends readonly unknown[]
+type StrictConfigShape<Actual, Expected> =
+  Expected extends readonly unknown[]
       ? Actual extends readonly unknown[]
-        ? { [K in keyof Actual]: K extends keyof E ? StrictConfigShape<Actual[K], E[K]> : never }
+      ? { [K in keyof Actual]: K extends keyof Expected ? StrictConfigShape<Actual[K], Expected[K]> : never }
         : Actual
-      : E extends object
+    : Expected extends object
         ? Actual extends object
-          ? Exclude<keyof Actual, keyof E> extends never
-            ? { [K in keyof Actual]: K extends keyof E ? StrictConfigShape<Actual[K], E[K]> : never }
+        ? Exclude<keyof Actual, keyof Expected> extends never
+          ? { [K in keyof Actual]: K extends keyof Expected ? StrictConfigShape<Actual[K], Expected[K]> : never }
             : never
           : Actual
         : Actual;
