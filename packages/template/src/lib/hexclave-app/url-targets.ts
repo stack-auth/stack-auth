@@ -121,6 +121,7 @@ const isRelativeUrlString = (url: string): boolean => {
 };
 
 const nonHostedHandlerNames = new Set<keyof HandlerUrls>([
+  "home",
   "afterSignIn",
   "afterSignUp",
   "afterSignOut",

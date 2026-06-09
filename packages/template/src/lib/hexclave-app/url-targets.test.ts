@@ -108,6 +108,7 @@ describe("handler URL targets", () => {
 
     expect(urls.signIn).toBe("https://project-id.example-stack-hosted.test/handler/sign-in");
     expect(urls.signOut).toBe("https://project-id.example-stack-hosted.test/handler/sign-out");
+    expect(urls.home).toBe("/");
     expect(urls.afterSignIn).toBe("/");
     expect(urls.afterSignUp).toBe("/");
     expect(urls.afterSignOut).toBe("/");
