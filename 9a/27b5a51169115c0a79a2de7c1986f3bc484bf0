@@ -1,0 +1,20 @@
+apps/mcp/src/mcp-handler.ts
+  s_edd60bd107038a::t_79fe63f41ac2a3 110
+  s_edd60bd107038a::t_9c8252566192e4 180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "9a27b5a51169115c0a79a2de7c1986f3bc484bf0",
+  "prompts": {},
+  "sessions": {
+    "s_edd60bd107038a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e0b69bd-ed40-498a-b79f-59821fa54f09",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
