@@ -1,5 +1,5 @@
-import path from "path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import path from "path";
 
 const DEFAULT_PROXY_URL = "https://api.hexclave.com/api/v1/integrations/ai-proxy";
 const ANTHROPIC_PROXY_BASE_URL: string = process.env.STACK_CLAUDE_PROXY_URL ?? DEFAULT_PROXY_URL;
@@ -70,6 +70,7 @@ export async function runHeadlessClaudeAgent(options: RunClaudeAgentOptions): Pr
     for await (const message of query({
       prompt: options.prompt,
       options: {
+        model: "nvidia/nemotron-3-super-120b-a12b:nitro",
         ...(options.strictIsolation === true ? {
           settingSources: [],
           strictMcpConfig: true,

@@ -50,3 +50,9 @@ defineStackConfig({
     },
   },
 });
+
+// `null` is allowed on any value: it resets that key to its default at runtime.
+defineStackConfig({
+  auth: { oauth: { providers: { google: null } } },
+  payments: { items: { todos: null } },
+});
