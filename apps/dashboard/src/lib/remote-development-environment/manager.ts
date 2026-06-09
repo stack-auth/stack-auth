@@ -759,8 +759,8 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       projectId: options.projectId,
       configFilePath,
     });
-    const currentConfig = (await readConfigFile(configFilePath)).config;
     if (options.waitForSync === false) {
+      const currentConfig = (await readConfigFile(configFilePath)).config;
       await replaceConfigObject(configFilePath, override(currentConfig, options.configUpdate));
       scheduleSync(configFilePath);
     } else {
