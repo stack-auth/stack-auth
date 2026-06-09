@@ -4,6 +4,7 @@ import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { validateRedirectUrl } from '@hexclave/shared/dist/utils/redirect-urls';
 import { isRelative } from '@hexclave/shared/dist/utils/urls';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
 import {
   HeadContent,
   Outlet,
@@ -65,7 +66,7 @@ function useHostedComponentsNavigate() {
         await navigate({ hash: to.slice(1) });
       } else {
         if (!isTrustedNavigationTarget(to)) {
-          throw new Error(`Refusing to navigate to untrusted URL: ${to}`);
+          throw new Error("Refusing to navigate to an untrusted URL");
         }
         await navigate({ href: to });
       }
@@ -195,9 +196,11 @@ function RootComponent() {
     return <FullPageError title="Something went wrong" message={`Invalid project ID: ${projectId}. Project IDs must be UUIDs.`} />;
   }
 
+  const app = hexclaveApp ?? throwErr("RootComponent expected a HexclaveClientApp after project ID validation.");
+
   return (
     <ErrorBoundary>
-      <HexclaveProvider app={hexclaveApp!}>
+      <HexclaveProvider app={app}>
         <HexclaveTheme>
           <Outlet />
         </HexclaveTheme>
