@@ -62,6 +62,13 @@ const script = () => {
     return false;
   };
 
+  const getSystemTheme = () => {
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
+  };
+
   const copyFromVariables = () => {
     let backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--background');
     if (backgroundColor) {
@@ -118,10 +125,18 @@ const script = () => {
     attributeFilter: attributes,
   });
 
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!copyFromColorScheme() && !copyFromAttributes() && !copyFromVariables()) {
+      setTheme(e.matches ? 'dark' : 'light');
+    }
+  });
+
   // Initial check on page load
   if (!copyFromColorScheme()) {
     if (!copyFromAttributes()) {
-      copyFromVariables();
+      if (!copyFromVariables()) {
+        setTheme(getSystemTheme());
+      }
     }
   }
 };

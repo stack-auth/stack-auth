@@ -51,8 +51,8 @@ function OTP(props: {
 
   return (
     <div className="flex flex-col items-stretch stack-scope">
-      <form className='w-full flex flex-col items-center mb-2'>
-        <Typography className='mb-2' >{t('Enter the code from your email')}</Typography>
+      <form className='w-full flex flex-col items-center mb-4'>
+        <Typography className='text-sm text-muted-foreground mb-4 text-center'>{t('Enter the code from your email')}</Typography>
         <InputOTP
           maxLength={6}
           type="text"
@@ -62,15 +62,15 @@ function OTP(props: {
           onChange={value => setOtp(value.toUpperCase())}
           disabled={submitting}
         >
-          <InputOTPGroup>
+          <InputOTPGroup className="gap-2">
             {[0, 1, 2, 3, 4, 5].map((index) => (
-              <InputOTPSlot key={index} index={index} size='lg' />
+              <InputOTPSlot key={index} index={index} size='lg' className="rounded-xl border border-border bg-background focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring transition-all" />
             ))}
           </InputOTPGroup>
         </InputOTP>
         {error && <FormWarningText text={error} />}
       </form>
-      <Button variant='link' onClick={props.onBack} className='underline'>{t('Cancel')}</Button>
+      <Button variant='link' onClick={props.onBack} className='text-xs text-muted-foreground hover:text-primary transition-colors mt-2'>{t('Cancel')}</Button>
     </div>
   );
 }
@@ -120,16 +120,17 @@ export function MagicLinkSignIn() {
         onSubmit={e => runAsynchronouslyWithAlert(handleSubmit(onSubmit)(e))}
         noValidate
       >
-        <Label htmlFor="email" className="mb-1">{t('Email')}</Label>
+        <Label htmlFor="email" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{t('Email')}</Label>
         <Input
           id="email"
           type="email"
           autoComplete="email"
+          className="h-10 rounded-xl border border-border bg-background focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring transition-all"
           {...register('email')}
         />
         <FormWarningText text={errors.email?.message?.toString()} />
 
-        <Button type="submit" className="mt-6" loading={loading}>
+        <Button type="submit" className="mt-6 h-10 rounded-xl font-semibold shadow-sm hover:shadow transition-all duration-150" loading={loading}>
           {t('Send email')}
         </Button>
       </form>
