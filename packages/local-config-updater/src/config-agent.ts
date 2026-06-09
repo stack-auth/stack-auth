@@ -126,7 +126,9 @@ export async function runHeadlessClaudeAgent(options: RunClaudeAgentOptions): Pr
   return { resultText };
 }
 
-const FILE_MUTATING_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+// Only the tools actually in the agent's allowedTools list; MultiEdit and
+// NotebookEdit are intentionally excluded from the agent's tool set.
+const FILE_MUTATING_TOOLS = new Set(["Write", "Edit"]);
 
 function hasStringFilePath(input: unknown): input is { file_path: string } {
   return typeof input === "object" && input !== null && "file_path" in input && typeof input.file_path === "string";

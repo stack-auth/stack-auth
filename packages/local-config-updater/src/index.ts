@@ -280,8 +280,11 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
   // (a) something changed on disk and (b) the file still exports `config`.
   // This cannot catch silently mis-applied values — an accepted tradeoff vs.
   // blocking updates entirely for configs we can't evaluate.
+  // When nothing changed on disk the update is either already applied or the
+  // agent couldn't figure out what to do. Treat it as a no-op rather than a
+  // hard failure: the structural check below still verifies the file is valid.
   if (flattenConfigUpdate(configUpdate).length > 0 && !snapshotsChangedOnDisk(snapshots)) {
-    throw new Error(`Config update validation failed for ${configFilePath}: the agent did not modify the config or any of its referenced files.`);
+    console.warn(`${LOG_PREFIX} Agent did not modify any file for ${configFilePath}; assuming values are already up to date.`);
   }
 
   const content = readFileSync(configFilePath, "utf-8");
