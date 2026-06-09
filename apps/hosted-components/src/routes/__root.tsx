@@ -192,6 +192,7 @@ function RootComponent() {
         signUp: "/handler/sign-up",
         forgotPassword: "/handler/forgot-password",
         passwordReset: "/handler/password-reset",
+        emailVerification: "/handler/email-verification",
         afterSignIn: "/",
         afterSignUp: "/",
         afterSignOut: "/handler/sign-in",
