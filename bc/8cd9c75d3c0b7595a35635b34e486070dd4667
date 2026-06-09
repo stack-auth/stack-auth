@@ -1,0 +1,23 @@
+docs-mintlify/guides/integrations/vercel/overview.mdx
+  s_edd60bd107038a::t_66c1f971d1d03f 24
+  s_edd60bd107038a::t_de580041e2748f 36
+apps/backend/src/app/api/latest/ai/query/[mode]/route.ts
+  s_edd60bd107038a::t_b6187407b23525 98
+  s_edd60bd107038a::t_34f74ad010d4da 151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "bc8cd9c75d3c0b7595a35635b34e486070dd4667",
+  "prompts": {},
+  "sessions": {
+    "s_edd60bd107038a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8e0b69bd-ed40-498a-b79f-59821fa54f09",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
