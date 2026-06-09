@@ -62,7 +62,7 @@ function FullPageError({ title, message }: { title: string, message: string }) {
 
 function FullPageLoadingSkeleton() {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 24 }}>
+    <div className="hexclave-hosted-loading-skeleton">
       <div
         aria-label="Loading"
         aria-busy="true"
@@ -75,11 +75,50 @@ function FullPageLoadingSkeleton() {
           maxWidth: 380,
         }}
       >
-        <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f0f0' }} />
-        <div style={{ width: '60%', height: 20, borderRadius: 999, background: '#f0f0f0' }} />
-        <div style={{ width: '82%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
-        <div style={{ width: '70%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
+        <div className="hexclave-hosted-loading-block" style={{ width: 48, height: 48, borderRadius: 12 }} />
+        <div className="hexclave-hosted-loading-block" style={{ width: '60%', height: 20, borderRadius: 999 }} />
+        <div className="hexclave-hosted-loading-block hexclave-hosted-loading-block-subtle" style={{ width: '82%', height: 14, borderRadius: 999 }} />
+        <div className="hexclave-hosted-loading-block hexclave-hosted-loading-block-subtle" style={{ width: '70%', height: 14, borderRadius: 999 }} />
       </div>
+      <style>{`
+        .hexclave-hosted-loading-skeleton {
+          align-items: center;
+          background: #ffffff;
+          display: flex;
+          justify-content: center;
+          min-height: 100vh;
+          padding: 24px;
+        }
+
+        .hexclave-hosted-loading-block {
+          animation: hexclave-hosted-loading-pulse 1.5s ease-in-out infinite;
+          background: rgba(228, 228, 231, 0.72);
+        }
+
+        .hexclave-hosted-loading-block-subtle {
+          background: rgba(244, 244, 245, 0.86);
+        }
+
+        @media (prefers-color-scheme: dark) {
+          .hexclave-hosted-loading-skeleton {
+            background: #09090b;
+          }
+
+          .hexclave-hosted-loading-block {
+            background: rgba(39, 39, 42, 0.72);
+          }
+
+          .hexclave-hosted-loading-block-subtle {
+            background: rgba(39, 39, 42, 0.48);
+          }
+        }
+
+        @keyframes hexclave-hosted-loading-pulse {
+          50% {
+            opacity: 0.58;
+          }
+        }
+      `}</style>
     </div>
   );
 }

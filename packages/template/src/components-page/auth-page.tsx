@@ -54,23 +54,33 @@ export function AuthPage(props: Props) {
 
 function Fallback(props: Props) {
   const skeletonClassName = "animate-pulse bg-zinc-200/60 dark:bg-zinc-800/50";
+  const content = (
+    <div
+      className='stack-scope flex flex-col items-stretch w-full mx-auto'
+      style={{ maxWidth: '380px', flexBasis: '380px', padding: props.fullPage ? '1rem' : 0 }}
+    >
+      <div className="text-center mb-6 flex flex-col items-center">
+        <div className={`h-9 w-2/3 ${skeletonClassName} rounded-lg`} />
+
+        <div className={`h-3 w-16 mt-8 ${skeletonClassName} rounded-md`} />
+        <div className={`h-9 w-full mt-1 ${skeletonClassName} rounded-xl`} />
+
+        <div className={`h-3 w-24 mt-2 ${skeletonClassName} rounded-md`} />
+        <div className={`h-9 w-full mt-1 ${skeletonClassName} rounded-xl`} />
+
+        <div className={`h-9 w-full mt-6 ${skeletonClassName} rounded-xl`} />
+      </div>
+    </div>
+  );
+
+  if (!props.fullPage) return content;
+
   return (
-    <MaybeFullPage fullPage={!!props.fullPage}>
+    <MaybeFullPage fullPage={true}>
       <div
-        className='stack-scope flex flex-col items-stretch w-full mx-auto'
-        style={{ maxWidth: '380px', flexBasis: '380px', padding: props.fullPage ? '1rem' : 0 }}
+        className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-background p-4 sm:p-6"
       >
-        <div className="text-center mb-6 flex flex-col items-center">
-          <div className={`h-9 w-2/3 ${skeletonClassName} rounded-lg`} />
-
-          <div className={`h-3 w-16 mt-8 ${skeletonClassName} rounded-md`} />
-          <div className={`h-9 w-full mt-1 ${skeletonClassName} rounded-xl`} />
-
-          <div className={`h-3 w-24 mt-2 ${skeletonClassName} rounded-md`} />
-          <div className={`h-9 w-full mt-1 ${skeletonClassName} rounded-xl`} />
-
-          <div className={`h-9 w-full mt-6 ${skeletonClassName} rounded-xl`} />
-        </div>
+        {content}
       </div>
     </MaybeFullPage>
   );
