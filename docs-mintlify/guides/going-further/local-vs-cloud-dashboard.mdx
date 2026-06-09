@@ -55,14 +55,14 @@ Use the cloud dashboard when you want to:
 For a frontend-only app, connect to a cloud project with the project ID:
 
 ```env title=".env.local"
-STACK_PROJECT_ID=<your-project-id>
+HEXCLAVE_PROJECT_ID=<your-project-id>
 ```
 
 For a backend, or an app that has both frontend and backend code, also add a secret server key:
 
 ```env title=".env.local"
-STACK_PROJECT_ID=<your-project-id>
-STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+HEXCLAVE_PROJECT_ID=<your-project-id>
+HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
 ```
 
 You can get these values from the cloud dashboard. The project ID appears in the project URL, and server keys are generated from the Project Keys page.
@@ -106,7 +106,7 @@ stack --project-id <project-id> config push --config-file ./hexclave.config.ts
 ```
 
 <Info>
-  `config pull` requires `stack login`. `config push` supports either `stack login` or `STACK_SECRET_SERVER_KEY`.
+  `config pull` requires `stack login`. `config push` supports either `stack login` or `HEXCLAVE_SECRET_SERVER_KEY`.
 </Info>
 
 For the full setup flow by framework, see [Setup](/guides/getting-started/setup).

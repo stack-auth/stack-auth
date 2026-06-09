@@ -184,7 +184,7 @@ ${remindersPrompt}`,
     {
       streamableHttpEndpoint: config.streamableHttpEndpoint,
       verboseLogs: true,
-      maxDuration: 120,
+      maxDuration: 180,
     },
   );
 }

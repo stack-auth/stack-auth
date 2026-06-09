@@ -68,7 +68,7 @@ export const POST = createSmartRouteHandler({
     const stepLimit = toolsArg == null
       ? 1
       : isDocsOrSearch
-        ? 50
+        ? 75
         : isCreateDashboard
           ? 12
           : isBuildAnalyticsQuery
@@ -97,7 +97,7 @@ export const POST = createSmartRouteHandler({
     } else {
       const startedAt = Date.now();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120_000);
+      const timeoutId = setTimeout(() => controller.abort(), 180_000);
       const result = await generateText({
         model,
         system: systemPrompt,
