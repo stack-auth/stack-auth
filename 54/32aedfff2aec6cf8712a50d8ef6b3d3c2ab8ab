@@ -1,0 +1,47 @@
+apps/backend/src/app/api/latest/ai/query/[mode]/route.ts
+  s_868a43799d871c::t_7abff4dd90aa7e 71
+  s_868a43799d871c::t_423942f8d88b88 100
+docs-mintlify/guides/other/tutorials/ship-production-ready-auth.mdx
+  s_868a43799d871c::t_172130b9406ba1 116
+  s_868a43799d871c::t_1040107afe4b9a 109,118
+  s_868a43799d871c::t_587f2817a73d14 117
+docs-mintlify/guides/integrations/vercel/overview.mdx
+  s_868a43799d871c::t_af96c809ca020d 36
+  s_868a43799d871c::t_eb6c946ad89661 34
+  s_868a43799d871c::t_fe140d77caa637 32
+  s_868a43799d871c::t_7223012ffcae22 33
+docs-mintlify/guides/going-further/local-vs-cloud-dashboard.mdx
+  s_868a43799d871c::t_fd7d0248abc17f 58,64
+  s_868a43799d871c::t_27986b98dcc20f 65,109
+docs-mintlify/guides/integrations/tanstack-start/overview.mdx
+  s_868a43799d871c::t_64870350af2250 37,51
+  s_868a43799d871c::t_5f62191939b244 38,41,164
+docs-mintlify/guides/integrations/convex/overview.mdx
+  s_868a43799d871c::t_2e1217500a2c0f 45
+packages/template/src/integrations/convex/component/README.md
+  s_868a43799d871c::t_8a6cc6649fc46b 26
+docs-mintlify/sdk/objects/hexclave-app.mdx
+  s_868a43799d871c::t_5bba664ed983fa 78
+  s_868a43799d871c::t_2f8bad85bf3c19 82
+apps/mcp/src/mcp-handler.ts
+  s_868a43799d871c::t_ddbf3216477d2f 187
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_868a43799d871c::t_8a7c76738201ed 93
+  s_868a43799d871c::t_f599866ccaac0a 92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "5432aedfff2aec6cf8712a50d8ef6b3d3c2ab8ab",
+  "prompts": {},
+  "sessions": {
+    "s_868a43799d871c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ed5abd7-914e-464f-b506-46f9531d32dd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
