@@ -1,0 +1,30 @@
+packages/shared/src/config-authoring.ts
+  s_6543a22b88791e::t_f10452f2fa6d6d 5-16
+  s_6543a22b88791e::t_59028ce56b205a 24-32,34-40
+  s_6543a22b88791e::t_14832db475210e 3-4
+packages/shared/src/config-authoring.test.ts
+  s_6543a22b88791e::t_66fe1702d186b9 53-58
+examples/demo/scripts/dev-with-retry.mjs
+  s_6543a22b88791e::t_52b53d38135ef4 50
+examples/demo/hexclave.config.ts
+  s_6543a22b88791e::t_ca7c00fd97b776 1-7,12-16,19,41,44-60,62-65,67-79,82-102,105-106,108-114,116-127,129-136
+  s_6543a22b88791e::t_c22ba21cc8d8cf 8-11,17-18,20-40,42-43,61,103-104,107,115,128
+apps/dashboard/src/lib/config-update.tsx
+  s_6543a22b88791e::t_836dff6c0bd130 585-591
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "84bedcd3cf4b0fa33a9a8d272c350a066d28bbfe",
+  "prompts": {},
+  "sessions": {
+    "s_6543a22b88791e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc069dff-798c-4d45-bb65-c410745bb3ba",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
