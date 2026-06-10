@@ -100,10 +100,11 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
   });
-  // Cache key serializes filters via JSON so DependenciesMap (identity-keyed
-  // per array slot) treats two equal filter objects as the same entry.
+  // Cache key serializes filters via URLSearchParams (sorted keys) so
+  // DependenciesMap (identity-keyed per array slot) treats two equal
+  // filter objects as the same deterministic string entry.
   private readonly _metricsCache = createCache(async ([includeAnonymous, filtersKey]: [boolean, string]) => {
-    const filters = filtersKey ? JSON.parse(filtersKey) : undefined;
+    const filters = filtersKey ? Object.fromEntries(new URLSearchParams(filtersKey)) : undefined;
     return await this._interface.getMetrics(includeAnonymous, filters);
   });
   private readonly _userActivityCache = createCache(async ([userId]: [string]) => {
