@@ -49,31 +49,28 @@ export function CredentialSignIn() {
       onSubmit={e => runAsynchronouslyWithAlert(handleSubmit(onSubmit)(e))}
       noValidate
     >
-      <Label htmlFor="email" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{t('Email')}</Label>
+      <Label htmlFor="email" className="mb-1">{t('Email')}</Label>
       <Input
         id="email"
         type="email"
         autoComplete="email"
-        className="h-10 rounded-xl border border-border bg-background focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring transition-all"
         {...register('email')}
       />
       <FormWarningText text={errors.email?.message?.toString()} />
 
-      <div className="flex items-center justify-between mt-4 mb-1.5">
-        <Label htmlFor="password" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('Password')}</Label>
-        <StyledLink href={app.urls.forgotPassword} className="text-xs text-muted-foreground hover:text-primary transition-colors">
-          {t('Forgot password?')}
-        </StyledLink>
-      </div>
+      <Label htmlFor="password" className="mt-4 mb-1">{t('Password')}</Label>
       <PasswordInput
         id="password"
         autoComplete="current-password"
-        className="h-10 rounded-xl border border-border bg-background focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring transition-all"
         {...register('password')}
       />
       <FormWarningText text={errors.password?.message?.toString()} />
 
-      <Button type="submit" className="mt-6 h-10 rounded-xl font-semibold shadow-sm hover:shadow transition-all duration-150" loading={loading}>
+      <StyledLink href={app.urls.forgotPassword} className="mt-1 text-sm">
+        {t('Forgot password?')}
+      </StyledLink>
+
+      <Button type="submit" className="mt-6" loading={loading}>
         {t('Sign In')}
       </Button>
     </form>
