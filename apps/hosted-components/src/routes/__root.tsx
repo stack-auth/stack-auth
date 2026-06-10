@@ -1,6 +1,10 @@
 /// <reference types="vite/client" />
-import { StackClientApp, StackProvider, StackTheme } from '@hexclave/react';
+import { HexclaveClientApp, HexclaveProvider, HexclaveTheme } from '@hexclave/react';
 import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { validateRedirectUrl } from '@hexclave/shared/dist/utils/redirect-urls';
+import { isRelative } from '@hexclave/shared/dist/utils/urls';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
 import {
   HeadContent,
   Outlet,
@@ -47,6 +51,27 @@ function useProjectIdFromHostname(): string | null | undefined {
 
 function getApiBaseUrlFromEnv(): string | undefined {
   return import.meta.env.VITE_HEXCLAVE_API_URL ?? import.meta.env.VITE_STACK_API_URL ?? undefined;
+}
+
+function isTrustedNavigationTarget(to: string): boolean {
+  return isRelative(to) || validateRedirectUrl(to, { trustedDomains: [window.location.origin] });
+}
+
+function useHostedComponentsNavigate() {
+  const navigate = useNavigate();
+
+  return useMemo(() => (to: string) => {
+    runAsynchronously(async () => {
+      if (to.startsWith("#")) {
+        await navigate({ hash: to.slice(1) });
+      } else {
+        if (!isTrustedNavigationTarget(to)) {
+          throw new Error("Refusing to navigate to an untrusted URL");
+        }
+        await navigate({ href: to });
+      }
+    });
+  }, [navigate]);
 }
 
 function FullPageError({ title, message }: { title: string, message: string }) {
@@ -142,7 +167,7 @@ function RootComponent() {
 
   const hexclaveApp = useMemo(() => {
     if (!projectId || !isValidProjectId) return null;
-    return new StackClientApp({
+    return new HexclaveClientApp({
       projectId,
       publishableClientKey: publishableClientKeyNotNecessarySentinel,
       tokenStore: "cookie",
@@ -155,7 +180,7 @@ function RootComponent() {
         afterSignUp: "/",
         afterSignOut: "/handler/sign-in",
       },
-      redirectMethod: { useNavigate: useNavigate as any }
+      redirectMethod: { useNavigate: useHostedComponentsNavigate },
     });
   }, [isValidProjectId, projectId]);
 
@@ -171,13 +196,15 @@ function RootComponent() {
     return <FullPageError title="Something went wrong" message={`Invalid project ID: ${projectId}. Project IDs must be UUIDs.`} />;
   }
 
+  const app = hexclaveApp ?? throwErr("RootComponent expected a HexclaveClientApp after project ID validation.");
+
   return (
     <ErrorBoundary>
-      <StackProvider app={hexclaveApp!}>
-        <StackTheme>
+      <HexclaveProvider app={app}>
+        <HexclaveTheme>
           <Outlet />
-        </StackTheme>
-      </StackProvider>
+        </HexclaveTheme>
+      </HexclaveProvider>
     </ErrorBoundary>
   );
 }
