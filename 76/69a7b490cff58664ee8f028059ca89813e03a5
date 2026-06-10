@@ -1,0 +1,317 @@
+packages/stack/src/components-page/account-settings/teams/team-api-keys-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-74
+packages/stack/src/lib/cookie.ts
+  s_d32621b8a77938::t_66eed308d62125 1-421
+packages/stack/LICENSE
+  s_d32621b8a77938::t_66eed308d62125 1-7
+packages/stack/src/components-page/account-settings/notifications/notifications-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-44
+packages/stack/src/components-page/account-settings/email-and-auth/otp-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-102
+packages/stack/src/providers/stack-provider.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-48
+packages/stack/src/utils/browser-script.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-135
+packages/stack/postcss.config.js
+  s_d32621b8a77938::t_66eed308d62125 1-11
+packages/stack/src/components-page/cli-auth-confirm.test.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-204
+packages/stack/scripts/merge-quetzal-translations.ts
+  s_d32621b8a77938::t_66eed308d62125 1-69
+packages/stack/src/lib/stack-app/apps/implementations/session-refresh-subscription.ts
+  s_d32621b8a77938::t_66eed308d62125 1-52
+packages/stack/src/components-page/account-settings/email-and-auth/password-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-174
+packages/stack/src/dev-tool/dev-tool-core.ts
+  s_d32621b8a77938::t_66eed308d62125 1-3937
+packages/stack/src/components-page/account-settings/section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-26
+packages/stack/src/components/credential-sign-up.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-108
+packages/stack/src/components/oauth-button.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-221
+packages/stack/src/components/credential-sign-in.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-83
+packages/stack/src/components-page/section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-27
+packages/stack/src/components-page/sign-out.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-25
+packages/stack/src/lib/stack-app/project-configs/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-103
+packages/stack/src/lib/stack-app/projects/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-236
+packages/stack/.eslintrc.cjs
+  s_d32621b8a77938::t_66eed308d62125 1-29
+packages/stack/src/lib/stack-app/apps/implementations/server-app-impl.ts
+  s_d32621b8a77938::t_66eed308d62125 1-1619
+packages/stack/src/lib/stack-app/connected-accounts/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-49
+packages/stack/src/components/message-cards/message-card.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-46
+packages/stack/src/integrations/convex/component/README.md
+  s_d32621b8a77938::t_66eed308d62125 1-74
+packages/stack/src/components-page/account-settings.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-343
+packages/stack/src/components-page/account-settings/page-layout.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-11
+packages/stack/src/components-page/account-settings/settings/settings-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-19
+packages/stack/src/components-page/account-settings/teams/team-profile-image-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-33
+packages/stack/src/components-page/account-settings/teams/team-creation-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-92
+packages/stack/src/components-page/magic-link-callback.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-92
+packages/stack/src/components/api-key-dialogs.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-173
+packages/stack/src/components/elements/separator-with-text.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-22
+packages/stack/src/components-page/account-settings/settings/delete-account-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-85
+packages/stack/.env
+  s_d32621b8a77938::t_66eed308d62125 1
+packages/stack/src/generated/.gitignore
+  s_d32621b8a77938::t_66eed308d62125 1-3
+packages/stack/src/components/link.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-40
+packages/stack/src/lib/hooks.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-63
+packages/stack/src/lib/stack-app/apps/implementations/event-tracker.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-237
+packages/stack/src/components-page/email-verification.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-76
+packages/stack/src/lib/stack-app/apps/implementations/redirect-page-urls.ts
+  s_d32621b8a77938::t_66eed308d62125 1-342
+packages/stack/src/providers/stack-context.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-20
+packages/stack/src/dev-tool/dev-tool-trigger-position.ts
+  s_d32621b8a77938::t_66eed308d62125 1-109
+packages/stack/components.json
+  s_d32621b8a77938::t_66eed308d62125 1-17
+packages/stack/src/integrations/convex/component/convex.config.ts
+  s_d32621b8a77938::t_66eed308d62125 1-9
+packages/stack/src/dev-tool/dev-tool-trigger-position.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-113
+packages/stack/src/lib/auth.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-67
+packages/stack/quetzal.config.json
+  s_d32621b8a77938::t_66eed308d62125 1-5
+packages/stack/scripts/process-css.ts
+  s_d32621b8a77938::t_66eed308d62125 1-65
+packages/stack/src/dev-tool/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-149
+packages/stack/src/tanstack-start-server-context.d.ts
+  s_d32621b8a77938::t_66eed308d62125 1-13
+packages/stack/src/components-page/account-settings/api-keys/api-keys-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-157
+packages/stack/src/lib/env.ts
+  s_d32621b8a77938::t_66eed308d62125 1-93
+packages/stack/src/components/elements/ssr-layout-effect.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-24
+packages/stack/src/lib/stack-app/apps/implementations/client-app-impl.cross-domain.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-65
+packages/stack/src/components/api-key-table.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-127
+packages/stack/src/lib/stack-app/apps/implementations/session-refresh-subscription.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-106
+packages/stack/src/lib/stack-app/session-replays/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-72
+packages/stack/src/components-page/sign-up.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-24
+packages/stack/src/components/profile-image-editor.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-194
+packages/stack/src/components/elements/form-warning.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-17
+packages/stack/src/integrations/convex.ts
+  s_d32621b8a77938::t_66eed308d62125 1-28
+packages/stack/src/lib/stack-app/apps/implementations/client-app-impl.ts
+  s_d32621b8a77938::t_66eed308d62125 1-3890
+packages/stack/src/providers/translation-provider-client.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-35
+packages/stack/tailwind.config.js
+  s_d32621b8a77938::t_66eed308d62125 1-83
+packages/stack/src/components/elements/maybe-full-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-60
+packages/stack/src/components/team-icon.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-30
+packages/stack/src/providers/stack-provider-client.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-39
+packages/stack/src/components/elements/user-avatar.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-32
+packages/stack/src/components/selected-team-switcher.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-97
+packages/stack/src/lib/stack-app/users/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-523
+packages/stack/src/lib/stack-app/customers/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-158
+packages/stack/src/lib/stack-app/common.ts
+  s_d32621b8a77938::t_66eed308d62125 1-216
+packages/stack/src/lib/stack-app/teams/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-206
+packages/stack/src/lib/stack-app/apps/implementations/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-35
+packages/stack/src/lib/stack-app/apps/implementations/client-app-impl.oauth-prefetch.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-36
+packages/stack/src/lib/stack-app/apps/implementations/event-tracker.ts
+  s_d32621b8a77938::t_66eed308d62125 1-371
+packages/stack/src/components-page/account-settings/payments/payments-panel.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-543
+packages/stack/src/components-page/mfa.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-222
+packages/stack/src/lib/stack-app/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-146
+packages/stack/src/components-page/account-settings/active-sessions/active-sessions-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-238
+packages/stack/src/components/magic-link-sign-in.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-143
+packages/stack/src/components-page/sign-in.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-34
+packages/stack/src/generated/quetzal-translations.ts
+  s_d32621b8a77938::t_66eed308d62125 1-4312
+packages/stack/src/components-page/account-settings/email-and-auth/passkey-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-112
+packages/stack/src/components-page/account-settings/teams/team-member-invitation-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-128
+packages/stack/src/components-page/stack-handler-client.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-313
+packages/stack/tsconfig.json
+  s_d32621b8a77938::t_66eed308d62125 1-23
+packages/stack/src/components-page/cli-auth-confirm.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-278
+packages/stack/src/components-page/account-settings/teams/team-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-28
+packages/stack/src/components-page/account-settings/editable-text.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-53
+packages/stack/src/components/passkey-button.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-43
+packages/stack/src/lib/stack-app/url-targets.ts
+  s_d32621b8a77938::t_66eed308d62125 1-395
+packages/stack/src/components-page/account-settings/email-and-auth/mfa-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-139
+packages/stack/src/global.d.ts
+  s_d32621b8a77938::t_66eed308d62125 1-5
+packages/stack/src/lib/stack-app/url-targets.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-253
+packages/stack/src/components-page/error-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-105
+packages/stack/src/lib/translations.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-23
+packages/stack/README.md
+  s_d32621b8a77938::t_66eed308d62125 1-10
+packages/stack/src/components-page/account-settings/email-and-auth/emails-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-201
+packages/stack/src/global.css
+  s_d32621b8a77938::t_66eed308d62125 1-13
+packages/stack/src/lib/stack-app/apps/implementations/admin-app-impl.ts
+  s_d32621b8a77938::t_66eed308d62125 1-1291
+packages/stack/src/lib/stack-app/contact-channels/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-80
+packages/stack/src/lib/stack-app/email/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-280
+packages/stack/src/lib/stack-app/apps/interfaces/admin-app.ts
+  s_d32621b8a77938::t_66eed308d62125 1-195
+packages/stack/tsdown.config.ts
+  s_d32621b8a77938::t_66eed308d62125 1-11
+packages/stack/src/components-page/password-reset.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-185
+packages/stack/src/lib/stack-app/apps/implementations/session-replay.test.ts
+  s_d32621b8a77938::t_66eed308d62125 1-33
+packages/stack/src/utils/constants.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-58
+packages/stack/src/lib/stack-app/notification-categories/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-12
+packages/stack/src/lib/stack-app/apps/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-40
+packages/stack/src/providers/theme-provider.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-121
+packages/stack/src/components/oauth-button-group.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-35
+packages/stack/src/utils/url.ts
+  s_d32621b8a77938::t_66eed308d62125 1-24
+packages/stack/src/components-page/account-settings/profile-page/profile-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-61
+packages/stack/src/lib/stack-app/data-vault/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-12
+packages/stack/src/components-page/account-settings/settings/sign-out-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-40
+packages/stack/src/dev-tool/dev-tool-styles.ts
+  s_d32621b8a77938::t_66eed308d62125 1-3603
+packages/stack/src/components-page/account-settings/email-and-auth/email-and-auth-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-24
+packages/stack/src/components-page/onboarding.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-176
+packages/stack/src/components-page/team-creation.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-78
+packages/stack/src/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-39
+packages/stack/src/components-page/stack-handler.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-48
+packages/stack/src/providers/translation-provider.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-25
+packages/stack/src/components/user-button.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-157
+packages/stack/src/lib/stack-app/apps/interfaces/server-app.ts
+  s_d32621b8a77938::t_66eed308d62125 1-129
+packages/stack/src/lib/stack-app/internal-api-keys/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-55
+packages/stack/src/lib/stack-app/apps/implementations/common.ts
+  s_d32621b8a77938::t_66eed308d62125 1-244
+packages/stack/src/components-page/account-settings/teams/team-profile-user-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-29
+packages/stack/src/components-page/oauth-callback.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-78
+packages/stack/src/components-page/account-settings/teams/team-display-name-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-31
+packages/stack/src/lib/stack-app/apps/interfaces/client-app.ts
+  s_d32621b8a77938::t_66eed308d62125 1-180
+packages/stack/src/lib/auth.ts
+  s_d32621b8a77938::t_66eed308d62125 1-175
+packages/stack/vitest.config.ts
+  s_d32621b8a77938::t_66eed308d62125 1-59
+packages/stack/src/lib/stack-app/permissions/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-75
+packages/stack/src/components-page/account-settings/payments/payments-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-73
+packages/stack/src/components/elements/sidebar-layout.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-136
+packages/stack/src/components-page/forgot-password.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-105
+packages/stack/src/components-page/account-settings/teams/team-member-list-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-59
+packages/stack/src/components/use-in-iframe.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-18
+packages/stack/src/lib/stack-app/api-keys/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-73
+packages/stack/src/components-page/auth-page.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-165
+packages/stack/src/components/message-cards/known-error-message-card.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-33
+packages/stack/src/components/message-cards/predefined-message-card.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-88
+packages/stack/src/components-page/team-invitation.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-150
+packages/stack/src/lib/stack-app/apps/implementations/session-replay.ts
+  s_d32621b8a77938::t_66eed308d62125 1-356
+packages/stack/src/components-page/account-settings/teams/leave-team-section.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-57
+packages/stack/src/components/team-switcher.tsx
+  s_d32621b8a77938::t_66eed308d62125 1-191
+packages/stack/src/lib/stack-app/email-templates/index.ts
+  s_d32621b8a77938::t_66eed308d62125 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "7669a7b490cff58664ee8f028059ca89813e03a5",
+  "prompts": {},
+  "sessions": {
+    "s_d32621b8a77938": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "708505ae-8f1c-403a-b7a1-32d84df2d97e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
