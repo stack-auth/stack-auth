@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY UNLESS YOU ALSO EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@hexclave/tanstack-start",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "repository": "https://github.com/hexclave/hexclave",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -14,6 +14,15 @@
       },
       "require": {
         "default": "./dist/index.js"
+      }
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": {
+        "default": "./dist/esm/config.js"
+      },
+      "require": {
+        "default": "./dist/config.js"
       }
     },
     "./tanstack-start-server-context": {

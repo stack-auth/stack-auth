@@ -278,7 +278,10 @@ export function registerConfigCommand(program: Command) {
       const config = parseConfigOverride(configModule.config);
       if (config == null) {
         const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
-        throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { StackConfig } from "${examplePkg}"; export const config: StackConfig = { ... };`);
+        // The lightweight `/config` entrypoint only exists on Hexclave-branded packages;
+        // legacy `@stackframe/*` releases predate it, so import from their root.
+        const exampleImport = examplePkg.startsWith("@hexclave/") ? `${examplePkg}/config` : examplePkg;
+        throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { HexclaveConfig } from "${exampleImport}"; export const config: HexclaveConfig = { ... };`);
       }
 
       const source = buildConfigPushSource(opts.configFile, {

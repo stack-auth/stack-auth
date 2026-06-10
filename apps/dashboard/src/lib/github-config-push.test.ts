@@ -50,7 +50,7 @@ export const config: HexclaveConfig = {
 `;
     const result = buildUpdatedConfigFileContent(current, { "teams.allowClientTeamCreation": true });
     expect(result).toMatchInlineSnapshot(`
-      "import type { HexclaveConfig } from "@hexclave/next";
+      "import type { HexclaveConfig } from "@hexclave/next/config";
 
       export const config: HexclaveConfig = {
         "teams": {
@@ -68,7 +68,7 @@ export const config: HexclaveConfig = {};
 `;
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
-      "import type { HexclaveConfig } from "@hexclave/react";
+      "import type { HexclaveConfig } from "@hexclave/react/config";
 
       export const config: HexclaveConfig = {
         "auth": {
@@ -104,7 +104,7 @@ export const config: StackConfig = {};
     const current = `export const config = {};\n`;
     const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
-      "import type { HexclaveConfig } from "@hexclave/js";
+      "import type { HexclaveConfig } from "@hexclave/js/config";
 
       export const config: HexclaveConfig = {
         "auth": {
@@ -124,7 +124,7 @@ export const config: HexclaveConfig = {};
       "payments.items.todos.customerType": "user",
     });
     expect(result).toMatchInlineSnapshot(`
-      "import type { HexclaveConfig } from "@hexclave/js";
+      "import type { HexclaveConfig } from "@hexclave/js/config";
 
       export const config: HexclaveConfig = {
         "payments": {
@@ -150,7 +150,7 @@ export const config: HexclaveConfig = {
       "payments.items.todos.displayName": "New",
     });
     expect(result).toMatchInlineSnapshot(`
-      "import type { HexclaveConfig } from "@hexclave/js";
+      "import type { HexclaveConfig } from "@hexclave/js/config";
 
       export const config: HexclaveConfig = {
         "payments": {
@@ -226,7 +226,7 @@ export const config: HexclaveConfig = { teams: { allowClientTeamCreation: false 
         {
           "body": {
             "branch": "main",
-            "content": "import type { HexclaveConfig } from "@hexclave/js";
+            "content": "import type { HexclaveConfig } from "@hexclave/js/config";
 
       export const config: HexclaveConfig = {
         "teams": {
@@ -266,7 +266,7 @@ export const config: HexclaveConfig = { teams: { allowClientTeamCreation: false 
         {
           "body": {
             "branch": "main",
-            "content": "import type { HexclaveConfig } from "@hexclave/js";
+            "content": "import type { HexclaveConfig } from "@hexclave/js/config";
 
       export const config: HexclaveConfig = {
         "auth": {
@@ -288,7 +288,7 @@ export const config: HexclaveConfig = { teams: { allowClientTeamCreation: false 
   });
 
   it("skips the commit when the new rendered file is identical to the old one", async () => {
-    const same = `import type { HexclaveConfig } from "@hexclave/js";
+    const same = `import type { HexclaveConfig } from "@hexclave/js/config";
 
 export const config: HexclaveConfig = {
   "teams": {

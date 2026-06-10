@@ -3,6 +3,7 @@ import "server-only";
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { Config, isValidConfig } from "@hexclave/shared/dist/config/format";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
@@ -62,7 +63,18 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
     };
   }
 
-  const configModule = await jiti.import<unknown>(configFilePath);
+  let configModule: unknown;
+  try {
+    configModule = await jiti.import<unknown>(configFilePath);
+  } catch (error) {
+    // Capture the raw jiti/framework error for diagnostics, but don't attach it as `cause` on the thrown error:
+    // the dashboard's error formatter (errorToNiceString -> nicify) renders `Error.cause` recursively, which would
+    // leak the underlying framework stack/internals back into the user-facing message we're deliberately replacing.
+    captureError("remote-development-environment/readConfigFile", error);
+    throw new Error(
+      `Failed to load config file ${configFilePath}. If your config imports a value (e.g. defineHexclaveConfig) from a framework package such as "@hexclave/next", import it from that package's lightweight "/config" entrypoint instead, which doesn't load the framework runtime:\n\n  import { defineHexclaveConfig } from "@hexclave/next/config";\n`,
+    );
+  }
   if (!isConfigModule(configModule)) {
     throw new Error(`Invalid config in ${configFilePath}. The file must export a plain \`config\` object or "show-onboarding".`);
   }

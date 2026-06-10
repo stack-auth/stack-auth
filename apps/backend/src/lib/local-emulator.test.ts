@@ -96,7 +96,7 @@ describe("local emulator config", () => {
     await writeConfigToFile(absoluteFilePath, { auth: { allowLocalhost: true } });
 
     await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
-      `import type { HexclaveConfig } from "@hexclave/js";\n\nexport const config: HexclaveConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
+      `import type { HexclaveConfig } from "@hexclave/js/config";\n\nexport const config: HexclaveConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
     );
   });
 
