@@ -240,7 +240,7 @@ export function ActiveSessionsPage(props?: {
                   </TableRow>
                 ) : (
                   sessions.map((session) => (
-                    <TableRow key={session.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-900/30 transition-colors duration-150">
+                    <TableRow key={session.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-800/25 transition-colors duration-150">
                       <TableCell className="py-4 px-4">
                         <div className="flex items-center gap-3">
                           <div className={getIconContainerClassName(design)}>
@@ -291,7 +291,7 @@ export function ActiveSessionsPage(props?: {
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
                             >
                               <DotsThree className="h-5 w-5 weight-bold" />
                             </Button>

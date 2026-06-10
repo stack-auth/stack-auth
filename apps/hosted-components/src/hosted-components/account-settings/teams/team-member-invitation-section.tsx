@@ -65,7 +65,7 @@ function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
               </TableRow>
             ) : (
               invitationsToShow.map((invitation) => (
-                <TableRow key={invitation.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-900/30 transition-colors duration-150">
+                <TableRow key={invitation.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-800/25 transition-colors duration-150">
                   <TableCell className="py-3 px-4 text-sm font-medium text-foreground/90">
                     {invitation.recipientEmail}
                   </TableCell>
@@ -78,7 +78,7 @@ function MemberInvitationsSectionInvitationsList(props: { team: Team }) {
                         onClick={async () => { await invitation.revoke(); }}
                         size="icon"
                         variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors"
+                        className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-red-950/25 rounded-lg transition-colors"
                       >
                         <Trash className="w-4 h-4" />
                       </Button>

@@ -529,7 +529,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                   const createdAtTime = new Date(invoice.createdAt).getTime();
                   const invoiceKey = Number.isNaN(createdAtTime) ? `invoice-${index}` : `invoice-${createdAtTime}-${index}`;
                   return (
-                    <TableRow key={invoiceKey} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-900/30 transition-colors duration-150">
+                    <TableRow key={invoiceKey} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-800/25 transition-colors duration-150">
                       <TableCell className="py-3.5 px-4 text-sm font-semibold text-foreground/90">
                         {formatInvoiceDate(invoice.createdAt)}
                       </TableCell>

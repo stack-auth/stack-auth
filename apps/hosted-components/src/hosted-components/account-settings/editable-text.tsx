@@ -65,7 +65,7 @@ export function EditableText(props: { value: string, onSave?: (value: string) =>
             disabled={saving}
             size='icon'
             variant='ghost'
-            className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900 h-8 w-8 p-0 transition-colors duration-150"
+            className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800/60 h-8 w-8 p-0 transition-colors duration-150"
           >
             <PencilSimple className="w-4 h-4" />
           </Button>

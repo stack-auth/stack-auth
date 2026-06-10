@@ -55,7 +55,7 @@ function MemberListSectionInner(props: { team: Team }) {
               users.map(({ id, teamProfile }) => {
                 const initials = teamProfile.displayName?.slice(0, 2).toUpperCase() || '';
                 return (
-                  <TableRow key={id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-900/30 transition-colors duration-150">
+                  <TableRow key={id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0 hover:bg-zinc-50/30 dark:hover:bg-zinc-800/25 transition-colors duration-150">
                     <TableCell className="py-3 px-4">
                       <Avatar className="h-9 w-9 border border-black/[0.08] dark:border-white/[0.08]">
                         <AvatarImage src={teamProfile.profileImageUrl || undefined} />

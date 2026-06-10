@@ -85,7 +85,7 @@ export function getPrimaryButtonClassName(_design: Design, className?: string) {
 
 export function getOutlineButtonClassName(_design: Design, className?: string) {
   return cn(
-    "rounded-lg border-black/[0.08] bg-transparent shadow-none transition-colors hover:bg-zinc-100/70 hover:transition-none dark:border-white/[0.10] dark:hover:bg-zinc-900/60",
+    "rounded-lg border-black/[0.08] bg-transparent shadow-none transition-colors hover:bg-zinc-100/70 hover:transition-none dark:border-white/[0.10] dark:hover:bg-zinc-800/60",
     className,
   );
 }

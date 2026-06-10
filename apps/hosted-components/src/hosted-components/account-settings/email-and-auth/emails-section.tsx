@@ -183,7 +183,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                       </Badge>
                     )}
                     {cc.usedForAuth && (
-                      <Badge className="bg-zinc-50 text-zinc-700 dark:bg-zinc-950/40 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-900/30 text-[9px] px-1.5 py-0 font-semibold rounded-md">
+                      <Badge className="bg-zinc-50 text-zinc-700 dark:bg-zinc-900/55 dark:text-zinc-300 border border-zinc-200 dark:border-white/[0.08] text-[9px] px-1.5 py-0 font-semibold rounded-md">
                         Used for sign-in
                       </Badge>
                     )}
@@ -195,7 +195,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                    className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
                   >
                     <DotsThree className="h-5 w-5 weight-bold" />
                   </Button>
@@ -204,7 +204,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                   {!cc.isVerified && (
                     <DropdownMenuItem
                       onClick={() => runAsynchronouslyWithAlert(async () => { await cc.sendVerificationEmail(); })}
-                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
+                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-800/60"
                     >
                       Verify Email
                     </DropdownMenuItem>
@@ -212,7 +212,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                   {!cc.isPrimary && cc.isVerified && (
                     <DropdownMenuItem
                       onClick={() => runAsynchronouslyWithAlert(async () => { await cc.update({ isPrimary: true }); })}
-                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
+                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-800/60"
                     >
                       Set as Primary
                     </DropdownMenuItem>
@@ -238,7 +238,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                           throw e;
                         }
                       })}
-                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
+                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-800/60"
                     >
                       Enable Sign-in
                     </DropdownMenuItem>
@@ -246,7 +246,7 @@ function EmailsSectionInner({ user }: { user: any }) {
                   {cc.usedForAuth && !isLastEmailUsedForAuth && (
                     <DropdownMenuItem
                       onClick={() => runAsynchronouslyWithAlert(async () => { await cc.update({ usedForAuth: false }); })}
-                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-900"
+                      className="cursor-pointer rounded-lg text-foreground focus:bg-zinc-50 dark:focus:bg-zinc-800/60"
                     >
                       Disable Sign-in
                     </DropdownMenuItem>
