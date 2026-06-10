@@ -6,7 +6,6 @@ export function SignIn(props: {
   extraInfo?: React.ReactNode,
   firstTab?: 'magic-link' | 'password',
   mockProject?: {
-    displayName?: string,
     config: {
       signUpEnabled: boolean,
       credentialEnabled: boolean,
