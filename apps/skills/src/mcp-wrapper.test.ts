@@ -173,4 +173,30 @@ describe("skill-site MCP wrapper", () => {
       restoreEnvVariable("HEXCLAVE_MCP_BASE_URL", previousHexclaveMcpBaseUrl);
     }
   });
+
+  it("returns 404 for HEAD requests to unknown tool routes", async () => {
+    const previousFetch = globalThis.fetch;
+    const previousHexclaveMcpBaseUrl = process.env.HEXCLAVE_MCP_BASE_URL;
+    process.env.HEXCLAVE_MCP_BASE_URL = "https://mcp.hexclave.com/mcp";
+
+    const fetchMock = vi.fn(async () => {
+      return new Response(`data: ${JSON.stringify({
+        result: {
+          tools: [askTool],
+        },
+        jsonrpc: "2.0",
+        id: 1,
+      })}`);
+    });
+
+    globalThis.fetch = fetchMock;
+
+    try {
+      const response = await handleMcpToolRoute(new Request("https://skill.hexclave.com/nonexistent", { method: "HEAD" }));
+      expect(response.status).toBe(404);
+    } finally {
+      globalThis.fetch = previousFetch;
+      restoreEnvVariable("HEXCLAVE_MCP_BASE_URL", previousHexclaveMcpBaseUrl);
+    }
+  });
 });

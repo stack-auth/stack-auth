@@ -1,4 +1,4 @@
-import { handleMcpToolHead, handleMcpToolOptions, handleMcpToolRoute } from "@/mcp-wrapper";
+import { handleMcpToolOptions, handleMcpToolRoute } from "@/mcp-wrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -6,8 +6,8 @@ export async function GET(req: Request) {
   return await handleMcpToolRoute(req);
 }
 
-export function HEAD() {
-  return handleMcpToolHead();
+export async function HEAD(req: Request) {
+  return await handleMcpToolRoute(req);
 }
 
 export function OPTIONS() {

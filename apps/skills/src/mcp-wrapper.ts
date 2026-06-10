@@ -86,7 +86,7 @@ function getConfiguredMcpEndpointUrl(): URL | null {
 }
 
 function isLocalHostname(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname.endsWith(".localhost");
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1" || hostname.endsWith(".localhost");
 }
 
 function getSiblingMcpUrl(req: Request): URL {
@@ -455,6 +455,4 @@ export function handleMcpToolOptions(): Response {
   });
 }
 
-export function handleMcpToolHead(): Response {
-  return textResponse("");
-}
+
