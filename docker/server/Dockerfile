@@ -26,7 +26,7 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # https://turbo.build/repo/docs/guides/tools/docker
-RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/dashboard --docker
+RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/dashboard --scope=@hexclave/template --docker
 
 
 
