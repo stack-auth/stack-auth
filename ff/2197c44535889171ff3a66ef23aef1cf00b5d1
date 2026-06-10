@@ -1,0 +1,23 @@
+docker/local-emulator/Dockerfile
+  s_d9cc2125887646::t_f76eac78a92203 33
+docker/server/Dockerfile
+  s_d9cc2125887646::t_87627031ae6af4 29
+docker/backend/Dockerfile
+  s_d9cc2125887646::t_f76eac78a92203 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "ff2197c44535889171ff3a66ef23aef1cf00b5d1",
+  "prompts": {},
+  "sessions": {
+    "s_d9cc2125887646": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19f5318b-b31d-486f-9430-cd090f8ee874",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
