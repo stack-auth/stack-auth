@@ -3,6 +3,7 @@ import { HexclaveHandler } from '@hexclave/react';
 import { HostedAccountSettings } from '../../hosted-components/account-settings/index';
 import {
   HostedEmailVerification,
+  HostedError,
   HostedForgotPassword,
   HostedMfa,
   HostedPasswordReset,
@@ -44,6 +45,10 @@ function HandlerPage() {
 
   if (hostedHandlerPath === 'mfa') {
     return <HostedMfa fullPage />;
+  }
+
+  if (hostedHandlerPath === 'error') {
+    return <HostedError fullPage />;
   }
 
   return <HexclaveHandler fullPage />;
