@@ -46,7 +46,7 @@ import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
-import { envVars } from "../../../env";
+import { envVars } from "../../../../generated/env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
@@ -1547,10 +1547,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
 
-    // Pre-fetch the current user for the new session so the cache is already
-    // populated when useUser() re-renders, avoiding a stale-cache render cycle.
-    const newSession = this._getSessionFromTokenStore(tokenStore);
-    this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
+    // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
+    // access token for the same access-only session), push the new token into it in place; constructing a new
+    // session here would cold-invalidate every session-scoped cache and suspend the UI on each refresh.
+    const session = this._getSessionFromTokenStore(tokenStore);
+    session.updateAccessToken(tokens);
+
+    // Pre-fetch the current user so the cache is warm when useUser() re-renders (write-only, so it never suspends).
+    runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
   }
 
   protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {
@@ -2669,16 +2673,16 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
-    const visibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
+    const visibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_SITE_KEY;
     if (!visibleSiteKey) {
       if (!this._botChallengeSiteKeysWarned) {
         this._botChallengeSiteKeysWarned = true;
-        console.warn("[stack-auth] NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
+        console.warn("[stack-auth] HEXCLAVE_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
       }
       return null;
     }
 
-    const invisibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
+    const invisibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
 
     return { visibleSiteKey, invisibleSiteKey };
   }
