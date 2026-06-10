@@ -3,7 +3,7 @@ import { Button, Badge, Skeleton, Table, TableBody, TableCell, TableHead, TableH
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { DotsThree, Monitor, DeviceMobile, Warning } from "@phosphor-icons/react";
+import { DotsThree, Monitor, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@hexclave/react";
 import { ActiveSession } from "../supporting/types";
@@ -244,11 +244,7 @@ export function ActiveSessionsPage(props?: {
                       <TableCell className="py-4 px-4">
                         <div className="flex items-center gap-3">
                           <div className={getIconContainerClassName(design)}>
-                            {session.id.includes("mobile") ? (
-                              <DeviceMobile className="h-5 w-5" />
-                            ) : (
-                              <Monitor className="h-5 w-5" />
-                            )}
+                            <Monitor className="h-5 w-5" />
                           </div>
                           <div className="flex flex-col">
                             <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">

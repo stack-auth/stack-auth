@@ -10,7 +10,7 @@ import { cn } from "./utils";
 const CopyButton = forwardRefIfNeeded<
   HTMLButtonElement,
   ButtonProps & { content: string }
->((props, ref) => {
+>(({ content, ...props }, ref) => {
   const [copied, setCopied] = useState(false);
   const resetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -30,7 +30,7 @@ const CopyButton = forwardRefIfNeeded<
       ref={ref}
       onClick={async (...args) => {
         await props.onClick?.(...args);
-        await navigator.clipboard.writeText(props.content);
+        await navigator.clipboard.writeText(content);
         setCopied(true);
         if (resetTimeout.current) {
           clearTimeout(resetTimeout.current);
