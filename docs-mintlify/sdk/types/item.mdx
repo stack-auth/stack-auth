@@ -156,7 +156,7 @@ Server items can be retrieved through:
 
       <AsideSection title="Examples">
         ```typescript
-        const user = await stackServerApp.getUser({ userId: "user_123" });
+        const user = await hexclaveServerApp.getUser({ userId: "user_123" });
         const credits = await user.getItem("credits");
 
         await credits.increaseQuantity(100);
@@ -192,7 +192,7 @@ Server items can be retrieved through:
 
       <AsideSection title="Examples">
         ```typescript
-        const user = await stackServerApp.getUser({ userId: "user_123" });
+        const user = await hexclaveServerApp.getUser({ userId: "user_123" });
         const credits = await user.getItem("credits");
 
         await credits.decreaseQuantity(50);
@@ -230,7 +230,7 @@ Server items can be retrieved through:
 
       <AsideSection title="Examples">
         ```typescript
-        const user = await stackServerApp.getUser({ userId: "user_123" });
+        const user = await hexclaveServerApp.getUser({ userId: "user_123" });
         const credits = await user.getItem("credits");
 
         const success = await credits.tryDecreaseQuantity(50);

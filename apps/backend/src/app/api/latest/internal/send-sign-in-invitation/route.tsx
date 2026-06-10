@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth, body }) {
     if (!validateRedirectUrl(body.callback_url, auth.tenancy)) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(body.callback_url);
     }
 
     await sendEmailFromDefaultTemplate({

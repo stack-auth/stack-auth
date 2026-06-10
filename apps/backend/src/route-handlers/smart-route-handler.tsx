@@ -88,8 +88,8 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           headers: Object.fromEntries(req.headers),
         });
 
-        // During development, don't trash the console with logs from E2E tests
-        const disableExtendedLogging = getNodeEnvironment().includes('dev') && !!req.headers.get("x-stack-development-disable-extended-logging");
+        // During development, don't trash the console with logs
+        const disableExtendedLogging = getNodeEnvironment().includes('dev');
 
         let hasRequestFinished = false;
         try {
@@ -128,7 +128,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             }
           });
 
-          if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
+          if (!disableExtendedLogging) console.log(`[API REQ] [${requestId} @ ${req.headers.get("x-stack-project-id") ?? "<none>"}] ${req.method} ${censoredUrl}`);
           const timeStart = performance.now();
           const res = await handler(req, options, requestId);
           const time = (performance.now() - timeStart);

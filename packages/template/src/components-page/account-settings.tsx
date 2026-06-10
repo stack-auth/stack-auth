@@ -77,8 +77,8 @@ export function AccountSettings(props: {
 }) {
   const { t } = useTranslation();
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
-  const stackApp = useStackApp();
-  const projectFromHook = stackApp.useProject();
+  const hexclaveApp = useStackApp();
+  const projectFromHook = hexclaveApp.useProject();
 
   // Use mock data if provided, otherwise use real data
   const user = props.mockUser ? {

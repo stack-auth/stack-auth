@@ -104,11 +104,11 @@ function UserPaymentsLoading() {
 }
 
 function UserPaymentsContent({ user }: { user: ServerUser }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
 
-  const { transactions: userTransactions } = stackAdminApp.useTransactions({
+  const { transactions: userTransactions } = hexclaveAdminApp.useTransactions({
     limit: TRANSACTIONS_PAGE_SIZE,
     customerType: "user",
     customerId: user.id,
@@ -503,8 +503,8 @@ function ItemsCard({ userId, itemIds }: { userId: string, itemIds: string[] }) {
 }
 
 function ItemBalanceRow({ userId, itemId }: { userId: string, itemId: string }) {
-  const stackAdminApp = useAdminApp();
-  const item = stackAdminApp.useItem({ userId, itemId });
+  const hexclaveAdminApp = useAdminApp();
+  const item = hexclaveAdminApp.useItem({ userId, itemId });
   const isNegative = item.quantity < 0;
 
   return (

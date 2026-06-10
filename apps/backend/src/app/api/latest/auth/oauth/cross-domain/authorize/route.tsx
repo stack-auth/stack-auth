@@ -35,14 +35,14 @@ export async function createCrossDomainAuthorizeRedirect(options: {
     !validateRedirectUrl(body.redirect_uri, tenancy) &&
     !isAcceptedNativeAppUrl(body.redirect_uri)
   ) {
-    throw new KnownErrors.RedirectUrlNotWhitelisted();
+    throw new KnownErrors.RedirectUrlNotWhitelisted(body.redirect_uri);
   }
   if (
     body.after_callback_redirect_url &&
     !validateRedirectUrl(body.after_callback_redirect_url, tenancy) &&
     !isAcceptedNativeAppUrl(body.after_callback_redirect_url)
   ) {
-    throw new KnownErrors.RedirectUrlNotWhitelisted();
+    throw new KnownErrors.RedirectUrlNotWhitelisted(body.after_callback_redirect_url);
   }
   const oauthRequest = new OAuthRequest({
     headers: {},

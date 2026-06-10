@@ -522,7 +522,7 @@ const ComposerStaticInput: FC<{ placeholder?: string, autoFocus?: boolean }> = (
 const Composer: FC<{ placeholder?: ComposerPlaceholder, autoFocus?: boolean }> = ({ placeholder, autoFocus = true }) => {
   const attachmentsEnabled = useComposerAttachmentsEnabled();
   return (
-    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-background/95 dark:bg-background/80 shadow-sm ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
+    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-black/[0.08] dark:border-foreground/[0.08] bg-white/95 dark:bg-background/80 shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       {attachmentsEnabled && <ComposerAttachmentsRow />}
       {typeof placeholder === "object" ? (
         <ComposerAnimatedInput

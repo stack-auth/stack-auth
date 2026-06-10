@@ -183,7 +183,7 @@ export function DesignCategoryTabs({
       className={cn(
         "flex w-full min-w-0 items-center gap-2",
         glassmorphic
-          ? "rounded-xl bg-black/[0.08] dark:bg-white/[0.04] p-1 backdrop-blur-sm"
+          ? "rounded-xl bg-zinc-100/90 p-1 ring-1 ring-black/[0.06] backdrop-blur-sm dark:bg-white/[0.04] dark:ring-white/[0.06]"
           : "border-b border-gray-300 dark:border-gray-800",
         className
       )}
@@ -197,7 +197,7 @@ export function DesignCategoryTabs({
       >
         {glassmorphic && sliderMetrics != null && (
           <div
-            className="pointer-events-none absolute inset-y-0 left-0 z-0 rounded-lg bg-background shadow-sm ring-1 ring-black/[0.12] motion-reduce:transition-none dark:ring-white/[0.06]"
+            className="pointer-events-none absolute inset-y-0 left-0 z-0 rounded-lg bg-white shadow-sm ring-1 ring-black/[0.12] motion-reduce:transition-none dark:bg-background dark:ring-white/[0.06]"
             style={{
               transition: prefersReducedMotion ? undefined : sliderTransition,
               transform: `translateX(${sliderMetrics.left}px)`,
@@ -241,8 +241,14 @@ export function DesignCategoryTabs({
                 sizeClass.button,
                 glassmorphic ? "rounded-lg" : "",
                 isActive
+                  // The active background lives on the animated slider div above (HEAD's
+                  // redesign); dev's per-button active bg is intentionally dropped to avoid
+                  // double backgrounds, while its inactive glassmorphic hover is kept.
                   ? gradientClass.activeText
-                  : "text-gray-700 dark:text-gray-400"
+                  : cn(
+                    "text-gray-700 dark:text-gray-400",
+                    glassmorphic && "rounded-lg hover:bg-white/50 dark:hover:bg-white/[0.06]",
+                  )
               )}
             >
               {loadingCategoryId === category.id && (

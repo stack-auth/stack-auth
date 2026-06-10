@@ -19,12 +19,12 @@ There are two categories of email:
 
 ## Sending emails
 
-Emails are sent from your server using `stackServerApp.sendEmail()`. You must provide the content (HTML, a template, or a draft) and the recipients.
+Emails are sent from your server using `hexclaveServerApp.sendEmail()`. You must provide the content (HTML, a template, or a draft) and the recipients.
 
 ### Send to specific users
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id-1', 'user-id-2'],
   subject: 'Welcome to our platform!',
   html: '<h1>Welcome!</h1><p>Thanks for joining us.</p>',
@@ -34,7 +34,7 @@ await stackServerApp.sendEmail({
 ### Send to all users
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   allUsers: true,
   templateId: 'your-template-id',
   subject: 'We just shipped a big update',
@@ -49,7 +49,7 @@ await stackServerApp.sendEmail({
 If you've composed an email in the dashboard's draft editor, you can trigger it programmatically:
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id'],
   draftId: 'your-draft-id',
 });
@@ -58,7 +58,7 @@ await stackServerApp.sendEmail({
 ### Full options
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   // Recipients  - exactly one of these is required:
   userIds: ['user-id-1'],     // specific users
   // allUsers: true,           // or all users in your project
@@ -102,7 +102,7 @@ type SendEmailOptions = {
 `sendEmail` returns a result object. Handle failures explicitly:
 
 ```typescript
-const result = await stackServerApp.sendEmail({
+const result = await hexclaveServerApp.sendEmail({
   userIds: ['user-id'],
   html: '<p>Hello!</p>',
   subject: 'Test Email',
@@ -128,7 +128,7 @@ if (result.status === 'error') {
 Pass a `scheduledAt` date to delay delivery. The email enters the pipeline immediately but won't be sent until the scheduled time.
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id'],
   html: '<p>Happy New Year!</p>',
   subject: 'Happy New Year!',
@@ -250,7 +250,7 @@ Emails are categorized as either **Transactional** or **Marketing**. Users can o
 When sending, specify the category:
 
 ```typescript
-await stackServerApp.sendEmail({
+await hexclaveServerApp.sendEmail({
   userIds: ['user-id'],
   html: '<p>Check out our new feature!</p>',
   subject: 'Product Updates',
@@ -266,10 +266,10 @@ Emails integrate with Hexclave UI components automatically (for example verifica
 For custom flows, trigger `sendEmail` from your server code:
 
 ```typescript
-import { stackServerApp } from '@hexclave/next';
+import { hexclaveServerApp } from '@hexclave/next';
 
 export async function inviteUser(userId: string) {
-  const result = await stackServerApp.sendEmail({
+  const result = await hexclaveServerApp.sendEmail({
     userIds: [userId],
     templateId: 'invitation-template',
     subject: "You're invited!",
@@ -326,7 +326,7 @@ Hexclave tracks delivery metrics across multiple time windows (hour, day, week, 
 Access these programmatically:
 
 ```typescript
-const info = await stackServerApp.getEmailDeliveryStats();
+const info = await hexclaveServerApp.getEmailDeliveryStats();
 // info.stats.day.sent, info.stats.day.bounced, etc.
 // info.capacity.rate_per_second, info.capacity.is_boost_active, etc.
 ```
@@ -334,7 +334,7 @@ const info = await stackServerApp.getEmailDeliveryStats();
 Delivery capacity is managed automatically based on your sending reputation. If you need to temporarily increase throughput, you can activate a capacity boost:
 
 ```typescript
-await stackServerApp.activateEmailCapacityBoost();
+await hexclaveServerApp.activateEmailCapacityBoost();
 ```
 
 ## Drafts

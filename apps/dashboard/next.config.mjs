@@ -48,6 +48,7 @@ const nextConfig = {
   // optionally set output to "standalone" for Docker builds
   // https://nextjs.org/docs/pages/api-reference/next-config-js/output
   output: process.env.NEXT_CONFIG_OUTPUT,
+  distDir: process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR,
 
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
 
@@ -61,6 +62,10 @@ const nextConfig = {
   },
 
   images: {
+    // Disable image optimization in standalone/RDE builds to avoid shipping
+    // the sharp native binary (~17 MB). The RDE runs locally so optimized
+    // images are not needed.
+    ...(process.env.NEXT_CONFIG_OUTPUT === "standalone" ? { unoptimized: true } : {}),
     remotePatterns: [
       {
         protocol: 'https',

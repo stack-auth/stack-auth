@@ -13,12 +13,12 @@ import { parseElementsChain, type ElementsChainSegment } from "@hexclave/shared/
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
-import type { StackClientApp } from "../lib/stack-app";
-import { envVars } from "../lib/env";
-import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
-import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
-import { getPagePrompt } from "../lib/stack-app/url-targets";
+import type { StackClientApp } from "../lib/hexclave-app";
+import { envVars } from "../generated/env";
+import { getBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
+import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/hexclave-app/common";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
+import { getPagePrompt } from "../lib/hexclave-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
 import type { TriggerCorner, TriggerPlacement } from "./dev-tool-trigger-position";
 import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPosition } from "./dev-tool-trigger-position";
@@ -218,12 +218,12 @@ function nextId() {
 }
 
 function resolveApiBaseUrl(app: StackClientApp<true>): string {
-  const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+  const opts = app[hexclaveAppInternalsSymbol].getConstructorOptions();
   return getBaseUrl(opts.baseUrl);
 }
 
 function shouldShowDashboardTab(app: StackClientApp<true>): boolean {
-  return envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
+  return envVars.HEXCLAVE_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
 }
 
 function getTabsForApp(app: StackClientApp<true>): { id: TabId; label: string; icon: string }[] {
@@ -679,7 +679,7 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
 // ---------------------------------------------------------------------------
 
 function hasPersistentTokenStoreForDevTool(app: StackClientApp<boolean>): boolean {
-  return app[stackAppInternalsSymbol].getConstructorOptions().tokenStore !== null;
+  return app[hexclaveAppInternalsSymbol].getConstructorOptions().tokenStore !== null;
 }
 
 function createOverviewTab(app: StackClientApp<true>): TabResult {
@@ -1160,7 +1160,7 @@ function createConsoleTab(logStore: LogStore): TabResult {
   exportBtn.addEventListener('click', () => {
     const blob = new Blob([formatLogsForExport()], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const link = h('a', { href: url, download: `stack-auth-dev-tool-logs-${new Date().toISOString()}.txt` });
+    const link = h('a', { href: url, download: `hexclave-dev-tool-logs-${new Date().toISOString()}.txt` });
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1224,7 +1224,7 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   ];
 
   function getHeaders(): Record<string, string> {
-    const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+    const opts = app[hexclaveAppInternalsSymbol].getConstructorOptions();
     // Hexclave rebrand: emit x-hexclave-* request headers (backend dual-accepts).
     const headers: Record<string, string> = {
       'X-Hexclave-Access-Type': 'client',
@@ -3045,7 +3045,7 @@ function createClickmapsTab(app: StackClientApp<true>, onClose: () => void): Tab
       if (filters.device !== 'all') {
         body.device = filters.device;
       }
-      const response = await app[stackAppInternalsSymbol].sendRequest("/analytics/clickmap", {
+      const response = await app[hexclaveAppInternalsSymbol].sendRequest("/analytics/clickmap", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -3354,7 +3354,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-pg-layout' });
   const apiBaseUrl = resolveApiBaseUrl(app);
   const urls = app.urls;
-  const urlOptions: HandlerUrlOptions = app[stackAppInternalsSymbol].getConstructorOptions().urls ?? {};
+  const urlOptions: HandlerUrlOptions = app[hexclaveAppInternalsSymbol].getConstructorOptions().urls ?? {};
 
   const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
     { key: 'signIn' as any, label: 'Sign-in' },
@@ -3499,7 +3499,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     }
     header.appendChild(headerTop);
 
-    const redirectMethod = `stackApp.redirectTo${(page.key as string).charAt(0).toUpperCase()}${(page.key as string).slice(1)}()`;
+    const redirectMethod = `hexclaveApp.redirectTo${(page.key as string).charAt(0).toUpperCase()}${(page.key as string).slice(1)}()`;
     const codeRow = h('div', { className: 'sdt-pg-code-inline' });
     codeRow.appendChild(h('code', { className: 'sdt-pg-code' }, redirectMethod));
     const openBtn = h('button', { className: 'sdt-pg-copy-btn sdt-pg-open-btn' });
@@ -3786,7 +3786,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   root.id = ROOT_ID;
   body.appendChild(root);
 
-  const wrapper = h('div', { className: 'stack-devtool' });
+  const wrapper = h('div', { className: 'hexclave-devtool' });
   root.appendChild(wrapper);
 
   const style = document.createElement('style');
@@ -3889,7 +3889,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   window.addEventListener(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT, openClickmap);
 
-  const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
+  const removeRequestListener = app[hexclaveAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
     const timestamp = Date.now();
     logStore.addApiLog({
       id: nextId(),

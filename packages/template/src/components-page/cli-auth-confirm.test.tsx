@@ -4,9 +4,9 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
-import { StackContext } from "../providers/stack-context";
+import type { StackClientApp } from "../lib/hexclave-app/apps/interfaces/client-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
+import { HexclaveContext } from "../providers/hexclave-context";
 import { useCliAuthConfirmation } from "./cli-auth-confirm";
 
 const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
@@ -29,7 +29,7 @@ function createAppTestDouble(options: {
     useUser: () => options.user,
     redirectToSignIn: options.redirectToSignIn ?? vi.fn(async () => {}),
     redirectToSignUp: options.redirectToSignUp ?? vi.fn(async () => {}),
-    [stackAppInternalsSymbol]: {
+    [hexclaveAppInternalsSymbol]: {
       sendRequest: options.sendRequest,
       signInWithTokens: options.signInWithTokens ?? vi.fn(async () => {}),
     },
@@ -61,9 +61,9 @@ async function renderWithApp(app: StackClientApp<true>) {
   root = createRoot(container);
   await act(async () => {
     root?.render(
-      <StackContext.Provider value={{ app }}>
+      <HexclaveContext.Provider value={{ app }}>
         <HookProbe />
-      </StackContext.Provider>
+      </HexclaveContext.Provider>
     );
   });
 }

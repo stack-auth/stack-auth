@@ -179,14 +179,14 @@ const groupedEmailGridColumns: DataGridColumnDef<GroupedEmailRow>[] = [
 ];
 
 export function GroupedEmailTable() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch drafts and templates for display names
-  const drafts = stackAdminApp.useEmailDrafts();
-  const templates = stackAdminApp.useEmailTemplates();
+  const drafts = hexclaveAdminApp.useEmailDrafts();
+  const templates = hexclaveAdminApp.useEmailTemplates();
 
   // Create maps for quick lookup
   const draftsMap = useMemo(() => {
@@ -215,7 +215,7 @@ export function GroupedEmailTable() {
     runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
-        const result = await stackAdminApp.listOutboxEmails();
+        const result = await hexclaveAdminApp.listOutboxEmails();
         if (cancelled) return;
         setEmails(result.items);
       } finally {
@@ -225,7 +225,7 @@ export function GroupedEmailTable() {
     return () => {
       cancelled = true;
     };
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   // Group emails by template/draft
   const groupedRows = useMemo(

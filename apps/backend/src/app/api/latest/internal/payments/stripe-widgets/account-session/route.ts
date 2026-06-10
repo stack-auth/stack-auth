@@ -1,5 +1,5 @@
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
-import { getStackStripe } from "@/lib/stripe";
+import { getHexclaveStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -34,7 +34,7 @@ export const POST = createSmartRouteHandler({
       };
     }
 
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
 
     const project = await globalPrismaClient.project.findUnique({
       where: { id: auth.project.id },

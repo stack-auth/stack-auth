@@ -4,7 +4,7 @@ import { DesignAnalyticsCard, useInfiniteListWindow } from "@/components/design-
 import { Link } from "@/components/link";
 import { SimpleTooltip, Typography } from "@/components/ui";
 import { type AppId } from "@/lib/apps-frontend";
-import { type MetricsNamedCount, type MetricsTopReferrer } from "@/lib/stack-app-internals";
+import { type MetricsNamedCount, type MetricsTopReferrer } from "@/lib/hexclave-app-internals";
 import { GlobeIcon } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
