@@ -1,6 +1,7 @@
 import { Switch } from "~/components/ui";
 
 import { useUser } from "@hexclave/react";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { PageLayout } from "../page-layout";
 import {
   getCardClassName,
@@ -39,7 +40,7 @@ export function NotificationsPage() {
               </div>
               <Switch
                 checked={category.enabled}
-                onCheckedChange={(value) => void category.setEnabled(value)}
+                onCheckedChange={(value) => runAsynchronouslyWithAlert(category.setEnabled(value))}
                 disabled={!category.canDisable}
               />
             </div>
