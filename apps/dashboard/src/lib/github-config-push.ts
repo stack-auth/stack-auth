@@ -28,10 +28,13 @@ import {
  */
 function detectImportPackage(currentFileContent: string): string | undefined {
   // Match `from "@hexclave/<name>"` or `from "@stackframe/<name>"` — single
-  // or double quotes. Hexclave preferred when both appear.
-  const hexclave = currentFileContent.match(/from\s+["']@hexclave\/([a-z0-9-]+)["']/i);
+  // or double quotes, with an optional `/config` subpath suffix (the lightweight
+  // entrypoint newer config files import from). We return the bare package name;
+  // the renderer re-appends `/config` for Hexclave packages. Hexclave preferred
+  // when both appear.
+  const hexclave = currentFileContent.match(/from\s+["']@hexclave\/([a-z0-9-]+)(?:\/config)?["']/i);
   if (hexclave) return `@hexclave/${hexclave[1]}`;
-  const stackframe = currentFileContent.match(/from\s+["']@stackframe\/([a-z0-9-]+)["']/i);
+  const stackframe = currentFileContent.match(/from\s+["']@stackframe\/([a-z0-9-]+)(?:\/config)?["']/i);
   return stackframe ? `@stackframe/${stackframe[1]}` : undefined;
 }
 

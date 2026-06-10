@@ -442,10 +442,12 @@ function getRestBackendSetupPrompt(kind: "python" | "rest-api") {
             If this project already has a \`hexclave.config.ts\` file for another frontend or backend, reuse that same file so the whole project shares one Hexclave config. Otherwise, create a new \`hexclave.config.ts\` file in your workspace:
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "@hexclave/js";
+            import type { HexclaveConfig } from "@hexclave/js/config";
 
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
+
+            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`@hexclave/js/config\` path (never from \`@hexclave/js\` directly, which would pull in the whole SDK and fail to load).
 
             Run your backend through the Hexclave CLI so it starts the local dashboard and injects the Hexclave environment variables:
 
@@ -723,11 +725,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             First, create a \`hexclave.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "${packageName}";
+            import type { HexclaveConfig } from "${packageName}/config";
 
             // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
+
+            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`${packageName}/config\` path (never from \`${packageName}\` directly, which would pull in the whole SDK and fail to load).
 
             To run your application with Hexclave, you can then start the dev environment and set environment variables expected by your application. Hexclave's CLI has a \`dev\` command does both of these, so let's install it as a dev dependency and wrap your existing \`dev\` script in your package.json:
 

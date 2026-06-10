@@ -16,6 +16,15 @@
         "default": "./dist/index.js"
       }
     },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": {
+        "default": "./dist/esm/config.js"
+      },
+      "require": {
+        "default": "./dist/config.js"
+      }
+    },
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
       "import": {
