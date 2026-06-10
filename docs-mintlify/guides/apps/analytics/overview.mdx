@@ -104,6 +104,23 @@ export const hexclaveClientApp = new HexclaveClientApp({
 
 `maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it.
 
+### Disabling Analytics Capture in the SDK
+
+SDK-managed analytics capture is enabled by default. If you don't want the SDK to collect any analytics, pass `analytics: { enabled: false }` when creating your client app:
+
+```ts
+import { HexclaveClientApp } from "@hexclave/next";
+
+export const hexclaveClientApp = new HexclaveClientApp({
+  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
+  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
+  tokenStore: "nextjs-cookie",
+  analytics: { enabled: false },
+});
+```
+
+This stops the SDK from sending `$page-view` and `$click` events. It also resolves the `ANALYTICS_NOT_ENABLED` warning the SDK logs to the browser console when it tries to send events to a project that hasn't enabled the Analytics app — with capture disabled, the SDK never makes those requests. If you'd rather keep analytics, enable the Analytics app in your dashboard (**Apps -> Analytics**) instead.
+
 ## Best Practices
 
 1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.

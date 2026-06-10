@@ -1547,10 +1547,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
 
-    // Pre-fetch the current user for the new session so the cache is already
-    // populated when useUser() re-renders, avoiding a stale-cache render cycle.
-    const newSession = this._getSessionFromTokenStore(tokenStore);
-    this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
+    // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
+    // access token for the same access-only session), push the new token into it in place; constructing a new
+    // session here would cold-invalidate every session-scoped cache and suspend the UI on each refresh.
+    const session = this._getSessionFromTokenStore(tokenStore);
+    session.updateAccessToken(tokens);
+
+    // Pre-fetch the current user so the cache is warm when useUser() re-renders (write-only, so it never suspends).
+    runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
   }
 
   protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {

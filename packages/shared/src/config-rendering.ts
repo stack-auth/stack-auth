@@ -13,6 +13,7 @@ export { parseHexclaveConfigFileContent, renderConfigFileContent };
 const CONFIG_IMPORT_PACKAGES = [
   "@hexclave/next",
   "@hexclave/react",
+  "@hexclave/tanstack-start",
   "@hexclave/js",
   "@hexclave/template",
   "@stackframe/stack",
@@ -120,18 +121,26 @@ import.meta.vitest?.test("renderConfigFileContent rejects invalid config exports
 
 import.meta.vitest?.test("renderConfigFileContent uses custom import package", ({ expect }) => {
   const content = renderConfigFileContent({}, "@hexclave/next");
-  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/next";');
+  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/next/config";');
 });
 
 import.meta.vitest?.test("renderConfigFileContent defaults to @hexclave/js", ({ expect }) => {
   const content = renderConfigFileContent({});
-  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
+});
+
+import.meta.vitest?.test("renderConfigFileContent keeps legacy @stackframe packages on their root entrypoint", ({ expect }) => {
+  // The lightweight `/config` subpath only exists on Hexclave-branded packages;
+  // already-published @stackframe/* releases predate it.
+  const content = renderConfigFileContent({}, "@stackframe/next");
+  expect(content).toContain('import type { HexclaveConfig } from "@stackframe/next";');
 });
 
 import.meta.vitest?.test("detectConfigImportPackage picks first matching package by priority", ({ expect }) => {
   expect(detectConfigImportPackage(["@hexclave/next", "@hexclave/js"])).toBe("@hexclave/next");
   expect(detectConfigImportPackage(["@hexclave/react", "@hexclave/js"])).toBe("@hexclave/react");
   expect(detectConfigImportPackage(["@hexclave/js"])).toBe("@hexclave/js");
+  expect(detectConfigImportPackage(["@hexclave/tanstack-start"])).toBe("@hexclave/tanstack-start");
   // Hexclave names take priority over legacy stackframe names when both appear.
   expect(detectConfigImportPackage(["@stackframe/stack", "@hexclave/next"])).toBe("@hexclave/next");
   // Legacy fallback still works for projects pinned to the last @stackframe/* release.
