@@ -1,4 +1,6 @@
 /// <reference types="vite/client" />
+import "../styles.css";
+
 import { StackClientApp, StackProvider, StackTheme } from '@hexclave/react';
 import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
 import {
@@ -159,7 +161,7 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -193,6 +195,7 @@ function RootComponent() {
         forgotPassword: "/handler/forgot-password",
         passwordReset: "/handler/password-reset",
         emailVerification: "/handler/email-verification",
+        accountSettings: "/handler/account-settings",
         afterSignIn: "/",
         afterSignUp: "/",
         afterSignOut: "/handler/sign-in",
