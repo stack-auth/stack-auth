@@ -61,21 +61,14 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
       onSubmit={e => runAsynchronouslyWithAlert(handleSubmit(onSubmit)(e))}
       noValidate
     >
-      <Label htmlFor="email" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{t('Email')}</Label>
-      <Input
-        id="email"
-        type="email"
-        autoComplete="email"
-        className="h-10 rounded-xl border border-border bg-background focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring transition-all"
-        {...register('email')}
-      />
+      <Label htmlFor="email" className="mb-1">{t('Email')}</Label>
+      <Input id="email" type="email" autoComplete="email" {...register('email')}/>
       <FormWarningText text={errors.email?.message?.toString()} />
 
-      <Label htmlFor="password" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-1.5">{t('Password')}</Label>
+      <Label htmlFor="password" className="mt-4 mb-1">{t('Password')}</Label>
       <PasswordInput
         id="password"
         autoComplete="new-password"
-        className="h-10 rounded-xl border border-border bg-background focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring transition-all"
         {...registerPassword}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
           clearErrors('password');
@@ -87,10 +80,9 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
       {
         !props.noPasswordRepeat && (
           <>
-            <Label htmlFor="repeat-password" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-1.5">{t('Repeat Password')}</Label>
+            <Label htmlFor="repeat-password" className="mt-4 mb-1">{t('Repeat Password')}</Label>
             <PasswordInput
               id="repeat-password"
-              className="h-10 rounded-xl border border-border bg-background focus-visible:ring-1 focus-visible:ring-ring focus-visible:border-ring transition-all"
               {...registerPasswordRepeat}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               clearErrors('password');
@@ -103,7 +95,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         )
       }
 
-      <Button type="submit" className="mt-6 h-10 rounded-xl font-semibold shadow-sm hover:shadow transition-all duration-150" loading={loading}>
+      <Button type="submit" className="mt-6" loading={loading}>
         {t('Sign Up')}
       </Button>
     </form>
