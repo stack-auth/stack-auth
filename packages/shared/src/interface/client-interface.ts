@@ -786,14 +786,14 @@ export class HexclaveClientInterface {
     if (res.ok) {
       return Result.ok(res);
     } else if (res.status === 429) {
-      // Rate limited, so retry if we can
       const retryAfter = res.headers.get("Retry-After");
       if (retryAfter !== null) {
         console.log(`Rate limited while sending request to ${url}. Will retry after ${retryAfter} seconds...`);
         await wait(Number(retryAfter) * 1000);
         return Result.error(new Error(`Rate limited, retrying after ${retryAfter} seconds`));
       }
-      console.log(`Rate limited while sending request to ${url}, no retry-after header received. Retrying...`);
+
+      console.log(`Rate limited while sending request to ${url}, no retry-after header received. Retrying with default backoff...`);
       return Result.error(new Error("Rate limited, no retry-after header received"));
     } else {
       const error = await res.text();

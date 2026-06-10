@@ -1,4 +1,4 @@
-import { StackClientApp } from "@hexclave/tanstack-start";
+import { HexclaveClientApp } from "@hexclave/tanstack-start";
 
 function getPortPrefix(): string {
   return import.meta.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
@@ -14,9 +14,7 @@ function getStackApiUrl(): string {
 }
 
 export function createStackApp() {
-  return new StackClientApp({
-    projectId: import.meta.env.VITE_STACK_PROJECT_ID ?? "internal",
-    publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY ?? "this-publishable-client-key-is-for-local-development-only",
+  return new HexclaveClientApp({
     baseUrl: getStackApiUrl(),
     tokenStore: "cookie",
     redirectMethod: "window",

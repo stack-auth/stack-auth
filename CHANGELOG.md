@@ -2,6 +2,12 @@
 
 ---
 
+## 6/5/26
+
+- CLI improvements: local dashboard in remote SSH and Codespaces, auto-update via npx re-exec, and ~154 MB bundle reduction.
+- Fixes for sign-out handling, nested cross-domain auth, subscription switching, and email preview theme blanking.
+- New Python & REST API setup docs, product prices clarified as decimal strings, and pnpm v11 upgrade.
+
 ## 5/29/26
  
 - Per-provider OAuth callback URLs with host-derived JWT issuer and redirect URIs.

@@ -4,7 +4,7 @@ import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-int
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/hexclave-app";
-import { envVars } from "../lib/env";
+import { envVars } from "../generated/env";
 import { getBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/hexclave-app/common";
 import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
@@ -208,7 +208,7 @@ function resolveApiBaseUrl(app: StackClientApp<true>): string {
 }
 
 function shouldShowDashboardTab(app: StackClientApp<true>): boolean {
-  return envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
+  return envVars.HEXCLAVE_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
 }
 
 function getTabsForApp(app: StackClientApp<true>): { id: TabId; label: string; icon: string }[] {

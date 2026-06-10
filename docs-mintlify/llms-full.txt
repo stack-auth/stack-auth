@@ -18,6 +18,7 @@ Below are some reminders on Hexclave and how to learn more about it. If you're s
 - Language, framework, and library-specific details:
   - JavaScript & TypeScript:
     - Hexclave has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @hexclave/js (JavaScript/TypeScript), @hexclave/next (Next.js), @hexclave/react (React), @hexclave/tanstack-start (TanStack Start). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
+    - The Hexclave/Stack Auth SDK constructor accepts a `urls` option that tells the SDK where auth pages and post-auth redirects live. When you add a custom auth page such as a `sign-in`, `sign-up`, `forgot-password`, `account-settings`, etc., update the corresponding `urls` key to point to that route; also set redirect targets such as `afterSignIn`, `afterSignUp`, `afterSignOut`, and `home` when those destinations are customized. The `urls` option is the source of truth for redirect helpers such as `redirectToSignIn()`, hosted or handler-page flows, and post-auth navigation; if it is left pointing at the default pages after custom pages are added, users can hit extra redirects, land on the wrong auth page, or return to an unexpected page after signing in or out.
     - The `Result<T, E>` type is `{ status: "ok", data: T } | { status: "error", error: E }`.
     - `KnownErrors[KNOWN_ERROR_CODE]` refers to a specific known error type. Each KnownError may have its own properties, but they all inherit from `Error & { statusCode: number, humanReadableMessage: string, details?: Json }`.
     - React & Next.js:
@@ -183,6 +184,10 @@ The frameworks and languages with explicit SDK support are:
     });
     ```
 
+    <Note>
+      The SDK auto-captures page-view and click analytics. To turn this off (and silence the `ANALYTICS_NOT_ENABLED` console warning that appears until you enable the Analytics app in your dashboard), pass `analytics: { enabled: false }`.
+    </Note>
+
     In a backend where you can keep a secret key safe, you can use the `HexclaveServerApp`, which provides access to more sensitive APIs compared to `HexclaveClientApp`:
 
     ```ts src/hexclave/server.ts
@@ -253,6 +258,8 @@ The frameworks and languages with explicit SDK support are:
           }
         }
         ```
+
+        `hexclave dev` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.
       </Accordion>
 
       <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
