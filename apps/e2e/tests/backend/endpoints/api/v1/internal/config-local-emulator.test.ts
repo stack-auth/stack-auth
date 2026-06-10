@@ -115,7 +115,7 @@ describe("local emulator config restrictions", () => {
     const fileContent = await fs.readFile(filePath, "utf-8");
     expect(fileContent).toMatchInlineSnapshot(`
       deindent\`
-        import type { HexclaveConfig } from "@hexclave/js";
+        import type { HexclaveConfig } from "@hexclave/js/config";
         
         export const config: HexclaveConfig = {
           "teams": {

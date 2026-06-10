@@ -124,6 +124,14 @@ export class InternalSession {
     if (ofTokens.refreshToken) {
       return `refresh-${ofTokens.refreshToken}`;
     } else if (ofTokens.accessToken) {
+      // Access-only sessions (no refresh token) are keyed by the underlying session's `refresh_token_id`, not the
+      // access token string: access tokens get re-minted frequently, and keying by the raw token would spawn a new
+      // session (and cold-invalidate every session-scoped cache) on each refresh. Falls back to the raw token if
+      // the JWT can't be decoded.
+      const refreshTokenId = decodeAccessTokenIfValid(ofTokens.accessToken)?.refresh_token_id;
+      if (refreshTokenId) {
+        return `access-session-${refreshTokenId}`;
+      }
       return `access-${ofTokens.accessToken}`;
     } else {
       return "not-logged-in";
@@ -208,6 +216,24 @@ export class InternalSession {
   async fetchNewTokens(): Promise<{ accessToken: AccessToken, refreshToken: RefreshToken | null } | null> {
     const accessToken = await this._getNewlyFetchedAccessToken();
     return accessToken ? { accessToken, refreshToken: this._refreshToken } : null;
+  }
+
+  /**
+   * Installs a freshly obtained token pair's access token into this session in place, keeping the session object
+   * (and therefore every session-scoped cache) stable instead of constructing a new InternalSession. No-op if the
+   * session is invalid, the access token can't be decoded, it's unchanged, or the pair doesn't map to this session
+   * (so a foreign token can never be written into this object's cache); never clears an existing token.
+   */
+  updateAccessToken(tokens: { accessToken: string | null, refreshToken: string | null }) {
+    if (this._knownToBeInvalid.get()) return;
+    if (!tokens.accessToken) return;
+    const newAccessToken = AccessToken.createIfValid(tokens.accessToken);
+    if (!newAccessToken) return;
+    // Self-enforce the "a session never changes which session it belongs to" invariant: only install a token pair
+    // that maps to this same session key (validated against the incoming pair, not this session's existing tokens).
+    if (InternalSession.calculateSessionKey(tokens) !== this.sessionKey) return;
+    if (this._accessToken.get()?.token === newAccessToken.token) return;
+    this._accessToken.set(newAccessToken);
   }
 
   /**
