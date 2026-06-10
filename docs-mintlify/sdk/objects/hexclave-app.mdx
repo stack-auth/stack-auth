@@ -86,6 +86,10 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
         Redirect URL configuration.
       </ParamField>
 
+      <ParamField body="analytics" type="object">
+        Analytics capture configuration. SDK-managed capture is enabled by default; pass `{ enabled: false }` to disable it entirely (which also avoids the `ANALYTICS_NOT_ENABLED` console warning on projects that haven't enabled the Analytics app), or `{ replays: { enabled: true } }` to record session replays.
+      </ParamField>
+
       <ParamField body="noAutomaticPrefetch" type="boolean">
         Disable automatic prefetching.
       </ParamField>
@@ -106,6 +110,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
           projectId?: string;
           publishableClientKey?: string;
           urls?: object;
+          analytics?: object;
           noAutomaticPrefetch?: boolean;
         });
       }
