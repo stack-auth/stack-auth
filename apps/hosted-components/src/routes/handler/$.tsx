@@ -10,6 +10,7 @@ import {
   HostedSignIn,
   HostedSignUp,
   HostedTeamInvitation,
+  HostedCliAuthConfirm,
 } from '../../hosted-components/auth';
 
 export const Route = createFileRoute('/handler/$')({
@@ -54,6 +55,10 @@ function HandlerPage() {
 
   if (hostedHandlerPath === 'team-invitation') {
     return <HostedTeamInvitation fullPage />;
+  }
+
+  if (hostedHandlerPath === 'cli-auth-confirm') {
+    return <HostedCliAuthConfirm fullPage />;
   }
 
   return <HexclaveHandler fullPage />;
