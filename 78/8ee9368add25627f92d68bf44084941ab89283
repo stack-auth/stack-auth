@@ -1,0 +1,20 @@
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_1243176c241068::t_1b9bf7eb299fae 104
+  s_1243176c241068::t_ca2f7454c2cc77 137-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "788ee9368add25627f92d68bf44084941ab89283",
+  "prompts": {},
+  "sessions": {
+    "s_1243176c241068": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c5b9850-4bdc-4fe0-9154-caed40361d22",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
