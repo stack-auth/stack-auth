@@ -5,7 +5,7 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 import type { DbConnection } from "../../module_bindings";
 import type { EvalArtifactRow, EvalRunRow, EvalStepRunRow } from "../../types";
-import { toDate } from "../../utils";
+import { formatTokens, formatUsd, sumStepCost, sumStepTokens, toDate } from "../../utils";
 import { useWorklog } from "../../hooks/useEvalsDB";
 import { StatusBadge, statusBadgeClass } from "./status";
 import { WorklogViewer } from "./WorklogViewer";
@@ -17,6 +17,15 @@ function formatDuration(start: unknown, end: unknown): string | null {
   const seconds = Math.max(0, Math.round((endMs - startMs) / 1000));
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function Stat({ label, value, title, tone }: { label: string, value: string, title?: string, tone?: "emerald" }) {
+  return (
+    <div title={title} className="rounded-md ring-1 ring-gray-200 bg-gray-50 px-2.5 py-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className={clsx("text-sm font-mono font-medium", tone === "emerald" ? "text-emerald-700" : "text-gray-800")}>{value}</div>
+    </div>
+  );
 }
 
 function ArtifactModal({ artifact, onClose }: { artifact: EvalArtifactRow, onClose: () => void }) {
@@ -135,6 +144,8 @@ export function RunDetail({
 }) {
   const steps = stepRuns.filter(s => s.runId === run.runId).sort((a, b) => a.stepIndex - b.stepIndex);
   const runArtifacts = artifacts.filter(a => a.runId === run.runId);
+  const totalCost = sumStepCost(steps);
+  const tokens = sumStepTokens(steps);
   const [selectedStepRunId, setSelectedStepRunId] = useState<string | null>(null);
   const [viewedArtifact, setViewedArtifact] = useState<EvalArtifactRow | null>(null);
 
@@ -163,11 +174,25 @@ export function RunDetail({
             <span className="font-mono">{run.model}</span>
             {run.sandboxId && <span className="font-mono text-[10px] text-gray-400">sandbox {run.sandboxId}</span>}
             <span>{formatDuration(run.startedAt, run.finishedAt) ?? "not started"}</span>
+            {totalCost > 0 && (
+              <span className="font-mono font-medium text-emerald-700">{formatUsd(totalCost)}</span>
+            )}
           </div>
           {run.error && <div className="mt-1 text-xs text-red-600">{run.error}</div>}
         </div>
         <button onClick={onClose} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600 shrink-0">✕ close</button>
       </div>
+
+      {/* Token + cost stats */}
+      {(tokens.total > 0 || totalCost > 0) && (
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <Stat label="Input" value={formatTokens(tokens.input)} title={`${tokens.input.toLocaleString()} input tokens`} />
+          <Stat label="Output" value={formatTokens(tokens.output)} title={`${tokens.output.toLocaleString()} output tokens`} />
+          <Stat label="Cache read" value={formatTokens(tokens.cacheRead)} title={`${tokens.cacheRead.toLocaleString()} cached tokens read`} />
+          <Stat label="Cache write" value={formatTokens(tokens.cacheCreation)} title={`${tokens.cacheCreation.toLocaleString()} tokens written to cache`} />
+          <Stat label="Total cost" value={formatUsd(totalCost)} tone="emerald" title={`${tokens.total.toLocaleString()} total tokens`} />
+        </div>
+      )}
 
       {/* Step timeline */}
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -194,6 +219,18 @@ export function RunDetail({
             <span className="font-medium text-gray-700">{selectedStep.stepName}</span>
             {selectedStep.model !== "-" && <span className="font-mono">{selectedStep.model}</span>}
             <span>{selectedStep.numMessages} messages</span>
+            {(() => {
+              const t = sumStepTokens([selectedStep]);
+              if (t.total === 0) return null;
+              return (
+                <span
+                  className="font-mono"
+                  title={`in ${t.input.toLocaleString()} · out ${t.output.toLocaleString()} · cache read ${t.cacheRead.toLocaleString()} · cache write ${t.cacheCreation.toLocaleString()}`}
+                >
+                  {formatTokens(t.total)} tok
+                </span>
+              );
+            })()}
             {selectedStep.costUsd && <span className="font-mono">${selectedStep.costUsd}</span>}
             <span>{formatDuration(selectedStep.startedAt, selectedStep.finishedAt) ?? ""}</span>
             {selectedStep.error && <span className="text-red-600">{selectedStep.error}</span>}

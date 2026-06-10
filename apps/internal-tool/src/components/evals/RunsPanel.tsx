@@ -6,7 +6,7 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { format } from "date-fns";
 import type { DbConnection } from "../../module_bindings";
 import type { EvalArtifactRow, EvalRunRow, EvalStepRunRow } from "../../types";
-import { toDate } from "../../utils";
+import { formatUsd, sumStepCost, toDate } from "../../utils";
 import { StatusBadge } from "./status";
 import { RunDetail } from "./RunDetail";
 
@@ -39,6 +39,18 @@ export function RunsPanel({
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
   const sorted = [...runs].sort((a, b) => Number(b.id - a.id));
   const selectedRun = sorted.find(r => r.runId === selectedRunId) ?? null;
+
+  // Live cost per run: bucket all step runs by runId once, then sum. Updates
+  // automatically as step rows stream in (each step reports its cost on
+  // completion), so the total ticks up while a run is in flight.
+  const costByRun = new Map<string, number>();
+  const stepsByRun = new Map<string, EvalStepRunRow[]>();
+  for (const step of stepRuns) {
+    const list = stepsByRun.get(step.runId) ?? [];
+    list.push(step);
+    stepsByRun.set(step.runId, list);
+  }
+  for (const [runId, steps] of stepsByRun) costByRun.set(runId, sumStepCost(steps));
 
   // Only count selections that still correspond to a visible run, so deleted
   // rows can't leave phantom entries in the selection.
@@ -192,6 +204,7 @@ export function RunsPanel({
                   <th className="px-3 py-2 font-medium">Step</th>
                   <th className="px-3 py-2 font-medium">Created</th>
                   <th className="px-3 py-2 font-medium">Duration</th>
+                  <th className="px-3 py-2 font-medium text-right">Cost</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -223,6 +236,11 @@ export function RunsPanel({
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{run.currentStepIndex}/{Math.max(run.totalSteps - 1, 0)}</td>
                     <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{format(toDate(run.createdAt), "MMM d HH:mm")}</td>
                     <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{duration(run)}</td>
+                    <td className="px-3 py-2 text-xs font-mono text-gray-700 whitespace-nowrap text-right">
+                      {(costByRun.get(run.runId) ?? 0) > 0
+                        ? formatUsd(costByRun.get(run.runId) ?? 0)
+                        : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-3 py-2 whitespace-nowrap text-right">
                       {ACTIVE_STATUSES.includes(run.status) && (
                         <button

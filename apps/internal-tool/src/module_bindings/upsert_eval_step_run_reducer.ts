@@ -22,5 +22,9 @@ export default {
   error: __t.option(__t.string()),
   numMessages: __t.u32(),
   costUsd: __t.option(__t.string()),
+  inputTokens: __t.option(__t.u64()),
+  outputTokens: __t.option(__t.u64()),
+  cacheReadTokens: __t.option(__t.u64()),
+  cacheCreationTokens: __t.option(__t.u64()),
   sessionId: __t.option(__t.string()),
 };

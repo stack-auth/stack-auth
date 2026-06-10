@@ -9,7 +9,7 @@ export type OpenRouterModel = {
   name: string,
   description: string,
   contextLength: number | null,
-  pricing: { prompt: string, completion: string } | null,
+  pricing: { prompt: string, completion: string, inputCacheRead: string | null, inputCacheWrite: string | null } | null,
   created: number | null,
 };
 
@@ -36,7 +36,12 @@ export async function fetchOpenRouterModels(): Promise<OpenRouterModel[]> {
       description: typeof m.description === "string" ? m.description : "",
       contextLength: typeof m.context_length === "number" ? m.context_length : null,
       pricing: pricing && typeof pricing.prompt === "string" && typeof pricing.completion === "string"
-        ? { prompt: pricing.prompt, completion: pricing.completion }
+        ? {
+          prompt: pricing.prompt,
+          completion: pricing.completion,
+          inputCacheRead: typeof pricing.input_cache_read === "string" ? pricing.input_cache_read : null,
+          inputCacheWrite: typeof pricing.input_cache_write === "string" ? pricing.input_cache_write : null,
+        }
         : null,
       created: typeof m.created === "number" ? m.created : null,
     };
@@ -52,6 +57,44 @@ export async function searchOpenRouterModels(search: string, limit: number = 50)
     m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
   );
   return filtered.slice(0, limit);
+}
+
+export type StepTokenUsage = {
+  inputTokens?: bigint | number,
+  outputTokens?: bigint | number,
+  cacheReadTokens?: bigint | number,
+  cacheCreationTokens?: bigint | number,
+};
+
+/**
+ * Price a step the way OpenRouter actually bills it: token counts times the
+ * model's listed per-token rates (cache reads/writes have their own rates).
+ * Claude Code's self-reported `total_cost_usd` can't be trusted here — it
+ * prices against its built-in Anthropic table, which knows nothing about
+ * OpenRouter slugs or OpenRouter billing. Returns a fixed-precision string
+ * (matching the stored costUsd format), or undefined when usage or pricing is
+ * unavailable so callers can fall back instead of storing a bogus number.
+ */
+export async function computeOpenRouterCostUsd(modelId: string, usage: StepTokenUsage): Promise<string | undefined> {
+  const input = Number(usage.inputTokens ?? 0);
+  const output = Number(usage.outputTokens ?? 0);
+  const cacheRead = Number(usage.cacheReadTokens ?? 0);
+  const cacheCreation = Number(usage.cacheCreationTokens ?? 0);
+  if (input + output + cacheRead + cacheCreation === 0) return undefined;
+  let pricing: OpenRouterModel["pricing"];
+  try {
+    pricing = (await fetchOpenRouterModels()).find(m => m.id === modelId)?.pricing ?? null;
+  } catch {
+    return undefined;
+  }
+  if (!pricing) return undefined;
+  // Models without listed cache rates don't support caching (those token
+  // counts stay 0), so falling back to the prompt rate never miscounts.
+  const cost = input * Number.parseFloat(pricing.prompt)
+    + output * Number.parseFloat(pricing.completion)
+    + cacheRead * Number.parseFloat(pricing.inputCacheRead ?? pricing.prompt)
+    + cacheCreation * Number.parseFloat(pricing.inputCacheWrite ?? pricing.prompt);
+  return Number.isFinite(cost) ? cost.toFixed(6) : undefined;
 }
 
 // Pre-flight check that the OpenRouter key is actually accepted. Claude Code

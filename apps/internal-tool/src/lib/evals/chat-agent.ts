@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { claudeCodeOpenRouterEnv, searchOpenRouterModels } from "./openrouter";
+import { claudeCodeOpenRouterEnv, computeOpenRouterCostUsd, searchOpenRouterModels } from "./openrouter";
 import {
   cancelEvalRun,
   execInRun,
@@ -340,11 +340,25 @@ export async function* runChatTurn(options: ChatTurnOptions): AsyncGenerator<Cha
           }
         }
       } else if (message.type === "result") {
-        const resultMessage = message as unknown as { result?: string, total_cost_usd?: number };
+        const resultMessage = message as unknown as {
+          result?: string,
+          total_cost_usd?: number,
+          usage?: { input_tokens?: number, output_tokens?: number, cache_read_input_tokens?: number, cache_creation_input_tokens?: number },
+        };
+        // Reprice from OpenRouter rates; total_cost_usd (the fallback) uses
+        // Claude Code's built-in Anthropic table, wrong for OpenRouter slugs.
+        const repriced = await computeOpenRouterCostUsd(model, {
+          inputTokens: resultMessage.usage?.input_tokens,
+          outputTokens: resultMessage.usage?.output_tokens,
+          cacheReadTokens: resultMessage.usage?.cache_read_input_tokens,
+          cacheCreationTokens: resultMessage.usage?.cache_creation_input_tokens,
+        });
         yield {
           type: "result",
           result: resultMessage.result ?? "",
-          costUsd: typeof resultMessage.total_cost_usd === "number" ? resultMessage.total_cost_usd : null,
+          costUsd: repriced !== undefined
+            ? Number.parseFloat(repriced)
+            : typeof resultMessage.total_cost_usd === "number" ? resultMessage.total_cost_usd : null,
         };
       }
     }

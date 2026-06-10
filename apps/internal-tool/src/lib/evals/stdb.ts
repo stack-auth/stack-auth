@@ -172,7 +172,7 @@ export async function updateEvalRun(args: { runId: string, status: string, sandb
   });
 }
 
-export async function upsertEvalStepRun(args: { stepRunId: string, runId: string, stepIndex: number, stepName: string, model: string, status: string, resultText: string, error?: string, numMessages: number, costUsd?: string, sessionId?: string }): Promise<void> {
+export async function upsertEvalStepRun(args: { stepRunId: string, runId: string, stepIndex: number, stepName: string, model: string, status: string, resultText: string, error?: string, numMessages: number, costUsd?: string, inputTokens?: bigint, outputTokens?: bigint, cacheReadTokens?: bigint, cacheCreationTokens?: bigint, sessionId?: string }): Promise<void> {
   const db = await getEvalDb();
   await db.conn.reducers.upsertEvalStepRun({
     token: getLogToken(),
@@ -186,6 +186,10 @@ export async function upsertEvalStepRun(args: { stepRunId: string, runId: string
     error: args.error,
     numMessages: args.numMessages,
     costUsd: args.costUsd,
+    inputTokens: args.inputTokens,
+    outputTokens: args.outputTokens,
+    cacheReadTokens: args.cacheReadTokens,
+    cacheCreationTokens: args.cacheCreationTokens,
     sessionId: args.sessionId,
   });
 }
