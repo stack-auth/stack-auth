@@ -1,0 +1,1258 @@
+packages/stack/src/components-page/account-settings/email-and-auth/password-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-174
+examples/convex/app/user-info.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,8,16
+packages/stack/scripts/merge-quetzal-translations.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-6,10-40,42-44,46,49,52-57,60-63,67-68
+packages/stack/src/components/link.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-40
+packages/stack/src/lib/stack-app/internal-api-keys/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-55
+packages/stack/src/utils/url.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-4,8-19,22-23
+packages/template/src/lib/cookie.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 149,367
+scripts/generate-setup-prompt-docs.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3-4,6-7,9,14,29,41,53,65,77,86,98,107-130,134,146,158,170,240,262,271-285,334,379,421-439,442,511-528,551-558,585
+apps/dashboard/src/components/dashboard-account-settings/profile-image-editor.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-208
+apps/dashboard/src/app/development-environment/browser-secret/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-5
+apps/e2e/tests/backend/endpoints/api/v1/internal/payments/method-configs.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 24
+apps/dashboard/src/components/data-table/payment-product-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 118-119,161
+apps/e2e/tests/backend/endpoints/api/v1/internal/api-keys.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 22
+examples/supabase/app/handler/[...hexclave]/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,5
+packages/stack/src/providers/stack-provider.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-sent/sent-emails-view.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 77,92,97
+apps/dashboard/src/components/export-users-dialog.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 67,105,265,273,284
+docs/content/docs/(guides)/rest-api/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 118
+examples/middleware/src/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,23
+packages/stack/src/components-page/email-verification.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-76
+apps/dashboard/src/lib/remote-development-environment/manager.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 4,14,30,46-87,102,160,169,174,522-523,528,551,561,579-581,586,615,619-623,667-720
+examples/demo/src/app/api/emulator-status/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 15
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/actions.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 8,13-14,27-28,42-44
+packages/template/src/lib/hexclave-app/apps/implementations/common.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 13-14,22,24,28-47,69,72,85,89,93,97,101,110-112,136,138,140,143,243
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/query-data-grid.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 640
+apps/dashboard/src/components/dashboard-account-settings/notifications/notifications-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-45
+examples/e-commerce/src/app/handler/[...hexclave]/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,5
+apps/internal-tool/src/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,16
+examples/js-example/password-sign-in-script.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4,26,42,52
+apps/dashboard/src/components/data-table/permission-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 37,40-41,84,86,100,111,113,229,254,265,273
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/globe-section-with-data.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,35
+apps/dashboard/src/components/dashboard-account-settings/profile-page/profile-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-57
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/wildcard-domains.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 75,153,231,309
+apps/dashboard/src/app/api/development-environment/browser-secret/start-localbound-server/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-8
+apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 73-82,429
+apps/dashboard/src/components/dashboard-account-settings/api-keys/api-keys-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-158
+apps/dashboard/src/app/(main)/integrations/featurebase/sso/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,24
+packages/template/src/components/api-key-dialogs.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 13
+apps/e2e/tests/backend/endpoints/api/v1/payments/before-offer-to-product-rename/outdated--validate-code.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 220,248
+apps/dashboard/src/components/env-keys.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 11-15,136
+examples/e-commerce/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+packages/stack/.eslintrc.cjs
+  s_d32621b8a77938::t_fc224eb88a25eb 1-2,8-28
+packages/stack/src/components-page/magic-link-callback.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-92
+packages/stack/src/utils/browser-script.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-5,7,9-10,12-63,65-74,76-86,88-109,111-112,114-115,117-118,120-122,125-128,131,133-134
+packages/template/src/components/oauth-button-group.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 19-20
+apps/backend/src/lib/request-api-url.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 32,66-71,88,120-126
+apps/dashboard/src/components/settings.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 72-73,82,88
+examples/convex/convex/myActions.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 4,14,18
+packages/stack/src/components-page/account-settings/payments/payments-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-73
+apps/dev-launchpad/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+packages/stack/src/components-page/section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-27
+packages/template/scripts/generate-env.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-6,8-9,11-12,14-17,19-21,23-25,27-29,31-32,34-35,37-38,40-41,43-44,46-47,49-50,52-53,55-56,58-59,61-62,65-91
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/api-keys-app/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 18-19,47,112
+packages/dashboard-ui-components/src/components/pill-toggle.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 146-149
+apps/dashboard/src/lib/version-check.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 42
+packages/stack/src/components/elements/ssr-layout-effect.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-24
+apps/dashboard/src/lib/remote-development-environment/browser-secret-common.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-3
+apps/backend/src/lib/payments.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3-4,328,372-374,380-434
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/exact-domain-matching.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 73,119,165,211,337
+apps/dashboard/src/app/api/development-environment/browser-secret/store/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-31
+docs-mintlify/guides/integrations/tanstack-start/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 50,64,73
+packages/stack/scripts/process-css.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-12,14,16-17,19-22,24-25,27,29-30,32-33,35-36,38-39,41-42,44-45,47-65
+packages/template/src/components-page/hexclave-handler-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3-4,6,9,11,15-16,30,32,56-60,149,234-270,272,281,284,290,300,304-305,311,339,346,353-355,369
+apps/mock-oauth-server/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+CHANGELOG.md
+  s_d32621b8a77938::t_fc224eb88a25eb 5-16
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 8,24,31,42,47
+apps/dashboard/src/lib/remote-development-environment/browser-secret.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-52,55-61,64-70,73-77,80-81,84-90,92-93,96-98,100-102,104-106,108-113,115-125,127-131,133-138,140-143,145-146,149-154,156,159-167,170-174,176-178,181-188,190-192,194-206,208-213,216-218,221-224,227-232,235-245,247,250-257,260-271,273-278,281-282,285-289,291-299,302-304,307-311,314-316,318-343,345-413,415,418-425,428-437,439-451,454-499
+packages/stack/src/components-page/account-settings/teams/team-api-keys-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-14,17-21,23-24,27-30,33,36-37,39-40,42,44-45,47-57,59-73
+docs-mintlify/guides/other/tutorials/ship-production-ready-auth.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 23,30,33,47,51,54,79,84,109,159
+packages/stack/src/components-page/onboarding.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-176
+examples/middleware/src/hexclave.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,8
+packages/stack/src/components-page/account-settings/section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-21,24
+apps/backend/src/oauth/model.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 303
+apps/dashboard/src/app/(main)/purchase/return/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4-5,9,109-155
+packages/stack/src/lib/stack-app/apps/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-40
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/new/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 268-269,429,499,1145
+packages/dashboard-ui-components/src/components/tabs.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 186,200,244-246,248-251
+apps/e2e/tests/backend/endpoints/api/v1/index.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 65
+examples/js-example/otp-sign-in-script.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4,17,44,66
+packages/stack/src/dev-tool/dev-tool-styles.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-320,322-325,327-332,334-347,349-352,354-413,415-417,419,421-425,427-430,432-434,436-439,441-443,445-447,449,451-457,459-471,473-475,477-484,486-491,493-507,509-513,515-520,522-525,527-664,666-670,673-683,686-690,692-696,698-700,702-705,707-713,716-719,721-724,727-732,734-739,742-744,747-750,752-758,760-765,767-773,776-783,785-786,788-790,793-797,799-812,814,816-820,822-830,832-838,840-3603
+packages/stack/src/lib/stack-app/email-templates/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-24
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-5
+packages/stack/src/components/use-in-iframe.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-18
+apps/backend/src/app/api/latest/internal/payments/stripe/account-info/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,52
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/teams/[teamId]/team-payments.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 114-115,122,527-528
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-templates/[templateId]/sent/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 11-12
+apps/mcp/src/mcp-handler.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 74
+packages/stack/src/lib/stack-app/contact-channels/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-80
+packages/template/src/components-page/team-invitation.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 13-14,17-18,23,26,40,54,62,73,104,106,120,122,129
+packages/stack/src/lib/auth.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-33,37-39,41-46,48-51,53-73,75-88,91-96,100-133,136-139,143-156,159-161,163-167,169-173
+apps/dashboard/src/components/entity-kpi-cards.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,63-64
+examples/demo/src/app/payments-demo/api/config-check/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 4,20
+packages/template/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 2-3,5,55-57,59-60,75
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/top-lists.tsx
+  s_47b6b526a10aca::t_899dfcfaa87215 7
+examples/convex/hexclave/server.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,4-5
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 38,49,51,62,204,206,214,216,230,626-627,708-712,812,821-832,850,855-859,877,932,951,953-956,973-977,1149-1155,1298,1304,1338-1343,1498,1501,1504,1508,2647,2649,2672,2676,2681,2863-2867,3032-3038,3783-3786,3839,3844-3862,4016,4032,4043
+apps/dashboard/src/components/ui/dialog.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 9-12,29,49-50
+apps/e2e/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+docs-mintlify/guides/apps/launch-checklist/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 17
+apps/backend/src/lib/email-queue-step.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7,698
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/webhooks/[endpointId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 185-186,192
+apps/dashboard/src/components/country-code-select.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,10,37,47
+apps/dashboard/src/components/dashboard-account-settings/settings/sign-out-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-5,7-8,10-12,15-33
+apps/dev-launchpad/public/index.html
+  s_d32621b8a77938::t_fc224eb88a25eb 5,112-114,121,444
+apps/dashboard/src/app/rde-debug/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-230
+apps/e2e/tests/helpers.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 296,303
+packages/cli/src/lib/own-package.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 5-9,11-12,15-23,25,28-37,40-49,53-54
+packages/dashboard-ui-components/src/components/badge.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 97
+packages/cli/src/commands/dev.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-171
+apps/dashboard/src/app/globals.css
+  s_d32621b8a77938::t_fc224eb88a25eb 279,284
+docs-mintlify/sdk/types/project.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 29
+packages/stack/src/components-page/mfa.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-46,48-60,64-79,81-84,86-107,109-113,116-119,121-122,125-187,189-213,215-221
+docs-mintlify/guides/apps/api-keys/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 45,48,211,214,445,448,609,612,781,784,938,941,1098,1107
+packages/stack/src/components-page/team-invitation.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-150
+packages/stack/src/components/credential-sign-in.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-83
+apps/dashboard/src/components/dashboard-account-settings/email-and-auth/passkey-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-117
+apps/dashboard/src/app/api/development-environment/health/route.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-29,32,43-48,52-53,56-57,60-61,64-65,68,71,74-76,78-79,83
+packages/stack/src/components/message-cards/known-error-message-card.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-33
+packages/tanstack-start/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 2,4,54-56,58-59,70,102-103,109-111
+packages/stack/src/components-page/password-reset.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-185
+apps/e2e/tests/backend/endpoints/api/v1/internal/payments/stripe/account-info.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 24
+apps/dashboard/src/components/payments/create-checkout-dialog.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-2,4-13,16-17,19,35-36,39-40,43-59,61-63,66-87,93,96-97,99-148,150-156,158-165,167-168
+examples/docs-examples/src/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,25
+examples/e-commerce/src/app/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,6,8
+packages/template/src/global.d.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-8
+packages/stack/src/components/magic-link-sign-in.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-143
+docs-mintlify/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+examples/middleware/src/middleware.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,9,12
+apps/dashboard/src/app/layout-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 6,9,12,19,65,91-94,157,160,190-192,195,197-210
+packages/stack/src/lib/stack-app/connected-accounts/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-49
+packages/template/src/components-page/hexclave-handler-client.test.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-5,7-19,21-36,39-41,44-49,51-58,60
+apps/dashboard/src/components/dashboard-account-settings/payments/payments-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-72
+apps/dashboard/src/components/dashboard-account-settings/page-layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3,5-6
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/shared.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,40,128,139,144
+packages/stack/src/components-page/account-settings/teams/team-creation-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-92
+apps/backend/src/app/api/latest/integrations/stripe/webhooks/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,114,455
+apps/dashboard/src/components/dashboard-account-settings/teams/team-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-24
+packages/stack/src/components-page/oauth-callback.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4-6,8-17,19-24,26-52,54-58,60-78
+turbo.json
+  s_d32621b8a77938::t_fc224eb88a25eb 103-126
+packages/stack/src/generated/quetzal-translations.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4312
+apps/dashboard/tsconfig.json
+  s_d32621b8a77938::t_fc224eb88a25eb 42-44
+packages/stack/src/components-page/account-settings/email-and-auth/otp-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-102
+examples/cjs-test/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-settings/theme-settings.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 67-69
+apps/dashboard/src/components/dashboard-account-settings/payments/payments-panel.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-558
+examples/demo/src/app/payments-demo/api/create-checkout-url/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,28
+packages/dashboard-ui-components/src/components/data-grid/data-grid.test.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 104-109,111-140,345-350
+apps/dashboard/src/components/dashboard-account-settings/supporting/types.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-36
+packages/cli/src/lib/child-process.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-44
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-sent/grouped-email-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 182,188-189,218,228
+packages/stack/src/dev-tool/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-149
+packages/stack/src/components-page/account-settings/api-keys/api-keys-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-157
+docs-mintlify/guides/apps/emails/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 22,27,37,52,61,105,131,253,269,272,329,337
+sdks/spec/src/apps/server-app.spec.md
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-5,10,12,77,89
+docs-mintlify/guides/getting-started/ai-integration.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 7,9-11,68
+apps/dashboard/src/components/navbar.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 6,29
+packages/stack/src/lib/stack-app/apps/implementations/event-tracker.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-19,21-22,24,27-29,31-34,37-39,41-46,49-50,52,55-56,59-62,64-68,70-86,89-101,103-105,107-108,110-114,116-118,120-122,125-130,133-156,161-186,189-190,192-204,206-214,216-232,235,238-286,289,291-293,295-297,299-306,308-311,314-325,327-328,330-331,334-335,337,339-345,347-348,350-357,360-361,365-369
+packages/stack/src/components-page/account-settings/email-and-auth/mfa-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-19,21-34,37-38,40-131,136-138
+packages/template/src/components-page/mfa.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 24,63,79,108
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-themes/[themeId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 34,37,81,149
+apps/e2e/tests/backend/endpoints/api/v1/internal/payments/setup.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 26
+.claude/CLAUDE-KNOWLEDGE.md
+  s_d32621b8a77938::t_fc224eb88a25eb 1-39
+examples/js-example/oauth-script.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4,13,28
+apps/dashboard/src/components/dashboard-account-settings/teams/leave-team-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-55
+packages/stack/src/lib/hooks.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-7,9-11,13-25,27-30,34-41,43-45,47-49,51,54-62
+examples/demo/src/app/turnstile-signup/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,51,303
+apps/dashboard/src/lib/remote-development-environment/state.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 5,26-31,36,42,70
+packages/template/src/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,10,13,15
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/queries/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 615
+packages/stack/src/components/oauth-button-group.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-35
+packages/stack/src/components-page/account-settings/teams/leave-team-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-57
+apps/backend/src/lib/redirect-urls.test.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 10,31,73
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/launch-checklist/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 195,198-199,237,614,616,743,746
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/callback.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 191,232
+packages/template/src/components-page/hexclave-handler.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,5,7,9,31-32,42
+packages/stack/src/lib/stack-app/data-vault/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-12
+apps/e2e/tests/backend/endpoints/api/v1/internal/mcp.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 29,83
+packages/stack/src/components-page/account-settings/teams/team-member-invitation-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-128
+packages/stack/tailwind.config.js
+  s_d32621b8a77938::t_fc224eb88a25eb 1-10,12-18,21-59,61-78,82-83
+apps/backend/src/route-handlers/smart-request.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 12,34,53-54
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/teams/[teamId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 30,116-117,196-197,255
+docs-mintlify/openapi/server.json
+  s_d32621b8a77938::t_fc224eb88a25eb 5190,5301,5545
+apps/dashboard/src/components/email-theme-selector.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 19-20
+packages/template/.eslintrc.cjs
+  s_d32621b8a77938::t_fc224eb88a25eb 17,20
+apps/skills/src/app/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1
+packages/stack/src/lib/stack-app/apps/implementations/redirect-page-urls.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-19,22-39,41,44-45,47-50,53-58,60-65,68-80,82-84,86-87,89-92,95-111,113,115-121,123,126-149,152-153,155-157,159-162,165-188,190-192,194-197,200-207,210-248,250-254,257-267,269-279,282-303,305-310,312-314,316-319,322-341
+packages/template/package-template.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3,16,70-77,79-80,82,92,101,148
+apps/dashboard/src/components/data-table/team-member-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 68-69,188-189,289,407,418,459
+apps/e2e/tests/backend/endpoints/api/v1/internal/config-local-emulator.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 118,120
+apps/e2e/tests/backend/endpoints/api/v1/internal/projects.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 17
+docs-mintlify/sdk/types/api-key.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 368
+packages/stack/src/components-page/account-settings.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-151,153-159,161-163,166-278,281-286,289-295,298-303,306-310,313-319,322-328,331-335,338-342
+packages/stack/src/components/user-button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-24,27-39,42-62,64,68-71,73,75-156
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-analytics.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 443,506,551,561,582
+apps/dashboard/src/app/api/development-environment/browser-secret/init-confirmation-code/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-8
+packages/stack/src/global.css
+  s_d32621b8a77938::t_fc224eb88a25eb 1-3,5-11,13
+docs-mintlify/guides/apps/rbac/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 59,62-63,103,106,126-127,136-137,173,176,215,218,238,247
+packages/stack/src/lib/stack-app/customers/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-158
+packages/dashboard-ui-components/src/components/button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 20,22-23
+packages/template/src/components-page/password-reset.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 45,54,128-129,140,165
+apps/dashboard/src/components/dashboard-account-settings/dashboard-account-settings-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-50,52-63,65-73,75-108,110-114,116-121,123-129,131-157,159-163,166-172,175-181,184-190,192-213,215-219,221-316,318-324
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1
+apps/dashboard/src/polyfills.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7,20
+packages/stack/src/global.d.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-5
+packages/template/src/lib/hooks.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-3,19-21,24,26,39,43-45,47
+apps/dashboard/src/components/dashboard-account-settings/section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-21
+packages/template/src/components-page/account-settings/email-and-auth/passkey-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 29-30
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/external-db-sync/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 24,156,442,471,503,553
+packages/stack/src/lib/stack-app/api-keys/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-73
+docs-mintlify/llms-full.txt
+  s_d32621b8a77938::t_fc224eb88a25eb 5,10,24-25,32,39-40,134-135,168-169,173,188,203,224,226,228,249-250,270,273,275,292-293,308,321,325,329-337,348,393,435,438,555,588,643-644,660,662-663,673,763-1013
+packages/stack/vitest.config.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-6,10-49,52-58
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/ai-query-dialog.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 374,420
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-viewer/[emailId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 161,187,201,205,216,223,228,232,237,242,247,252,265,286,305,324
+packages/stack/src/components-page/account-settings/teams/team-display-name-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-31
+packages/stack/src/components/elements/sidebar-layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-136
+packages/template/src/dev-tool/dev-tool-styles.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3,6,47,52,71,75,81,85,98,116,125,136,151,161,167,171,175-176,191,207,221,233,246,267,271,275,284,288,301,318,323,330,345,351,358,363,370,375,379,389,395,400,418,423,428,432,437,441,447,456,469,473,482,489,505,511,518,523,533,543,553,563,570,582,584,588,590,594,596,601,603,605,614,618,630-631,645-646,648,655-656,659,663,669,682,688,694,698,703,718,723,731,738,743,748,756,763,772,774,781-782,784,789,796,805-808,812,819,828,836,844,854,865,872,885,889,893,898,904-906,911,920,933,936,946,952,958,964,973,980,986,993,1000,1012,1016,1022,1029,1042,1058,1068,1072,1078,1085,1095,1110,1115,1122,1128,1134,1141,1146,1153,1157,1163,1172,1181,1188,1204-1205,1211,1217,1223,1229,1240,1246,1251,1257,1267,1280,1285,1301,1305,1315,1324,1335,1348,1353,1358,1365,1374,1380,1388,1408,1414,1418,1424,1434,1446,1463,1467,1471,1477,1485,1497,1503,1512,1518,1526,1531,1536,1541,1546,1551,1555,1559,1567,1580,1587,1592,1598,1604,1610,1617,1621,1627,1637,1650-1651,1655,1665,1678-1679,1683,1693,1705-1706,1710,1723,1730,1737,1744,1749,1767,1773,1779,1783,1789,1795,1801,1812,1821-1822,1835-1836,1840-1841,1846,1853,1873,1879,1884,1890,1898,1903,1913,1918,1923,1933,1939,1945,1951,1959,1964,1981,1987,1993,1999,2028,2040,2053,2059,2065,2075,2081,2087,2102,2107,2112,2131,2137,2142,2146,2152,2158,2164,2171,2179,2187,2198,2210,2216,2223,2232,2249,2255,2262,2268,2272,2276,2287,2293,2298,2305,2310,2318,2325,2332,2341-2342,2349,2358,2366,2368,2373,2384,2390,2396,2403,2405-2407,2409,2417,2419,2424,2428,2432,2439,2443,2450,2464,2468,2475,2482-2484,2486,2492,2496,2504,2512,2527,2532,2541,2549,2557,2559,2568,2577,2593,2598,2602,2612,2621,2637,2646,2659,2668,2676,2682,2689,2698,2702,2713,2731,2735,2740-2741,2745,2760-2761,2766,2784,2788,2795,2801,2810,2816,2828,2834,2842,2849,2856,2862,2876,2881,2891,2896,2905,2911,2917,2930,2945,2967,2971,2975,2981,2986,2993,3001,3009,3024,3029,3033,3048,3053,3059,3066,3079,3085,3091,3098,3106,3116,3124,3131,3141,3148,3152,3162,3167,3174,3180,3186,3197,3205,3213,3227,3234,3240,3253,3270,3275,3280,3284,3288,3307,3313,3319,3324,3331,3339,3419,3429,3445,3451,3463,3468,3480,3484,3488,3504,3510,3514-3515,3521,3529-3535,3539-3540,3546,3573
+packages/stack/src/lib/stack-app/apps/implementations/event-tracker.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-237
+scripts/utils.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/setup-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 177,180,197,216,292,295,308,326,426,446,462,482,504
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-payments.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 107-108,111,506-507
+apps/dashboard/src/lib/ai-dashboard/shared-prompt.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 47,132,187
+pnpm-lock.yaml
+  s_d32621b8a77938::t_fc224eb88a25eb 129,132,388,391-394,401-403,513-514,581-583,593-595,657-659,713,747,771,805,808,866,931,968,971,1119,1159,1162,1232,1238,1241,1287,1290,1293,1333,1557,1560,1563,1581,1590,1658,1695,1701,1704,1707,1710,1712-1713,1715-1716,1752-1791,1799,1802,1851,1947,1951-1954,1957,1960,1963,1972,1978,2002,2005,2011,2014,2020,2030,2051,2057,2067-2069,2072,2075,2078,2081,2087,2092,2099,2102,2172,2193,2211,2214,2231,2242,2245,2248,2253,2263,2266,2269,2272,2275,2314,2317,2327,2354,2357,2369,2372,2514,2517,2520,2658-2805,19148-19156,19277,19283,19317,19336-19360,19442-19466,19485-19509,19536-19546,19570-19571,19578-19579,19586-19591,19599-19605,19619-19621,19636-19639,19670-19673,19682-19684,19691-19693,19702-19704,19715-19717,19727-19728,19738-19739,19799-19800,19825,19844-19845,19894-19896,19924-19948,19967-19991,20051-20054,20079-20081,20091-20093,20123-20125,20150,20173-20174,20193,20232,20236,20238-20239,20251,20255,20257-20258,20307,20358,20365,20372,20397,20448-20449,20453-20454,20463,20540,20542,20546-20548,20601,20610,20666,21584,21586,24485-24502,26722,26725-26736,26747,26756,26760,27088,27093,27146-27149,27163,27187,27374,27394,27406,27416,27424,27435-27436,27438,27440,28077,28079-28080,28085,28089-28090,28099,28107,28223-28245,28336-28338,28340-28341,28378,28394,28396,28400,28418,28424-28427,28536,28544,28570,28578,28718-28719,28726,28730-28731,28735,29168,29171,29173-29174,29176,29214,29221,29279,29283,29285,29355,29357,29361,30052,30145,32334,32336,32338,32340,32434,32436,32471,34893,34895,35715-35722,35858-35883,36106,36113-36115,36145,38934-38940,39653,39655-39656,39658-39659
+packages/stack/src/lib/stack-app/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4
+apps/dashboard/src/app/api/development-environment/health/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,56-60
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-outbox/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 92,102,114,125,284,325,346,593,611,618
+docs-mintlify/api/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 52-53,89,96
+apps/e2e/tests/general/cli.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 12,15,125,237,239,248,331,333,343,347,464-465,523,559-560,627-629,648,734-736,738,740,830-844,850-852,854-855,866,874,891,909,935,946,953
+.vscode/settings.json
+  s_d32621b8a77938::t_fc224eb88a25eb 44,118
+docs-mintlify/sdk/hooks/use-user.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 11,31
+packages/stack/src/lib/stack-app/permissions/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-10,13,15-20,22-33,36-41,44-66,69-74
+apps/backend/src/lib/redirect-urls.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 12
+examples/convex/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,35
+apps/dashboard/src/components/dashboard-account-settings/settings/settings-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-15
+apps/e2e/tests/backend/endpoints/api/v1/payments/before-offer-to-product-rename/outdated--purchase-session.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 141,190,288-290,383,635,806-808,961,963
+apps/e2e/tests/js/cross-domain-auth.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 217,219
+apps/mock-oauth-server/src/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 6-7,9
+docs-mintlify/guides/apps/authentication/restricted-users.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 9,22,24,45,47,56,59,100,102
+examples/lovable-react-18-example/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 4
+packages/stack/src/components-page/account-settings/notifications/notifications-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-44
+packages/stack/src/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-39
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sign-up-rules/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 48,89-93,204-205,294,312,406,433,506-508,511-519,559,745,775,879-880,955,1011,1039,1073,1158,1165,1296,1364,1474,1477,1480,1500,1514,1559,1570,1606,1636,1720,1770-1771,1837,1857,1872,1882,1899,1955
+examples/middleware/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+docs-mintlify/guides/integrations/supabase/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 66,68-70,79,83
+apps/dashboard/src/components/design-components/menu.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 74-75
+packages/stack/src/components/team-icon.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-30
+packages/stack/src/providers/translation-provider-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-35
+apps/e2e/tests/backend/endpoints/api/v1/internal/sign-up-rules-stats.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 23
+examples/demo/src/app/handler/[...hexclave]/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,6
+packages/stack/src/dev-tool/dev-tool-trigger-position.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-109
+apps/mcp/src/app/api/internal/[transport]/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3
+docs-mintlify/sdk/types/item.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 159,195,233
+apps/backend/src/app/api/latest/auth/oauth/cross-domain/authorize/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 38,45
+apps/backend/src/lib/openapi.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 11-14,32-36,168
+apps/backend/src/prisma-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 65-66,124-125
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/conversations/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7-16,606-671,686-687,689,692,694-697,700-713,716-737,1122-1132,1134,1148-1149,1153,1204-1205,1257,1292,1304,1372-1373,1375,1378,1410,1466,1496,1500,1504,1514-1524
+apps/dashboard/src/components/dashboard-account-settings/active-sessions/active-sessions-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-289
+apps/e2e/tests/backend/endpoints/api/v1/payments/validate-code.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 258,286,299,341,385
+docs/content/docs/(guides)/faq.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 27,38
+examples/demo/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+packages/template/src/dev-tool/dev-tool-core.ts
+  s_47b6b526a10aca::t_98e7d178841e7d 682
+  s_47b6b526a10aca::t_36510eaa2def11 3048
+packages/stack/src/providers/theme-provider.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-121
+packages/ui/components.json
+  s_d32621b8a77938::t_fc224eb88a25eb 1-11,13-17
+apps/e2e/tests/backend/endpoints/api/v1/auth/password/sign-up.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 117
+examples/middleware/src/app/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,8
+apps/dashboard/src/lib/transfer-utils.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,14,22,26-28,30
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-themes/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 85-87,127,284-285,299,312,387,391
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/team-permissions/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 47-49,71
+apps/dashboard/src/app/development-environment/browser-secret/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-162
+apps/dashboard/src/lib/env.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,96
+apps/dashboard/src/components/commands/create-dashboard/dashboard-sandbox-host.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 461,472-473,475,580-581
+apps/dashboard/src/components/payments/checkout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-5,12,35-87,148,152,154,157,160,162-164,166
+examples/supabase/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+packages/stack/src/components-page/account-settings/active-sessions/active-sessions-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-238
+packages/stack/src/components/credential-sign-up.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-108
+packages/template/src/components-page/forgot-password.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 27,34,67,89
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/page-client-list-view.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 260,343-344,456,492-493,589,736-737,875,882
+packages/template/src/lib/hexclave-app/common.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 153,163,197,203,213
+apps/backend/src/lib/email-rendering.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 337-338,379,381
+apps/e2e/tests/backend/endpoints/api/v1/auth/password/send-reset-code.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 103
+examples/convex/convex/myFunctions.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3-4,14,39
+apps/dashboard/src/lib/remote-development-environment/config-file.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 185,187
+packages/stack/quetzal.config.json
+  s_d32621b8a77938::t_fc224eb88a25eb 1-5
+apps/backend/src/app/api/latest/internal/analytics/query/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 5,46
+docs/content/docs/(guides)/apps/payments.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 97,117,263-265
+apps/dashboard/src/lib/remote-development-environment/config-file.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3,71
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-permissions/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 46-48,70
+packages/stack/src/lib/stack-app/apps/implementations/admin-app-impl.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4,562-563,575-576
+packages/stack/src/lib/stack-app/session-replays/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-72
+apps/dashboard/src/components/ui/action-dialog.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5-10,29,34,50,70-71,77-78,81-85,87-105,107,117,120,131,133-160
+apps/dashboard/src/components/email-preview.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 83,85,606,610,794
+packages/stack/src/generated/.gitignore
+  s_d32621b8a77938::t_fc224eb88a25eb 1-3
+apps/backend/src/app/api/latest/auth/oauth/authorize/[provider_id]/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 110
+examples/tanstack-start-demo/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3,23-24,28-29
+packages/stack/src/components-page/account-settings/settings/settings-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-19
+apps/backend/src/lib/stripe.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 19-20,190
+apps/dashboard/src/components/dashboard-account-settings/teams/team-member-invitation-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-163
+packages/stack/src/lib/stack-app/users/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-523
+apps/dev-launchpad/public/favicon.svg
+  s_d32621b8a77938::t_fc224eb88a25eb 1-5
+apps/backend/src/app/api/latest/payments/purchases/purchase-session/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 67-69
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,121
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/emails/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 65-66,279,301,334,388,406,435,457,485,499,721-722,731,742,779,956-957,1019,1094,1107
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-keys/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 18-19,22,85,106,123-124
+apps/dashboard/src/app/(main)/integrations/oauth-confirm-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,21
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.cross-domain.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-450
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 45,84,87-88,117,141,161,190,738-739,800,810,817,827,834-835,1100,1108-1109,1112-1113,1287-1288,1381,1747-1748,1912-1913,1981
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/webhooks/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 32-33,59,283,290,304
+packages/stack/postcss.config.js
+  s_d32621b8a77938::t_fc224eb88a25eb 1-11
+apps/dashboard/src/components/dashboard-account-settings/supporting/dashboard-team-switcher.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-162
+apps/backend/src/app/api/latest/payments/products/[customer_type]/[customer_id]/switch/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,150-151,193-215
+packages/dashboard-ui-components/src/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 23-24
+packages/template/src/components-page/sign-out.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 8-9,12-23,26-28
+apps/backend/src/app/api/latest/integrations/idp.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 168
+packages/stack/src/tanstack-start-server-context.d.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-13
+packages/template/src/components-page/account-settings/api-keys/api-keys-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 6
+packages/stack/src/lib/stack-app/apps/implementations/client-app-impl.cross-domain.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-6
+examples/js-example/index-script.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,19,23
+apps/backend/src/app/api/latest/payments/purchases/validate-code/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 40,49,59,101,107,141
+packages/stack/src/components-page/account-settings/teams/team-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-28
+apps/hosted-components/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 4
+docs-mintlify/docs.json
+  s_d32621b8a77938::t_fc224eb88a25eb 79-80,171,192,235,249-256,295-299,303-307
+apps/dashboard/src/components/ui/dropdown-menu.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 13-15,67-69,151-153,183-184,208-209
+examples/docs-examples/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/teams/[teamId]/team-analytics.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 238,282,351
+apps/dashboard/src/components/dashboard-account-settings/teams/team-creation-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-101
+packages/stack/src/dev-tool/dev-tool-trigger-position.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-14,17-19,22-24,27-31,33-36,39-42,44-46,49-51,54-57,59-76,79-84,86-91,93-105,108-112
+apps/mcp/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+packages/cli/src/lib/self-update.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-160
+.cursor/commands/pre-push.md
+  s_d32621b8a77938::t_fc224eb88a25eb 1
+docs-mintlify/sdk/types/user.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 51,2343
+examples/js-example/password-sign-up-script.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4,14,24
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-templates/[templateId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 40,43,81,109,141,209,295
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 31-33,43,50,58,257,279
+packages/stack/src/components/selected-team-switcher.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4-15,18,21-38,41-44,47-48,51-53,55-60,62-66,68,70-74,76-96
+packages/stack/src/lib/stack-app/notification-categories/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-12
+docs-mintlify/guides/apps/teams/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 67,99
+packages/template/src/integrations/convex.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2
+packages/template/src/lib/hexclave-app/apps/implementations/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3-5,10,17,20-22,27-29
+apps/dashboard/src/components/design-components/select.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 30,57,64
+packages/stack/src/components-page/account-settings/payments/payments-panel.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4-35,38-61,64-66,68-71,73-78,80-82,85-88,90-115,117-124,126-149,151-152,154-169,171-184,186-194,196-233,235-268,270-277,279-283,285-288,290-293,295-300,302-304,306-309,311-334,337-348,350-353,355-399,401-454,456-537,539-541
+packages/stack/src/components-page/account-settings/teams/team-profile-user-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-29
+apps/backend/src/lib/payments.test.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,10-13,17-18,40-72,74-84,89,91,141-174,177
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/[productId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 6,1060-1061,1065,1096-1123,1194-1197,1279,1386-1391,1398-1407,1413,1423
+packages/stack/src/components/elements/form-warning.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4-16
+apps/e2e/tests/backend/endpoints/api/v1/payments/before-catalog-to-product-line-rename/outdated--purchase-session.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 123,125,137
+apps/dashboard/src/components/vibe-coding/vibe-code-layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 130-134,161-162,176-177,188-189,200-201,386-387,405-406,421-422,437-438
+apps/dashboard/src/lib/github-config-push.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 45,47,53,55,65,67,71,73,92,94,107,109,119-120,127,129,144-145,153,155,209-210,229,231,269,271,291,293
+apps/internal-tool/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 4
+examples/lovable-react-18-example/src/App.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 9,17,28
+packages/stack/src/components-page/account-settings/page-layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-11
+packages/stack/src/components-page/cli-auth-confirm.test.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-204
+packages/stack/src/components-page/cli-auth-confirm.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4-6,8-15,17-22,25-27,31-33,36-37,39-40,43-44,47-48,51-52,55-58,61-63,66-80,83-96,99-101,103-104,106-111,113-135,138-185,187-190,192-222,225-240,242-250,253-277
+packages/stack/src/components/elements/separator-with-text.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-22
+packages/stack/tsdown.config.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-11
+apps/backend/src/route-handlers/verification-code-handler.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 246
+apps/dashboard/src/components/dashboard-account-settings/supporting/api-key-dialogs.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-154
+docs/content/docs/(guides)/concepts/jwt.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 175-176
+examples/docs-examples/src/app/handler/[...hexclave]/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,5
+apps/dashboard/src/components/dashboard-account-settings/editable-text.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-71
+apps/dashboard/src/components/dashboard-account-settings/teams/team-profile-user-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-24
+apps/dashboard/src/components/pacifica/surface.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2
+apps/e2e/tests/backend/endpoints/api/v1/team-invitations.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 550
+examples/js-example/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/dashboard/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3,11-12,33,69,74,97,101,124
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/authorize.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 334,362,387
+apps/dashboard/src/components/dashboard-account-settings/teams/team-member-list-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-82
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-drafts/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 255-256,260,295,504,508,545,547,578-579
+.github/workflows/qemu-emulator-build.yaml
+  s_d32621b8a77938::t_fc224eb88a25eb 280,283,299
+docs/templates-api/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 99
+packages/cli/src/lib/own-package.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-45
+examples/demo/src/app/protected/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/onboarding/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 141-142,154,165,177
+packages/stack/src/components/api-key-dialogs.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-173
+packages/stack/src/components/oauth-button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-221
+packages/template/src/components-page/cli-auth-confirm.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 8-9,13,168
+packages/stack/src/integrations/convex.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-6,8-25,27
+apps/dashboard/src/components/dashboard-user-button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-184
+apps/dashboard/src/components/payments/purchase-price-option.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-57
+packages/stack/src/components/api-key-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-13,16-67,69-71,74-77,80-84,87-92,95-97,100-101,103-127
+sdks/spec/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/backend/src/lib/ai/prompts.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 210,454,500,753
+packages/stack/src/components/team-switcher.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-191
+apps/e2e/tests/backend/endpoints/api/v1/payments/before-offer-to-product-rename/outdated--create-purchase-url.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 132,136,162
+apps/dashboard/src/components/dashboard-account-settings/email-and-auth/emails-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-279
+apps/internal-tool/src/app/app-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 30
+apps/backend/src/app/api/latest/internal/send-test-email/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,54
+apps/dashboard/src/components/ui/switch.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 20,28
+docs-mintlify/openapi/client.json
+  s_d32621b8a77938::t_fc224eb88a25eb 2061,2063-2064,2067-2068,2070-2072,2074,2079,2081,2090,2095,2098,2101-2102,2104-2105,2109-2112,2116-2125,2129,2136-2162,2170-2171,2175,2183,2185,2194-2197,2199-2204,2208-2211,2220,2222-2223,2226-2332,2337-2420,2426-2427,2431,2436-2445,2448-2453,2456-2465,2479-2495,2500-2502,2510,2512,2521-2522,2526,2535-2585,2587-2588,2592,2594,2600,2602,2616-2619,2621-2624,2626-2629,2631-2663,2667-2672,2698-2701,2704,2707,2712,2715-2717,2719-2720,2724,2726,2735-2738,2740-2743,2745-2782,2786-2791,2799-2820,2822,2824,2826,2836-2838,2849-2852,2855,2861-2871,2881-2884,2886-2889,2892-2895,2901,2903,2912-2915,2917-2920,2922-2925,2927-2959,2963-2968,4161
+apps/dashboard/src/components/dashboard-account-settings/teams/team-profile-image-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-28
+apps/e2e/tests/backend/endpoints/api/v1/integrations/neon/projects/transfer.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 269
+examples/convex/app/server/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,15
+packages/stack/src/components-page/account-settings/teams/team-member-list-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-20,23-58
+packages/stack/src/components/elements/maybe-full-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-60
+docs-mintlify/guides/getting-started/user-fundamentals.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 113,115-119,121,159,162,171-200,204-206,210
+apps/dashboard/scripts/bundle-type-definitions.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 15,18,20-23,33
+packages/template/src/integrations/convex/component/README.md
+  s_d32621b8a77938::t_fc224eb88a25eb 49-51,68
+docs-mintlify/guides/getting-started/setup.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 7,9-12,54-72,75,144-161,184-219,230,261,290,319,350,375,386,417,446,467-526,535,558,569,598,621,632,695-696,713-714,718,737,760-762,783-784,802,805,807,822-823,836,840,844-852,903-904,921-922,926,953-955,976-977,995,998,1000,1015-1016,1031,1059,1104-1105,1122-1123,1127,1142,1157,1180-1182,1203-1204,1222,1225,1227,1242-1243,1316-1317,1334-1335,1339,1366-1368,1389-1390,1408,1411,1413,1428-1429,1450,1516,1561-1562,1579-1580,1586,1617-1619,1640-1641,1659,1662,1664,1679-1680,1753-1754,1771-1772,1778,1809-1811,1832-1833,1851,1854,1856,1871-1872,1930-2205,2261,2294,2359-2360,2376,2378-2379,2389
+docs-mintlify/sdk/types/team-user.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 101
+apps/internal-tool/src/lib/mcp-review-api.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 11-14,16-17,19
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/team-settings/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 23-24,26,73,135-136,164
+packages/stack/.env
+  s_d32621b8a77938::t_fc224eb88a25eb 1
+packages/stack/src/lib/stack-app/apps/implementations/session-replay.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-36,39-50,54-57,59-70,74-75,77-86,88-91,93,95-100,102-104,106-110,112-121,126-128,130-137,139-145,147-153,156-159,161-188,190-202,205-209,211-214,216-219,221-264,267-268,270-273,275-282,284,287-321,323,325-334,336-348,350-355
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/data-vault/stores/[storeId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 27-28,63,89,142
+apps/dashboard/src/components/email-verification-setting.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 31-32,40,54,67
+apps/hosted-components/src/routes/__root.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,12,27-51,63-86,139,143,147,149,160,163,176
+packages/template/src/components-page/cli-auth-confirm.test.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7-9,32,64,66
+packages/template/src/components-page/account-settings.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 80-81
+scripts/generate-sdks.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 162-170,198
+docs-mintlify/sdk/types/email.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 186,198,213,224
+packages/stack/src/components-page/account-settings/teams/team-profile-image-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-33
+packages/stack/src/utils/constants.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-58
+packages/template/src/components-page/magic-link-callback.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 12-13,21,23,57,62,83
+apps/backend/src/app/api/latest/auth/password/sign-up/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 49
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-sent/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 76-77,84-85,93-94,102,119,130,140,165-186,199,201,203-204,208,230
+packages/stack/src/lib/stack-app/teams/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-31,34-37,39-44,47,49,52-56,58-118,121-168,170-206
+packages/stack/src/lib/stack-app/projects/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-236
+packages/template/src/dev-tool/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3,89-91,111,114
+apps/e2e/tests/backend/endpoints/api/v1/payments/products.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1202
+examples/supabase/utils/actions.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3,10
+apps/dashboard/src/lib/prefetch/url-prefetcher.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,16,29
+examples/tanstack-start-demo/src/routes/__root.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 9,42,45
+apps/dashboard/src/components/dashboard-account-settings/sidebar-layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-8,10-17,20-31,35-37,39,41-66,68-69,71-80,82-102,105-142
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-settings/domain-settings.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 182-183,198,315,369,388,395,418,708-709,734,739,812,830-831,866,877,901,1246
+examples/demo/src/app/fallback-test/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,6-7
+packages/template/src/components/oauth-button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 32,194
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/list-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3-4,57,60,66
+docs-mintlify/index.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 9,113-115,151,153,156-158,171,186
+packages/template/src/components/message-cards/predefined-message-card.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 15,28-29,36,42-43,51,58,65
+sdks/implementations/swift/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/dashboard/.gitignore
+  s_d32621b8a77938::t_fc224eb88a25eb 9-10
+packages/stack/src/lib/stack-app/apps/implementations/client-app-impl.oauth-prefetch.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-32,35-36
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7,112
+apps/e2e/tests/backend/endpoints/api/v1/payments/switch-plans.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,11,193,216,228,291-527
+packages/stack/src/components-page/team-creation.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-78
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 234,274-286
+docs-mintlify/sdk/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 17-18,62
+packages/template/src/providers/hexclave-provider-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7-8,10,16,21,23,31
+apps/dashboard/src/components/dashboard-account-settings/email-and-auth/mfa-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-14,16-21,23-33,35-37,39-40,42-47,49-56,58-67,69-144,146-149
+apps/backend/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/[productId]/edit/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 65-66,93-94,166,229,705
+packages/template/src/components-page/account-settings/payments/payments-panel.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 10,14,232,248,411,413
+packages/template/src/lib/hexclave-app/url-targets.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 99-116
+apps/dashboard/src/lib/remote-development-environment/security.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 5,68
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 8,29-30,60-61,71
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/preview-project-redirect.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,16
+packages/stack/src/components-page/error-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-105
+packages/stack/src/components/elements/user-avatar.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2-31
+packages/stack/src/integrations/convex/component/README.md
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3,5,7,9-11,13-15,17-28,31,33-37,40-43,46-52,54,56-69,73-74
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/cross-domain-authorize.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 154,176
+packages/dashboard-ui-components/src/components/data-grid/data-grid.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 515-516,518,802-814,817
+apps/backend/src/app/api/latest/internal/payments/stripe-widgets/account-session/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,37
+packages/template/src/components/api-key-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5
+docker/local-emulator/Dockerfile
+  s_d32621b8a77938::t_fc224eb88a25eb 39
+packages/dashboard-ui-components/src/components/data-grid/data-grid-toolbar.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 87,92-94,96,237,240,242-243,251,253-254
+apps/backend/src/lib/featurebase.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,18
+examples/cjs-test/app/handler/[...hexclave]/page.jsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/page-client-product-lines-view.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 663,687,693,699,732,737,742,752,764,775,1782-1783,1885,1894,1923,1955,1963,1989,1997,2003,2032,2047
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/teams/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 19-21,56,69
+packages/react/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 2,4,43-45,47-48,59,91-92,96-98
+packages/stack/src/lib/stack-app/apps/implementations/session-refresh-subscription.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-106
+packages/stack/src/lib/stack-app/apps/implementations/session-replay.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-15,17-32
+packages/stack/src/components-page/account-settings/email-and-auth/email-and-auth-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-24
+sdks/spec/src/_utilities.spec.md
+  s_d32621b8a77938::t_fc224eb88a25eb 25-26,57,290
+examples/tanstack-start-demo/tailwind.config.js
+  s_d32621b8a77938::t_fc224eb88a25eb 6
+packages/stack/src/lib/stack-app/apps/implementations/server-app-impl.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4
+apps/backend/src/lib/local-emulator.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 99,135
+docs-mintlify/guides/apps/data-vault/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 41,64
+apps/backend/src/app/api/latest/payments/purchases/create-purchase-url/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 5,105-113,115-133,144,146,156
+packages/stack/src/lib/translations.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-23
+apps/e2e/tests/backend/endpoints/api/v1/integrations/neon/api-keys.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 22
+packages/stack/src/lib/cookie.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-77,79,81-87,89-92,94-100,103-105,107-109,111,113-115,117-120,122,124-126,128-129,131-137,141-148,151-159,163-217,219-224,227-246,248-255,257-259,262-264,266-267,270-282,285-290,292-294,296-302,306-308,310-314,316-318,320-322,324-326,328-329,331-346,348-352,354,358-363,365,367-369,372-380,382-385,387-390,392-395,397-399,401-403,405,407-414,416-420
+apps/e2e/tests/backend/endpoints/api/v1/integrations/custom/projects/transfer.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 236
+docs-mintlify/guides/other/tutorials/build-a-team-based-app.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 20,24,45,50,104,107,179,182,185,229,234,292,295,369-370
+apps/e2e/tests/backend/endpoints/api/v1/auth/otp/send-sign-in-code.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 34
+examples/demo/src/app/payments-demo/api/send-test-email/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,24,29
+examples/middleware/src/app/protected/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1
+packages/template/src/components-page/account-settings/teams/team-api-keys-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7-8,16-17
+package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 8,16,22,83-84
+apps/dashboard/src/components/ui/button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 21,23-24
+packages/cli/src/lib/self-update.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-28,30-32,35-36,39-40,43-45,48-50,54-123,125,127-128,130-132,135-137,140-151,155-157,159-163,166-179
+packages/stack/src/components/message-cards/message-card.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-46
+packages/stack/src/lib/stack-app/apps/interfaces/admin-app.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4
+apps/backend/src/app/api/latest/internal/payments/setup/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,26
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-templates/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 16-17,20,29,184-185,192
+packages/stack/src/components-page/forgot-password.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-105
+apps/dashboard/src/components/dashboard-account-settings/settings/delete-account-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-93
+docs-mintlify/guides/apps/authentication/user-onboarding.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 18,77,81,111,115
+apps/dashboard/src/components/form-fields.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 252-256,258,260
+apps/skills/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+examples/react-example/src/App.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,10,18
+apps/backend/src/lib/events.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,281
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/domains/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,44,152,159,184-185,187-188,195,254,267,364-365,377,417
+apps/mcp/src/setup-page.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 369,382,396,404,626,655
+.github/workflows/lint-and-build.yaml
+  s_d32621b8a77938::t_fc224eb88a25eb 81-82
+apps/backend/src/app/api/latest/internal/send-test-webhook/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 55
+apps/backend/src/lib/ai/tools/create-dashboard.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 13
+docs-mintlify/guides/apps/payments/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 58,96,99,186,189,264,267,339,345,351,360,387
+packages/stack/src/components-page/account-settings/email-and-auth/passkey-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-112
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/data-vault/stores/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 20-21,49
+packages/stack/src/integrations/convex/component/convex.config.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-9
+apps/dashboard/src/components/dashboard-account-settings/supporting/api-key-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-77,79-83,85-90,92-97,100-103,105-107,109-136
+docs-mintlify/guides/integrations/convex/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 53-55,74
+packages/stack/src/components-page/account-settings/settings/sign-out-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-40
+packages/stack/src/components-page/auth-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-165
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/auth-methods/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 156-157,180,191,200,221-222,229,239,420-421,431,441,452,467,488-495,499,503-531,550-551,585,620,639,652
+docs-mintlify/openapi/admin.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3006,3008-3199,3201,3203,3212-3213,3217,3222-3223,3226,3228,3236,3238-3239,3242-3251,3265,3268,3271,3274,3277-3282,3286-3288,3296,3298,3307-3308,3312,3321,3323-3324,3332-3349,3356,3358,3364,3371,3373-3374,3377,3388,3397-3477,3481,3488,3490-3492,3500-3503,3505,5230,5242,5313,5408,5451,5654,5782,5884,5979,6022,6242
+packages/template/src/components-page/onboarding.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 19,25,32,74
+packages/template/src/components/message-cards/known-error-message-card.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 15,22
+packages/template/src/lib/hexclave-app/url-targets.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 4,110-112,123-129,165-167,215-223,225,232,271
+packages/stack/README.md
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3,5-10
+packages/stack/src/components-page/sign-in.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-34
+packages/stack/src/components/profile-image-editor.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-194
+packages/template/src/components-page/auth-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3-4,6,8,15-16,43-47,74-109,111,113,118-120,146-147,155-156
+packages/stack/src/components/message-cards/predefined-message-card.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-37,39-72,75-87
+docker/server/Dockerfile
+  s_d32621b8a77938::t_fc224eb88a25eb 37
+docs/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+examples/e-commerce/src/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,21
+packages/stack/src/lib/stack-app/apps/implementations/session-refresh-subscription.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2-7,9-11,13-16,18-45,47-51
+apps/backend/src/lib/config.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 35
+apps/dashboard/src/components/payments/purchase-quantity-selector.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-107
+apps/dashboard/src/lib/remote-development-environment/security.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 5,31-32,42-44,79,87-88,102,106-107,110,113,115-120,122-156,158-200,241,246-247,253
+packages/stack/src/components-page/account-settings/editable-text.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-53
+packages/template/src/components-page/error-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 14,40,56,71,73,88,90
+packages/template/src/components-page/account-settings/active-sessions/active-sessions-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7
+packages/template/src/components/magic-link-sign-in.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 22,29
+apps/dashboard/src/components/rule-builder/condition-builder.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 4,19-25,194-195,197-202,204,206-211,223,251,253-254,261,264,272,277-287,289,291,294,298,302,304,313,316
+docs-mintlify/images/setup-tools/python.svg
+  s_d32621b8a77938::t_fc224eb88a25eb 1
+examples/convex/app/handler/[...hexclave]/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,5
+apps/dashboard/next.config.mjs
+  s_d32621b8a77938::t_fc224eb88a25eb 51,65-68
+apps/e2e/tests/backend/endpoints/api/v1/projects.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 23,1443
+packages/template/src/components/passkey-button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 16,23
+apps/backend/src/app/api/latest/payments/purchases/verification-code-handler.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 13-15
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 91
+apps/e2e/tests/backend/endpoints/api/v1/payments/create-purchase-url.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 132,136,174-210,368,397,606
+packages/stack/src/components-page/sign-out.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-14,16-25
+apps/backend/src/app/api/latest/internal/payments/method-configs/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,65,158
+apps/dashboard/src/components/payments/purchase-utils.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-48
+apps/dashboard/src/components/ui/select.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 84,89,95,103,133-135
+packages/stack/src/components-page/account-settings/email-and-auth/emails-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-201
+apps/dashboard/src/lib/config-update.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,495-517,582-584
+apps/dashboard/src/components/ui/alert.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 12
+apps/dashboard/src/components/dashboard-account-settings/email-and-auth/email-and-auth-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-20
+apps/dashboard/src/lib/github-config-push.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 15,51-52
+packages/ui/src/components/simple-tooltip.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,25-46
+apps/dashboard/src/components/ui/tabs.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 18,33
+packages/stack/src/lib/auth.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-67
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 91-92,131
+apps/dashboard/src/app/api/remote-development-environment/sessions/[sessionId]/heartbeat/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,15-20
+apps/dashboard/src/components/dashboard-account-settings/teams/team-api-keys-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-71
+apps/e2e/tests/backend/endpoints/api/v1/payments/items.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 28
+apps/dashboard/src/components/dashboard-account-settings/supporting/team-icon.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-31
+README.md
+  s_d32621b8a77938::t_fc224eb88a25eb 1,36-41
+packages/stack/src/components-page/sign-up.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-24
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/ai-query-bar.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 63-64,66-67
+examples/convex/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/dashboard/src/app/api/development-environment/browser-secret/submit-confirmation-code/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-34
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-drafts/[draftId]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 47,59,118,140,249,422,455,457,460,577,615,634,663,689
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/use-admin-app.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 9,15,17,22-23,27
+packages/stack/src/components/passkey-button.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-43
+packages/stack/src/lib/stack-app/apps/interfaces/server-app.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4
+docs-mintlify/guides/other/tutorials/build-a-saas-with-hexclave.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 17,21,26,37-39,46,48-50,55-56,60,65-66,69-70,74-75,77,80,87,93,155,158,170,173,211,216,219,233,237,252,256,259,281,305
+docs-mintlify/guides/apps/authentication/jwts.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 143,146,281
+examples/convex/components/ConvexClientProvider.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3,9
+packages/template/src/components-page/email-verification.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 15,17,41,46,67
+apps/e2e/tests/backend/endpoints/api/v1/payments/purchase-session.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 139,188,286-288,381,444-485,764,935-937,1090,1092,1278,1280,1286,1291-1422
+packages/dashboard-ui-components/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 3,20
+packages/template/src/components-page/oauth-callback.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 11,26,30
+packages/template/src/providers/hexclave-context.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,7,11-13,15
+apps/dashboard/scripts/dev-rde-production.mjs
+  s_d32621b8a77938::t_fc224eb88a25eb 2-5,7-13,15-28,32-33,35,38-45,47-48,51-65,69-70,72-74,76-80,82-84
+packages/dashboard-ui-components/src/components/dialog.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 47-48,51-52,76-79,103,109-112,138,145,151,155-159,168,195,205
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 32,46,444,457,472,480,495,503
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-settings/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 56-57,180-181
+apps/dashboard/src/components/assistant-ui/thread.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 525
+apps/backend/src/lib/local-emulator.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 2,4,19,79
+apps/dashboard/src/components/dashboard-account-settings/email-and-auth/password-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-192
+apps/dashboard/src/components/user-dialog.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 13
+docs-mintlify/guides/going-further/cli.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 7,9-11,142,145
+packages/stack/src/lib/stack-app/email/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-280
+apps/dashboard/src/components/data-table/team-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 156,175,188,221
+apps/dashboard/src/components/data-table/user-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 195,244,254,269,340,365,385,399,432-433
+packages/stack/src/components-page/account-settings/profile-page/profile-page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-61
+packages/stack/src/components-page/account-settings/settings/delete-account-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-85
+apps/dashboard/src/components/dashboard-account-settings/teams/team-display-name-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-26
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-sent/domain-reputation-card.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 218-219,243,273,298
+packages/dashboard-ui-components/src/components/input.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 16-17,19-21,28,31-37,40,54-55,68-72,77,86,89
+packages/stack/src/providers/translation-provider.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-4,6-7,9-14,16-20,22-25
+sdks/spec/src/apps/client-app.spec.md
+  s_d32621b8a77938::t_fc224eb88a25eb 1,5-6,10
+packages/stack/src/lib/stack-app/project-configs/index.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-103
+docs-mintlify/guides/going-further/hexclave-config.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-349
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 4,9,123,168,178
+apps/e2e/tests/backend/endpoints/api/v1/users.test.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 27,49
+apps/backend/src/polyfills.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 7,26
+apps/dashboard/src/app/remote-development-environment-auth-gate.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,9,15,26,35,40-41,92,98,106,141,188,190
+packages/js/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 2,4,43-48,53
+docs-mintlify/sdk/types/team.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 755,757
+docs-mintlify/guides/going-further/local-vs-cloud-dashboard.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-112
+apps/dashboard/src/app/(main)/purchase/[code]/page-client.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 3-6,8-10,12,16,20,23,29,34,71,81,83,91,96-99,106,115-120,125-126,146-147,151,166-190,192-196,198-203,206-207,209,213-215,221-224,226-242,246-250,253-261,266,269,272-274,276-280,286,288-296,304-338,340
+examples/demo/src/app/spotify-server/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4
+examples/demo/src/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 5,20
+docs-mintlify/guides/other/known-errors.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 28,57-62,64-70,72
+examples/demo/src/app/apikey-demo/api/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 3,27,34
+docs-mintlify/guides/apps/authentication/connected-accounts.mdx
+  s_d32621b8a77938::t_fc224eb88a25eb 91,94
+examples/demo/src/app/cli-auth-demo/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 10,18,22,38
+apps/backend/src/app/api/latest/internal/send-sign-in-invitation/route.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 33
+packages/stack/src/dev-tool/dev-tool-core.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1-58,61-93,96-103,105-116,119-124,126-128,130-140,142-144,146-158,160-162,164-179,181,183-208,211-212,214-229,232-234,236-239,241-253,255,259-271,273-275,277-281,283-284,286-308,310-312,314-315,317-319,321-337,339-379,381-382,385-388,390-392,394-404,406-409,412-439,442-445,448-453,455-460,462,464-468,471-479,481-483,485-494,497-531,533-539,542-623,626-627,629-779,781-782,785-799,801-805,807-830,832-837,839-844,846-850,853-860,862,864-869,871-872,874-896,898-909,914-941,943-945,948-952,954-969,971-993,995-1012,1015-1018,1020-1028,1030-1032,1034-1104,1106,1109-1125,1128-1136,1139-1147,1149-1239,1242-1250,1252-1274,1277-1296,1298-1313,1315-1321,1323-1346,1348-1349,1352-1354,1356-1360,1363-1366,1368-1374,1376-1396,1399-1404,1407-1417,1419-1428,1431-1433,1436-1437,1441-1443,1445,1448-1458,1460-1461,1463-1468,1471-1477,1479-1486,1489-1492,1496-1518,1521-1533,1535-1536,1538,1540-1549,1551,1553-1558,1560-1703,1705-1745,1747-1750,1754-1775,1777-1781,1783-1941,1943-1952,1954-1970,1972-1977,1979,1981-1986,1988,1990-1997,1999-2015,2017-2020,2022,2024-2026,2028-2031,2033-2035,2037-2045,2047-2061,2063-2081,2083-2091,2093-2100,2102-2111,2113,2115-2166,2169-2174,2177-2189,2191-2193,2195-2204,2208-2232,2234-2239,2241-2243,2246-2253,2255-2260,2262-2263,2265-2485,2487-2691,2693-2718,2720-2733,2736-2737,2740-2743,2745-2748,2750-2752,2755-2765,2767-2771,2773-2780,2782-2802,2804-2895,2898-3031,3033-3063,3065-3066,3068-3078,3081,3083-3090,3092-3095,3097,3099-3157,3159-3182,3184-3253,3255-3340,3342-3345,3348-3350,3352-3385,3387,3389-3390,3392-3428,3431-3487,3489,3492-3527,3529,3532-3549,3553,3556-3564,3567-3568,3570-3572,3574-3576,3578-3585,3587-3595,3598-3601,3603-3608,3610-3612,3615-3617,3619,3621,3623-3625,3627-3631,3633,3635-3640,3642-3645,3647-3648,3650-3658,3661-3697,3700-3706,3709,3711-3716,3718-3730,3732-3744,3746-3749,3751,3754-3756,3758-3768,3770-3772,3774-3776,3778-3779,3781-3785,3788-3805,3808-3811,3814-3825,3828-3830,3832-3880,3882-3883,3886-3887,3889-3890,3893-3928,3930-3931,3933-3935,3937
+apps/dashboard/src/components/data-table/user-picker-table.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 28,107,118
+packages/template/src/generated/.gitignore
+  s_d32621b8a77938::t_fc224eb88a25eb 3
+apps/dashboard/src/app/remote-development-environment-browser-secret-client.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,3-6,8-12,14-15,18-27,29-30,33-37,40-42,44,47-51,54-64,68-76,78-98,101-114
+examples/supabase/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,8
+examples/react-example/package.json
+  s_d32621b8a77938::t_fc224eb88a25eb 4
+examples/demo/scripts/dev-with-retry.mjs
+  s_d32621b8a77938::t_fc224eb88a25eb 5-8,10-12,25-29,35-43,46-47,49,54-62,65-67,69-70,104-106,116,122,127-151,154
+apps/mcp/src/app/mcp/route.ts
+  s_d32621b8a77938::t_fc224eb88a25eb 1,4
+docker/backend/Dockerfile
+  s_d32621b8a77938::t_fc224eb88a25eb 42
+examples/cjs-test/app/layout.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 2,11
+apps/dashboard/src/components/dashboard-account-settings/email-and-auth/otp-section.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 1-115
+packages/dashboard-ui-components/src/components/alert.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 26,58-60
+examples/e-commerce/src/app/edit-shop/page.tsx
+  s_d32621b8a77938::t_fc224eb88a25eb 6,10,15,37,62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "7db3b0c5ec895b251ce1fb96f569ac8856f598f2",
+  "prompts": {},
+  "sessions": {
+    "s_47b6b526a10aca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e52d4003-7e8a-4dea-910c-de7453b6b08f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_d32621b8a77938": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "708505ae-8f1c-403a-b7a1-32d84df2d97e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
