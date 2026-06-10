@@ -9,6 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { claudeCodeOpenRouterEnv, computeOpenRouterCostUsd, searchOpenRouterModels } from "./openrouter";
+import { StreamUsageAccumulator } from "./usage";
 import {
   cancelEvalRun,
   execInRun,
@@ -299,6 +300,9 @@ export async function* runChatTurn(options: ChatTurnOptions): AsyncGenerator<Cha
     }
   }
   Object.assign(env, claudeCodeOpenRouterEnv(model));
+  // Sums usage across every API call of the turn; the result message's own
+  // usage only covers the final call.
+  const usage = new StreamUsageAccumulator();
 
   try {
     for await (const message of query({
@@ -314,6 +318,7 @@ export async function* runChatTurn(options: ChatTurnOptions): AsyncGenerator<Cha
         permissionMode: "dontAsk",
       },
     })) {
+      usage.addMessage(message);
       if (message.type === "system" && "subtype" in message && message.subtype === "init") {
         yield { type: "session", sessionId: (message as { session_id: string }).session_id };
       } else if (message.type === "assistant") {
@@ -340,19 +345,10 @@ export async function* runChatTurn(options: ChatTurnOptions): AsyncGenerator<Cha
           }
         }
       } else if (message.type === "result") {
-        const resultMessage = message as unknown as {
-          result?: string,
-          total_cost_usd?: number,
-          usage?: { input_tokens?: number, output_tokens?: number, cache_read_input_tokens?: number, cache_creation_input_tokens?: number },
-        };
+        const resultMessage = message as unknown as { result?: string, total_cost_usd?: number };
         // Reprice from OpenRouter rates; total_cost_usd (the fallback) uses
         // Claude Code's built-in Anthropic table, wrong for OpenRouter slugs.
-        const repriced = await computeOpenRouterCostUsd(model, {
-          inputTokens: resultMessage.usage?.input_tokens,
-          outputTokens: resultMessage.usage?.output_tokens,
-          cacheReadTokens: resultMessage.usage?.cache_read_input_tokens,
-          cacheCreationTokens: resultMessage.usage?.cache_creation_input_tokens,
-        });
+        const repriced = await computeOpenRouterCostUsd(model, usage.totals());
         yield {
           type: "result",
           result: resultMessage.result ?? "",

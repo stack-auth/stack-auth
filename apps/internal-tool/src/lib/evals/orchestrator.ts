@@ -8,6 +8,7 @@ import type { Command, Sandbox } from "@vercel/sandbox";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { EvalRunRow } from "@/types";
 import { assertOpenRouterKeyValid, claudeCodeOpenRouterEnv, computeOpenRouterCostUsd } from "./openrouter";
+import { StreamUsageAccumulator } from "./usage";
 import {
   DEFAULT_RUN_TIMEOUT_MINUTES,
   EVAL_DIR,
@@ -307,20 +308,24 @@ async function executeStep(params: ExecuteStepParams): Promise<{ success: boolea
   let numMessages = 0;
   let resultText = "";
   let costUsd: string | undefined;
-  let inputTokens: bigint | undefined;
-  let outputTokens: bigint | undefined;
-  let cacheReadTokens: bigint | undefined;
-  let cacheCreationTokens: bigint | undefined;
+  // Sums usage across every API call in the stream (deduped by message id);
+  // the result message's own usage only covers the final call.
+  const usage = new StreamUsageAccumulator();
   let sessionId: string | undefined;
   // Widened so the closure assignment below isn't narrowed away at the final check.
   let isError = false as boolean;
   let lastStepUpsert = 0;
 
   const upsertStep = async (status: string, error?: string) => {
+    const totals = usage.totals();
     await upsertEvalStepRun({
       stepRunId, runId, stepIndex, stepName: step.name, model, status,
       resultText, error, numMessages, costUsd,
-      inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, sessionId,
+      inputTokens: totals.sawUsage ? totals.inputTokens : undefined,
+      outputTokens: totals.sawUsage ? totals.outputTokens : undefined,
+      cacheReadTokens: totals.sawUsage ? totals.cacheReadTokens : undefined,
+      cacheCreationTokens: totals.sawUsage ? totals.cacheCreationTokens : undefined,
+      sessionId,
     });
   };
 
@@ -337,17 +342,10 @@ async function executeStep(params: ExecuteStepParams): Promise<{ success: boolea
       const message = JSON.parse(line) as { type?: string, result?: unknown, total_cost_usd?: unknown, usage?: unknown, session_id?: unknown, is_error?: unknown };
       kind = typeof message.type === "string" ? message.type : "meta";
       numMessages += 1;
+      usage.addMessage(message);
       if (message.type === "result") {
         resultText = typeof message.result === "string" ? message.result : JSON.stringify(message.result ?? "");
         if (typeof message.total_cost_usd === "number") costUsd = message.total_cost_usd.toFixed(6);
-        // The final result's `usage` is the cumulative token usage for the step.
-        const usage = message.usage as Record<string, unknown> | undefined;
-        if (usage) {
-          inputTokens = toTokenCount(usage.input_tokens) ?? inputTokens;
-          outputTokens = toTokenCount(usage.output_tokens) ?? outputTokens;
-          cacheReadTokens = toTokenCount(usage.cache_read_input_tokens) ?? cacheReadTokens;
-          cacheCreationTokens = toTokenCount(usage.cache_creation_input_tokens) ?? cacheCreationTokens;
-        }
         if (typeof message.session_id === "string") sessionId = message.session_id;
         if (message.is_error === true) isError = true;
       } else if (typeof (message as { session_id?: unknown }).session_id === "string" && !sessionId) {
@@ -387,7 +385,7 @@ async function executeStep(params: ExecuteStepParams): Promise<{ success: boolea
     // Reprice from the model's actual OpenRouter rates; the stream's
     // total_cost_usd (kept as fallback) is Claude Code pricing tokens against
     // its built-in Anthropic table, which is wrong for OpenRouter models.
-    costUsd = await computeOpenRouterCostUsd(model, { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }) ?? costUsd;
+    costUsd = await computeOpenRouterCostUsd(model, usage.totals()) ?? costUsd;
 
     // Persist the raw trace into the sandbox so later steps (the report step)
     // can analyze the full message history.
@@ -447,10 +445,6 @@ function contentTypeForPath(path: string): string {
 
 // Claude Code reports token counts as JS numbers; coerce to a non-negative
 // bigint for the u64 column (ignoring missing/garbage values).
-function toTokenCount(value: unknown): bigint | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
-  return BigInt(Math.round(value));
-}
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", String.raw`'\''`)}'`;
