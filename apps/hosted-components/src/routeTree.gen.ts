@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TeamInvitationDemoRouteImport } from './routes/team-invitation-demo'
 import { Route as EmailVerificationDemoRouteImport } from './routes/email-verification-demo'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler/$'
 
+const TeamInvitationDemoRoute = TeamInvitationDemoRouteImport.update({
+  id: '/team-invitation-demo',
+  path: '/team-invitation-demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EmailVerificationDemoRoute = EmailVerificationDemoRouteImport.update({
   id: '/email-verification-demo',
   path: '/email-verification-demo',
@@ -32,35 +38,55 @@ const HandlerSplatRoute = HandlerSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/email-verification-demo': typeof EmailVerificationDemoRoute
+  '/team-invitation-demo': typeof TeamInvitationDemoRoute
   '/handler/$': typeof HandlerSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/email-verification-demo': typeof EmailVerificationDemoRoute
+  '/team-invitation-demo': typeof TeamInvitationDemoRoute
   '/handler/$': typeof HandlerSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/email-verification-demo': typeof EmailVerificationDemoRoute
+  '/team-invitation-demo': typeof TeamInvitationDemoRoute
   '/handler/$': typeof HandlerSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/email-verification-demo' | '/handler/$'
+  fullPaths:
+    | '/'
+    | '/email-verification-demo'
+    | '/team-invitation-demo'
+    | '/handler/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/email-verification-demo' | '/handler/$'
-  id: '__root__' | '/' | '/email-verification-demo' | '/handler/$'
+  to: '/' | '/email-verification-demo' | '/team-invitation-demo' | '/handler/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/email-verification-demo'
+    | '/team-invitation-demo'
+    | '/handler/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EmailVerificationDemoRoute: typeof EmailVerificationDemoRoute
+  TeamInvitationDemoRoute: typeof TeamInvitationDemoRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/team-invitation-demo': {
+      id: '/team-invitation-demo'
+      path: '/team-invitation-demo'
+      fullPath: '/team-invitation-demo'
+      preLoaderRoute: typeof TeamInvitationDemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/email-verification-demo': {
       id: '/email-verification-demo'
       path: '/email-verification-demo'
@@ -88,6 +114,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EmailVerificationDemoRoute: EmailVerificationDemoRoute,
+  TeamInvitationDemoRoute: TeamInvitationDemoRoute,
   HandlerSplatRoute: HandlerSplatRoute,
 }
 export const routeTree = rootRouteImport

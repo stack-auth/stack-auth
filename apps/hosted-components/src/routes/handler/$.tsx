@@ -9,6 +9,7 @@ import {
   HostedPasswordReset,
   HostedSignIn,
   HostedSignUp,
+  HostedTeamInvitation,
 } from '../../hosted-components/auth';
 
 export const Route = createFileRoute('/handler/$')({
@@ -49,6 +50,10 @@ function HandlerPage() {
 
   if (hostedHandlerPath === 'error') {
     return <HostedError fullPage />;
+  }
+
+  if (hostedHandlerPath === 'team-invitation') {
+    return <HostedTeamInvitation fullPage />;
   }
 
   return <HexclaveHandler fullPage />;
