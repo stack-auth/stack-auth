@@ -325,6 +325,102 @@ describe("StackClientApp cross-domain auth", () => {
     expect(refreshedRawRefreshTokens).toEqual(["new-refresh-token"]);
   });
 
+  it("does not re-bounce nested cross-domain auth after the OAuth callback consumed code+state from the URL", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000008";
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+
+    const strippedUrl = new URL(`https://${projectId}.example-stack-hosted.test/handler/sign-in`);
+    strippedUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", "source-refresh-token-id");
+    strippedUrl.searchParams.set("stack_nested_cross_domain_auth_callback_url", "https://demo.stack-auth.com/");
+    const urlAtConstructionTime = new URL(strippedUrl);
+    urlAtConstructionTime.searchParams.set("code", "one-time-code");
+    urlAtConstructionTime.searchParams.set("state", "nested-oauth-state");
+
+    globalThis.document = createMockDocument();
+    globalThis.window = {
+      location: {
+        href: strippedUrl.toString(),
+        replace: () => {
+          throw new Error("INTENTIONAL_TEST_ABORT");
+        },
+      },
+    } as any;
+
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId,
+      publishableClientKey: "stack-pk-test",
+      tokenStore: "memory",
+      redirectMethod: "window",
+      noAutomaticPrefetch: true,
+    });
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
+      state: "fresh-nested-state",
+      codeChallenge: "fresh-nested-code-challenge",
+    });
+    vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(true);
+
+    try {
+      // Without the construction-time URL, the handler re-bounces (location.replace aborts).
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
+      // With it, the in-flight OAuth callback wins and the handler stands down.
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime)).resolves.toBe(false);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+
+  it("passes the construction-time URL to the nested cross-domain auth handler", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000009";
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+
+    const callbackUrl = new URL(`https://${projectId}.example-stack-hosted.test/handler/sign-in`);
+    callbackUrl.searchParams.set("stack_nested_cross_domain_auth_refresh_token_id", "source-refresh-token-id");
+    callbackUrl.searchParams.set("code", "one-time-code");
+    callbackUrl.searchParams.set("state", "nested-oauth-state");
+    const strippedUrl = new URL(callbackUrl);
+    strippedUrl.searchParams.delete("code");
+    strippedUrl.searchParams.delete("state");
+
+    globalThis.document = createMockDocument();
+    globalThis.window = {
+      location: {
+        href: callbackUrl.toString(),
+      },
+    } as any;
+
+    const nestedAuthSpy = vi.spyOn(StackClientApp.prototype as any, "_maybeHandleNestedCrossDomainAuth").mockResolvedValue(false);
+
+    try {
+      new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId,
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "memory",
+        redirectMethod: "window",
+        noAutomaticPrefetch: true,
+      });
+
+      // Simulate consumeOAuthCallbackQueryParams stripping code+state before microtasks run.
+      (globalThis.window as any).location.href = strippedUrl.toString();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(nestedAuthSpy).toHaveBeenCalledTimes(1);
+      const urlArgument = nestedAuthSpy.mock.calls[0][0] as URL;
+      expect(urlArgument).toBeInstanceOf(URL);
+      expect(urlArgument.searchParams.get("code")).toBe("one-time-code");
+      expect(urlArgument.searchParams.get("state")).toBe("nested-oauth-state");
+    } finally {
+      nestedAuthSpy.mockRestore();
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+  });
+
   it("uses direct sign-out instead of hosted sign-out redirects when code execution is available", async () => {
     const clientApp = new StackClientApp({
       baseUrl: "http://localhost:12345",
