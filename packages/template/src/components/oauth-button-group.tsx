@@ -19,7 +19,7 @@ export function OAuthButtonGroup({
   const hexclaveApp = useStackApp();
   const project = mockProject || hexclaveApp.useProject();
   return (
-    <div className='gap-3 flex flex-col items-stretch stack-scope'>
+    <div className='gap-4 flex flex-col items-stretch stack-scope'>
       {project.config.oauthProviders.map(p => (
         <OAuthButton key={p.id} provider={p.id} type={type}
           isMock={!!mockProject}

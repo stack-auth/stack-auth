@@ -1,13 +1,21 @@
 'use client';
 
-import { Badge, BrandIcons, Button, SimpleTooltip } from '@hexclave/ui';
+import { BrandIcons, Button, SimpleTooltip } from '@hexclave/ui';
+import Color, { ColorInstance } from 'color';
 import type { ReactElement } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useStackApp } from '../lib/hooks';
 import { useTranslation } from '../lib/translations';
 import { useInIframe } from './use-in-iframe';
 
-const iconSize = 20;
+const iconSize = 22;
+
+const changeColor = (c: ColorInstance, value: number) => {
+  if (c.isLight()) {
+    value = -value;
+  }
+  return c.hsl(c.hue(), c.saturationl(), c.lightness() + value).toString();
+};
 
 export function OAuthButton({
   provider,
@@ -22,44 +30,56 @@ export function OAuthButton({
 }) {
   const { t } = useTranslation();
   const hexclaveApp = useStackApp();
+  const styleId = useId().replaceAll(':', '-');
   const isIframe = useInIframe();
 
   const [lastUsed, setLastUsed] = useState<string | null>(null);
   useEffect(() => {
+    // Hexclave rebrand: UI hint key — straight rename (dot delimiter preserved).
     setLastUsed(localStorage.getItem('_HEXCLAVE.lastUsed'));
   }, []);
 
   let style : {
+    backgroundColor?: string,
+    textColor?: string,
     name: string,
     icon: ReactElement | null,
-    iconClassName?: string,
+    border?: string,
   };
   switch (provider) {
     case 'google': {
       style = {
+        backgroundColor: '#fff',
+        textColor: '#000',
         name: 'Google',
+        border: '1px solid #ddd',
         icon: <BrandIcons.Google iconSize={iconSize} />,
       };
       break;
     }
     case 'github': {
       style = {
+        backgroundColor: '#111',
+        textColor: '#fff',
+        border: '1px solid #333',
         name: 'GitHub',
         icon: <BrandIcons.GitHub iconSize={iconSize} />,
-        iconClassName: "invert dark:invert-0",
       };
       break;
     }
     case 'facebook': {
       style = {
+        backgroundColor: '#1877F2',
+        textColor: '#fff',
         name: 'Facebook',
         icon: <BrandIcons.Facebook iconSize={iconSize} />,
-        iconClassName: "invert dark:invert-0",
       };
       break;
     }
     case 'microsoft': {
       style = {
+        backgroundColor: '#2f2f2f',
+        textColor: '#fff',
         name: 'Microsoft',
         icon: <BrandIcons.Microsoft iconSize={iconSize} />,
       };
@@ -67,22 +87,27 @@ export function OAuthButton({
     }
     case 'spotify': {
       style = {
+        backgroundColor: '#1DB954',
+        textColor: '#fff',
         name: 'Spotify',
         icon: <BrandIcons.Spotify iconSize={iconSize} />,
-        iconClassName: "invert dark:invert-0",
       };
       break;
     }
     case 'discord': {
       style = {
+        backgroundColor: '#5865F2',
+        textColor: '#fff',
         name: 'Discord',
         icon: <BrandIcons.Discord iconSize={iconSize} />,
-        iconClassName: "invert dark:invert-0",
       };
       break;
     }
     case 'gitlab': {
       style = {
+        backgroundColor: "#111",
+        textColor: "#fff",
+        border: "1px solid #333",
         name: "Gitlab",
         icon: <BrandIcons.Gitlab iconSize={iconSize} />,
       };
@@ -90,14 +115,19 @@ export function OAuthButton({
     }
     case 'apple': {
       style = {
+        backgroundColor: "#000",
+        textColor: "#fff",
+        border: "1px solid #333",
         name: "Apple",
         icon: <BrandIcons.Apple iconSize={iconSize} />,
-        iconClassName: "invert dark:invert-0",
       };
       break;
     }
     case "bitbucket": {
       style = {
+        backgroundColor: "#fff",
+        textColor: "#000",
+        border: "1px solid #ddd",
         name: "Bitbucket",
         icon: <BrandIcons.Bitbucket iconSize={iconSize} />,
       };
@@ -105,22 +135,26 @@ export function OAuthButton({
     }
     case 'linkedin': {
       style = {
+        backgroundColor: "#0073b1",
+        textColor: "#fff",
         name: "LinkedIn",
         icon: <BrandIcons.LinkedIn iconSize={iconSize} />,
-        iconClassName: "invert dark:invert-0",
       };
       break;
     }
     case 'x': {
       style = {
+        backgroundColor: "#000",
+        textColor: "#fff",
         name: "X",
         icon: <BrandIcons.X iconSize={iconSize} />,
-        iconClassName: "invert dark:invert-0",
       };
       break;
     }
     case 'twitch': {
       style = {
+        backgroundColor: "#6441a5",
+        textColor: "#fff",
         name: "Twitch",
         icon: <BrandIcons.Twitch iconSize={iconSize} />,
       };
@@ -134,105 +168,50 @@ export function OAuthButton({
     }
   }
 
-  let buttonClasses = "";
-  let iconWrapperClasses = style.iconClassName;
-
-  switch (provider) {
-    case 'google': {
-      buttonClasses = "bg-white hover:bg-zinc-50 text-black border border-border shadow-sm";
-      break;
+  const styleSheet = `
+    .stack-oauth-button-${styleId} {
+      background-color: ${style.backgroundColor} !important;
+      color: ${style.textColor} !important;
+      border: ${style.border} !important;
     }
-    case 'github': {
-      buttonClasses = "bg-[#24292e] hover:bg-[#1f2327] text-white border border-[#1b1f23] shadow-sm";
-      iconWrapperClasses = "invert-0";
-      break;
+    .stack-oauth-button-${styleId}:hover {
+      background-color: ${changeColor(Color(style.backgroundColor), 10)} !important;
     }
-    case 'facebook': {
-      buttonClasses = "bg-[#1877F2] hover:bg-[#166fe5] text-white border border-[#1464d3] shadow-sm";
-      iconWrapperClasses = "invert-0";
-      break;
-    }
-    case 'microsoft': {
-      buttonClasses = "bg-[#2f2f2f] hover:bg-[#252525] text-white border border-[#202020] shadow-sm";
-      break;
-    }
-    case 'spotify': {
-      buttonClasses = "bg-[#1ED760] hover:bg-[#1db954] text-black border border-[#1aa34a] shadow-sm";
-      iconWrapperClasses = "invert dark:invert";
-      break;
-    }
-    case 'discord': {
-      buttonClasses = "bg-[#5865F2] hover:bg-[#4752c4] text-white border border-[#3c45b0] shadow-sm";
-      iconWrapperClasses = "invert-0";
-      break;
-    }
-    case 'apple': {
-      buttonClasses = "bg-black dark:bg-white hover:bg-zinc-900 dark:hover:bg-zinc-100 text-white dark:text-black border border-zinc-900 dark:border-zinc-200 shadow-sm";
-      iconWrapperClasses = "invert-0 dark:invert";
-      break;
-    }
-    case 'gitlab': {
-      buttonClasses = "bg-[#FC6D26] hover:bg-[#e24329] text-white border border-[#d13b1f] shadow-sm";
-      break;
-    }
-    case 'bitbucket': {
-      buttonClasses = "bg-[#0052CC] hover:bg-[#0047b3] text-white border border-[#003d99] shadow-sm";
-      break;
-    }
-    case 'linkedin': {
-      buttonClasses = "bg-[#0077B5] hover:bg-[#006699] text-white border border-[#005580] shadow-sm";
-      iconWrapperClasses = "invert-0";
-      break;
-    }
-    case 'x': {
-      buttonClasses = "bg-black dark:bg-white hover:bg-zinc-900 dark:hover:bg-zinc-100 text-white dark:text-black border border-zinc-900 dark:border-zinc-200 shadow-sm";
-      iconWrapperClasses = "invert-0 dark:invert";
-      break;
-    }
-    case 'twitch': {
-      buttonClasses = "bg-[#9146FF] hover:bg-[#772ce8] text-white border border-[#641bdf] shadow-sm";
-      iconWrapperClasses = "invert-0";
-      break;
-    }
-    default: {
-      buttonClasses = "bg-primary hover:bg-primary/90 text-primary-foreground border border-transparent shadow-sm";
-      break;
-    }
-  }
+  `;
 
   return (
-    <SimpleTooltip
-      disabled={!isIframe}
-      tooltip={isIframe ? "This auth provider is not supported in an iframe for security reasons." : undefined}
-      className='stack-scope w-full inline-flex overflow-visible'
-    >
-      <Button
-        onClick={async () => {
-          localStorage.setItem('_HEXCLAVE.lastUsed', provider);
-          await (onAuthenticate ? onAuthenticate() : hexclaveApp.signInWithOAuth(provider));
-        }}
-        variant="plain"
-        className={`stack-scope relative overflow-visible w-full h-10 rounded-xl font-medium transition-all duration-150 ${buttonClasses}`}
-        disabled={isIframe}
+    <>
+      <style>{styleSheet}</style>
+      <SimpleTooltip
+        disabled={!isIframe}
+        tooltip={isIframe ? "This auth provider is not supported in an iframe for security reasons." : undefined}
+        className='stack-scope w-full inline-flex'
       >
-        {!isMock && lastUsed === provider && (
-          <Badge
-            variant="secondary"
-            className="absolute top-0 right-3 z-10 -translate-y-1/2 px-1.5 py-0 text-[10px] font-medium normal-case border border-blue-500/70 bg-blue-600 text-white shadow-sm dark:border-blue-400/70 dark:bg-blue-500 dark:text-white"
-          >
-            {t('last used')}
-          </Badge>
-        )}
-        <div className='flex items-center w-full gap-3'>
-          <span className={iconWrapperClasses}>{style.icon}</span>
-          <span className='flex-1 text-sm'>
-            {type === 'sign-up' ?
+        <Button
+          onClick={async () => {
+            // Hexclave rebrand: UI hint key — straight rename (dot delimiter preserved).
+            localStorage.setItem('_HEXCLAVE.lastUsed', provider);
+            await (onAuthenticate ? onAuthenticate() : hexclaveApp.signInWithOAuth(provider));
+          }}
+          className={`stack-oauth-button-${styleId} stack-scope relative w-full`}
+          disabled={isIframe}
+        >
+          {!isMock && lastUsed === provider && (
+            <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-md">
+            last
+            </span>
+          )}
+          <div className='flex items-center w-full gap-4'>
+            {style.icon}
+            <span className='flex-1'>
+              {type === 'sign-up' ?
               t('Sign up with {provider}', { provider: style.name }) :
               t('Sign in with {provider}', { provider: style.name })
-            }
-          </span>
-        </div>
-      </Button>
-    </SimpleTooltip>
+              }
+            </span>
+          </div>
+        </Button>
+      </SimpleTooltip>
+    </>
   );
 }
