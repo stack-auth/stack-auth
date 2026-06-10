@@ -196,6 +196,7 @@ function RootComponent() {
         passwordReset: "/handler/password-reset",
         emailVerification: "/handler/email-verification",
         accountSettings: "/handler/account-settings",
+        mfa: { type: "custom", url: "/handler/mfa", version: 1 },
         afterSignIn: "/",
         afterSignUp: "/",
         afterSignOut: "/handler/sign-in",

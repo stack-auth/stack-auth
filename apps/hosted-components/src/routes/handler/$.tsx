@@ -4,6 +4,7 @@ import { HostedAccountSettings } from '../../hosted-components/account-settings/
 import {
   HostedEmailVerification,
   HostedForgotPassword,
+  HostedMfa,
   HostedPasswordReset,
   HostedSignIn,
   HostedSignUp,
@@ -39,6 +40,10 @@ function HandlerPage() {
 
   if (hostedHandlerPath === 'email-verification') {
     return <HostedEmailVerification fullPage />;
+  }
+
+  if (hostedHandlerPath === 'mfa') {
+    return <HostedMfa fullPage />;
   }
 
   return <HexclaveHandler fullPage />;
