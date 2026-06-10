@@ -9,7 +9,7 @@ export type InputProps = {
 
 export const Input = forwardRefIfNeeded<HTMLInputElement, InputProps>(
   ({ className, type, prefixItem, ...props }, ref) => {
-    const baseClasses = "flex h-9 w-full rounded-lg border border-black/[0.08] dark:border-white/[0.10] bg-white/45 dark:bg-zinc-950/25 shadow-none px-3 py-1 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+    const baseClasses = "flex h-9 w-full rounded-lg border border-black/[0.08] dark:border-white/[0.15] bg-white/45 dark:bg-zinc-900/50 shadow-none px-3 py-1 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 
     if (prefixItem) {
       return (
