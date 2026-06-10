@@ -151,6 +151,18 @@ function HostedAuthMessage(props: {
   );
 }
 
+function HostedAuthLoading(props: {
+  fullPage?: boolean,
+}) {
+  return (
+    <HostedAuthShell fullPage={props.fullPage}>
+      <div className="flex min-h-24 items-center justify-center">
+        <Spinner size={24} className="text-muted-foreground" />
+      </div>
+    </HostedAuthShell>
+  );
+}
+
 function HostedAuthFallback(props: {
   fullPage?: boolean,
 }) {
@@ -750,14 +762,7 @@ function AutomaticRedirect(props: {
   }
 
   return (
-    <HostedAuthMessage
-      title="Redirecting..."
-      primaryAction={() => app.redirectToHome()}
-      primaryText="Continue"
-      fullPage={props.fullPage}
-    >
-      You are being redirected.
-    </HostedAuthMessage>
+    <HostedAuthLoading fullPage={props.fullPage} />
   );
 }
 
@@ -777,7 +782,7 @@ function HostedAuthPageInner(props: {
 
   if (props.automaticRedirect && user != null && props.mockProject == null) {
     return (
-      <Suspense fallback={<HostedAuthMessage title="Redirecting..." primaryAction={() => app.redirectToHome()} primaryText="Continue" fullPage={props.fullPage}>You are being redirected.</HostedAuthMessage>}>
+      <Suspense fallback={<HostedAuthLoading fullPage={props.fullPage} />}>
         <AutomaticRedirect fullPage={props.fullPage} isRestricted={user.isRestricted} type={props.type} />
       </Suspense>
     );
