@@ -214,7 +214,6 @@ export const supabaseSetupPrompt = deindent`
 
       import { createSupabaseClient } from "@/utils/supabase-client";
       import { useHexclaveApp, useUser } from "@hexclave/next";
-      import Link from "next/link";
       import { useEffect, useState } from "react";
 
       export default function Page() {
@@ -239,10 +238,10 @@ export const supabaseSetupPrompt = deindent`
               <>
                 <p>You are signed in</p>
                 <p>User ID: {user.id}</p>
-                <Link href={app.urls.signOut}>Sign Out</Link>
+                <button onClick={() => user.signOut()}>Sign Out</button>
               </>
             ) : (
-              <Link href={app.urls.signIn}>Sign In</Link>
+              <button onClick={() => app.redirectToSignIn()}>Sign In</button>
             )}
             <h3>Supabase data</h3>
             <ul>{listContent}</ul>
@@ -980,6 +979,16 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             - Hexclave resolves the current user during SSR by reading TanStack Start's request cookies through \`@hexclave/tanstack-start\`'s server context. No extra wiring is required — \`useUser()\` "just works" on both server and client routes as long as \`tokenStore: "cookie"\` is set on \`HexclaveClientApp\`.
           </Step>
         ` : ""}
+      ` : ""}
+
+      ${isMaybeFrontend ? deindent`
+        <Step title="${!isDefinitelyFrontend ? "Frontend: " : ""}Signing users in and out">
+          ${isMaybeReact ? `To require authentication on a page, call \`useUser({ or: "redirect" })\` — it redirects to sign-in and returns the user to the page afterwards. ` : ""}For sign-in/sign-up buttons, call \`app.redirectToSignIn()\` / \`app.redirectToSignUp()\`; to sign out, call \`await user.signOut()\`.
+
+          <Note>
+            Never render \`app.urls.signIn\`/\`app.urls.signOut\` as plain \`<a>\`/\`<Link>\` hrefs. With hosted auth pages, a raw navigation skips the return-URL and session-handoff parameters the redirect helpers add, so the user gets stranded on the hosted domain and sign-out cannot clear your app's own session cookies. \`user.signOut()\` works with every configuration.
+          </Note>
+        </Step>
       ` : ""}
 
       ${isMaybeBackend && !isDefinitelyNextjs ? deindent`

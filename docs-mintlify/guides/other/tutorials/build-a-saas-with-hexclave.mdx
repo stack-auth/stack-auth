@@ -132,7 +132,7 @@ export function AuthHeader() {
         <>
           <span>{user.displayName ?? user.primaryEmail ?? user.id}</span>
           <Link href={app.urls.accountSettings}>Account</Link>
-          <Link href={app.urls.signOut}>Sign out</Link>
+          <button onClick={() => user.signOut()}>Sign out</button>
         </>
       ) : (
         <>

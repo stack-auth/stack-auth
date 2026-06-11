@@ -19,6 +19,7 @@ Below are some reminders on Hexclave and how to learn more about it. If you're s
   - JavaScript & TypeScript:
     - Hexclave has different SDK packages for different frameworks and languages. As of the time of writing these reminders, they are: @hexclave/js (JavaScript/TypeScript), @hexclave/next (Next.js), @hexclave/react (React), @hexclave/tanstack-start (TanStack Start). You can find all of these on npm. They are all versioned together, meaning that vX.Y.Z of one SDK was released at the same time as vX.Y.Z of another SDK. For the most part, they are the same, although each has platform-specific features and differences.
     - The Hexclave/Stack Auth SDK constructor accepts a `urls` option that tells the SDK where auth pages and post-auth redirects live. When you add a custom auth page such as a `sign-in`, `sign-up`, `forgot-password`, `account-settings`, etc., update the corresponding `urls` key to point to that route; also set redirect targets such as `afterSignIn`, `afterSignUp`, `afterSignOut`, and `home` when those destinations are customized. The `urls` option is the source of truth for redirect helpers such as `redirectToSignIn()`, hosted or handler-page flows, and post-auth navigation; if it is left pointing at the default pages after custom pages are added, users can hit extra redirects, land on the wrong auth page, or return to an unexpected page after signing in or out.
+    - For auth actions, use `app.redirectToSignIn()`/`app.redirectToSignUp()` and `await user.signOut()` — never render `app.urls.signIn`/`app.urls.signOut` as plain `<a>`/`<Link>` hrefs. With hosted auth pages, raw navigation skips the return-URL/session-handoff params the helpers add, stranding the user on the hosted domain; sign-out additionally cannot clear the app's own session cookies, so the user appears to stay signed in.
     - The `Result<T, E>` type is `{ status: "ok", data: T } | { status: "error", error: E }`.
     - `KnownErrors[KNOWN_ERROR_CODE]` refers to a specific known error type. Each KnownError may have its own properties, but they all inherit from `Error & { statusCode: number, humanReadableMessage: string, details?: Json }`.
     - React & Next.js:
@@ -468,6 +469,14 @@ The frameworks and languages with explicit SDK support are:
     - Hexclave resolves the current user during SSR by reading TanStack Start's request cookies through `@hexclave/tanstack-start`'s server context. No extra wiring is required — `useUser()` "just works" on both server and client routes as long as `tokenStore: "cookie"` is set on `HexclaveClientApp`.
   </Step>
 
+  <Step title="Frontend: Signing users in and out">
+    To require authentication on a page, call `useUser({ or: "redirect" })` — it redirects to sign-in and returns the user to the page afterwards. For sign-in/sign-up buttons, call `app.redirectToSignIn()` / `app.redirectToSignUp()`; to sign out, call `await user.signOut()`.
+
+    <Note>
+      Never render `app.urls.signIn`/`app.urls.signOut` as plain `<a>`/`<Link>` hrefs. With hosted auth pages, a raw navigation skips the return-URL and session-handoff parameters the redirect helpers add, so the user gets stranded on the hosted domain and sign-out cannot clear your app's own session cookies. `user.signOut()` works with every configuration.
+    </Note>
+  </Step>
+
   <Step title="Backend: Update callers with header & get user">
     You are now ready to use the Hexclave SDK. If you have any frontends calling your backend endpoints, you may want to pass along the Hexclave tokens in a header such that you can access the same user object on your backend.
 
@@ -728,7 +737,6 @@ Follow these instructions to integrate Hexclave with Convex.
 
     import { createSupabaseClient } from "@/utils/supabase-client";
     import { useHexclaveApp, useUser } from "@hexclave/next";
-    import Link from "next/link";
     import { useEffect, useState } from "react";
 
     export default function Page() {
@@ -753,10 +761,10 @@ Follow these instructions to integrate Hexclave with Convex.
             <>
               <p>You are signed in</p>
               <p>User ID: {user.id}</p>
-              <Link href={app.urls.signOut}>Sign Out</Link>
+              <button onClick={() => user.signOut()}>Sign Out</button>
             </>
           ) : (
-            <Link href={app.urls.signIn}>Sign In</Link>
+            <button onClick={() => app.redirectToSignIn()}>Sign In</button>
           )}
           <h3>Supabase data</h3>
           <ul>{listContent}</ul>
