@@ -72,7 +72,7 @@ async function createPurchaseCodeForCustomer(options: { customerType: "user" | "
   return code as string;
 }
 
-const stripeWebhookSecret = process.env.STACK_STRIPE_WEBHOOK_SECRET ?? "mock_stripe_webhook_secret";
+const stripeWebhookSecret = (process.env.HEXCLAVE_STRIPE_WEBHOOK_SECRET || process.env.STACK_STRIPE_WEBHOOK_SECRET) ?? "mock_stripe_webhook_secret";
 
 async function sendStripeWebhook(payload: unknown) {
   const timestamp = Math.floor(Date.now() / 1000);

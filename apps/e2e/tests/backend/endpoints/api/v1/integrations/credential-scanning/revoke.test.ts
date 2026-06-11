@@ -44,7 +44,7 @@ it("should send email notification to user when revoking an API key through cred
     },
   });
 
-  if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+  if ((process.env.HEXCLAVE_TEST_SOURCE_OF_TRUTH || process.env.STACK_TEST_SOURCE_OF_TRUTH) === "true") {
     expect(revokeResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 404,
@@ -180,7 +180,7 @@ it("should send email notification to team members when revoking a team API key 
       },
     });
 
-    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+    if ((process.env.HEXCLAVE_TEST_SOURCE_OF_TRUTH || process.env.STACK_TEST_SOURCE_OF_TRUTH) === "true") {
       expect(revokeResponse).toMatchInlineSnapshot(`
         NiceResponse {
           "status": 404,
@@ -353,7 +353,7 @@ it("should handle already revoked API keys gracefully", async ({ expect }: { exp
     },
   });
 
-  if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+  if ((process.env.HEXCLAVE_TEST_SOURCE_OF_TRUTH || process.env.STACK_TEST_SOURCE_OF_TRUTH) === "true") {
     expect(revokeResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 404,

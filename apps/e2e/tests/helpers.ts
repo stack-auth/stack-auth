@@ -241,7 +241,7 @@ export class Mailbox {
     };
 
     this.waitForMessagesWithSubjectCount = async (subject: string, minCount: number, options?: { noBody?: boolean }) => {
-      const timeoutMs = Number(process.env.STACK_MAILBOX_WAIT_TIMEOUT_MS ?? 60000);
+      const timeoutMs = Number((process.env.HEXCLAVE_MAILBOX_WAIT_TIMEOUT_MS || process.env.STACK_MAILBOX_WAIT_TIMEOUT_MS) ?? 60000);
       const intervalMs = 500;
       const deadline = Date.now() + timeoutMs;
       let messages: MailboxMessage[] = [];
@@ -324,7 +324,7 @@ export const STACK_MCP_BASE_URL = getEnvVariable("STACK_MCP_BASE_URL");
  * fallback port. Always thread this through to SDK constructors instead of
  * hardcoding `STACK_BACKEND_BASE_URL`.
  */
-export const SDK_BASE_URL: string | undefined = process.env.STACK_TEST_SDK_FALLBACK
+export const SDK_BASE_URL: string | undefined = (process.env.HEXCLAVE_TEST_SDK_FALLBACK || process.env.STACK_TEST_SDK_FALLBACK)
   ? undefined
   : STACK_BACKEND_BASE_URL;
 export const STACK_INTERNAL_PROJECT_ID = getEnvVariable("STACK_INTERNAL_PROJECT_ID");

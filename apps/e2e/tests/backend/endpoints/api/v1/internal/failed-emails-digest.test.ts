@@ -168,7 +168,7 @@ describe("with valid credentials", () => {
     const { response, batches: mockProjectFailedEmails } = await waitForFailedEmailsDigest(2);
       expect(response.status).toBe(200);
 
-      if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      if ((process.env.HEXCLAVE_TEST_SOURCE_OF_TRUTH || process.env.STACK_TEST_SOURCE_OF_TRUTH) === "true") {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
       } else {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
@@ -460,7 +460,7 @@ describe("with valid credentials", () => {
       (batch: any) => batch.project_id === projectId
     );
 
-    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+    if ((process.env.HEXCLAVE_TEST_SOURCE_OF_TRUTH || process.env.STACK_TEST_SOURCE_OF_TRUTH) === "true") {
       expect(currentResponses).toMatchInlineSnapshot(`[]`);
     } else {
       expect(currentResponses.length).toBe(1);

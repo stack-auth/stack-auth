@@ -2,8 +2,8 @@
 
 /** Minimal `stack login` flow for local demos. Usage: `node cli-sim.mjs` */
 
-const API_URL = process.env.STACK_API_URL || "http://localhost:8102";
-const APP_URL = process.env.STACK_APP_URL || "http://localhost:8103";
+const API_URL = (process.env.HEXCLAVE_API_URL || process.env.STACK_API_URL) || "http://localhost:8102";
+const APP_URL = (process.env.HEXCLAVE_APP_URL || process.env.STACK_APP_URL) || "http://localhost:8103";
 const PROJECT_ID = "internal";
 const PUBLISHABLE_KEY = "this-publishable-client-key-is-for-local-development-only";
 

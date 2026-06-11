@@ -31,24 +31,31 @@ function createMockDocument(): Document {
 }
 
 const withHostedDomainSuffix = async (callback: () => Promise<void>) => {
-  const oldHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
-  const oldHostedHandlerUrlTemplate = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
-  process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX = ".example-stack-hosted.test";
+  // The SDK resolves NEXT_PUBLIC_HEXCLAVE_* before the legacy NEXT_PUBLIC_STACK_*
+  // names, so override the canonical name and clear both spellings.
+  const oldHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX;
+  const oldLegacyHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
+  const oldHostedHandlerUrlTemplate = process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE;
+  const oldLegacyHostedHandlerUrlTemplate = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
+  process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX = ".example-stack-hosted.test";
+  delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
+  delete process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE;
   delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
 
   try {
     await callback();
   } finally {
-    if (oldHostedHandlerDomainSuffix == null) {
-      delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
-    } else {
-      process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX = oldHostedHandlerDomainSuffix;
-    }
-    if (oldHostedHandlerUrlTemplate == null) {
-      delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
-    } else {
-      process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE = oldHostedHandlerUrlTemplate;
-    }
+    const restore = (name: string, value: string | undefined) => {
+      if (value == null) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    };
+    restore("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX", oldHostedHandlerDomainSuffix);
+    restore("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", oldLegacyHostedHandlerDomainSuffix);
+    restore("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE", oldHostedHandlerUrlTemplate);
+    restore("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", oldLegacyHostedHandlerUrlTemplate);
   }
 };
 

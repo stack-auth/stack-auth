@@ -8,8 +8,8 @@ const target = process.argv[2]; // "local" or "prod"
 
 /** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
 function localPublishServerUrl() {
-  if (process.env.STACK_SPACETIME_PUBLISH_URL) {
-    return process.env.STACK_SPACETIME_PUBLISH_URL;
+  if ((process.env.HEXCLAVE_SPACETIME_PUBLISH_URL || process.env.STACK_SPACETIME_PUBLISH_URL)) {
+    return (process.env.HEXCLAVE_SPACETIME_PUBLISH_URL || process.env.STACK_SPACETIME_PUBLISH_URL);
   }
   const prefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
   return `http://127.0.0.1:${prefix}39`;
@@ -36,7 +36,7 @@ if (!args) {
   process.exit(1);
 }
 
-if (target === "prod" && !process.env.STACK_MCP_LOG_TOKEN) {
+if (target === "prod" && !(process.env.HEXCLAVE_MCP_LOG_TOKEN || process.env.STACK_MCP_LOG_TOKEN)) {
   console.error("Error: STACK_MCP_LOG_TOKEN must be set for prod publish");
   process.exit(1);
 }

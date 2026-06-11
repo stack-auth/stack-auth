@@ -5,7 +5,7 @@ import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
-const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+const isLocalEmulator = (process.env.NEXT_PUBLIC_HEXCLAVE_IS_LOCAL_EMULATOR || process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR) === "true";
 const blockedMessage = "cannot be changed in a development environment";
 const localEmulatorProjectEndpoint = "/api/v1/internal/local-emulator/project";
 

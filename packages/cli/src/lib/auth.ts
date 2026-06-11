@@ -52,7 +52,7 @@ function resolveRefreshToken(): string {
 }
 
 function resolveSecretServerKey(): string | null {
-  return process.env.HEXCLAVE_SECRET_SERVER_KEY ?? process.env.STACK_SECRET_SERVER_KEY ?? null;
+  return process.env.HEXCLAVE_SECRET_SERVER_KEY || process.env.STACK_SECRET_SERVER_KEY || null;
 }
 
 export function resolveLoginConfig(): LoginConfig {

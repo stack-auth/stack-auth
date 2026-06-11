@@ -69,11 +69,14 @@ function generateEnvVarsConstSnippet() {
     const allVariables = [key, ...(config.deprecatedLegacyNames ?? [])]
       .flatMap(k => k.startsWith("HEXCLAVE_") ? [k, k.replace("HEXCLAVE_", "STACK_")] : [k])
       .flatMap(k => config.allowPublic ? [k, `NEXT_PUBLIC_${k}`, `VITE_${k}`] : [k]);
+    // Use || (not ??) between candidates: empty-string env vars (e.g. the empty
+    // HEXCLAVE_* placeholders in checked-in .env templates) must not shadow a
+    // real value under a legacy STACK_* name further down the chain.
     getters.push(deindent`
       get ${key}() {
         return ${allVariables.map(variableName => deindent`
-          ((typeof process !== "undefined" ? process.env.${variableName} : undefined) ?? import.meta.env?.${variableName})
-        `).join("\n  ?? ")} ?? undefined;
+          ((typeof process !== "undefined" ? process.env.${variableName} : undefined) || import.meta.env?.${variableName})
+        `).join("\n  || ")} || undefined;
       },
     `);
   }

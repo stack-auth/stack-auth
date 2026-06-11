@@ -187,9 +187,9 @@ export const stackClientApp = new StackClientApp({
         code: `import { StackServerApp } from "@stackframe/js";
 
 export const stackServerApp = new StackServerApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
-  secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
+  secretServerKey: process.env.HEXCLAVE_SECRET_SERVER_KEY,
   tokenStore: "memory",
 });`,
         highlightLanguage: 'typescript',
@@ -202,8 +202,8 @@ export const stackServerApp = new StackServerApp({
         code: `import { StackClientApp } from "@stackframe/js";
 
 export const stackClientApp = new StackClientApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
 });`,
         highlightLanguage: 'typescript',
@@ -216,9 +216,9 @@ export const stackClientApp = new StackClientApp({
         code: `import { StackServerApp } from "@stackframe/js";
 
 export const stackServerApp = new StackServerApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
-  secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
+  secretServerKey: process.env.HEXCLAVE_SECRET_SERVER_KEY,
   tokenStore: "memory",
 });`,
         highlightLanguage: 'javascript',
@@ -231,8 +231,8 @@ export const stackServerApp = new StackServerApp({
         code: `import { StackClientApp } from "@stackframe/js";
 
 export const stackClientApp = new StackClientApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
 });`,
         highlightLanguage: 'javascript',

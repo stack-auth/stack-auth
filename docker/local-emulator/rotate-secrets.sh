@@ -22,6 +22,10 @@ set -euo pipefail
 OUTPUT=/run/stack-auth/rotated-secrets.env
 WORK_DIR="${STACK_RUNTIME_WORK_DIR:-/app}"
 
+# Hexclave rebrand: the container env may carry the canonical HEXCLAVE_ name
+# instead of the legacy STACK_ one this script reads.
+STACK_DATABASE_CONNECTION_STRING="${STACK_DATABASE_CONNECTION_STRING:-${HEXCLAVE_DATABASE_CONNECTION_STRING:-}}"
+
 PLACEHOLDER_PCK="00000000000000000000000000000000ffffffffffffffffffffffffffffffff"
 
 log() { printf '[rotate-secrets] %s\n' "$*"; }

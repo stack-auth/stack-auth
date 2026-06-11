@@ -12,7 +12,7 @@ const PLACEHOLDER = "__SPACETIMEDB_LOG_TOKEN__";
 const action = process.argv[2];
 
 if (action === "inject") {
-  const token = process.env.STACK_MCP_LOG_TOKEN || "change-me";
+  const token = (process.env.HEXCLAVE_MCP_LOG_TOKEN || process.env.STACK_MCP_LOG_TOKEN) || "change-me";
   if (existsSync(BACKUP)) {
     console.error("Refusing to inject: backup already exists. Run restore first.");
     process.exit(1);
