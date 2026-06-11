@@ -1,0 +1,223 @@
+apps/backend/src/app/api/latest/internal/metrics/route.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 2-7,25-65
+examples/react-example/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 4
+apps/dashboard/src/lib/hexclave-app-internals.ts
+  s_6f4dce13f78022::t_c39c65e3825556 21,25,40-63,65-66,69-71,74-82,92,96
+apps/mock-oauth-server/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+packages/template/src/config.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-13
+examples/convex/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/dashboard/src/components/ui/simple-tooltip.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 27-30,35,39
+apps/dashboard/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3,93
+packages/dashboard-ui-components/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/mcp/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+packages/shared/src/interface/admin-metrics.ts
+  s_6f4dce13f78022::t_c39c65e3825556 91-97,104-108,113-115,135-148,206-207,238-239
+docker/local-emulator/Dockerfile
+  s_6f4dce13f78022::t_c39c65e3825556 33
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/analytics-chart-mode.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-14
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/animation-utils.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-7
+packages/cli/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/overview/page.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 1-10
+apps/skills/src/app/[toolName]/route.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-15
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/globe.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 370,382,477,690-700,707,1071,1092,1173-1179,1181
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sidebar-layout.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 740,756,763-764
+packages/shared/src/schema-fields.ts
+  s_6f4dce13f78022::t_c39c65e3825556 615-618
+apps/internal-tool/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 4
+packages/shared/src/sessions.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-147
+packages/shared/src/hexclave-config-file.ts
+  s_6f4dce13f78022::t_c39c65e3825556 31-37
+docs-mintlify/guides/going-further/hexclave-config.mdx
+  s_6f4dce13f78022::t_c39c65e3825556 12,31-44
+docs-mintlify/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/backend/src/prisma-client.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 632-634
+apps/skills/src/mcp-wrapper.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-458
+examples/e-commerce/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/dashboard/src/lib/github-config-push.ts
+  s_6f4dce13f78022::t_c39c65e3825556 31-35,37
+packages/react/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 4,19-25
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/page-client.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 18
+packages/shared/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+examples/docs-examples/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/backend/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+packages/shared/src/interface/admin-interface.ts
+  s_6f4dce13f78022::t_c39c65e3825556 364-375,380-386,395-424
+apps/dashboard/src/instrumentation.ts
+  s_6f4dce13f78022::t_c39c65e3825556 8-10,13-15
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/top-lists.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 1-431
+packages/js/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 4,19-25
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_6f4dce13f78022::t_c39c65e3825556 107-123
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 4,7-15,19,24-40,45,47-48,51,73-79,108-269,312,314-395,397-399,401-406,408-423,425-461,463-605,607-708,710-746,750-759,766,770,779,783,788-793,798,802,821,827,835,840-844,910,912,920,925-931,935,939,947,951,963,985-986,994-995,998,1009-1010,1013,1024-1025,1028,1037-1038,1042,1052,1211,1278-1280,1403,1407-1409,1414-1438,1445-1452,1455,1457-1460,1462-1473,1475-1487,1498-1518,1523-1526,1531-1534,1541,1556-1557,1577,1583,1586-1594,1608,1615,1620,1628,1635-1656,1658-1667,1671-1676,1682,1684-1685,1693-1694,1720-1723,1742-1744,1746,1754-1827,1853-1900,1915,1920-1924,1966,1979-1980,2007,2010-2056
+examples/cjs-test/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/e2e/tests/general/cli.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 464,559
+docs-mintlify/openapi/admin.json
+  s_6f4dce13f78022::t_c39c65e3825556 3179-3182
+apps/e2e/tests/backend/endpoints/api/v1/auth/oauth/authorize.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 255-290
+docs-mintlify/sdk/objects/hexclave-app.mdx
+  s_6f4dce13f78022::t_c39c65e3825556 89-92,113
+packages/shared/src/config-rendering.ts
+  s_6f4dce13f78022::t_c39c65e3825556 16,124,129-136,143
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/page-layout.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 12,23
+apps/skills/vitest.config.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-8
+docs-mintlify/guides/going-further/local-vs-cloud-dashboard.mdx
+  s_6f4dce13f78022::t_c39c65e3825556 28
+docs-mintlify/openapi/client.json
+  s_6f4dce13f78022::t_c39c65e3825556 2393-2396
+apps/skills/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/e2e/tests/backend/endpoints/api/v1/team-invitations.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 432-496
+examples/middleware/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+packages/template/package-template.json
+  s_6f4dce13f78022::t_c39c65e3825556 16,31-37
+packages/template/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 5,20-26
+packages/template/src/lib/hexclave-app/apps/implementations/admin-app-impl.ts
+  s_6f4dce13f78022::t_c39c65e3825556 103-108,575,584-597
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-page-metric-card.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 3,5,19,53-114,119,123,127-205,208,219-230,237,247-251,260-264
+packages/dashboard-ui-components/src/components/tabs.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 3,42-48,129-132,144-180,193,195,198-220,229-235,239,244
+packages/sc/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_6f4dce13f78022::t_c39c65e3825556 445,450-451,667-670,728,734
+packages/ui/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+sdks/spec/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+packages/cli/src/commands/config-file.ts
+  s_6f4dce13f78022::t_c39c65e3825556 281-284
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_6f4dce13f78022::t_c39c65e3825556 127
+apps/e2e/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/backend/src/route-handlers/verification-code-handler.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 34,293-312
+apps/e2e/tests/backend/endpoints/api/v1/internal/config-local-emulator.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 118
+examples/js-example/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/backend/src/oauth/model.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 306-309,313-314
+apps/dashboard/src/lib/remote-development-environment/config-file.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 2-3,8-13,16-20,22,38,63,169-186,205-208,218
+apps/dashboard/src/lib/remote-development-environment/config-file.ts
+  s_6f4dce13f78022::t_c39c65e3825556 6,66-77
+apps/e2e/tests/backend/backend-helpers.ts
+  s_6f4dce13f78022::t_c39c65e3825556 11,748-750,772-773
+apps/hosted-components/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 4
+packages/dashboard-ui-components/src/components/pill-toggle.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 3-4,31,35-41,43-45,80-83,95-217,219,221-223,225-228
+packages/ui/src/components/ui/tooltip.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 24-25,42
+examples/tanstack-start-demo/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 75-79,523-526,1486,1493-1494,1498,1774,1793,1799,1852-1853,1907-1908
+examples/demo/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+examples/supabase/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+docker/backend/Dockerfile
+  s_6f4dce13f78022::t_c39c65e3825556 35
+docker/server/Dockerfile
+  s_6f4dce13f78022::t_c39c65e3825556 29
+docs/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+packages/shared/src/sessions.ts
+  s_6f4dce13f78022::t_c39c65e3825556 127-134,221-236
+apps/backend/src/app/api/latest/auth/oauth/authorize/[provider_id]/route.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 60-61
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 17,25,33,118-130,150-152,258,296,332,438,492,506,520,543,556,588,601,604,609-654,688-691,710,742-751,793,800,808,810-811,813,850-852,876-895,907,935,964,1007,1076,1100,1273-1274,1291-1292,1296-1299,1352-1354,1891,1934,1957,2079-2083,2191,2254,2282,2295,2418,2464,2487,2500,2629,2680,2694,2708,2731,2744
+apps/dashboard/src/lib/github-config-push.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 53,71,107,127,153,229,269,291
+docs-mintlify/llms-full.txt
+  s_6f4dce13f78022::t_c39c65e3825556 187-190,234,240-241,787,792-793,938,943
+packages/next/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 4,19-25
+sdks/implementations/swift/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/backend/src/lib/local-emulator.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 99
+apps/dev-launchpad/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/analytics-chart-mode.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-12
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1550-1557
+apps/hosted-components/src/routes/__root.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 2,4-7,56-76,170,183,199-200,203-204,206-207
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 23,365-411,465-511,1154-1274,1280-1290,1310-1314,1317-1318,1321-1324,1327-1334,1341,1346,1358-1359,1361-1404,1411-1412,1418,1424-1425,1435,1442-1447,1450,1453-1484,1490-1491,1499,1507,1509,1513-1517,1526-1527,1531,1535-1537,1541-1554,1557,1562-1563,1567,1583,1587-1692,1694-1695,1699-1705,1721-1743,1747-1757,1761-1765,1772-1780,1782-1785,1788,1791-1817,1822-1826,1829-1830,1837,1840-1843,1846-1850,1857-1861,1878-1880,1889-1891,1896-1899,1914-1916,1924-1927,1934-1937,2029,2042-2050,2061-2062,2081-2089,2094-2095,2110-2111,2132,2150-2151
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-settings/domain-settings.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 37,181-182,965,967,971,974,979,1002-1006
+apps/skills/src/app/[toolName]/route.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-43
+docs-mintlify/openapi/server.json
+  s_6f4dce13f78022::t_c39c65e3825556 3139-3142
+apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 11,111-123
+examples/lovable-react-18-example/package.json
+  s_6f4dce13f78022::t_c39c65e3825556 4
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/globe-section-with-data.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 20,23,33,44
+apps/backend/src/app/api/latest/team-invitations/crud.tsx
+  s_6f4dce13f78022::t_c39c65e3825556 186-189
+apps/skills/src/mcp-wrapper.test.ts
+  s_6f4dce13f78022::t_c39c65e3825556 1-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "f6be2c3162949ac4d50513f312aed0c7f43e10a9",
+  "prompts": {},
+  "sessions": {
+    "s_6f4dce13f78022": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8a0422f-893c-4170-a482-64aed11d706a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
