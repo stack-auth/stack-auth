@@ -114,6 +114,8 @@ export function getProcessEnv(name: string): string | undefined {
     return undefined;
   }
   // Hexclave rebrand: prefer the HEXCLAVE_*-prefixed equivalent, fall back to the STACK_* name.
+  // Empty counts as unset — the checked-in .env templates define empty HEXCLAVE_* placeholders,
+  // which must not shadow a real value under the legacy name.
   const hexclaveName = getHexclaveEnvVarName(name);
-  return (hexclaveName ? process.env[hexclaveName] : undefined) ?? process.env[name];
+  return (hexclaveName ? process.env[hexclaveName] : undefined) || process.env[name];
 }

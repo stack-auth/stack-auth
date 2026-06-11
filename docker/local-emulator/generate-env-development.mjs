@@ -41,23 +41,28 @@ const parseEnvFile = (filePath) => {
 const backendEnv = parseEnvFile(backendEnvPath);
 const dashboardEnv = parseEnvFile(dashboardEnvPath);
 
+// Hexclave rebrand: the source env files use the canonical HEXCLAVE_* names,
+// but accept the legacy STACK_* spelling as a fallback. Emitted keys are
+// always canonical.
+const toCanonicalKey = (key) => key.includes("STACK_") ? key.replace("STACK_", "HEXCLAVE_") : key;
+
 const getRequiredEnvValue = (sourceName, envMap, key) => {
-  const value = envMap.get(key);
+  const value = envMap.get(toCanonicalKey(key)) ?? envMap.get(key);
   if (value == null) {
-    throw new Error(`Missing ${key} in ${sourceName}; update the generator or source env file.`);
+    throw new Error(`Missing ${toCanonicalKey(key)} in ${sourceName}; update the generator or source env file.`);
   }
   return value;
 };
 
 const fromSource = (sourceName, envMap, key) => ({
   type: "entry",
-  key,
+  key: toCanonicalKey(key),
   value: getRequiredEnvValue(sourceName, envMap, key),
 });
 
 const literal = (key, value) => ({
   type: "entry",
-  key,
+  key: toCanonicalKey(key),
   value,
 });
 

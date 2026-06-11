@@ -8,7 +8,10 @@ export default defineConfig({
     seed: 'pnpm run db-seed-script',
   },
   datasource: {
-    url: env('STACK_DATABASE_CONNECTION_STRING'),
+    // Hexclave rebrand: prefer the canonical name, fall back to the legacy one
+    // (empty counts as unset — the checked-in .env templates define empty placeholders).
+    // eslint-disable-next-line no-restricted-properties
+    url: env(process.env.HEXCLAVE_DATABASE_CONNECTION_STRING ? 'HEXCLAVE_DATABASE_CONNECTION_STRING' : 'STACK_DATABASE_CONNECTION_STRING'),
   },
   experimental: {
     externalTables: true,

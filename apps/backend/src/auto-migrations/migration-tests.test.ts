@@ -14,7 +14,7 @@ const TEST_DB_PREFIX = 'stack_migration_test';
 
 const getTestDbURL = (testDbName: string) => {
   // @ts-ignore - ImportMeta.env is provided by Vite
-  const connString: string = import.meta.env.STACK_DATABASE_CONNECTION_STRING;
+  const connString: string = (import.meta.env.HEXCLAVE_DATABASE_CONNECTION_STRING || import.meta.env.STACK_DATABASE_CONNECTION_STRING);
   const base = connString.replace(/\/[^/]*(\?.*)?$/, '');
   const query = connString.split('?')[1] ?? '';
   return { full: `${base}/${testDbName}`, base, query };

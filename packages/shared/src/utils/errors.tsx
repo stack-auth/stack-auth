@@ -80,7 +80,7 @@ export class HexclaveAssertionError extends Error {
 
     // Use literal dot-form (guarded with `typeof process`) so Next.js / webpack
     // DefinePlugin can inline the value at build time. See getProcessEnv in ./env.
-    if ((typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR : undefined) === "true") {
+    if ((typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_HEXCLAVE_DEBUGGER_ON_ASSERTION_ERROR || process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR) : undefined) === "true") {
       debugger;
     }
   }

@@ -8,9 +8,9 @@ const TEST_DB_PREFIX = 'stack_auth_test_db';
 
 const getTestDbURL = (testDbName: string) => {
   // @ts-ignore - ImportMeta.env is provided by Vite
-  const base = import.meta.env.STACK_DATABASE_CONNECTION_STRING.replace(/\/[^/]*$/, '');
+  const base = (import.meta.env.HEXCLAVE_DATABASE_CONNECTION_STRING || import.meta.env.STACK_DATABASE_CONNECTION_STRING).replace(/\/[^/]*$/, '');
   // @ts-ignore - ImportMeta.env is provided by Vite
-  const query = import.meta.env.STACK_DATABASE_CONNECTION_STRING.split('?')[1] ?? '';
+  const query = (import.meta.env.HEXCLAVE_DATABASE_CONNECTION_STRING || import.meta.env.STACK_DATABASE_CONNECTION_STRING).split('?')[1] ?? '';
   return {
     full: `${base}/${testDbName}`,
     base,

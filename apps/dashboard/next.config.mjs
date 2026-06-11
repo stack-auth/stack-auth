@@ -100,7 +100,7 @@ const nextConfig = {
   },
 
   async headers() {
-    const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+    const isLocalEmulator = (process.env.NEXT_PUBLIC_HEXCLAVE_IS_LOCAL_EMULATOR || process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR) === "true";
     return [
       {
         source: "/(.*)",

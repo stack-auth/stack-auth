@@ -299,7 +299,7 @@ function expandHexclavePortPrefix(value?: string | null) {
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 for (const [key, value] of Object.entries(process.env)) {
-  if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+  if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_") || key.startsWith("HEXCLAVE_") || key.startsWith("NEXT_PUBLIC_HEXCLAVE_")) {
     const replaced = expandHexclavePortPrefix(value ?? undefined);
     if (replaced !== undefined) {
       // eslint-disable-next-line no-restricted-syntax

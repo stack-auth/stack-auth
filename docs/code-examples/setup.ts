@@ -80,8 +80,8 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         language: 'JavaScript',
         framework: 'React',
         code: `# Store these in environment variables or directly in the client file during development
-VITE_STACK_PROJECT_ID=<your-project-id>
-VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
+VITE_HEXCLAVE_PROJECT_ID=<your-project-id>
+VITE_HEXCLAVE_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         highlightLanguage: 'bash',
         filename: '.env'
       },
@@ -172,8 +172,8 @@ export const stackClientApp = new StackClientApp({
 // import { useNavigate } from "@tanstack/react-router"; // TanStack Router
 
 export const stackClientApp = new StackClientApp({
-  projectId: process.env.VITE_STACK_PROJECT_ID || "your-project-id",
-  publishableClientKey: process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY || "your-publishable-client-key",
+  projectId: process.env.VITE_HEXCLAVE_PROJECT_ID || "your-project-id",
+  publishableClientKey: process.env.VITE_HEXCLAVE_PUBLISHABLE_CLIENT_KEY || "your-publishable-client-key",
   tokenStore: "cookie",
   // redirectMethod: { useNavigate }, // Set this for non-Next.js frameworks
 });`,
