@@ -726,8 +726,8 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     autocapitalize: 'off',
   }) as HTMLInputElement;
   urlPatternInput.value = getEffectiveUrlPattern();
-  // Shown only while the active pattern doesn't cover the current page (see
-  // render); reverts the field back to the auto-wildcarded current route.
+  // Reverts the field back to the auto-wildcarded current route. Shown whenever
+  // the field holds a custom pattern (i.e. reverting would change something).
   const urlPatternReset = h('button', {
     className: 'sdt-hm-filter-reset',
     type: 'button',
@@ -735,6 +735,16 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     title: 'Revert the URL pattern to the current page',
   }) as HTMLButtonElement;
   setHtml(urlPatternReset, '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>');
+
+  // The revert button appears the moment the field diverges from the
+  // auto-wildcarded current route. Toggled directly from the input handlers (on
+  // top of render()) so it shows up immediately on edit, independent of the
+  // panel's expanded state and of whether the pattern still covers this page.
+  function syncUrlPatternResetVisibility() {
+    const auto = wildcardizePathname(window.location.pathname);
+    const showReset = urlPatternUserEdited && filters.urlPattern.trim() !== auto;
+    urlPatternReset.classList.toggle('sdt-hm-filter-reset-visible', showReset);
+  }
 
   // Info button + popover explaining the URL pattern syntax. The backend
   // translates `*` into a SQL LIKE `%`, so `*` is the only wildcard — every
@@ -886,6 +896,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     // Clearing the field hands control back to auto mode (reflect the route).
     urlPatternUserEdited = value.trim() !== '';
     updateFilters({ urlPattern: value });
+    syncUrlPatternResetVisibility();
   });
   urlPatternReset.addEventListener('click', () => {
     // Hand control back to auto mode and reflect the current route immediately,
@@ -893,6 +904,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     urlPatternUserEdited = false;
     urlPatternInput.value = wildcardizePathname(window.location.pathname);
     updateFilters({ urlPattern: '' });
+    syncUrlPatternResetVisibility();
   });
   elementSearchInput.addEventListener('input', () => {
     updateElementSearch(elementSearchInput.value);
@@ -1189,11 +1201,11 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
       viewportWarningWidthValue.textContent = String(recommendedWidth);
       viewportWarningHeightValue.textContent = String(recommendedHeight);
     }
-    // A pattern that doesn't cover the current page means the overlay can't draw
-    // here, so offer a one-click reset back to the current route.
     const effectiveUrlPattern = getEffectiveUrlPattern();
     const urlPatternMatchesPath = patternMatchesPath(effectiveUrlPattern, currentPath);
-    urlPatternReset.classList.toggle('sdt-hm-filter-reset-visible', !urlPatternMatchesPath);
+    // Re-evaluated here too so route changes (which move the auto pattern under
+    // a custom one) keep the revert affordance in sync.
+    syncUrlPatternResetVisibility();
     const token = getClickmapTokenFromStorage();
     const tokenOrigin = getClickmapOriginFromStorage();
     if (token == null) {
