@@ -1,0 +1,129 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/clickmaps/page-client.tsx
+  s_724339f3b89ec1::t_37a241c9c235e4 87
+  s_724339f3b89ec1::t_d7c01a2de88610 203
+  s_724339f3b89ec1::t_fd6af94a231e4a 180
+  s_724339f3b89ec1::t_1b8d3e9b900ef9 226
+packages/template/src/clickmap/clickmap-core.ts
+  s_a113e431d3bdb8::t_4c4a2aa9bf5e6a 47-48,52
+  s_4612f86519f985::t_c741584e72f5bf 1275
+  s_343330a22e4ba7::t_83fa4073353fe0 751
+  s_ccb00260f486e0::t_1fa97c811abd99 1317
+  s_ccb00260f486e0::t_5e5cf837690a4d 1416-1435
+  s_2d21728cfaf4bb::t_6197d7af97ea30 948
+  s_ccb00260f486e0::t_6030379237857e 612-624
+  s_f6b3857125b1b1::t_5c918d634c9883 1172-1190,1194-1206
+  s_f6b3857125b1b1::t_d52769eb7ecc70 419-420
+  s_8075b1350720b1::t_f908f3cb6b0daa 1215,1218,1227-1230,1237
+  s_343330a22e4ba7::t_e37940ffa15c36 773
+  s_a113e431d3bdb8::t_6eab8247a97a17 1097-1106
+  s_343330a22e4ba7::t_9fd35d9d28e63b 1316
+  s_4612f86519f985::t_6acd65ad1dca64 873-878,881
+  s_f6b3857125b1b1::t_69e4058188faab 1144,1146
+  s_8075b1350720b1::t_597f9677596948 1191-1193
+  s_a113e431d3bdb8::t_278a81566fbc64 1054-1056,1058,1061,1069,1071-1072
+  s_343330a22e4ba7::t_fd7b172c234a5d 379-380
+  s_f6b3857125b1b1::t_ef4206905ee47a 348-349
+  s_343330a22e4ba7::t_5e73bafce1dfdc 867-868
+  s_f6b3857125b1b1::t_1f630251ba3cd4 1018-1020
+  s_4612f86519f985::t_a24d376834c6dc 935-939,943-947
+packages/template/src/dev-tool/dev-tool-styles.ts
+  s_ccb00260f486e0::t_182f3dfebd658d 1886-1887
+packages/template/src/clickmap/clickmap-styles.ts
+  s_a113e431d3bdb8::t_1c62fead6561b8 756,759,764-782,784-792,795,797,802
+  s_f6b3857125b1b1::t_7723f586ff3d5e 895-897,901-916
+  s_ccb00260f486e0::t_a75e8a119efe0e 293-299
+  s_f6b3857125b1b1::t_a663963f48062f 836-837
+  s_343330a22e4ba7::t_e32d8f873bbf36 300-343
+  s_a113e431d3bdb8::t_60debe33f4727a 719
+packages/template/src/in-page-ui/base-styles.ts
+  s_ccb00260f486e0::t_fdfe804c4696b0 81-165
+clickmap-improvement-plan.html
+  s_fd1fb0a9c20f3f::t_ac3a11b6f677b8 1-6,10-11,33,35,37,44,397,424-427,433,439-440,471-472,476-477,487,569,581,590-591,593,603-604,612,630,638,659,667,685,693,711-712,719,734,743,764,773-774,777,945-946
+  s_fd1fb0a9c20f3f::t_c754d181d806c8 7-9,12-32,34,36,38-43,45-173,175-396,398-423,428-432,434-438,441-470,473-475,478-486,488-568,570-580,582-589,592,594-602,605-611,613-629,631-637,639-658,660-666,668-684,686-692,694-710,713-718,720-733,735-742,744-763,765-772,775-776,778-944
+  s_fd1fb0a9c20f3f::t_fa15796d3253f0 174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "e9f963887b2360c18c2f032fcaa147ffab82fed5",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_2d21728cfaf4bb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb7b5-aed6-7313-a518-ad57bf156649",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_343330a22e4ba7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d7651f0-6657-4208-b503-d7b8b9723a2a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_4612f86519f985": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5868477-dd88-42b6-8e7c-446d827c4ea4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_724339f3b89ec1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52fbc0ce-bf9e-4c30-9460-085c7144af0c",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_8075b1350720b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb7b1-f120-7cc1-8f2a-70b666545fc1",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_a113e431d3bdb8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1639f66f-aa61-4b7b-993b-d2a9ecf0359e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_ccb00260f486e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c2371a8d-b255-4c1c-bf83-c16f1a4541c5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f6b3857125b1b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e55f9eb2-740e-412a-b3ba-af7cba635380",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_fd1fb0a9c20f3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1a8400e-b806-459b-ae3d-e21a163e017a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
