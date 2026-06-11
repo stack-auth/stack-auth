@@ -162,8 +162,10 @@ function startProgressLog(message: string): ProgressLogger {
   if (!process.stderr.isTTY) {
     logDev(`${message}...`);
     return {
-      stop() {
-        logDev(`${message}... done!`);
+      stop(finalMessage?: string) {
+        if (finalMessage != null) {
+          logDev(`${message}... done!`);
+        }
       },
     };
   }
@@ -179,12 +181,14 @@ function startProgressLog(message: string): ProgressLogger {
   timer.unref();
 
   return {
-    stop() {
+    stop(finalMessage?: string) {
       if (stopped) return;
       stopped = true;
       clearInterval(timer);
       process.stderr.write("\r\x1b[2K");
-      logDev(`${message}... done!`);
+      if (finalMessage != null) {
+        logDev(`${message}... done!`);
+      }
     },
   };
 }
@@ -242,7 +246,17 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
       continue;
     }
 
-    const buffer = readFileSync(path);
+    // During a version-upgrade restart, the old dashboard process may still be
+    // shutting down and can delete or move files via cached absolute paths. Guard
+    // against the resulting TOCTOU race (readdirSync sees the entry, but the
+    // file is gone by the time we read it).
+    let buffer: Buffer;
+    try {
+      buffer = readFileSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
     if (!buffer.includes("STACK_ENV_VAR_SENTINEL")) {
       continue;
     }
@@ -414,7 +428,15 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
   // the listener is up, so an unreachable port reliably means it's gone.
   const startedAt = performance.now();
   while (performance.now() - startedAt < DASHBOARD_STOP_TIMEOUT_MS) {
-    if (!(await isDashboardReachable(url))) return;
+    if (!(await isDashboardReachable(url))) {
+      // Port is released, but the process may still be alive doing final I/O
+      // (flushing caches, writing traces). Give it a brief grace period so its
+      // file operations don't race with the new runtime directory being set up.
+      if (processExists(pid)) {
+        await wait(500);
+      }
+      return;
+    }
     await wait(200);
   }
 
