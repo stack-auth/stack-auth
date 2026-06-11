@@ -612,7 +612,15 @@ export const emailHostSchema = yupString().meta({ openapiField: { description: '
 export const emailPortSchema = yupNumber().min(0).max(65535).meta({ openapiField: { description: 'Email port. Needs to be specified when using type="standard"', exampleValue: 587 } });
 export const emailUsernameSchema = yupString().meta({ openapiField: { description: 'Email username. Needs to be specified when using type="standard"', exampleValue: 'smtp-email' } });
 export const emailSenderEmailSchema = emailSchema.meta({ openapiField: { description: 'Email sender email. Needs to be specified when using type="standard"', exampleValue: 'example@your-domain.com' } });
-export const emailPasswordSchema = passwordSchema.meta({ openapiField: { description: 'Email password. Needs to be specified when using type="standard"', exampleValue: 'your-email-password' } });
+/**
+ * Deliberately not based on passwordSchema — its 70-character limit only applies to user passwords (because of
+ * bcrypt), while SMTP providers may generate much longer credentials.
+ */
+export const emailPasswordSchema = yupString().meta({ openapiField: { description: 'Email password. Needs to be specified when using type="standard"', exampleValue: 'your-email-password' } });
+import.meta.vitest?.test("emailPasswordSchema permits passwords longer than 70 characters", async ({ expect }) => {
+  const longPassword = "a".repeat(144);
+  await expect(emailPasswordSchema.validate(longPassword)).resolves.toBe(longPassword);
+});
 // Project domain config
 export const handlerPathSchema = yupString().test('is-handler-path', 'Handler path must start with /', (value) => value?.startsWith('/')).meta({ openapiField: { description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /', exampleValue: '/handler' } });
 // Project email theme config
