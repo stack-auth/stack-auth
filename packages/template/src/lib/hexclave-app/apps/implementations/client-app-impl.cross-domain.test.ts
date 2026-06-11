@@ -337,6 +337,17 @@ describe("StackClientApp cross-domain auth", () => {
     urlAtConstructionTime.searchParams.set("code", "one-time-code");
     urlAtConstructionTime.searchParams.set("state", "nested-oauth-state");
 
+    // Construct before installing the window mock so the constructor does not schedule its own
+    // nested-auth resolution; the assertions below drive the handler explicitly.
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId,
+      publishableClientKey: "stack-pk-test",
+      tokenStore: "memory",
+      redirectMethod: "window",
+      noAutomaticPrefetch: true,
+    });
+
     globalThis.document = createMockDocument();
     globalThis.window = {
       location: {
@@ -347,14 +358,6 @@ describe("StackClientApp cross-domain auth", () => {
       },
     } as any;
 
-    const clientApp = new StackClientApp({
-      baseUrl: "http://localhost:12345",
-      projectId,
-      publishableClientKey: "stack-pk-test",
-      tokenStore: "memory",
-      redirectMethod: "window",
-      noAutomaticPrefetch: true,
-    });
     vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
       state: "fresh-nested-state",
@@ -367,6 +370,9 @@ describe("StackClientApp cross-domain auth", () => {
       await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
       // With it, the in-flight OAuth callback wins and the handler stands down.
       await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime)).resolves.toBe(false);
+      // The live-URL guard must also stand down on its own when code+state are still present.
+      (globalThis.window as any).location.href = urlAtConstructionTime.toString();
+      await expect((clientApp as any)._maybeHandleNestedCrossDomainAuth()).resolves.toBe(false);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
