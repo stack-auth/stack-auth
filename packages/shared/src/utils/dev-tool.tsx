@@ -15,6 +15,14 @@
  */
 export const DEV_TOOL_ROOT_ID = "__hexclave-dev-tool-root";
 
+/**
+ * Root element id of the standalone clickmap overlay. The clickmap is an
+ * independent feature with its own mount (it must survive the dev tool being
+ * removed), so it gets its own root — but its self-clicks need the exact same
+ * ingest/query exclusions as the dev tool's.
+ */
+export const CLICKMAP_ROOT_ID = "__hexclave-clickmap-root";
+
 /** Prefix applied to every class/generated id the dev tool renders. */
 export const DEV_TOOL_CLASS_PREFIX = "sdt-";
 

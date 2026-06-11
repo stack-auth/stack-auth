@@ -4,24 +4,11 @@ import type { StackClientApp } from "../lib/hexclave-app";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
+import { canMountIntoDom } from "../in-page-ui/dom";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
 // Hexclave rebrand: UI-only local pref — straight rename (one-time reset is harmless)
 const OVERRIDE_KEY = '__hexclave-dev-tool-override';
-
-function hasAppendChild(value: unknown): value is { appendChild(node: Node): void } {
-  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'appendChild') === 'function';
-}
-
-function canMountIntoDom(): boolean {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return false;
-  }
-  if (typeof document.createElement !== 'function') {
-    return false;
-  }
-  return hasAppendChild(Reflect.get(document, 'body'));
-}
 
 function getOverride(): boolean | null {
   try {

@@ -1,5 +1,5 @@
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
-import { DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
+import { CLICKMAP_ROOT_ID, DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
 import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
@@ -48,8 +48,10 @@ function isPointerTargetFixed(element: Element): boolean {
   return false;
 }
 
-function isInsideHexclaveDevTool(element: Element): boolean {
-  return element.closest(`#${cssEscapeIdent(DEV_TOOL_ROOT_ID)}`) != null;
+// Clicks on Hexclave's own in-page UI (the dev tool and the standalone
+// clickmap overlay) must never be ingested as analytics events.
+function isInsideHexclaveUi(element: Element): boolean {
+  return element.closest(`#${cssEscapeIdent(DEV_TOOL_ROOT_ID)}, #${cssEscapeIdent(CLICKMAP_ROOT_ID)}`) != null;
 }
 
 export type EventTrackerDeps = {
@@ -245,7 +247,7 @@ export class EventTracker {
   private readonly _onClickCapture = (event: MouseEvent) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (isInsideHexclaveDevTool(target)) return;
+    if (isInsideHexclaveUi(target)) return;
 
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;

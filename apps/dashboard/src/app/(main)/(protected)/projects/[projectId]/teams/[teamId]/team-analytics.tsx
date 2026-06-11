@@ -300,7 +300,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
           prev7dSince: toClickhouseDateTimeParam(prev7dSince),
         }),
         runQuery(DAU_QUERY, baseParams),
-        stackAdminApp.getAnalyticsClickmap({
+        hexclaveAdminApp.getAnalyticsClickmap({
           kind: "team_user_hour_of_week",
           memberUserIds: memberIds,
           since: clickmapSince.toISOString(),
